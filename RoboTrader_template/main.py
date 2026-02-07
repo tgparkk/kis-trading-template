@@ -229,7 +229,7 @@ class DayTradingBot:
             # 전략 초기화 - broker, data_provider, executor 전달
             init_result = self.strategy.on_init(
                 broker=self.api_manager,
-                data_provider=None,  # 추후 DataProvider 구현 시 연결
+                data_provider=self.data_collector,
                 executor=self.order_manager
             )
 
