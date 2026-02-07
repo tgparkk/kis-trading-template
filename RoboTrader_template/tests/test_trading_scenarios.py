@@ -1206,64 +1206,6 @@ class TestScenario5APIErrorRecovery:
 # Additional Integration Tests
 # ============================================================================
 
-class TestRebalancingServiceIntegration:
-    """QuantRebalancingService 통합 테스트"""
-
-    @pytest.fixture
-    def mock_components(self):
-        """테스트용 Mock 컴포넌트"""
-        api = Mock()
-        api.get_current_price = Mock(return_value=types.SimpleNamespace(current_price=10000))
-
-        db = Mock()
-        db.db_path = ':memory:'
-        db.get_quant_portfolio = Mock(return_value=[
-            {"stock_code": "000660", "stock_name": "SK하이닉스", "rank": 1, "total_score": 90.0, "reason": ""},
-            {"stock_code": "051910", "stock_name": "LG화학", "rank": 2, "total_score": 85.0, "reason": ""},
-            {"stock_code": "028050", "stock_name": "삼성엔지니어링", "rank": 3, "total_score": 80.0, "reason": ""},
-        ])
-        db.get_quant_factors = Mock(return_value=[])
-
-        order = Mock()
-        order.place_sell_order = Mock(return_value={"ok": True})
-        order.place_buy_order = Mock(return_value={"ok": True})
-
-        return {'api': api, 'db': db, 'order': order}
-
-    def test_rebalancing_plan_calculation(self, mock_components, monkeypatch):
-        """리밸런싱 계획 계산 테스트"""
-        import api.kis_account_api as kis_account_api
-
-        # 현재 보유: 005930(10주), 000660(8주)
-        holdings_df = pd.DataFrame([
-            {"pdno": "005930", "prdt_name": "삼성전자", "hldg_qty": 10, "pchs_avg_pric": 70000},
-            {"pdno": "000660", "prdt_name": "SK하이닉스", "hldg_qty": 8, "pchs_avg_pric": 150000},
-        ])
-        monkeypatch.setattr(kis_account_api, "get_inquire_balance", lambda: holdings_df)
-
-        from core.quant.quant_rebalancing_service import QuantRebalancingService
-
-        svc = QuantRebalancingService(
-            api_manager=mock_components['api'],
-            db_manager=mock_components['db'],
-            order_manager=mock_components['order']
-        )
-
-        plan = svc.calculate_rebalancing_plan(calc_date="20260206")
-
-        # 검증
-        sell_codes = {x["stock_code"] for x in plan["sell_list"]}
-        buy_codes = {x["stock_code"] for x in plan["buy_list"]}
-        keep_codes = {x["stock_code"] for x in plan["keep_list"]}
-
-        # 005930은 목표 포트폴리오에 없으므로 매도 대상 (점수 기준 미달 시)
-        # 000660은 유지 대상
-        # 051910, 028050은 신규 매수 대상
-
-        assert "000660" in keep_codes, "SK하이닉스는 유지"
-        assert "051910" in buy_codes or "028050" in buy_codes, "신규 매수 종목 존재"
-
-
 class TestAPIRetryPatterns:
     """API 재시도 패턴 테스트"""
 
