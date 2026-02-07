@@ -1,0 +1,11 @@
+pandas
+numpy
+psutil
+aiohttp
+requests
+python-dateutil
+pytz
+python-telegram-bot
+PyYAML
+matplotlib
+psycopg2-binary>=2.9.9

@@ -1,0 +1,28 @@
+# Sample Strategy Configuration Template
+# TODO: Customize these settings for your strategy
+
+strategy:
+  name: "Sample Strategy"
+  version: "1.0.0"
+
+parameters:
+  # TODO: Add your strategy parameters here
+  # Example:
+  # ma_short_period: 5
+  # ma_long_period: 20
+  # rsi_period: 14
+  pass
+
+risk_management:
+  max_position_size: 0.1  # Maximum 10% of portfolio per position
+  stop_loss_pct: 0.05     # 5% stop loss
+  take_profit_pct: 0.10   # 10% take profit
+  max_daily_trades: 5
+
+target_stocks:
+  # TODO: Define your target stock criteria
+  # Example filters:
+  # min_market_cap: 100000000000  # 1000억 이상
+  # min_avg_volume: 100000
+  # exclude_etf: true
+  # exclude_preferred: true

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Environment
+.env
+*.pid
+token_info.json
+
+# Data
+*.db
+*.sqlite3
+data/
+logs/
+cache/
+charts/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+nul
+Thumbs.db
+.DS_Store
+
+# Archive (separated quant code)
+_archived/

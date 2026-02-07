@@ -1,0 +1,65 @@
+# 시각화 전략 설정
+# visualization/strategy_manager.py에서 사용
+# 새 전략 추가 시 이 파일에 추가하면 됨
+
+strategies:
+  strategy1:
+    name: "가격박스+이등분선"
+    timeframe: "1min"
+    indicators:
+      - "price_box"
+      - "bisector_line"
+    description: "가격박스 지지/저항선과 이등분선을 활용한 매매"
+    enabled: true
+    priority: 1
+
+  strategy2:
+    name: "다중볼린저밴드+이등분선"
+    timeframe: "5min"
+    indicators:
+      - "multi_bollinger_bands"
+      - "bisector_line"
+    description: "다중 볼린저밴드와 이등분선을 활용한 매매 (5분봉)"
+    enabled: true
+    priority: 2
+
+  strategy3:
+    name: "다중볼린저밴드"
+    timeframe: "5min"
+    indicators:
+      - "multi_bollinger_bands"
+    description: "여러 기간의 볼린저밴드를 활용한 매매 (5분봉)"
+    enabled: true
+    priority: 3
+
+  strategy4:
+    name: "캔들패턴(3분봉)"
+    timeframe: "3min"
+    indicators:
+      - "pullback_candle_pattern"
+      - "bisector_line"
+    description: "저거래 하락 조정 후 회복 양봉 및 이등분선 회복 기반 (3분봉)"
+    enabled: true
+    priority: 2
+
+# 전략 별칭 매핑
+# 다양한 이름으로 전략을 참조할 수 있게 해줌
+aliases:
+  price_box: "strategy1"
+  multi_bollinger: "strategy2"
+  candle_pattern: "strategy4"
+  candle_pattern_3min: "strategy4"
+
+# 지원되는 지표 목록
+valid_indicators:
+  - "price_box"
+  - "bisector_line"
+  - "bollinger_bands"
+  - "multi_bollinger_bands"
+  - "pullback_candle_pattern"
+
+# 지원되는 시간 프레임
+valid_timeframes:
+  - "1min"
+  - "3min"
+  - "5min"

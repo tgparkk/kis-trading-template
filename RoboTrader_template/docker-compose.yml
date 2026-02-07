@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: robotrader-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: robotrader
+      POSTGRES_PASSWORD: robotrader_secure_pw_2024
+      POSTGRES_DB: robotrader
+      TIMESCALEDB_TELEMETRY: 'off'
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U robotrader -d robotrader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=1536MB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "max_connections=100"
+
+volumes:
+  timescaledb_data:
+    driver: local
