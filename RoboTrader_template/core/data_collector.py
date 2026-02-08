@@ -187,6 +187,13 @@ class RealTimeDataCollector:
         """종목 존재 여부 확인"""
         return stock_code in self.stocks
     
+    async def collect_once(self):
+        """1회 데이터 수집 (메인루프에서 호출)"""
+        try:
+            await self._collect_all_stocks_data()
+        except Exception as e:
+            self.logger.error(f"1회 데이터 수집 오류: {e}")
+
     def stop_collection(self):
         """데이터 수집 중단"""
         self.is_running = False

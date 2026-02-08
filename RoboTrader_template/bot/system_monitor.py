@@ -21,7 +21,6 @@ class SystemMonitor:
         self.bot = bot
         self.logger = setup_logger(__name__)
         self._last_daily_report_date = None
-        self._last_eod_liquidation_date = None
 
     async def run_system_monitoring_task(self):
         """시스템 모니터링 태스크"""
@@ -44,9 +43,6 @@ class SystemMonitor:
 
                 # 08:30 전일 데이터 수집 및 08:55 퀀트 스크리닝 실행 (장 시작 전)
                 await self._handle_premarket_tasks(current_time)
-
-                # 장마감 전 EOD 일괄청산 (동적 시간 적용)
-                await self._handle_eod_liquidation(current_time)
 
                 # 15:35 장 마감 후 일일 매매 리포트 생성
                 await self._handle_postmarket_tasks(current_time)
@@ -114,35 +110,6 @@ class SystemMonitor:
 
         except Exception as e:
             self.logger.error(f"전략 후보 종목 등록 오류: {e}")
-
-    async def _handle_eod_liquidation(self, current_time):
-        """장마감 전 EOD 일괄청산 처리 (동적 시간 적용)"""
-        try:
-            # 오늘 이미 실행했으면 스킵
-            if self._last_eod_liquidation_date == current_time.date():
-                return
-
-            # 평일인지 확인
-            if current_time.weekday() >= 5:
-                return
-
-            # 동적 청산 시간 확인
-            if not MarketHours.is_eod_liquidation_time('KRX', current_time):
-                return
-
-            self.logger.info(f"EOD 일괄청산 시간 도달 ({current_time.strftime('%H:%M:%S')})")
-            self._last_eod_liquidation_date = current_time.date()
-
-            # liquidation_handler를 통해 청산 실행
-            if hasattr(self.bot, 'liquidation_handler') and self.bot.liquidation_handler:
-                await self.bot.liquidation_handler.execute_end_of_day_liquidation()
-                # liquidation_handler 자체의 날짜도 업데이트
-                self.bot.liquidation_handler.set_last_eod_liquidation_date(current_time.date())
-            else:
-                self.logger.warning("liquidation_handler가 설정되지 않음 - EOD 청산 스킵")
-
-        except Exception as e:
-            self.logger.error(f"EOD 일괄청산 처리 오류: {e}")
 
     async def _handle_postmarket_tasks(self, current_time):
         """장 마감 후 태스크 처리"""

@@ -38,6 +38,13 @@ class OrderMonitorMixin:
                 self.logger.error(f"주문 모니터링 중 오류: {e}")
                 await asyncio.sleep(ORDER_MONITOR_ERROR_INTERVAL)
 
+    async def check_pending_orders_once(self: 'OrderManagerBase'):
+        """미체결 주문 1회 확인 (메인루프에서 호출)"""
+        try:
+            await self._monitor_pending_orders()
+        except Exception as e:
+            self.logger.error(f"미체결 주문 1회 확인 오류: {e}")
+
     async def _monitor_pending_orders(self: 'OrderManagerBase'):
         """미체결 주문 모니터링"""
         current_time = now_kst()

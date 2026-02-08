@@ -89,6 +89,13 @@ class PositionMonitor:
                 self.logger.error(f"종목 상태 모니터링 오류: {e}")
                 await asyncio.sleep(10)
 
+    async def check_positions_once(self):
+        """보유종목 1회 체크 (현재가 업데이트 + 매도 판단, 메인루프에서 호출)"""
+        try:
+            await self._monitor_stock_states()
+        except Exception as e:
+            self.logger.error(f"보유종목 1회 체크 오류: {e}")
+
     async def _monitor_stock_states(self):
         """종목 상태 모니터링"""
         try:

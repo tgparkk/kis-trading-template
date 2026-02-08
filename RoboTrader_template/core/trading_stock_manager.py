@@ -278,6 +278,10 @@ class TradingStockManager:
     # 모니터링 (PositionMonitor에 위임)
     # =========================================================================
 
+    async def check_positions_once(self):
+        """보유종목 1회 체크 (메인루프용)"""
+        await self._position_monitor.check_positions_once()
+
     async def start_monitoring(self):
         """종목 상태 모니터링 시작"""
         await self._position_monitor.start_monitoring()

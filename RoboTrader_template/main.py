@@ -228,12 +228,9 @@ class DayTradingBot:
 
             # (태스크명, 코루틴팩토리, 필수여부) 정의
             task_definitions = [
-                ("데이터수집", self._data_collection_task, True),
-                ("주문모니터링", self._order_monitoring_task, True),
-                ("거래모니터링", self.trading_manager.start_monitoring, True),
+                ("메인트레이딩루프", self._main_trading_loop, True),
                 ("시스템모니터링", self.system_monitor.run_system_monitoring_task, False),
                 ("텔레그램", self._telegram_task, False),
-                ("매수판단", self._buy_decision_task, True),
             ]
 
             # 감독 태스크로 래핑하여 실행
@@ -294,57 +291,103 @@ class DayTradingBot:
                     self.logger.warning(f"[{name}] {delay}초 후 재시도...")
                     await asyncio.sleep(delay)
 
-    async def _data_collection_task(self):
-        """데이터 수집 태스크"""
-        try:
-            self.logger.info("데이터 수집 태스크 시작")
-            await self.data_collector.start_collection()
-        except Exception as e:
-            self.logger.error(f"데이터 수집 태스크 오류: {e}")
+    async def _main_trading_loop(self):
+        """메인 트레이딩 루프: 데이터수집 → 주문확인 → 포지션체크 → 매수판단 → EOD 순차 실행"""
+        import time
 
-    async def _order_monitoring_task(self):
-        """주문 모니터링 태스크"""
-        try:
-            self.logger.info("주문 모니터링 태스크 시작")
-            await self.order_manager.start_monitoring()
-        except Exception as e:
-            self.logger.error(f"주문 모니터링 태스크 오류: {e}")
+        LOOP_INTERVAL = 3  # 기본 루프 간격 (초)
+        BUY_SIGNAL_EVERY_N = 3  # 매수 판단은 N번째 반복마다 (≈9초)
 
-    async def _buy_decision_task(self):
-        """매수 판단 태스크: SELECTED 상태 종목을 주기적으로 순회하며 매수 분석"""
-        BUY_DECISION_INTERVAL = 10  # 매수 판단 주기 (초)
-
-        self.logger.info("매수 판단 태스크 시작")
+        self.logger.info("메인 트레이딩 루프 시작")
+        iteration = 0
 
         while self.is_running:
+            loop_start = time.monotonic()
+
             try:
                 if not is_market_open():
                     await asyncio.sleep(30)
                     continue
 
-                # SELECTED 상태 종목 순회
-                selected_stocks = self.trading_manager.get_stocks_by_state(StockState.SELECTED)
+                iteration += 1
 
-                for trading_stock in selected_stocks:
-                    if not self.is_running:
-                        break
+                # 1. 데이터 수집
+                await self.data_collector.collect_once()
 
-                    # 매수 쿨다운 확인
-                    if trading_stock.is_buy_cooldown_active():
-                        continue
+                # 2. 미체결 주문 확인
+                await self.order_manager.check_pending_orders_once()
 
-                    try:
-                        await self._analyze_buy_decision(trading_stock)
-                    except Exception as e:
-                        self.logger.error(f"매수 판단 오류 ({trading_stock.stock_code}): {e}")
+                # 3. 보유종목 체크 (현재가 업데이트 + 매도 판단)
+                await self.trading_manager.check_positions_once()
 
-                await asyncio.sleep(BUY_DECISION_INTERVAL)
+                # 4. 매수 판단 (매 N번째 반복, ≈9초 간격)
+                if iteration % BUY_SIGNAL_EVERY_N == 0:
+                    await self._check_buy_signals()
+
+                # 5. 장마감 일괄청산 체크
+                await self._check_eod_liquidation()
 
             except Exception as e:
-                self.logger.error(f"매수 판단 태스크 루프 오류: {e}")
-                await asyncio.sleep(BUY_DECISION_INTERVAL)
+                self.logger.error(f"메인 트레이딩 루프 오류: {e}")
 
-        self.logger.info("매수 판단 태스크 종료")
+            # 시간 보정 sleep
+            elapsed = time.monotonic() - loop_start
+            sleep_time = max(0, LOOP_INTERVAL - elapsed)
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+
+        self.logger.info("메인 트레이딩 루프 종료")
+
+    async def _check_buy_signals(self):
+        """SELECTED 상태 종목 1회 매수 판단"""
+        try:
+            selected_stocks = self.trading_manager.get_stocks_by_state(StockState.SELECTED)
+
+            for trading_stock in selected_stocks:
+                if not self.is_running:
+                    break
+
+                # 매수 쿨다운 확인
+                if trading_stock.is_buy_cooldown_active():
+                    continue
+
+                try:
+                    await self._analyze_buy_decision(trading_stock)
+                except Exception as e:
+                    self.logger.error(f"매수 판단 오류 ({trading_stock.stock_code}): {e}")
+
+        except Exception as e:
+            self.logger.error(f"매수 판단 오류: {e}")
+
+    async def _check_eod_liquidation(self):
+        """장마감 전 EOD 일괄청산 체크"""
+        try:
+            current_time = now_kst()
+
+            # 오늘 이미 실행했으면 스킵
+            if self._last_eod_liquidation_date == current_time.date():
+                return
+
+            # 평일인지 확인
+            if current_time.weekday() >= 5:
+                return
+
+            # 동적 청산 시간 확인
+            if not MarketHours.is_eod_liquidation_time('KRX', current_time):
+                return
+
+            self.logger.info(f"EOD 일괄청산 시간 도달 ({current_time.strftime('%H:%M:%S')})")
+            self._last_eod_liquidation_date = current_time.date()
+
+            # liquidation_handler를 통해 청산 실행
+            if hasattr(self, 'liquidation_handler') and self.liquidation_handler:
+                await self.liquidation_handler.execute_end_of_day_liquidation()
+                self.liquidation_handler.set_last_eod_liquidation_date(current_time.date())
+            else:
+                self.logger.warning("liquidation_handler가 설정되지 않음 - EOD 청산 스킵")
+
+        except Exception as e:
+            self.logger.error(f"EOD 일괄청산 체크 오류: {e}")
 
     async def _analyze_buy_decision(self, trading_stock, available_funds: float = None):
         """매수 판단 분석 (위임)"""
