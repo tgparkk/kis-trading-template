@@ -58,10 +58,10 @@ class BotInitializer:
 
             # 1. API 초기화
             self.logger.info("API 매니저 초기화 시작...")
-            if not self.bot.api_manager.initialize():
+            if not self.bot.broker.initialize():
                 self.logger.error("API 초기화 실패")
                 return False
-            self.logger.info("API 매니저 초기화 완료")
+            self.logger.info("API 초기화 완료")
 
             # 1.5. 자금 관리자 초기화 (API 초기화 후)
             await self._initialize_fund_manager()
@@ -91,9 +91,13 @@ class BotInitializer:
             self.bot.fund_manager.update_total_funds(total_funds)
             self.logger.info(f"자금 관리자 초기화 완료 (가상매매 모드): {total_funds:,.0f}원")
         else:
-            balance_info = self.bot.api_manager.get_account_balance()
+            balance_info = self.bot.broker.get_account_balance()
             if balance_info:
-                total_funds = float(balance_info.account_balance) if hasattr(balance_info, 'account_balance') else 10000000
+                # KISBroker returns dict, KISAPIManager returns AccountInfo
+                if isinstance(balance_info, dict):
+                    total_funds = float(balance_info.get('account_balance', 10000000))
+                else:
+                    total_funds = float(balance_info.account_balance) if hasattr(balance_info, 'account_balance') else 10000000
                 self.bot.fund_manager.update_total_funds(total_funds)
                 self.logger.info(f"자금 관리자 초기화 완료: {total_funds:,.0f}원")
             else:
@@ -115,7 +119,7 @@ class BotInitializer:
             await self.bot.telegram.shutdown()
 
             # API 매니저 종료
-            self.bot.api_manager.shutdown()
+            self.bot.broker.shutdown()
 
             # PID 파일 삭제
             if self.bot.pid_file.exists():

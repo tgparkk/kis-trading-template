@@ -48,7 +48,7 @@ class LiquidationHandler:
                     if combined_data is not None and len(combined_data) > 0:
                         sell_price = float(combined_data['close'].iloc[-1])
                     else:
-                        price_obj = self.bot.api_manager.get_current_price(stock_code)
+                        price_obj = self.bot.broker.get_current_price(stock_code)
                         if price_obj:
                             sell_price = float(price_obj.current_price)
                     sell_price = round_to_tick(sell_price)
