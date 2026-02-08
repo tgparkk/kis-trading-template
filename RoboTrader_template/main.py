@@ -45,6 +45,7 @@ from bot.trading_analyzer import TradingAnalyzer
 from bot.system_monitor import SystemMonitor
 from bot.liquidation_handler import LiquidationHandler
 from bot.position_sync import PositionSyncManager
+from bot.state_restorer import StateRestorer
 
 # Strategy 시스템 import
 from strategies.base import BaseStrategy, Signal, SignalType
@@ -99,6 +100,16 @@ class DayTradingBot:
         self.system_monitor = SystemMonitor(self)
         self.liquidation_handler = LiquidationHandler(self)
         self.position_sync_manager = PositionSyncManager(self)
+
+        # 상태 복원 헬퍼 초기화
+        self.state_restoration_helper = StateRestorer(
+            trading_manager=self.trading_manager,
+            db_manager=self.db_manager,
+            telegram_integration=self.telegram,
+            config=self.config,
+            get_previous_close_callback=self._get_previous_close_price,
+            broker=self.broker,
+        )
 
         # Strategy 시스템 초기화
         self.strategy: Optional[BaseStrategy] = None
@@ -202,9 +213,10 @@ class DayTradingBot:
         # 전략 초기화
         await self._initialize_strategy()
 
-        # TradingDecisionEngine에 전략 연결
+        # TradingDecisionEngine + TradingStockManager에 전략 연결
         if self.strategy:
             self.decision_engine.set_strategy(self.strategy)
+            self.trading_manager.set_strategy(self.strategy)
 
         return True
 
@@ -221,6 +233,7 @@ class DayTradingBot:
                 ("거래모니터링", self.trading_manager.start_monitoring, True),
                 ("시스템모니터링", self.system_monitor.run_system_monitoring_task, False),
                 ("텔레그램", self._telegram_task, False),
+                ("매수판단", self._buy_decision_task, True),
             ]
 
             # 감독 태스크로 래핑하여 실행
@@ -296,6 +309,42 @@ class DayTradingBot:
             await self.order_manager.start_monitoring()
         except Exception as e:
             self.logger.error(f"주문 모니터링 태스크 오류: {e}")
+
+    async def _buy_decision_task(self):
+        """매수 판단 태스크: SELECTED 상태 종목을 주기적으로 순회하며 매수 분석"""
+        BUY_DECISION_INTERVAL = 10  # 매수 판단 주기 (초)
+
+        self.logger.info("매수 판단 태스크 시작")
+
+        while self.is_running:
+            try:
+                if not is_market_open():
+                    await asyncio.sleep(30)
+                    continue
+
+                # SELECTED 상태 종목 순회
+                selected_stocks = self.trading_manager.get_stocks_by_state(StockState.SELECTED)
+
+                for trading_stock in selected_stocks:
+                    if not self.is_running:
+                        break
+
+                    # 매수 쿨다운 확인
+                    if trading_stock.is_buy_cooldown_active():
+                        continue
+
+                    try:
+                        await self._analyze_buy_decision(trading_stock)
+                    except Exception as e:
+                        self.logger.error(f"매수 판단 오류 ({trading_stock.stock_code}): {e}")
+
+                await asyncio.sleep(BUY_DECISION_INTERVAL)
+
+            except Exception as e:
+                self.logger.error(f"매수 판단 태스크 루프 오류: {e}")
+                await asyncio.sleep(BUY_DECISION_INTERVAL)
+
+        self.logger.info("매수 판단 태스크 종료")
 
     async def _analyze_buy_decision(self, trading_stock, available_funds: float = None):
         """매수 판단 분석 (위임)"""

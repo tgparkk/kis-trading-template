@@ -41,6 +41,32 @@ class OrderCompletionHandler:
         # 재거래 설정 (외부에서 설정됨)
         self.enable_re_trading = True
 
+        # 전략 콜백 연결 (외부에서 set_strategy로 설정)
+        self.strategy = None
+
+    def set_strategy(self, strategy):
+        """전략 연결 (on_order_filled 콜백용)"""
+        self.strategy = strategy
+        if strategy:
+            self.logger.info(f"OrderCompletionHandler에 전략 연결: {strategy.name}")
+
+    def _notify_strategy_order_filled(self, order):
+        """전략의 on_order_filled 콜백 호출"""
+        try:
+            if self.strategy and hasattr(self.strategy, 'on_order_filled'):
+                order_info = {
+                    'order_id': order.order_id,
+                    'stock_code': order.stock_code,
+                    'order_type': order.order_type.value if hasattr(order.order_type, 'value') else str(order.order_type),
+                    'quantity': order.quantity,
+                    'price': order.price,
+                    'filled_at': now_kst(),
+                }
+                self.strategy.on_order_filled(order_info)
+                self.logger.debug(f"전략 on_order_filled 콜백 호출: {order.stock_code}")
+        except Exception as e:
+            self.logger.warning(f"전략 on_order_filled 콜백 오류: {e}")
+
     async def check_order_completions(self):
         """주문 완료 확인 및 상태 업데이트"""
         try:
@@ -94,6 +120,9 @@ class OrderCompletionHandler:
                         # 실거래 매수 기록 저장
                         self._save_real_buy_record(trading_stock, order)
 
+                        # 전략 콜백 호출
+                        self._notify_strategy_order_filled(order)
+
                         self.logger.info(f"{trading_stock.stock_code} 매수 완료")
 
                     elif order.status in [OrderStatus.CANCELLED, OrderStatus.FAILED]:
@@ -142,6 +171,9 @@ class OrderCompletionHandler:
 
                         # 실거래 매도 기록 저장
                         profit_rate = self._save_real_sell_record(trading_stock, order)
+
+                        # 전략 콜백 호출
+                        self._notify_strategy_order_filled(order)
 
                         self.logger.info(
                             f"{trading_stock.stock_code} 매도 완료 (수익률: {profit_rate:.2f}%)"
@@ -229,6 +261,9 @@ class OrderCompletionHandler:
             # 실거래 매수 기록 저장
             self._save_real_buy_record(trading_stock, order, source="콜백")
 
+            # 전략 콜백 호출
+            self._notify_strategy_order_filled(order)
+
             self.logger.info(f"매수 체결 처리 완료 (콜백): {trading_stock.stock_code}")
         else:
             self.logger.warning(
@@ -252,6 +287,9 @@ class OrderCompletionHandler:
 
             # 실거래 매도 기록 저장
             profit_rate = self._save_real_sell_record(trading_stock, order, source="콜백")
+
+            # 전략 콜백 호출
+            self._notify_strategy_order_filled(order)
 
             self.logger.info(
                 f"매도 체결 처리 완료 (콜백): {trading_stock.stock_code} "

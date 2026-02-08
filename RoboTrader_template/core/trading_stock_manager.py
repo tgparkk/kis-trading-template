@@ -84,6 +84,9 @@ class TradingStockManager:
         # decision_engine은 나중에 설정됨 (순환 참조 방지)
         self.decision_engine = None
 
+        # 전략은 나중에 set_strategy로 설정됨
+        self._strategy = None
+
         self.logger.info("종목 거래 상태 통합 관리자 초기화 완료")
 
         # 주문 관리자에 역참조 등록 (정정 시 주문ID 동기화용)
@@ -152,6 +155,12 @@ class TradingStockManager:
         self.decision_engine = decision_engine
         self._position_monitor.set_decision_engine(decision_engine)
         self.logger.debug("TradingStockManager에 decision_engine 연결 완료")
+
+    def set_strategy(self, strategy):
+        """전략 연결 (on_order_filled 콜백 전달용)"""
+        self._strategy = strategy
+        self._completion_handler.set_strategy(strategy)
+        self.logger.debug(f"TradingStockManager에 전략 연결: {strategy.name if strategy else 'None'}")
 
     # =========================================================================
     # 종목 선정 및 주문 실행 (OrderExecution에 위임)
