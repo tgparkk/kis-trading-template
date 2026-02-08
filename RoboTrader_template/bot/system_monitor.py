@@ -66,24 +66,8 @@ class SystemMonitor:
 
     async def _handle_premarket_tasks(self, current_time):
         """장 시작 전 태스크 처리"""
-        if current_time.hour == 8:
-            # 08:30 전일 일봉 + 재무데이터 수집
-            if current_time.minute >= 30:
-                if (self.bot._last_daily_data_collection_date != current_time.date() and
-                    self.bot._daily_data_collection_task is None):
-                    self.logger.info(f"08:30+ 전일 데이터 수집 스케줄 트리거 ({current_time.strftime('%H:%M:%S')})")
-                    self.bot._daily_data_collection_task = asyncio.create_task(
-                        self.bot.screening_runner.run_daily_data_collection()
-                    )
-
-            # 08:55 퀀트 스크리닝 실행 (오늘용 포트폴리오 생성)
-            if current_time.minute >= 55:
-                if (self.bot._last_quant_screening_date != current_time.date() and
-                    self.bot._quant_screening_task is None):
-                    self.logger.info(f"08:55+ 퀀트 스크리닝 스케줄 트리거 ({current_time.strftime('%H:%M:%S')})")
-                    self.bot._quant_screening_task = asyncio.create_task(
-                        self.bot.screening_runner.run_quant_screening()
-                    )
+        # 전략별 premarket 로직은 BaseStrategy.on_market_open()에서 처리
+        pass
 
     async def _handle_postmarket_tasks(self, current_time):
         """장 마감 후 태스크 처리"""
@@ -133,9 +117,6 @@ class SystemMonitor:
 
             # 후보 선정 통계
             selection_stats = {}
-            if (hasattr(self.bot, 'candidate_selector') and
-                hasattr(self.bot.candidate_selector, 'get_selection_statistics')):
-                selection_stats = self.bot.candidate_selector.get_selection_statistics()
 
             status_lines = [
                 f"시스템 상태 [{current_time.strftime('%H:%M:%S')}]",
