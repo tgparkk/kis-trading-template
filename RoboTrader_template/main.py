@@ -28,7 +28,8 @@ from core.trading_stock_manager import TradingStockManager
 from core.trading_decision_engine import TradingDecisionEngine
 from core.fund_manager import FundManager
 from db.database_manager import DatabaseManager
-from api.kis_api_manager import KISAPIManager
+from framework import KISBroker
+from api.kis_api_manager import KISAPIManager  # 하위 호환용 (3단계에서 제거 예정)
 from config.settings import load_trading_config
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, get_market_status, is_market_open, KST
@@ -84,7 +85,11 @@ class DayTradingBot:
             self.logger.info("하이브리드 모드: 리밸런싱 + 실시간 매수 판단 병행")
 
         # 핵심 모듈 초기화 (의존 순서 주의)
-        self.api_manager = KISAPIManager()
+        # 2A단계: KISBroker를 메인 브로커로 도입
+        # api_manager는 하위 모듈(core/, bot/) 호환용으로 유지 (3단계에서 전환 예정)
+        self.broker = KISBroker()
+        self.api_manager = KISAPIManager()  # 하위 호환용 (core/, bot/ 모듈에서 사용)
+        self.broker._api_manager = self.api_manager  # broker와 api_manager 연결
         self.db_manager = DatabaseManager()  # 먼저 생성 (후속 모듈에서 필요)
         self.telegram = TelegramIntegration(trading_bot=self)
         self.data_collector = RealTimeDataCollector(self.config, self.api_manager)
@@ -228,7 +233,7 @@ class DayTradingBot:
         try:
             # 전략 초기화 - broker, data_provider, executor 전달
             init_result = self.strategy.on_init(
-                broker=self.api_manager,
+                broker=self.broker,
                 data_provider=self.data_collector,
                 executor=self.order_manager
             )
@@ -271,6 +276,13 @@ class DayTradingBot:
         # 기본 시스템 초기화
         if not await self.bot_initializer.initialize_system():
             return False
+
+        # KISBroker 연결 (framework 전략 시스템용)
+        # api_manager는 이미 bot_initializer에서 초기화됨 → broker에 공유
+        if not await self.broker.connect():
+            self.logger.warning("KISBroker 연결 실패 - 전략 시스템 없이 계속 운영")
+        # connect()가 새 api_manager를 생성하므로, 공유 참조 재설정
+        self.broker._api_manager = self.api_manager
 
         # 전략 초기화
         await self._initialize_strategy()
@@ -450,7 +462,7 @@ class DayTradingBot:
     def _get_previous_close_price(self, stock_code: str) -> float:
         """전날 종가 조회 (주말/공휴일 포함 안전 처리)"""
         try:
-            daily_data = self.api_manager.get_ohlcv_data(stock_code, "D", OHLCV_LOOKBACK_DAYS)
+            daily_data = self.broker.get_ohlcv_data(stock_code, "D", OHLCV_LOOKBACK_DAYS)
             if daily_data is None or (hasattr(daily_data, "empty") and daily_data.empty):
                 return 0.0
 
@@ -489,6 +501,10 @@ class DayTradingBot:
 
     async def shutdown(self):
         """시스템 종료 (위임)"""
+        # broker.disconnect()는 내부 api_manager를 None으로 설정하므로
+        # 공유 참조 보호를 위해 disconnect 전에 분리
+        self.broker._api_manager = None
+        self.broker._connected = False
         await self.bot_initializer.shutdown()
 
 
