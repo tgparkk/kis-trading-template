@@ -54,7 +54,7 @@ class IntradayStockManager:
             broker: KISBroker 인스턴스 (duck typing)
             config: 거래 설정 (선택, 리밸런싱 모드 확인용)
         """
-        self.api_manager = broker
+        self.broker = broker
         self.config = config
         self.logger = setup_logger(__name__)
 

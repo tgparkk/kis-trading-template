@@ -10,7 +10,7 @@ from typing import List, Dict, Optional
 from dataclasses import dataclass
 
 from .models import TradingConfig
-from api.kis_api_manager import KISAPIManager
+from api.kis_broker import KISBroker
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
 
@@ -34,9 +34,9 @@ class CandidateSelector:
     자신의 전략에 맞게 구현하면 됩니다.
     """
 
-    def __init__(self, config: TradingConfig, api_manager: KISAPIManager, db_manager=None):
+    def __init__(self, config: TradingConfig, broker: KISBroker, db_manager=None):
         self.config = config
-        self.api_manager = api_manager
+        self.broker = broker
         self.db_manager = db_manager
         self.logger = setup_logger(__name__)
         self.stock_list_file = Path(__file__).parent.parent / "stock_list.json"
@@ -190,8 +190,8 @@ class CandidateSelector:
 
         구현 가이드:
         1. API로 현재가, 일봉 데이터 조회
-           price_data = self.api_manager.get_current_price(code)
-           daily_data = self.api_manager.get_ohlcv_data(code, "D", 100)
+           price_data = self.broker.get_current_price(code)
+           daily_data = self.broker.get_ohlcv_data(code, "D", 100)
 
         2. 점수 계산
            score = self._calculate_stock_score(price_data, daily_data)
