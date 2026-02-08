@@ -10,7 +10,7 @@ from typing import List, Dict, Optional
 from dataclasses import dataclass
 
 from .models import TradingConfig
-from api.kis_broker import KISBroker
+from framework.broker import KISBroker
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
 
