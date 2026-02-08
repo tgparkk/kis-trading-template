@@ -21,7 +21,7 @@ from abc import ABC, abstractmethod
 
 import pandas as pd
 
-from .utils import setup_logger, now_kst, round_to_tick
+from .utils import setup_logger, now_kst
 
 
 # ============================================================================

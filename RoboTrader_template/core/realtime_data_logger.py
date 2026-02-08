@@ -2,9 +2,8 @@
 실시간 데이터 로거 - 장중 _update_intraday_data에서 수집한 데이터를 종목별 파일로 저장
 """
 import os
-import asyncio
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 import pandas as pd
 from pathlib import Path
 import threading

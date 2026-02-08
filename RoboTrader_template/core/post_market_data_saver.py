@@ -4,8 +4,6 @@
 - 분봉 데이터 저장 (TimescaleDB minute_prices)
 - 텍스트 파일 저장 (디버깅용)
 """
-import pandas as pd
-from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 

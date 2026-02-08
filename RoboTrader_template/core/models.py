@@ -17,6 +17,7 @@ class OrderStatus(Enum):
     PARTIAL = "partial"
     FILLED = "filled"
     CANCELLED = "cancelled"
+    FAILED = "failed"
     TIMEOUT = "timeout"  # 🆕 타임아웃으로 인한 강제 정리
 
 

@@ -244,6 +244,9 @@ INITIAL_CAPITAL=1000000  # 100만원부터
 
 ## 📚 관련 문서
 
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — 시스템 아키텍처, 모듈 관계도
+- **[docs/TRADING_FLOW.md](docs/TRADING_FLOW.md)** — 매매 흐름 (초기화→루프→청산)
+- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** — 설정 가이드
 - **[SYSTEM_FLOW.md](SYSTEM_FLOW.md)** — 시스템 동작 흐름 상세
 - **[CLAUDE.md](CLAUDE.md)** — AI 개발 협업 가이드
 

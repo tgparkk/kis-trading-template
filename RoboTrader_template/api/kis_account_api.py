@@ -4,7 +4,7 @@ KIS API 계좌 조회 관련 함수 (공식 문서 기반)
 import time
 import pandas as pd
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Optional
 from utils.logger import setup_logger
 from . import kis_auth as kis
 from config.constants import PAGING_API_INTERVAL

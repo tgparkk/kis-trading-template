@@ -2,11 +2,10 @@
 """
 실시간 1분봉 생성기 - 현재가 API를 이용해서 진행 중인 1분봉을 실시간으로 생성
 """
-import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, Optional
 import pandas as pd
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import threading
 
 from utils.logger import setup_logger

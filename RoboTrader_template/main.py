@@ -7,7 +7,7 @@ import sys
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Optional
 import pandas as pd
 
 # Windows 콘솔 UTF-8 인코딩 설정 (이모지 출력 지원)
@@ -18,7 +18,7 @@ if sys.platform == 'win32':
 # 프로젝트 경로 추가
 sys.path.append(str(Path(__file__).parent))
 
-from core.models import TradingConfig, StockState
+from core.models import StockState
 from core.data_collector import RealTimeDataCollector
 from core.order_manager import OrderManager
 from core.telegram_integration import TelegramIntegration
@@ -28,12 +28,10 @@ from core.trading_decision_engine import TradingDecisionEngine
 from core.fund_manager import FundManager
 from db.database_manager import DatabaseManager
 from framework import KISBroker
-from config.settings import load_trading_config
 from utils.logger import setup_logger
-from utils.korean_time import now_kst, get_market_status, is_market_open, KST
-from utils.price_utils import round_to_tick, check_duplicate_process, load_config
+from utils.korean_time import now_kst, is_market_open
+from utils.price_utils import check_duplicate_process, load_config
 from config.market_hours import MarketHours
-from scripts.daily_trading_summary import print_today_trading_summary
 from config.constants import (
     OHLCV_LOOKBACK_DAYS,
     TASK_SUPERVISOR_MAX_RETRIES, TASK_SUPERVISOR_BASE_DELAY, TASK_SUPERVISOR_MAX_DELAY
@@ -48,7 +46,7 @@ from bot.position_sync import PositionSyncManager
 from bot.state_restorer import StateRestorer
 
 # Strategy 시스템 import
-from strategies.base import BaseStrategy, Signal, SignalType
+from strategies.base import BaseStrategy
 from strategies.config import StrategyLoader, StrategyConfigError
 
 

@@ -5,7 +5,7 @@ import asyncio
 import time
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Tuple, Any
+from typing import Optional, Dict, Tuple, Any
 from utils.logger import setup_logger
 from . import kis_auth as kis
 from utils.korean_time import now_kst

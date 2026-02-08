@@ -4,7 +4,6 @@
 이 모듈은 Facade 패턴을 사용하여 하위 모듈들을 통합합니다.
 실제 로직은 core/intraday/ 패키지의 개별 모듈들에 구현되어 있습니다.
 """
-import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 import pandas as pd
