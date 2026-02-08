@@ -157,9 +157,10 @@ class TradingStockManager:
         self.logger.debug("TradingStockManager에 decision_engine 연결 완료")
 
     def set_strategy(self, strategy):
-        """전략 연결 (on_order_filled 콜백 전달용)"""
+        """전략 연결 (on_order_filled 콜백 + 매도 시그널 전달용)"""
         self._strategy = strategy
         self._completion_handler.set_strategy(strategy)
+        self._position_monitor.set_strategy(strategy)
         self.logger.debug(f"TradingStockManager에 전략 연결: {strategy.name if strategy else 'None'}")
 
     # =========================================================================

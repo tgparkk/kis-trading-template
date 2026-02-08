@@ -86,6 +86,7 @@ class SampleStrategy(BaseStrategy):
         self,
         stock_code: str,
         data: pd.DataFrame,
+        timeframe: str = 'daily',
     ) -> Optional[Signal]:
         # 최소 데이터 길이 확인
         min_len = max(self._ma_long, self._rsi_period) + 2

@@ -365,7 +365,8 @@ class BaseStrategy(ABC):
     def generate_signal(
         self,
         stock_code: str,
-        data: pd.DataFrame
+        data: pd.DataFrame,
+        timeframe: str = 'daily',
     ) -> Optional[Signal]:
         """
         Generate trading signal for a stock.
@@ -379,12 +380,15 @@ class BaseStrategy(ABC):
                   ['datetime', 'open', 'high', 'low', 'close', 'volume']
                   Index should be datetime or the DataFrame should have
                   a 'datetime' column.
+            timeframe: Data timeframe - 'daily' for buy decisions,
+                      'intraday' for sell decisions. Strategies can use
+                      this to adjust their logic accordingly.
 
         Returns:
             Signal: Trading signal object, or None if no signal
 
         Example:
-            def generate_signal(self, stock_code, data):
+            def generate_signal(self, stock_code, data, timeframe='daily'):
                 if len(data) < 20:
                     return None
 

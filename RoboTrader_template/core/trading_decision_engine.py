@@ -5,7 +5,7 @@ Strategy 시스템과 연동되어 매매 판단을 수행합니다.
 - Strategy가 설정되면: strategy.generate_signal()을 통해 매매 판단
 - Strategy가 없으면: 기본 동작 (매수 안함, 손절/익절만 동작)
 
-기본 제공: 손절(-10%)/익절(+15%) 체크
+손절/익절 체크는 PositionMonitor가 담당 (trading_stock별 설정 사용)
 """
 from typing import Tuple, Optional, TYPE_CHECKING
 import pandas as pd
@@ -14,6 +14,7 @@ from config.constants import DEFAULT_STOP_LOSS_RATE, DEFAULT_TARGET_PROFIT_RATE
 
 if TYPE_CHECKING:
     from strategies.base import BaseStrategy
+    from core.fund_manager import FundManager
 
 
 class TradingDecisionEngine:
@@ -21,7 +22,8 @@ class TradingDecisionEngine:
     매매 판단 엔진 (템플릿)
 
     구현 필요: analyze_buy_decision(), analyze_sell_decision()
-    기본 제공: 손절/익절 체크, 가상/실제 매매 실행
+    기본 제공: 가상/실제 매매 실행
+    손절/익절: PositionMonitor에서 일원화하여 처리
     """
 
     # 기본 설정
@@ -50,6 +52,9 @@ class TradingDecisionEngine:
         # Strategy 연결 (나중에 set_strategy로 설정)
         self.strategy: Optional['BaseStrategy'] = None
 
+        # FundManager 연결 (나중에 set_fund_manager로 설정)
+        self.fund_manager: Optional['FundManager'] = None
+
         self.logger.info("매매 판단 엔진 초기화")
 
     def set_strategy(self, strategy: 'BaseStrategy'):
@@ -57,12 +62,33 @@ class TradingDecisionEngine:
         self.strategy = strategy
         self.logger.info(f"전략 연결됨: {strategy.name if strategy else 'None'}")
 
+    def set_fund_manager(self, fund_manager: 'FundManager'):
+        """자금 관리자 설정"""
+        self.fund_manager = fund_manager
+        self.logger.info("FundManager 연결됨")
+
     def _safe_float(self, v) -> float:
         if pd.isna(v) or v is None: return 0.0
         try: return float(str(v).replace(',', ''))
         except (ValueError, TypeError): return 0.0
 
     def _get_max_buy_amount(self, stock_code: str = "") -> float:
+        """
+        종목별 최대 매수 가능 금액 계산
+
+        FundManager가 설정되어 있으면 FundManager를 통해 계산 (자금 예약 반영)
+        없으면 broker에서 직접 조회 (fallback)
+        """
+        # FundManager 우선 사용
+        if self.fund_manager:
+            try:
+                max_amount = self.fund_manager.get_max_buy_amount(stock_code)
+                if max_amount > 0:
+                    return max_amount
+            except Exception as e:
+                self.logger.debug(f"FundManager 최대 매수금액 조회 실패: {e}")
+
+        # Fallback: broker 직접 조회
         try:
             if self.broker:
                 info = self.broker.get_account_balance()
@@ -136,26 +162,14 @@ class TradingDecisionEngine:
 
         Returns: Tuple[매도여부, 사유]
 
-        우선순위:
-        1. 손절/익절 체크 (항상 우선)
-        2. Strategy 매도 신호 (설정된 경우)
+        손절/익절은 PositionMonitor._analyze_sell_for_stock()에서 일원화 처리.
+        여기서는 Strategy 매도 신호만 체크.
         """
         try:
             if not trading_stock.position or trading_stock.position.avg_price <= 0:
                 return False, "포지션없음"
 
-            # 현재가 조회
-            price = None
-            if self.intraday_manager:
-                info = self.intraday_manager.get_cached_current_price(trading_stock.stock_code)
-                if info: price = info['current_price']
-            if not price: return False, "현재가없음"
-
-            # 1. 기본 손절/익절 체크 (항상 우선)
-            signal, reason = self._check_stop_profit(trading_stock, price)
-            if signal: return True, reason
-
-            # 2. Strategy 매도 신호 체크
+            # Strategy 매도 신호 체크
             if self.strategy and combined_data is not None:
                 try:
                     from strategies.base import SignalType
@@ -173,28 +187,6 @@ class TradingDecisionEngine:
         except Exception as e:
             self.logger.error(f"매도판단 오류: {e}")
             return False, str(e)
-
-    # =========================================================================
-    # 손절/익절 (기본 제공)
-    # =========================================================================
-    def _check_stop_profit(self, trading_stock, cur_price: float) -> Tuple[bool, str]:
-        """손절/익절 체크 (기본: -10%/+15%, 종목별 설정 우선)"""
-        try:
-            buy_price = self._safe_float(trading_stock.position.avg_price)
-            if buy_price <= 0: return False, ""
-
-            pnl = (cur_price - buy_price) / buy_price
-            target = getattr(trading_stock, 'target_profit_rate', self.DEFAULT_TAKE_PROFIT)
-            stop = getattr(trading_stock, 'stop_loss_rate', self.DEFAULT_STOP_LOSS)
-
-            if pnl >= target:
-                return True, f"익절 {pnl*100:.1f}%"
-            if pnl <= -stop:
-                return True, f"손절 {pnl*100:.1f}%"
-            return False, ""
-        except Exception as e:
-            self.logger.debug(f"손절/익절 체크 실패: {e}")
-            return False, ""
 
     # =========================================================================
     # 매매 실행

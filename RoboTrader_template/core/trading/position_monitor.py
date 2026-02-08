@@ -7,6 +7,7 @@ import asyncio
 from typing import TYPE_CHECKING, Optional
 
 from ..models import TradingStock, StockState
+from strategies.base import SignalType
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, is_market_open
 
@@ -54,6 +55,9 @@ class PositionMonitor:
         # decision_engine은 나중에 설정됨 (순환 참조 방지)
         self.decision_engine = None
 
+        # 전략 (sell signal 생성용, 나중에 set_strategy로 설정)
+        self._strategy = None
+
         # 로깅 플래그
         self._sell_check_logged = False
 
@@ -61,6 +65,11 @@ class PositionMonitor:
         """매매 판단 엔진 설정 (순환 참조 방지를 위해 별도 메서드)"""
         self.decision_engine = decision_engine
         self.logger.debug("PositionMonitor에 decision_engine 연결 완료")
+
+    def set_strategy(self, strategy):
+        """전략 설정 (매도 시그널 생성용)"""
+        self._strategy = strategy
+        self.logger.debug(f"PositionMonitor에 전략 연결: {strategy.name if strategy else 'None'}")
 
     async def start_monitoring(self):
         """종목 상태 모니터링 시작"""
@@ -194,6 +203,28 @@ class PositionMonitor:
                             self.logger.info(f"{stock_code} 손절 신호: {reason}")
                             await self._execute_sell(trading_stock, current_price, reason)
                             return
+
+                # 전략 매도 시그널 체크 (손익절 안 걸린 경우)
+                if self._strategy and hasattr(self._strategy, 'generate_signal'):
+                    try:
+                        # 장중 데이터 조회 (intraday)
+                        intraday_data = None
+                        price_data = self.data_collector.get_stock(stock_code)
+                        if price_data and hasattr(price_data, 'ohlcv_data') and len(price_data.ohlcv_data) > 0:
+                            import pandas as pd
+                            intraday_data = pd.DataFrame(price_data.ohlcv_data)
+
+                        if intraday_data is not None and len(intraday_data) > 0:
+                            signal = self._strategy.generate_signal(
+                                stock_code, intraday_data, timeframe='intraday'
+                            )
+                            if signal and signal.signal_type in (SignalType.SELL, SignalType.STRONG_SELL):
+                                reason = ", ".join(signal.reasons) if signal.reasons else f"{self._strategy.name} 매도신호"
+                                self.logger.info(f"{stock_code} 전략 매도 신호: {reason} (신뢰도: {signal.confidence}%)")
+                                await self._execute_sell(trading_stock, current_price, reason)
+                                return
+                    except Exception as strategy_err:
+                        self.logger.warning(f"{stock_code} 전략 매도신호 생성 오류: {strategy_err}")
 
         except Exception as e:
             self.logger.error(f"{trading_stock.stock_code} 매도 분석 오류: {e}")

@@ -18,6 +18,10 @@ class TradingAnalyzer:
         self.bot = bot
         self.logger = setup_logger(__name__)
 
+        # FundManager를 DecisionEngine에 연결 (main.py 수정 없이)
+        if hasattr(bot, 'fund_manager') and hasattr(bot, 'decision_engine'):
+            bot.decision_engine.set_fund_manager(bot.fund_manager)
+
     async def analyze_buy_decision(self, trading_stock, available_funds: float = None):
         """매수 판단 분석 (일봉 데이터 사용)
 
@@ -79,7 +83,7 @@ class TradingAnalyzer:
                     fund_status = self.bot.fund_manager.get_status()
                     max_buy_amount = min(available_funds, fund_status['total_funds'] * 0.1)
                 else:
-                    # 기존 방식 (fallback)
+                    # FundManager 기반 최대 매수 가능 금액 계산
                     max_buy_amount = self.bot.fund_manager.get_max_buy_amount(stock_code)
 
                 required_amount = buy_info['buy_price'] * buy_info['quantity']
@@ -93,9 +97,10 @@ class TradingAnalyzer:
                         adjusted_quantity = int(max_buy_amount / buy_info['buy_price'])
                         if adjusted_quantity > 0:
                             buy_info['quantity'] = adjusted_quantity
+                            required_amount = buy_info['buy_price'] * adjusted_quantity
                             self.logger.info(
                                 f"{stock_code} 수량 조정: {adjusted_quantity}주 "
-                                f"(투자금: {adjusted_quantity * buy_info['buy_price']:,.0f}원)"
+                                f"(투자금: {required_amount:,.0f}원)"
                             )
                         else:
                             self.logger.warning(f"{stock_code} 매수 포기: 최소 1주도 매수 불가")
@@ -104,24 +109,55 @@ class TradingAnalyzer:
                         self.logger.warning(f"{stock_code} 매수 포기: 가용 자금 없음")
                         return
 
+                # FundManager 자금 예약
+                reserve_ok = self.bot.fund_manager.reserve_funds(stock_code, required_amount)
+                if not reserve_ok:
+                    self.logger.warning(f"{stock_code} 자금 예약 실패 - 매수 스킵")
+                    return
+
                 # 매수 전 종목 상태 확인
                 current_stock = self.bot.trading_manager.get_trading_stock(stock_code)
                 if current_stock:
                     self.logger.debug(f"매수 전 상태 확인: {stock_code} 현재상태={current_stock.state.value}")
 
-                # [가상매매 코드 - 활성화]
-                try:
-                    await self.bot.decision_engine.execute_virtual_buy(trading_stock, None, buy_reason)
-                    # 상태를 POSITIONED로 반영하여 이후 매도 판단 루프에 포함
+                # 가상/실전 매매 분기
+                if self.bot.decision_engine.is_virtual_mode:
+                    # 가상 매수
                     try:
-                        self.bot.trading_manager._change_stock_state(
-                            stock_code, StockState.POSITIONED, "가상 매수 체결"
-                        )
+                        await self.bot.decision_engine.execute_virtual_buy(trading_stock, None, buy_reason)
+                        # 자금 확정 (가상매매는 즉시 체결로 간주)
+                        self.bot.fund_manager.confirm_order(stock_code, required_amount)
+                        # 상태를 POSITIONED로 반영하여 이후 매도 판단 루프에 포함
+                        try:
+                            self.bot.trading_manager._change_stock_state(
+                                stock_code, StockState.POSITIONED, "가상 매수 체결"
+                            )
+                        except Exception as e:
+                            self.logger.debug(f"가상 매수 상태 변경 실패: {stock_code} - {e}")
+                        self.logger.info(f"가상 매수 완료 처리: {stock_code}({stock_name}) - {buy_reason}")
                     except Exception as e:
-                        self.logger.debug(f"가상 매수 상태 변경 실패: {stock_code} - {e}")
-                    self.logger.info(f"가상 매수 완료 처리: {stock_code}({stock_name}) - {buy_reason}")
-                except Exception as e:
-                    self.logger.error(f"가상 매수 처리 오류: {e}")
+                        # 매수 실패 시 자금 예약 취소
+                        self.bot.fund_manager.cancel_order(stock_code)
+                        self.logger.error(f"가상 매수 처리 오류: {e}")
+                else:
+                    # 실전 매수
+                    try:
+                        success = await self.bot.decision_engine.execute_real_buy(
+                            trading_stock, buy_reason,
+                            buy_price=buy_info['buy_price'],
+                            quantity=buy_info['quantity']
+                        )
+                        if success:
+                            # 실전 매수 주문 성공 시 자금 확정
+                            self.bot.fund_manager.confirm_order(stock_code, required_amount)
+                            self.logger.info(f"실전 매수 완료: {stock_code}({stock_name}) - {buy_reason}")
+                        else:
+                            # 매수 실패 시 자금 예약 취소
+                            self.bot.fund_manager.cancel_order(stock_code)
+                            self.logger.warning(f"실전 매수 실패: {stock_code}({stock_name})")
+                    except Exception as e:
+                        self.bot.fund_manager.cancel_order(stock_code)
+                        self.logger.error(f"실전 매수 처리 오류: {e}")
 
         except Exception as e:
             self.logger.error(f"{trading_stock.stock_code} 매수 판단 오류: {e}")
@@ -154,11 +190,33 @@ class TradingAnalyzer:
                 # 매도 후보로 변경
                 success = self.bot.trading_manager.move_to_sell_candidate(stock_code, sell_reason)
                 if success:
-                    # [가상매매 코드 - 활성화]
-                    try:
-                        await self.bot.decision_engine.execute_virtual_sell(trading_stock, None, sell_reason)
-                        self.logger.info(f"가상 매도 완료 처리: {stock_code}({stock_name}) - {sell_reason}")
-                    except Exception as e:
-                        self.logger.error(f"가상 매도 처리 오류: {e}")
+                    # 가상/실전 매매 분기
+                    if self.bot.decision_engine.is_virtual_mode:
+                        # 가상 매도
+                        try:
+                            await self.bot.decision_engine.execute_virtual_sell(trading_stock, None, sell_reason)
+                            # 투자 자금 회수
+                            if trading_stock.position:
+                                invested = trading_stock.position.avg_price * trading_stock.position.quantity
+                                self.bot.fund_manager.release_investment(invested)
+                            self.logger.info(f"가상 매도 완료 처리: {stock_code}({stock_name}) - {sell_reason}")
+                        except Exception as e:
+                            self.logger.error(f"가상 매도 처리 오류: {e}")
+                    else:
+                        # 실전 매도
+                        try:
+                            sell_ok = await self.bot.decision_engine.execute_real_sell(
+                                trading_stock, sell_reason
+                            )
+                            if sell_ok:
+                                # 투자 자금 회수
+                                if trading_stock.position:
+                                    invested = trading_stock.position.avg_price * trading_stock.position.quantity
+                                    self.bot.fund_manager.release_investment(invested)
+                                self.logger.info(f"실전 매도 완료: {stock_code}({stock_name}) - {sell_reason}")
+                            else:
+                                self.logger.warning(f"실전 매도 실패: {stock_code}({stock_name})")
+                        except Exception as e:
+                            self.logger.error(f"실전 매도 처리 오류: {e}")
         except Exception as e:
             self.logger.error(f"{trading_stock.stock_code} 매도 판단 오류: {e}")

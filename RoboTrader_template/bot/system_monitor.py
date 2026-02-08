@@ -71,8 +71,49 @@ class SystemMonitor:
 
     async def _handle_premarket_tasks(self, current_time):
         """장 시작 전 태스크 처리"""
-        # 전략별 premarket 로직은 BaseStrategy.on_market_open()에서 처리
-        pass
+        # 전략의 get_target_stocks()를 통한 후보 종목 자동 등록
+        await self._register_strategy_target_stocks()
+
+    async def _register_strategy_target_stocks(self):
+        """전략의 get_target_stocks()에서 후보 종목을 가져와 등록"""
+        try:
+            # 이미 등록했으면 스킵 (하루에 1회)
+            if hasattr(self, '_strategy_stocks_registered_date'):
+                today = now_kst().date()
+                if self._strategy_stocks_registered_date == today:
+                    return
+            
+            strategy = getattr(self.bot, 'strategy', None)
+            if not strategy or not hasattr(strategy, 'get_target_stocks'):
+                return
+
+            target_stocks = strategy.get_target_stocks()
+            if not target_stocks:
+                return
+
+            trading_manager = getattr(self.bot, 'trading_manager', None)
+            if not trading_manager or not hasattr(trading_manager, 'add_selected_stock'):
+                return
+
+            self.logger.info(f"전략 후보 종목 {len(target_stocks)}개 등록 시작")
+            registered = 0
+            for stock_code in target_stocks:
+                try:
+                    success = await trading_manager.add_selected_stock(
+                        stock_code=stock_code,
+                        stock_name=stock_code,  # 종목명은 나중에 업데이트됨
+                        selection_reason=f"{strategy.name} get_target_stocks()"
+                    )
+                    if success:
+                        registered += 1
+                except Exception as e:
+                    self.logger.warning(f"전략 후보 종목 등록 실패 ({stock_code}): {e}")
+
+            self._strategy_stocks_registered_date = now_kst().date()
+            self.logger.info(f"전략 후보 종목 등록 완료: {registered}/{len(target_stocks)}개")
+
+        except Exception as e:
+            self.logger.error(f"전략 후보 종목 등록 오류: {e}")
 
     async def _handle_eod_liquidation(self, current_time):
         """장마감 전 EOD 일괄청산 처리 (동적 시간 적용)"""

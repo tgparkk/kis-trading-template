@@ -118,6 +118,9 @@ class BotInitializer:
             # 텔레그램 통합 종료
             await self.bot.telegram.shutdown()
 
+            # 미체결 주문 취소
+            await self._cancel_pending_orders()
+
             # API 매니저 종료
             self.bot.broker.shutdown()
 
@@ -130,3 +133,37 @@ class BotInitializer:
 
         except Exception as e:
             self.logger.error(f"시스템 종료 중 오류: {e}")
+
+    async def _cancel_pending_orders(self):
+        """종료 시 미체결 주문 일괄 취소"""
+        try:
+            pending_orders = self.bot.order_manager.get_pending_orders()
+            if not pending_orders:
+                self.logger.info("미체결 주문 없음 - 취소 스킵")
+                return
+
+            self.logger.info(f"미체결 주문 {len(pending_orders)}건 취소 시작")
+
+            for order in pending_orders:
+                try:
+                    order_id = getattr(order, 'order_id', None)
+                    stock_code = getattr(order, 'stock_code', '')
+                    if not order_id:
+                        continue
+
+                    result = self.bot.broker.cancel_order(
+                        order_id=order_id,
+                        stock_code=stock_code
+                    )
+                    if result and result.get('success'):
+                        self.logger.info(f"주문 취소 성공: {order_id} ({stock_code})")
+                    else:
+                        msg = result.get('message', '알 수 없는 오류') if result else '응답 없음'
+                        self.logger.warning(f"주문 취소 실패: {order_id} ({stock_code}) - {msg}")
+                except Exception as cancel_err:
+                    self.logger.error(f"주문 취소 오류 ({getattr(order, 'order_id', '?')}): {cancel_err}")
+
+            self.logger.info("미체결 주문 취소 처리 완료")
+
+        except Exception as e:
+            self.logger.error(f"미체결 주문 일괄 취소 오류: {e}")
