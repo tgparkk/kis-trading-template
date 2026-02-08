@@ -46,15 +46,15 @@ class IntradayStockManager:
     - PriceService: 현재가 조회
     """
 
-    def __init__(self, api_manager, config=None):
+    def __init__(self, broker, config=None):
         """
         초기화
 
         Args:
-            api_manager: KIS API 매니저 인스턴스
+            broker: KISBroker 인스턴스 (duck typing)
             config: 거래 설정 (선택, 리밸런싱 모드 확인용)
         """
-        self.api_manager = api_manager
+        self.api_manager = broker
         self.config = config
         self.logger = setup_logger(__name__)
 

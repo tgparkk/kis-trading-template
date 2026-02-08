@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor
 
 from .models import Stock, OHLCVData, TradingConfig
-from api.kis_api_manager import KISAPIManager
+from framework import KISBroker
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, is_market_open
 from utils.async_helpers import run_with_timeout
@@ -16,9 +16,9 @@ from utils.async_helpers import run_with_timeout
 class RealTimeDataCollector:
     """실시간 OHLCV 데이터 수집기"""
     
-    def __init__(self, config: TradingConfig, api_manager: KISAPIManager):
+    def __init__(self, config: TradingConfig, broker: KISBroker):
         self.config = config
-        self.api_manager = api_manager
+        self.broker = broker
         self.logger = setup_logger(__name__)
         
         self.stocks: Dict[str, Stock] = {}
@@ -147,7 +147,7 @@ class RealTimeDataCollector:
     
     def _get_current_price_sync(self, stock_code: str):
         """현재가 조회 (동기 버전)"""
-        return self.api_manager.get_current_price(stock_code)
+        return self.broker.get_current_price(stock_code)
     
     async def get_1min_ohlcv(self, stock_code: str, count: int = 30):
         """1분봉 OHLCV 데이터 조회"""
@@ -169,7 +169,7 @@ class RealTimeDataCollector:
     
     def _get_ohlcv_sync(self, stock_code: str, period: str, days: int):
         """OHLCV 데이터 조회 (동기 버전)"""
-        return self.api_manager.get_ohlcv_data(stock_code, period, days)
+        return self.broker.get_ohlcv_data(stock_code, period, days)
     
     def get_stock(self, stock_code: str) -> Optional[Stock]:
         """종목 정보 반환"""

@@ -83,7 +83,7 @@ class OrderExecutorMixin:
         # API 호출을 별도 스레드에서 실행 (타임아웃 20초)
         result: OrderResult = await run_with_timeout(
             self.executor,
-            self.api_manager.place_buy_order,
+            self.broker.place_buy_order,
             stock_code, quantity, int(price),
             timeout_seconds=20, default=None
         )
@@ -189,7 +189,7 @@ class OrderExecutorMixin:
         # API 호출을 별도 스레드에서 실행 (타임아웃 20초)
         result: OrderResult = await run_with_timeout(
             self.executor,
-            self.api_manager.place_sell_order,
+            self.broker.place_sell_order,
             stock_code, quantity, int(price), ("01" if market else "00"),
             timeout_seconds=20, default=None
         )
@@ -252,7 +252,7 @@ class OrderExecutorMixin:
             # API 호출을 별도 스레드에서 실행 (타임아웃 20초)
             result: OrderResult = await run_with_timeout(
                 self.executor,
-                self.api_manager.cancel_order,
+                self.broker.cancel_order,
                 order_id, order.stock_code,
                 timeout_seconds=20, default=None
             )
@@ -298,7 +298,7 @@ class OrderExecutorMixin:
             # 현재가 조회 (타임아웃 20초)
             price_data = await run_with_timeout(
                 self.executor,
-                self.api_manager.get_current_price,
+                self.broker.get_current_price,
                 order.stock_code,
                 timeout_seconds=20, default=None
             )

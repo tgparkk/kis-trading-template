@@ -10,18 +10,18 @@ from utils.korean_time import now_kst
 class VirtualTradingManager:
     """가상매매 전용 관리 클래스 (실전/가상 모드 지원)"""
 
-    def __init__(self, db_manager=None, api_manager=None, paper_trading: bool = True):
+    def __init__(self, db_manager=None, broker=None, paper_trading: bool = True):
         """
         초기화
 
         Args:
             db_manager: 데이터베이스 관리자
-            api_manager: API 관리자 (계좌 정보 조회용)
+            broker: KISBroker (계좌 정보 조회용)
             paper_trading: 가상매매 모드 여부 (True: 가상, False: 실전)
         """
         self.logger = setup_logger(__name__)
         self.db_manager = db_manager
-        self.api_manager = api_manager
+        self.broker = broker
         self.paper_trading = paper_trading
 
         # 잔고 관리
@@ -55,16 +55,19 @@ class VirtualTradingManager:
     def _initialize_real_balance(self):
         """실전 모드: 실제 계좌 잔고로 초기화"""
         try:
-            if not self.api_manager:
+            if not self.broker:
                 self.logger.warning("⚠️ API 매니저가 없어 실제 잔고 조회 불가 - 기본값 사용")
                 self._use_default_balance()
                 return
 
             # 실제 계좌 잔고 조회
-            account_info = self.api_manager.get_account_balance()
+            account_info = self.broker.get_account_balance()
 
-            if account_info and account_info.available_amount > 0:
-                self.virtual_balance = account_info.available_amount
+            # KISBroker returns dict, KISAPIManager returns AccountInfo
+            available = (account_info.get('available_cash', 0) if isinstance(account_info, dict)
+                         else getattr(account_info, 'available_amount', 0))
+            if account_info and available > 0:
+                self.virtual_balance = available
                 self.initial_balance = self.virtual_balance
                 # 종목당 투자금액: 가용 잔고의 5% (최대 200만원, 최소 50만원)
                 self.virtual_investment_amount = max(500000, min(2000000, self.virtual_balance * 0.05))
@@ -86,12 +89,14 @@ class VirtualTradingManager:
 
     def refresh_balance(self):
         """잔고 새로고침 (실전 모드에서 실제 잔고 재조회)"""
-        if not self.paper_trading and self.api_manager:
+        if not self.paper_trading and self.broker:
             try:
-                account_info = self.api_manager.get_account_balance()
-                if account_info and account_info.available_amount > 0:
+                account_info = self.broker.get_account_balance()
+                available = (account_info.get('available_cash', 0) if isinstance(account_info, dict)
+                             else getattr(account_info, 'available_amount', 0))
+                if account_info and available > 0:
                     old_balance = self.virtual_balance
-                    self.virtual_balance = account_info.available_amount
+                    self.virtual_balance = available
                     self.logger.info(f"💰 실전 잔고 새로고침: {old_balance:,.0f}원 → {self.virtual_balance:,.0f}원")
                     return True
             except Exception as e:

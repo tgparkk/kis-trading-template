@@ -120,7 +120,7 @@ class OrderMonitorMixin:
                 # API에서 실제 상태 재확인 (타임아웃 10초)
                 status_data = await run_with_timeout(
                     self.executor,
-                    self.api_manager.get_order_status,
+                    self.broker.get_order_status,
                     order.order_id,
                     timeout_seconds=10, default=None
                 )
@@ -186,7 +186,7 @@ class OrderMonitorMixin:
             # API 호출을 별도 스레드에서 실행 (타임아웃 10초)
             status_data = await run_with_timeout(
                 self.executor,
-                self.api_manager.get_order_status,
+                self.broker.get_order_status,
                 order_id,
                 timeout_seconds=10, default=None
             )

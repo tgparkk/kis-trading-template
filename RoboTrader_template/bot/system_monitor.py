@@ -126,8 +126,8 @@ class SystemMonitor:
 
             # API 매니저 통계
             api_manager_stats = (
-                self.bot.api_manager.get_api_statistics()
-                if hasattr(self.bot.api_manager, 'get_api_statistics')
+                self.bot.broker.get_api_statistics()
+                if hasattr(self.bot.broker, 'get_api_statistics')
                 else {}
             )
 
@@ -169,7 +169,7 @@ class SystemMonitor:
             self.logger.info("API 24시간 주기 재초기화 시작")
 
             # API 매니저 재초기화
-            if not self.bot.api_manager.initialize():
+            if not self.bot.broker.initialize():
                 self.logger.error("API 재초기화 실패")
                 await self.bot.telegram.notify_error("API Refresh", "API 재초기화 실패")
                 return False

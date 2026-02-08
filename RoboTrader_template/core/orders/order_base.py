@@ -10,7 +10,7 @@ from utils.logger import setup_logger
 from utils.korean_time import now_kst
 
 if TYPE_CHECKING:
-    from api.kis_api_manager import KISAPIManager
+    from framework import KISBroker
 
 MAX_COMPLETED_ORDERS = 200
 
@@ -18,10 +18,10 @@ MAX_COMPLETED_ORDERS = 200
 class OrderManagerBase:
     """주문 관리자 기본 클래스 - 공통 속성 및 유틸리티 메서드"""
 
-    def __init__(self, config: TradingConfig, api_manager: 'KISAPIManager',
+    def __init__(self, config: TradingConfig, broker: 'KISBroker',
                  telegram_integration=None, db_manager=None):
         self.config = config
-        self.api_manager = api_manager
+        self.broker = broker
         self.telegram = telegram_integration
         self.db_manager = db_manager
         self.logger = setup_logger(__name__)

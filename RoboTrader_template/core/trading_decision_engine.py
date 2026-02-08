@@ -30,20 +30,20 @@ class TradingDecisionEngine:
     DEFAULT_MAX_AMOUNT = 500000  # 최대 매수: 50만원
 
     def __init__(self, db_manager=None, telegram_integration=None,
-                 trading_manager=None, api_manager=None,
+                 trading_manager=None, broker=None,
                  intraday_manager=None, config=None):
         self.logger = setup_logger(__name__)
         self.db_manager = db_manager
         self.telegram = telegram_integration
         self.trading_manager = trading_manager
-        self.api_manager = api_manager
+        self.broker = broker
         self.intraday_manager = intraday_manager
         self.config = config
         self.is_virtual_mode = getattr(config, 'paper_trading', True) if config else True
 
         from core.virtual_trading_manager import VirtualTradingManager
         self.virtual_trading = VirtualTradingManager(
-            db_manager=db_manager, api_manager=api_manager,
+            db_manager=db_manager, broker=broker,
             paper_trading=self.is_virtual_mode
         )
 
@@ -64,10 +64,14 @@ class TradingDecisionEngine:
 
     def _get_max_buy_amount(self, stock_code: str = "") -> float:
         try:
-            if self.api_manager:
-                info = self.api_manager.get_account_balance()
-                if info and hasattr(info, 'available_amount'):
-                    return min(5000000, float(info.available_amount) * 0.1)
+            if self.broker:
+                info = self.broker.get_account_balance()
+                if info:
+                    # KISBroker returns dict, KISAPIManager returns AccountInfo
+                    available = (info.get('available_cash', 0) if isinstance(info, dict)
+                                 else getattr(info, 'available_amount', 0))
+                    if available:
+                        return min(5000000, float(available) * 0.1)
         except Exception as e:
             self.logger.debug(f"최대 매수금액 조회 실패: {e}")
         return self.DEFAULT_MAX_AMOUNT

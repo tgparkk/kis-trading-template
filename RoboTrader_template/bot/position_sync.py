@@ -28,7 +28,7 @@ class PositionSyncManager:
             loop = asyncio.get_event_loop()
             balance = await loop.run_in_executor(
                 None,
-                self.bot.api_manager.get_account_balance
+                self.bot.broker.get_account_balance
             )
             if not balance or not balance.positions:
                 self.logger.info("보유 종목 없음")

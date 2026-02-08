@@ -21,7 +21,7 @@ from .orders.order_db_handler import OrderDBHandlerMixin
 
 if TYPE_CHECKING:
     from .models import TradingConfig
-    from api.kis_api_manager import KISAPIManager
+    from framework import KISBroker
 
 
 class OrderManager(
@@ -50,19 +50,19 @@ class OrderManager(
         >>> await order_mgr.start_monitoring()
     """
 
-    def __init__(self, config: 'TradingConfig', api_manager: 'KISAPIManager',
+    def __init__(self, config: 'TradingConfig', broker: 'KISBroker',
                  telegram_integration=None, db_manager=None):
         """
         주문 관리자 초기화
 
         Args:
             config: 트레이딩 설정 객체
-            api_manager: KIS API 매니저
+            broker: KISBroker 인스턴스
             telegram_integration: 텔레그램 알림 통합 (선택)
             db_manager: 데이터베이스 매니저 (선택)
         """
         # 부모 클래스 초기화 (OrderManagerBase)
-        super().__init__(config, api_manager, telegram_integration, db_manager)
+        super().__init__(config, broker, telegram_integration, db_manager)
 
     # ==================== Public API (기존 인터페이스 유지) ====================
     # 모든 메서드는 Mixin 클래스에서 상속받습니다.
