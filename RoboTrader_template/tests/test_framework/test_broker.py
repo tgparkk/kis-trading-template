@@ -292,5 +292,52 @@ class TestFundManager:
         assert 'utilization_rate' in status
 
 
+# ============================================================================
+# Test: KISBroker New Methods (not-connected guard)
+# ============================================================================
+
+class TestKISBrokerNewMethods:
+    """Tests for newly added KISBroker methods (not-connected guard)."""
+
+    def test_get_current_prices_not_connected(self):
+        broker = KISBroker()
+        assert broker.get_current_prices(["005930", "000660"]) == {}
+
+    def test_get_ohlcv_data_not_connected(self):
+        broker = KISBroker()
+        assert broker.get_ohlcv_data("005930") is None
+
+    def test_get_index_data_not_connected(self):
+        broker = KISBroker()
+        assert broker.get_index_data() is None
+
+    def test_get_investor_flow_data_not_connected(self):
+        broker = KISBroker()
+        assert broker.get_investor_flow_data() is None
+
+    def test_place_buy_order_not_connected(self):
+        broker = KISBroker()
+        result = broker.place_buy_order("005930", 1, 70000)
+        assert result["success"] is False
+
+    def test_place_sell_order_not_connected(self):
+        broker = KISBroker()
+        result = broker.place_sell_order("005930", 1, 70000)
+        assert result["success"] is False
+
+    def test_cancel_order_not_connected(self):
+        broker = KISBroker()
+        result = broker.cancel_order("12345")
+        assert result["success"] is False
+
+    def test_get_order_status_not_connected(self):
+        broker = KISBroker()
+        assert broker.get_order_status("12345") is None
+
+    def test_health_check_not_connected(self):
+        broker = KISBroker()
+        assert broker.health_check() is False
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

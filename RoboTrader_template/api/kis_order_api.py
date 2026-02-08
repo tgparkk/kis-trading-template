@@ -13,51 +13,15 @@ logger = setup_logger(__name__)
 
 
 def _round_to_krx_tick(price: float) -> int:
-    """KRX 정확한 호가단위에 맞게 반올림"""
-    if price <= 0:
-        return 0
-    
-    # KRX 정확한 호가단위 테이블
-    if price < 1000:
-        tick = 1
-    elif price < 5000:
-        tick = 5
-    elif price < 10000:
-        tick = 10
-    elif price < 50000:
-        tick = 50
-    elif price < 100000:
-        tick = 100
-    elif price < 500000:
-        tick = 500
-    else:
-        tick = 1000
-    
-    return int(round(price / tick) * tick)
+    """KRX 정확한 호가단위에 맞게 반올림 (framework/utils.py 위임)"""
+    from framework.utils import round_to_tick
+    return round_to_tick(price)
 
 
 def _validate_tick_size(price: int) -> bool:
-    """호가단위 유효성 검증"""
-    if price <= 0:
-        return False
-    
-    # KRX 정확한 호가단위 테이블
-    if price < 1000:
-        tick = 1
-    elif price < 5000:
-        tick = 5
-    elif price < 10000:
-        tick = 10
-    elif price < 50000:
-        tick = 50
-    elif price < 100000:
-        tick = 100
-    elif price < 500000:
-        tick = 500
-    else:
-        tick = 1000
-    
-    return price % tick == 0
+    """호가단위 유효성 검증 (framework/utils.py 위임)"""
+    from framework.utils import validate_tick
+    return validate_tick(float(price))
 
 
 def get_order_cash(ord_dv: str = "", itm_no: str = "", qty: int = 0, unpr: int = 0,
