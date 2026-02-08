@@ -126,33 +126,38 @@ class HealthChecker:
         return f"누락: {', '.join(missing)}"
 
     def _check_api_auth(self):
-        """API 인증 테스트"""
-        from api.kis_api_manager import KISAPIManager
-        api = KISAPIManager()
-        if api.initialize():
-            return True
-        return "API 초기화 실패"
+        """Broker 연결 테스트"""
+        import asyncio
+        from framework import KISBroker
+        broker = KISBroker()
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(broker.connect())
+            if result:
+                self._broker = broker
+                return True
+            return "Broker 연결 실패"
+        finally:
+            loop.close()
 
     def _check_current_price(self):
         """현재가 조회 테스트"""
-        from api.kis_api_manager import KISAPIManager
-        api = KISAPIManager()
-        if not api.initialize():
-            return "API 미초기화"
-        price = api.get_current_price("005930")
-        if price:
-            return f"{price.current_price:,.0f}원"
+        broker = getattr(self, '_broker', None)
+        if broker is None:
+            return "Broker 미연결"
+        price = broker.get_current_price("005930")
+        if price is not None:
+            return f"{price:,.0f}원"
         return "조회 실패"
 
     def _check_account_balance(self):
         """계좌 잔고 조회"""
-        from api.kis_api_manager import KISAPIManager
-        api = KISAPIManager()
-        if not api.initialize():
-            return "API 미초기화"
-        balance = api.get_account_balance()
+        broker = getattr(self, '_broker', None)
+        if broker is None:
+            return "Broker 미연결"
+        balance = broker.get_account_balance()
         if balance:
-            return f"{balance.account_balance:,.0f}원"
+            return f"{balance.get('total_balance', 0):,.0f}원"
         return "조회 실패"
 
     def _check_config(self):

@@ -27,7 +27,7 @@ class DryRunBot:
     def __init__(self):
         self.logger = setup_logger("dryrun")
         self.mock_orders = MockOrderManager()
-        self.api_manager = None
+        self.broker = None
         self.db_manager = None
         self.anomalies: List[str] = []
         self.report_lines: List[str] = []
@@ -47,9 +47,9 @@ class DryRunBot:
         self._log("  RoboTrader 드라이런 시작")
         self._log("=" * 60)
 
-        # 1. API 인증
-        if not self._step_api_init():
-            self._warn("API 인증 실패 - 드라이런 중단")
+        # 1. Broker 연결
+        if not await self._step_broker_init():
+            self._warn("Broker 연결 실패 - 드라이런 중단")
             self._save_report()
             return False
 
@@ -80,31 +80,33 @@ class DryRunBot:
         self._save_report()
         return True
 
-    def _step_api_init(self) -> bool:
-        """1단계: API 인증"""
-        self._log("[1/8] API 인증...")
+    async def _step_broker_init(self) -> bool:
+        """1단계: Broker 연결"""
+        self._log("[1/8] Broker 연결...")
         try:
-            from api.kis_api_manager import KISAPIManager
-            self.api_manager = KISAPIManager()
-            if self.api_manager.initialize():
-                self._log("  API 인증 성공")
+            from framework import KISBroker
+            self.broker = KISBroker()
+            if await self.broker.connect():
+                self._log("  Broker 연결 성공")
                 return True
             return False
         except Exception as e:
-            self._warn(f"  API 초기화 오류: {e}")
+            self._warn(f"  Broker 초기화 오류: {e}")
             return False
 
     def _step_account_balance(self) -> Optional[Dict]:
         """2단계: 계좌 잔고"""
         self._log("[2/8] 계좌 잔고 조회...")
         try:
-            balance = self.api_manager.get_account_balance()
+            balance = self.broker.get_account_balance()
             if balance:
-                self._log(f"  잔고: {balance.account_balance:,.0f}원, "
-                         f"가용: {balance.available_amount:,.0f}원")
+                total = balance.get('total_balance', 0)
+                available = balance.get('available_cash', 0)
+                self._log(f"  잔고: {total:,.0f}원, "
+                         f"가용: {available:,.0f}원")
                 return {
-                    'account_balance': balance.account_balance,
-                    'available_amount': balance.available_amount,
+                    'account_balance': total,
+                    'available_amount': available,
                 }
             self._warn("  잔고 조회 실패")
             return None
@@ -160,11 +162,11 @@ class DryRunBot:
         for item in plan.get('buy_list', []):
             code = item['stock_code']
             try:
-                price = self.api_manager.get_current_price(code)
-                if price:
-                    item['current_price'] = price.current_price
+                price = self.broker.get_current_price(code)
+                if price is not None:
+                    item['current_price'] = price
                     self._log(f"  {code} ({item.get('stock_name', '')}): "
-                            f"{price.current_price:,.0f}원")
+                            f"{price:,.0f}원")
                 else:
                     failed_codes.append(code)
                     self._warn(f"  {code} 현재가 조회 실패")
@@ -203,13 +205,13 @@ class DryRunBot:
         """7단계: 보유 종목 손익절 판단"""
         self._log("[7/8] 보유 종목 손익절 판단...")
         try:
-            balance = self.api_manager.get_account_balance()
-            if balance and hasattr(balance, 'positions') and balance.positions:
-                for pos in balance.positions:
+            holdings = self.broker.get_holdings()
+            if holdings:
+                for pos in holdings:
                     code = pos.get('stock_code', '')
                     pnl_rate = pos.get('profit_loss_rate', 0)
                     self._log(f"  {code}: 수익률 {pnl_rate:.2f}%")
-            else:
+            if not holdings:
                 self._log("  보유 종목 없음")
         except Exception as e:
             self._warn(f"  손익 조회 오류: {e}")
