@@ -97,12 +97,7 @@ class TestBotInstantiation:
         mock_broker_cls.return_value = mock_broker
         patches.append(p1)
 
-        # KISAPIManager Mock
-        p2 = patch('main.KISAPIManager')
-        mock_api_cls = p2.start()
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-        patches.append(p2)
+        # KISAPIManager는 main.py에서 제거됨 (KISBroker로 전환 완료)
 
         # DatabaseManager Mock
         p3 = patch('main.DatabaseManager')
@@ -140,7 +135,6 @@ class TestBotInstantiation:
 
         yield {
             'broker': mock_broker,
-            'api_manager': mock_api,
             'db_manager': mock_db,
             'telegram': mock_tg,
         }
@@ -255,7 +249,6 @@ class TestBotInitialization:
     def mock_bot(self):
         """완전히 Mock된 bot 인스턴스"""
         with patch('main.KISBroker') as mock_broker_cls, \
-             patch('main.KISAPIManager'), \
              patch('main.DatabaseManager') as mock_db_cls, \
              patch('main.TelegramIntegration'), \
              patch('main.check_duplicate_process'), \
