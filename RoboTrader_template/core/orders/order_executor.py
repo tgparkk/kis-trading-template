@@ -28,6 +28,16 @@ class OrderExecutorMixin:
 
             self.logger.info(f"매수 주문 시도: {stock_code} {quantity}주 @{price:,.0f}원 (타임아웃: {timeout_seconds}초)")
 
+            # VI/서킷브레이커 체크: 시장 전체 거래 중단 또는 종목별 VI 발동 시 주문 차단
+            from config.market_hours import get_circuit_breaker_state
+            cb_state = get_circuit_breaker_state()
+            if cb_state.is_market_halted():
+                self.logger.warning(f"매수 주문 차단: 시장 전체 서킷브레이커 발동 중 ({stock_code})")
+                return None
+            if cb_state.is_vi_active(stock_code):
+                self.logger.warning(f"매수 주문 차단: {stock_code} VI 발동 중")
+                return None
+
             # 중복 주문 방지: 동일 종목 매수 주문이 이미 진행 중인지 확인
             if self.has_active_buy_order(stock_code):
                 existing_order_id = self._active_buy_stocks.get(stock_code)
@@ -195,6 +205,14 @@ class OrderExecutorMixin:
             timeout_seconds = timeout_seconds or self.config.order_management.sell_timeout_seconds
 
             self.logger.info(f"매도 주문 시도: {stock_code} {quantity}주 @{price:,.0f}원 (타임아웃: {timeout_seconds}초, 시장가: {market})")
+
+            # VI/서킷브레이커 체크: 시장 전체 거래 중단 시 주문 차단
+            # (종목 VI 시 매도는 허용 — 보유 포지션 청산 기회를 막으면 안 됨)
+            from config.market_hours import get_circuit_breaker_state
+            cb_state = get_circuit_breaker_state()
+            if cb_state.is_market_halted():
+                self.logger.warning(f"매도 주문 차단: 시장 전체 서킷브레이커 발동 중 ({stock_code})")
+                return None
 
             # 중복 주문 방지: 동일 종목 매도 주문이 이미 진행 중인지 확인
             if self.has_active_sell_order(stock_code):

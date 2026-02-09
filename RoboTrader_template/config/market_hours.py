@@ -29,9 +29,15 @@ class MarketPhase(Enum):
 
 
 class CircuitBreakerState:
-    """서킷브레이커/VI 상태 추적"""
+    """서킷브레이커/VI 상태 추적 (thread-safe)
+
+    메인 루프, 텔레그램, 시스템 모니터가 동시에 접근할 수 있으므로
+    threading.Lock으로 보호합니다.
+    """
 
     def __init__(self):
+        import threading
+        self._lock = threading.Lock()
         self._active_circuit_breakers: Dict[str, datetime] = {}  # stock_code -> triggered_at
         self._market_wide_halt: bool = False
         self._market_halt_until: Optional[datetime] = None
@@ -40,48 +46,56 @@ class CircuitBreakerState:
         """개별 종목 VI 발동 기록"""
         if triggered_at is None:
             triggered_at = datetime.now(pytz.timezone('Asia/Seoul'))
-        self._active_circuit_breakers[stock_code] = triggered_at
+        with self._lock:
+            self._active_circuit_breakers[stock_code] = triggered_at
 
     def release_vi(self, stock_code: str):
         """개별 종목 VI 해제"""
-        self._active_circuit_breakers.pop(stock_code, None)
+        with self._lock:
+            self._active_circuit_breakers.pop(stock_code, None)
 
     def is_vi_active(self, stock_code: str) -> bool:
         """개별 종목 VI 활성 여부"""
-        return stock_code in self._active_circuit_breakers
+        with self._lock:
+            return stock_code in self._active_circuit_breakers
 
     def trigger_market_halt(self, duration_minutes: int = 20, triggered_at: Optional[datetime] = None):
         """시장 전체 서킷브레이커 발동"""
         if triggered_at is None:
             triggered_at = datetime.now(pytz.timezone('Asia/Seoul'))
-        self._market_wide_halt = True
-        self._market_halt_until = triggered_at + timedelta(minutes=duration_minutes)
+        with self._lock:
+            self._market_wide_halt = True
+            self._market_halt_until = triggered_at + timedelta(minutes=duration_minutes)
 
     def release_market_halt(self):
         """시장 전체 서킷브레이커 해제"""
-        self._market_wide_halt = False
-        self._market_halt_until = None
+        with self._lock:
+            self._market_wide_halt = False
+            self._market_halt_until = None
 
     def is_market_halted(self, dt: Optional[datetime] = None) -> bool:
         """시장 전체 거래 중단 여부"""
-        if not self._market_wide_halt:
-            return False
-        if self._market_halt_until and dt:
-            if dt >= self._market_halt_until:
-                self._market_wide_halt = False
-                self._market_halt_until = None
+        with self._lock:
+            if not self._market_wide_halt:
                 return False
-        return self._market_wide_halt
+            if self._market_halt_until and dt:
+                if dt >= self._market_halt_until:
+                    self._market_wide_halt = False
+                    self._market_halt_until = None
+                    return False
+            return self._market_wide_halt
 
     def get_active_vi_stocks(self) -> List[str]:
         """VI 발동 중인 종목 목록"""
-        return list(self._active_circuit_breakers.keys())
+        with self._lock:
+            return list(self._active_circuit_breakers.keys())
 
     def clear_all(self):
         """모든 상태 초기화 (일일 리셋)"""
-        self._active_circuit_breakers.clear()
-        self._market_wide_halt = False
-        self._market_halt_until = None
+        with self._lock:
+            self._active_circuit_breakers.clear()
+            self._market_wide_halt = False
+            self._market_halt_until = None
 
 
 # 싱글턴 서킷브레이커 상태

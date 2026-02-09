@@ -357,11 +357,23 @@ class DayTradingBot:
     async def _check_buy_signals(self):
         """SELECTED 상태 종목 1회 매수 판단"""
         try:
+            # 시장 전체 서킷브레이커 발동 시 매수 판단 전체 스킵
+            from config.market_hours import get_circuit_breaker_state
+            cb_state = get_circuit_breaker_state()
+            if cb_state.is_market_halted():
+                self.logger.info("매수 판단 스킵: 시장 전체 서킷브레이커 발동 중")
+                return
+
             selected_stocks = self.trading_manager.get_stocks_by_state(StockState.SELECTED)
 
             for trading_stock in selected_stocks:
                 if not self.is_running:
                     break
+
+                # VI 발동 종목 스킵
+                if cb_state.is_vi_active(trading_stock.stock_code):
+                    self.logger.debug(f"{trading_stock.stock_code} 매수 스킵: VI 발동 중")
+                    continue
 
                 # 매수 쿨다운 확인
                 if trading_stock.is_buy_cooldown_active():
