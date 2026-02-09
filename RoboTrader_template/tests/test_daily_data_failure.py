@@ -12,11 +12,21 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# psycopg2 mock (CI 환경에서 미설치)
+from unittest.mock import MagicMock
+if 'psycopg2' not in sys.modules:
+    _mock_pg = MagicMock()
+    sys.modules['psycopg2'] = _mock_pg
+    sys.modules['psycopg2.pool'] = _mock_pg.pool
+    sys.modules['psycopg2.extras'] = _mock_pg.extras
+
 from core.intraday_stock_manager import IntradayStockManager
 from unittest.mock import Mock
 import pandas as pd
+import pytest
 
 
+@pytest.mark.asyncio
 async def test_daily_data_failure():
     """일봉 데이터 조회 실패 시 False 반환 확인"""
     print("\n" + "="*60)
@@ -24,17 +34,17 @@ async def test_daily_data_failure():
     print("="*60)
 
     # Mock 객체 생성
-    api_manager = Mock()
+    broker = Mock()
 
     # 일봉 데이터 조회 실패 시뮬레이션
-    api_manager.get_ohlcv_data = Mock(return_value=None)
+    broker.get_ohlcv_data = Mock(return_value=None)
 
     # 리밸런싱 모드 config
     config = {"rebalancing_mode": True}
 
     # IntradayStockManager 초기화
     manager = IntradayStockManager(
-        api_manager=api_manager,
+        broker=broker,
         config=config
     )
 
@@ -42,14 +52,13 @@ async def test_daily_data_failure():
     stock_code = "005930"  # 삼성전자
 
     # 1단계: 종목을 selected_stocks에 추가
-    from core.models.stock_data import StockData
+    from core.intraday.models import StockMinuteData
     from utils.korean_time import now_kst
 
-    stock_data = StockData(
+    stock_data = StockMinuteData(
         stock_code=stock_code,
         stock_name="삼성전자",
         selected_time=now_kst(),
-        selected_price=70000.0
     )
 
     with manager._lock:
@@ -82,6 +91,7 @@ async def test_daily_data_failure():
     return True
 
 
+@pytest.mark.asyncio
 async def test_daily_data_success():
     """일봉 데이터 조회 성공 시 True 반환 확인"""
     print("\n" + "="*60)
@@ -89,7 +99,7 @@ async def test_daily_data_success():
     print("="*60)
 
     # Mock 객체 생성
-    api_manager = Mock()
+    broker = Mock()
 
     # 일봉 데이터 조회 성공 시뮬레이션
     sample_data = pd.DataFrame({
@@ -100,28 +110,27 @@ async def test_daily_data_success():
         'close': [70500, 69500, 68500],
         'volume': [1000000, 1100000, 1200000]
     })
-    api_manager.get_ohlcv_data = Mock(return_value=sample_data)
+    broker.get_ohlcv_data = Mock(return_value=sample_data)
 
     # 리밸런싱 모드 config
     config = {"rebalancing_mode": True}
 
     # IntradayStockManager 초기화
     manager = IntradayStockManager(
-        api_manager=api_manager,
+        broker=broker,
         config=config
     )
 
     # 종목 추가 시도
     stock_code = "005930"
 
-    from core.models.stock_data import StockData
+    from core.intraday.models import StockMinuteData
     from utils.korean_time import now_kst
 
-    stock_data = StockData(
+    stock_data = StockMinuteData(
         stock_code=stock_code,
         stock_name="삼성전자",
         selected_time=now_kst(),
-        selected_price=70000.0
     )
 
     with manager._lock:

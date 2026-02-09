@@ -412,7 +412,7 @@ class TestVolatilityInterruption:
         vi_check_found = False
         for fpath in order_files:
             if os.path.exists(fpath):
-                with open(fpath, 'r') as f:
+                with open(fpath, 'r', encoding='utf-8') as f:
                     content = f.read()
                     if 'is_vi_active' in content or 'circuit_breaker' in content.lower():
                         vi_check_found = True

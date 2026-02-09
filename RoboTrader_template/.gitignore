@@ -148,3 +148,6 @@ Thumbs.db
 *.backup
 *.old
 /realtime_data
+
+# Cache data files
+cache/**/*.pkl

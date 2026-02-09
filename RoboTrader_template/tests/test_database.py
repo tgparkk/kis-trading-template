@@ -7,6 +7,23 @@ DB 계층 유닛 테스트
 - repositories/trading.py: 가상/실 매매 CRUD, 손절 종목 조회
 실제 DB 연결 없이 모두 Mock 처리
 """
+import sys
+from unittest.mock import MagicMock as _MagicMock
+
+# psycopg2 mock (CI 환경에서 미설치)
+if 'psycopg2' not in sys.modules:
+    _mock_pg = _MagicMock()
+    # 실제 예외 클래스 정의 (테스트에서 raise/except 가능하도록)
+    class _IntegrityError(Exception):
+        pass
+    class _OperationalError(Exception):
+        pass
+    _mock_pg.IntegrityError = _IntegrityError
+    _mock_pg.OperationalError = _OperationalError
+    sys.modules['psycopg2'] = _mock_pg
+    sys.modules['psycopg2.pool'] = _mock_pg.pool
+    sys.modules['psycopg2.extras'] = _mock_pg.extras
+
 import pytest
 import pandas as pd
 from datetime import datetime, timedelta, timezone, time
