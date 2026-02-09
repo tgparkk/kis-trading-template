@@ -41,7 +41,7 @@ class RealTimeDataCollector:
             )
             self.logger.info(f"종목 초기화: {stock_code} ({stock_name})")
     
-    def add_candidate_stock(self, stock_code: str, stock_name: str = None):
+    def add_candidate_stock(self, stock_code: str, stock_name: Optional[str] = None) -> None:
         """후보 종목 추가"""
         if stock_code not in self.stocks:
             self.stocks[stock_code] = Stock(
@@ -52,7 +52,7 @@ class RealTimeDataCollector:
             self.config.data_collection.candidate_stocks.append(stock_code)
             self.logger.info(f"후보 종목 추가: {stock_code} : {stock_name}")
     
-    def remove_candidate_stock(self, stock_code: str):
+    def remove_candidate_stock(self, stock_code: str) -> None:
         """후보 종목 제거"""
         if stock_code in self.stocks:
             self.stocks[stock_code].is_candidate = False
@@ -60,7 +60,7 @@ class RealTimeDataCollector:
                 self.config.data_collection.candidate_stocks.remove(stock_code)
             self.logger.info(f"후보 종목 제거: {stock_code}")
     
-    async def start_collection(self):
+    async def start_collection(self) -> None:
         """데이터 수집 시작"""
         self.is_running = True
         self.logger.info("실시간 데이터 수집 시작")
@@ -187,14 +187,14 @@ class RealTimeDataCollector:
         """종목 존재 여부 확인"""
         return stock_code in self.stocks
     
-    async def collect_once(self):
+    async def collect_once(self) -> None:
         """1회 데이터 수집 (메인루프에서 호출)"""
         try:
             await self._collect_all_stocks_data()
         except Exception as e:
             self.logger.error(f"1회 데이터 수집 오류: {e}")
 
-    def stop_collection(self):
+    def stop_collection(self) -> None:
         """데이터 수집 중단"""
         self.is_running = False
         self.logger.info("실시간 데이터 수집 중단")

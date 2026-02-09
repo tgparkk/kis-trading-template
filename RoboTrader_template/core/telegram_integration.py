@@ -3,7 +3,7 @@
 """
 import asyncio
 import configparser
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 from pathlib import Path
 
 from utils.telegram.telegram_notifier import TelegramNotifier
@@ -114,7 +114,7 @@ class TelegramIntegration:
             self.logger.error(f"❌ 텔레그램 통합 초기화 실패: {e}")
             return False
     
-    async def start_telegram_bot(self):
+    async def start_telegram_bot(self) -> None:
         """텔레그램 봇 폴링 시작 (별도 태스크)"""
         if not self.is_enabled or not self.notifier:
             return
@@ -130,7 +130,7 @@ class TelegramIntegration:
             self.logger.error(f"텔레그램 봇 폴링 오류: {e}")
     
     # 시스템 이벤트 알림 메서드들
-    async def notify_system_start(self):
+    async def notify_system_start(self) -> None:
         """시스템 시작 알림"""
         if not self.is_enabled:
             return
@@ -140,7 +140,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"시스템 시작 알림 실패: {e}")
     
-    async def notify_system_stop(self):
+    async def notify_system_stop(self) -> None:
         """시스템 종료 알림"""
         if not self.is_enabled:
             return
@@ -154,7 +154,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"시스템 종료 알림 실패: {e}")
     
-    async def notify_order_placed(self, order_data: Dict[str, Any]):
+    async def notify_order_placed(self, order_data: Dict[str, Any]) -> None:
         """주문 실행 알림"""
         if not self.is_enabled or not self.notification_settings.get('order_events', True):
             return
@@ -173,7 +173,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"주문 실행 알림 실패: {e}")
     
-    async def notify_order_filled(self, order_data: Dict[str, Any], pnl: float = 0):
+    async def notify_order_filled(self, order_data: Dict[str, Any], pnl: float = 0) -> None:
         """주문 체결 알림"""
         if not self.is_enabled or not self.notification_settings.get('order_events', True):
             return
@@ -196,7 +196,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"주문 체결 알림 실패: {e}")
     
-    async def notify_order_cancelled(self, order_data: Dict[str, Any], reason: str):
+    async def notify_order_cancelled(self, order_data: Dict[str, Any], reason: str) -> None:
         """주문 취소 알림"""
         if not self.is_enabled or not self.notification_settings.get('order_events', True):
             return
@@ -213,7 +213,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"주문 취소 알림 실패: {e}")
     
-    async def notify_signal_detected(self, signal_data: Dict[str, Any]):
+    async def notify_signal_detected(self, signal_data: Dict[str, Any]) -> None:
         """매매 신호 알림"""
         if not self.is_enabled or not self.notification_settings.get('signal_events', True):
             return
@@ -237,7 +237,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"매매 신호 알림 실패: {e}")
     
-    async def notify_urgent_signal(self, message: str):
+    async def notify_urgent_signal(self, message: str) -> None:
         """긴급 신호 알림"""
         if not self.is_enabled:
             return
@@ -247,7 +247,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"긴급 신호 알림 실패: {e}")
     
-    async def notify_error(self, module: str, error: Exception):
+    async def notify_error(self, module: str, error: Exception) -> None:
         """오류 알림"""
         if not self.is_enabled or not self.notification_settings.get('error_events', True):
             return
@@ -257,7 +257,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"오류 알림 실패: {e}")
     
-    async def notify_system_status(self, message: str = None):
+    async def notify_system_status(self, message: Optional[str] = None) -> None:
         """시스템 상태 알림"""
         if not self.is_enabled:
             return
@@ -286,7 +286,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"시스템 상태 알림 실패: {e}")
     
-    async def notify_position_update(self, positions_data: Dict[str, Any]):
+    async def notify_position_update(self, positions_data: Dict[str, Any]) -> None:
         """포지션 현황 알림"""
         if not self.is_enabled:
             return
@@ -301,7 +301,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"포지션 현황 알림 실패: {e}")
     
-    async def notify_daily_summary(self):
+    async def notify_daily_summary(self) -> None:
         """일일 거래 요약 알림"""
         if not self.is_enabled or not self.notification_settings.get('daily_summary', True):
             return
@@ -321,7 +321,7 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"일일 요약 알림 실패: {e}")
     
-    async def periodic_status_task(self):
+    async def periodic_status_task(self) -> None:
         """주기적 상태 알림 태스크"""
         if not self.is_enabled:
             return
@@ -356,7 +356,7 @@ class TelegramIntegration:
             'telegram_enabled': self.is_enabled
         }
     
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """텔레그램 통합 종료"""
         try:
             if self.is_enabled and self.notifier:

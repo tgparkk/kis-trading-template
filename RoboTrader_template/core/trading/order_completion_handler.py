@@ -3,7 +3,7 @@
 
 매수/매도 주문의 체결 확인 및 후속 처리
 """
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 import pandas as pd
 
 from ..models import TradingStock, StockState, OrderStatus, OrderType
@@ -44,7 +44,7 @@ class OrderCompletionHandler:
         # 전략 콜백 연결 (외부에서 set_strategy로 설정)
         self.strategy = None
 
-    def set_strategy(self, strategy):
+    def set_strategy(self, strategy: Any) -> None:
         """전략 연결 (on_order_filled 콜백용)"""
         self.strategy = strategy
         if strategy:

@@ -103,7 +103,7 @@ class VirtualTradingManager:
                 self.logger.error(f"❌ 잔고 새로고침 오류: {e}")
         return False
     
-    def update_virtual_balance(self, amount: float, transaction_type: str):
+    def update_virtual_balance(self, amount: float, transaction_type: str) -> None:
         """
         가상 잔고 업데이트
         

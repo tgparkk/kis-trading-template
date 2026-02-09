@@ -346,7 +346,7 @@ class RealtimeCandleBuilder:
             self.logger.error(f"❌ {stock_code} 데이터 결합 오류: {e}")
             return historical_data  # 오류 시 과거 데이터만 반환
     
-    def cleanup_old_candles(self, hours_threshold: int = 1):
+    def cleanup_old_candles(self, hours_threshold: int = 1) -> None:
         """오래된 실시간 캔들 정리"""
         try:
             with self._lock:

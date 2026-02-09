@@ -39,7 +39,7 @@ class StockStateManager:
         """Lock 객체 반환"""
         return self._lock
 
-    def register_stock(self, trading_stock: TradingStock):
+    def register_stock(self, trading_stock: TradingStock) -> None:
         """
         종목 등록
 
@@ -52,7 +52,7 @@ class StockStateManager:
         self.trading_stocks[stock_code] = trading_stock
         self.stocks_by_state[state][stock_code] = trading_stock
 
-    def unregister_stock(self, stock_code: str):
+    def unregister_stock(self, stock_code: str) -> None:
         """
         종목 등록 해제
 
@@ -67,7 +67,7 @@ class StockStateManager:
             if stock_code in self.stocks_by_state[state]:
                 del self.stocks_by_state[state][stock_code]
 
-    def change_stock_state(self, stock_code: str, new_state: StockState, reason: str = ""):
+    def change_stock_state(self, stock_code: str, new_state: StockState, reason: str = "") -> None:
         """
         종목 상태 변경
 

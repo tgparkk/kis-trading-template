@@ -38,7 +38,7 @@ class RealtimeDataLogger:
         
         self.logger.info(f"📄 실시간 데이터 로거 초기화: {self.today_dir}")
     
-    def log_minute_data(self, stock_code: str, stock_name: str, minute_data: pd.DataFrame):
+    def log_minute_data(self, stock_code: str, stock_name: str, minute_data: pd.DataFrame) -> None:
         """
         분봉 데이터 로깅
         
@@ -92,7 +92,7 @@ class RealtimeDataLogger:
         except Exception as e:
             self.logger.error(f"❌ {stock_code} 분봉 데이터 로깅 오류: {e}")
     
-    def log_current_price(self, stock_code: str, stock_name: str, price_data: Dict[str, Any]):
+    def log_current_price(self, stock_code: str, stock_name: str, price_data: Dict[str, Any]) -> None:
         """
         현재가 데이터 로깅
         
@@ -131,7 +131,7 @@ class RealtimeDataLogger:
         except Exception as e:
             self.logger.error(f"❌ {stock_code} 현재가 데이터 로깅 오류: {e}")
     
-    def log_trading_signal(self, stock_code: str, stock_name: str, signal_data: Dict[str, Any]):
+    def log_trading_signal(self, stock_code: str, stock_name: str, signal_data: Dict[str, Any]) -> None:
         """
         매매신호 데이터 로깅
         

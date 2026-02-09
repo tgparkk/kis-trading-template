@@ -139,7 +139,7 @@ class CandidateSelector:
             stats['last_selection_time'] = stats['last_selection_time'].isoformat()
         return stats
 
-    def update_candidate_stocks_in_config(self, candidates: List[CandidateStock]):
+    def update_candidate_stocks_in_config(self, candidates: List[CandidateStock]) -> None:
         """선정된 후보 종목을 설정에 업데이트"""
         try:
             self.config.data_collection.candidate_stocks = [c.code for c in candidates]

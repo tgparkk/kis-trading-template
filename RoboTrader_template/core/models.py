@@ -68,7 +68,7 @@ class Stock:
     position_quantity: int = 0
     position_avg_price: float = 0.0
     
-    def add_ohlcv(self, ohlcv: OHLCVData):
+    def add_ohlcv(self, ohlcv: OHLCVData) -> None:
         """OHLCV 데이터 추가"""
         self.ohlcv_data.append(ohlcv)
         self.last_price = ohlcv.close_price
@@ -133,7 +133,7 @@ class Position:
     unrealized_pnl: float = 0.0
     entry_time: datetime = field(default_factory=datetime.now)
     
-    def update_current_price(self, price: float):
+    def update_current_price(self, price: float) -> None:
         """현재가 업데이트 및 평가손익 계산"""
         self.current_price = price
         self.unrealized_pnl = (price - self.avg_price) * self.quantity
@@ -184,7 +184,7 @@ class TradingStock:
     # 📊 패턴 데이터 로깅용 ID (매매 결과 연결)
     last_pattern_id: Optional[str] = None
 
-    def change_state(self, new_state: StockState, reason: str = ""):
+    def change_state(self, new_state: StockState, reason: str = "") -> None:
         """상태 변경 및 이력 기록"""
         old_state = self.state
         self.state = new_state
@@ -198,16 +198,16 @@ class TradingStock:
             'timestamp': self.last_update
         })
     
-    def add_order(self, order_id: str):
+    def add_order(self, order_id: str) -> None:
         """주문 추가"""
         self.current_order_id = order_id
         self.order_history.append(order_id)
     
-    def clear_current_order(self):
+    def clear_current_order(self) -> None:
         """현재 주문 클리어"""
         self.current_order_id = None
     
-    def set_position(self, quantity: int, avg_price: float):
+    def set_position(self, quantity: int, avg_price: float) -> None:
         """포지션 설정"""
         self.position = Position(
             stock_code=self.stock_code,
@@ -215,19 +215,19 @@ class TradingStock:
             avg_price=avg_price
         )
     
-    def clear_position(self):
+    def clear_position(self) -> None:
         """포지션 클리어"""
         self.position = None
         # 매도 완료 시 신호 시점도 초기화 (새로운 매수 신호 허용)
         self.last_signal_candle_time = None
     
-    def set_virtual_buy_info(self, record_id: int, price: float, quantity: int):
+    def set_virtual_buy_info(self, record_id: int, price: float, quantity: int) -> None:
         """가상 매수 정보 설정"""
         self._virtual_buy_record_id = record_id
         self._virtual_buy_price = price
         self._virtual_quantity = quantity
     
-    def clear_virtual_buy_info(self):
+    def clear_virtual_buy_info(self) -> None:
         """가상 매수 정보 클리어"""
         self._virtual_buy_record_id = None
         self._virtual_buy_price = None
@@ -241,7 +241,7 @@ class TradingStock:
             self._virtual_quantity is not None
         ])
 
-    def set_buy_time(self, buy_time: datetime):
+    def set_buy_time(self, buy_time: datetime) -> None:
         """매수 시간 설정"""
         self.last_buy_time = buy_time
 

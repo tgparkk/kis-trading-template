@@ -2,7 +2,7 @@
 주문 관리 기본 클래스 및 유틸리티
 """
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from concurrent.futures import ThreadPoolExecutor
 
 from ..models import Order, OrderType, OrderStatus, TradingConfig
@@ -43,11 +43,11 @@ class OrderManagerBase:
         self.is_monitoring = False
         self.executor = ThreadPoolExecutor(max_workers=2)
 
-    def set_trading_manager(self, trading_manager):
+    def set_trading_manager(self, trading_manager: Any) -> None:
         """TradingStockManager 참조를 등록 (가격 정정 시 주문ID 동기화용)"""
         self.trading_manager = trading_manager
 
-    def set_fund_manager(self, fund_manager):
+    def set_fund_manager(self, fund_manager: Any) -> None:
         """FundManager 참조를 등록 (자금 예약/확정/취소 연동용)"""
         self.fund_manager = fund_manager
         self.logger.info("OrderManager에 FundManager 연결됨")
@@ -201,12 +201,12 @@ class OrderManagerBase:
             ]
         }
 
-    def stop_monitoring(self):
+    def stop_monitoring(self) -> None:
         """모니터링 중단"""
         self.is_monitoring = False
         self.logger.info("주문 모니터링 중단")
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """리소스 정리"""
         if hasattr(self, 'executor'):
             self.executor.shutdown(wait=False)

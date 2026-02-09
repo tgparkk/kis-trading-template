@@ -10,7 +10,7 @@
 - trading/order_completion_handler.py: 주문 체결 확인
 - trading/position_monitor.py: 포지션 모니터링
 """
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from .models import TradingStock, StockState
 from .intraday_stock_manager import IntradayStockManager
@@ -150,20 +150,20 @@ class TradingStockManager:
     # decision_engine 설정
     # =========================================================================
 
-    def set_decision_engine(self, decision_engine):
+    def set_decision_engine(self, decision_engine: Any) -> None:
         """매매 판단 엔진 설정 (순환 참조 방지를 위해 별도 메서드)"""
         self.decision_engine = decision_engine
         self._position_monitor.set_decision_engine(decision_engine)
         self.logger.debug("TradingStockManager에 decision_engine 연결 완료")
 
-    def set_strategy(self, strategy):
+    def set_strategy(self, strategy: Any) -> None:
         """전략 연결 (on_order_filled 콜백 + 매도 시그널 전달용)"""
         self._strategy = strategy
         self._completion_handler.set_strategy(strategy)
         self._position_monitor.set_strategy(strategy)
         self.logger.debug(f"TradingStockManager에 전략 연결: {strategy.name if strategy else 'None'}")
 
-    def set_fund_manager(self, fund_manager):
+    def set_fund_manager(self, fund_manager: Any) -> None:
         """FundManager 연결"""
         self._order_execution.set_fund_manager(fund_manager)
         self.logger.debug("TradingStockManager에 FundManager 연결 완료")
@@ -262,7 +262,7 @@ class TradingStockManager:
         """
         await self._order_execution.handle_order_timeout(order)
 
-    def set_re_trading_config(self, enable: bool):
+    def set_re_trading_config(self, enable: bool) -> None:
         """
         재거래 설정 변경
 
@@ -291,7 +291,7 @@ class TradingStockManager:
         """종목 상태 모니터링 시작"""
         await self._position_monitor.start_monitoring()
 
-    def stop_monitoring(self):
+    def stop_monitoring(self) -> None:
         """모니터링 중단"""
         self._position_monitor.stop_monitoring()
 

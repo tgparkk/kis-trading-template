@@ -57,12 +57,12 @@ class TradingDecisionEngine:
 
         self.logger.info("매매 판단 엔진 초기화")
 
-    def set_strategy(self, strategy: 'BaseStrategy'):
+    def set_strategy(self, strategy: 'BaseStrategy') -> None:
         """전략 설정"""
         self.strategy = strategy
         self.logger.info(f"전략 연결됨: {strategy.name if strategy else 'None'}")
 
-    def set_fund_manager(self, fund_manager: 'FundManager'):
+    def set_fund_manager(self, fund_manager: 'FundManager') -> None:
         """자금 관리자 설정"""
         self.fund_manager = fund_manager
         self.logger.info("FundManager 연결됨")

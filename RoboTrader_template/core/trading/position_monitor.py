@@ -4,7 +4,7 @@
 보유 종목 현재가 업데이트 및 손익절 모니터링
 """
 import asyncio
-from typing import TYPE_CHECKING, Optional
+from typing import Any, TYPE_CHECKING, Optional
 
 from ..models import TradingStock, StockState
 from strategies.base import SignalType
@@ -61,12 +61,12 @@ class PositionMonitor:
         # 로깅 플래그
         self._sell_check_logged = False
 
-    def set_decision_engine(self, decision_engine):
+    def set_decision_engine(self, decision_engine: Any) -> None:
         """매매 판단 엔진 설정 (순환 참조 방지를 위해 별도 메서드)"""
         self.decision_engine = decision_engine
         self.logger.debug("PositionMonitor에 decision_engine 연결 완료")
 
-    def set_strategy(self, strategy):
+    def set_strategy(self, strategy: Any) -> None:
         """전략 설정 (매도 시그널 생성용)"""
         self._strategy = strategy
         self.logger.debug(f"PositionMonitor에 전략 연결: {strategy.name if strategy else 'None'}")
@@ -338,7 +338,7 @@ class PositionMonitor:
                         f"🚨 {stock_code} 매도 실행 최종 실패: {e}"
                     )
 
-    def stop_monitoring(self):
+    def stop_monitoring(self) -> None:
         """모니터링 중단"""
         self.is_monitoring = False
         self.logger.info("종목 상태 모니터링 중단")

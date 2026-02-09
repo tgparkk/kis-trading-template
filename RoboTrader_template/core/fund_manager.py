@@ -60,7 +60,7 @@ class FundManager:
         self.logger.info(f"💰 자금 관리자 초기화 완료 - 초기자금: {initial_funds:,.0f}원, "
                         f"최대 보유: {max_position_count}종목")
     
-    def update_total_funds(self, new_total: float):
+    def update_total_funds(self, new_total: float) -> None:
         """총 자금 업데이트"""
         with self._lock:
             old_total = self.total_funds
@@ -133,7 +133,7 @@ class FundManager:
             
             return True
     
-    def confirm_order(self, order_id: str, actual_amount: float):
+    def confirm_order(self, order_id: str, actual_amount: float) -> None:
         """
         주문 체결 확인 (예약 → 투자)
         
@@ -170,7 +170,7 @@ class FundManager:
             else:
                 self.logger.info(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원")
     
-    def cancel_order(self, order_id: str):
+    def cancel_order(self, order_id: str) -> None:
         """
         주문 취소 (예약 해제)
         
@@ -191,7 +191,7 @@ class FundManager:
             
             self.logger.info(f"💰 주문 취소: {order_id} - 환불: {reserved_amount:,.0f}원")
     
-    def release_investment(self, amount: float, stock_code: str = ""):
+    def release_investment(self, amount: float, stock_code: str = "") -> None:
         """
         투자 자금 회수 (매도 완료시)
         
@@ -242,17 +242,17 @@ class FundManager:
                 return False
             return True
 
-    def add_position(self, stock_code: str):
+    def add_position(self, stock_code: str) -> None:
         """보유 종목 추가"""
         with self._lock:
             self.current_position_codes.add(stock_code)
 
-    def remove_position(self, stock_code: str):
+    def remove_position(self, stock_code: str) -> None:
         """보유 종목 제거"""
         with self._lock:
             self.current_position_codes.discard(stock_code)
 
-    def set_sell_cooldown(self, stock_code: str, reason: str = ""):
+    def set_sell_cooldown(self, stock_code: str, reason: str = "") -> None:
         """
         매도 후 재매수 쿨다운 설정
         
@@ -292,7 +292,7 @@ class FundManager:
                 return False
             return True
 
-    def sync_with_account(self, actual_available: float, actual_invested: float):
+    def sync_with_account(self, actual_available: float, actual_invested: float) -> None:
         """
         실제 계좌 잔고와 동기화
         

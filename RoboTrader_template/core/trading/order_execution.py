@@ -53,7 +53,7 @@ class OrderExecution:
         # 재거래 설정
         self.enable_re_trading = True
 
-    def set_fund_manager(self, fund_manager: 'FundManager'):
+    def set_fund_manager(self, fund_manager: 'FundManager') -> None:
         """FundManager 설정"""
         self.fund_manager = fund_manager
         self.logger.debug("OrderExecution에 FundManager 연결 완료")
@@ -474,7 +474,7 @@ class OrderExecution:
 
         self.logger.info(f"부분 체결 포지션 등록 완료: {stock_code} {filled_qty}주 @{filled_price:,.0f}원")
 
-    def set_re_trading_config(self, enable: bool):
+    def set_re_trading_config(self, enable: bool) -> None:
         """
         재거래 설정 변경
 

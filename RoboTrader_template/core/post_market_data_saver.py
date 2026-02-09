@@ -298,5 +298,5 @@ class PostMarketDataSaver:
 
 # 독립 실행용 (테스트)
 if __name__ == "__main__":
-    print("이 모듈은 직접 실행할 수 없습니다.")
-    print("main.py 또는 intraday_stock_manager.py에서 호출하여 사용하세요.")
+    import logging
+    logging.getLogger(__name__).info("이 모듈은 직접 실행할 수 없습니다. main.py 또는 intraday_stock_manager.py에서 호출하여 사용하세요.")
