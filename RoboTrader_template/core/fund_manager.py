@@ -155,13 +155,20 @@ class FundManager:
             # 투자 금액으로 이동
             self.invested_funds += actual_amount
             
-            # 차액은 가용 자금으로 반환
-            refund = reserved_amount - actual_amount
-            if refund > 0:
-                self.available_funds += refund
-            
-            self.logger.info(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원, "
-                           f"환불: {refund:,.0f}원")
+            # 차액 정산: 예약>체결이면 환불, 체결>예약이면 추가 차감
+            diff = reserved_amount - actual_amount
+            if diff > 0:
+                # 예약보다 적게 체결 → 차액 환불
+                self.available_funds += diff
+                self.logger.info(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원, "
+                               f"환불: {diff:,.0f}원")
+            elif diff < 0:
+                # 예약보다 많이 체결 → 추가 비용 차감
+                self.available_funds += diff  # diff is negative
+                self.logger.warning(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원, "
+                                  f"추가차감: {-diff:,.0f}원 (체결>예약)")
+            else:
+                self.logger.info(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원")
     
     def cancel_order(self, order_id: str):
         """

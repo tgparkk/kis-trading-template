@@ -16,7 +16,7 @@ from datetime import datetime, time, timedelta, timezone
 from unittest.mock import patch, Mock, AsyncMock
 import pytz
 
-from config.market_hours import MarketHours
+from config.market_hours import MarketHours, MarketPhase
 from utils.korean_holidays import (
     is_holiday, is_fixed_holiday, is_lunar_holiday,
     get_previous_trading_day, get_next_trading_day
@@ -301,40 +301,43 @@ class TestHolidayDetection:
 # ============================================================================
 class TestHolidayMarketHoursIntegration:
     """
-    [취약점] MarketHours.is_market_open()은 공휴일을 체크하지 않음.
-    주말만 체크하고, 평일 공휴일(삼일절, 설날 등)에도 장이 열린 것으로 판단.
+    [수정완료] MarketHours.is_market_open()이 공휴일을 체크하도록 통합.
+    korean_holidays 모듈의 is_fixed_holiday, is_lunar_holiday, is_special_holiday 활용.
     """
 
-    def test_vulnerability_new_year_shows_market_open(self):
-        """[취약점] 신정(1/1 수요일)에 is_market_open이 True 반환"""
-        # 2025-01-01은 수요일 + 신정
+    def test_new_year_market_closed(self):
+        """신정(1/1 수요일)에 is_market_open이 False 반환"""
         dt = kst_dt(2025, 1, 1, 10, 0, 0)
-        assert is_holiday(dt) is True  # 공휴일 맞음
-        # MarketHours는 주말만 체크 → 평일 공휴일을 놓침
-        # 이것은 버그: 공휴일인데 장이 열린 것으로 판단
-        market_open = MarketHours.is_market_open('KRX', dt)
-        assert market_open is True, (
-            "[알려진 취약점] MarketHours.is_market_open()이 평일 공휴일을 체크하지 않음. "
-            "korean_holidays.is_holiday()와 통합 필요."
-        )
+        assert is_holiday(dt) is True
+        assert MarketHours.is_market_open('KRX', dt) is False
 
-    def test_vulnerability_seollal_shows_market_open(self):
-        """[취약점] 설날(1/29 수요일)에 is_market_open이 True 반환"""
+    def test_seollal_market_closed(self):
+        """설날(1/29 수요일)에 is_market_open이 False 반환"""
         dt = kst_dt(2025, 1, 29, 10, 0, 0)
         assert is_holiday(dt) is True
-        market_open = MarketHours.is_market_open('KRX', dt)
-        assert market_open is True, (
-            "[알려진 취약점] 설날에도 장 열린 것으로 판단"
-        )
+        assert MarketHours.is_market_open('KRX', dt) is False
 
-    def test_vulnerability_march_1st_shows_market_open(self):
-        """[취약점] 삼일절(3/1 토요일→해당없음, 2026-03-01은 일요일→주말)
-        2025-03-01은 토요일이므로 주말로 걸림. 2026-10-03(토)도 주말.
-        평일 공휴일 예시: 2025-06-06(금) 현충일"""
-        dt = kst_dt(2025, 6, 6, 10, 0, 0)  # 현충일 금요일
+    def test_memorial_day_market_closed(self):
+        """현충일(6/6 금요일)에 is_market_open이 False 반환"""
+        dt = kst_dt(2025, 6, 6, 10, 0, 0)
         assert is_fixed_holiday(dt) is True
-        market_open = MarketHours.is_market_open('KRX', dt)
-        assert market_open is True, "[알려진 취약점] 현충일에도 장 열린 것으로 판단"
+        assert MarketHours.is_market_open('KRX', dt) is False
+
+    def test_holiday_market_phase_closed(self):
+        """공휴일에 get_market_phase가 CLOSED 반환"""
+        dt = kst_dt(2025, 1, 1, 10, 0, 0)
+        assert MarketHours.get_market_phase('KRX', dt) == MarketPhase.CLOSED
+
+    def test_holiday_market_status(self):
+        """공휴일에 get_market_status가 'holiday' 반환"""
+        dt = kst_dt(2025, 1, 1, 10, 0, 0)
+        assert MarketHours.get_market_status('KRX', dt) == "holiday"
+
+    def test_normal_weekday_still_opens(self):
+        """일반 평일은 정상적으로 장 열림"""
+        dt = kst_dt(2025, 7, 7, 10, 0, 0)  # 월요일
+        assert is_holiday(dt) is False
+        assert MarketHours.is_market_open('KRX', dt) is True
 
 
 # ============================================================================

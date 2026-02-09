@@ -204,7 +204,7 @@ class MarketHours:
 
     @classmethod
     def is_market_open(cls, market: str = 'KRX', dt: Optional[datetime] = None) -> bool:
-        """장중 시간인지 확인
+        """장중 시간인지 확인 (주말 + 공휴일 체크)
 
         Args:
             market: 시장 코드
@@ -225,11 +225,26 @@ class MarketHours:
         if dt.weekday() >= 5:  # 토요일(5), 일요일(6)
             return False
 
+        # 공휴일 체크 (KRX만 — 해외시장은 별도 캘린더 필요)
+        if cls._is_holiday(market, dt):
+            return False
+
         market_open = hours['market_open']
         market_close = hours['market_close']
         current_time = dt.time()
 
         return market_open <= current_time <= market_close
+
+    @classmethod
+    def _is_holiday(cls, market: str, dt: datetime) -> bool:
+        """공휴일 여부 확인 (내부 헬퍼)"""
+        if market == 'KRX':
+            try:
+                from utils.korean_holidays import is_fixed_holiday, is_lunar_holiday, is_special_holiday
+                return is_fixed_holiday(dt) or is_lunar_holiday(dt) or is_special_holiday(dt)
+            except ImportError:
+                return False
+        return False
 
     @classmethod
     def is_before_market_open(cls, market: str = 'KRX', dt: Optional[datetime] = None) -> bool:
@@ -244,6 +259,10 @@ class MarketHours:
 
         # 평일이 아니면 False
         if dt.weekday() >= 5:
+            return False
+
+        # 공휴일이면 False
+        if cls._is_holiday(market, dt):
             return False
 
         market_open = hours['market_open']
@@ -267,6 +286,8 @@ class MarketHours:
 
         if dt.weekday() >= 5:
             return "weekend"
+        elif cls._is_holiday(market, dt):
+            return "holiday"
         elif cls.is_before_market_open(market, dt):
             return "pre_market"
         elif cls.is_market_open(market, dt):
@@ -342,6 +363,10 @@ class MarketHours:
             dt = tz.localize(dt)
 
         if dt.weekday() >= 5:
+            return MarketPhase.CLOSED
+
+        # 공휴일은 CLOSED
+        if cls._is_holiday(market, dt):
             return MarketPhase.CLOSED
 
         current_time = dt.time()

@@ -86,6 +86,31 @@ class TestConfirmOrder:
         assert fm.reserved_funds == 0
         assert fm.available_funds == 9_000_000
 
+    def test_confirm_actual_exceeds_reserved(self):
+        """체결금액이 예약금액보다 큰 경우 — 추가 비용을 가용자금에서 차감"""
+        fm = FundManager(initial_funds=10_000_000)
+        fm.reserve_funds("ORD1", 900_000)
+        # 실제 체결이 1M (예약 900K보다 100K 초과)
+        fm.confirm_order("ORD1", 1_000_000)
+        assert fm.invested_funds == 1_000_000
+        assert fm.reserved_funds == 0
+        # 가용 = 10M - 900K(예약시) - 100K(초과분) = 9M
+        assert fm.available_funds == 9_000_000
+        # 총합 일관성: available + reserved + invested == total
+        assert fm.available_funds + fm.reserved_funds + fm.invested_funds == fm.total_funds
+
+    def test_confirm_actual_exceeds_reserved_accounting_consistency(self):
+        """체결>예약 시 복수 주문 상황에서도 총합 일관"""
+        fm = FundManager(initial_funds=10_000_000)
+        fm.reserve_funds("ORD1", 1_000_000)
+        fm.reserve_funds("ORD2", 2_000_000)
+        # ORD1: 체결이 예약보다 200K 초과
+        fm.confirm_order("ORD1", 1_200_000)
+        assert fm.available_funds == 6_800_000  # 10M - 1M - 2M - 200K extra
+        assert fm.reserved_funds == 2_000_000
+        assert fm.invested_funds == 1_200_000
+        assert fm.available_funds + fm.reserved_funds + fm.invested_funds == fm.total_funds
+
     def test_confirm_unreserved(self):
         fm = FundManager(initial_funds=10_000_000)
         fm.confirm_order("UNKNOWN", 500_000)

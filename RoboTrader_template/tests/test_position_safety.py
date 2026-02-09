@@ -333,24 +333,24 @@ class TestFundManagerFullFlow:
         )
         assert total_check == status['total_funds']
 
-    def test_confirm_more_than_reserved_silent_loss(self):
-        """체결 금액 > 예약 금액 시 차액이 어디에도 반영 안 됨 (취약점)
+    def test_confirm_more_than_reserved_deducts_extra(self):
+        """[수정완료] 체결 금액 > 예약 금액 시 차액을 가용자금에서 추가 차감
         
-        예약 500K, 체결 600K → refund = -100K이지만 if refund > 0 조건에 걸려 스킵.
-        결과: 100K가 자금 추적에서 누락됨 (정합성 깨짐)
+        예약 500K, 체결 600K → 초과 100K를 available에서 차감.
+        결과: 자금 정합성 유지됨
         """
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 500_000)
         fm.confirm_order("ORD1", 600_000)
         
         assert fm.invested_funds == 600_000
-        # available은 변경 없음 (refund 음수는 스킵)
-        assert fm.available_funds == 9_500_000
+        # available: 9.5M(예약후) - 100K(초과분) = 9.4M
+        assert fm.available_funds == 9_400_000
         
-        # 정합성 깨짐: total != available + reserved + invested
+        # 정합성 유지: total == available + reserved + invested
         total_check = fm.available_funds + fm.reserved_funds + fm.invested_funds
-        assert total_check != fm.total_funds, \
-            f"취약점: 정합성 깨짐 {total_check} != {fm.total_funds} (100K 누락)"
+        assert total_check == fm.total_funds, \
+            f"정합성: {total_check} == {fm.total_funds}"
 
     def test_double_confirm_ignored(self):
         """이미 confirm된 주문 재confirm 시 무시"""
