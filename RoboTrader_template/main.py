@@ -19,6 +19,7 @@ if sys.platform == 'win32':
 sys.path.append(str(Path(__file__).parent))
 
 from core.models import StockState
+from core.candidate_selector import CandidateSelector
 from core.data_collector import RealTimeDataCollector
 from core.order_manager import OrderManager
 from core.telegram_integration import TelegramIntegration
@@ -112,6 +113,10 @@ class DayTradingBot:
         # Strategy 시스템 초기화
         self.strategy: Optional[BaseStrategy] = None
         self._load_strategy()
+
+        # CandidateSelector 초기화
+        self.candidate_selector = CandidateSelector(self.config, self.broker, self.db_manager)
+        self._candidates_loaded = False
 
         # 신호 핸들러 등록
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -307,6 +312,10 @@ class DayTradingBot:
                     await asyncio.sleep(30)
                     continue
 
+                # 장 시작 후 최초 1회: 스크리너 후보 로드
+                if not self._candidates_loaded:
+                    await self._load_screener_candidates()
+
                 iteration += 1
 
                 # 각 단계를 독립적으로 실행하여, 한 단계 실패가 다른 단계에 영향 주지 않음
@@ -353,6 +362,54 @@ class DayTradingBot:
                 await asyncio.sleep(sleep_time)
 
         self.logger.info("메인 트레이딩 루프 종료")
+
+    async def _load_screener_candidates(self):
+        """스크리너 결과에서 후보 종목 로드 → TradingStockManager에 등록"""
+        if self._candidates_loaded:
+            return
+
+        try:
+            max_candidates = 10
+            strategy_config = getattr(self.config, 'strategy', None)
+            if isinstance(strategy_config, dict):
+                max_candidates = strategy_config.get('parameters', {}).get('max_candidates', 10)
+            elif hasattr(strategy_config, 'parameters'):
+                max_candidates = strategy_config.parameters.get('max_candidates', 10)
+
+            candidates = self.candidate_selector.load_from_screener(
+                max_candidates=max_candidates
+            )
+
+            if not candidates:
+                self.logger.warning("스크리너 후보 종목 없음 — 기존 로직으로 운영")
+                self._candidates_loaded = True
+                return
+
+            registered = 0
+            for c in candidates:
+                success = await self.trading_manager.add_selected_stock(
+                    stock_code=c.code,
+                    stock_name=c.name,
+                    selection_reason=c.reason,
+                    prev_close=c.prev_close,
+                )
+                if success:
+                    registered += 1
+
+            self._candidates_loaded = True
+            self.logger.info(f"스크리너 후보 {registered}/{len(candidates)}개 등록 완료")
+
+            # 텔레그램 알림
+            try:
+                msg = (f"📊 스크리너 후보 등록: {registered}종목\n"
+                       + "\n".join(f"  • {c.code}({c.name})" for c in candidates[:registered]))
+                await self.telegram.notify_system_status(msg)
+            except Exception:
+                pass
+
+        except Exception as e:
+            self.logger.error(f"스크리너 후보 로드 오류: {e}")
+            self._candidates_loaded = True  # 재시도 방지
 
     async def _check_buy_signals(self):
         """SELECTED 상태 종목 1회 매수 판단"""

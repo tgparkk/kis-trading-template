@@ -34,12 +34,20 @@ class CandidateSelector:
     자신의 전략에 맞게 구현하면 됩니다.
     """
 
+    # ETF 브랜드 키워드 (대소문자 무시)
+    ETF_KEYWORDS = [
+        'KODEX', 'TIGER', 'KBSTAR', 'ARIRANG', 'HANARO', 'SOL',
+        'ACE', 'KOSEF', 'SMART', 'TIMEFOLIO', 'PLUS', 'VITA',
+        'ETF', 'ETN', 'FOCUS', 'BNK', 'WOORI',
+    ]
+
     def __init__(self, config: TradingConfig, broker: KISBroker, db_manager=None):
         self.config = config
         self.broker = broker
         self.db_manager = db_manager
         self.logger = setup_logger(__name__)
         self.stock_list_file = Path(__file__).parent.parent / "stock_list.json"
+        self.screener_data_dir = Path(__file__).parent.parent / "data"
         self.selection_stats = {
             'total_analyzed': 0, 'passed_basic_filter': 0,
             'passed_detailed_analysis': 0, 'final_selected': 0,
@@ -99,6 +107,100 @@ class CandidateSelector:
         except Exception as e:
             self.logger.error(f"후보 종목 선정 실패: {e}")
             return []
+
+    # =========================================================================
+    # 스크리너 JSON 기반 후보 로드
+    # =========================================================================
+
+    def load_from_screener(self, json_path: Optional[str] = None,
+                           max_candidates: int = 10) -> List[CandidateStock]:
+        """
+        스크리너 결과 JSON 파일에서 후보 종목 로드
+
+        Args:
+            json_path: screener JSON 파일 경로. None이면 가장 최근 파일 자동 탐색
+            max_candidates: 최대 후보 수
+
+        Returns:
+            CandidateStock 리스트 (ETF 제외, trading_amount 내림차순)
+        """
+        try:
+            path = self._resolve_screener_path(json_path)
+            if path is None:
+                return []
+
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            results = data.get('results', [])
+            self.logger.info(f"스크리너 파일 로드: {path.name} ({len(results)}종목)")
+            self.selection_stats['total_analyzed'] = len(results)
+
+            # ETF/ETN/우선주 필터링
+            filtered = [r for r in results if not self._is_etf_or_etn_screener(r.get('name', ''))]
+            filtered = [r for r in filtered if not self._is_preferred_stock(r.get('code', ''), r.get('name', ''))]
+            self.selection_stats['passed_basic_filter'] = len(filtered)
+            self.logger.info(f"ETF/우선주 제외 후: {len(filtered)}종목")
+
+            # trading_amount 기준 내림차순 정렬
+            filtered.sort(key=lambda x: x.get('trading_amount', 0), reverse=True)
+
+            # 상위 N개 선정
+            selected = filtered[:max_candidates]
+            self.selection_stats['final_selected'] = len(selected)
+            self.selection_stats['last_selection_time'] = now_kst()
+
+            candidates = []
+            for item in selected:
+                consecutive = item.get('consecutive_up_days', 0)
+                close = item.get('close', 0)
+                trading_amt = item.get('trading_amount', 0)
+                score = consecutive * 10 + min(trading_amt / 1e10, 30)  # 간단 스코어
+
+                candidate = CandidateStock(
+                    code=item['code'],
+                    name=item['name'],
+                    market='KRX',
+                    score=round(score, 2),
+                    reason=f"{consecutive}일연속상승, 거래대금{trading_amt/1e8:.0f}억",
+                    prev_close=float(close),
+                )
+                candidates.append(candidate)
+                self.logger.info(f"  후보: {candidate.code}({candidate.name}) "
+                                 f"score={candidate.score} - {candidate.reason}")
+
+            return candidates
+
+        except Exception as e:
+            self.logger.error(f"스크리너 로드 실패: {e}")
+            return []
+
+    def _resolve_screener_path(self, json_path: Optional[str] = None) -> Optional[Path]:
+        """스크리너 JSON 파일 경로 결정 (지정 또는 최신 파일 자동 탐색)"""
+        if json_path:
+            p = Path(json_path)
+            if p.exists():
+                return p
+            self.logger.error(f"스크리너 파일 없음: {json_path}")
+            return None
+
+        # data/ 디렉토리에서 가장 최근 screener_*.json 찾기
+        if not self.screener_data_dir.exists():
+            self.logger.error(f"스크리너 데이터 디렉토리 없음: {self.screener_data_dir}")
+            return None
+
+        screener_files = sorted(self.screener_data_dir.glob("screener_*.json"), reverse=True)
+        if not screener_files:
+            self.logger.warning("스크리너 결과 파일 없음")
+            return None
+
+        self.logger.info(f"최신 스크리너 파일 사용: {screener_files[0].name}")
+        return screener_files[0]
+
+    def _is_etf_or_etn_screener(self, name: str) -> bool:
+        """ETF/ETN 여부 확인 (스크리너용 — 브랜드명 포함)"""
+        name_upper = name.upper()
+        return any(kw in name_upper for kw in self.ETF_KEYWORDS)
 
     # =========================================================================
     # 유틸리티 메서드

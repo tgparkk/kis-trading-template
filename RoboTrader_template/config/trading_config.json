@@ -20,12 +20,13 @@
     "max_daily_loss": 0.1
   },
   "strategy": {
-    "name": "sample",
+    "name": "momentum",
     "enabled": true,
     "parameters": {
       "momentum_period": 5,
       "volume_threshold": 1.5,
-      "price_change_threshold": 0.01
+      "price_change_threshold": 0.01,
+      "max_candidates": 10
     }
   },
   "duplicate_signal_prevention": {
