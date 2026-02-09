@@ -1,1 +1,1 @@
-"""드라이런 (모의 운영) 모듈"""
+# dryrun test package
