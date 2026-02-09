@@ -48,7 +48,7 @@ class OHLCVData:
     close_price: float
     volume: int
     
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """데이터 검증"""
         if self.high_price < max(self.open_price, self.close_price):
             raise ValueError("고가가 시가/종가보다 낮습니다")
@@ -101,7 +101,7 @@ class Order:
     stop_loss_rate: Optional[float] = None  # 🆕 목표 손절률 (DB 기록용)
     stock_name: Optional[str] = None  # 🆕 종목명 (DB 기록용)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """초기화 후 처리"""
         if self.remaining_quantity == 0:
             self.remaining_quantity = self.quantity

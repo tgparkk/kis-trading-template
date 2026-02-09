@@ -445,7 +445,7 @@ class OrderExecution:
                 f"타임아웃 처리 오류: {e}"
             )
 
-    async def on_partial_fill_timeout(self, order, filled_qty: int, filled_price: float):
+    async def on_partial_fill_timeout(self, order, filled_qty: int, filled_price: float) -> None:
         """
         부분 체결 타임아웃 처리 - 체결된 수량으로 포지션 설정
 

@@ -209,7 +209,7 @@ class TradingDecisionEngine:
             return False
 
     async def execute_virtual_buy(self, trading_stock, combined_data,
-                                  buy_reason: str, buy_price: float = None):
+                                  buy_reason: str, buy_price: float = None) -> None:
         """가상 매수"""
         try:
             if buy_price is None:
@@ -242,7 +242,7 @@ class TradingDecisionEngine:
             self.logger.error(f"매도오류: {e}")
             return False
 
-    async def execute_virtual_sell(self, trading_stock, sell_price: float, sell_reason: str):
+    async def execute_virtual_sell(self, trading_stock, sell_price: float, sell_reason: str) -> None:
         """가상 매도"""
         try:
             code = trading_stock.stock_code

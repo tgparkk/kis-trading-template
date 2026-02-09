@@ -60,7 +60,7 @@ class OrderManagerBase:
         """해당 종목에 진행 중인 매도 주문이 있는지 확인"""
         return stock_code in self._active_sell_stocks
 
-    def _register_active_order(self, stock_code: str, order_id: str, order_type):
+    def _register_active_order(self, stock_code: str, order_id: str, order_type: str) -> None:
         """진행 중인 주문 등록 (중복 방지용)"""
         from ..models import OrderType
         if order_type == OrderType.BUY:
@@ -68,7 +68,7 @@ class OrderManagerBase:
         else:
             self._active_sell_stocks[stock_code] = order_id
 
-    def _unregister_active_order(self, stock_code: str, order_type):
+    def _unregister_active_order(self, stock_code: str, order_type: str) -> None:
         """진행 중인 주문 해제"""
         from ..models import OrderType
         if order_type == OrderType.BUY:
@@ -135,7 +135,7 @@ class OrderManagerBase:
             self.logger.error(f"4분봉 경과 확인 오류: {e}")
             return False
 
-    def _move_to_completed(self, order_id: str):
+    def _move_to_completed(self, order_id: str) -> None:
         """완료된 주문으로 이동 (오탐지 방지 로깅 추가)"""
         if order_id in self.pending_orders:
             order = self.pending_orders.pop(order_id)
@@ -211,6 +211,6 @@ class OrderManagerBase:
         if hasattr(self, 'executor'):
             self.executor.shutdown(wait=False)
 
-    def __del__(self):
+    def __del__(self) -> None:
         """소멸자"""
         self.cleanup()

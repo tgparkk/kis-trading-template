@@ -2,6 +2,7 @@
 주식 자동매매 시스템 메인 실행 파일
 """
 import asyncio
+import logging
 import signal
 import sys
 import os
@@ -223,7 +224,7 @@ class DayTradingBot:
 
         return True
 
-    async def run_daily_cycle(self):
+    async def run_daily_cycle(self) -> None:
         """일일 거래 사이클 실행"""
         try:
             self.is_running = True
@@ -556,17 +557,17 @@ class DayTradingBot:
             self.logger.debug(f"{stock_code} 전날 종가 조회 실패: {e}")
             return 0.0
 
-    async def emergency_sync_positions(self):
+    async def emergency_sync_positions(self) -> None:
         """긴급 포지션 동기화 (위임)"""
         await self.position_sync_manager.emergency_sync_positions()
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """시스템 종료 (위임)"""
         self.broker._connected = False
         await self.bot_initializer.shutdown()
 
 
-async def main():
+async def main() -> None:
     """메인 함수"""
     bot = DayTradingBot()
 
@@ -587,7 +588,7 @@ if __name__ == "__main__":
         asyncio.run(main())
 
     except KeyboardInterrupt:
-        print("\n사용자에 의해 중단되었습니다.")
+        logging.getLogger(__name__).info("사용자에 의해 중단되었습니다.")
     except Exception as e:
-        print(f"시스템 오류: {e}")
+        logging.getLogger(__name__).critical(f"시스템 오류: {e}", exc_info=True)
         sys.exit(1)

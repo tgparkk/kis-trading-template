@@ -32,7 +32,7 @@ class VirtualTradingManager:
         # 잔고 초기화
         self._initialize_balance()
 
-    def _initialize_balance(self):
+    def _initialize_balance(self) -> None:
         """잔고 초기화 (가상/실전 모드에 따라 다르게 처리)"""
         try:
             if self.paper_trading:
@@ -52,7 +52,7 @@ class VirtualTradingManager:
             self.initial_balance = self.virtual_balance
             self.virtual_investment_amount = 1000000
 
-    def _initialize_real_balance(self):
+    def _initialize_real_balance(self) -> None:
         """실전 모드: 실제 계좌 잔고로 초기화"""
         try:
             if not self.broker:
@@ -80,14 +80,14 @@ class VirtualTradingManager:
             self.logger.error(f"❌ 실전 잔고 초기화 오류: {e}")
             self._use_default_balance()
 
-    def _use_default_balance(self):
+    def _use_default_balance(self) -> None:
         """기본 잔고 설정 (조회 실패 시)"""
         self.virtual_balance = 10000000
         self.initial_balance = self.virtual_balance
         self.virtual_investment_amount = 1000000
         self.logger.warning(f"⚠️ 기본 잔고 사용: {self.virtual_balance:,.0f}원")
 
-    def refresh_balance(self):
+    def refresh_balance(self) -> None:
         """잔고 새로고침 (실전 모드에서 실제 잔고 재조회)"""
         if not self.paper_trading and self.broker:
             try:

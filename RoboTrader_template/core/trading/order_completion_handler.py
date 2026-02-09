@@ -50,7 +50,7 @@ class OrderCompletionHandler:
         if strategy:
             self.logger.info(f"OrderCompletionHandler에 전략 연결: {strategy.name}")
 
-    def _notify_strategy_order_filled(self, order):
+    def _notify_strategy_order_filled(self, order) -> None:
         """전략의 on_order_filled 콜백 호출"""
         try:
             if self.strategy and hasattr(self.strategy, 'on_order_filled'):
@@ -67,7 +67,7 @@ class OrderCompletionHandler:
         except Exception as e:
             self.logger.warning(f"전략 on_order_filled 콜백 오류: {e}")
 
-    async def check_order_completions(self):
+    async def check_order_completions(self) -> None:
         """주문 완료 확인 및 상태 업데이트"""
         try:
             # 매수 주문 중인 종목들 확인
@@ -87,7 +87,7 @@ class OrderCompletionHandler:
         except Exception as e:
             self.logger.error(f"주문 완료 확인 오류: {e}")
 
-    async def _check_buy_order_completion(self, trading_stock: TradingStock):
+    async def _check_buy_order_completion(self, trading_stock: TradingStock) -> None:
         """매수 주문 완료 확인"""
         try:
             if not trading_stock.current_order_id:
@@ -146,7 +146,7 @@ class OrderCompletionHandler:
         except Exception as e:
             self.logger.error(f"{trading_stock.stock_code} 매수 주문 완료 확인 오류: {e}")
 
-    async def _check_sell_order_completion(self, trading_stock: TradingStock):
+    async def _check_sell_order_completion(self, trading_stock: TradingStock) -> None:
         """매도 주문 완료 확인"""
         try:
             if not trading_stock.current_order_id:
@@ -201,7 +201,7 @@ class OrderCompletionHandler:
         except Exception as e:
             self.logger.error(f"{trading_stock.stock_code} 매도 주문 완료 확인 오류: {e}")
 
-    async def on_order_filled(self, order):
+    async def on_order_filled(self, order) -> None:
         """주문 체결 시 즉시 호출되는 콜백 메서드"""
         try:
             self.logger.info(
@@ -237,7 +237,7 @@ class OrderCompletionHandler:
         except Exception as e:
             self.logger.error(f"주문 체결 콜백 처리 오류: {e}")
 
-    def _process_buy_fill_callback(self, trading_stock: TradingStock, order):
+    def _process_buy_fill_callback(self, trading_stock: TradingStock, order) -> None:
         """매수 체결 콜백 처리"""
         if trading_stock.state == StockState.BUY_PENDING:
             # 체결 처리 플래그 설정
@@ -270,7 +270,7 @@ class OrderCompletionHandler:
                 f"예상치 못한 상태에서 매수 체결: {trading_stock.state.value}"
             )
 
-    def _process_sell_fill_callback(self, trading_stock: TradingStock, order):
+    def _process_sell_fill_callback(self, trading_stock: TradingStock, order) -> None:
         """매도 체결 콜백 처리"""
         if trading_stock.state == StockState.SELL_PENDING:
             # 체결 처리 플래그 설정
@@ -306,7 +306,7 @@ class OrderCompletionHandler:
                 f"예상치 못한 상태에서 매도 체결: {trading_stock.state.value}"
             )
 
-    def _set_virtual_buy_info(self, trading_stock: TradingStock):
+    def _set_virtual_buy_info(self, trading_stock: TradingStock) -> None:
         """가상매매 모드일 때 가상매매 기록 ID 설정"""
         try:
             from config.settings import load_config
@@ -347,7 +347,7 @@ class OrderCompletionHandler:
         except Exception as virtual_err:
             self.logger.warning(f"가상매매 포지션 정보 설정 실패: {virtual_err}")
 
-    def _save_real_buy_record(self, trading_stock: TradingStock, order, source: str = ""):
+    def _save_real_buy_record(self, trading_stock: TradingStock, order, source: str = "") -> None:
         """실거래 매수 기록 저장"""
         try:
             from db.database_manager import DatabaseManager

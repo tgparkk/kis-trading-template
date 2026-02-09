@@ -173,7 +173,7 @@ class RealtimeDataLogger:
     def log_combined_data(self, stock_code: str, stock_name: str, 
                          minute_data: Optional[pd.DataFrame] = None,
                          price_data: Optional[Dict[str, Any]] = None,
-                         signal_data: Optional[Dict[str, Any]] = None):
+                         signal_data: Optional[Dict[str, Any]] = None) -> None:
         """
         통합 데이터 로깅 (분봉 + 현재가 + 신호)
         
@@ -320,7 +320,7 @@ class RealtimeDataLogger:
             self.logger.error(f"❌ 파일 통계 조회 오류: {e}")
             return {}
     
-    def cleanup_old_files(self, keep_days: int = 7):
+    def cleanup_old_files(self, keep_days: int = 7) -> None:
         """
         오래된 데이터 파일 정리
         
@@ -346,7 +346,7 @@ class RealtimeDataLogger:
         except Exception as e:
             self.logger.error(f"❌ 오래된 파일 정리 오류: {e}")
     
-    def __del__(self):
+    def __del__(self) -> None:
         """소멸자 - 파일 핸들 정리"""
         try:
             with self._lock:
@@ -372,7 +372,7 @@ def get_realtime_logger() -> RealtimeDataLogger:
 def log_intraday_data(stock_code: str, stock_name: str, 
                       minute_data: Optional[pd.DataFrame] = None,
                       price_data: Optional[Dict[str, Any]] = None,
-                      signal_data: Optional[Dict[str, Any]] = None):
+                      signal_data: Optional[Dict[str, Any]] = None) -> None:
     """
     장중 데이터 로깅 편의 함수
     

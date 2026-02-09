@@ -3,7 +3,7 @@
 """
 import asyncio
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor
 
 from .models import Stock, OHLCVData, TradingConfig
@@ -29,7 +29,7 @@ class RealTimeDataCollector:
         # 후보 종목 초기화
         self._initialize_stocks()
     
-    def _initialize_stocks(self):
+    def _initialize_stocks(self) -> None:
         """후보 종목 초기화"""
         for stock_code in self.config.data_collection.candidate_stocks:
             # TODO: 종목명 조회 API 추가 필요
@@ -83,7 +83,7 @@ class RealTimeDataCollector:
                 self.logger.error(f"데이터 수집 중 오류: {e}")
                 await asyncio.sleep(10)  # 오류 시 10초 대기
     
-    async def _collect_all_stocks_data(self):
+    async def _collect_all_stocks_data(self) -> None:
         """모든 후보 종목 데이터 수집"""
         tasks = []
         stock_codes = []
@@ -112,7 +112,7 @@ class RealTimeDataCollector:
                     if stock_code in self._consecutive_failures:
                         del self._consecutive_failures[stock_code]
     
-    async def _collect_stock_data(self, stock_code: str):
+    async def _collect_stock_data(self, stock_code: str) -> None:
         """개별 종목 데이터 수집"""
         try:
             # API 호출을 별도 스레드에서 실행 (타임아웃 15초)
@@ -145,11 +145,11 @@ class RealTimeDataCollector:
         except Exception as e:
             self.logger.error(f"종목 데이터 수집 실패 {stock_code}: {e}")
     
-    def _get_current_price_sync(self, stock_code: str):
+    def _get_current_price_sync(self, stock_code: str) -> Any:
         """현재가 조회 (동기 버전)"""
         return self.broker.get_current_price(stock_code)
     
-    async def get_1min_ohlcv(self, stock_code: str, count: int = 30):
+    async def get_1min_ohlcv(self, stock_code: str, count: int = 30) -> Any:
         """1분봉 OHLCV 데이터 조회"""
         try:
             # 1분봉 데이터 조회 (타임아웃 15초)
@@ -167,7 +167,7 @@ class RealTimeDataCollector:
             self.logger.error(f"1분봉 데이터 조회 실패 {stock_code}: {e}")
             return None
     
-    def _get_ohlcv_sync(self, stock_code: str, period: str, days: int):
+    def _get_ohlcv_sync(self, stock_code: str, period: str, days: int) -> Any:
         """OHLCV 데이터 조회 (동기 버전)"""
         return self.broker.get_ohlcv_data(stock_code, period, days)
     
@@ -199,7 +199,7 @@ class RealTimeDataCollector:
         self.is_running = False
         self.logger.info("실시간 데이터 수집 중단")
     
-    def __del__(self):
+    def __del__(self) -> None:
         """소멸자"""
         if hasattr(self, 'executor'):
             self.executor.shutdown(wait=False)

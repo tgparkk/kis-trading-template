@@ -189,7 +189,7 @@ class IntradayStockManager:
         """실시간 분봉 데이터 업데이트"""
         return await self.realtime_updater.update_realtime_data(stock_code)
 
-    async def batch_update_realtime_data(self):
+    async def batch_update_realtime_data(self) -> None:
         """모든 관리 종목의 실시간 데이터 일괄 업데이트"""
         return await self.realtime_updater.batch_update_realtime_data()
 
@@ -416,7 +416,7 @@ class IntradayStockManager:
     # 하위 호환성 유지 메서드 (deprecated)
     # ========================================
 
-    def _save_minute_data_to_file(self):
+    def _save_minute_data_to_file(self) -> None:
         """[DEPRECATED] PostMarketDataSaver 사용"""
         self.logger.warning("⚠️ _save_minute_data_to_file은 deprecated입니다.")
         return self.data_saver.save_minute_data_to_file(self)

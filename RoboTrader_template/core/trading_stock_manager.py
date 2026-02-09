@@ -111,7 +111,7 @@ class TradingStockManager:
         return self._state_manager.stocks_by_state
 
     @property
-    def _lock(self):
+    def _lock(self) -> None:
         """Lock 객체 (하위 호환성)"""
         return self._state_manager.lock
 
@@ -121,7 +121,7 @@ class TradingStockManager:
         return self._position_monitor.is_monitoring
 
     @is_monitoring.setter
-    def is_monitoring(self, value: bool):
+    def is_monitoring(self, value: bool) -> None:
         """모니터링 상태 설정"""
         self._position_monitor.is_monitoring = value
 
@@ -131,7 +131,7 @@ class TradingStockManager:
         return self._position_monitor.monitor_interval
 
     @monitor_interval.setter
-    def monitor_interval(self, value: int):
+    def monitor_interval(self, value: int) -> None:
         """모니터링 간격 설정"""
         self._position_monitor.monitor_interval = value
 
@@ -141,7 +141,7 @@ class TradingStockManager:
         return self._order_execution.enable_re_trading
 
     @enable_re_trading.setter
-    def enable_re_trading(self, value: bool):
+    def enable_re_trading(self, value: bool) -> None:
         """재거래 활성화 설정"""
         self._order_execution.enable_re_trading = value
         self._completion_handler.enable_re_trading = value
@@ -283,11 +283,11 @@ class TradingStockManager:
     # 모니터링 (PositionMonitor에 위임)
     # =========================================================================
 
-    async def check_positions_once(self):
+    async def check_positions_once(self) -> None:
         """보유종목 1회 체크 (메인루프용)"""
         await self._position_monitor.check_positions_once()
 
-    async def start_monitoring(self):
+    async def start_monitoring(self) -> None:
         """종목 상태 모니터링 시작"""
         await self._position_monitor.start_monitoring()
 
@@ -299,7 +299,7 @@ class TradingStockManager:
     # 주문 체결 확인 (OrderCompletionHandler에 위임)
     # =========================================================================
 
-    async def on_order_filled(self, order):
+    async def on_order_filled(self, order) -> None:
         """주문 체결 시 즉시 호출되는 콜백 메서드"""
         await self._completion_handler.on_order_filled(order)
 
@@ -327,14 +327,14 @@ class TradingStockManager:
     # 내부 메서드 (하위 호환성을 위해 유지)
     # =========================================================================
 
-    def _register_stock(self, trading_stock: TradingStock):
+    def _register_stock(self, trading_stock: TradingStock) -> None:
         """종목 등록 (하위 호환성)"""
         self._state_manager.register_stock(trading_stock)
 
-    def _unregister_stock(self, stock_code: str):
+    def _unregister_stock(self, stock_code: str) -> None:
         """종목 등록 해제 (하위 호환성)"""
         self._state_manager.unregister_stock(stock_code)
 
-    def _change_stock_state(self, stock_code: str, new_state: StockState, reason: str = ""):
+    def _change_stock_state(self, stock_code: str, new_state: StockState, reason: str = "") -> None:
         """종목 상태 변경 (하위 호환성)"""
         self._state_manager.change_stock_state(stock_code, new_state, reason)

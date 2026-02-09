@@ -71,7 +71,7 @@ class PositionMonitor:
         self._strategy = strategy
         self.logger.debug(f"PositionMonitor에 전략 연결: {strategy.name if strategy else 'None'}")
 
-    async def start_monitoring(self):
+    async def start_monitoring(self) -> None:
         """종목 상태 모니터링 시작"""
         self.is_monitoring = True
         self.logger.info("종목 상태 모니터링 시작")
@@ -89,14 +89,14 @@ class PositionMonitor:
                 self.logger.error(f"종목 상태 모니터링 오류: {e}")
                 await asyncio.sleep(10)
 
-    async def check_positions_once(self):
+    async def check_positions_once(self) -> None:
         """보유종목 1회 체크 (현재가 업데이트 + 매도 판단, 메인루프에서 호출)"""
         try:
             await self._monitor_stock_states()
         except Exception as e:
             self.logger.error(f"보유종목 1회 체크 오류: {e}")
 
-    async def _monitor_stock_states(self):
+    async def _monitor_stock_states(self) -> None:
         """종목 상태 모니터링"""
         try:
             self.logger.debug("종목 상태 모니터링 실행")
@@ -113,7 +113,7 @@ class PositionMonitor:
         except Exception as e:
             self.logger.error(f"종목 상태 모니터링 중 오류: {e}")
 
-    async def _update_position_prices(self):
+    async def _update_position_prices(self) -> None:
         """포지션 현재가 업데이트"""
         try:
             positioned_stocks = list(
@@ -130,7 +130,7 @@ class PositionMonitor:
         except Exception as e:
             self.logger.error(f"포지션 현재가 업데이트 오류: {e}")
 
-    async def _check_positioned_stocks_for_sell(self):
+    async def _check_positioned_stocks_for_sell(self) -> None:
         """보유 종목 매도 판단 (손익절 체크)"""
         try:
             positioned_stocks = list(
@@ -163,7 +163,7 @@ class PositionMonitor:
         except Exception as e:
             self.logger.error(f"보유 종목 매도 판단 오류: {e}")
 
-    async def _analyze_sell_for_stock(self, trading_stock: TradingStock):
+    async def _analyze_sell_for_stock(self, trading_stock: TradingStock) -> None:
         """개별 종목 매도 판단"""
         try:
             stock_code = trading_stock.stock_code

@@ -123,7 +123,7 @@ class DynamicBatchCalculator:
         return batch_size, batch_delay
 
     def _validate_and_log(self, total_stocks: int, total_required_calls: int,
-                          batch_size: int, batch_delay: float):
+                          batch_size: int, batch_delay: float) -> None:
         """
         계산 결과 검증 및 로깅
 
