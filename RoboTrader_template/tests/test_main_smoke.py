@@ -14,6 +14,9 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# 외부 모듈 Mock (telegram, psycopg2 등)
+import tests._mock_modules  # noqa: F401
+
 
 # ============================================================================
 # 1. Import 테스트 - 모든 모듈 import가 정상인지
@@ -53,11 +56,10 @@ class TestImports:
         """bot/ 하위 모듈 import 가능"""
         from bot.initializer import BotInitializer
         from bot.trading_analyzer import TradingAnalyzer
-        from bot.rebalancing_handler import RebalancingHandler
         from bot.system_monitor import SystemMonitor
-        from bot.screening_runner import ScreeningRunner
         from bot.liquidation_handler import LiquidationHandler
         from bot.position_sync import PositionSyncManager
+        from bot.state_restorer import StateRestorer
 
     def test_no_removed_quant_imports(self):
         """제거된 quant 모듈이 main.py에서 import되지 않는지 확인"""
@@ -199,9 +201,7 @@ class TestBotInstantiation:
         bot = DayTradingBot()
         assert hasattr(bot, 'bot_initializer')
         assert hasattr(bot, 'trading_analyzer')
-        assert hasattr(bot, 'rebalancing_handler')
         assert hasattr(bot, 'system_monitor')
-        assert hasattr(bot, 'screening_runner')
         assert hasattr(bot, 'liquidation_handler')
         assert hasattr(bot, 'position_sync_manager')
 

@@ -270,7 +270,9 @@ class APIResp:
         fld = {}
         for x in self._resp.headers.keys():
             if x.islower():
-                fld[x] = self._resp.headers.get(x)
+                # 하이픈 등 식별자로 사용 불가능한 문자를 언더스코어로 치환
+                safe_key = x.replace('-', '_').replace('.', '_')
+                fld[safe_key] = self._resp.headers.get(x)
         _th_ = namedtuple('header', fld.keys())
         return _th_(**fld)
 

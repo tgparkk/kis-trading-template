@@ -1,26 +1,30 @@
 """
 TradingDecisionEngine 유닛 테스트
 - _safe_float 유틸리티
-- _check_stop_profit 손절/익절 판단
+- analyze_sell_decision 전략 기반 매도 판단
 - 경계값 및 예외 안전성
+
+Note: 손절/익절 판단은 PositionMonitor로 이동 (test_trading_flow.py에서 테스트)
 """
 import pytest
+import asyncio
 import math
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock, MagicMock, patch
 from core.trading_decision_engine import TradingDecisionEngine
 from core.models import TradingStock, StockState, Position
 
 
-def _make_engine():
+def _make_engine(strategy=None):
     """최소 의존성 엔진 생성"""
     engine = TradingDecisionEngine.__new__(TradingDecisionEngine)
     engine.logger = Mock()
-    engine.DEFAULT_STOP_LOSS = 0.10
-    engine.DEFAULT_TAKE_PROFIT = 0.15
+    engine.strategy = strategy
+    engine.trading_manager = Mock()
+    engine.virtual_trading = Mock()
     return engine
 
 
-def _make_stock_with_position(buy_price: float, target=None, stop=None):
+def _make_stock_with_position(buy_price: float):
     """포지션이 있는 TradingStock 생성"""
     stock = TradingStock(
         stock_code="005930",
@@ -33,10 +37,6 @@ def _make_stock_with_position(buy_price: float, target=None, stop=None):
         quantity=10,
         avg_price=buy_price
     )
-    if target is not None:
-        stock.target_profit_rate = target
-    if stop is not None:
-        stock.stop_loss_rate = stop
     return stock
 
 
@@ -64,103 +64,122 @@ class TestSafeFloat:
         assert engine._safe_float("abc") == 0.0
 
 
-class TestCheckStopProfit:
-    """_check_stop_profit 손절/익절 테스트"""
+class TestAnalyzeSellDecision:
+    """analyze_sell_decision 매도 판단 테스트
 
-    def test_take_profit(self):
+    손절/익절은 PositionMonitor._analyze_sell_for_stock()으로 이동.
+    여기서는 Strategy 기반 매도 신호만 테스트.
+    """
+
+    def test_no_position_returns_false(self):
+        """포지션 없으면 매도 불가"""
         engine = _make_engine()
-        stock = _make_stock_with_position(10000, target=0.15, stop=0.10)
-        # 16% 수익 → target=15% 초과
-        signal, reason = engine._check_stop_profit(stock, 11600)
-        assert signal is True
-        assert "익절" in reason
-        assert "16.0%" in reason
-
-    def test_stop_loss(self):
-        engine = _make_engine()
-        stock = _make_stock_with_position(10000, target=0.15, stop=0.10)
-        # -10% 손실 → stop=10% 도달
-        signal, reason = engine._check_stop_profit(stock, 9000)
-        assert signal is True
-        assert "손절" in reason
-
-    def test_hold_no_signal(self):
-        engine = _make_engine()
-        stock = _make_stock_with_position(10000, target=0.15, stop=0.10)
-        # 5% 수익 → target=15% 미달, stop=10% 미달
-        signal, reason = engine._check_stop_profit(stock, 10500)
-        assert signal is False
-        assert reason == ""
-
-    def test_custom_rates(self):
-        engine = _make_engine()
-        stock = _make_stock_with_position(10000, target=0.20, stop=0.08)
-        # 16% 수익 → target=20% 미달
-        signal, reason = engine._check_stop_profit(stock, 11600)
-        assert signal is False
-
-        # 20% 수익 → target=20% 도달
-        signal, reason = engine._check_stop_profit(stock, 12000)
-        assert signal is True
-        assert "익절" in reason
-
-    def test_default_rates(self):
-        engine = _make_engine()
-        # target/stop 속성 삭제 → getattr 기본값(DEFAULT_TAKE_PROFIT) 사용
         stock = TradingStock(
-            stock_code="005930",
-            stock_name="삼성전자",
-            state=StockState.POSITIONED,
+            stock_code="005930", stock_name="삼성전자",
+            state=StockState.SELECTED,
             selected_time=__import__('datetime').datetime.now()
         )
-        stock.position = Position(stock_code="005930", quantity=10, avg_price=10000)
-        del stock.target_profit_rate
-        del stock.stop_loss_rate
-        # 15% 수익 → DEFAULT_TAKE_PROFIT(0.15)
-        signal, reason = engine._check_stop_profit(stock, 11500)
-        assert signal is True
+        stock.position = None
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.analyze_sell_decision(stock))
+        assert result[0] is False
+        assert "포지션없음" in result[1]
 
-    def test_zero_buy_price(self):
+    def test_zero_avg_price_returns_false(self):
+        """avg_price가 0이면 매도 불가"""
         engine = _make_engine()
         stock = _make_stock_with_position(0)
-        signal, reason = engine._check_stop_profit(stock, 10000)
-        assert signal is False
-        assert reason == ""
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.analyze_sell_decision(stock))
+        assert result[0] is False
 
-    def test_boundary_exact_profit(self):
-        engine = _make_engine()
-        stock = _make_stock_with_position(10000, target=0.15, stop=0.10)
-        # 정확히 15% → pnl >= target → True
-        signal, reason = engine._check_stop_profit(stock, 11500)
-        assert signal is True
-
-    def test_boundary_exact_loss(self):
-        engine = _make_engine()
-        stock = _make_stock_with_position(10000, target=0.15, stop=0.10)
-        # 정확히 -10% → pnl <= -stop → True
-        signal, reason = engine._check_stop_profit(stock, 9000)
-        assert signal is True
-
-    def test_boundary_just_below_profit(self):
-        engine = _make_engine()
-        stock = _make_stock_with_position(10000, target=0.15, stop=0.10)
-        # 14.99% → 익절 미달
-        signal, reason = engine._check_stop_profit(stock, 11499)
-        assert signal is False
-
-    def test_with_stock_defaults(self):
-        """TradingStock 기본값(target=3%, stop=10%) 사용"""
-        engine = _make_engine()
-        stock = _make_stock_with_position(10000)  # 기본값 target=0.03
-        # 5% 수익 → stock.target=3% 초과 → 익절
-        signal, reason = engine._check_stop_profit(stock, 10500)
-        assert signal is True
-        assert "익절" in reason
-
-    def test_exception_safety(self):
-        engine = _make_engine()
+    def test_no_strategy_returns_false(self):
+        """전략 미설정 시 매도 신호 없음"""
+        engine = _make_engine(strategy=None)
         stock = _make_stock_with_position(10000)
-        stock.position = None  # position 없음
-        signal, reason = engine._check_stop_profit(stock, 10000)
-        assert signal is False
-        assert reason == ""
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.analyze_sell_decision(stock))
+        assert result[0] is False
+        assert result[1] == ""
+
+    def test_strategy_sell_signal(self):
+        """전략이 매도 신호를 반환하면 매도"""
+        from unittest.mock import patch
+        mock_strategy = Mock()
+        mock_strategy.name = "TestStrategy"
+
+        # SignalResult mock
+        signal_result = Mock()
+        signal_result.reasons = ["RSI 과매수"]
+
+        engine = _make_engine(strategy=mock_strategy)
+        stock = _make_stock_with_position(10000)
+
+        import pandas as pd
+        combined_data = pd.DataFrame({'close': [10500]})
+
+        # SignalType.SELL mock
+        with patch('core.trading_decision_engine.SignalType', create=True) as mock_signal_type:
+            # 실제 import를 모킹
+            mock_sell = Mock()
+            mock_strong_sell = Mock()
+
+            signal_result.signal_type = mock_sell
+
+            mock_strategy.generate_signal.return_value = signal_result
+
+            # strategies.base.SignalType을 모킹해야 함
+            with patch.dict('sys.modules', {'strategies': Mock(), 'strategies.base': Mock()}):
+                import sys
+                sys.modules['strategies.base'].SignalType.SELL = mock_sell
+                sys.modules['strategies.base'].SignalType.STRONG_SELL = mock_strong_sell
+
+                result = asyncio.get_event_loop().run_until_complete(
+                    engine.analyze_sell_decision(stock, combined_data))
+                assert result[0] is True
+                assert "RSI 과매수" in result[1]
+
+    def test_strategy_no_signal(self):
+        """전략이 신호 없음을 반환"""
+        mock_strategy = Mock()
+        mock_strategy.generate_signal.return_value = None
+        engine = _make_engine(strategy=mock_strategy)
+        stock = _make_stock_with_position(10000)
+
+        import pandas as pd
+        combined_data = pd.DataFrame({'close': [10500]})
+
+        with patch.dict('sys.modules', {'strategies': Mock(), 'strategies.base': Mock()}):
+            import sys
+            sys.modules['strategies.base'].SignalType.SELL = Mock()
+            sys.modules['strategies.base'].SignalType.STRONG_SELL = Mock()
+
+            result = asyncio.get_event_loop().run_until_complete(
+                engine.analyze_sell_decision(stock, combined_data))
+            assert result[0] is False
+
+    def test_strategy_exception_safety(self):
+        """전략에서 예외 발생해도 안전"""
+        mock_strategy = Mock()
+        mock_strategy.generate_signal.side_effect = Exception("전략 오류")
+        engine = _make_engine(strategy=mock_strategy)
+        stock = _make_stock_with_position(10000)
+
+        import pandas as pd
+        combined_data = pd.DataFrame({'close': [10500]})
+
+        with patch.dict('sys.modules', {'strategies': Mock(), 'strategies.base': Mock()}):
+            result = asyncio.get_event_loop().run_until_complete(
+                engine.analyze_sell_decision(stock, combined_data))
+            assert result[0] is False
+
+    def test_no_combined_data_skips_strategy(self):
+        """combined_data가 None이면 전략 체크 건너뜀"""
+        mock_strategy = Mock()
+        engine = _make_engine(strategy=mock_strategy)
+        stock = _make_stock_with_position(10000)
+
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.analyze_sell_decision(stock, combined_data=None))
+        assert result[0] is False
+        mock_strategy.generate_signal.assert_not_called()
