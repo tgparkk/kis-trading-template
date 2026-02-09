@@ -20,7 +20,7 @@ class StockMinuteData:
     last_update: Optional[datetime] = None
     data_complete: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """초기화 후 처리"""
         if self.last_update is None:
             self.last_update = self.selected_time

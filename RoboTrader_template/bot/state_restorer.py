@@ -30,7 +30,7 @@ class StateRestorer:
         config,
         get_previous_close_callback,
         broker=None,
-    ):
+    ) -> None:
         """
         Args:
             trading_manager: TradingStockManager 인스턴스
@@ -50,7 +50,7 @@ class StateRestorer:
         # 가상/실전 모드 플래그
         self.is_paper_trading = getattr(config, 'paper_trading', True) if config else True
 
-    async def restore_todays_candidates(self):
+    async def restore_todays_candidates(self) -> None:
         """DB에서 후보 종목 및 보유 종목 복원"""
         try:
             today = now_kst().strftime('%Y-%m-%d')
@@ -67,7 +67,7 @@ class StateRestorer:
         except Exception as e:
             logger.error(f"❌ 종목 복원 실패: {e}")
 
-    async def _restore_candidates(self, today: str):
+    async def _restore_candidates(self, today: str) -> None:
         """DB에서 오늘 후보 종목 복원"""
         try:
             # TimescaleDB에서 오늘 후보 종목 직접 조회
@@ -116,7 +116,7 @@ class StateRestorer:
         except Exception as e:
             logger.error(f"❌ 후보 종목 복원 실패: {e}")
 
-    async def _restore_holdings_from_db(self):
+    async def _restore_holdings_from_db(self) -> None:
         """가상매매 모드: DB에서 보유 종목 복원"""
         try:
             holdings = self.db_manager.get_virtual_open_positions()
@@ -169,7 +169,7 @@ class StateRestorer:
         except Exception as e:
             logger.error(f"❌ [가상매매] 보유 종목 복원 실패: {e}")
 
-    async def _restore_holdings_from_real_account(self):
+    async def _restore_holdings_from_real_account(self) -> None:
         """실전매매 모드: 실제 계좌에서 보유 종목 조회 → DB 동기화 → 메모리 복원"""
         try:
             if not self.broker:
@@ -271,7 +271,7 @@ class StateRestorer:
             logger.warning("⚠️ DB 복원으로 대체합니다...")
             await self._restore_holdings_from_db()
 
-    async def _detect_holdings_mismatch(self, real_holdings: List[Dict], db_holdings_dict: Dict[str, Dict]):
+    async def _detect_holdings_mismatch(self, real_holdings: List[Dict], db_holdings_dict: Dict[str, Dict]) -> None:
         """실제 계좌와 DB 간 보유 종목 불일치 감지"""
         try:
             mismatches = []

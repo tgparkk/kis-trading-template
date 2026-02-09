@@ -34,7 +34,7 @@ class IntradayDataCollector:
     과거 분봉 데이터 및 일봉 데이터 수집을 담당합니다.
     """
 
-    def __init__(self, manager: 'IntradayStockManager'):
+    def __init__(self, manager: 'IntradayStockManager') -> None:
         """
         Args:
             manager: IntradayStockManager 인스턴스
@@ -279,7 +279,7 @@ class IntradayDataCollector:
     def _log_collection_result(
         self, stock_code: str, data: pd.DataFrame,
         market_open: datetime, selected_time: datetime
-    ):
+    ) -> None:
         """수집 결과 로깅"""
         data_count = len(data)
         if data_count > 0:
@@ -382,7 +382,7 @@ class IntradayDataCollector:
     async def _retry_fallback_with_adjusted_time(
         self, stock_code: str, div_code: str,
         target_hour: str, selected_time: datetime
-    ):
+    ) -> None:
         """폴백 방식 시간 조정 재시도"""
         try:
             selected_time_dt = datetime.strptime(target_hour, "%H%M%S")

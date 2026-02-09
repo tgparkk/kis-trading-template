@@ -150,7 +150,11 @@ class TestUrlFetchCircuitBreaker:
         cb.record_failure()
         assert cb.state == CircuitState.OPEN
         
-        with patch('api.circuit_breaker.get_circuit_breaker', return_value=cb):
+        # 다른 테스트가 sys.modules['api']를 mock으로 교체할 수 있으므로
+        # sys.modules에서 직접 circuit_breaker 모듈을 참조
+        import sys
+        cb_mod = sys.modules['api.circuit_breaker']
+        with patch.object(cb_mod, 'get_circuit_breaker', return_value=cb):
             from api.kis_auth import _url_fetch
             result = _url_fetch("/test", "TEST001", "", {})
             assert result is None

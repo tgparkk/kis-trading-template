@@ -15,11 +15,11 @@ if TYPE_CHECKING:
 class PositionSyncManager:
     """포지션 동기화 관리 클래스"""
 
-    def __init__(self, bot: 'DayTradingBot'):
+    def __init__(self, bot: 'DayTradingBot') -> None:
         self.bot = bot
         self.logger = setup_logger(__name__)
 
-    async def emergency_sync_positions(self):
+    async def emergency_sync_positions(self) -> None:
         """긴급 포지션 동기화 - 매수가 기준 3%/2% 고정 비율"""
         try:
             self.logger.info("긴급 포지션 동기화 시작")
@@ -78,7 +78,7 @@ class PositionSyncManager:
             self.logger.error(f"긴급 포지션 동기화 실패: {e}")
             await self.bot.telegram.notify_error("Emergency Position Sync", e)
 
-    async def _add_unmanaged_stocks(self, unmanaged_stocks: list, missing_positions: list):
+    async def _add_unmanaged_stocks(self, unmanaged_stocks: list, missing_positions: list) -> None:
         """미관리 보유 종목을 시스템에 추가"""
         self.logger.warning(f"미관리 보유 종목 발견: {[code for code, _ in unmanaged_stocks]}")
         for code, balance_stock in unmanaged_stocks:
@@ -121,7 +121,7 @@ class PositionSyncManager:
             except Exception as e:
                 self.logger.error(f"{code} 미관리 종목 복구 실패: {e}")
 
-    async def _restore_missing_positions(self, missing_positions: list):
+    async def _restore_missing_positions(self, missing_positions: list) -> None:
         """누락된 포지션 복구"""
         for code, balance_stock, ts in missing_positions:
             # 포지션 복원
@@ -151,7 +151,7 @@ class PositionSyncManager:
                 f"목표 {target_price:,.0f} / 손절 {stop_loss:,.0f}"
             )
 
-    async def _send_sync_notification(self, missing_positions: list):
+    async def _send_sync_notification(self, missing_positions: list) -> None:
         """동기화 결과 텔레그램 알림"""
         message = f"포지션 동기화 복구\n"
         message += f"복구된 종목: {len(missing_positions)}개\n"

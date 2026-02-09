@@ -24,6 +24,9 @@ from . import kis_financial_api
 # API 매니저
 from . import kis_api_manager
 
+# Circuit Breaker
+from . import circuit_breaker
+
 __all__ = [
     'kis_auth',
     'kis_market_api',

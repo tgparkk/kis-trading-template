@@ -38,7 +38,7 @@ class RealtimeCandleBuilder:
     3분봉 매매 판단 시 지연을 최소화합니다.
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         """초기화"""
         self.logger = setup_logger(__name__)
         

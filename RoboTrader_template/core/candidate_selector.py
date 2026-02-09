@@ -41,7 +41,7 @@ class CandidateSelector:
         'ETF', 'ETN', 'FOCUS', 'BNK', 'WOORI',
     ]
 
-    def __init__(self, config: TradingConfig, broker: KISBroker, db_manager=None):
+    def __init__(self, config: TradingConfig, broker: KISBroker, db_manager=None) -> None:
         self.config = config
         self.broker = broker
         self.db_manager = db_manager

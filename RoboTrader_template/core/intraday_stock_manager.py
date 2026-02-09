@@ -45,7 +45,7 @@ class IntradayStockManager:
     - PriceService: 현재가 조회
     """
 
-    def __init__(self, broker, config=None):
+    def __init__(self, broker, config=None) -> None:
         """
         초기화
 

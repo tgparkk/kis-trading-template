@@ -32,7 +32,7 @@ class PositionMonitor:
     def __init__(self, state_manager: 'StockStateManager',
                  completion_handler: 'OrderCompletionHandler',
                  intraday_manager: 'IntradayStockManager',
-                 data_collector: 'RealTimeDataCollector'):
+                 data_collector: 'RealTimeDataCollector') -> None:
         """
         초기화
 
@@ -275,7 +275,7 @@ class PositionMonitor:
         return current_price
 
     async def _execute_sell(self, trading_stock: TradingStock,
-                           sell_price: float, reason: str):
+                           sell_price: float, reason: str) -> None:
         """매도 실행 (실패 시 재시도 포함)"""
         stock_code = trading_stock.stock_code
         max_retries = 3

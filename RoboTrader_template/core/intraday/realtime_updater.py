@@ -30,7 +30,7 @@ class RealtimeDataUpdater:
     실시간 분봉 데이터 업데이트 및 배치 처리를 담당합니다.
     """
 
-    def __init__(self, manager: 'IntradayStockManager'):
+    def __init__(self, manager: 'IntradayStockManager') -> None:
         """
         Args:
             manager: IntradayStockManager 인스턴스
@@ -323,7 +323,7 @@ class RealtimeDataUpdater:
 
         return updated_realtime
 
-    async def batch_update_realtime_data(self):
+    async def batch_update_realtime_data(self) -> None:
         """모든 관리 종목의 실시간 데이터 일괄 업데이트"""
         try:
             current_time = now_kst()
@@ -394,7 +394,7 @@ class RealtimeDataUpdater:
         except Exception as e:
             self.logger.error(f"❌ 실시간 데이터 일괄 업데이트 오류: {e}")
 
-    def _check_and_save_market_close_data(self, current_time: datetime):
+    def _check_and_save_market_close_data(self, current_time: datetime) -> None:
         """장 마감 시 데이터 저장 체크"""
         market_hours = MarketHours.get_market_hours('KRX', current_time)
         market_close = market_hours['market_close']
@@ -406,7 +406,7 @@ class RealtimeDataUpdater:
                 self.manager._data_saved_today = True
                 self.logger.info(f"✅ 장 마감 데이터 저장 완료")
 
-    async def _recollect_incomplete_stocks(self, stock_codes: list):
+    async def _recollect_incomplete_stocks(self, stock_codes: list) -> None:
         """미완성 데이터 재수집"""
         incomplete_stocks = []
         with self.manager._lock:
@@ -441,7 +441,7 @@ class RealtimeDataUpdater:
             self.logger.error(f"❌ {stock_code} 현재가 업데이트 오류: {e}")
             return False
 
-    def _log_realtime_data(self, stock_code: str, minute_result, price_result):
+    def _log_realtime_data(self, stock_code: str, minute_result, price_result) -> None:
         """실시간 데이터 로깅"""
         try:
             stock_name = None
@@ -483,7 +483,7 @@ class RealtimeDataUpdater:
     def _log_quality_report(
         self, total_stocks: int, successful_minute: int,
         successful_price: int, quality_issues: list
-    ):
+    ) -> None:
         """품질 리포트 로깅"""
         minute_rate = (successful_minute / total_stocks) * 100 if total_stocks > 0 else 0
         price_rate = (successful_price / total_stocks) * 100 if total_stocks > 0 else 0

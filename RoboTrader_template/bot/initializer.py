@@ -18,29 +18,29 @@ if TYPE_CHECKING:
 class BotInitializer:
     """봇 초기화 담당 클래스"""
 
-    def __init__(self, bot: 'DayTradingBot'):
+    def __init__(self, bot: 'DayTradingBot') -> None:
         self.bot = bot
         self.logger = setup_logger(__name__)
 
-    def setup_signal_handlers(self):
+    def setup_signal_handlers(self) -> None:
         """시그널 핸들러 등록"""
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-    def _signal_handler(self, signum, frame):
+    def _signal_handler(self, signum, frame) -> None:
         """시그널 핸들러 (Ctrl+C 등)"""
         self.logger.info(f"종료 신호 수신: {signum}")
         self.bot.is_running = False
 
-    def check_duplicate_process(self, pid_file: Path):
+    def check_duplicate_process(self, pid_file: Path) -> None:
         """프로세스 중복 실행 방지"""
         check_duplicate_process(str(pid_file))
 
-    def load_config(self):
+    def load_config(self) -> None:
         """설정 로드"""
         return load_config()
 
-    def log_rebalancing_mode(self, config):
+    def log_rebalancing_mode(self, config) -> None:
         """리밸런싱 모드 상태 로깅"""
         if getattr(config, 'rebalancing_mode', False):
             self.logger.info("리밸런싱 모드 활성화: 09:05 리밸런싱으로 매수, 장중 손절/익절 매도 판단 활성화")
@@ -83,7 +83,7 @@ class BotInitializer:
             self.logger.error(f"시스템 초기화 실패: {e}")
             return False
 
-    async def _initialize_fund_manager(self):
+    async def _initialize_fund_manager(self) -> None:
         """자금 관리자 초기화"""
         # 테스트 기간: 가상매매 모드로 항상 1000만원 설정
         if self.bot.decision_engine.is_virtual_mode:
@@ -104,7 +104,7 @@ class BotInitializer:
                 self.logger.warning("잔고 조회 실패 - 기본값 1천만원으로 설정")
                 self.bot.fund_manager.update_total_funds(10000000)
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """시스템 종료"""
         try:
             self.logger.info("시스템 종료 시작")
@@ -134,7 +134,7 @@ class BotInitializer:
         except Exception as e:
             self.logger.error(f"시스템 종료 중 오류: {e}")
 
-    async def _cancel_pending_orders(self):
+    async def _cancel_pending_orders(self) -> None:
         """종료 시 미체결 주문 일괄 취소"""
         try:
             pending_orders = self.bot.order_manager.get_pending_orders()

@@ -172,7 +172,7 @@ class OrderExecutorMixin:
             self._release_temp_reserve()
             return None
 
-    def _release_temp_reserve(self: 'OrderManagerBase'):
+    def _release_temp_reserve(self: 'OrderManagerBase') -> None:
         """임시 FundManager 예약 해제"""
         temp_id = getattr(self, '_temp_reserve_id', None)
         if temp_id and self.fund_manager:
@@ -183,7 +183,7 @@ class OrderExecutorMixin:
                 self.logger.warning(f"임시 자금 예약 해제 실패: {e}")
         self._temp_reserve_id = None
 
-    def _transfer_temp_reserve(self: 'OrderManagerBase', real_order_id: str):
+    def _transfer_temp_reserve(self: 'OrderManagerBase', real_order_id: str) -> None:
         """임시 예약을 실제 order_id로 교체"""
         temp_id = getattr(self, '_temp_reserve_id', None)
         if temp_id and self.fund_manager:
@@ -363,7 +363,7 @@ class OrderExecutorMixin:
             self.logger.error(f"주문 취소 예외: {order_id} - {e}")
             return False
 
-    async def _check_price_adjustment(self: 'OrderManagerBase', order_id: str):
+    async def _check_price_adjustment(self: 'OrderManagerBase', order_id: str) -> None:
         """가격 정정 검토"""
         try:
             if order_id not in self.pending_orders:
@@ -409,7 +409,7 @@ class OrderExecutorMixin:
         except Exception as e:
             self.logger.error(f"가격 정정 검토 실패 {order_id}: {e}")
 
-    async def _adjust_order_price(self: 'OrderManagerBase', order_id: str, new_price: float):
+    async def _adjust_order_price(self: 'OrderManagerBase', order_id: str, new_price: float) -> None:
         """주문 가격 정정"""
         try:
             if order_id not in self.pending_orders:
@@ -467,7 +467,7 @@ class OrderExecutorMixin:
 
     async def _save_paper_buy_to_db(self: 'OrderManagerBase', stock_code: str, quantity: int,
                                     price: float, target_profit_rate: float,
-                                    stop_loss_rate: float):
+                                    stop_loss_rate: float) -> None:
         """가상매매 매수 DB 저장"""
         if not self.db_manager:
             return
@@ -502,7 +502,7 @@ class OrderExecutorMixin:
         except Exception as db_err:
             self.logger.error(f"가상매매 DB 저장 오류: {db_err}")
 
-    async def _save_paper_sell_to_db(self: 'OrderManagerBase', stock_code: str, quantity: int, price: float):
+    async def _save_paper_sell_to_db(self: 'OrderManagerBase', stock_code: str, quantity: int, price: float) -> None:
         """가상매매 매도 DB 저장"""
         if not self.db_manager:
             return
@@ -539,7 +539,7 @@ class OrderExecutorMixin:
         except Exception as db_err:
             self.logger.error(f"가상매도 DB 저장 오류: {db_err}")
 
-    async def _notify_order_filled(self: 'OrderManagerBase', order: Order):
+    async def _notify_order_filled(self: 'OrderManagerBase', order: Order) -> None:
         """체결 알림 전송"""
         if self.telegram:
             await self.telegram.notify_order_filled({
@@ -550,7 +550,7 @@ class OrderExecutorMixin:
                 'price': order.price
             })
 
-    async def _trigger_order_filled_callback(self: 'OrderManagerBase', order: Order):
+    async def _trigger_order_filled_callback(self: 'OrderManagerBase', order: Order) -> None:
         """TradingStockManager에 체결 콜백 전달"""
         if self.trading_manager:
             try:

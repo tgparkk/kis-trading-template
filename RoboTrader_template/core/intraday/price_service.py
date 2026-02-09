@@ -22,7 +22,7 @@ class PriceService:
     매도 판단용 실시간 현재가 조회 및 캐시 관리를 담당합니다.
     """
 
-    def __init__(self, manager: 'IntradayStockManager'):
+    def __init__(self, manager: 'IntradayStockManager') -> None:
         """
         Args:
             manager: IntradayStockManager 인스턴스

@@ -17,12 +17,12 @@ if TYPE_CHECKING:
 class SystemMonitor:
     """시스템 모니터링 클래스"""
 
-    def __init__(self, bot: 'DayTradingBot'):
+    def __init__(self, bot: 'DayTradingBot') -> None:
         self.bot = bot
         self.logger = setup_logger(__name__)
         self._last_daily_report_date = None
 
-    async def run_system_monitoring_task(self):
+    async def run_system_monitoring_task(self) -> None:
         """시스템 모니터링 태스크"""
         try:
             self.logger.info("DEBUG: _system_monitoring_task 시작됨")
@@ -65,12 +65,12 @@ class SystemMonitor:
             self.logger.error(f"시스템 모니터링 태스크 오류: {e}")
             await self.bot.telegram.notify_error("SystemMonitoring", e)
 
-    async def _handle_premarket_tasks(self, current_time):
+    async def _handle_premarket_tasks(self, current_time) -> None:
         """장 시작 전 태스크 처리"""
         # 전략의 get_target_stocks()를 통한 후보 종목 자동 등록
         await self._register_strategy_target_stocks()
 
-    async def _register_strategy_target_stocks(self):
+    async def _register_strategy_target_stocks(self) -> None:
         """전략의 get_target_stocks()에서 후보 종목을 가져와 등록"""
         try:
             # 이미 등록했으면 스킵 (하루에 1회)
@@ -111,7 +111,7 @@ class SystemMonitor:
         except Exception as e:
             self.logger.error(f"전략 후보 종목 등록 오류: {e}")
 
-    async def _handle_postmarket_tasks(self, current_time):
+    async def _handle_postmarket_tasks(self, current_time) -> None:
         """장 마감 후 태스크 처리"""
         if current_time.hour == 15 and current_time.minute >= 35:
             if self._last_daily_report_date != current_time.date():
@@ -123,7 +123,7 @@ class SystemMonitor:
                 except Exception as report_err:
                     self.logger.error(f"일일 매매 리포트 생성 오류: {report_err}")
 
-    async def _save_portfolio_snapshot(self, current_time):
+    async def _save_portfolio_snapshot(self, current_time) -> None:
         """포트폴리오 스냅샷 저장"""
         self.logger.info(f"포트폴리오 스냅샷 저장 ({current_time.strftime('%H:%M:%S')})")
         try:
@@ -132,7 +132,7 @@ class SystemMonitor:
         except Exception as snapshot_err:
             self.logger.error(f"포트폴리오 스냅샷 저장 오류: {snapshot_err}")
 
-    async def _log_system_status(self):
+    async def _log_system_status(self) -> None:
         """시스템 상태 로깅"""
         try:
             current_time = now_kst()
@@ -186,7 +186,7 @@ class SystemMonitor:
         except Exception as e:
             self.logger.error(f"시스템 상태 로깅 오류: {e}")
 
-    async def _refresh_api(self):
+    async def _refresh_api(self) -> None:
         """API 재초기화"""
         try:
             self.logger.info("API 24시간 주기 재초기화 시작")
@@ -206,10 +206,10 @@ class SystemMonitor:
             await self.bot.telegram.notify_error("API Refresh", e)
             return False
 
-    def get_last_daily_report_date(self):
+    def get_last_daily_report_date(self) -> None:
         """마지막 리포트 날짜 반환"""
         return self._last_daily_report_date
 
-    def set_last_daily_report_date(self, date):
+    def set_last_daily_report_date(self, date) -> None:
         """마지막 리포트 날짜 설정"""
         self._last_daily_report_date = date

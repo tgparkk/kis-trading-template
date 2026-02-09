@@ -9,6 +9,7 @@
 import logging
 import time
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 
@@ -69,12 +70,21 @@ class MomentumScreener:
                     amount = amount_raw * 1_000_000  # 원 단위로 변환
                     is_rising = s.get("compareToPreviousPrice", {}).get("name") == "RISING"
 
+                    # 등락률 추출
+                    change_rate = 0.0
+                    try:
+                        rate_str = s.get("fluctuationsRatio", "0").replace(",", "")
+                        change_rate = float(rate_str)
+                    except (ValueError, TypeError):
+                        pass
+
                     all_stocks.append({
                         "code": s["itemCode"],
                         "name": s["stockName"],
                         "close": close,
                         "trading_amount": amount,
                         "is_rising": is_rising,
+                        "change_rate": change_rate,
                     })
                 except (ValueError, KeyError):
                     continue
@@ -131,7 +141,7 @@ class MomentumScreener:
 
         logger.info(f"전체 {len(all_stocks)}종목 조회 완료")
 
-        # 필터: 종가, 거래대금, 당일 상승
+        # 1차 필터: 종가, 거래대금, 당일 상승
         candidates = [
             s for s in all_stocks
             if s["close"] >= self.min_close
@@ -140,18 +150,21 @@ class MomentumScreener:
         ]
         logger.info(f"1차 필터 (종가≥{self.min_close}, 거래대금≥{self.min_trading_amount:,}, 당일상승): {len(candidates)}종목")
 
-        # 2단계: 후보 종목들의 일봉 데이터로 연속 상승 체크
-        results = []
-        for i, s in enumerate(candidates):
-            if i > 0 and i % 50 == 0:
-                logger.info(f"진행: {i}/{len(candidates)}...")
-                time.sleep(0.5)
+        # 2차 필터: ETF 제외 + 등락률 0.3% 미만 제거 (5일 연속 상승 가능성 낮음)
+        candidates = [
+            s for s in candidates
+            if not any(s["name"].startswith(p) for p in ETF_PREFIXES)
+            and s["change_rate"] >= 0.3
+        ]
+        logger.info(f"2차 필터 (ETF제외, 등락률≥0.3%): {len(candidates)}종목")
 
+        # 3단계: 병렬로 일봉 데이터 조회하여 연속 상승 체크
+        results = []
+
+        def _check_consecutive(s: Dict) -> Optional[Dict]:
             closes_data = self._fetch_daily_closes(s["code"], days=consecutive_days + 2)
             if len(closes_data) < consecutive_days + 1:
-                continue
-
-            # 연속 상승 카운트 (최신부터 역순)
+                return None
             closes = [c for _, c in closes_data]
             up_days = 0
             for j in range(len(closes) - 1, 0, -1):
@@ -159,21 +172,32 @@ class MomentumScreener:
                     up_days += 1
                 else:
                     break
-
             if up_days >= consecutive_days:
-                # ETF 제외
-                if any(s["name"].startswith(p) for p in ETF_PREFIXES):
-                    continue
-                results.append({
+                return {
                     "code": s["code"],
                     "name": s["name"],
                     "close": s["close"],
-                    "volume": 0,  # 네이버 API에서 별도 제공
+                    "volume": 0,
                     "trading_amount": s["trading_amount"],
                     "consecutive_up_days": up_days,
-                })
+                }
+            return None
 
-            time.sleep(0.05)  # rate limit
+        max_workers = 10  # 동시 요청 수 제한
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_check_consecutive, s): s for s in candidates}
+            done_count = 0
+            for future in as_completed(futures):
+                done_count += 1
+                if done_count % 100 == 0:
+                    logger.info(f"진행: {done_count}/{len(candidates)}...")
+                try:
+                    result = future.result()
+                    if result:
+                        results.append(result)
+                except Exception as e:
+                    s = futures[future]
+                    logger.warning(f"{s['code']} 체크 실패: {e}")
 
         # 거래대금 내림차순 정렬
         results.sort(key=lambda x: x["trading_amount"], reverse=True)

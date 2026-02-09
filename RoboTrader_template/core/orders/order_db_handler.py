@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class OrderDBHandlerMixin:
     """주문 DB 저장 관련 메서드들을 모아둔 Mixin 클래스"""
 
-    async def _save_real_trade_to_db(self: 'OrderManagerBase', order, filled_price: float):
+    async def _save_real_trade_to_db(self: 'OrderManagerBase', order, filled_price: float) -> None:
         """
         실전 매매 시 DB에 거래 기록 저장
 
@@ -40,7 +40,7 @@ class OrderDBHandlerMixin:
         except Exception as e:
             self.logger.error(f"실전 거래 DB 저장 오류: {e}")
 
-    async def _save_real_buy_to_db(self: 'OrderManagerBase', order, filled_price: float, stock_name: str):
+    async def _save_real_buy_to_db(self: 'OrderManagerBase', order, filled_price: float, stock_name: str) -> None:
         """실전 매수 기록 DB 저장"""
         buy_record_id = self.db_manager.save_virtual_buy(
             stock_code=order.stock_code,
@@ -57,7 +57,7 @@ class OrderDBHandlerMixin:
         else:
             self.logger.error(f"실전 매수 기록 저장 실패: {order.stock_code}")
 
-    async def _save_real_sell_to_db(self: 'OrderManagerBase', order, filled_price: float, stock_name: str):
+    async def _save_real_sell_to_db(self: 'OrderManagerBase', order, filled_price: float, stock_name: str) -> None:
         """실전 매도 기록 DB 저장"""
         # 매수 기록 ID 조회
         buy_record_id = None

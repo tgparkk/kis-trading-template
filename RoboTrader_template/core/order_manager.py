@@ -51,7 +51,7 @@ class OrderManager(
     """
 
     def __init__(self, config: 'TradingConfig', broker: 'KISBroker',
-                 telegram_integration=None, db_manager=None):
+                 telegram_integration=None, db_manager=None) -> None:
         """
         주문 관리자 초기화
 

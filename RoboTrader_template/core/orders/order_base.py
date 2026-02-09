@@ -19,7 +19,7 @@ class OrderManagerBase:
     """주문 관리자 기본 클래스 - 공통 속성 및 유틸리티 메서드"""
 
     def __init__(self, config: TradingConfig, broker: 'KISBroker',
-                 telegram_integration=None, db_manager=None):
+                 telegram_integration=None, db_manager=None) -> None:
         self.config = config
         self.broker = broker
         self.telegram = telegram_integration

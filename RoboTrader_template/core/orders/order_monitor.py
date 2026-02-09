@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 class OrderMonitorMixin:
     """주문 모니터링 관련 메서드들을 모아둔 Mixin 클래스"""
 
-    async def start_monitoring(self: 'OrderManagerBase'):
+    async def start_monitoring(self: 'OrderManagerBase') -> None:
         """미체결 주문 모니터링 시작"""
         self.is_monitoring = True
         self.logger.info("주문 모니터링 시작")
@@ -38,14 +38,14 @@ class OrderMonitorMixin:
                 self.logger.error(f"주문 모니터링 중 오류: {e}")
                 await asyncio.sleep(ORDER_MONITOR_ERROR_INTERVAL)
 
-    async def check_pending_orders_once(self: 'OrderManagerBase'):
+    async def check_pending_orders_once(self: 'OrderManagerBase') -> None:
         """미체결 주문 1회 확인 (메인루프에서 호출)"""
         try:
             await self._monitor_pending_orders()
         except Exception as e:
             self.logger.error(f"미체결 주문 1회 확인 오류: {e}")
 
-    async def _monitor_pending_orders(self: 'OrderManagerBase'):
+    async def _monitor_pending_orders(self: 'OrderManagerBase') -> None:
         """미체결 주문 모니터링"""
         current_time = now_kst()
         orders_to_process = list(self.pending_orders.keys())
@@ -93,7 +93,7 @@ class OrderMonitorMixin:
             except Exception as e:
                 self.logger.error(f"주문 모니터링 중 오류 {order_id}: {e}")
 
-    async def _check_false_positive_filled_orders(self: 'OrderManagerBase', current_time):
+    async def _check_false_positive_filled_orders(self: 'OrderManagerBase', current_time) -> None:
         """오탐지된 체결 주문 복구 (매수 30분, 매도 10분 이내 완료된 주문 확인)"""
         try:
             if not self.completed_orders:
@@ -154,7 +154,7 @@ class OrderMonitorMixin:
         except Exception as e:
             self.logger.error(f"오탐지 복구 체크 오류: {e}")
 
-    async def _restore_false_positive_order(self: 'OrderManagerBase', order, current_time):
+    async def _restore_false_positive_order(self: 'OrderManagerBase', order, current_time) -> None:
         """오탐지된 주문을 pending_orders로 복구"""
         try:
             # completed_orders에서 제거
@@ -182,7 +182,7 @@ class OrderMonitorMixin:
         except Exception as e:
             self.logger.error(f"오탐지 주문 복구 실패 {order.order_id}: {e}")
 
-    async def _check_order_status(self: 'OrderManagerBase', order_id: str):
+    async def _check_order_status(self: 'OrderManagerBase', order_id: str) -> None:
         """주문 상태 확인"""
         try:
             if order_id not in self.pending_orders:
@@ -213,7 +213,7 @@ class OrderMonitorMixin:
         except Exception as e:
             self.logger.error(f"주문 상태 확인 실패 {order_id}: {e}")
 
-    async def _process_order_status(self: 'OrderManagerBase', order_id: str, order, status_data: dict):
+    async def _process_order_status(self: 'OrderManagerBase', order_id: str, order, status_data: dict) -> None:
         """주문 상태 데이터 처리"""
         # 방어적 파싱 (쉼표/공백 등 제거)
         try:
@@ -263,7 +263,7 @@ class OrderMonitorMixin:
             # 그 외의 경우는 모두 미체결로 처리
             self.logger.debug(f"주문 대기 (미체결): {order_id} - 체결 {filled_qty}, 잔여 {remaining_qty}")
 
-    async def _handle_full_fill(self: 'OrderManagerBase', order_id: str, order, status_data: dict, filled_qty: int):
+    async def _handle_full_fill(self: 'OrderManagerBase', order_id: str, order, status_data: dict, filled_qty: int) -> None:
         """완전 체결 처리"""
         # 초엄격 체결 확인 조건 (오탐지 방지 강화)
         # 1. 잔여수량 정확히 0
@@ -359,7 +359,7 @@ class OrderMonitorMixin:
             })
 
     async def _handle_partial_fill(self: 'OrderManagerBase', order_id: str, order, status_data: dict,
-                                   filled_qty: int, remaining_qty: int):
+                                   filled_qty: int, remaining_qty: int) -> None:
         """부분 체결 처리"""
         if filled_qty + remaining_qty == order.quantity:
             order.status = OrderStatus.PARTIAL

@@ -27,14 +27,14 @@ EOD_LIQUIDATION_RETRY_DELAY = 10  # 초
 class LiquidationHandler:
     """장 마감 청산 담당 클래스"""
 
-    def __init__(self, bot: 'DayTradingBot'):
+    def __init__(self, bot: 'DayTradingBot') -> None:
         self.bot = bot
         self.logger = setup_logger(__name__)
         self._last_eod_liquidation_date = None
         self._eod_failed_stocks: Set[str] = set()  # 청산 실패 종목 추적
         self._eod_retry_count: int = 0
 
-    async def liquidate_all_positions_end_of_day(self):
+    async def liquidate_all_positions_end_of_day(self) -> None:
         """장 마감 직전 보유 포지션 전량 시장가 일괄 청산"""
         try:
             positioned_stocks = self.bot.trading_manager.get_stocks_by_state(StockState.POSITIONED)
@@ -82,7 +82,7 @@ class LiquidationHandler:
         except Exception as e:
             self.logger.error(f"장마감 일괄청산 오류: {e}")
 
-    async def execute_end_of_day_liquidation(self):
+    async def execute_end_of_day_liquidation(self) -> None:
         """장마감 시간 모든 보유 종목 시장가 일괄매도 (동적 시간 적용, 실패 시 재시도)"""
         try:
             current_time = now_kst()
@@ -143,7 +143,7 @@ class LiquidationHandler:
         except Exception as e:
             self.logger.error(f"장마감 시장가 매도 오류: {e}")
 
-    async def retry_failed_eod_liquidation(self):
+    async def retry_failed_eod_liquidation(self) -> None:
         """EOD 청산 실패 종목 재시도
 
         Returns:
@@ -202,15 +202,15 @@ class LiquidationHandler:
         """EOD 청산 실패 종목 존재 여부"""
         return len(self._eod_failed_stocks) > 0
 
-    def reset_eod_state(self):
+    def reset_eod_state(self) -> None:
         """EOD 상태 초기화 (일일 리셋)"""
         self._eod_failed_stocks.clear()
         self._eod_retry_count = 0
 
-    def get_last_eod_liquidation_date(self):
+    def get_last_eod_liquidation_date(self) -> None:
         """마지막 장마감 청산 날짜 반환"""
         return self._last_eod_liquidation_date
 
-    def set_last_eod_liquidation_date(self, date):
+    def set_last_eod_liquidation_date(self, date) -> None:
         """마지막 장마감 청산 날짜 설정"""
         self._last_eod_liquidation_date = date

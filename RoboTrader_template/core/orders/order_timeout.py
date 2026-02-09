@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class OrderTimeoutMixin:
     """주문 타임아웃 처리 관련 메서드들을 모아둔 Mixin 클래스"""
 
-    async def _handle_timeout(self: 'OrderManagerBase', order_id: str):
+    async def _handle_timeout(self: 'OrderManagerBase', order_id: str) -> None:
         """타임아웃 처리 (5분 기준)"""
         try:
             if order_id not in self.pending_orders:
@@ -81,7 +81,7 @@ class OrderTimeoutMixin:
             # 예외 발생 시에도 강제로 상태 정리
             await self._force_timeout_cleanup_safe(order_id)
 
-    async def _handle_4candle_timeout(self: 'OrderManagerBase', order_id: str):
+    async def _handle_4candle_timeout(self: 'OrderManagerBase', order_id: str) -> None:
         """3분봉 기준 타임아웃 처리 (매수 주문 후 4봉 지나면 취소)"""
         try:
             if order_id not in self.pending_orders:
@@ -152,7 +152,7 @@ class OrderTimeoutMixin:
             await asyncio.sleep(ORDER_CANCEL_RETRY_INTERVAL)
         return False
 
-    async def _handle_partial_fill_timeout(self: 'OrderManagerBase', order_id: str, order, filled_qty: int):
+    async def _handle_partial_fill_timeout(self: 'OrderManagerBase', order_id: str, order, filled_qty: int) -> None:
         """부분 체결 상태에서 타임아웃 처리"""
         # 1. 잔여 주문 취소
         await self._cancel_with_retry(order_id)
@@ -190,7 +190,7 @@ class OrderTimeoutMixin:
                 f"{filled_qty}/{original_qty}주 체결, 잔여 취소"
             )
 
-    async def _force_timeout_cleanup(self: 'OrderManagerBase', order_id: str):
+    async def _force_timeout_cleanup(self: 'OrderManagerBase', order_id: str) -> None:
         """타임아웃 시 강제 상태 정리"""
         if order_id in self.pending_orders:
             order = self.pending_orders[order_id]
@@ -206,7 +206,7 @@ class OrderTimeoutMixin:
                 except Exception as notify_error:
                     self.logger.error(f"TradingStockManager 타임아웃 처리 실패: {notify_error}")
 
-    async def _force_4candle_timeout_cleanup(self: 'OrderManagerBase', order_id: str):
+    async def _force_4candle_timeout_cleanup(self: 'OrderManagerBase', order_id: str) -> None:
         """3분봉 타임아웃 시 강제 상태 정리"""
         if order_id in self.pending_orders:
             order = self.pending_orders[order_id]
@@ -222,7 +222,7 @@ class OrderTimeoutMixin:
                 except Exception as notify_error:
                     self.logger.error(f"TradingStockManager 3분봉 타임아웃 처리 실패: {notify_error}")
 
-    async def _force_timeout_cleanup_safe(self: 'OrderManagerBase', order_id: str):
+    async def _force_timeout_cleanup_safe(self: 'OrderManagerBase', order_id: str) -> None:
         """예외 발생 시 안전한 강제 상태 정리"""
         try:
             if order_id in self.pending_orders:
@@ -233,7 +233,7 @@ class OrderTimeoutMixin:
         except Exception as e:
             self.logger.debug(f"강제 상태 정리 중 오류: {order_id} - {e}")
 
-    async def _notify_trading_manager_timeout(self: 'OrderManagerBase', order_id: str):
+    async def _notify_trading_manager_timeout(self: 'OrderManagerBase', order_id: str) -> None:
         """TradingStockManager에 타임아웃 알림"""
         if self.trading_manager and hasattr(self.trading_manager, 'handle_order_timeout'):
             try:
@@ -244,7 +244,7 @@ class OrderTimeoutMixin:
             except Exception as notify_error:
                 self.logger.error(f"TradingStockManager 취소 처리 실패: {notify_error}")
 
-    async def _notify_trading_manager_4candle_timeout(self: 'OrderManagerBase', order_id: str):
+    async def _notify_trading_manager_4candle_timeout(self: 'OrderManagerBase', order_id: str) -> None:
         """TradingStockManager에 3분봉 타임아웃 알림"""
         if self.trading_manager and hasattr(self.trading_manager, 'handle_order_timeout'):
             try:

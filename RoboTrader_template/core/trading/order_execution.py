@@ -31,7 +31,7 @@ class OrderExecution:
     def __init__(self, state_manager: 'StockStateManager',
                  intraday_manager: 'IntradayStockManager',
                  data_collector: 'RealTimeDataCollector',
-                 order_manager: 'OrderManager'):
+                 order_manager: 'OrderManager') -> None:
         """
         초기화
 

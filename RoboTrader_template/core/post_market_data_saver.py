@@ -16,7 +16,7 @@ from db.repositories.price import PriceRepository
 class PostMarketDataSaver:
     """장 마감 후 데이터 저장 클래스"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """초기화"""
         self.logger = setup_logger(__name__)
         self.price_repo = PriceRepository()

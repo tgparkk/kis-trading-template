@@ -26,7 +26,7 @@ class OrderCompletionHandler:
     """
 
     def __init__(self, state_manager: 'StockStateManager',
-                 order_manager: 'OrderManager'):
+                 order_manager: 'OrderManager') -> None:
         """
         초기화
 

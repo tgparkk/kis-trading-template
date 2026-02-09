@@ -23,7 +23,7 @@ class DataQualityChecker:
     실시간 데이터의 품질을 검사하고 이상치를 감지합니다.
     """
 
-    def __init__(self, manager: 'IntradayStockManager'):
+    def __init__(self, manager: 'IntradayStockManager') -> None:
         """
         Args:
             manager: IntradayStockManager 인스턴스

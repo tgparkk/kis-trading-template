@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 class TradingAnalyzer:
     """매매 판단 분석 클래스"""
 
-    def __init__(self, bot: 'DayTradingBot'):
+    def __init__(self, bot: 'DayTradingBot') -> None:
         self.bot = bot
         self.logger = setup_logger(__name__)
 
@@ -22,7 +22,7 @@ class TradingAnalyzer:
         if hasattr(bot, 'fund_manager') and hasattr(bot, 'decision_engine'):
             bot.decision_engine.set_fund_manager(bot.fund_manager)
 
-    async def analyze_buy_decision(self, trading_stock, available_funds: float = None):
+    async def analyze_buy_decision(self, trading_stock, available_funds: float = None) -> None:
         """매수 판단 분석 (일봉 데이터 사용)
 
         Args:
@@ -164,7 +164,7 @@ class TradingAnalyzer:
             import traceback
             self.logger.error(f"상세 오류 정보: {traceback.format_exc()}")
 
-    async def analyze_sell_decision(self, trading_stock):
+    async def analyze_sell_decision(self, trading_stock) -> None:
         """매도 판단 분석 (1분봉 고가/저가 기준 익절/손절 + 3분봉 기술적 분석)"""
         try:
             stock_code = trading_stock.stock_code

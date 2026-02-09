@@ -12,7 +12,7 @@ from utils.logger import setup_logger
 class TimeFrameConverter:
     """시간봉 변환 전용 클래스"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.logger = setup_logger(__name__)
     
     @staticmethod
