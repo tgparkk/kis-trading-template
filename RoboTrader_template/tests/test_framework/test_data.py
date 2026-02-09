@@ -188,7 +188,7 @@ class TestDataProvider:
     def test_provider_set_cache_ttl(self, provider):
         """Test setting cache TTL."""
         provider.set_cache_ttl(120)
-        assert provider._cache_ttl == 120
+        assert provider._cache.default_ttl == 120
 
     def test_provider_subscribe(self, provider):
         """Test subscribe to real-time data."""
