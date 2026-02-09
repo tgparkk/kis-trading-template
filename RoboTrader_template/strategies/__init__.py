@@ -39,6 +39,9 @@ from .config import (
 
 # Implementation imports
 from .sample import SampleStrategy
+from .momentum import MomentumStrategy
+from .mean_reversion import MeanReversionStrategy
+from .volume_breakout import VolumeBreakoutStrategy
 
 __all__ = [
     # Framework - Base
@@ -56,6 +59,9 @@ __all__ = [
 
     # Implementations
     'SampleStrategy',
+    'MomentumStrategy',
+    'MeanReversionStrategy',
+    'VolumeBreakoutStrategy',
 ]
 
 __version__ = '1.0.0'
