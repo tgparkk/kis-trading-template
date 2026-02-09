@@ -32,7 +32,12 @@ import importlib
 import types
 if 'api' not in sys.modules:
     _api_mock = types.ModuleType('api')
+    _api_mock.__path__ = [str(PROJECT_ROOT / "api")]  # 패키지로 인식되도록 __path__ 설정
+    _api_mock.__package__ = 'api'
     sys.modules['api'] = _api_mock
+elif not hasattr(sys.modules['api'], '__path__'):
+    # 이미 로드되었지만 패키지가 아닌 경우 __path__ 추가
+    sys.modules['api'].__path__ = [str(PROJECT_ROOT / "api")]
 # circuit_breaker는 독립적이므로 직접 로드
 _cb_spec = importlib.util.spec_from_file_location(
     "api.circuit_breaker",
