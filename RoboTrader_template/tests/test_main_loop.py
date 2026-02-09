@@ -233,6 +233,95 @@ class TestCheckBuySignals:
             assert mock_abd.call_count == 1
 
 
+class TestMainLoopErrorIsolation:
+    """메인 루프 단계별 에러 격리 검증 (P0)"""
+
+    @pytest.mark.asyncio
+    async def test_데이터수집_실패해도_나머지_단계_실행(self, mock_bot):
+        """데이터 수집이 예외를 던져도 미체결 확인, 포지션 체크, EOD 청산이 실행되는지"""
+        execution_order = []
+        mock_bot.is_running = True
+
+        with patch('main.is_market_open', return_value=True):
+            mock_bot.data_collector.collect_once = AsyncMock(
+                side_effect=Exception("네트워크 끊김")
+            )
+            mock_bot.order_manager.check_pending_orders_once = AsyncMock(
+                side_effect=lambda: execution_order.append('orders')
+            )
+            mock_bot.trading_manager.check_positions_once = AsyncMock(
+                side_effect=lambda: execution_order.append('positions')
+            )
+            mock_bot.trading_manager.get_stocks_by_state = MagicMock(return_value=[])
+
+            with patch.object(mock_bot, '_check_eod_liquidation', new=AsyncMock(
+                side_effect=lambda: execution_order.append('eod')
+            )):
+                async def stop_after_one(seconds):
+                    mock_bot.is_running = False
+                with patch('asyncio.sleep', side_effect=stop_after_one):
+                    await mock_bot._main_trading_loop()
+
+            assert 'orders' in execution_order, "미체결 주문 확인이 실행되어야 함"
+            assert 'positions' in execution_order, "포지션 체크가 실행되어야 함"
+            assert 'eod' in execution_order, "EOD 청산 체크가 실행되어야 함"
+
+    @pytest.mark.asyncio
+    async def test_주문확인_실패해도_포지션체크_실행(self, mock_bot):
+        """미체결 주문 확인이 실패해도 포지션 체크와 EOD 청산이 실행되는지"""
+        execution_order = []
+        mock_bot.is_running = True
+
+        with patch('main.is_market_open', return_value=True):
+            mock_bot.data_collector.collect_once = AsyncMock(
+                side_effect=lambda: execution_order.append('data')
+            )
+            mock_bot.order_manager.check_pending_orders_once = AsyncMock(
+                side_effect=Exception("API 타임아웃")
+            )
+            mock_bot.trading_manager.check_positions_once = AsyncMock(
+                side_effect=lambda: execution_order.append('positions')
+            )
+            mock_bot.trading_manager.get_stocks_by_state = MagicMock(return_value=[])
+
+            with patch.object(mock_bot, '_check_eod_liquidation', new=AsyncMock(
+                side_effect=lambda: execution_order.append('eod')
+            )):
+                async def stop_after_one(seconds):
+                    mock_bot.is_running = False
+                with patch('asyncio.sleep', side_effect=stop_after_one):
+                    await mock_bot._main_trading_loop()
+
+            assert 'data' in execution_order
+            assert 'positions' in execution_order
+            assert 'eod' in execution_order
+
+    @pytest.mark.asyncio
+    async def test_모든_단계_실패해도_루프_계속(self, mock_bot):
+        """모든 5개 단계가 전부 실패해도 루프가 크래시하지 않고 다음 반복으로 넘어가는지"""
+        loop_count = [0]
+        mock_bot.is_running = True
+
+        with patch('main.is_market_open', return_value=True):
+            mock_bot.data_collector.collect_once = AsyncMock(side_effect=Exception("err1"))
+            mock_bot.order_manager.check_pending_orders_once = AsyncMock(side_effect=Exception("err2"))
+            mock_bot.trading_manager.check_positions_once = AsyncMock(side_effect=Exception("err3"))
+            mock_bot.trading_manager.get_stocks_by_state = MagicMock(side_effect=Exception("err4"))
+
+            with patch.object(mock_bot, '_check_eod_liquidation', new=AsyncMock(
+                side_effect=Exception("err5")
+            )):
+                async def stop_after_two(seconds):
+                    loop_count[0] += 1
+                    if loop_count[0] >= 2:
+                        mock_bot.is_running = False
+                with patch('asyncio.sleep', side_effect=stop_after_two):
+                    await mock_bot._main_trading_loop()
+
+            # 2회 반복했으면 루프가 크래시하지 않은 것
+            assert loop_count[0] >= 2
+
+
 class TestCheckEodLiquidation:
     """_check_eod_liquidation 검증"""
 

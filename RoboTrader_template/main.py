@@ -309,24 +309,42 @@ class DayTradingBot:
 
                 iteration += 1
 
-                # 1. 데이터 수집
-                await self.data_collector.collect_once()
+                # 각 단계를 독립적으로 실행하여, 한 단계 실패가 다른 단계에 영향 주지 않음
+                # (예: 데이터 수집 실패해도 미체결 주문 확인, EOD 청산은 반드시 실행)
 
-                # 2. 미체결 주문 확인
-                await self.order_manager.check_pending_orders_once()
+                # 1. 데이터 수집
+                try:
+                    await self.data_collector.collect_once()
+                except Exception as e:
+                    self.logger.error(f"[1/5] 데이터 수집 오류: {e}")
+
+                # 2. 미체결 주문 확인 (P0: 주문 타임아웃 관리에 필수)
+                try:
+                    await self.order_manager.check_pending_orders_once()
+                except Exception as e:
+                    self.logger.error(f"[2/5] 미체결 주문 확인 오류: {e}")
 
                 # 3. 보유종목 체크 (현재가 업데이트 + 매도 판단)
-                await self.trading_manager.check_positions_once()
+                try:
+                    await self.trading_manager.check_positions_once()
+                except Exception as e:
+                    self.logger.error(f"[3/5] 보유종목 체크 오류: {e}")
 
                 # 4. 매수 판단 (매 N번째 반복, ≈9초 간격)
-                if iteration % BUY_SIGNAL_EVERY_N == 0:
-                    await self._check_buy_signals()
+                try:
+                    if iteration % BUY_SIGNAL_EVERY_N == 0:
+                        await self._check_buy_signals()
+                except Exception as e:
+                    self.logger.error(f"[4/5] 매수 판단 오류: {e}")
 
-                # 5. 장마감 일괄청산 체크
-                await self._check_eod_liquidation()
+                # 5. 장마감 일괄청산 체크 (P0: 반드시 실행되어야 함)
+                try:
+                    await self._check_eod_liquidation()
+                except Exception as e:
+                    self.logger.error(f"[5/5] EOD 일괄청산 체크 오류: {e}")
 
             except Exception as e:
-                self.logger.error(f"메인 트레이딩 루프 오류: {e}")
+                self.logger.error(f"메인 트레이딩 루프 예기치 못한 오류: {e}")
 
             # 시간 보정 sleep
             elapsed = time.monotonic() - loop_start
