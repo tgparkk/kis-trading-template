@@ -11,18 +11,18 @@ import sys
 from unittest.mock import MagicMock as _MagicMock
 
 # psycopg2 mock (CI 환경에서 미설치)
-if 'psycopg2' not in sys.modules:
-    _mock_pg = _MagicMock()
-    # 실제 예외 클래스 정의 (테스트에서 raise/except 가능하도록)
-    class _IntegrityError(Exception):
-        pass
-    class _OperationalError(Exception):
-        pass
-    _mock_pg.IntegrityError = _IntegrityError
-    _mock_pg.OperationalError = _OperationalError
-    sys.modules['psycopg2'] = _mock_pg
-    sys.modules['psycopg2.pool'] = _mock_pg.pool
-    sys.modules['psycopg2.extras'] = _mock_pg.extras
+# 항상 덮어쓰기 — 다른 테스트 파일이 IntegrityError 없는 mock을 먼저 넣을 수 있음
+_mock_pg = _MagicMock()
+# 실제 예외 클래스 정의 (테스트에서 raise/except 가능하도록)
+class _IntegrityError(Exception):
+    pass
+class _OperationalError(Exception):
+    pass
+_mock_pg.IntegrityError = _IntegrityError
+_mock_pg.OperationalError = _OperationalError
+sys.modules['psycopg2'] = _mock_pg
+sys.modules['psycopg2.pool'] = _mock_pg.pool
+sys.modules['psycopg2.extras'] = _mock_pg.extras
 
 import pytest
 import pandas as pd

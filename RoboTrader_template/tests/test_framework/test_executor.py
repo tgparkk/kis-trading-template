@@ -129,11 +129,11 @@ class TestOrderRequest:
             side=OrderSide.BUY,
             quantity=10,
             order_type=OrderType.LIMIT,
-            price=70025  # Should round to 70000 or 70050
+            price=70025  # Should round to 70000 (tick=100 for 50000-100000 range)
         )
 
-        # Price should be rounded to tick (50 won for 10000-50000 range)
-        assert request.price == 70050
+        # Price should be rounded to tick (100 won for 50000-100000 range)
+        assert request.price == 70000
 
 
 # ============================================================================

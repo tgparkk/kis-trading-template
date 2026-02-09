@@ -11,6 +11,7 @@ Common utility functions for the trading system:
 - Configuration loading
 """
 
+import math
 import json
 import logging
 import sys
@@ -173,7 +174,7 @@ def round_to_tick(price: float) -> int:
         return 0
 
     tick = get_tick_size(price)
-    return int(round(price / tick) * tick)
+    return int(math.floor(price / tick + 0.5)) * tick
 
 
 def validate_tick(price: float) -> bool:
