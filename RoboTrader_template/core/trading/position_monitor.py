@@ -276,35 +276,67 @@ class PositionMonitor:
 
     async def _execute_sell(self, trading_stock: TradingStock,
                            sell_price: float, reason: str):
-        """매도 실행"""
-        try:
-            stock_code = trading_stock.stock_code
+        """매도 실행 (실패 시 재시도 포함)"""
+        stock_code = trading_stock.stock_code
+        max_retries = 3
+        retry_delay = 2  # 초
 
-            # decision_engine을 통해 매도 실행
-            if self.decision_engine:
-                # 가상매매 모드 확인 (TradingConfig 객체 사용)
-                from config.settings import load_trading_config
-                config = load_trading_config()
-                if config.paper_trading:
-                    # 가상 매도 실행
-                    success = await self.decision_engine.execute_virtual_sell(
-                        trading_stock,
-                        sell_price,
-                        reason
+        for attempt in range(1, max_retries + 1):
+            try:
+                # 이미 매도 진행 중이면 중복 방지
+                if trading_stock.is_selling:
+                    self.logger.warning(f"{stock_code} 이미 매도 진행 중 (중복 방지)")
+                    return
+
+                # 매도 진행 플래그 설정
+                trading_stock.is_selling = True
+
+                # decision_engine을 통해 매도 실행
+                if self.decision_engine:
+                    from config.settings import load_trading_config
+                    config = load_trading_config()
+                    if config.paper_trading:
+                        success = await self.decision_engine.execute_virtual_sell(
+                            trading_stock, sell_price, reason
+                        )
+                        if success:
+                            self.logger.info(f"{stock_code} 가상 매도 완료: {reason}")
+                            return
+                    else:
+                        success = await self.decision_engine.execute_real_sell(
+                            trading_stock, reason
+                        )
+                        if success:
+                            self.logger.info(f"{stock_code} 실제 매도 주문 완료: {reason}")
+                            return
+
+                # 매도 실패
+                trading_stock.is_selling = False
+                if attempt < max_retries:
+                    self.logger.warning(
+                        f"{stock_code} 매도 실패 (시도 {attempt}/{max_retries}), "
+                        f"{retry_delay}초 후 재시도: {reason}"
                     )
-                    if success:
-                        self.logger.info(f"{stock_code} 가상 매도 완료: {reason}")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # 지수 백오프
                 else:
-                    # 실제 매도 주문
-                    success = await self.decision_engine.execute_real_sell(
-                        trading_stock,
-                        reason
+                    self.logger.error(
+                        f"🚨 {stock_code} 매도 {max_retries}회 실패! "
+                        f"수동 확인 필요: {reason}"
                     )
-                    if success:
-                        self.logger.info(f"{stock_code} 실제 매도 주문 완료: {reason}")
 
-        except Exception as e:
-            self.logger.error(f"{stock_code} 매도 실행 오류: {e}")
+            except Exception as e:
+                trading_stock.is_selling = False
+                if attempt < max_retries:
+                    self.logger.warning(
+                        f"{stock_code} 매도 실행 오류 (시도 {attempt}/{max_retries}): {e}"
+                    )
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    self.logger.error(
+                        f"🚨 {stock_code} 매도 실행 최종 실패: {e}"
+                    )
 
     def stop_monitoring(self):
         """모니터링 중단"""

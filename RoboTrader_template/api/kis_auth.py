@@ -21,6 +21,13 @@ from config.constants import API_CALL_INTERVAL, API_MAX_RETRIES, API_RETRY_DELAY
 
 logger = setup_logger(__name__)
 
+# =============================================================================
+# 네트워크 타임아웃 설정
+# =============================================================================
+API_CONNECT_TIMEOUT = 5     # 연결 타임아웃 (초)
+API_READ_TIMEOUT = 30       # 읽기 타임아웃 (초)
+API_REQUEST_TIMEOUT = (API_CONNECT_TIMEOUT, API_READ_TIMEOUT)  # requests용 튜플
+
 # 토큰 파일 경로
 TOKEN_FILE_PATH = os.path.join(os.path.abspath(os.getcwd()), "token_info.json")
 
@@ -179,7 +186,7 @@ def auth(svr: str = 'prod', product: str = '01') -> bool:
         url += '/oauth2/tokenP'
 
         try:
-            res = requests.post(url, data=json.dumps(p), headers=_getBaseHeader())
+            res = requests.post(url, data=json.dumps(p), headers=_getBaseHeader(), timeout=API_REQUEST_TIMEOUT)
 
             if res.status_code == 200:
                 result = _getResultObject(res.json())
@@ -244,7 +251,7 @@ def set_order_hash_key(headers: Dict, params: Dict) -> None:
     url = f"{_TRENV.my_url}/uapi/hashkey"
 
     try:
-        res = requests.post(url, data=json.dumps(params), headers=headers)
+        res = requests.post(url, data=json.dumps(params), headers=headers, timeout=API_REQUEST_TIMEOUT)
         if res.status_code == 200:
             headers['hashkey'] = _getResultObject(res.json()).HASH
     except Exception as e:
@@ -318,8 +325,16 @@ class APIResp:
 def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
                appendHeaders: Optional[Dict] = None, postFlag: bool = False,
                hashFlag: bool = True) -> Optional[APIResp]:
-    """API 호출 공통 함수 (속도 제한 및 재시도 로직 포함)"""
+    """API 호출 공통 함수 (속도 제한, 재시도, Circuit Breaker 포함)"""
     global _api_stats
+    
+    # Circuit Breaker 체크
+    from api.circuit_breaker import get_circuit_breaker
+    cb = get_circuit_breaker()
+    if not cb.can_execute():
+        cb.record_blocked()
+        logger.warning(f"🔌 Circuit Breaker OPEN - API 호출 차단: {ptr_id}")
+        return None
     
     if not _TRENV:
         logger.warning("토큰이 없습니다. 자동 인증 시도...")
@@ -355,15 +370,16 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
             if postFlag:
                 if hashFlag:
                     set_order_hash_key(headers, params)
-                res = requests.post(url, headers=headers, data=json.dumps(params))
+                res = requests.post(url, headers=headers, data=json.dumps(params), timeout=API_REQUEST_TIMEOUT)
             else:
-                res = requests.get(url, headers=headers, params=params)
+                res = requests.get(url, headers=headers, params=params, timeout=API_REQUEST_TIMEOUT)
 
             # 응답 처리
             if res.status_code == 200:
                 ar = APIResp(res)
                 if ar.isOK():
                     _api_stats['success_calls'] += 1
+                    cb.record_success()
                     if _DEBUG:
                         logger.debug(f"API 응답 성공: {tr_id}")
                     return ar
@@ -408,9 +424,9 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
                                 if postFlag:
                                     if hashFlag:
                                         set_order_hash_key(headers, params)
-                                    res = requests.post(url, headers=headers, data=json.dumps(params))
+                                    res = requests.post(url, headers=headers, data=json.dumps(params), timeout=API_REQUEST_TIMEOUT)
                                 else:
-                                    res = requests.get(url, headers=headers, params=params)
+                                    res = requests.get(url, headers=headers, params=params, timeout=API_REQUEST_TIMEOUT)
 
                                 # 재호출 결과 처리
                                 if res.status_code == 200:
@@ -484,7 +500,38 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
                     logger.error(f"API 오류: {res.status_code} - {res.text}")
                     return None
 
+        except requests.exceptions.Timeout as e:
+            cb.record_failure()
+            if attempt < _max_retries:
+                wait_time = _retry_delay_base * (2 ** attempt)
+                logger.warning(f"⏱️ API 타임아웃. {wait_time}초 후 재시도 ({attempt + 1}/{_max_retries + 1}): {e}")
+                time.sleep(wait_time)
+                continue
+            else:
+                logger.error(f"⏱️ API 타임아웃 최대 재시도 초과: {tr_id} - {e}")
+                _notify_api_failure("TIMEOUT", tr_id, str(e))
+                return None
+
+        except requests.exceptions.ConnectionError as e:
+            cb.record_failure()
+            if attempt < _max_retries:
+                wait_time = _retry_delay_base * (2 ** (attempt + 1))  # 더 긴 백오프
+                logger.warning(f"🔌 네트워크 연결 오류. {wait_time}초 후 재시도 ({attempt + 1}/{_max_retries + 1}): {e}")
+                time.sleep(wait_time)
+                continue
+            else:
+                logger.error(f"🔌 네트워크 연결 실패 최대 재시도 초과: {tr_id} - {e}")
+                _notify_api_failure("CONNECTION", tr_id, str(e))
+                return None
+
+        except requests.exceptions.SSLError as e:
+            cb.record_failure()
+            logger.error(f"🔒 SSL 인증서 오류 (재시도 없이 실패): {tr_id} - {e}")
+            _notify_api_failure("SSL", tr_id, str(e))
+            return None
+
         except Exception as e:
+            cb.record_failure()
             if attempt < _max_retries:
                 wait_time = _retry_delay_base * (2 ** attempt)
                 logger.warning(f"API 호출 예외 발생. {wait_time}초 후 재시도 ({attempt + 1}/{_max_retries + 1}): {e}")
@@ -492,10 +539,84 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
                 continue
             else:
                 logger.error(f"API 호출 오류: {e}")
+                _notify_api_failure("UNKNOWN", tr_id, str(e))
                 return None
 
     logger.error(f"API 호출 최대 재시도 횟수 초과: {tr_id}")
     return None
+
+
+# =============================================================================
+# 장애 알림 함수
+# =============================================================================
+_failure_notification_lock = threading.Lock()
+_last_failure_notification_time: float = 0
+_FAILURE_NOTIFICATION_COOLDOWN = 60  # 동일 장애 알림 최소 간격 (초)
+
+
+def _notify_api_failure(failure_type: str, tr_id: str, error_msg: str):
+    """API 장애 시 텔레그램 알림 발송 (쿨다운 적용)"""
+    global _last_failure_notification_time
+    
+    with _failure_notification_lock:
+        now = time.time()
+        if now - _last_failure_notification_time < _FAILURE_NOTIFICATION_COOLDOWN:
+            return  # 쿨다운 중
+        _last_failure_notification_time = now
+    
+    try:
+        from api.circuit_breaker import get_circuit_breaker
+        cb = get_circuit_breaker()
+        cb_state = cb.state.value
+        
+        message = (
+            f"🚨 KIS API 장애 감지\n"
+            f"유형: {failure_type}\n"
+            f"TR: {tr_id}\n"
+            f"Circuit Breaker: {cb_state}\n"
+            f"오류: {error_msg[:200]}"
+        )
+        
+        # 텔레그램 알림 비동기 발송 시도
+        _send_failure_telegram(message)
+        
+    except Exception as e:
+        logger.error(f"장애 알림 발송 실패: {e}")
+
+
+def _send_failure_telegram(message: str):
+    """텔레그램 장애 알림 발송"""
+    try:
+        import configparser
+        from pathlib import Path
+        
+        config_file = Path("config/key.ini")
+        if not config_file.exists():
+            return
+        
+        parser = configparser.ConfigParser()
+        parser.read(config_file, encoding='utf-8')
+        
+        if 'TELEGRAM' not in parser:
+            return
+        
+        telegram_section = parser['TELEGRAM']
+        enabled = telegram_section.getboolean('enabled', False)
+        bot_token = telegram_section.get('token', '').strip()
+        chat_id = telegram_section.get('chat_id', '').strip()
+        
+        if not enabled or not bot_token or not chat_id:
+            return
+        
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {"chat_id": chat_id, "text": message}
+        
+        # 별도 타임아웃으로 빠르게 시도 (실패해도 무시)
+        requests.post(url, json=payload, timeout=(3, 5))
+        logger.info("📱 API 장애 텔레그램 알림 발송 완료")
+        
+    except Exception as e:
+        logger.debug(f"텔레그램 알림 발송 실패 (무시): {e}")
 
 
 def _wait_for_api_limit():

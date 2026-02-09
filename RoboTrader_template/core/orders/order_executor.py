@@ -28,6 +28,23 @@ class OrderExecutorMixin:
 
             self.logger.info(f"매수 주문 시도: {stock_code} {quantity}주 @{price:,.0f}원 (타임아웃: {timeout_seconds}초)")
 
+            # 중복 주문 방지: 동일 종목 매수 주문이 이미 진행 중인지 확인
+            if self.has_active_buy_order(stock_code):
+                existing_order_id = self._active_buy_stocks.get(stock_code)
+                self.logger.warning(f"중복 매수 주문 방지: {stock_code} (기존 주문: {existing_order_id})")
+                return None
+
+            # FundManager 자금 예약 (실전 매매 시)
+            if not getattr(self.config, "paper_trading", False) and self.fund_manager:
+                reserve_amount = price * quantity
+                # 임시 order_id로 예약 (실제 order_id는 API 응답 후 알 수 있음)
+                temp_reserve_id = f"RESERVE-{stock_code}-{int(now_kst().timestamp())}"
+                if not self.fund_manager.reserve_funds(temp_reserve_id, reserve_amount):
+                    self.logger.warning(f"자금 부족으로 매수 주문 거부: {stock_code} (필요: {reserve_amount:,.0f}원)")
+                    return None
+                # 임시 예약 ID를 나중에 실제 order_id로 교체하기 위해 저장
+                self._temp_reserve_id = temp_reserve_id
+
             # 가상매매 모드: 즉시 체결로 시뮬레이션
             if getattr(self.config, "paper_trading", False):
                 return await self._execute_paper_buy_order(
@@ -90,6 +107,8 @@ class OrderExecutorMixin:
 
         if not result:
             self.logger.error(f"매수 주문 API 타임아웃: {stock_code}")
+            # FundManager 예약 해제
+            self._release_temp_reserve()
             return None
 
         if result.success:
@@ -116,6 +135,12 @@ class OrderExecutorMixin:
             self.pending_orders[result.order_id] = order
             self.order_timeouts[result.order_id] = timeout_time
 
+            # 중복 주문 방지 맵에 등록
+            self._register_active_order(stock_code, result.order_id, OrderType.BUY)
+
+            # FundManager: 임시 예약을 실제 order_id로 교체
+            self._transfer_temp_reserve(result.order_id)
+
             self.logger.info(f"매수 주문 성공: {result.order_id} - {stock_code}({stock_name}) {quantity}주 @{price:,.0f}원")
             self.logger.info(f"타임아웃 설정: {timeout_seconds}초 후 ({timeout_time.strftime('%H:%M:%S')}에 취소)")
 
@@ -133,7 +158,35 @@ class OrderExecutorMixin:
             return result.order_id
         else:
             self.logger.error(f"매수 주문 실패: {result.message}")
+            # FundManager 예약 해제
+            self._release_temp_reserve()
             return None
+
+    def _release_temp_reserve(self: 'OrderManagerBase'):
+        """임시 FundManager 예약 해제"""
+        temp_id = getattr(self, '_temp_reserve_id', None)
+        if temp_id and self.fund_manager:
+            try:
+                self.fund_manager.cancel_order(temp_id)
+                self.logger.debug(f"임시 자금 예약 해제: {temp_id}")
+            except Exception as e:
+                self.logger.warning(f"임시 자금 예약 해제 실패: {e}")
+        self._temp_reserve_id = None
+
+    def _transfer_temp_reserve(self: 'OrderManagerBase', real_order_id: str):
+        """임시 예약을 실제 order_id로 교체"""
+        temp_id = getattr(self, '_temp_reserve_id', None)
+        if temp_id and self.fund_manager:
+            try:
+                # 임시 예약의 금액을 가져와서 실제 order_id로 재등록
+                reserved_amount = self.fund_manager.order_reservations.get(temp_id, 0)
+                if reserved_amount > 0:
+                    self.fund_manager.cancel_order(temp_id)
+                    self.fund_manager.reserve_funds(real_order_id, reserved_amount)
+                    self.logger.debug(f"자금 예약 이전: {temp_id} -> {real_order_id}")
+            except Exception as e:
+                self.logger.warning(f"자금 예약 이전 실패: {e}")
+        self._temp_reserve_id = None
 
     async def place_sell_order(self: 'OrderManagerBase', stock_code: str, quantity: int, price: float,
                               timeout_seconds: int = None, market: bool = False) -> Optional[str]:
@@ -142,6 +195,12 @@ class OrderExecutorMixin:
             timeout_seconds = timeout_seconds or self.config.order_management.sell_timeout_seconds
 
             self.logger.info(f"매도 주문 시도: {stock_code} {quantity}주 @{price:,.0f}원 (타임아웃: {timeout_seconds}초, 시장가: {market})")
+
+            # 중복 주문 방지: 동일 종목 매도 주문이 이미 진행 중인지 확인
+            if self.has_active_sell_order(stock_code):
+                existing_order_id = self._active_sell_stocks.get(stock_code)
+                self.logger.warning(f"중복 매도 주문 방지: {stock_code} (기존 주문: {existing_order_id})")
+                return None
 
             # 가상매매 모드: 즉시 체결로 시뮬레이션
             if getattr(self.config, "paper_trading", False):
@@ -217,6 +276,9 @@ class OrderExecutorMixin:
             # 미체결 관리에 추가
             self.pending_orders[result.order_id] = order
             self.order_timeouts[result.order_id] = now_kst() + timedelta(seconds=timeout_seconds)
+
+            # 중복 주문 방지 맵에 등록
+            self._register_active_order(stock_code, result.order_id, OrderType.SELL)
 
             order_type_str = '시장가' if market else '지정가'
             self.logger.info(f"매도 주문 성공: {result.order_id} - {stock_code}({stock_name}) {quantity}주 @{price:,.0f}원 ({order_type_str})")

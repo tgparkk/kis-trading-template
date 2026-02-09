@@ -163,6 +163,11 @@ class TradingStockManager:
         self._position_monitor.set_strategy(strategy)
         self.logger.debug(f"TradingStockManager에 전략 연결: {strategy.name if strategy else 'None'}")
 
+    def set_fund_manager(self, fund_manager):
+        """FundManager 연결"""
+        self._order_execution.set_fund_manager(fund_manager)
+        self.logger.debug("TradingStockManager에 FundManager 연결 완료")
+
     # =========================================================================
     # 종목 선정 및 주문 실행 (OrderExecution에 위임)
     # =========================================================================

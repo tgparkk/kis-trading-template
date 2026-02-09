@@ -376,16 +376,27 @@ class DayTradingBot:
             self.logger.error(f"매수 판단 오류: {e}")
 
     async def _check_eod_liquidation(self):
-        """장마감 전 EOD 일괄청산 체크"""
+        """장마감 전 EOD 일괄청산 체크 (실패 시 재시도 포함)"""
         try:
             current_time = now_kst()
 
-            # 오늘 이미 실행했으면 스킵
-            if self._last_eod_liquidation_date == current_time.date():
-                return
-
             # 평일인지 확인
             if current_time.weekday() >= 5:
+                return
+
+            if not hasattr(self, 'liquidation_handler') or not self.liquidation_handler:
+                return
+
+            # EOD 청산 실패 종목이 있으면 재시도
+            if (self._last_eod_liquidation_date == current_time.date()
+                    and self.liquidation_handler.has_failed_eod_stocks()):
+                import asyncio as _asyncio
+                await _asyncio.sleep(10)  # 재시도 전 대기
+                await self.liquidation_handler.retry_failed_eod_liquidation()
+                return
+
+            # 오늘 이미 실행했으면 스킵
+            if self._last_eod_liquidation_date == current_time.date():
                 return
 
             # 동적 청산 시간 확인
@@ -396,11 +407,8 @@ class DayTradingBot:
             self._last_eod_liquidation_date = current_time.date()
 
             # liquidation_handler를 통해 청산 실행
-            if hasattr(self, 'liquidation_handler') and self.liquidation_handler:
-                await self.liquidation_handler.execute_end_of_day_liquidation()
-                self.liquidation_handler.set_last_eod_liquidation_date(current_time.date())
-            else:
-                self.logger.warning("liquidation_handler가 설정되지 않음 - EOD 청산 스킵")
+            await self.liquidation_handler.execute_end_of_day_liquidation()
+            self.liquidation_handler.set_last_eod_liquidation_date(current_time.date())
 
         except Exception as e:
             self.logger.error(f"EOD 일괄청산 체크 오류: {e}")

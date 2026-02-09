@@ -123,13 +123,13 @@ class TestReleaseInvestment:
         assert fm.available_funds == 7_000_000
 
     def test_release_negative_guard(self):
-        """안전성 이슈 #8: release_investment로 invested_funds가 음수 될 수 있음"""
+        """안전성 이슈 #8: release_investment로 invested_funds가 음수 되지 않도록 보정"""
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 1_000_000)
-        # invested = 1M인데 2M 회수 → 음수 발생
+        # invested = 1M인데 2M 회수 → 보정되어 0으로 클램핑
         fm.release_investment(2_000_000)
-        assert fm.invested_funds == -1_000_000  # 현재 방어 없음 (문서화된 이슈)
+        assert fm.invested_funds == 0  # 음수 방지 보정 적용됨
 
 
 class TestGetMaxBuyAmount:

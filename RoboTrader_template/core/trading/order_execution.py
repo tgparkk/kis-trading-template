@@ -3,7 +3,7 @@
 
 매수/매도 주문 실행 및 종목 선정 관리
 """
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ..models import TradingStock, StockState
 from utils.logger import setup_logger
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ..intraday_stock_manager import IntradayStockManager
     from ..data_collector import RealTimeDataCollector
     from ..order_manager import OrderManager
+    from ..fund_manager import FundManager
 
 
 class OrderExecution:
@@ -46,8 +47,16 @@ class OrderExecution:
         self.order_manager = order_manager
         self.logger = setup_logger(__name__)
 
+        # FundManager 연결 (나중에 설정)
+        self.fund_manager: Optional['FundManager'] = None
+
         # 재거래 설정
         self.enable_re_trading = True
+
+    def set_fund_manager(self, fund_manager: 'FundManager'):
+        """FundManager 설정"""
+        self.fund_manager = fund_manager
+        self.logger.debug("OrderExecution에 FundManager 연결 완료")
 
     async def add_selected_stock(self, stock_code: str, stock_name: str,
                                  selection_reason: str = "", prev_close: float = 0.0) -> bool:
@@ -165,6 +174,20 @@ class OrderExecution:
                     remaining_minutes = trading_stock.get_remaining_cooldown_minutes()
                     self.logger.warning(
                         f"{stock_code}: 매수 쿨다운 활성화 (남은 시간: {remaining_minutes}분)"
+                    )
+                    return False
+
+                # FundManager 매도 후 재매수 쿨다운 확인
+                if self.fund_manager and self.fund_manager.is_sell_cooldown_active(stock_code):
+                    self.logger.warning(
+                        f"{stock_code}: 매도 후 재매수 쿨다운 활성 (익절/손절 후 대기)"
+                    )
+                    return False
+
+                # 동시 보유 종목 수 제한 확인
+                if self.fund_manager and not self.fund_manager.can_add_position(stock_code):
+                    self.logger.warning(
+                        f"{stock_code}: 동시 보유 종목 수 초과로 매수 거부"
                     )
                     return False
 

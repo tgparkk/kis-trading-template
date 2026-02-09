@@ -157,8 +157,16 @@ class OrderTimeoutMixin:
         # 1. 잔여 주문 취소
         await self._cancel_with_retry(order_id)
 
-        # 2. 체결된 수량으로 포지션 등록
+        # 2. FundManager: 부분 체결 금액만 확정, 나머지는 자동 환불 (_move_to_completed에서 cancel 처리)
         filled_price = getattr(order, 'filled_price', None) or order.price
+        if self.fund_manager:
+            try:
+                actual_amount = filled_price * filled_qty
+                self.fund_manager.confirm_order(order_id, actual_amount)
+                self.logger.info(f"FundManager 부분 체결 확정: {order_id} - {actual_amount:,.0f}원 ({filled_qty}주)")
+            except Exception as e:
+                self.logger.warning(f"FundManager 부분 체결 확정 실패: {order_id} - {e}")
+
         self.logger.info(f"부분 체결 포지션 등록: {order.stock_code} {filled_qty}주 @{filled_price:,.0f}원")
 
         if self.trading_manager and hasattr(self.trading_manager, 'on_partial_fill_timeout'):

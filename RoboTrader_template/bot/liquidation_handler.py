@@ -1,8 +1,14 @@
 """
 청산 핸들러 모듈
 장 마감 시 포지션 청산 로직을 담당합니다.
+
+EOD 청산 실패 복구:
+- 청산 주문 실패 시 최대 3회 재시도
+- 재시도 간 10초 대기
+- 최종 실패 시 텔레그램 알림
 """
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Set
 
 from core.models import StockState
 from utils.logger import setup_logger
@@ -13,6 +19,10 @@ from config.market_hours import MarketHours
 if TYPE_CHECKING:
     from main import DayTradingBot
 
+# EOD 청산 재시도 설정
+EOD_LIQUIDATION_MAX_RETRIES = 3
+EOD_LIQUIDATION_RETRY_DELAY = 10  # 초
+
 
 class LiquidationHandler:
     """장 마감 청산 담당 클래스"""
@@ -21,6 +31,8 @@ class LiquidationHandler:
         self.bot = bot
         self.logger = setup_logger(__name__)
         self._last_eod_liquidation_date = None
+        self._eod_failed_stocks: Set[str] = set()  # 청산 실패 종목 추적
+        self._eod_retry_count: int = 0
 
     async def liquidate_all_positions_end_of_day(self):
         """장 마감 직전 보유 포지션 전량 시장가 일괄 청산"""
@@ -71,25 +83,27 @@ class LiquidationHandler:
             self.logger.error(f"장마감 일괄청산 오류: {e}")
 
     async def execute_end_of_day_liquidation(self):
-        """장마감 시간 모든 보유 종목 시장가 일괄매도 (동적 시간 적용)"""
+        """장마감 시간 모든 보유 종목 시장가 일괄매도 (동적 시간 적용, 실패 시 재시도)"""
         try:
-            # 동적 청산 시간 가져오기
             current_time = now_kst()
             market_hours = MarketHours.get_market_hours('KRX', current_time)
             eod_hour = market_hours['eod_liquidation_hour']
             eod_minute = market_hours['eod_liquidation_minute']
+            time_label = f"{eod_hour}:{eod_minute:02d}"
 
             positioned_stocks = self.bot.trading_manager.get_stocks_by_state(StockState.POSITIONED)
 
             if not positioned_stocks:
-                self.logger.info(f"{eod_hour}:{eod_minute:02d} 시장가 매도: 보유 포지션 없음")
+                self.logger.info(f"{time_label} 시장가 매도: 보유 포지션 없음")
+                self._eod_failed_stocks.clear()
                 return
 
             self.logger.info(
-                f"{eod_hour}:{eod_minute:02d} 시장가 일괄매도 시작: {len(positioned_stocks)}종목"
+                f"{time_label} 시장가 일괄매도 시작: {len(positioned_stocks)}종목"
             )
 
-            # 모든 보유 종목 시장가 매도
+            failed_stocks = []
+
             for trading_stock in positioned_stocks:
                 try:
                     if not trading_stock.position or trading_stock.position.quantity <= 0:
@@ -98,33 +112,100 @@ class LiquidationHandler:
                     stock_code = trading_stock.stock_code
                     stock_name = trading_stock.stock_name
                     quantity = int(trading_stock.position.quantity)
+                    current_price = 0.0  # 시장가
 
-                    # 시장가 매도를 위해 현재가 조회 (시장가는 가격 0으로 주문)
-                    current_price = 0.0  # 시장가는 0원으로 주문
-
-                    # 상태를 매도 대기로 변경 후 시장가 매도 주문
                     moved = self.bot.trading_manager.move_to_sell_candidate(
-                        stock_code, f"{eod_hour}:{eod_minute:02d} 시장가 일괄매도"
+                        stock_code, f"{time_label} 시장가 일괄매도"
                     )
                     if moved:
                         await self.bot.trading_manager.execute_sell_order(
                             stock_code, quantity, current_price,
-                            f"{eod_hour}:{eod_minute:02d} 시장가 일괄매도", market=True
+                            f"{time_label} 시장가 일괄매도", market=True
                         )
                         self.logger.info(
-                            f"{eod_hour}:{eod_minute:02d} 시장가 매도: "
+                            f"{time_label} 시장가 매도: "
                             f"{stock_code}({stock_name}) {quantity}주 시장가 주문"
                         )
 
                 except Exception as se:
                     self.logger.error(
-                        f"{eod_hour}:{eod_minute:02d} 시장가 매도 개별 처리 오류({trading_stock.stock_code}): {se}"
+                        f"{time_label} 시장가 매도 개별 처리 오류({trading_stock.stock_code}): {se}"
                     )
+                    failed_stocks.append(trading_stock.stock_code)
 
-            self.logger.info(f"{eod_hour}:{eod_minute:02d} 시장가 일괄매도 요청 완료")
+            self._eod_failed_stocks = set(failed_stocks)
+
+            if failed_stocks:
+                self.logger.warning(f"{time_label} 청산 실패 종목: {failed_stocks}")
+            else:
+                self.logger.info(f"{time_label} 시장가 일괄매도 요청 완료")
 
         except Exception as e:
             self.logger.error(f"장마감 시장가 매도 오류: {e}")
+
+    async def retry_failed_eod_liquidation(self):
+        """EOD 청산 실패 종목 재시도
+
+        Returns:
+            True if all retries succeeded or no failures, False if still failing
+        """
+        if not self._eod_failed_stocks:
+            return True
+
+        self._eod_retry_count += 1
+        if self._eod_retry_count > EOD_LIQUIDATION_MAX_RETRIES:
+            self.logger.error(
+                f"EOD 청산 재시도 한도 초과 ({EOD_LIQUIDATION_MAX_RETRIES}회): "
+                f"실패 종목 {list(self._eod_failed_stocks)}"
+            )
+            # 텔레그램 긴급 알림
+            if hasattr(self.bot, 'telegram') and self.bot.telegram:
+                try:
+                    await self.bot.telegram.notify_system_status(
+                        f"🚨 EOD 청산 최종 실패: {list(self._eod_failed_stocks)}"
+                    )
+                except Exception:
+                    pass
+            return False
+
+        self.logger.info(
+            f"EOD 청산 재시도 ({self._eod_retry_count}/{EOD_LIQUIDATION_MAX_RETRIES}): "
+            f"{list(self._eod_failed_stocks)}"
+        )
+
+        still_failed = []
+        for stock_code in list(self._eod_failed_stocks):
+            try:
+                positioned_stocks = self.bot.trading_manager.get_stocks_by_state(StockState.POSITIONED)
+                target = next((s for s in positioned_stocks if s.stock_code == stock_code), None)
+                if not target or not target.position or target.position.quantity <= 0:
+                    continue  # 이미 청산됨
+
+                quantity = int(target.position.quantity)
+                moved = self.bot.trading_manager.move_to_sell_candidate(
+                    stock_code, f"EOD 청산 재시도 #{self._eod_retry_count}"
+                )
+                if moved:
+                    await self.bot.trading_manager.execute_sell_order(
+                        stock_code, quantity, 0.0,
+                        f"EOD 청산 재시도 #{self._eod_retry_count}", market=True
+                    )
+                    self.logger.info(f"EOD 재시도 성공: {stock_code} {quantity}주")
+            except Exception as e:
+                self.logger.error(f"EOD 재시도 실패 ({stock_code}): {e}")
+                still_failed.append(stock_code)
+
+        self._eod_failed_stocks = set(still_failed)
+        return len(still_failed) == 0
+
+    def has_failed_eod_stocks(self) -> bool:
+        """EOD 청산 실패 종목 존재 여부"""
+        return len(self._eod_failed_stocks) > 0
+
+    def reset_eod_state(self):
+        """EOD 상태 초기화 (일일 리셋)"""
+        self._eod_failed_stocks.clear()
+        self._eod_retry_count = 0
 
     def get_last_eod_liquidation_date(self):
         """마지막 장마감 청산 날짜 반환"""

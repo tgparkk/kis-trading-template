@@ -318,6 +318,22 @@ class OrderMonitorMixin:
 
         order.filled_price = filled_price
         order.status = OrderStatus.FILLED
+
+        # FundManager 연동
+        if self.fund_manager:
+            try:
+                actual_amount = filled_price * filled_qty
+                if order.order_type == OrderType.BUY:
+                    # 매수: 예약 → 투자 확정
+                    self.fund_manager.confirm_order(order_id, actual_amount)
+                    self.logger.info(f"FundManager 매수 체결 확정: {order_id} - {actual_amount:,.0f}원")
+                elif order.order_type == OrderType.SELL:
+                    # 매도: 투자금 회수
+                    self.fund_manager.release_investment(actual_amount)
+                    self.logger.info(f"FundManager 매도 투자금 회수: {order_id} - {actual_amount:,.0f}원")
+            except Exception as e:
+                self.logger.warning(f"FundManager 체결 처리 실패: {order_id} - {e}")
+
         self._move_to_completed(order_id)
         self.logger.info(f"주문 완전 체결 확정: {order_id} ({order.stock_code}) - {filled_qty}주 @{filled_price:,.0f}원")
 
