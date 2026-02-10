@@ -134,6 +134,7 @@ class TestMainTradingLoop:
         buy_called_iterations = []
         current_iteration = [0]
         mock_bot.is_running = True
+        mock_bot._candidates_loaded = True  # 스크리너 로드 건너뛰기
 
         with patch('main.is_market_open', return_value=True):
             mock_bot.order_manager.check_pending_orders_once = AsyncMock()
@@ -157,7 +158,8 @@ class TestMainTradingLoop:
 
             loop_count = [0]
 
-            with patch.object(mock_bot, '_check_eod_liquidation', new=AsyncMock()):
+            with patch.object(mock_bot, '_check_eod_liquidation', new=AsyncMock()), \
+                 patch.object(mock_bot, '_load_screener_candidates', new=AsyncMock()):
                 async def stop_after_n(seconds):
                     loop_count[0] += 1
                     if loop_count[0] >= 9:

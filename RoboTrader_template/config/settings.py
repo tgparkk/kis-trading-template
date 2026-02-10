@@ -4,9 +4,12 @@ key.ini 파일에서 설정을 읽어 환경변수로 제공
 trading_config.json 파일에서 거래 설정을 로드
 """
 import json
+import logging
 import configparser
 from pathlib import Path
 from core.models import TradingConfig
+
+logger = logging.getLogger(__name__)
 
 # 설정 파일 경로
 CONFIG_FILE = Path(__file__).parent / "key.ini"
@@ -34,8 +37,8 @@ def load_config():
 def load_trading_config() -> TradingConfig:
     """거래 설정 파일을 로드하여 TradingConfig 객체 반환"""
     if not TRADING_CONFIG_FILE.exists():
-        print(f"경고: 거래 설정 파일을 찾을 수 없습니다: {TRADING_CONFIG_FILE}")
-        print("기본 설정을 사용합니다.")
+        logger.warning("거래 설정 파일을 찾을 수 없습니다: %s", TRADING_CONFIG_FILE)
+        logger.warning("기본 설정을 사용합니다.")
         return TradingConfig()
     
     try:
@@ -45,16 +48,16 @@ def load_trading_config() -> TradingConfig:
         return TradingConfig.from_json(json_data)
         
     except Exception as e:
-        print(f"경고: 거래 설정 파일 로드 실패: {e}")
-        print("기본 설정을 사용합니다.")
+        logger.warning("거래 설정 파일 로드 실패: %s", e)
+        logger.warning("기본 설정을 사용합니다.")
         return TradingConfig()
 
 # 설정 로드
 try:
     _config = load_config()
 except FileNotFoundError as e:
-    print(f"경고: {e}")
-    print("key.ini.example을 참고하여 key.ini 파일을 생성해주세요.")
+    logger.warning("%s", e)
+    logger.warning("key.ini.example을 참고하여 key.ini 파일을 생성해주세요.")
     _config = {
         'KIS_BASE_URL': '',
         'KIS_APP_KEY': '',

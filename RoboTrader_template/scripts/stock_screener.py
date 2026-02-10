@@ -154,7 +154,7 @@ class MomentumScreener:
         candidates = [
             s for s in candidates
             if not any(s["name"].startswith(p) for p in ETF_PREFIXES)
-            and s["change_rate"] >= 0.3
+            and s.get("change_rate", 0) >= 0.3
         ]
         logger.info(f"2차 필터 (ETF제외, 등락률≥0.3%): {len(candidates)}종목")
 

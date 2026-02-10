@@ -18,9 +18,9 @@ class TestMomentumScreener:
         """5일 연속 상승 종목 감지"""
         mock_fetch_all.return_value = [
             {"code": "005930", "name": "삼성전자", "close": 72000,
-             "trading_amount": 500_000_000_000, "is_rising": True},
+             "trading_amount": 500_000_000_000, "is_rising": True, "change_rate": 2.5},
             {"code": "000660", "name": "SK하이닉스", "close": 180000,
-             "trading_amount": 300_000_000_000, "is_rising": True},
+             "trading_amount": 300_000_000_000, "is_rising": True, "change_rate": 1.8},
         ]
 
         def closes_for(code, days=7):

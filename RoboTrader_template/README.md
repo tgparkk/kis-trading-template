@@ -33,8 +33,8 @@ cd RoboTrader_template
 pip install -r requirements.txt
 
 # 2. API 설정
-cp .env.example .env
-# .env 편집 (APP_KEY, APP_SECRET 입력)
+cp config/key.ini.example config/key.ini
+# config/key.ini 편집 (APP_KEY, APP_SECRET, 계좌번호 입력)
 
 # 3. 전략 작성
 cp -r strategies/sample strategies/my_strategy
@@ -215,16 +215,16 @@ python main.py --strategy my_strategy
 
 ### 1단계: 가상매매로 검증
 
-```python
-# config/settings.py 또는 .env
-VIRTUAL_MODE=true  # 최소 1개월 테스트
+```json
+// config/trading_config.json
+"paper_trading": true  // 최소 1개월 테스트
 ```
 
 ### 2단계: 소액 실전
 
-```python
-VIRTUAL_MODE=false
-INITIAL_CAPITAL=1000000  # 100만원부터
+```json
+// config/trading_config.json
+"paper_trading": false  // 소액(100만원)부터 시작
 ```
 
 ### 3단계: 점진적 증액
@@ -252,4 +252,4 @@ INITIAL_CAPITAL=1000000  # 100만원부터
 
 ---
 
-**마지막 업데이트**: 2026-02-07
+**마지막 업데이트**: 2026-02-10
