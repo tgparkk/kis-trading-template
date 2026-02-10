@@ -1,0 +1,23 @@
+{
+  "source_file": "data_XXXX_YYYYMMDD.xlsx",
+  "extract_date": "2025-01-01 00:00:00",
+  "market_filter": "KOSPI",
+  "total_stocks": 3,
+  "stocks": [
+    {
+      "code": "005930",
+      "name": "삼성전자",
+      "market": "KOSPI"
+    },
+    {
+      "code": "000660",
+      "name": "SK하이닉스",
+      "market": "KOSPI"
+    },
+    {
+      "code": "035420",
+      "name": "NAVER",
+      "market": "KOSPI"
+    }
+  ]
+}
