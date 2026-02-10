@@ -307,8 +307,12 @@ class TelegramIntegration:
             return
         
         try:
-            # 수익률 계산 (임시)
-            return_rate = 0.0  # TODO: 실제 수익률 계산 로직
+            # 수익률 계산: 일일 손익 / 총 자금
+            return_rate = 0.0
+            if self.trading_bot and hasattr(self.trading_bot, 'fund_manager'):
+                total_funds = self.trading_bot.fund_manager.total_funds
+                if total_funds > 0:
+                    return_rate = (self.daily_stats['profit_loss'] / total_funds) * 100
             
             current_date = now_kst().strftime('%Y-%m-%d')
             
