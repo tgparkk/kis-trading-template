@@ -32,3 +32,4 @@ Thumbs.db
 
 # Archive (separated quant code)
 _archived/
+test_output*.txt
