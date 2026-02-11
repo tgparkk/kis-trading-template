@@ -1,0 +1,11 @@
+[project]
+name = "kis-trading-template"
+version = "0.9.0"
+description = "Korean stock auto-trading framework template using KIS API"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+
+[tool.pytest.ini_options]
+testpaths = ["RoboTrader_template/tests"]
+asyncio_mode = "auto"
