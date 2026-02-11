@@ -2,6 +2,10 @@
 config/key.ini
 token_info.json
 
+# AI/IDE tool configs
+.claude/
+.cursor/
+
 # 종목 데이터 (환경별 상이, stock_list.json.example 참고)
 stock_list.json
 

@@ -9,6 +9,10 @@ __pycache__/
 *.pid
 token_info.json
 
+# AI/IDE tool configs
+.claude/
+.cursor/
+
 # Data
 *.db
 *.sqlite3
