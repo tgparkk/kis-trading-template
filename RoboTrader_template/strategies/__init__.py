@@ -42,6 +42,7 @@ from .sample import SampleStrategy
 from .momentum import MomentumStrategy
 from .mean_reversion import MeanReversionStrategy
 from .volume_breakout import VolumeBreakoutStrategy
+from .sawkami import SawkamiStrategy
 
 __all__ = [
     # Framework - Base
@@ -62,6 +63,7 @@ __all__ = [
     'MomentumStrategy',
     'MeanReversionStrategy',
     'VolumeBreakoutStrategy',
+    'SawkamiStrategy',
 ]
 
 __version__ = '1.0.0'

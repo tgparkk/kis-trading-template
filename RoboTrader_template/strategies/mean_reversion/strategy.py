@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from ..base import BaseStrategy, OrderInfo, Signal, SignalType
+from utils.indicators import calculate_rsi
 
 
 class MeanReversionStrategy(BaseStrategy):
@@ -122,7 +123,7 @@ class MeanReversionStrategy(BaseStrategy):
 
         # RSI 필터
         if self._use_rsi_filter:
-            rsi = self._calculate_rsi(data["close"], self._rsi_period)
+            rsi = calculate_rsi(data["close"], self._rsi_period)
             rsi_val = float(rsi.iloc[-1])
             if pd.isna(rsi_val) or rsi_val > self._rsi_oversold:
                 return None
@@ -179,12 +180,4 @@ class MeanReversionStrategy(BaseStrategy):
             reasons=reasons,
         )
 
-    @staticmethod
-    def _calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
-        delta = series.diff()
-        gain = delta.clip(lower=0)
-        loss = -delta.clip(upper=0)
-        avg_gain = gain.ewm(alpha=1 / period, min_periods=period).mean()
-        avg_loss = loss.ewm(alpha=1 / period, min_periods=period).mean()
-        rs = avg_gain / avg_loss.replace(0, float("nan"))
-        return 100 - (100 / (1 + rs))
+    # RSI 계산은 utils.indicators.calculate_rsi 사용
