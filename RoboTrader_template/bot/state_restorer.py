@@ -210,7 +210,24 @@ class StateRestorer:
             # 3. 불일치 감지 및 로깅
             await self._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-            # 4. 실제 계좌 기준으로 메모리에 복원
+            # 4. 미체결 매도 주문 조회 (C7 fix: SELL_PENDING 중복 매도 방지)
+            pending_sell_codes = set()
+            try:
+                if hasattr(self.broker, 'get_pending_orders'):
+                    pending_orders = self.broker.get_pending_orders()
+                    if pending_orders:
+                        for po in pending_orders:
+                            # 매도 미체결 주문의 종목코드 수집
+                            order_type = po.get('order_type', '') if isinstance(po, dict) else getattr(po, 'order_type', '')
+                            stock_code_po = po.get('stock_code', '') if isinstance(po, dict) else getattr(po, 'stock_code', '')
+                            # 매도 주문 판별: "sell", "02" (KIS 매도코드), "SELL" 등
+                            if str(order_type).lower() in ('sell', '02', 'sell_market'):
+                                pending_sell_codes.add(stock_code_po)
+                                logger.info(f"📋 [실전매매] 미체결 매도 주문 발견: {stock_code_po}")
+            except Exception as pending_err:
+                logger.warning(f"⚠️ [실전매매] 미체결 주문 조회 실패 (POSITIONED로 폴백): {pending_err}")
+
+            # 5. 실제 계좌 기준으로 메모리에 복원
             holding_restored = 0
 
             for real_stock in real_holdings:
@@ -248,15 +265,24 @@ class StateRestorer:
                         trading_stock.target_profit_rate = target_profit_rate
                         trading_stock.stop_loss_rate = stop_loss_rate
 
+                        # C7 fix: 매도 미체결이 있으면 SELL_PENDING으로 복원
+                        if stock_code in pending_sell_codes:
+                            restore_state = StockState.SELL_PENDING
+                            state_label = "SELL_PENDING (미체결 매도 존재)"
+                        else:
+                            restore_state = StockState.POSITIONED
+                            state_label = "POSITIONED"
+
                         self.trading_manager._change_stock_state(
                             stock_code,
-                            StockState.POSITIONED,
+                            restore_state,
                             f"[실전] 계좌 복원: {quantity}주 @{avg_price:,.0f}원 "
-                            f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%)",
+                            f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%) "
+                            f"[{state_label}]",
                         )
                         holding_restored += 1
                         logger.info(
-                            f"📊 [실전] {stock_code}({stock_name}) 복원: {quantity}주 @{avg_price:,.0f}원, "
+                            f"📊 [실전] {stock_code}({stock_name}) 복원({state_label}): {quantity}주 @{avg_price:,.0f}원, "
                             f"익절가 {avg_price*(1+target_profit_rate):,.0f}원, "
                             f"손절가 {avg_price*(1-stop_loss_rate):,.0f}원"
                         )

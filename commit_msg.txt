@@ -1,0 +1,19 @@
+fix: resolve 10 critical/high bugs from comprehensive code review
+
+CRITICAL fixes (6):
+- C1: Add move_to_sell_candidate() before execute_sell_order() in real sell flow
+- C2: Re-check order status before force timeout cleanup to prevent ghost positions
+- C3: Handle SELL_PENDING timeout by restoring to POSITIONED state
+- C4: Increase async timeout from 20s to 35s (must exceed HTTP 30s timeout)
+- C6: Save order reference before cancel to ensure timeout notification delivery
+- C7: Check pending sell orders on restart to prevent duplicate sell submissions
+
+HIGH fixes (4):
+- H4: Skip duplicate fund reservation when stock_code already reserved
+- H5: Set state to COMPLETED after successful virtual sell
+- H8: Allow order cancel API calls even when Circuit Breaker is OPEN
+- H11: Disable retry for non-idempotent POST order requests (buy/sell)
+
+All 1059 tests passing, 2 skipped.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>

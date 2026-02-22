@@ -55,6 +55,9 @@ class OrderTimeoutMixin:
                     f"주문 타임아웃: {order.stock_code} {order_type_str} {order.quantity}주 @{order.price:,.0f}원 ({elapsed_time:.0f}초 경과)"
                 )
 
+            # 취소 전에 order 참조 저장 (_cancel이 pending_orders에서 제거할 수 있음)
+            saved_order = order
+
             # 미체결 주문 취소 (재시도 포함)
             cancel_success = await self._cancel_with_retry(order_id)
 
@@ -69,12 +72,12 @@ class OrderTimeoutMixin:
                     await self._force_timeout_cleanup(order_id)
                     if self.telegram:
                         await self.telegram.notify_system_status(
-                            f"주문 취소 실패 - 수동 확인 필요: {order.stock_code} 주문 {order_id}"
+                            f"주문 취소 실패 - 수동 확인 필요: {saved_order.stock_code} 주문 {order_id}"
                         )
 
             # 취소 성공한 경우도 TradingStockManager에 알림 (상태 동기화)
             if cancel_success:
-                await self._notify_trading_manager_timeout(order_id)
+                await self._notify_trading_manager_timeout_with_order(saved_order)
 
         except Exception as e:
             self.logger.error(f"타임아웃 처리 실패 {order_id}: {e}")
@@ -111,6 +114,9 @@ class OrderTimeoutMixin:
                 await self._handle_partial_fill_timeout(order_id, order, filled_qty)
                 return
 
+            # 취소 전에 order 참조 저장 (_cancel이 pending_orders에서 제거할 수 있음)
+            saved_order = order
+
             # 미체결 주문 취소 (재시도 포함)
             cancel_success = await self._cancel_with_retry(order_id)
 
@@ -118,9 +124,9 @@ class OrderTimeoutMixin:
                 # 텔레그램 알림 (기존 cancel_order에서 이미 알림이 발송되므로 추가 정보만 포함)
                 if self.telegram:
                     await self.telegram.notify_order_cancelled({
-                        'stock_code': order.stock_code,
-                        'stock_name': f'Stock_{order.stock_code}',
-                        'order_type': order.order_type.value
+                        'stock_code': saved_order.stock_code,
+                        'stock_name': f'Stock_{saved_order.stock_code}',
+                        'order_type': saved_order.order_type.value
                     }, "3분봉 4개 경과")
             else:
                 # 4분봉 타임아웃 취소 최종 실패 시 API 재확인
@@ -130,12 +136,12 @@ class OrderTimeoutMixin:
                     await self._force_4candle_timeout_cleanup(order_id)
                     if self.telegram:
                         await self.telegram.notify_system_status(
-                            f"주문 취소 실패 - 수동 확인 필요: {order.stock_code} 주문 {order_id}"
+                            f"주문 취소 실패 - 수동 확인 필요: {saved_order.stock_code} 주문 {order_id}"
                         )
 
             # 3분봉 타임아웃 취소 성공한 경우도 TradingStockManager에 알림
             if cancel_success:
-                await self._notify_trading_manager_4candle_timeout(order_id)
+                await self._notify_trading_manager_timeout_with_order(saved_order)
 
         except Exception as e:
             self.logger.error(f"3분봉 타임아웃 처리 실패 {order_id}: {e}")
@@ -191,12 +197,31 @@ class OrderTimeoutMixin:
             )
 
     async def _force_timeout_cleanup(self: 'OrderManagerBase', order_id: str) -> None:
-        """타임아웃 시 강제 상태 정리"""
+        """타임아웃 시 강제 상태 정리 (체결 재확인 후 처리)"""
         if order_id in self.pending_orders:
             order = self.pending_orders[order_id]
+
+            # C2 fix: TIMEOUT 처리 전 체결 여부 한 번 더 확인
+            try:
+                await self._check_order_status(order_id)
+                if order_id not in self.pending_orders:
+                    self.logger.info(f"강제정리 전 체결 확인됨: {order_id} ({order.stock_code})")
+                    return
+            except Exception as check_err:
+                self.logger.warning(
+                    f"⚠️ 강제정리 전 체결 재확인 실패: {order_id} ({order.stock_code}) - {check_err}. "
+                    f"증권사에서 실제 체결되었을 수 있음! "
+                    f"종목={order.stock_code}, 수량={order.quantity}주, "
+                    f"유형={'매수' if order.order_type == OrderType.BUY else '매도'} "
+                    f"→ 다음 장 시작 시 잔고 동기화로 확인 필요"
+                )
+
             order.status = OrderStatus.TIMEOUT  # 타임아웃 상태로 변경
             self._move_to_completed(order_id)
-            self.logger.warning(f"타임아웃으로 인한 강제 상태 정리: {order_id} (PENDING -> TIMEOUT)")
+            self.logger.warning(
+                f"타임아웃으로 인한 강제 상태 정리: {order_id} (PENDING -> TIMEOUT) "
+                f"종목={order.stock_code}, 수량={order.quantity}주"
+            )
 
             # TradingStockManager에 타임아웃 상황 알림
             if self.trading_manager and hasattr(self.trading_manager, 'handle_order_timeout'):
@@ -207,12 +232,31 @@ class OrderTimeoutMixin:
                     self.logger.error(f"TradingStockManager 타임아웃 처리 실패: {notify_error}")
 
     async def _force_4candle_timeout_cleanup(self: 'OrderManagerBase', order_id: str) -> None:
-        """3분봉 타임아웃 시 강제 상태 정리"""
+        """3분봉 타임아웃 시 강제 상태 정리 (체결 재확인 후 처리)"""
         if order_id in self.pending_orders:
             order = self.pending_orders[order_id]
+
+            # C2 fix: TIMEOUT 처리 전 체결 여부 한 번 더 확인
+            try:
+                await self._check_order_status(order_id)
+                if order_id not in self.pending_orders:
+                    self.logger.info(f"3분봉 강제정리 전 체결 확인됨: {order_id} ({order.stock_code})")
+                    return
+            except Exception as check_err:
+                self.logger.warning(
+                    f"⚠️ 3분봉 강제정리 전 체결 재확인 실패: {order_id} ({order.stock_code}) - {check_err}. "
+                    f"증권사에서 실제 체결되었을 수 있음! "
+                    f"종목={order.stock_code}, 수량={order.quantity}주, "
+                    f"유형={'매수' if order.order_type == OrderType.BUY else '매도'} "
+                    f"→ 다음 장 시작 시 잔고 동기화로 확인 필요"
+                )
+
             order.status = OrderStatus.TIMEOUT
             self._move_to_completed(order_id)
-            self.logger.warning(f"3분봉 타임아웃으로 인한 강제 상태 정리: {order_id} (PENDING -> TIMEOUT)")
+            self.logger.warning(
+                f"3분봉 타임아웃으로 인한 강제 상태 정리: {order_id} (PENDING -> TIMEOUT) "
+                f"종목={order.stock_code}, 수량={order.quantity}주"
+            )
 
             # TradingStockManager에 3분봉 타임아웃 상황 알림
             if self.trading_manager and hasattr(self.trading_manager, 'handle_order_timeout'):
@@ -232,6 +276,15 @@ class OrderTimeoutMixin:
                 self.logger.warning(f"예외 발생으로 인한 강제 상태 정리: {order_id}")
         except Exception as e:
             self.logger.debug(f"강제 상태 정리 중 오류: {order_id} - {e}")
+
+    async def _notify_trading_manager_timeout_with_order(self: 'OrderManagerBase', order) -> None:
+        """TradingStockManager에 타임아웃 알림 (order 객체 직접 전달)"""
+        if self.trading_manager and hasattr(self.trading_manager, 'handle_order_timeout'):
+            try:
+                await self.trading_manager.handle_order_timeout(order)
+                self.logger.info(f"TradingStockManager 취소 처리 완료: {order.stock_code}")
+            except Exception as notify_error:
+                self.logger.error(f"TradingStockManager 취소 처리 실패: {notify_error}")
 
     async def _notify_trading_manager_timeout(self: 'OrderManagerBase', order_id: str) -> None:
         """TradingStockManager에 타임아웃 알림"""

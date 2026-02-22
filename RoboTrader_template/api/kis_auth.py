@@ -329,9 +329,11 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
     global _api_stats
     
     # Circuit Breaker 체크
+    # H8 fix: 주문 취소/정정취소 관련 TR은 CB 상태와 무관하게 허용
+    _CB_BYPASS_TR_IDS = {"TTTC0013U", "TTTC8036R"}  # 정정취소, 정정취소가능조회
     from api.circuit_breaker import get_circuit_breaker
     cb = get_circuit_breaker()
-    if not cb.can_execute():
+    if not cb.can_execute() and ptr_id not in _CB_BYPASS_TR_IDS:
         cb.record_blocked()
         logger.warning(f"🔌 Circuit Breaker OPEN - API 호출 차단: {ptr_id}")
         return None
@@ -347,8 +349,12 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
     # TR ID 설정
     tr_id = ptr_id
 
+    # H11 fix: 비멱등 POST 주문(매수/매도)은 재시도하지 않음 (중복 주문 방지)
+    _NON_IDEMPOTENT_TR_IDS = {"TTTC0012U", "TTTC0011U", "VTTC0802U", "VTTC0801U"}
+    effective_max_retries = 0 if (postFlag and tr_id in _NON_IDEMPOTENT_TR_IDS) else _max_retries
+
     # 재시도 로직
-    for attempt in range(_max_retries + 1):
+    for attempt in range(effective_max_retries + 1):
         try:
             # API 호출 속도 제한 적용
             _wait_for_api_limit()

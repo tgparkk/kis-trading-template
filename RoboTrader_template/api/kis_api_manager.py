@@ -143,7 +143,13 @@ class KISAPIManager:
         """API 호출 with 재시도 로직"""
         self.call_count += 1
         
-        for attempt in range(self.max_retries):
+        # H11 fix: 비멱등 POST 주문 함수는 재시도하지 않음 (중복 주문 방지)
+        # get_order_cash가 매수/매도 주문 함수
+        func_name = getattr(api_func, '__name__', '')
+        is_order_func = (func_name == 'get_order_cash')
+        effective_retries = 1 if is_order_func else self.max_retries
+        
+        for attempt in range(effective_retries):
             try:
                 # 인증 상태 확인
                 if not self._ensure_authenticated():
@@ -162,7 +168,7 @@ class KISAPIManager:
                     return result
                 
                 # 결과가 None인 경우 재시도
-                if attempt < self.max_retries - 1:
+                if attempt < effective_retries - 1:
                     time.sleep(self.retry_delay * (attempt + 1))
                     continue
                 
@@ -170,9 +176,9 @@ class KISAPIManager:
                 
             except Exception as e:
                 self.error_count += 1
-                self.logger.error(f"API 호출 실패 (시도 {attempt + 1}/{self.max_retries}): {e}")
+                self.logger.error(f"API 호출 실패 (시도 {attempt + 1}/{effective_retries}): {e}")
                 
-                if attempt < self.max_retries - 1:
+                if attempt < effective_retries - 1:
                     time.sleep(self.retry_delay * (attempt + 1))
                     continue
                 

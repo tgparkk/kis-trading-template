@@ -232,6 +232,9 @@ class TradingDecisionEngine:
         try:
             if not trading_stock.position or trading_stock.position.quantity <= 0:
                 return False
+            # 매도 후보 상태로 전이 (execute_sell_order는 SELL_CANDIDATE 상태 필요)
+            self.trading_manager.move_to_sell_candidate(
+                stock_code=trading_stock.stock_code, reason=sell_reason)
             ok = await self.trading_manager.execute_sell_order(
                 stock_code=trading_stock.stock_code,
                 quantity=trading_stock.position.quantity,
@@ -272,6 +275,15 @@ class TradingDecisionEngine:
                     self.logger.info(f"가상매도: {code} (손익: {pnl:+,.0f}원)")
                     trading_stock.clear_virtual_buy_info()
                     trading_stock.clear_position()
+                    # H5 fix: 가상매도 후 종목 상태를 COMPLETED로 변경하여 고아 상태 방지
+                    try:
+                        if self.trading_manager:
+                            from core.models import StockState
+                            self.trading_manager._change_stock_state(
+                                code, StockState.COMPLETED, "가상 매도 완료"
+                            )
+                    except Exception as state_err:
+                        self.logger.warning(f"가상매도 상태 변경 실패: {code} - {state_err}")
                 return ok
             return False
         except Exception as e:

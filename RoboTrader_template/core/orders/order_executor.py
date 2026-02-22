@@ -47,13 +47,19 @@ class OrderExecutorMixin:
             # FundManager 자금 예약 (실전 매매 시)
             if not getattr(self.config, "paper_trading", False) and self.fund_manager:
                 reserve_amount = price * quantity
-                # 임시 order_id로 예약 (실제 order_id는 API 응답 후 알 수 있음)
-                temp_reserve_id = f"RESERVE-{stock_code}-{int(now_kst().timestamp())}"
-                if not self.fund_manager.reserve_funds(temp_reserve_id, reserve_amount):
-                    self.logger.warning(f"자금 부족으로 매수 주문 거부: {stock_code} (필요: {reserve_amount:,.0f}원)")
-                    return None
-                # 임시 예약 ID를 나중에 실제 order_id로 교체하기 위해 저장
-                self._temp_reserve_id = temp_reserve_id
+                # H4 fix: TradingAnalyzer에서 이미 stock_code로 예약한 경우 중복 예약 방지
+                already_reserved = self.fund_manager.order_reservations.get(stock_code, 0) > 0
+                if already_reserved:
+                    self.logger.debug(f"자금 이미 예약됨 (by TradingAnalyzer): {stock_code}")
+                    self._temp_reserve_id = None
+                else:
+                    # 임시 order_id로 예약 (실제 order_id는 API 응답 후 알 수 있음)
+                    temp_reserve_id = f"RESERVE-{stock_code}-{int(now_kst().timestamp())}"
+                    if not self.fund_manager.reserve_funds(temp_reserve_id, reserve_amount):
+                        self.logger.warning(f"자금 부족으로 매수 주문 거부: {stock_code} (필요: {reserve_amount:,.0f}원)")
+                        return None
+                    # 임시 예약 ID를 나중에 실제 order_id로 교체하기 위해 저장
+                    self._temp_reserve_id = temp_reserve_id
 
             # 가상매매 모드: 즉시 체결로 시뮬레이션
             if getattr(self.config, "paper_trading", False):
@@ -112,7 +118,7 @@ class OrderExecutorMixin:
             self.executor,
             self.broker.place_buy_order,
             stock_code, quantity, int(price),
-            timeout_seconds=20, default=None
+            timeout_seconds=35, default=None
         )
 
         if not result:
@@ -268,7 +274,7 @@ class OrderExecutorMixin:
             self.executor,
             self.broker.place_sell_order,
             stock_code, quantity, int(price), ("01" if market else "00"),
-            timeout_seconds=20, default=None
+            timeout_seconds=35, default=None
         )
 
         if not result:
@@ -334,7 +340,7 @@ class OrderExecutorMixin:
                 self.executor,
                 self.broker.cancel_order,
                 order_id, order.stock_code,
-                timeout_seconds=20, default=None
+                timeout_seconds=35, default=None
             )
 
             if not result:
@@ -380,7 +386,7 @@ class OrderExecutorMixin:
                 self.executor,
                 self.broker.get_current_price,
                 order.stock_code,
-                timeout_seconds=20, default=None
+                timeout_seconds=35, default=None
             )
 
             if not price_data:
