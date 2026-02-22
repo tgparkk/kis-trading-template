@@ -437,10 +437,14 @@ class OrderExecution:
                 elif trading_stock.state == StockState.SELL_PENDING:
                     trading_stock.current_order_id = None
                     trading_stock.order_processed = False
+                    trading_stock.is_selling = False  # 매도 플래그 초기화 (재매도 가능)
+
+                    # 매도 타임아웃 복원 후 즉시 재매도 방지 (10초 쿨다운)
+                    trading_stock.last_sell_timeout_time = now_kst()
 
                     self.state_manager.change_stock_state(
                         stock_code, StockState.POSITIONED,
-                        "매도 주문 타임아웃 복구 (재매도 가능)"
+                        "매도 주문 타임아웃 복구 (10초 후 재매도 가능)"
                     )
                     self.logger.info(
                         f"{stock_code} 타임아웃 복구 완료: SELL_PENDING -> POSITIONED (재매도 가능)"
@@ -487,6 +491,60 @@ class OrderExecution:
             )
 
         self.logger.info(f"부분 체결 포지션 등록 완료: {stock_code} {filled_qty}주 @{filled_price:,.0f}원")
+
+    async def on_sell_partial_fill_timeout(self, order, filled_qty: int, filled_price: float) -> None:
+        """
+        매도 부분 체결 타임아웃 처리 - 체결된 수량 반영, 잔량은 POSITIONED로 복구
+
+        Args:
+            order: 부분 체결된 매도 주문 객체 (Order)
+            filled_qty: 체결된 수량
+            filled_price: 체결 가격
+        """
+        stock_code = order.stock_code
+
+        with self.state_manager.lock:
+            if stock_code not in self.state_manager.trading_stocks:
+                self.logger.warning(f"매도 부분 체결 처리 실패: {stock_code} 종목 없음")
+                return
+
+            trading_stock = self.state_manager.trading_stocks[stock_code]
+            trading_stock.is_selling = False
+            trading_stock.clear_current_order()
+
+            # 기존 포지션 수량에서 체결 수량을 차감
+            if trading_stock.position:
+                remaining_qty = trading_stock.position.quantity - filled_qty
+                if remaining_qty > 0:
+                    # 잔량이 있으면 포지션 업데이트 후 POSITIONED로 복구 (재매도 가능)
+                    trading_stock.position.quantity = remaining_qty
+                    self.state_manager.change_stock_state(
+                        stock_code, StockState.POSITIONED,
+                        f"매도 부분 체결 타임아웃: {filled_qty}주 매도, {remaining_qty}주 잔량"
+                    )
+                    self.logger.info(
+                        f"{stock_code} 매도 부분 체결: {filled_qty}주 @{filled_price:,.0f}원, "
+                        f"잔량 {remaining_qty}주 (재매도 대기)"
+                    )
+                else:
+                    # 전량 매도 완료
+                    trading_stock.clear_position()
+                    self.state_manager.change_stock_state(
+                        stock_code, StockState.COMPLETED,
+                        f"매도 부분 체결 완료: {filled_qty}주 @{filled_price:,.0f}원"
+                    )
+                    self.logger.info(
+                        f"{stock_code} 매도 부분 체결 전량 완료: {filled_qty}주 @{filled_price:,.0f}원"
+                    )
+            else:
+                # 포지션 정보 없으면 COMPLETED로
+                self.state_manager.change_stock_state(
+                    stock_code, StockState.COMPLETED,
+                    f"매도 부분 체결 완료 (포지션 없음): {filled_qty}주"
+                )
+                self.logger.warning(
+                    f"{stock_code} 매도 부분 체결: 포지션 정보 없음 ({filled_qty}주 체결)"
+                )
 
     def set_re_trading_config(self, enable: bool) -> None:
         """

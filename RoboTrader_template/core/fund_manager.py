@@ -219,6 +219,19 @@ class FundManager:
                            f"(가용: {self.available_funds:,.0f}원, "
                            f"보유종목: {len(self.current_position_codes)}개)")
 
+    def adjust_pnl(self, pnl: float) -> None:
+        """매매 손익을 자금에 반영
+
+        Args:
+            pnl: 손익 금액 (양수=이익, 음수=손실)
+        """
+        with self._lock:
+            self.total_funds += pnl
+            self.available_funds += pnl
+            if self.available_funds < 0:
+                self.available_funds = 0
+            self.logger.info(f"매매 손익 반영: {pnl:+,.0f}원 (총자금: {self.total_funds:,.0f}원)")
+
     def can_add_position(self, stock_code: str = "") -> bool:
         """
         새 포지션 추가 가능 여부 확인

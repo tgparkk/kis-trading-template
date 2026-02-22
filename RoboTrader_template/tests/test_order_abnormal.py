@@ -20,6 +20,13 @@ from core.order_manager import OrderManager
 from core.fund_manager import FundManager
 
 
+@pytest.fixture(autouse=True)
+def _mock_market_hours():
+    """장 시간 체크를 우회하여 테스트 시간에 관계없이 주문 가능하게 함"""
+    with patch('config.market_hours.MarketHours.can_place_order', return_value=True):
+        yield
+
+
 def make_config(paper_trading=False):
     return TradingConfig(
         data_collection=DataCollectionConfig(),

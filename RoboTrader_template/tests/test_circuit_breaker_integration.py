@@ -16,6 +16,14 @@ from core.order_manager import OrderManager
 from config.market_hours import CircuitBreakerState, get_circuit_breaker_state
 
 
+@pytest.fixture(autouse=True)
+def _mock_market_hours():
+    """장 시간 체크를 우회하여 테스트 시간에 관계없이 주문 가능하게 함
+    (서킷브레이커/VI 체크는 order_executor 내부에서 별도로 수행됨)"""
+    with patch('config.market_hours.MarketHours.can_place_order', return_value=True):
+        yield
+
+
 def _make_order_manager(paper_trading=True):
     """OrderManager 생성 헬퍼"""
     config = TradingConfig.from_json({

@@ -103,7 +103,7 @@ class OrderCompletionHandler:
                     if order.status == OrderStatus.FILLED:
                         # 매수 완료 - 포지션 상태로 변경
                         with self.state_manager.lock:
-                            trading_stock.set_position(order.quantity, order.price)
+                            trading_stock.set_position(order.quantity, order.get_filled_price())
                             trading_stock.clear_current_order()
                             # 매수 시간 기록
                             trading_stock.set_buy_time(now_kst())
@@ -114,11 +114,10 @@ class OrderCompletionHandler:
                             self.state_manager.change_stock_state(
                                 trading_stock.stock_code,
                                 StockState.POSITIONED,
-                                f"매수 완료: {order.quantity}주 @{order.price:,.0f}원"
+                                f"매수 완료: {order.quantity}주 @{order.get_filled_price():,.0f}원"
                             )
 
-                        # 실거래 매수 기록 저장
-                        self._save_real_buy_record(trading_stock, order)
+                        # 실거래 매수 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
 
                         # 전략 콜백 호출
                         self._notify_strategy_order_filled(order)
@@ -128,6 +127,7 @@ class OrderCompletionHandler:
                     elif order.status in [OrderStatus.CANCELLED, OrderStatus.FAILED]:
                         # 매수 실패 - 매수 후보로 되돌림
                         with self.state_manager.lock:
+                            trading_stock.is_buying = False
                             trading_stock.clear_current_order()
                             # 매수 실패 시 원래 상태로 복귀
                             original_state = (
@@ -166,11 +166,15 @@ class OrderCompletionHandler:
                             self.state_manager.change_stock_state(
                                 trading_stock.stock_code,
                                 StockState.COMPLETED,
-                                f"매도 완료: {order.quantity}주 @{order.price:,.0f}원"
+                                f"매도 완료: {order.quantity}주 @{order.get_filled_price():,.0f}원"
                             )
 
-                        # 실거래 매도 기록 저장
-                        profit_rate = self._save_real_sell_record(trading_stock, order)
+                        # 실거래 매도 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
+                        # 수익률 계산만 수행
+                        profit_rate = 0.0
+                        if trading_stock.position and trading_stock.position.avg_price:
+                            buy_price = trading_stock.position.avg_price
+                            profit_rate = ((float(order.get_filled_price()) - buy_price) / buy_price) * 100
 
                         # 전략 콜백 호출
                         self._notify_strategy_order_filled(order)
@@ -187,12 +191,13 @@ class OrderCompletionHandler:
                             )
 
                     elif order.status in [OrderStatus.CANCELLED, OrderStatus.FAILED]:
-                        # 매도 실패 - 매도 후보로 되돌림
+                        # 매도 실패 - 포지션 보유 상태로 되돌림
                         with self.state_manager.lock:
+                            trading_stock.is_selling = False
                             trading_stock.clear_current_order()
                             self.state_manager.change_stock_state(
                                 trading_stock.stock_code,
-                                StockState.SELL_CANDIDATE,
+                                StockState.POSITIONED,
                                 f"매도 실패: {order.status.value}"
                             )
 
@@ -244,7 +249,7 @@ class OrderCompletionHandler:
             trading_stock.order_processed = True
             trading_stock.is_buying = False  # 매수 완료
 
-            trading_stock.set_position(order.quantity, order.price)
+            trading_stock.set_position(order.quantity, order.get_filled_price())
             trading_stock.clear_current_order()
             # 매수 시간 기록 (콜백)
             trading_stock.set_buy_time(now_kst())
@@ -255,11 +260,10 @@ class OrderCompletionHandler:
             self.state_manager.change_stock_state(
                 trading_stock.stock_code,
                 StockState.POSITIONED,
-                f"매수 체결 (콜백): {order.quantity}주 @{order.price:,.0f}원"
+                f"매수 체결 (콜백): {order.quantity}주 @{order.get_filled_price():,.0f}원"
             )
 
-            # 실거래 매수 기록 저장
-            self._save_real_buy_record(trading_stock, order, source="콜백")
+            # 실거래 매수 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
 
             # 전략 콜백 호출
             self._notify_strategy_order_filled(order)
@@ -285,8 +289,12 @@ class OrderCompletionHandler:
                 f"매도 체결 (콜백): {order.quantity}주 @{order.price:,.0f}원"
             )
 
-            # 실거래 매도 기록 저장
-            profit_rate = self._save_real_sell_record(trading_stock, order, source="콜백")
+            # 실거래 매도 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
+            # 수익률 계산만 수행
+            profit_rate = 0.0
+            if trading_stock.position and trading_stock.position.avg_price:
+                buy_price = trading_stock.position.avg_price
+                profit_rate = ((float(order.get_filled_price()) - buy_price) / buy_price) * 100
 
             # 전략 콜백 호출
             self._notify_strategy_order_filled(order)
@@ -356,7 +364,7 @@ class OrderCompletionHandler:
             db.save_real_buy(
                 stock_code=trading_stock.stock_code,
                 stock_name=trading_stock.stock_name,
-                price=float(order.price),
+                price=float(order.get_filled_price()),
                 quantity=int(order.quantity),
                 strategy=trading_stock.selection_reason,
                 reason=reason
@@ -382,13 +390,13 @@ class OrderCompletionHandler:
             buy_price = None
             if buy_id and trading_stock.position and trading_stock.position.avg_price:
                 buy_price = trading_stock.position.avg_price
-                profit_rate = ((float(order.price) - buy_price) / buy_price) * 100
+                profit_rate = ((float(order.get_filled_price()) - buy_price) / buy_price) * 100
 
             reason = "체결" if not source else f"체결({source})"
             db.save_real_sell(
                 stock_code=trading_stock.stock_code,
                 stock_name=trading_stock.stock_name,
-                price=float(order.price),
+                price=float(order.get_filled_price()),
                 quantity=int(order.quantity),
                 strategy=trading_stock.selection_reason,
                 reason=reason,

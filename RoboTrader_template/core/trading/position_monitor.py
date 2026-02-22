@@ -281,6 +281,15 @@ class PositionMonitor:
         max_retries = 3
         retry_delay = 2  # 초
 
+        # 매도 타임아웃 복원 직후 쿨다운 체크 (10초)
+        last_timeout = getattr(trading_stock, 'last_sell_timeout_time', None)
+        if last_timeout:
+            from utils.korean_time import now_kst
+            elapsed = (now_kst() - last_timeout).total_seconds()
+            if elapsed < 10:
+                self.logger.debug(f"{stock_code} 매도 타임아웃 쿨다운 중 ({elapsed:.0f}초 경과)")
+                return
+
         for attempt in range(1, max_retries + 1):
             try:
                 # 이미 매도 진행 중이면 중복 방지

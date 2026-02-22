@@ -163,8 +163,42 @@ class OrderTimeoutMixin:
         # 1. 잔여 주문 취소
         await self._cancel_with_retry(order_id)
 
-        # 2. FundManager: 부분 체결 금액만 확정, 나머지는 자동 환불 (_move_to_completed에서 cancel 처리)
         filled_price = getattr(order, 'filled_price', None) or order.price
+
+        # 매도 부분 체결은 별도 경로로 처리
+        if order.order_type == OrderType.SELL:
+            self.logger.info(f"매도 부분 체결 타임아웃: {order.stock_code} {filled_qty}주 @{filled_price:,.0f}원")
+            # FundManager: 매도 부분 체결분 자금 회수
+            if self.fund_manager:
+                try:
+                    partial_sell_amount = filled_price * filled_qty
+                    self.fund_manager.release_investment(partial_sell_amount, stock_code=order.stock_code)
+                    self.logger.info(f"FundManager 매도 부분 체결 자금 회수: {order.stock_code} - {partial_sell_amount:,.0f}원")
+                except Exception as e:
+                    self.logger.warning(f"FundManager 매도 부분 체결 자금 회수 실패: {order.stock_code} - {e}")
+            if self.trading_manager and hasattr(self.trading_manager, 'on_sell_partial_fill_timeout'):
+                try:
+                    await self.trading_manager.on_sell_partial_fill_timeout(order, filled_qty, filled_price)
+                except Exception as e:
+                    self.logger.error(f"매도 부분 체결 처리 실패: {e}")
+
+            # DB 기록 및 완료 처리
+            original_qty = order.quantity
+            order.quantity = filled_qty
+            order.filled_quantity = filled_qty
+            order.status = OrderStatus.FILLED
+            self._move_to_completed(order_id)
+            await self._save_real_trade_to_db(order, filled_price)
+
+            if self.telegram:
+                await self.telegram.notify_system_status(
+                    f"매도 부분 체결 타임아웃: {order.stock_code} "
+                    f"{filled_qty}/{original_qty}주 매도, 잔여 취소"
+                )
+            return
+
+        # 매수 부분 체결 처리 (기존 로직)
+        # 2. FundManager: 부분 체결 금액만 확정, 나머지는 자동 환불 (_move_to_completed에서 cancel 처리)
         if self.fund_manager:
             try:
                 actual_amount = filled_price * filled_qty
@@ -192,7 +226,7 @@ class OrderTimeoutMixin:
         # 4. 텔레그램 알림
         if self.telegram:
             await self.telegram.notify_system_status(
-                f"부분 체결 타임아웃: {order.stock_code} "
+                f"매수 부분 체결 타임아웃: {order.stock_code} "
                 f"{filled_qty}/{original_qty}주 체결, 잔여 취소"
             )
 

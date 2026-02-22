@@ -326,11 +326,26 @@ class OrderMonitorMixin:
                 if order.order_type == OrderType.BUY:
                     # 매수: 예약 → 투자 확정
                     self.fund_manager.confirm_order(order_id, actual_amount)
+                    self.fund_manager.add_position(order.stock_code)
                     self.logger.info(f"FundManager 매수 체결 확정: {order_id} - {actual_amount:,.0f}원")
                 elif order.order_type == OrderType.SELL:
-                    # 매도: 투자금 회수
-                    self.fund_manager.release_investment(actual_amount)
-                    self.logger.info(f"FundManager 매도 투자금 회수: {order_id} - {actual_amount:,.0f}원")
+                    sell_amount = actual_amount
+                    # 매수원가 기준으로 invested_funds 회수 (손익 차이는 total_funds 조정)
+                    buy_cost = order.price * filled_qty  # order.price는 매수 시 주문가 근사치
+                    # TradingStock에서 정확한 매수가 조회 시도
+                    if self.trading_manager:
+                        try:
+                            ts = self.trading_manager.get_trading_stock(order.stock_code)
+                            if ts and ts.position and ts.position.avg_price > 0:
+                                buy_cost = ts.position.avg_price * filled_qty
+                        except Exception:
+                            pass
+                    self.fund_manager.release_investment(buy_cost, stock_code=order.stock_code)
+                    # 매매 손익을 total_funds와 available_funds에 반영
+                    pnl = sell_amount - buy_cost
+                    if pnl != 0:
+                        self.fund_manager.adjust_pnl(pnl)
+                    self.logger.info(f"FundManager 매도 투자금 회수: {order_id} - 매수원가: {buy_cost:,.0f}원, 매도금: {sell_amount:,.0f}원, 손익: {pnl:+,.0f}원")
             except Exception as e:
                 self.logger.warning(f"FundManager 체결 처리 실패: {order_id} - {e}")
 

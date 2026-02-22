@@ -55,9 +55,18 @@ class CircuitBreakerState:
             self._active_circuit_breakers.pop(stock_code, None)
 
     def is_vi_active(self, stock_code: str) -> bool:
-        """개별 종목 VI 활성 여부"""
+        """개별 종목 VI 발동 여부 확인 (2분 후 자동 해제)"""
         with self._lock:
-            return stock_code in self._active_circuit_breakers
+            if stock_code not in self._active_circuit_breakers:
+                return False
+            triggered_at = self._active_circuit_breakers[stock_code]
+            if triggered_at:
+                from utils.korean_time import now_kst
+                elapsed = (now_kst() - triggered_at).total_seconds()
+                if elapsed > 120:  # 2분 경과 시 자동 해제
+                    self._active_circuit_breakers.pop(stock_code, None)
+                    return False
+            return True
 
     def trigger_market_halt(self, duration_minutes: int = 20, triggered_at: Optional[datetime] = None):
         """시장 전체 서킷브레이커 발동"""
@@ -447,7 +456,9 @@ class MarketHours:
     @classmethod
     def can_place_order(cls, stock_code: str = None, market: str = 'KRX',
                         dt: Optional[datetime] = None) -> bool:
-        """주문 가능 시간인지 확인 (개별 종목 VI 포함)
+        """주문 가능 시간인지 확인 (동시호가 + 개별 종목 VI 포함)
+
+        동시호가 시간대(08:30~09:00, 15:20~15:30)에는 주문 불가.
 
         Args:
             stock_code: 종목코드 (None이면 시장 전체만 체크)
@@ -458,6 +469,11 @@ class MarketHours:
             True면 주문 가능
         """
         if not cls.is_market_open(market, dt):
+            return False
+
+        # 동시호가 시간대 차단 (15:20~15:30 마감 동시호가)
+        phase = cls.get_market_phase(market, dt)
+        if phase in (MarketPhase.CLOSING_CUTOFF, MarketPhase.CLOSING_AUCTION):
             return False
 
         cb = get_circuit_breaker_state()

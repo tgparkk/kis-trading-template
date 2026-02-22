@@ -140,7 +140,30 @@ class TradingDecisionEngine:
             if not should_buy:
                 return False, f"{code} 조건미충족", empty
 
-            price = float(daily_data['close'].iloc[-1])
+            # 현재가 조회 (일봉 종가 대신 장중 실시간 가격 사용)
+            current_price = None
+            # 1순위: intraday_manager 캐시 (빠름)
+            if self.intraday_manager and hasattr(self.intraday_manager, 'get_cached_current_price'):
+                try:
+                    price_info = self.intraday_manager.get_cached_current_price(code)
+                    if price_info and price_info.get('current_price', 0) > 0:
+                        current_price = price_info['current_price']
+                except Exception:
+                    pass
+            # 2순위: broker API (정확)
+            if current_price is None and self.broker:
+                try:
+                    price_obj = self.broker.get_current_price(code)
+                    if price_obj and hasattr(price_obj, 'current_price') and price_obj.current_price > 0:
+                        current_price = float(price_obj.current_price)
+                except Exception:
+                    pass
+            # 3순위: 일봉 종가 fallback
+            if current_price is None:
+                current_price = float(daily_data['close'].iloc[-1])
+
+            from utils.price_utils import round_to_tick
+            price = round_to_tick(current_price)
             max_amt = self._get_max_buy_amount(code)
             qty = int(max_amt / price) if price > 0 else 0
 
@@ -232,18 +255,46 @@ class TradingDecisionEngine:
         try:
             if not trading_stock.position or trading_stock.position.quantity <= 0:
                 return False
+            stock_code = trading_stock.stock_code
             # 매도 후보 상태로 전이 (execute_sell_order는 SELL_CANDIDATE 상태 필요)
-            self.trading_manager.move_to_sell_candidate(
-                stock_code=trading_stock.stock_code, reason=sell_reason)
+            move_ok = self.trading_manager.move_to_sell_candidate(
+                stock_code=stock_code, reason=sell_reason)
+            if not move_ok:
+                self.logger.warning(f"매도 후보 전환 실패: {stock_code}")
+                return False
             ok = await self.trading_manager.execute_sell_order(
-                stock_code=trading_stock.stock_code,
+                stock_code=stock_code,
                 quantity=trading_stock.position.quantity,
                 price=0, reason=sell_reason, market=True)
-            if ok: self.logger.info(f"매도: {trading_stock.stock_code} - {sell_reason}")
+            if ok:
+                self.logger.info(f"매도: {stock_code} - {sell_reason}")
+            else:
+                # 매도 주문 실패 시 POSITIONED로 복원
+                self._restore_to_positioned(stock_code, "매도 주문 실패")
             return ok
         except Exception as e:
             self.logger.error(f"매도오류: {e}")
+            # 예외 발생 시에도 POSITIONED로 복원 시도
+            try:
+                self._restore_to_positioned(trading_stock.stock_code, f"매도 예외: {e}")
+            except Exception:
+                pass
             return False
+
+    def _restore_to_positioned(self, stock_code: str, reason: str) -> None:
+        """매도 실패 시 POSITIONED 상태로 복원"""
+        try:
+            if self.trading_manager:
+                from core.models import StockState
+                trading_stock = self.trading_manager.get_trading_stock(stock_code)
+                if trading_stock and trading_stock.state in [StockState.SELL_CANDIDATE, StockState.SELL_PENDING]:
+                    self.trading_manager._change_stock_state(
+                        stock_code, StockState.POSITIONED, f"복원: {reason}"
+                    )
+                    trading_stock.is_selling = False
+                    self.logger.info(f"{stock_code} POSITIONED로 복원 완료: {reason}")
+        except Exception as e:
+            self.logger.warning(f"{stock_code} POSITIONED 복원 실패: {e}")
 
     async def execute_virtual_sell(self, trading_stock, sell_price: float, sell_reason: str) -> None:
         """가상 매도"""

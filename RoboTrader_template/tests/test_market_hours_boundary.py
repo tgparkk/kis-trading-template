@@ -190,10 +190,14 @@ class TestCircuitBreaker:
 
     def test_can_place_order_with_vi(self):
         """VI 발동 종목 주문 차단"""
+        from utils.korean_time import now_kst as _now_kst
         cb = get_circuit_breaker_state()
         cb.clear_all()
-        dt = kst_dt(2026, 2, 9, 10, 0)
-        cb.trigger_vi("005930", triggered_at=dt)
+        # VI 발동 시각은 현재 시각 사용 (2분 자동해제 방지)
+        vi_time = _now_kst()
+        cb.trigger_vi("005930", triggered_at=vi_time)
+        # can_place_order의 dt는 장중 시간대를 사용해야 함
+        dt = kst_dt(2026, 2, 9, 10, 0)  # 월요일 10:00
         try:
             assert MarketHours.can_place_order("005930", 'KRX', dt) is False
             assert MarketHours.can_place_order("000660", 'KRX', dt) is True

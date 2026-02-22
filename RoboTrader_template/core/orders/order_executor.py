@@ -28,6 +28,13 @@ class OrderExecutorMixin:
 
             self.logger.info(f"매수 주문 시도: {stock_code} {quantity}주 @{price:,.0f}원 (타임아웃: {timeout_seconds}초)")
 
+            # 장 시간 체크: 동시호가 등 주문 불가 시간대 차단
+            from config.market_hours import MarketHours
+            if not MarketHours.can_place_order():
+                phase = MarketHours.get_market_phase()
+                self.logger.warning(f"매수 주문 차단: 주문 불가 시간대 ({phase.value if hasattr(phase, 'value') else phase}) - {stock_code}")
+                return None
+
             # VI/서킷브레이커 체크: 시장 전체 거래 중단 또는 종목별 VI 발동 시 주문 차단
             from config.market_hours import get_circuit_breaker_state
             cb_state = get_circuit_breaker_state()
@@ -51,7 +58,7 @@ class OrderExecutorMixin:
                 already_reserved = self.fund_manager.order_reservations.get(stock_code, 0) > 0
                 if already_reserved:
                     self.logger.debug(f"자금 이미 예약됨 (by TradingAnalyzer): {stock_code}")
-                    self._temp_reserve_id = None
+                    self._temp_reserve_id = stock_code
                 else:
                     # 임시 order_id로 예약 (실제 order_id는 API 응답 후 알 수 있음)
                     temp_reserve_id = f"RESERVE-{stock_code}-{int(now_kst().timestamp())}"
@@ -114,10 +121,12 @@ class OrderExecutorMixin:
         from api.kis_api_manager import OrderResult
 
         # API 호출을 별도 스레드에서 실행 (타임아웃 20초)
+        from utils.price_utils import round_to_tick
+        order_price = int(round_to_tick(price))
         result: OrderResult = await run_with_timeout(
             self.executor,
             self.broker.place_buy_order,
-            stock_code, quantity, int(price),
+            stock_code, quantity, order_price,
             timeout_seconds=35, default=None
         )
 
@@ -212,6 +221,13 @@ class OrderExecutorMixin:
 
             self.logger.info(f"매도 주문 시도: {stock_code} {quantity}주 @{price:,.0f}원 (타임아웃: {timeout_seconds}초, 시장가: {market})")
 
+            # 장 시간 체크: 동시호가 등 주문 불가 시간대 차단 (매도는 장후 동시호가에서만 차단)
+            from config.market_hours import MarketHours
+            if not MarketHours.can_place_order():
+                phase = MarketHours.get_market_phase()
+                self.logger.warning(f"매도 주문 차단: 주문 불가 시간대 ({phase.value if hasattr(phase, 'value') else phase}) - {stock_code}")
+                return None
+
             # VI/서킷브레이커 체크: 시장 전체 거래 중단 시 주문 차단
             # (종목 VI 시 매도는 허용 — 보유 포지션 청산 기회를 막으면 안 됨)
             from config.market_hours import get_circuit_breaker_state
@@ -268,12 +284,13 @@ class OrderExecutorMixin:
                                        price: float, timeout_seconds: int, market: bool) -> Optional[str]:
         """실전 매도 주문 처리"""
         from api.kis_api_manager import OrderResult
+        from utils.price_utils import round_to_tick
 
         # API 호출을 별도 스레드에서 실행 (타임아웃 20초)
         result: OrderResult = await run_with_timeout(
             self.executor,
             self.broker.place_sell_order,
-            stock_code, quantity, int(price), ("01" if market else "00"),
+            stock_code, quantity, int(round_to_tick(price)) if not market else 0, ("01" if market else "00"),
             timeout_seconds=35, default=None
         )
 
@@ -335,11 +352,16 @@ class OrderExecutorMixin:
 
             from api.kis_api_manager import OrderResult
 
+            # 원주문의 주문구분 전달 (시장가 "01", 지정가 "00")
+            order_dvsn = "00"  # 기본 지정가
+            if order.price == 0:  # price=0이면 시장가로 추정
+                order_dvsn = "01"
+
             # API 호출을 별도 스레드에서 실행 (타임아웃 20초)
             result: OrderResult = await run_with_timeout(
                 self.executor,
                 self.broker.cancel_order,
-                order_id, order.stock_code,
+                order_id, order.stock_code, order_dvsn,
                 timeout_seconds=35, default=None
             )
 
