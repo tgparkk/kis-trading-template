@@ -217,25 +217,9 @@ class VirtualTradingManager:
                 self.logger.warning("⚠️ DB 매니저가 없어 가상 매도를 실행할 수 없음")
                 return False
             
-            # 중복 매도 방지: 해당 매수 기록이 이미 매도되었는지 확인
-            try:
-                import sqlite3
-                with sqlite3.connect(self.db_manager.db_path) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('''
-                        SELECT COUNT(*) FROM virtual_trading_records 
-                        WHERE buy_record_id = ? AND action = 'SELL'
-                    ''', (buy_record_id,))
-                    
-                    sell_count = cursor.fetchone()[0]
-                    if sell_count > 0:
-                        self.logger.warning(f"⚠️ 중복 매도 방지: {stock_code} 매수기록 ID {buy_record_id}는 이미 {sell_count}번 매도됨")
-                        return False
-            except Exception as check_error:
-                self.logger.error(f"❌ 중복 매도 검사 오류: {check_error}")
-                return False
-                
             # DB에 가상 매도 기록 저장
+            # 중복 매도 방지는 save_virtual_sell() 내부의 PostgreSQL 쿼리로 처리됨
+            # (buy_record_id + action='SELL' 조건으로 중복 체크)
             success = self.db_manager.save_virtual_sell(
                 stock_code=stock_code,
                 stock_name=stock_name,

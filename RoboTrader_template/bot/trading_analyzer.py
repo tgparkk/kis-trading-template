@@ -47,11 +47,8 @@ class TradingAnalyzer:
                 self.logger.debug(f"{stock_code}: 매수 쿨다운 활성화 (남은 시간: {remaining_minutes}분)")
                 return
 
-            # 일봉 데이터 가져오기 (daily_prices 테이블에서)
-            from utils.unified_data_loader import UnifiedDataLoader
-            data_loader = UnifiedDataLoader(db_path=self.bot.db_manager.db_path)
-
-            daily_data = data_loader.load_daily_history(stock_code, days=100)
+            # 일봉 데이터 가져오기 (daily_prices 테이블에서, PostgreSQL)
+            daily_data = self.bot.db_manager.price_repo.get_daily_prices(stock_code, days=140)
             if daily_data is None or daily_data.empty:
                 self.logger.debug(f"{stock_code} 일봉 데이터 없음 (daily_prices 테이블)")
                 return
@@ -124,9 +121,15 @@ class TradingAnalyzer:
                 if self.bot.decision_engine.is_virtual_mode:
                     # 가상 매수
                     try:
-                        await self.bot.decision_engine.execute_virtual_buy(trading_stock, None, buy_reason)
+                        await self.bot.decision_engine.execute_virtual_buy(
+                            trading_stock, None, buy_reason,
+                            buy_price=buy_info['buy_price'],
+                            quantity=buy_info['quantity']
+                        )
                         # 자금 확정 (가상매매는 즉시 체결로 간주)
                         self.bot.fund_manager.confirm_order(stock_code, required_amount)
+                        # 보유 종목 추가 (FundManager current_position_codes 추적)
+                        self.bot.fund_manager.add_position(stock_code)
                         # 상태를 POSITIONED로 반영하여 이후 매도 판단 루프에 포함
                         try:
                             self.bot.trading_manager._change_stock_state(
@@ -190,13 +193,43 @@ class TradingAnalyzer:
                 if self.bot.decision_engine.is_virtual_mode:
                     # 가상 매도 (기존 로직 유지, 들여쓰기만 조정)
                     try:
+                        # 매도가를 먼저 결정 (execute_virtual_sell과 PnL 계산에 동일 가격 사용)
+                        sell_price = None
+                        if trading_stock.position:
+                            sell_price = trading_stock.position.avg_price  # fallback: 원가
+                            try:
+                                price_info = self.bot.intraday_manager.get_cached_current_price(stock_code)
+                                if price_info and price_info.get('current_price', 0) > 0:
+                                    sell_price = float(price_info['current_price'])
+                            except Exception:
+                                pass
+
                         # move_to_sell_candidate는 가상매도에서는 직접 호출
                         self.bot.trading_manager.move_to_sell_candidate(stock_code, sell_reason)
-                        await self.bot.decision_engine.execute_virtual_sell(trading_stock, None, sell_reason)
-                        # 투자 자금 회수
-                        if trading_stock.position:
-                            invested = trading_stock.position.avg_price * trading_stock.position.quantity
+                        # 확정된 매도가를 execute_virtual_sell에 전달
+                        sell_ok = await self.bot.decision_engine.execute_virtual_sell(
+                            trading_stock, sell_price, sell_reason
+                        )
+                        # 투자 자금 회수 (매수 원가 기준) + 손익 별도 반영
+                        if sell_ok and trading_stock.position:
+                            avg_price = trading_stock.position.avg_price
+                            quantity = trading_stock.position.quantity
+                            invested = avg_price * quantity
+
+                            # 매수 원가 기준으로 invested_funds 회수
                             self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
+
+                            # 손익 반영 (매도가 - 매수가) * 수량 (sell_price가 None이면 원가 기준)
+                            effective_sell_price = sell_price if sell_price is not None else avg_price
+                            pnl = (effective_sell_price - avg_price) * quantity
+                            if pnl != 0:
+                                self.bot.fund_manager.adjust_pnl(pnl)
+                                self.logger.debug(
+                                    f"{stock_code} 가상매도 손익 반영: {pnl:+,.0f}원 "
+                                    f"(매수가={avg_price:,.0f}, 매도가={effective_sell_price:,.0f}, {quantity}주)"
+                                )
+                        elif not sell_ok:
+                            self.logger.warning(f"{stock_code} 가상 매도 실패 - 자금 회수/손익 반영 스킵")
                         self.logger.info(f"가상 매도 완료 처리: {stock_code}({stock_name}) - {sell_reason}")
                     except Exception as e:
                         self.logger.error(f"가상 매도 처리 오류: {e}")

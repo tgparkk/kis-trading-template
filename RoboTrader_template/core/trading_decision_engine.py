@@ -232,12 +232,59 @@ class TradingDecisionEngine:
             return False
 
     async def execute_virtual_buy(self, trading_stock, combined_data,
-                                  buy_reason: str, buy_price: float = None) -> None:
-        """가상 매수"""
+                                  buy_reason: str, buy_price: float = None,
+                                  quantity: int = None) -> None:
+        """가상 매수
+
+        Args:
+            trading_stock: 거래 대상 주식
+            combined_data: 차트 데이터 (None 가능 — buy_price 미전달 시 fallback 조회)
+            buy_reason: 매수 사유
+            buy_price: 매수 가격 (None이면 아래 우선순위로 조회)
+                       1순위: intraday_manager 캐시
+                       2순위: broker API
+                       3순위: combined_data 종가 (combined_data가 있을 때만)
+            quantity: 매수 수량 (None이면 VirtualTradingManager.get_max_quantity() 재계산)
+        """
         try:
+            code = trading_stock.stock_code
+
+            # buy_price 결정: 전달값 우선, 없으면 순차 fallback
             if buy_price is None:
-                buy_price = self._safe_float(combined_data['close'].iloc[-1])
-            qty = self.virtual_trading.get_max_quantity(buy_price)
+                # 1순위: intraday_manager 캐시
+                if self.intraday_manager and hasattr(self.intraday_manager, 'get_cached_current_price'):
+                    try:
+                        price_info = self.intraday_manager.get_cached_current_price(code)
+                        if price_info and price_info.get('current_price', 0) > 0:
+                            buy_price = float(price_info['current_price'])
+                    except Exception:
+                        pass
+                # 2순위: broker API
+                if buy_price is None and self.broker:
+                    try:
+                        price_obj = self.broker.get_current_price(code)
+                        if price_obj and hasattr(price_obj, 'current_price') and price_obj.current_price > 0:
+                            buy_price = float(price_obj.current_price)
+                    except Exception:
+                        pass
+                # 3순위: combined_data 종가 (None이 아닐 때만)
+                if buy_price is None and combined_data is not None:
+                    try:
+                        v = self._safe_float(combined_data['close'].iloc[-1])
+                        if v > 0:
+                            buy_price = v
+                    except Exception:
+                        pass
+
+            if not buy_price or buy_price <= 0:
+                self.logger.warning(f"가상매수 취소: {code} 매수 가격 조회 실패")
+                return
+
+            # 수량 결정: 전달값 우선, 없으면 VirtualTradingManager 재계산
+            if quantity is not None and quantity > 0:
+                qty = quantity
+            else:
+                qty = self.virtual_trading.get_max_quantity(buy_price)
             if qty <= 0: return
 
             rid = self.virtual_trading.execute_virtual_buy(
@@ -296,14 +343,56 @@ class TradingDecisionEngine:
         except Exception as e:
             self.logger.warning(f"{stock_code} POSITIONED 복원 실패: {e}")
 
-    async def execute_virtual_sell(self, trading_stock, sell_price: float, sell_reason: str) -> None:
-        """가상 매도"""
+    async def execute_virtual_sell(self, trading_stock, sell_price: Optional[float],
+                                   sell_reason: str) -> bool:
+        """가상 매도
+
+        Args:
+            trading_stock: 거래 대상 주식
+            sell_price: 매도 가격 (None/0 가능 — 아래 우선순위로 조회)
+                        1순위: 전달된 sell_price
+                        2순위: intraday_manager 캐시
+                        3순위: broker API
+                        4순위: trading_stock.position.avg_price (매수가로 매도, 최후수단)
+            sell_reason: 매도 사유
+
+        Returns:
+            bool: 매도 성공 여부
+        """
         try:
             code = trading_stock.stock_code
-            if not sell_price and self.intraday_manager:
-                info = self.intraday_manager.get_cached_current_price(code)
-                if info: sell_price = info['current_price']
-            if not sell_price: return False
+
+            # sell_price 결정: 전달값 우선, 없으면 순차 fallback
+            if not sell_price or sell_price <= 0:
+                sell_price = None  # 명확히 None으로 초기화 후 fallback 진행
+                # 2순위: intraday_manager 캐시
+                if self.intraday_manager and hasattr(self.intraday_manager, 'get_cached_current_price'):
+                    try:
+                        info = self.intraday_manager.get_cached_current_price(code)
+                        if info and info.get('current_price', 0) > 0:
+                            sell_price = float(info['current_price'])
+                    except Exception:
+                        pass
+                # 3순위: broker API
+                if sell_price is None and self.broker:
+                    try:
+                        price_obj = self.broker.get_current_price(code)
+                        if price_obj and hasattr(price_obj, 'current_price') and price_obj.current_price > 0:
+                            sell_price = float(price_obj.current_price)
+                    except Exception:
+                        pass
+                # 4순위: 매수 평균가 (최후수단)
+                if sell_price is None:
+                    avg = getattr(getattr(trading_stock, 'position', None), 'avg_price', None)
+                    if avg and avg > 0:
+                        sell_price = float(avg)
+                        self.logger.warning(
+                            f"가상매도: {code} 현재가 조회 실패 → 매수 평균가로 매도 ({sell_price:,.0f}원)"
+                        )
+
+            if not sell_price or sell_price <= 0:
+                self.logger.error(f"가상매도 취소: {code} 매도 가격 조회 완전 실패")
+                return False
 
             rid = getattr(trading_stock, '_virtual_buy_record_id', None)
             bp = getattr(trading_stock, '_virtual_buy_price', None)

@@ -77,13 +77,13 @@ class TestFundManagerFlow:
         mock_bot.fund_manager.confirm_order = MagicMock()
         mock_bot.fund_manager.get_status = MagicMock(return_value={'total_funds': 10000000})
 
-        # UnifiedDataLoader mock
-        with patch('utils.unified_data_loader.UnifiedDataLoader') as mock_loader_cls:
-            mock_loader = MagicMock()
-            mock_loader.load_daily_history.return_value = pd.DataFrame({'close': range(100)})
-            mock_loader_cls.return_value = mock_loader
+        # db_manager.price_repo mock
+        mock_bot.db_manager.price_repo.get_daily_prices = MagicMock(
+            return_value=pd.DataFrame({'close': range(100), 'open': range(100),
+                                       'high': range(100), 'low': range(100), 'volume': range(100)})
+        )
 
-            await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
+        await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
 
         mock_bot.fund_manager.reserve_funds.assert_called_once_with('005930', 350000)
         mock_bot.fund_manager.confirm_order.assert_called_once_with('005930', 350000)
@@ -114,12 +114,12 @@ class TestFundManagerFlow:
         mock_bot.fund_manager.cancel_order = MagicMock()
         mock_bot.fund_manager.get_status = MagicMock(return_value={'total_funds': 10000000})
 
-        with patch('utils.unified_data_loader.UnifiedDataLoader') as mock_loader_cls:
-            mock_loader = MagicMock()
-            mock_loader.load_daily_history.return_value = pd.DataFrame({'close': range(100)})
-            mock_loader_cls.return_value = mock_loader
+        mock_bot.db_manager.price_repo.get_daily_prices = MagicMock(
+            return_value=pd.DataFrame({'close': range(100), 'open': range(100),
+                                       'high': range(100), 'low': range(100), 'volume': range(100)})
+        )
 
-            await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
+        await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
 
         mock_bot.fund_manager.cancel_order.assert_called_once_with('005930')
 
@@ -146,12 +146,12 @@ class TestFundManagerFlow:
         mock_bot.fund_manager.reserve_funds = MagicMock(return_value=False)
         mock_bot.fund_manager.get_status = MagicMock(return_value={'total_funds': 10000000})
 
-        with patch('utils.unified_data_loader.UnifiedDataLoader') as mock_loader_cls:
-            mock_loader = MagicMock()
-            mock_loader.load_daily_history.return_value = pd.DataFrame({'close': range(100)})
-            mock_loader_cls.return_value = mock_loader
+        mock_bot.db_manager.price_repo.get_daily_prices = MagicMock(
+            return_value=pd.DataFrame({'close': range(100), 'open': range(100),
+                                       'high': range(100), 'low': range(100), 'volume': range(100)})
+        )
 
-            await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
+        await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
 
         mock_bot.decision_engine.execute_virtual_buy.assert_not_called()
 
@@ -181,14 +181,15 @@ class TestVirtualRealBranching:
         mock_bot.fund_manager.get_max_buy_amount = MagicMock(return_value=500000)
         mock_bot.fund_manager.reserve_funds = MagicMock(return_value=True)
         mock_bot.fund_manager.confirm_order = MagicMock()
+        mock_bot.fund_manager.add_position = MagicMock()
         mock_bot.fund_manager.get_status = MagicMock(return_value={'total_funds': 10000000})
 
-        with patch('utils.unified_data_loader.UnifiedDataLoader') as mock_loader_cls:
-            mock_loader = MagicMock()
-            mock_loader.load_daily_history.return_value = pd.DataFrame({'close': range(100)})
-            mock_loader_cls.return_value = mock_loader
+        # db_manager.price_repo.get_daily_prices mock (PostgreSQL 직접 조회)
+        mock_bot.db_manager.price_repo.get_daily_prices = MagicMock(
+            return_value=pd.DataFrame({'close': range(100)})
+        )
 
-            await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
+        await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
 
         mock_bot.decision_engine.execute_virtual_buy.assert_called_once()
         mock_bot.decision_engine.execute_real_buy.assert_not_called()
@@ -217,12 +218,12 @@ class TestVirtualRealBranching:
         mock_bot.fund_manager.confirm_order = MagicMock()
         mock_bot.fund_manager.get_status = MagicMock(return_value={'total_funds': 10000000})
 
-        with patch('utils.unified_data_loader.UnifiedDataLoader') as mock_loader_cls:
-            mock_loader = MagicMock()
-            mock_loader.load_daily_history.return_value = pd.DataFrame({'close': range(100)})
-            mock_loader_cls.return_value = mock_loader
+        # db_manager.price_repo.get_daily_prices mock (PostgreSQL 직접 조회)
+        mock_bot.db_manager.price_repo.get_daily_prices = MagicMock(
+            return_value=pd.DataFrame({'close': range(100)})
+        )
 
-            await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
+        await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
 
         mock_bot.decision_engine.execute_real_buy.assert_called_once()
         mock_bot.decision_engine.execute_virtual_buy.assert_not_called()
@@ -249,12 +250,12 @@ class TestVirtualRealBranching:
         mock_bot.fund_manager.cancel_order = MagicMock()
         mock_bot.fund_manager.get_status = MagicMock(return_value={'total_funds': 10000000})
 
-        with patch('utils.unified_data_loader.UnifiedDataLoader') as mock_loader_cls:
-            mock_loader = MagicMock()
-            mock_loader.load_daily_history.return_value = pd.DataFrame({'close': range(100)})
-            mock_loader_cls.return_value = mock_loader
+        # db_manager.price_repo.get_daily_prices mock (PostgreSQL 직접 조회)
+        mock_bot.db_manager.price_repo.get_daily_prices = MagicMock(
+            return_value=pd.DataFrame({'close': range(100)})
+        )
 
-            await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
+        await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
 
         mock_bot.fund_manager.cancel_order.assert_called_once_with('005930')
 
