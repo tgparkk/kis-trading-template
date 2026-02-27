@@ -253,7 +253,9 @@ class TestMoveToCompletedFundManager:
         om._move_to_completed("ORD-003")
 
         # FILLED 상태이므로 cancel_order 호출 안됨
-        assert fm.invested_funds == 700_000
+        from config.constants import COMMISSION_RATE
+        commission = 700_000 * COMMISSION_RATE
+        assert fm.invested_funds == pytest.approx(700_000 + commission)
         assert fm.reserved_funds == 0
 
 
@@ -305,11 +307,13 @@ class TestPartialFillFundManager:
         actual_amount = 70000 * 3  # 210,000원
         fm.confirm_order("ORD-PF", actual_amount)
 
-        # 예약 해제, 투자 확정
+        # 예약 해제, 투자 확정 (수수료 포함)
+        from config.constants import COMMISSION_RATE
+        commission = actual_amount * COMMISSION_RATE
+        total_cost = actual_amount + commission
         assert fm.reserved_funds == 0
-        assert fm.invested_funds == 210_000
-        # 환불: 700K - 210K = 490K
-        assert fm.available_funds == 10_000_000 - 700_000 + 490_000
+        assert fm.invested_funds == pytest.approx(total_cost)
+        assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
 
 
 class TestPaperTradingBypassesFundCheck:

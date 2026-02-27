@@ -200,9 +200,9 @@ class PriceRepository(BaseRepository):
 
                 cursor.execute('''
                     INSERT INTO daily_prices
-                    (stock_code, time, open, high, low, close, volume)
+                    (stock_code, date, open, high, low, close, volume)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (stock_code, time) DO UPDATE SET
+                    ON CONFLICT (stock_code, date) DO UPDATE SET
                         open = EXCLUDED.open,
                         high = EXCLUDED.high,
                         low = EXCLUDED.low,
@@ -250,9 +250,9 @@ class PriceRepository(BaseRepository):
 
                 cursor.executemany('''
                     INSERT INTO daily_prices
-                    (stock_code, time, open, high, low, close, volume)
+                    (stock_code, date, open, high, low, close, volume)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (stock_code, time) DO UPDATE SET
+                    ON CONFLICT (stock_code, date) DO UPDATE SET
                         open = EXCLUDED.open,
                         high = EXCLUDED.high,
                         low = EXCLUDED.low,
@@ -274,10 +274,10 @@ class PriceRepository(BaseRepository):
 
             with self._get_connection() as conn:
                 query = '''
-                    SELECT time as date, open, high, low, close, volume
+                    SELECT date, open, high, low, close, volume
                     FROM daily_prices
-                    WHERE stock_code = %s AND time >= %s
-                    ORDER BY time ASC
+                    WHERE stock_code = %s AND date >= %s
+                    ORDER BY date ASC
                 '''
 
                 df = pd.read_sql_query(query, conn, params=(stock_code, start_date.strftime('%Y-%m-%d')))
@@ -298,10 +298,10 @@ class PriceRepository(BaseRepository):
                 cursor = conn.cursor()
 
                 cursor.execute('''
-                    SELECT time as date, open, high, low, close, volume
+                    SELECT date, open, high, low, close, volume
                     FROM daily_prices
                     WHERE stock_code = %s
-                    ORDER BY time DESC
+                    ORDER BY date DESC
                     LIMIT 1
                 ''', (stock_code,))
 

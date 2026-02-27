@@ -86,7 +86,7 @@ class TradingRepository(BaseRepository):
                 ''', (stock_code,))
 
                 avg_result = cursor.fetchone()
-                buy_price = avg_result[0] if avg_result and avg_result[0] else None
+                buy_price = float(avg_result[0]) if avg_result and avg_result[0] else None
 
                 if not buy_price and buy_record_id:
                     cursor.execute('SELECT price FROM real_trading_records WHERE id = %s', (buy_record_id,))
@@ -223,9 +223,9 @@ class TradingRepository(BaseRepository):
                     if not buy_result:
                         self.logger.error(f"매수 기록을 찾을 수 없음: ID {buy_record_id}")
                         return False
-                    buy_price = buy_result[0]
+                    buy_price = float(buy_result[0])
                 else:
-                    buy_price = avg_result[0]
+                    buy_price = float(avg_result[0])
 
                 profit_loss = (price - buy_price) * quantity
                 profit_rate = (price - buy_price) / buy_price

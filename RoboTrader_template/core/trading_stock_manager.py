@@ -222,7 +222,8 @@ class TradingStockManager:
         return self._order_execution.move_to_sell_candidate(stock_code, reason)
 
     async def execute_sell_order(self, stock_code: str, quantity: int,
-                                 price: float, reason: str = "", market: bool = False) -> bool:
+                                 price: float, reason: str = "", market: bool = False,
+                                 force: bool = False) -> bool:
         """
         매도 주문 실행
 
@@ -232,12 +233,13 @@ class TradingStockManager:
             price: 주문 가격
             reason: 매도 사유
             market: 시장가 주문 여부
+            force: 동시호가 등 시간대 제한 무시
 
         Returns:
             bool: 주문 성공 여부
         """
         return await self._order_execution.execute_sell_order(
-            stock_code, quantity, price, reason, market
+            stock_code, quantity, price, reason, market, force
         )
 
     def remove_stock(self, stock_code: str, reason: str = "") -> bool:

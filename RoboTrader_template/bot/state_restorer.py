@@ -2,6 +2,7 @@
 
 시스템 재시작 시 DB에서 오늘의 후보 종목 및 보유 종목을 복원합니다.
 """
+import math
 from typing import Dict, List, Optional
 
 from utils.logger import setup_logger
@@ -132,8 +133,18 @@ class StateRestorer:
                 stock_name = holding['stock_name']
                 quantity = int(holding['quantity'])
                 buy_price = float(holding['buy_price'])
-                target_profit_rate = holding.get('target_profit_rate', DEFAULT_TARGET_PROFIT_RATE)
-                stop_loss_rate = holding.get('stop_loss_rate', DEFAULT_STOP_LOSS_RATE)
+                raw_tp = holding.get('target_profit_rate')
+                target_profit_rate = (
+                    float(raw_tp)
+                    if raw_tp is not None and not (isinstance(raw_tp, float) and math.isnan(raw_tp))
+                    else DEFAULT_TARGET_PROFIT_RATE
+                )
+                raw_sl = holding.get('stop_loss_rate')
+                stop_loss_rate = (
+                    float(raw_sl)
+                    if raw_sl is not None and not (isinstance(raw_sl, float) and math.isnan(raw_sl))
+                    else DEFAULT_STOP_LOSS_RATE
+                )
 
                 prev_close = self.get_previous_close(stock_code)
 
@@ -197,12 +208,22 @@ class StateRestorer:
             db_holdings_dict = {}
             if not db_holdings.empty:
                 for _, row in db_holdings.iterrows():
+                    raw_tp = row.get('target_profit_rate')
+                    raw_sl = row.get('stop_loss_rate')
                     db_holdings_dict[row['stock_code']] = {
                         'stock_name': row['stock_name'],
                         'quantity': int(row['quantity']),
                         'buy_price': float(row['buy_price']),
-                        'target_profit_rate': row.get('target_profit_rate', DEFAULT_TARGET_PROFIT_RATE),
-                        'stop_loss_rate': row.get('stop_loss_rate', DEFAULT_STOP_LOSS_RATE),
+                        'target_profit_rate': (
+                            float(raw_tp)
+                            if raw_tp is not None and not (isinstance(raw_tp, float) and math.isnan(raw_tp))
+                            else DEFAULT_TARGET_PROFIT_RATE
+                        ),
+                        'stop_loss_rate': (
+                            float(raw_sl)
+                            if raw_sl is not None and not (isinstance(raw_sl, float) and math.isnan(raw_sl))
+                            else DEFAULT_STOP_LOSS_RATE
+                        ),
                     }
 
             logger.info(f"📊 [실전매매] DB 보유 종목: {len(db_holdings_dict)}개")

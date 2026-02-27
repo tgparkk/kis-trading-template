@@ -191,7 +191,7 @@ class TradingAnalyzer:
 
                 # 가상/실전 매매 분기
                 if self.bot.decision_engine.is_virtual_mode:
-                    # 가상 매도 (기존 로직 유지, 들여쓰기만 조정)
+                    # 가상 매도
                     try:
                         # 매도가를 먼저 결정 (execute_virtual_sell과 PnL 계산에 동일 가격 사용)
                         sell_price = None
@@ -204,6 +204,11 @@ class TradingAnalyzer:
                             except Exception:
                                 pass
 
+                        # execute_virtual_sell 호출 전에 포지션 정보 저장
+                        # (execute_virtual_sell 내부에서 clear_position()이 호출되어 position이 None이 될 수 있음)
+                        _avg_price = trading_stock.position.avg_price if trading_stock.position else 0
+                        _quantity = trading_stock.position.quantity if trading_stock.position else 0
+
                         # move_to_sell_candidate는 가상매도에서는 직접 호출
                         self.bot.trading_manager.move_to_sell_candidate(stock_code, sell_reason)
                         # 확정된 매도가를 execute_virtual_sell에 전달
@@ -211,25 +216,31 @@ class TradingAnalyzer:
                             trading_stock, sell_price, sell_reason
                         )
                         # 투자 자금 회수 (매수 원가 기준) + 손익 별도 반영
-                        if sell_ok and trading_stock.position:
-                            avg_price = trading_stock.position.avg_price
-                            quantity = trading_stock.position.quantity
-                            invested = avg_price * quantity
+                        # 저장된 포지션 정보를 사용 (clear_position 이후에도 안전)
+                        if sell_ok and _avg_price > 0 and _quantity > 0:
+                            invested = _avg_price * _quantity
 
                             # 매수 원가 기준으로 invested_funds 회수
                             self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
 
                             # 손익 반영 (매도가 - 매수가) * 수량 (sell_price가 None이면 원가 기준)
-                            effective_sell_price = sell_price if sell_price is not None else avg_price
-                            pnl = (effective_sell_price - avg_price) * quantity
+                            effective_sell_price = sell_price if sell_price is not None else _avg_price
+                            pnl = (effective_sell_price - _avg_price) * _quantity
                             if pnl != 0:
                                 self.bot.fund_manager.adjust_pnl(pnl)
                                 self.logger.debug(
                                     f"{stock_code} 가상매도 손익 반영: {pnl:+,.0f}원 "
-                                    f"(매수가={avg_price:,.0f}, 매도가={effective_sell_price:,.0f}, {quantity}주)"
+                                    f"(매수가={_avg_price:,.0f}, 매도가={effective_sell_price:,.0f}, {_quantity}주)"
                                 )
+
+                            # FundManager에서 보유 종목 제거
+                            self.bot.fund_manager.remove_position(stock_code)
                         elif not sell_ok:
-                            self.logger.warning(f"{stock_code} 가상 매도 실패 - 자금 회수/손익 반영 스킵")
+                            # 매도 실패 시 POSITIONED로 복원
+                            self.bot.trading_manager._change_stock_state(
+                                stock_code, StockState.POSITIONED, "가상 매도 실패 복원"
+                            )
+                            self.logger.warning(f"{stock_code} 가상 매도 실패 - POSITIONED로 복원")
                         self.logger.info(f"가상 매도 완료 처리: {stock_code}({stock_name}) - {sell_reason}")
                     except Exception as e:
                         self.logger.error(f"가상 매도 처리 오류: {e}")

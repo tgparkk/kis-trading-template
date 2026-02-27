@@ -156,22 +156,34 @@ class VirtualTradingManager:
         except Exception:
             return 1
     
-    def execute_virtual_buy(self, stock_code: str, stock_name: str, price: float, 
-                          quantity: int, strategy: str, reason: str) -> Optional[int]:
+    def execute_virtual_buy(self, stock_code: str, stock_name: str, price: float,
+                          quantity: int, strategy: str, reason: str,
+                          target_profit_rate: float = None,
+                          stop_loss_rate: float = None) -> Optional[int]:
         """
         가상 매수 실행
-        
+
+        Args:
+            stock_code: 종목코드
+            stock_name: 종목명
+            price: 매수가격
+            quantity: 매수수량
+            strategy: 전략명
+            reason: 매수사유
+            target_profit_rate: 익절률 (None이면 DB에 NULL 저장)
+            stop_loss_rate: 손절률 (None이면 DB에 NULL 저장)
+
         Returns:
             int: 매수 기록 ID (성공시) 또는 None (실패시)
         """
         try:
             total_cost = quantity * price
-            
+
             # 잔고 확인
             if not self.can_buy(total_cost):
                 self.logger.warning(f"⚠️ 가상 잔고 부족: {self.virtual_balance:,.0f}원 < {total_cost:,.0f}원")
                 return None
-            
+
             # DB에 가상 매수 기록 저장
             if self.db_manager:
                 buy_record_id = self.db_manager.save_virtual_buy(
@@ -180,7 +192,9 @@ class VirtualTradingManager:
                     price=price,
                     quantity=quantity,
                     strategy=strategy,
-                    reason=reason
+                    reason=reason,
+                    target_profit_rate=target_profit_rate,
+                    stop_loss_rate=stop_loss_rate
                 )
                 
                 if buy_record_id:

@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 > nul
 echo ========================================
-echo    RoboTrader_quant 주식 단타 거래 시스템
+echo    RoboTrader_template 주식 단타 거래 시스템
 echo ========================================
 
 REM 현재 디렉토리로 이동
@@ -63,17 +63,17 @@ set HH=%time:~0,2%
 set MN=%time:~3,2%
 set SS=%time:~6,2%
 set HH=%HH: =0%
-set LOGFILE=logs\robotrader_quant_%YYYY%%MM%%DD%_%HH%%MN%%SS%.log
+set LOGFILE=logs\robotrader_template_%YYYY%%MM%%DD%_%HH%%MN%%SS%.log
 
 REM 중복 실행 방지: 기존 PID 파일 존재 시 경고 (main.py에서도 방지함)
-if exist "robotrader_quant.pid" (
-    echo [경고] 기존 실행 흔적이 있습니다: robotrader_quant.pid
-    echo 기존 프로세스가 실행 중이 아니라면 robotrader_quant.pid를 삭제하세요.
+if exist "robotrader_template.pid" (
+    echo [경고] 기존 실행 흔적이 있습니다: robotrader_template.pid
+    echo 기존 프로세스가 실행 중이 아니라면 robotrader_template.pid를 삭제하세요.
 )
 
 REM 프로그램 실행
 echo.
-echo RoboTrader_quant 시작 중...
+echo RoboTrader_template 시작 중...
 echo 종료하려면 Ctrl+C를 누르세요.
 echo.
 set PYTHONIOENCODING=utf-8
@@ -81,6 +81,6 @@ python -X utf8 main.py %* 1>> "%LOGFILE%" 2>&1
 
 REM 종료 메시지
 echo.
-echo RoboTrader_quant가 종료되었습니다.
+echo RoboTrader_template가 종료되었습니다.
 echo 로그 파일: %LOGFILE%
 pause

@@ -210,10 +210,6 @@ class DayTradingBot:
         if not await self.bot_initializer.initialize_system():
             return False
 
-        # KISBroker 연결 (framework 전략 시스템용)
-        if not await self.broker.connect():
-            self.logger.warning("KISBroker 연결 실패 - 전략 시스템 없이 계속 운영")
-
         # 전략 초기화
         await self._initialize_strategy()
 
@@ -365,7 +361,7 @@ class DayTradingBot:
         self.logger.info("메인 트레이딩 루프 종료")
 
     async def _load_screener_candidates(self):
-        """스크리너 결과에서 후보 종목 로드 → TradingStockManager에 등록"""
+        """후보 종목 로드: 스크리너 우선, 없으면 거래량 순위 자동 수집"""
         if self._candidates_loaded:
             return
 
@@ -377,15 +373,32 @@ class DayTradingBot:
             elif hasattr(strategy_config, 'parameters'):
                 max_candidates = strategy_config.parameters.get('max_candidates', 10)
 
+            # 1순위: 스크리너 JSON에서 로드
             candidates = self.candidate_selector.load_from_screener(
                 max_candidates=max_candidates
             )
 
+            # 2순위: 스크리너 없으면 거래량 순위 API 자동 수집
             if not candidates:
-                self.logger.warning("스크리너 후보 종목 없음 — 기존 로직으로 운영")
+                self.logger.info("스크리너 파일 없음 → 거래량 순위 기반 자동 수집 시작")
+                candidates = await self.candidate_selector.select_daily_candidates(
+                    max_candidates=max_candidates
+                )
+
+            if not candidates:
+                self.logger.warning("후보 종목 없음 — 스크리너/자동수집 모두 실패")
                 self._candidates_loaded = True
                 return
 
+            # DB 저장 (자동 수집된 후보)
+            try:
+                if self.db_manager and hasattr(self.db_manager, 'candidate_repo'):
+                    self.db_manager.candidate_repo.save_candidate_stocks(candidates)
+                    self.logger.info(f"후보 종목 {len(candidates)}건 DB 저장 완료")
+            except Exception as e:
+                self.logger.warning(f"후보 종목 DB 저장 실패 (무시): {e}")
+
+            # TradingStockManager에 등록
             registered = 0
             for c in candidates:
                 success = await self.trading_manager.add_selected_stock(
@@ -398,18 +411,18 @@ class DayTradingBot:
                     registered += 1
 
             self._candidates_loaded = True
-            self.logger.info(f"스크리너 후보 {registered}/{len(candidates)}개 등록 완료")
+            self.logger.info(f"후보 종목 {registered}/{len(candidates)}개 등록 완료")
 
             # 텔레그램 알림
             try:
-                msg = (f"📊 스크리너 후보 등록: {registered}종목\n"
+                msg = (f"📊 후보 종목 등록: {registered}종목\n"
                        + "\n".join(f"  • {c.code}({c.name})" for c in candidates[:registered]))
                 await self.telegram.notify_system_status(msg)
             except Exception:
                 pass
 
         except Exception as e:
-            self.logger.error(f"스크리너 후보 로드 오류: {e}")
+            self.logger.error(f"후보 종목 로드 오류: {e}")
             self._candidates_loaded = True  # 재시도 방지
 
     async def _check_buy_signals(self):

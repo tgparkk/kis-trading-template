@@ -60,49 +60,51 @@ class CandidateSelector:
 
     async def select_daily_candidates(self, max_candidates: int = 5) -> List[CandidateStock]:
         """
-        일일 매수 후보 종목 선정
+        일일 매수 후보 종목 선정 (거래량 순위 기반)
 
-        TODO: 매수 후보 종목 선정 로직을 여기에 구현하세요
-
-        예시 전략:
-        - 거래량 급증 종목 (전일 대비 200% 이상)
-        - 신고가 돌파 종목 (52주 신고가)
-        - 모멘텀 상위 종목 (20일 수익률 상위)
-        - 가치주 (PER, PBR 저평가)
+        KIS API 거래량순위에서 KOSPI+KOSDAQ 상위 종목을 수집하고,
+        ETF/우선주/가격대 필터링 후 스코어 기반으로 상위 N개를 반환합니다.
         """
         try:
-            self.logger.info("일일 매수 후보 종목 선정 시작")
+            self.logger.info("일일 매수 후보 종목 선정 시작 (거래량 순위 기반)")
 
-            # 1. 종목 리스트 로드
-            all_stocks = self._load_stock_list()
-            if not all_stocks:
+            # 1. 거래량 순위 API에서 수집
+            raw_candidates = self._fetch_volume_rank_candidates()
+            if not raw_candidates:
+                self.logger.warning("거래량 순위 데이터 없음")
                 return []
-            self.selection_stats['total_analyzed'] = len(all_stocks)
+            self.selection_stats['total_analyzed'] = len(raw_candidates)
 
-            # 2. 1차 필터링
-            filtered_stocks = await self._apply_basic_filters(all_stocks)
-            self.selection_stats['passed_basic_filter'] = len(filtered_stocks)
+            # 2. 필터링 (ETF/우선주/가격대)
+            filtered = self._apply_volume_rank_filters(raw_candidates)
+            self.selection_stats['passed_basic_filter'] = len(filtered)
+            self.logger.info(f"필터링: {len(raw_candidates)}건 → {len(filtered)}건")
 
-            # 3. TODO: 2차 상세 분석 구현
-            # candidate_stocks = []
-            # for stock in filtered_stocks:
-            #     candidate = await self._analyze_single_stock(stock)
-            #     if candidate:
-            #         candidate_stocks.append(candidate)
-            candidate_stocks = []  # 플레이스홀더
+            # 3. 스코어 정렬 후 상위 N개 선정
+            filtered.sort(key=lambda x: x['score'], reverse=True)
+            selected_data = filtered[:max_candidates]
 
-            self.selection_stats['passed_detailed_analysis'] = len(candidate_stocks)
+            # 4. CandidateStock 변환
+            candidates = []
+            for item in selected_data:
+                candidate = CandidateStock(
+                    code=item['code'],
+                    name=item['name'],
+                    market=item.get('market', 'KRX'),
+                    score=item['score'],
+                    reason=item['reason'],
+                    prev_close=item.get('prev_close', 0.0),
+                )
+                candidates.append(candidate)
 
-            # 4. 점수 기준 정렬 및 선정
-            candidate_stocks.sort(key=lambda x: x.score, reverse=True)
-            selected = candidate_stocks[:max_candidates]
-            self.selection_stats['final_selected'] = len(selected)
+            self.selection_stats['passed_detailed_analysis'] = len(candidates)
+            self.selection_stats['final_selected'] = len(candidates)
             self.selection_stats['last_selection_time'] = now_kst()
 
-            for c in selected:
-                self.logger.info(f"  - {c.code}({c.name}): {c.score:.2f}점 - {c.reason}")
+            for c in candidates:
+                self.logger.info(f"  후보: {c.code}({c.name}): {c.score:.1f}점 - {c.reason}")
 
-            return selected
+            return candidates
 
         except Exception as e:
             self.logger.error(f"후보 종목 선정 실패: {e}")
@@ -278,6 +280,103 @@ class CandidateSelector:
             # if volume_amount < 1_000_000_000: continue
 
             filtered.append(stock)
+        return filtered
+
+    # =========================================================================
+    # 거래량 순위 기반 후보 수집
+    # =========================================================================
+
+    def _fetch_volume_rank_candidates(self) -> List[Dict]:
+        """거래량 순위 API에서 후보 수집 (KOSPI + KOSDAQ)"""
+        from api.kis_market_api import get_volume_rank
+        import time
+
+        all_candidates = []
+
+        # KOSPI 거래량 상위 (보통주만)
+        try:
+            kospi_df = get_volume_rank(
+                fid_input_iscd="0001",
+                fid_div_cls_code="1",
+            )
+            if kospi_df is not None and not kospi_df.empty:
+                for _, row in kospi_df.iterrows():
+                    parsed = self._parse_volume_rank_row(row, 'KOSPI')
+                    if parsed:
+                        all_candidates.append(parsed)
+            self.logger.info(f"KOSPI 거래량 순위: {len([c for c in all_candidates if c.get('market') == 'KOSPI'])}건")
+        except Exception as e:
+            self.logger.error(f"KOSPI 거래량 순위 조회 실패: {e}")
+
+        time.sleep(0.2)  # API rate limit
+
+        # KOSDAQ 거래량 상위 (보통주만)
+        try:
+            kosdaq_df = get_volume_rank(
+                fid_input_iscd="1001",
+                fid_div_cls_code="1",
+            )
+            if kosdaq_df is not None and not kosdaq_df.empty:
+                for _, row in kosdaq_df.iterrows():
+                    parsed = self._parse_volume_rank_row(row, 'KOSDAQ')
+                    if parsed:
+                        all_candidates.append(parsed)
+            self.logger.info(f"KOSDAQ 거래량 순위: {len([c for c in all_candidates if c.get('market') == 'KOSDAQ'])}건")
+        except Exception as e:
+            self.logger.error(f"KOSDAQ 거래량 순위 조회 실패: {e}")
+
+        return all_candidates
+
+    def _parse_volume_rank_row(self, row, market: str) -> Optional[Dict]:
+        """거래량 순위 API 응답 행 파싱"""
+        try:
+            code = str(row.get('mksc_shrn_iscd', row.get('stck_shrn_iscd', ''))).strip()
+            name = str(row.get('hts_kor_isnm', '')).strip()
+            rank = int(row.get('data_rank', 99))
+            current_price = float(row.get('stck_prpr', 0))
+            change_rate = float(row.get('prdy_ctrt', 0))
+            volume = int(row.get('acml_vol', 0))
+
+            if not code or not name:
+                return None
+
+            # 스코어: 순위 역수(1위=30점) + 양봉 보너스(+5점)
+            score = max(0, 31 - rank)
+            if change_rate > 0:
+                score += 5
+
+            return {
+                'code': code,
+                'name': name,
+                'market': market,
+                'rank': rank,
+                'current_price': current_price,
+                'change_rate': change_rate,
+                'volume': volume,
+                'score': score,
+                'reason': f"거래량{rank}위({market}), 등락{change_rate:+.1f}%",
+                'prev_close': current_price,
+            }
+        except Exception as e:
+            self.logger.debug(f"거래량 순위 행 파싱 실패: {e}")
+            return None
+
+    def _apply_volume_rank_filters(self, candidates: List[Dict]) -> List[Dict]:
+        """거래량 순위 후보 필터링 (ETF/우선주/가격대)"""
+        from config.constants import CANDIDATE_MIN_PRICE, CANDIDATE_MAX_PRICE
+
+        filtered = []
+        for c in candidates:
+            # ETF/ETN 제외
+            if self._is_etf_or_etn_screener(c['name']):
+                continue
+            # 우선주 제외
+            if self._is_preferred_stock(c['code'], c['name']):
+                continue
+            # 가격대 필터
+            if c['current_price'] < CANDIDATE_MIN_PRICE or c['current_price'] > CANDIDATE_MAX_PRICE:
+                continue
+            filtered.append(c)
         return filtered
 
     # =========================================================================

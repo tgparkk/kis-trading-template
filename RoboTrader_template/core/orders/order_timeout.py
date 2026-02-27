@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from ..models import OrderType, OrderStatus
 from utils.korean_time import now_kst
+from utils.async_helpers import run_with_timeout
 from config.constants import ORDER_CANCEL_MAX_RETRIES, ORDER_CANCEL_RETRY_INTERVAL
 
 if TYPE_CHECKING:
@@ -158,24 +159,72 @@ class OrderTimeoutMixin:
             await asyncio.sleep(ORDER_CANCEL_RETRY_INTERVAL)
         return False
 
+    async def _cancel_remaining_only(self: 'OrderManagerBase', order_id: str) -> bool:
+        """잔여 주문 취소 API만 호출 (pending_orders 상태 변경 없이)
+
+        _cancel_with_retry()는 내부적으로 cancel_order()를 호출하고,
+        cancel_order()가 성공하면 _move_to_completed()로 pending_orders에서 제거합니다.
+        부분 체결 타임아웃 처리에서는 이후에 직접 _move_to_completed()를 호출해야 하므로,
+        이 메서드는 순수하게 broker API를 통한 잔여 수량 취소만 수행합니다.
+        """
+        try:
+            order = self.pending_orders.get(order_id)
+            if not order:
+                return False
+            order_dvsn = "01" if order.price == 0 else "00"
+            result = await run_with_timeout(
+                self.executor, self.broker.cancel_order,
+                order_id, order.stock_code, order_dvsn,
+                timeout_seconds=35, default=None
+            )
+            if result and result.success:
+                self.logger.info(f"잔여 주문 취소 API 성공: {order_id}")
+                return True
+            elif result:
+                self.logger.warning(f"잔여 주문 취소 API 실패: {order_id} - {result.message}")
+                return False
+            else:
+                self.logger.warning(f"잔여 주문 취소 API 타임아웃: {order_id}")
+                return False
+        except Exception as e:
+            self.logger.warning(f"잔여 주문 취소 API 예외: {order_id} - {e}")
+            return False
+
     async def _handle_partial_fill_timeout(self: 'OrderManagerBase', order_id: str, order, filled_qty: int) -> None:
         """부분 체결 상태에서 타임아웃 처리"""
-        # 1. 잔여 주문 취소
-        await self._cancel_with_retry(order_id)
+        # 1. 잔여 주문 취소 (pending_orders 상태 변경 없이 API만 호출)
+        # _cancel_with_retry 대신 _cancel_remaining_only 사용:
+        # _cancel_with_retry → cancel_order → _move_to_completed 로 pending_orders에서 제거되어
+        # 이후 _move_to_completed 재호출 시 order가 없어지는 이중 호출 버그 방지
+        await self._cancel_remaining_only(order_id)
 
         filled_price = getattr(order, 'filled_price', None) or order.price
 
         # 매도 부분 체결은 별도 경로로 처리
         if order.order_type == OrderType.SELL:
             self.logger.info(f"매도 부분 체결 타임아웃: {order.stock_code} {filled_qty}주 @{filled_price:,.0f}원")
-            # FundManager: 매도 부분 체결분 자금 회수
+            # FundManager: 매도 부분 체결분 자금 회수 (매수원가 기준 + 손익 반영)
             if self.fund_manager:
                 try:
-                    partial_sell_amount = filled_price * filled_qty
-                    self.fund_manager.release_investment(partial_sell_amount, stock_code=order.stock_code)
-                    self.logger.info(f"FundManager 매도 부분 체결 자금 회수: {order.stock_code} - {partial_sell_amount:,.0f}원")
+                    # 매수원가 조회 (fallback: 매도 주문가)
+                    buy_cost_per_share = order.price
+                    if self.trading_manager:
+                        try:
+                            ts = self.trading_manager.get_trading_stock(order.stock_code)
+                            if ts and ts.position and ts.position.avg_price > 0:
+                                buy_cost_per_share = ts.position.avg_price
+                        except Exception:
+                            pass
+                    buy_cost = buy_cost_per_share * filled_qty
+                    sell_amount = filled_price * filled_qty
+                    self.fund_manager.release_investment(buy_cost, stock_code=order.stock_code)
+                    # 매매 손익을 total_funds와 available_funds에 반영
+                    pnl = sell_amount - buy_cost
+                    if pnl != 0:
+                        self.fund_manager.adjust_pnl(pnl)
+                    self.logger.info(f"FundManager 매도 부분 체결 자금 회수: {order.stock_code} - 매수원가: {buy_cost:,.0f}원, 매도금: {sell_amount:,.0f}원, 손익: {pnl:+,.0f}원")
                 except Exception as e:
-                    self.logger.warning(f"FundManager 매도 부분 체결 자금 회수 실패: {order.stock_code} - {e}")
+                    self.logger.warning(f"FundManager 매도 부분 체결 자금 처리 실패: {order.stock_code} - {e}")
             if self.trading_manager and hasattr(self.trading_manager, 'on_sell_partial_fill_timeout'):
                 try:
                     await self.trading_manager.on_sell_partial_fill_timeout(order, filled_qty, filled_price)
@@ -203,9 +252,10 @@ class OrderTimeoutMixin:
             try:
                 actual_amount = filled_price * filled_qty
                 self.fund_manager.confirm_order(order_id, actual_amount)
-                self.logger.info(f"FundManager 부분 체결 확정: {order_id} - {actual_amount:,.0f}원 ({filled_qty}주)")
+                self.fund_manager.add_position(order.stock_code)
+                self.logger.info(f"FundManager 매수 부분 체결 확정: {order_id} - {actual_amount:,.0f}원 ({filled_qty}주)")
             except Exception as e:
-                self.logger.warning(f"FundManager 부분 체결 확정 실패: {order_id} - {e}")
+                self.logger.warning(f"FundManager 매수 부분 체결 확정 실패: {order_id} - {e}")
 
         self.logger.info(f"부분 체결 포지션 등록: {order.stock_code} {filled_qty}주 @{filled_price:,.0f}원")
 
@@ -308,6 +358,14 @@ class OrderTimeoutMixin:
                 order.status = OrderStatus.TIMEOUT
                 self._move_to_completed(order_id)
                 self.logger.warning(f"예외 발생으로 인한 강제 상태 정리: {order_id}")
+                # TradingStockManager에도 알림 시도 (BUY_PENDING/SELL_PENDING 고착 방지)
+                if self.trading_manager and hasattr(self.trading_manager, 'handle_order_timeout'):
+                    try:
+                        await self.trading_manager.handle_order_timeout(order)
+                    except Exception as inner_e:
+                        self.logger.warning(
+                            f"강제 정리 시 TradingStockManager 알림 실패: {inner_e}"
+                        )
         except Exception as e:
             self.logger.debug(f"강제 상태 정리 중 오류: {order_id} - {e}")
 

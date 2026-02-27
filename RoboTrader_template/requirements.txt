@@ -9,3 +9,4 @@ python-telegram-bot
 PyYAML
 matplotlib
 psycopg2-binary>=2.9.9
+yfinance

@@ -58,7 +58,7 @@ class BotInitializer:
 
             # 1. API 초기화
             self.logger.info("API 매니저 초기화 시작...")
-            if not self.bot.broker.initialize():
+            if not await self.bot.broker.connect():
                 self.logger.error("API 초기화 실패")
                 return False
             self.logger.info("API 초기화 완료")

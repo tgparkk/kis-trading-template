@@ -20,7 +20,7 @@
     "max_daily_loss": 0.1
   },
   "strategy": {
-    "name": "momentum",
+    "name": "sample",
     "enabled": true,
     "parameters": {
       "momentum_period": 5,

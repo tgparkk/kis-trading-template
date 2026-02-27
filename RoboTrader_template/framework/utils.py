@@ -279,6 +279,9 @@ def setup_logger(
     """
     Setup and configure a logger.
 
+    utils.logger.setup_logger()로 위임하여 싱글톤 파일 핸들러를 공유합니다.
+    Windows에서 여러 핸들러가 동일 파일을 rotate할 때 PermissionError를 방지합니다.
+
     Args:
         name: Logger name (typically __name__)
         level: Logging level (default: INFO)
@@ -288,54 +291,8 @@ def setup_logger(
     Returns:
         logging.Logger: Configured logger
     """
-    # Log directory
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
-
-    # Log file path
-    if file_path is None:
-        today = now_kst().strftime("%Y%m%d")
-        log_file = log_dir / f"trading_{today}.log"
-    else:
-        log_file = Path(file_path)
-        if not log_file.parent.exists():
-            log_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Create logger
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    logger.propagate = False
-
-    # Clear existing handlers
-    if logger.handlers:
-        logger.handlers.clear()
-
-    # Formatter (clean format without emojis)
-    formatter = logging.Formatter(
-        '%(asctime)s | %(name)s | %(levelname)s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-
-    # KST timestamp converter
-    if use_kst:
-        def kst_converter(secs: float):
-            try:
-                return datetime.fromtimestamp(secs, KST).timetuple()
-            except Exception:
-                return time_module.localtime(secs)
-        formatter.converter = kst_converter
-
-    # File handler
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-
-    return logger
+    from utils.logger import setup_logger as _setup_logger
+    return _setup_logger(name, level, file_path, use_kst)
 
 
 # ============================================================================

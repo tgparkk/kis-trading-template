@@ -69,7 +69,7 @@ class OrderManager(
     #
     # OrderExecutorMixin:
     #   - place_buy_order(stock_code, quantity, price, timeout_seconds, target_profit_rate, stop_loss_rate)
-    #   - place_sell_order(stock_code, quantity, price, timeout_seconds, market)
+    #   - place_sell_order(stock_code, quantity, price, timeout_seconds, market, force)
     #   - cancel_order(order_id)
     #
     # OrderMonitorMixin:

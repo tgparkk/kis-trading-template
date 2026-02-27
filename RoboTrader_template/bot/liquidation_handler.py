@@ -69,7 +69,8 @@ class LiquidationHandler:
                     moved = self.bot.trading_manager.move_to_sell_candidate(stock_code, "장마감 일괄청산")
                     if moved:
                         await self.bot.trading_manager.execute_sell_order(
-                            stock_code, quantity, sell_price, "장마감 일괄청산", market=True
+                            stock_code, quantity, sell_price, "장마감 일괄청산", market=True,
+                            force=True
                         )
                         self.logger.info(
                             f"장마감 청산 주문: {stock_code} {quantity}주 시장가 @{sell_price:,.0f}원"
@@ -120,12 +121,18 @@ class LiquidationHandler:
                     if moved:
                         await self.bot.trading_manager.execute_sell_order(
                             stock_code, quantity, current_price,
-                            f"{time_label} 시장가 일괄매도", market=True
+                            f"{time_label} 시장가 일괄매도", market=True,
+                            force=True
                         )
                         self.logger.info(
                             f"{time_label} 시장가 매도: "
                             f"{stock_code}({stock_name}) {quantity}주 시장가 주문"
                         )
+                    else:
+                        self.logger.warning(
+                            f"{stock_code} 매도 후보 전환 실패 - 재시도 대상에 추가"
+                        )
+                        failed_stocks.append(stock_code)
 
                 except Exception as se:
                     self.logger.error(
@@ -188,9 +195,15 @@ class LiquidationHandler:
                 if moved:
                     await self.bot.trading_manager.execute_sell_order(
                         stock_code, quantity, 0.0,
-                        f"EOD 청산 재시도 #{self._eod_retry_count}", market=True
+                        f"EOD 청산 재시도 #{self._eod_retry_count}", market=True,
+                        force=True
                     )
                     self.logger.info(f"EOD 재시도 성공: {stock_code} {quantity}주")
+                else:
+                    self.logger.warning(
+                        f"EOD 재시도 매도 후보 전환 실패: {stock_code} - 재시도 대상 유지"
+                    )
+                    still_failed.append(stock_code)
             except Exception as e:
                 self.logger.error(f"EOD 재시도 실패 ({stock_code}): {e}")
                 still_failed.append(stock_code)

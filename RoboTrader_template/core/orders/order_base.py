@@ -2,7 +2,7 @@
 주문 관리 기본 클래스 및 유틸리티
 """
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Set
 from concurrent.futures import ThreadPoolExecutor
 
 from ..models import Order, OrderType, OrderStatus, TradingConfig
@@ -38,6 +38,7 @@ class OrderManagerBase:
 
         # FundManager 연동
         self.fund_manager = None  # 외부에서 set_fund_manager()로 설정
+        self._temp_reserve_ids: Dict[str, str] = {}  # stock_code → temp_reserve_id 매핑
 
         # 모니터링 상태
         self.is_monitoring = False

@@ -58,7 +58,9 @@ class OrderMonitorMixin:
 
         for order_id in orders_to_process:
             try:
-                order = self.pending_orders[order_id]
+                order = self.pending_orders.get(order_id)
+                if order is None:
+                    continue
                 timeout_time = self.order_timeouts.get(order_id)
 
                 # 주문 상세 정보 로깅 (디버깅용)
@@ -170,8 +172,16 @@ class OrderMonitorMixin:
             remaining_timeout = max(30, 180 - elapsed_seconds)  # 최소 30초는 남겨둠
             self.order_timeouts[order.order_id] = current_time + timedelta(seconds=remaining_timeout)
 
+            # 중복 주문 방지 맵 복구 (_move_to_completed에서 해제되었으므로 다시 등록)
+            if hasattr(self, '_register_active_order'):
+                self._register_active_order(order.stock_code, order.order_id, order.order_type)
+
             self.logger.warning(f"오탐지 주문 복구: {order.order_id} ({order.stock_code}) "
                               f"- 남은 타임아웃: {remaining_timeout:.0f}초")
+            self.logger.warning(
+                f"[오탐지 복구] {order.order_id} ({order.stock_code}) - "
+                f"FundManager 상태가 불일치할 수 있습니다. 수동 확인 필요"
+            )
 
             # 텔레그램 알림
             if self.telegram:
@@ -331,15 +341,28 @@ class OrderMonitorMixin:
                 elif order.order_type == OrderType.SELL:
                     sell_amount = actual_amount
                     # 매수원가 기준으로 invested_funds 회수 (손익 차이는 total_funds 조정)
-                    buy_cost = order.price * filled_qty  # order.price는 매수 시 주문가 근사치
-                    # TradingStock에서 정확한 매수가 조회 시도
+                    buy_cost = 0  # 기본값 (fallback 실패 시)
+                    buy_price_per_share = 0
+
+                    # 1차: TradingStock의 position에서 매수원가 조회
                     if self.trading_manager:
                         try:
                             ts = self.trading_manager.get_trading_stock(order.stock_code)
                             if ts and ts.position and ts.position.avg_price > 0:
-                                buy_cost = ts.position.avg_price * filled_qty
+                                buy_price_per_share = ts.position.avg_price
                         except Exception:
                             pass
+
+                    # 2차: position 조회 실패 시 order.price 사용 (지정가 매도의 경우만, 시장가=0 제외)
+                    if buy_price_per_share <= 0 and order.price > 0:
+                        buy_price_per_share = order.price  # fallback
+
+                    # 3차: 시장가 매도(price=0)이고 position도 없으면, 체결가를 매수가로 추정
+                    if buy_price_per_share <= 0:
+                        buy_price_per_share = filled_price  # 최후 fallback (pnl = 0으로 처리)
+                        self.logger.warning(f"매수원가 조회 실패, 체결가로 대체: {order.stock_code}")
+
+                    buy_cost = buy_price_per_share * filled_qty
                     self.fund_manager.release_investment(buy_cost, stock_code=order.stock_code)
                     # 매매 손익을 total_funds와 available_funds에 반영
                     pnl = sell_amount - buy_cost

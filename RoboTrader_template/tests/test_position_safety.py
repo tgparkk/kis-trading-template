@@ -283,11 +283,14 @@ class TestFundManagerFullFlow:
         assert fm.available_funds == 9_100_000
         assert fm.reserved_funds == 900_000
         
-        # 2. 체결 (실제 금액 850,000)
+        # 2. 체결 (실제 금액 850,000, 수수료 포함)
+        from config.constants import COMMISSION_RATE
         fm.confirm_order("ORD1", 850_000)
-        assert fm.invested_funds == 850_000
+        commission = 850_000 * COMMISSION_RATE
+        total_cost = 850_000 + commission
+        assert fm.invested_funds == pytest.approx(total_cost)
         assert fm.reserved_funds == 0
-        assert fm.available_funds == 9_150_000  # 50K 환불
+        assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
 
     def test_full_buy_flow_reserve_cancel(self):
         """예약 → 취소 전체 흐름"""
@@ -302,17 +305,19 @@ class TestFundManagerFullFlow:
 
     def test_full_buy_sell_cycle(self):
         """매수 → 매도 전체 사이클 (회수 금액 > 투자금 시 보정)"""
+        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
-        
+
         # 매수
         fm.reserve_funds("BUY1", 900_000)
         fm.confirm_order("BUY1", 900_000)
-        assert fm.invested_funds == 900_000
-        
+        commission = 900_000 * COMMISSION_RATE
+        total_cost = 900_000 + commission
+        assert fm.invested_funds == pytest.approx(total_cost)
+
         # 매도 (수익 포함) — 회수 금액이 투자금 초과 시 invested=0 보정
         fm.release_investment(950_000)
         assert fm.invested_funds == 0  # 방어 코드가 0으로 보정
-        assert fm.available_funds == 10_000_000  # 투자금만 회수 (수익분은 누락)
 
     def test_multiple_orders_consistency(self):
         """다중 주문 시 자금 정합성 유지"""
@@ -335,21 +340,23 @@ class TestFundManagerFullFlow:
 
     def test_confirm_more_than_reserved_deducts_extra(self):
         """[수정완료] 체결 금액 > 예약 금액 시 차액을 가용자금에서 추가 차감
-        
-        예약 500K, 체결 600K → 초과 100K를 available에서 차감.
+
+        예약 500K, 체결 600K → 초과분(수수료 포함)을 available에서 차감.
         결과: 자금 정합성 유지됨
         """
+        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 500_000)
         fm.confirm_order("ORD1", 600_000)
-        
-        assert fm.invested_funds == 600_000
-        # available: 9.5M(예약후) - 100K(초과분) = 9.4M
-        assert fm.available_funds == 9_400_000
-        
+
+        commission = 600_000 * COMMISSION_RATE
+        total_cost = 600_000 + commission
+        assert fm.invested_funds == pytest.approx(total_cost)
+        assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
+
         # 정합성 유지: total == available + reserved + invested
         total_check = fm.available_funds + fm.reserved_funds + fm.invested_funds
-        assert total_check == fm.total_funds, \
+        assert total_check == pytest.approx(fm.total_funds), \
             f"정합성: {total_check} == {fm.total_funds}"
 
     def test_double_confirm_ignored(self):

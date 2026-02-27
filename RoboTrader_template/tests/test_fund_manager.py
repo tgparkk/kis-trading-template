@@ -7,6 +7,7 @@ FundManager 유닛 테스트
 import pytest
 import threading
 from core.fund_manager import FundManager
+from config.constants import COMMISSION_RATE
 
 
 class TestFundManagerInit:
@@ -73,43 +74,54 @@ class TestConfirmOrder:
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 900_000)
-        assert fm.invested_funds == 900_000
+        # invested = 900K + 수수료(900K * 0.00015 = 135)
+        commission = 900_000 * COMMISSION_RATE
+        total_cost = 900_000 + commission
+        assert fm.invested_funds == total_cost
         assert fm.reserved_funds == 0
-        assert fm.available_funds == 9_100_000  # 9M + 100K 환불
+        assert fm.available_funds == pytest.approx(9_000_000 + (1_000_000 - total_cost))
         assert "ORD1" not in fm.order_reservations
 
     def test_confirm_exact_amount(self):
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 1_000_000)
-        assert fm.invested_funds == 1_000_000
+        # invested = 1M + 수수료(1M * 0.00015 = 150)
+        commission = 1_000_000 * COMMISSION_RATE
+        total_cost = 1_000_000 + commission
+        assert fm.invested_funds == total_cost
         assert fm.reserved_funds == 0
-        assert fm.available_funds == 9_000_000
+        # 수수료로 인해 total_cost > reserved이므로 차액 추가 차감
+        assert fm.available_funds == pytest.approx(9_000_000 - commission)
 
     def test_confirm_actual_exceeds_reserved(self):
         """체결금액이 예약금액보다 큰 경우 — 추가 비용을 가용자금에서 차감"""
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 900_000)
-        # 실제 체결이 1M (예약 900K보다 100K 초과)
+        # 실제 체결이 1M (예약 900K보다 100K+ 초과, 수수료 포함)
         fm.confirm_order("ORD1", 1_000_000)
-        assert fm.invested_funds == 1_000_000
+        commission = 1_000_000 * COMMISSION_RATE
+        total_cost = 1_000_000 + commission
+        assert fm.invested_funds == total_cost
         assert fm.reserved_funds == 0
-        # 가용 = 10M - 900K(예약시) - 100K(초과분) = 9M
-        assert fm.available_funds == 9_000_000
+        # 가용 = 10M - 900K(예약시) - (total_cost - 900K)(초과분)
+        assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
         # 총합 일관성: available + reserved + invested == total
-        assert fm.available_funds + fm.reserved_funds + fm.invested_funds == fm.total_funds
+        assert fm.available_funds + fm.reserved_funds + fm.invested_funds == pytest.approx(fm.total_funds)
 
     def test_confirm_actual_exceeds_reserved_accounting_consistency(self):
         """체결>예약 시 복수 주문 상황에서도 총합 일관"""
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.reserve_funds("ORD2", 2_000_000)
-        # ORD1: 체결이 예약보다 200K 초과
+        # ORD1: 체결이 예약보다 200K+ 초과 (수수료 포함)
         fm.confirm_order("ORD1", 1_200_000)
-        assert fm.available_funds == 6_800_000  # 10M - 1M - 2M - 200K extra
+        commission = 1_200_000 * COMMISSION_RATE
+        total_cost = 1_200_000 + commission
+        assert fm.available_funds == pytest.approx(10_000_000 - 1_000_000 - 2_000_000 - (total_cost - 1_000_000))
         assert fm.reserved_funds == 2_000_000
-        assert fm.invested_funds == 1_200_000
-        assert fm.available_funds + fm.reserved_funds + fm.invested_funds == fm.total_funds
+        assert fm.invested_funds == total_cost
+        assert fm.available_funds + fm.reserved_funds + fm.invested_funds == pytest.approx(fm.total_funds)
 
     def test_confirm_unreserved(self):
         fm = FundManager(initial_funds=10_000_000)
@@ -143,16 +155,19 @@ class TestReleaseInvestment:
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 5_000_000)
         fm.confirm_order("ORD1", 5_000_000)
+        commission = 5_000_000 * COMMISSION_RATE
+        total_cost = 5_000_000 + commission
         fm.release_investment(2_000_000)
-        assert fm.invested_funds == 3_000_000
-        assert fm.available_funds == 7_000_000
+        assert fm.invested_funds == pytest.approx(total_cost - 2_000_000)
+        # available = (예약해제후 잔여) + 회수액
+        assert fm.available_funds == pytest.approx(5_000_000 - commission + 2_000_000)
 
     def test_release_negative_guard(self):
         """안전성 이슈 #8: release_investment로 invested_funds가 음수 되지 않도록 보정"""
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 1_000_000)
-        # invested = 1M인데 2M 회수 → 보정되어 0으로 클램핑
+        # invested = 1M + 수수료인데 2M 회수 → 보정되어 0으로 클램핑
         fm.release_investment(2_000_000)
         assert fm.invested_funds == 0  # 음수 방지 보정 적용됨
 
@@ -170,10 +185,13 @@ class TestGetMaxBuyAmount:
         fm.reserve_funds("ORD1", 8_500_000)
         fm.confirm_order("ORD1", 8_500_000)
         max_amt = fm.get_max_buy_amount("005930")
-        # 투자여력: 10M*0.9 - 8.5M = 500K
+        commission = 8_500_000 * COMMISSION_RATE
+        total_cost = 8_500_000 + commission
+        # 투자여력: 10M*0.9 - total_cost
         # 종목한도: 10M*0.09 = 900K
-        # 가용자금: 1.5M
-        assert max_amt == 500_000
+        # 가용자금: 10M - total_cost (수수료 포함)
+        remaining = 10_000_000 * 0.9 - total_cost
+        assert max_amt == pytest.approx(remaining)
 
     def test_max_buy_no_funds(self):
         fm = FundManager(initial_funds=10_000_000)
@@ -191,13 +209,15 @@ class TestGetStatus:
         fm.confirm_order("ORD1", 800_000)
         fm.reserve_funds("ORD2", 500_000)
 
+        commission = 800_000 * COMMISSION_RATE
+        total_cost = 800_000 + commission
         status = fm.get_status()
         assert status['total_funds'] == 10_000_000
         assert status['reserved_funds'] == 500_000
-        assert status['invested_funds'] == 800_000
+        assert status['invested_funds'] == pytest.approx(total_cost)
         # 정합성: total = available + reserved + invested
         total_check = status['available_funds'] + status['reserved_funds'] + status['invested_funds']
-        assert total_check == status['total_funds']
+        assert total_check == pytest.approx(status['total_funds'])
 
 
 class TestUpdateTotalFunds:
@@ -207,10 +227,12 @@ class TestUpdateTotalFunds:
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 1_000_000)
+        commission = 1_000_000 * COMMISSION_RATE
+        total_cost = 1_000_000 + commission
         fm.update_total_funds(12_000_000)
-        # available = 12M - 0(reserved) - 1M(invested) = 11M
+        # available = 12M - 0(reserved) - total_cost(invested)
         assert fm.total_funds == 12_000_000
-        assert fm.available_funds == 11_000_000
+        assert fm.available_funds == pytest.approx(12_000_000 - total_cost)
 
 
 class TestConcurrency:

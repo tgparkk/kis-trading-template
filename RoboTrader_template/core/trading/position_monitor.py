@@ -309,8 +309,13 @@ class PositionMonitor:
                             trading_stock, sell_price, reason
                         )
                         if success:
+                            trading_stock.is_selling = False
                             self.logger.info(f"{stock_code} 가상 매도 완료: {reason}")
                             return
+                        else:
+                            trading_stock.is_selling = False
+                            self.logger.warning(f"{stock_code} 가상 매도 실패: {reason}")
+                            continue
                     else:
                         success = await self.decision_engine.execute_real_sell(
                             trading_stock, reason

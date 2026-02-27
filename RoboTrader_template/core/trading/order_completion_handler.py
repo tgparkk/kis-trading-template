@@ -161,6 +161,8 @@ class OrderCompletionHandler:
                     if order.status == OrderStatus.FILLED:
                         # 매도 완료 - 완료 상태로 변경
                         with self.state_manager.lock:
+                            # 수익률 계산을 위해 포지션 정보 먼저 저장
+                            _buy_price = trading_stock.position.avg_price if trading_stock.position else 0
                             trading_stock.clear_position()
                             trading_stock.clear_current_order()
                             self.state_manager.change_stock_state(
@@ -172,9 +174,8 @@ class OrderCompletionHandler:
                         # 실거래 매도 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
                         # 수익률 계산만 수행
                         profit_rate = 0.0
-                        if trading_stock.position and trading_stock.position.avg_price:
-                            buy_price = trading_stock.position.avg_price
-                            profit_rate = ((float(order.get_filled_price()) - buy_price) / buy_price) * 100
+                        if _buy_price and _buy_price > 0:
+                            profit_rate = ((float(order.get_filled_price()) - _buy_price) / _buy_price) * 100
 
                         # 전략 콜백 호출
                         self._notify_strategy_order_filled(order)
@@ -281,6 +282,8 @@ class OrderCompletionHandler:
             trading_stock.order_processed = True
             trading_stock.is_selling = False  # 매도 완료
 
+            # 수익률 계산을 위해 포지션 정보 먼저 저장
+            _buy_price = trading_stock.position.avg_price if trading_stock.position else 0
             trading_stock.clear_position()
             trading_stock.clear_current_order()
             self.state_manager.change_stock_state(
@@ -292,9 +295,8 @@ class OrderCompletionHandler:
             # 실거래 매도 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
             # 수익률 계산만 수행
             profit_rate = 0.0
-            if trading_stock.position and trading_stock.position.avg_price:
-                buy_price = trading_stock.position.avg_price
-                profit_rate = ((float(order.get_filled_price()) - buy_price) / buy_price) * 100
+            if _buy_price and _buy_price > 0:
+                profit_rate = ((float(order.get_filled_price()) - _buy_price) / _buy_price) * 100
 
             # 전략 콜백 호출
             self._notify_strategy_order_filled(order)

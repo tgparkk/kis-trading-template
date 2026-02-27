@@ -22,6 +22,30 @@ class SystemMonitor:
         self.logger = setup_logger(__name__)
         self._last_daily_report_date = None
 
+        # 대시보드 초기화
+        self._init_dashboard()
+
+    def _init_dashboard(self):
+        """시장현황 대시보드 초기화"""
+        self._dashboard = None
+        try:
+            from market_dashboard.dashboard import MarketDashboard
+            from market_dashboard.global_market import GlobalMarketCollector
+            from market_dashboard.domestic_market import DomesticMarketCollector
+            from config.constants import GLOBAL_MARKET_CACHE_TTL, DOMESTIC_MARKET_CACHE_TTL
+
+            self._dashboard = MarketDashboard(
+                domestic_collector=DomesticMarketCollector.from_kis_api(
+                    cache_ttl_seconds=DOMESTIC_MARKET_CACHE_TTL
+                ),
+                global_collector=GlobalMarketCollector(
+                    cache_ttl_seconds=GLOBAL_MARKET_CACHE_TTL
+                ),
+            )
+            self.logger.info("시장현황 대시보드 초기화 완료")
+        except Exception as e:
+            self.logger.warning(f"시장현황 대시보드 초기화 실패 (무시): {e}")
+
     async def run_system_monitoring_task(self) -> None:
         """시스템 모니터링 태스크"""
         try:
@@ -70,6 +94,9 @@ class SystemMonitor:
         # 전략의 get_target_stocks()를 통한 후보 종목 자동 등록
         await self._register_strategy_target_stocks()
 
+        # 장전 브리핑 (하루 1회)
+        await self._run_premarket_briefing()
+
     async def _register_strategy_target_stocks(self) -> None:
         """전략의 get_target_stocks()에서 후보 종목을 가져와 등록"""
         try:
@@ -111,6 +138,19 @@ class SystemMonitor:
         except Exception as e:
             self.logger.error(f"전략 후보 종목 등록 오류: {e}")
 
+    async def _run_premarket_briefing(self) -> None:
+        """장전 브리핑 실행 (하루 1회)"""
+        if self._dashboard is None:
+            return
+        if self._dashboard.is_briefing_done_today():
+            return
+        try:
+            import asyncio
+            await asyncio.to_thread(self._dashboard.generate_premarket_briefing)
+            self.logger.info("장전 브리핑 출력 완료")
+        except Exception as e:
+            self.logger.warning(f"장전 브리핑 오류 (무시): {e}")
+
     async def _handle_postmarket_tasks(self, current_time) -> None:
         """장 마감 후 태스크 처리"""
         if current_time.hour == 15 and current_time.minute >= 35:
@@ -124,13 +164,8 @@ class SystemMonitor:
                     self.logger.error(f"일일 매매 리포트 생성 오류: {report_err}")
 
     async def _save_portfolio_snapshot(self, current_time) -> None:
-        """포트폴리오 스냅샷 저장"""
-        self.logger.info(f"포트폴리오 스냅샷 저장 ({current_time.strftime('%H:%M:%S')})")
-        try:
-            from scripts.save_portfolio_snapshot import save_portfolio_snapshot
-            await asyncio.to_thread(save_portfolio_snapshot)
-        except Exception as snapshot_err:
-            self.logger.error(f"포트폴리오 스냅샷 저장 오류: {snapshot_err}")
+        """포트폴리오 스냅샷 저장 -- 미구현"""
+        self.logger.debug("포트폴리오 스냅샷 저장 기능 미구현 (스킵)")
 
     async def _log_system_status(self) -> None:
         """시스템 상태 로깅"""
@@ -183,8 +218,21 @@ class SystemMonitor:
 
             self.logger.info("\n".join(status_lines))
 
+            # 시장현황 대시보드 출력
+            await self._run_market_dashboard()
+
         except Exception as e:
             self.logger.error(f"시스템 상태 로깅 오류: {e}")
+
+    async def _run_market_dashboard(self) -> None:
+        """시장현황 대시보드 출력"""
+        if self._dashboard is None:
+            return
+        try:
+            import asyncio
+            await asyncio.to_thread(self._dashboard.generate_dashboard)
+        except Exception as e:
+            self.logger.warning(f"시장현황 대시보드 오류 (무시): {e}")
 
     async def _refresh_api(self) -> None:
         """API 재초기화"""
@@ -192,7 +240,7 @@ class SystemMonitor:
             self.logger.info("API 24시간 주기 재초기화 시작")
 
             # API 매니저 재초기화
-            if not self.bot.broker.initialize():
+            if not await self.bot.broker.connect():
                 self.logger.error("API 재초기화 실패")
                 await self.bot.telegram.notify_error("API Refresh", "API 재초기화 실패")
                 return False

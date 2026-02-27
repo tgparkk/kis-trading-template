@@ -233,7 +233,9 @@ class TradingDecisionEngine:
 
     async def execute_virtual_buy(self, trading_stock, combined_data,
                                   buy_reason: str, buy_price: float = None,
-                                  quantity: int = None) -> None:
+                                  quantity: int = None,
+                                  target_profit_rate: float = None,
+                                  stop_loss_rate: float = None) -> None:
         """가상 매수
 
         Args:
@@ -245,6 +247,8 @@ class TradingDecisionEngine:
                        2순위: broker API
                        3순위: combined_data 종가 (combined_data가 있을 때만)
             quantity: 매수 수량 (None이면 VirtualTradingManager.get_max_quantity() 재계산)
+            target_profit_rate: 익절률 (None이면 DEFAULT_TARGET_PROFIT_RATE 사용)
+            stop_loss_rate: 손절률 (None이면 DEFAULT_STOP_LOSS_RATE 사용)
         """
         try:
             code = trading_stock.stock_code
@@ -280,6 +284,12 @@ class TradingDecisionEngine:
                 self.logger.warning(f"가상매수 취소: {code} 매수 가격 조회 실패")
                 return
 
+            # 익절/손절률: 전달값 우선, 없으면 기본값 사용
+            if target_profit_rate is None:
+                target_profit_rate = self.DEFAULT_TAKE_PROFIT
+            if stop_loss_rate is None:
+                stop_loss_rate = self.DEFAULT_STOP_LOSS
+
             # 수량 결정: 전달값 우선, 없으면 VirtualTradingManager 재계산
             if quantity is not None and quantity > 0:
                 qty = quantity
@@ -289,11 +299,17 @@ class TradingDecisionEngine:
 
             rid = self.virtual_trading.execute_virtual_buy(
                 stock_code=trading_stock.stock_code, stock_name=trading_stock.stock_name,
-                price=buy_price, quantity=qty, strategy="사용자전략", reason=buy_reason)
+                price=buy_price, quantity=qty, strategy="사용자전략", reason=buy_reason,
+                target_profit_rate=target_profit_rate, stop_loss_rate=stop_loss_rate)
             if rid:
                 trading_stock.set_virtual_buy_info(rid, buy_price, qty)
                 trading_stock.set_position(qty, buy_price)
-                self.logger.info(f"가상매수: {trading_stock.stock_code} {qty}주 @{buy_price:,.0f}")
+                trading_stock.target_profit_rate = target_profit_rate
+                trading_stock.stop_loss_rate = stop_loss_rate
+                self.logger.info(
+                    f"가상매수: {trading_stock.stock_code} {qty}주 @{buy_price:,.0f} "
+                    f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%)"
+                )
         except Exception as e:
             self.logger.error(f"가상매수오류: {e}")
 

@@ -203,11 +203,14 @@ class TestBalanceSync:
     """FundManager와 실제 계좌 잔고 동기화 테스트"""
 
     def test_sync_no_discrepancy(self):
+        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 1_000_000)
-        # 내부: available=9M, invested=1M
-        fm.sync_with_account(actual_available=9_000_000, actual_invested=1_000_000)
+        commission = 1_000_000 * COMMISSION_RATE
+        total_cost = 1_000_000 + commission
+        # 내부: available=10M - total_cost, invested=total_cost (수수료 포함)
+        fm.sync_with_account(actual_available=10_000_000 - total_cost, actual_invested=total_cost)
         assert fm._sync_discrepancy_count == 0
 
     def test_sync_detects_discrepancy(self):
@@ -236,9 +239,13 @@ class TestReleaseInvestmentSafety:
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 1_000_000)
-        fm.release_investment(5_000_000)  # 1M만 투자했는데 5M 회수 시도
+        fm.release_investment(5_000_000)  # 1M+수수료만 투자했는데 5M 회수 시도
         assert fm.invested_funds == 0
-        assert fm.available_funds == 10_000_000
+        # 회수가 투자금으로 제한되므로 available에 투자금(수수료포함)만 돌아옴
+        from config.constants import COMMISSION_RATE
+        commission = 1_000_000 * COMMISSION_RATE
+        total_cost = 1_000_000 + commission
+        assert fm.available_funds == pytest.approx(10_000_000)
 
     def test_release_with_stock_code_tracking(self):
         fm = FundManager(initial_funds=10_000_000)
@@ -269,7 +276,7 @@ class TestExtendedStatus:
         fm.confirm_order("ORD1", 800_000)
         status = fm.get_status()
         total_check = status['available_funds'] + status['reserved_funds'] + status['invested_funds']
-        assert total_check == status['total_funds']
+        assert total_check == pytest.approx(status['total_funds'])
 
 
 # ============================================================================

@@ -136,39 +136,46 @@ class FundManager:
     def confirm_order(self, order_id: str, actual_amount: float) -> None:
         """
         주문 체결 확인 (예약 → 투자)
-        
+
         Args:
             order_id: 주문 ID
-            actual_amount: 실제 체결 금액
+            actual_amount: 실제 체결 금액 (수수료 미포함 순수 체결 금액)
         """
+        from config.constants import COMMISSION_RATE
         with self._lock:
             if order_id not in self.order_reservations:
                 self.logger.warning(f"⚠️ 예약되지 않은 주문: {order_id}")
                 return
-            
+
             reserved_amount = self.order_reservations[order_id]
-            
+
             # 예약 해제
             self.reserved_funds -= reserved_amount
             del self.order_reservations[order_id]
-            
-            # 투자 금액으로 이동
-            self.invested_funds += actual_amount
-            
+
+            # 수수료 포함 실제 투자 비용
+            commission = actual_amount * COMMISSION_RATE
+            total_cost = actual_amount + commission
+
+            # 투자 금액으로 이동 (수수료 포함)
+            self.invested_funds += total_cost
+
             # 차액 정산: 예약>체결이면 환불, 체결>예약이면 추가 차감
-            diff = reserved_amount - actual_amount
+            diff = reserved_amount - total_cost
             if diff > 0:
                 # 예약보다 적게 체결 → 차액 환불
                 self.available_funds += diff
                 self.logger.info(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원, "
-                               f"환불: {diff:,.0f}원")
+                               f"수수료: {commission:,.0f}원, 환불: {diff:,.0f}원")
             elif diff < 0:
                 # 예약보다 많이 체결 → 추가 비용 차감
                 self.available_funds += diff  # diff is negative
                 self.logger.warning(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원, "
+                                  f"수수료: {commission:,.0f}원, "
                                   f"추가차감: {-diff:,.0f}원 (체결>예약)")
             else:
-                self.logger.info(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원")
+                self.logger.info(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원, "
+                               f"수수료: {commission:,.0f}원")
     
     def cancel_order(self, order_id: str) -> None:
         """
@@ -231,6 +238,30 @@ class FundManager:
             if self.available_funds < 0:
                 self.available_funds = 0
             self.logger.info(f"매매 손익 반영: {pnl:+,.0f}원 (총자금: {self.total_funds:,.0f}원)")
+
+    def calculate_buy_cost(self, amount: float) -> float:
+        """매수 시 실제 비용 (주문금액 + 수수료)
+
+        Args:
+            amount: 주문 금액
+
+        Returns:
+            float: 수수료 포함 실제 비용
+        """
+        from config.constants import COMMISSION_RATE
+        return amount * (1 + COMMISSION_RATE)
+
+    def calculate_sell_proceeds(self, amount: float) -> float:
+        """매도 시 실제 수령액 (매도금 - 수수료 - 거래세)
+
+        Args:
+            amount: 매도 금액
+
+        Returns:
+            float: 수수료/세금 차감 후 실제 수령액
+        """
+        from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
+        return amount * (1 - COMMISSION_RATE - SECURITIES_TAX_RATE)
 
     def can_add_position(self, stock_code: str = "") -> bool:
         """

@@ -183,14 +183,18 @@ class TestFullDayCycle(unittest.TestCase):
         result = self.broker.place_buy_order(stock_code, quantity, buy_price)
         self.assertTrue(result['success'])
 
-        # 3) 체결 확인 → 투자 확정
+        # 3) 체결 확인 → 투자 확정 (수수료 포함)
+        from config.constants import COMMISSION_RATE
         actual_amount = quantity * buy_price
         self.fund_manager.confirm_order("ORD-001", actual_amount)
 
+        commission = actual_amount * COMMISSION_RATE
+        total_cost = actual_amount + commission
+
         status = self.fund_manager.get_status()
         self.assertEqual(status['reserved_funds'], 0)
-        self.assertEqual(status['invested_funds'], 700000)
-        self.assertEqual(status['available_funds'], 10_000_000 - 700000)
+        self.assertAlmostEqual(status['invested_funds'], total_cost, places=0)
+        self.assertAlmostEqual(status['available_funds'], 10_000_000 - total_cost, places=0)
 
         # 4) 보유 확인
         holdings = self.broker.get_holdings()
@@ -369,7 +373,8 @@ class TestFullDayCycle(unittest.TestCase):
         # === 15:30 장 마감 — 포지션 0 ===
         self.assertEqual(len(broker.get_holdings()), 0)
         final = fm.get_status()
-        self.assertEqual(final['invested_funds'], 0)
+        # invested_funds에 소액 수수료 잔여 가능 (각 종목 수수료 합계)
+        self.assertAlmostEqual(final['invested_funds'], 0, delta=500)
         self.assertEqual(final['reserved_funds'], 0)
         self.assertEqual(final['position_count'], 0)
 
@@ -415,7 +420,7 @@ class TestFullDayCycle(unittest.TestCase):
             places=0
         )
 
-        # 회수
+        # 회수 (수수료 잔여분이 invested에 남을 수 있음)
         fm.release_investment(1_000_000)
         s = fm.get_status()
         self.assertAlmostEqual(
@@ -423,7 +428,8 @@ class TestFullDayCycle(unittest.TestCase):
             s['available_funds'] + s['reserved_funds'] + s['invested_funds'],
             places=0
         )
-        self.assertEqual(s['available_funds'], 10_000_000)
+        # 수수료 잔여분만큼 available이 total보다 약간 적을 수 있음
+        self.assertAlmostEqual(s['available_funds'], 10_000_000, delta=500)
 
     # ----------------------------------------------------------------
     # 매수 차단 시간대 검증

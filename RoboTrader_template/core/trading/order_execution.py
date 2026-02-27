@@ -73,6 +73,10 @@ class OrderExecution:
             bool: 추가 성공 여부
         """
         try:
+            # Lock 안에서는 동기 상태 변경만 수행하고, await는 Lock 밖에서 호출
+            is_reentry = False
+            is_already_managed = False
+
             with self.state_manager.lock:
                 current_time = now_kst()
 
@@ -90,52 +94,47 @@ class OrderExecution:
                         self.state_manager.change_stock_state(
                             stock_code, StockState.SELECTED, f"재선정: {selection_reason}"
                         )
+                        is_reentry = True
+                    else:
+                        # 그 외 상태에서는 기존 관리 유지
+                        is_already_managed = True
+                else:
+                    # 신규 등록
+                    trading_stock = TradingStock(
+                        stock_code=stock_code,
+                        stock_name=stock_name,
+                        state=StockState.SELECTED,
+                        selected_time=current_time,
+                        selection_reason=selection_reason,
+                        prev_close=prev_close
+                    )
 
-                        # IntradayStockManager에 다시 추가 (비동기 대기)
-                        success = await self.intraday_manager.add_selected_stock(
-                            stock_code, stock_name, selection_reason
-                        )
-                        if success:
-                            self.logger.info(
-                                f"{stock_code}({stock_name}) 재선정 완료 - "
-                                f"시간: {current_time.strftime('%H:%M:%S')}"
-                            )
-                            return True
-                        else:
-                            self.logger.warning(f"{stock_code} 재선정 실패 - Intraday 등록 실패")
-                            return False
+                    # 등록
+                    self.state_manager.register_stock(trading_stock)
 
-                    # 그 외 상태에서는 기존 관리 유지
-                    return True
+            # 이미 관리 중인 종목이면 바로 반환
+            if is_already_managed:
+                return True
 
-                # 신규 등록
-                trading_stock = TradingStock(
-                    stock_code=stock_code,
-                    stock_name=stock_name,
-                    state=StockState.SELECTED,
-                    selected_time=current_time,
-                    selection_reason=selection_reason,
-                    prev_close=prev_close
-                )
-
-                # 등록
-                self.state_manager.register_stock(trading_stock)
-
-            # IntradayStockManager에 추가 (비동기 대기)
+            # Lock 해제 후 비동기 호출 (재선정 및 신규 등록 공통)
             success = await self.intraday_manager.add_selected_stock(
                 stock_code, stock_name, selection_reason
             )
 
             if success:
+                label = "재선정" if is_reentry else "선정"
                 self.logger.info(
-                    f"{stock_code}({stock_name}) 선정 완료 - "
+                    f"{stock_code}({stock_name}) {label} 완료 - "
                     f"시간: {current_time.strftime('%H:%M:%S')}"
                 )
                 return True
             else:
-                # 실패 시 제거
-                with self.state_manager.lock:
-                    self.state_manager.unregister_stock(stock_code)
+                if is_reentry:
+                    self.logger.warning(f"{stock_code} 재선정 실패 - Intraday 등록 실패")
+                else:
+                    # 신규 등록 실패 시 제거
+                    with self.state_manager.lock:
+                        self.state_manager.unregister_stock(stock_code)
                 return False
 
         except Exception as e:
@@ -241,6 +240,7 @@ class OrderExecution:
             # 오류 시 원래 상태로 되돌림
             with self.state_manager.lock:
                 if stock_code in self.state_manager.trading_stocks:
+                    self.state_manager.trading_stocks[stock_code].is_buying = False
                     original_state = (
                         StockState.COMPLETED if "재거래" in reason else StockState.SELECTED
                     )
@@ -293,7 +293,8 @@ class OrderExecution:
             return False
 
     async def execute_sell_order(self, stock_code: str, quantity: int,
-                                 price: float, reason: str = "", market: bool = False) -> bool:
+                                 price: float, reason: str = "", market: bool = False,
+                                 force: bool = False) -> bool:
         """
         매도 주문 실행
 
@@ -303,6 +304,7 @@ class OrderExecution:
             price: 주문 가격
             reason: 매도 사유
             market: 시장가 주문 여부
+            force: True이면 시간대 검사를 건너뜀 (EOD 청산 등)
 
         Returns:
             bool: 주문 성공 여부
@@ -329,7 +331,7 @@ class OrderExecution:
 
             # 매도 주문 실행
             order_id = await self.order_manager.place_sell_order(
-                stock_code, quantity, price, market=market
+                stock_code, quantity, price, market=market, force=force
             )
 
             if order_id:
@@ -342,6 +344,8 @@ class OrderExecution:
             else:
                 # 주문 실패 시 매도 후보로 되돌림
                 with self.state_manager.lock:
+                    if stock_code in self.state_manager.trading_stocks:
+                        self.state_manager.trading_stocks[stock_code].is_selling = False
                     self.state_manager.change_stock_state(
                         stock_code, StockState.SELL_CANDIDATE, "매도 주문 실패"
                     )
@@ -352,6 +356,7 @@ class OrderExecution:
             # 오류 시 매도 후보로 되돌림
             with self.state_manager.lock:
                 if stock_code in self.state_manager.trading_stocks:
+                    self.state_manager.trading_stocks[stock_code].is_selling = False
                     self.state_manager.change_stock_state(
                         stock_code, StockState.SELL_CANDIDATE, f"매도 주문 오류: {e}"
                     )

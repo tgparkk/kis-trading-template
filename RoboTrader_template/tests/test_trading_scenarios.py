@@ -180,7 +180,8 @@ class TestScenario3PartialFillTimeout:
         om.order_timeouts["ORD-PARTIAL-004"] = now_kst() - timedelta(minutes=1)
 
         # _handle_partial_fill_timeout 호출 시 취소 시도
-        with patch.object(om, '_cancel_with_retry', new_callable=AsyncMock, return_value=True) as mock_cancel:
+        # C3 fix: _cancel_with_retry 대신 _cancel_remaining_only 사용 (pending_orders 이중 제거 방지)
+        with patch.object(om, '_cancel_remaining_only', new_callable=AsyncMock, return_value=True) as mock_cancel:
             with patch.object(om, '_save_real_trade_to_db', new_callable=AsyncMock):
                 await om._handle_partial_fill_timeout("ORD-PARTIAL-004", order, 6)
 
@@ -278,16 +279,17 @@ class TestScenario3PartialFillTimeout:
         filled_amount = 6 * 70000
         fm.confirm_order("ORD-FUND-001", filled_amount)
 
-        # 검증: 4주분(280,000원) 환불됨
-        assert fm.invested_funds == 420_000  # 6주분
+        # 검증: 수수료 포함 투자금
+        from config.constants import COMMISSION_RATE
+        commission = filled_amount * COMMISSION_RATE
+        total_cost = filled_amount + commission
+        assert fm.invested_funds == pytest.approx(total_cost)
         assert fm.reserved_funds == 0
-        # 환불금: 700,000 - 420,000 = 280,000원
-        # 가용자금: 10,000,000 - 700,000 + 280,000 = 9,580,000원
-        assert fm.available_funds == 9_580_000
+        assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
 
         # 총 자금 정합성
         total = fm.available_funds + fm.reserved_funds + fm.invested_funds
-        assert total == fm.total_funds
+        assert total == pytest.approx(fm.total_funds)
 
     @pytest.mark.asyncio
     async def test_full_scenario_partial_fill_timeout(self):
@@ -331,11 +333,15 @@ class TestScenario3PartialFillTimeout:
         filled_amount = 6 * 70000
         fm.confirm_order("ORD-INTEGRATED", filled_amount)
 
+        from config.constants import COMMISSION_RATE
+        commission = filled_amount * COMMISSION_RATE
+        total_cost = filled_amount + commission
+
         status = fm.get_status()
-        assert status['invested_funds'] == 420_000  # 6주 x 70,000원
+        assert status['invested_funds'] == pytest.approx(total_cost)
         assert status['reserved_funds'] == 0
         # 총 정합성
-        assert status['available_funds'] + status['invested_funds'] == status['total_funds']
+        assert status['available_funds'] + status['invested_funds'] == pytest.approx(status['total_funds'])
 
 
 # ============================================================================
@@ -550,6 +556,7 @@ class TestPartialFillFundConsistency:
 
     def test_partial_fill_refund_calculation(self):
         """부분 체결 환불금 계산"""
+        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
 
         # 예약
@@ -559,13 +566,14 @@ class TestPartialFillFundConsistency:
         filled_amount = 6 * 70000  # 420,000원
         fm.confirm_order("ORD-REFUND", filled_amount)
 
-        # 환불금 = 700,000 - 420,000 = 280,000원
-        # 가용자금 = 10,000,000 - 700,000 (예약) + 280,000 (환불) = 9,580,000원
-        assert fm.available_funds == 9_580_000
-        assert fm.invested_funds == 420_000
+        commission = filled_amount * COMMISSION_RATE
+        total_cost = filled_amount + commission
+        assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
+        assert fm.invested_funds == pytest.approx(total_cost)
 
     def test_multiple_partial_fills_consistency(self):
         """여러 부분 체결 후 정합성"""
+        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
 
         # 주문 1: 700,000원 예약 -> 420,000원 체결
@@ -576,13 +584,16 @@ class TestPartialFillFundConsistency:
         fm.reserve_funds("ORD-2", 500_000)
         fm.confirm_order("ORD-2", 300_000)
 
-        # 검증
+        # 검증 (수수료 포함)
+        c1 = 420_000 * COMMISSION_RATE
+        c2 = 300_000 * COMMISSION_RATE
+        total_invested = (420_000 + c1) + (300_000 + c2)
         status = fm.get_status()
-        assert status['invested_funds'] == 720_000  # 420,000 + 300,000
+        assert status['invested_funds'] == pytest.approx(total_invested)
         assert status['reserved_funds'] == 0
 
         total = status['available_funds'] + status['reserved_funds'] + status['invested_funds']
-        assert total == status['total_funds']
+        assert total == pytest.approx(status['total_funds'])
 
 
 # ============================================================================

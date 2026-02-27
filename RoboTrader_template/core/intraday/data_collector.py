@@ -98,25 +98,14 @@ class IntradayDataCollector:
     async def _save_daily_to_db(self, stock_code: str, daily_data: pd.DataFrame) -> bool:
         """일봉 데이터를 DB에 저장"""
         try:
-            from core.ml_data_collector import MLDataCollector
-            from pathlib import Path
-
-            db_path = Path(__file__).parent.parent.parent / "data" / "robotrader.db"
-            collector = MLDataCollector(str(db_path))
-
+            from db.repositories.price import PriceRepository
+            price_repo = PriceRepository()
             success = await asyncio.to_thread(
-                collector._save_daily_prices_to_db,
-                stock_code,
-                daily_data
+                price_repo.save_daily_prices_batch, stock_code, daily_data
             )
-
             if success:
                 self.logger.info(f"💾 {stock_code} 일봉 데이터 DB 저장 완료")
-            else:
-                self.logger.debug(f"⚠️ {stock_code} 일봉 데이터 DB 저장 실패")
-
             return success
-
         except Exception as e:
             self.logger.error(f"❌ {stock_code} 일봉 데이터 DB 저장 오류: {e}")
             return False

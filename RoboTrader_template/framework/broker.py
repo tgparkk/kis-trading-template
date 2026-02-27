@@ -1100,8 +1100,8 @@ class KISBroker(BaseBroker):
                     row["_status"] = "executed"
                     return row
 
-            # Not found anywhere
-            return {"odno": order_id, "_status": "unknown", "cncl_yn": "Y"}
+            # Not found anywhere — do not assume cancelled
+            return {"odno": order_id, "_status": "unknown", "status_unknown": True, "cncl_yn": "N"}
 
         except Exception as e:
             self.logger.error(f"Error getting order status {order_id}: {e}")
