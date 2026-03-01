@@ -253,9 +253,7 @@ class TestMoveToCompletedFundManager:
         om._move_to_completed("ORD-003")
 
         # FILLED 상태이므로 cancel_order 호출 안됨
-        from config.constants import COMMISSION_RATE
-        commission = 700_000 * COMMISSION_RATE
-        assert fm.invested_funds == pytest.approx(700_000 + commission)
+        assert fm.invested_funds == pytest.approx(700_000)
         assert fm.reserved_funds == 0
 
 
@@ -312,7 +310,7 @@ class TestPartialFillFundManager:
         commission = actual_amount * COMMISSION_RATE
         total_cost = actual_amount + commission
         assert fm.reserved_funds == 0
-        assert fm.invested_funds == pytest.approx(total_cost)
+        assert fm.invested_funds == pytest.approx(actual_amount)
         assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
 
 

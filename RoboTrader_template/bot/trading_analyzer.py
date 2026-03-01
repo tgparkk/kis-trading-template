@@ -106,8 +106,10 @@ class TradingAnalyzer:
                         self.logger.warning(f"{stock_code} 매수 포기: 가용 자금 없음")
                         return
 
-                # FundManager 자금 예약
-                reserve_ok = self.bot.fund_manager.reserve_funds(stock_code, required_amount)
+                # FundManager 자금 예약 (유니크 ID 사용)
+                from utils.korean_time import now_kst as _now_kst
+                _reserve_id = f"{stock_code}_{_now_kst().strftime('%H%M%S%f')}"
+                reserve_ok = self.bot.fund_manager.reserve_funds(_reserve_id, required_amount)
                 if not reserve_ok:
                     self.logger.warning(f"{stock_code} 자금 예약 실패 - 매수 스킵")
                     return
@@ -127,9 +129,11 @@ class TradingAnalyzer:
                             quantity=buy_info['quantity']
                         )
                         # 자금 확정 (가상매매는 즉시 체결로 간주)
-                        self.bot.fund_manager.confirm_order(stock_code, required_amount)
+                        self.bot.fund_manager.confirm_order(_reserve_id, required_amount)
                         # 보유 종목 추가 (FundManager current_position_codes 추적)
                         self.bot.fund_manager.add_position(stock_code)
+                        # 매수 쿨다운 설정
+                        trading_stock.set_buy_time(_now_kst())
                         # 상태를 POSITIONED로 반영하여 이후 매도 판단 루프에 포함
                         try:
                             self.bot.trading_manager._change_stock_state(
@@ -140,7 +144,7 @@ class TradingAnalyzer:
                         self.logger.info(f"가상 매수 완료 처리: {stock_code}({stock_name}) - {buy_reason}")
                     except Exception as e:
                         # 매수 실패 시 자금 예약 취소
-                        self.bot.fund_manager.cancel_order(stock_code)
+                        self.bot.fund_manager.cancel_order(_reserve_id)
                         self.logger.error(f"가상 매수 처리 오류: {e}")
                 else:
                     # 실전 매수
@@ -155,10 +159,10 @@ class TradingAnalyzer:
                             self.logger.info(f"실전 매수 주문 접수: {stock_code}({stock_name}) - {buy_reason}")
                         else:
                             # 매수 실패 시 자금 예약 취소
-                            self.bot.fund_manager.cancel_order(stock_code)
+                            self.bot.fund_manager.cancel_order(_reserve_id)
                             self.logger.warning(f"실전 매수 실패: {stock_code}({stock_name})")
                     except Exception as e:
-                        self.bot.fund_manager.cancel_order(stock_code)
+                        self.bot.fund_manager.cancel_order(_reserve_id)
                         self.logger.error(f"실전 매수 처리 오류: {e}")
 
         except Exception as e:
@@ -206,8 +210,8 @@ class TradingAnalyzer:
 
                         # execute_virtual_sell 호출 전에 포지션 정보 저장
                         # (execute_virtual_sell 내부에서 clear_position()이 호출되어 position이 None이 될 수 있음)
-                        _avg_price = trading_stock.position.avg_price if trading_stock.position else 0
-                        _quantity = trading_stock.position.quantity if trading_stock.position else 0
+                        _avg_price = float(trading_stock.position.avg_price) if trading_stock.position else 0
+                        _quantity = int(trading_stock.position.quantity) if trading_stock.position else 0
 
                         # move_to_sell_candidate는 가상매도에서는 직접 호출
                         self.bot.trading_manager.move_to_sell_candidate(stock_code, sell_reason)
@@ -218,13 +222,15 @@ class TradingAnalyzer:
                         # 투자 자금 회수 (매수 원가 기준) + 손익 별도 반영
                         # 저장된 포지션 정보를 사용 (clear_position 이후에도 안전)
                         if sell_ok and _avg_price > 0 and _quantity > 0:
+                            _avg_price = float(_avg_price)
+                            _quantity = int(_quantity)
                             invested = _avg_price * _quantity
 
                             # 매수 원가 기준으로 invested_funds 회수
                             self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
 
                             # 손익 반영 (매도가 - 매수가) * 수량 (sell_price가 None이면 원가 기준)
-                            effective_sell_price = sell_price if sell_price is not None else _avg_price
+                            effective_sell_price = float(sell_price) if sell_price is not None else _avg_price
                             pnl = (effective_sell_price - _avg_price) * _quantity
                             if pnl != 0:
                                 self.bot.fund_manager.adjust_pnl(pnl)
@@ -235,6 +241,8 @@ class TradingAnalyzer:
 
                             # FundManager에서 보유 종목 제거
                             self.bot.fund_manager.remove_position(stock_code)
+                            # 매도 후 재매수 쿨다운 설정
+                            self.bot.fund_manager.set_sell_cooldown(stock_code, sell_reason)
                         elif not sell_ok:
                             # 매도 실패 시 POSITIONED로 복원
                             self.bot.trading_manager._change_stock_state(

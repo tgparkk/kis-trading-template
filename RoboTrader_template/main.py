@@ -90,6 +90,7 @@ class DayTradingBot:
         self.trading_manager.set_decision_engine(self.decision_engine)
 
         self.fund_manager = FundManager()
+        self.order_manager.set_fund_manager(self.fund_manager)
 
         # 일일 매매 리포트 초기화
         self._last_daily_report_date = None
@@ -109,6 +110,8 @@ class DayTradingBot:
             config=self.config,
             get_previous_close_callback=self._get_previous_close_price,
             broker=self.broker,
+            fund_manager=self.fund_manager,
+            virtual_trading_manager=self.decision_engine.virtual_trading,
         )
 
         # Strategy 시스템 초기화
@@ -217,6 +220,11 @@ class DayTradingBot:
         if self.strategy:
             self.decision_engine.set_strategy(self.strategy)
             self.trading_manager.set_strategy(self.strategy)
+
+        # FundManager + paper_trading 모드 전달
+        self.trading_manager.set_fund_manager(self.fund_manager)
+        is_paper = getattr(self.decision_engine, 'is_virtual_mode', False)
+        self.trading_manager.set_paper_trading(is_paper)
 
         return True
 
@@ -423,7 +431,12 @@ class DayTradingBot:
 
         except Exception as e:
             self.logger.error(f"후보 종목 로드 오류: {e}")
-            self._candidates_loaded = True  # 재시도 방지
+            self._candidate_load_retries = getattr(self, '_candidate_load_retries', 0) + 1
+            if self._candidate_load_retries >= 3:
+                self._candidates_loaded = True  # 3회 실패 후 포기
+                self.logger.error("후보 종목 로딩 3회 실패 - 금일 매수 불가")
+            else:
+                self.logger.warning(f"후보 종목 로딩 실패 ({self._candidate_load_retries}/3) - 재시도 예정")
 
     async def _check_buy_signals(self):
         """SELECTED 상태 종목 1회 매수 판단"""
@@ -473,9 +486,10 @@ class DayTradingBot:
             # EOD 청산 실패 종목이 있으면 재시도
             if (self._last_eod_liquidation_date == current_time.date()
                     and self.liquidation_handler.has_failed_eod_stocks()):
-                import asyncio as _asyncio
-                await _asyncio.sleep(10)  # 재시도 전 대기
-                await self.liquidation_handler.retry_failed_eod_liquidation()
+                _last_retry = getattr(self, '_last_eod_retry_time', None)
+                if _last_retry is None or (current_time - _last_retry).total_seconds() >= 10:
+                    self._last_eod_retry_time = current_time
+                    await self.liquidation_handler.retry_failed_eod_liquidation()
                 return
 
             # 오늘 이미 실행했으면 스킵

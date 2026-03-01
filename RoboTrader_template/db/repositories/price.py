@@ -79,7 +79,7 @@ class PriceRepository(BaseRepository):
 
                 cursor.execute('''
                     DELETE FROM minute_prices
-                    WHERE stock_code = %s AND time >= %s AND time <= %s
+                    WHERE stock_code = %s AND datetime >= %s AND datetime <= %s
                 ''', (stock_code, start_datetime, end_datetime))
 
                 # 배치 삽입을 위한 데이터 준비
@@ -98,9 +98,9 @@ class PriceRepository(BaseRepository):
                 # executemany로 배치 삽입
                 cursor.executemany('''
                     INSERT INTO minute_prices
-                    (stock_code, time, open, high, low, close, volume, created_at)
+                    (stock_code, datetime, open, high, low, close, volume, created_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (stock_code, time) DO UPDATE SET
+                    ON CONFLICT (stock_code, datetime) DO UPDATE SET
                         open = EXCLUDED.open,
                         high = EXCLUDED.high,
                         low = EXCLUDED.low,
@@ -124,10 +124,10 @@ class PriceRepository(BaseRepository):
                 end_datetime = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]} 23:59:59"
 
                 query = '''
-                    SELECT time, open, high, low, close, volume
+                    SELECT datetime, open, high, low, close, volume
                     FROM minute_prices
-                    WHERE stock_code = %s AND time >= %s AND time <= %s
-                    ORDER BY time
+                    WHERE stock_code = %s AND datetime >= %s AND datetime <= %s
+                    ORDER BY datetime
                 '''
 
                 df = pd.read_sql_query(query, conn, params=(stock_code, start_datetime, end_datetime))
@@ -135,8 +135,7 @@ class PriceRepository(BaseRepository):
                 if df.empty:
                     return None
 
-                df['datetime'] = pd.to_datetime(df['time'])
-                df = df.drop('time', axis=1)
+                df['datetime'] = pd.to_datetime(df['datetime'])
 
                 self.logger.debug(f"{stock_code} 1분봉 데이터 {len(df)}개 조회 ({date_str})")
                 return df
@@ -155,7 +154,7 @@ class PriceRepository(BaseRepository):
 
                 cursor.execute('''
                     SELECT COUNT(1) FROM minute_prices
-                    WHERE stock_code = %s AND time >= %s AND time <= %s
+                    WHERE stock_code = %s AND datetime >= %s AND datetime <= %s
                 ''', (stock_code, start_datetime, end_datetime))
 
                 return cursor.fetchone()[0] > 0

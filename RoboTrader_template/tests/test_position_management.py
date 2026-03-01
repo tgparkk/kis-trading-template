@@ -41,6 +41,8 @@ class TestSellRetry:
         mock_engine = AsyncMock()
         mock_engine.execute_virtual_sell = AsyncMock(return_value=False)
         pm.decision_engine = mock_engine
+        pm._paper_trading = True
+        pm.fund_manager = None
 
         ts = TradingStock(
             stock_code="005930", stock_name="삼성전자",
@@ -48,10 +50,8 @@ class TestSellRetry:
         )
         ts.position = Position(stock_code="005930", quantity=10, avg_price=70000)
 
-        with patch('config.settings.load_trading_config') as mock_cfg:
-            mock_cfg.return_value = MagicMock(paper_trading=True)
-            with patch('asyncio.sleep', new_callable=AsyncMock):
-                await pm._execute_sell(ts, 65000, "손절")
+        with patch('asyncio.sleep', new_callable=AsyncMock):
+            await pm._execute_sell(ts, 65000, "손절")
 
         # 3회 호출되어야 함
         assert mock_engine.execute_virtual_sell.call_count == 3
@@ -66,6 +66,8 @@ class TestSellRetry:
         mock_engine = AsyncMock()
         mock_engine.execute_virtual_sell = AsyncMock(return_value=True)
         pm.decision_engine = mock_engine
+        pm._paper_trading = True
+        pm.fund_manager = None
 
         ts = TradingStock(
             stock_code="005930", stock_name="삼성전자",
@@ -73,9 +75,7 @@ class TestSellRetry:
         )
         ts.position = Position(stock_code="005930", quantity=10, avg_price=70000)
 
-        with patch('config.settings.load_trading_config') as mock_cfg:
-            mock_cfg.return_value = MagicMock(paper_trading=True)
-            await pm._execute_sell(ts, 65000, "손절")
+        await pm._execute_sell(ts, 65000, "손절")
 
         assert mock_engine.execute_virtual_sell.call_count == 1
 
@@ -236,16 +236,15 @@ class TestReleaseInvestmentSafety:
     """투자 자금 회수 음수 방지"""
 
     def test_release_clamped_to_zero(self):
+        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 1_000_000)
-        fm.release_investment(5_000_000)  # 1M+수수료만 투자했는데 5M 회수 시도
+        fm.release_investment(5_000_000)  # 1M만 투자했는데 5M 회수 시도
         assert fm.invested_funds == 0
-        # 회수가 투자금으로 제한되므로 available에 투자금(수수료포함)만 돌아옴
-        from config.constants import COMMISSION_RATE
+        # invested_funds=actual_amount(1M), available_funds lost commission
         commission = 1_000_000 * COMMISSION_RATE
-        total_cost = 1_000_000 + commission
-        assert fm.available_funds == pytest.approx(10_000_000)
+        assert fm.available_funds == pytest.approx(10_000_000 - commission)
 
     def test_release_with_stock_code_tracking(self):
         fm = FundManager(initial_funds=10_000_000)
@@ -271,12 +270,14 @@ class TestExtendedStatus:
         assert status['max_position_count'] == 5
 
     def test_status_consistency_extended(self):
+        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 800_000)
+        commission = 800_000 * COMMISSION_RATE
         status = fm.get_status()
         total_check = status['available_funds'] + status['reserved_funds'] + status['invested_funds']
-        assert total_check == pytest.approx(status['total_funds'])
+        assert total_check == pytest.approx(status['total_funds'] - commission)
 
 
 # ============================================================================

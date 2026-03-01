@@ -426,3 +426,267 @@ class TestStateRestorerEdgeCases:
             # get_previous_close에서 예외 → _restore_candidates 내부에서 잡히는지
             # (현재 코드는 잡지 않으므로, 전체 함수 except에서 잡힘)
             await restorer._restore_candidates('2026-02-09')
+
+
+# ============================================================================
+# FundManager 동기화 테스트
+# ============================================================================
+
+class TestFundManagerSync:
+    """포지션 복원 후 FundManager 자금 동기화 테스트"""
+
+    def _make_fund_manager(self, total_funds=10_000_000):
+        """테스트용 FundManager mock 생성"""
+        fm = MagicMock()
+        fm.total_funds = total_funds
+        fm.available_funds = total_funds
+        fm.invested_funds = 0.0
+        fm.reserved_funds = 0.0
+        fm.current_position_codes = set()
+        fm.max_position_count = 20
+        fm.add_position = MagicMock(side_effect=lambda code: fm.current_position_codes.add(code))
+        return fm
+
+    def _make_vtm(self, balance=10_000_000):
+        """테스트용 VirtualTradingManager mock 생성"""
+        vtm = MagicMock()
+        vtm.virtual_balance = balance
+        vtm.update_virtual_balance = MagicMock()
+        return vtm
+
+    @pytest.mark.asyncio
+    async def test_가상매매_복원_시_FundManager_동기화(self, base_deps):
+        """가상매매 보유 종목 복원 후 FundManager의 invested/available/position이 업데이트되는지"""
+        fm = self._make_fund_manager(10_000_000)
+
+        holdings_df = pd.DataFrame([
+            {
+                'stock_code': '005930', 'stock_name': '삼성전자',
+                'quantity': 10, 'buy_price': 70000.0,
+                'target_profit_rate': 0.05, 'stop_loss_rate': 0.03,
+            },
+            {
+                'stock_code': '000660', 'stock_name': 'SK하이닉스',
+                'quantity': 5, 'buy_price': 120000.0,
+                'target_profit_rate': 0.04, 'stop_loss_rate': 0.02,
+            },
+        ])
+        base_deps['db_manager'].get_virtual_open_positions.return_value = holdings_df
+
+        mock_ts = MagicMock()
+        base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
+
+        restorer = StateRestorer(**base_deps, fund_manager=fm)
+
+        with patch('bot.state_restorer.DatabaseConnection'):
+            await restorer._restore_holdings_from_db()
+
+        # 삼성전자: 10 * 70000 = 700,000
+        # SK하이닉스: 5 * 120000 = 600,000
+        # 총 투자: 1,300,000
+        assert fm.invested_funds == 1_300_000
+        assert fm.available_funds == 10_000_000 - 1_300_000
+        assert fm.current_position_codes == {'005930', '000660'}
+
+    @pytest.mark.asyncio
+    async def test_실전매매_복원_시_FundManager_동기화(self, base_deps):
+        """실전매매 보유 종목 복원 후 FundManager가 업데이트되는지"""
+        fm = self._make_fund_manager(10_000_000)
+        base_deps['config'].paper_trading = False
+
+        base_deps['broker'].get_account_balance.return_value = {
+            'positions': [
+                {'stock_code': '005930', 'stock_name': '삼성전자', 'quantity': 10, 'avg_price': 70000},
+            ]
+        }
+        mock_ts = MagicMock()
+        base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
+
+        restorer = StateRestorer(**base_deps, fund_manager=fm)
+        restorer.is_paper_trading = False
+
+        with patch('bot.state_restorer.DatabaseConnection'):
+            await restorer._restore_holdings_from_real_account()
+
+        assert fm.invested_funds == 700_000
+        assert fm.available_funds == 10_000_000 - 700_000
+        assert '005930' in fm.current_position_codes
+
+    @pytest.mark.asyncio
+    async def test_FundManager_None이면_동기화_스킵(self, base_deps):
+        """fund_manager가 None이면 자금 동기화 없이 포지션만 복원"""
+        holdings_df = pd.DataFrame([{
+            'stock_code': '005930', 'stock_name': '삼성전자',
+            'quantity': 10, 'buy_price': 70000.0,
+            'target_profit_rate': 0.05, 'stop_loss_rate': 0.03,
+        }])
+        base_deps['db_manager'].get_virtual_open_positions.return_value = holdings_df
+        mock_ts = MagicMock()
+        base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
+
+        restorer = StateRestorer(**base_deps)  # fund_manager=None (기본값)
+
+        with patch('bot.state_restorer.DatabaseConnection'):
+            await restorer._restore_holdings_from_db()
+
+        # 포지션 복원은 정상 동작
+        mock_ts.set_position.assert_called_once_with(10, 70000.0)
+
+    @pytest.mark.asyncio
+    async def test_가용자금_음수_클램프(self, base_deps):
+        """복원된 투자금이 총 자금을 초과할 때 available_funds가 0으로 클램프되는지"""
+        fm = self._make_fund_manager(500_000)  # 총 자금 50만원
+
+        holdings_df = pd.DataFrame([{
+            'stock_code': '005930', 'stock_name': '삼성전자',
+            'quantity': 10, 'buy_price': 70000.0,  # 70만원 > 50만원
+            'target_profit_rate': 0.05, 'stop_loss_rate': 0.03,
+        }])
+        base_deps['db_manager'].get_virtual_open_positions.return_value = holdings_df
+        mock_ts = MagicMock()
+        base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
+
+        restorer = StateRestorer(**base_deps, fund_manager=fm)
+
+        with patch('bot.state_restorer.DatabaseConnection'):
+            await restorer._restore_holdings_from_db()
+
+        # invested_funds는 정확히 반영
+        assert fm.invested_funds == 700_000
+        # available_funds는 0으로 클램프 (음수 방지)
+        assert fm.available_funds == 0
+
+    @pytest.mark.asyncio
+    async def test_VirtualTradingManager_잔고_동기화(self, base_deps):
+        """가상매매 복원 시 VirtualTradingManager의 가상 잔고도 차감되는지"""
+        fm = self._make_fund_manager(10_000_000)
+        vtm = self._make_vtm(10_000_000)
+
+        holdings_df = pd.DataFrame([{
+            'stock_code': '005930', 'stock_name': '삼성전자',
+            'quantity': 10, 'buy_price': 70000.0,
+            'target_profit_rate': 0.05, 'stop_loss_rate': 0.03,
+        }])
+        base_deps['db_manager'].get_virtual_open_positions.return_value = holdings_df
+        mock_ts = MagicMock()
+        base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
+
+        restorer = StateRestorer(**base_deps, fund_manager=fm, virtual_trading_manager=vtm)
+
+        with patch('bot.state_restorer.DatabaseConnection'):
+            await restorer._restore_holdings_from_db()
+
+        # VTM의 update_virtual_balance가 매수 금액으로 호출되었는지
+        vtm.update_virtual_balance.assert_called_once_with(700_000, "매수")
+
+    @pytest.mark.asyncio
+    async def test_포지션_수_초과_경고(self, base_deps):
+        """복원된 포지션이 max_positions를 초과하면 WARNING 로그가 출력되는지"""
+        fm = self._make_fund_manager(100_000_000)
+        fm.max_position_count = 2  # 최대 2개로 제한
+
+        # 3개 종목 복원 시도
+        holdings_df = pd.DataFrame([
+            {'stock_code': '005930', 'stock_name': '삼성전자',
+             'quantity': 10, 'buy_price': 70000.0,
+             'target_profit_rate': 0.05, 'stop_loss_rate': 0.03},
+            {'stock_code': '000660', 'stock_name': 'SK하이닉스',
+             'quantity': 5, 'buy_price': 120000.0,
+             'target_profit_rate': 0.04, 'stop_loss_rate': 0.02},
+            {'stock_code': '035420', 'stock_name': 'NAVER',
+             'quantity': 3, 'buy_price': 300000.0,
+             'target_profit_rate': 0.06, 'stop_loss_rate': 0.04},
+        ])
+        base_deps['db_manager'].get_virtual_open_positions.return_value = holdings_df
+        mock_ts = MagicMock()
+        base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
+
+        restorer = StateRestorer(**base_deps, fund_manager=fm)
+
+        with patch('bot.state_restorer.DatabaseConnection'):
+            await restorer._restore_holdings_from_db()
+
+        # 3개 모두 복원됨 (드롭하지 않음)
+        assert mock_ts.set_position.call_count == 3
+        assert len(fm.current_position_codes) == 3
+
+    @pytest.mark.asyncio
+    async def test_add_selected_stock_실패시_FundManager_미동기화(self, base_deps):
+        """add_selected_stock 실패한 종목은 FundManager에 반영되지 않는지"""
+        fm = self._make_fund_manager(10_000_000)
+
+        base_deps['trading_manager'].add_selected_stock = AsyncMock(
+            side_effect=[False, True]
+        )
+        mock_ts = MagicMock()
+        base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
+
+        holdings_df = pd.DataFrame([
+            {'stock_code': '005930', 'stock_name': '삼성전자',
+             'quantity': 10, 'buy_price': 70000.0,
+             'target_profit_rate': 0.05, 'stop_loss_rate': 0.03},
+            {'stock_code': '000660', 'stock_name': 'SK하이닉스',
+             'quantity': 5, 'buy_price': 120000.0,
+             'target_profit_rate': 0.04, 'stop_loss_rate': 0.02},
+        ])
+        base_deps['db_manager'].get_virtual_open_positions.return_value = holdings_df
+
+        restorer = StateRestorer(**base_deps, fund_manager=fm)
+
+        with patch('bot.state_restorer.DatabaseConnection'):
+            await restorer._restore_holdings_from_db()
+
+        # 삼성전자(실패)는 미반영, SK하이닉스(성공)만 반영
+        assert fm.invested_funds == 600_000  # 5 * 120000
+        assert fm.available_funds == 10_000_000 - 600_000
+        assert fm.current_position_codes == {'000660'}
+
+    @pytest.mark.asyncio
+    async def test_자금_정합성_검증(self, base_deps):
+        """복원 후 total_funds == available + invested + reserved 검증"""
+        fm = self._make_fund_manager(10_000_000)
+
+        holdings_df = pd.DataFrame([
+            {'stock_code': '005930', 'stock_name': '삼성전자',
+             'quantity': 10, 'buy_price': 70000.0,
+             'target_profit_rate': 0.05, 'stop_loss_rate': 0.03},
+        ])
+        base_deps['db_manager'].get_virtual_open_positions.return_value = holdings_df
+        mock_ts = MagicMock()
+        base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
+
+        restorer = StateRestorer(**base_deps, fund_manager=fm)
+
+        with patch('bot.state_restorer.DatabaseConnection'):
+            await restorer._restore_holdings_from_db()
+
+        # 정합성: total = available + invested + reserved
+        expected_total = fm.available_funds + fm.invested_funds + fm.reserved_funds
+        assert fm.total_funds == expected_total
+
+    @pytest.mark.asyncio
+    async def test_다수_종목_누적_투자금_정확성(self, base_deps):
+        """여러 종목 복원 시 투자금이 정확히 누적되는지"""
+        fm = self._make_fund_manager(50_000_000)
+
+        holdings_df = pd.DataFrame([
+            {'stock_code': f'00{i}000', 'stock_name': f'종목{i}',
+             'quantity': 10, 'buy_price': 100000.0 * (i + 1),
+             'target_profit_rate': 0.05, 'stop_loss_rate': 0.03}
+            for i in range(5)
+        ])
+        base_deps['db_manager'].get_virtual_open_positions.return_value = holdings_df
+        mock_ts = MagicMock()
+        base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
+
+        restorer = StateRestorer(**base_deps, fund_manager=fm)
+
+        with patch('bot.state_restorer.DatabaseConnection'):
+            await restorer._restore_holdings_from_db()
+
+        # 10*100000 + 10*200000 + 10*300000 + 10*400000 + 10*500000
+        # = 1000000 + 2000000 + 3000000 + 4000000 + 5000000 = 15000000
+        expected_invested = sum(10 * 100000 * (i + 1) for i in range(5))
+        assert fm.invested_funds == expected_invested
+        assert fm.available_funds == 50_000_000 - expected_invested
+        assert len(fm.current_position_codes) == 5

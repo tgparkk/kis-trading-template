@@ -166,7 +166,12 @@ class TradingStockManager:
     def set_fund_manager(self, fund_manager: Any) -> None:
         """FundManager 연결"""
         self._order_execution.set_fund_manager(fund_manager)
+        self._position_monitor.fund_manager = fund_manager
         self.logger.debug("TradingStockManager에 FundManager 연결 완료")
+
+    def set_paper_trading(self, paper_trading: bool) -> None:
+        """Paper trading 모드 설정"""
+        self._position_monitor._paper_trading = paper_trading
 
     # =========================================================================
     # 종목 선정 및 주문 실행 (OrderExecution에 위임)

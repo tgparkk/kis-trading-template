@@ -8,10 +8,15 @@ import psycopg2
 
 from .base import BaseRepository
 from utils.korean_time import now_kst
+from utils.rate_limited_logger import RateLimitedLogger
 
 
 class TradingRepository(BaseRepository):
     """매매 기록 데이터 접근 클래스"""
+
+    def __init__(self, db_path: str = None):
+        super().__init__(db_path)
+        self.logger = RateLimitedLogger(self.logger)
 
     # ============================
     # 실거래 관련 메서드
@@ -56,7 +61,6 @@ class TradingRepository(BaseRepository):
                 ))
                 result = cursor.fetchone()
                 rec_id = result[0] if result else None
-                conn.commit()
                 self.logger.info(f"실거래 매수 기록 저장: {stock_code} {quantity}주 @{price:,.0f}")
                 return rec_id
         except Exception as e:
@@ -107,7 +111,6 @@ class TradingRepository(BaseRepository):
                     profit_loss, profit_rate, buy_record_id,
                     now_kst().strftime('%Y-%m-%d %H:%M:%S')
                 ))
-                conn.commit()
                 self.logger.info(f"실거래 매도: {stock_code} 손익 {profit_loss:+,.0f}원")
                 return True
         except Exception as e:
@@ -157,8 +160,8 @@ class TradingRepository(BaseRepository):
 
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                timestamp_unix = int(timestamp.timestamp())
-                created_at_unix = int(now_kst().timestamp())
+                timestamp_str = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                created_at_str = now_kst().strftime('%Y-%m-%d %H:%M:%S')
 
                 cursor.execute('''
                     INSERT INTO virtual_trading_records
@@ -166,12 +169,11 @@ class TradingRepository(BaseRepository):
                      target_profit_rate, stop_loss_rate, created_at)
                     VALUES (%s, %s, 'BUY', %s, %s, %s, %s, %s, true, %s, %s, %s)
                     RETURNING id
-                ''', (stock_code, stock_name, quantity, price, timestamp_unix,
-                      strategy, reason, target_profit_rate, stop_loss_rate, created_at_unix))
+                ''', (stock_code, stock_name, quantity, price, timestamp_str,
+                      strategy, reason, target_profit_rate, stop_loss_rate, created_at_str))
 
                 result = cursor.fetchone()
                 buy_record_id = result[0] if result else None
-                conn.commit()
 
                 self.logger.info(f"가상 매수: {stock_code} {quantity}주 @{price:,.0f}원")
                 return buy_record_id
@@ -230,8 +232,8 @@ class TradingRepository(BaseRepository):
                 profit_loss = (price - buy_price) * quantity
                 profit_rate = (price - buy_price) / buy_price
 
-                timestamp_unix = int(timestamp.timestamp())
-                created_at_unix = int(now_kst().timestamp())
+                timestamp_str = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                created_at_str = now_kst().strftime('%Y-%m-%d %H:%M:%S')
 
                 try:
                     cursor.execute('''
@@ -239,13 +241,12 @@ class TradingRepository(BaseRepository):
                         (stock_code, stock_name, action, quantity, price, timestamp, strategy, reason,
                          is_test, profit_loss, profit_rate, buy_record_id, created_at)
                         VALUES (%s, %s, 'SELL', %s, %s, %s, %s, %s, true, %s, %s, %s, %s)
-                    ''', (stock_code, stock_name, quantity, price, timestamp_unix,
-                          strategy, reason, profit_loss, profit_rate, buy_record_id, created_at_unix))
+                    ''', (stock_code, stock_name, quantity, price, timestamp_str,
+                          strategy, reason, profit_loss, profit_rate, buy_record_id, created_at_str))
                 except psycopg2.IntegrityError:
+                    conn.rollback()
                     self.logger.warning(f"{stock_code} Race condition 차단")
                     return False
-
-                conn.commit()
                 self.logger.info(f"가상 매도: {stock_code} 손익 {profit_loss:+,.0f}원 ({profit_rate:+.2f}%)")
                 return True
 
@@ -306,7 +307,7 @@ class TradingRepository(BaseRepository):
 
                 df = pd.read_sql_query(query, conn)
                 if not df.empty and 'buy_time' in df.columns:
-                    df['buy_time'] = pd.to_datetime(df['buy_time'], unit='s', utc=True, errors='coerce')
+                    df['buy_time'] = pd.to_datetime(df['buy_time'], errors='coerce')
                 return df
 
         except Exception as e:
@@ -317,7 +318,7 @@ class TradingRepository(BaseRepository):
         """가상 매매 이력 조회"""
         try:
             start_date = now_kst() - timedelta(days=days)
-            start_timestamp = int(start_date.timestamp())
+            start_timestamp = start_date.strftime('%Y-%m-%d %H:%M:%S')
 
             with self._get_connection() as conn:
                 if include_open:
@@ -395,7 +396,7 @@ class TradingRepository(BaseRepository):
                 cursor.execute('''
                     SELECT DISTINCT stock_code FROM virtual_trading_records
                     WHERE action = 'SELL'
-                      AND DATE(to_timestamp(timestamp)) = %s
+                      AND DATE(timestamp) = %s
                       AND (reason LIKE '%%손절%%' OR reason LIKE '%%stop%%loss%%')
                 ''', (target_date,))
 

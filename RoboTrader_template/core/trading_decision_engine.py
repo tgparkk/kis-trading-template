@@ -297,9 +297,10 @@ class TradingDecisionEngine:
                 qty = self.virtual_trading.get_max_quantity(buy_price)
             if qty <= 0: return
 
+            strategy_name = self.strategy.name if self.strategy else "사용자전략"
             rid = self.virtual_trading.execute_virtual_buy(
                 stock_code=trading_stock.stock_code, stock_name=trading_stock.stock_name,
-                price=buy_price, quantity=qty, strategy="사용자전략", reason=buy_reason,
+                price=buy_price, quantity=qty, strategy=strategy_name, reason=buy_reason,
                 target_profit_rate=target_profit_rate, stop_loss_rate=stop_loss_rate)
             if rid:
                 trading_stock.set_virtual_buy_info(rid, buy_price, qty)
@@ -419,15 +420,27 @@ class TradingDecisionEngine:
                 sp = pos[pos['stock_code'] == code]
                 if not sp.empty:
                     r = sp.iloc[0]
-                    rid, bp, qty = r['id'], r['buy_price'], r['quantity']
+                    rid = int(r['id']) if r.get('id') is not None else None
+                    bp = float(r['buy_price']) if r.get('buy_price') is not None else None
+                    qty = int(r['quantity']) if r.get('quantity') is not None else None
+
+            # Defensive type conversions for arithmetic safety
+            sell_price = float(sell_price)
+            if bp is not None:
+                bp = float(bp)
+            if qty is not None:
+                qty = int(qty)
+            if rid is not None:
+                rid = int(rid)
 
             if rid:
+                strategy_name = self.strategy.name if self.strategy else "사용자전략"
                 ok = self.virtual_trading.execute_virtual_sell(
                     stock_code=code, stock_name=trading_stock.stock_name,
-                    price=sell_price, quantity=qty, strategy="사용자전략",
+                    price=sell_price, quantity=qty, strategy=strategy_name,
                     reason=sell_reason, buy_record_id=rid)
                 if ok:
-                    pnl = (sell_price - bp) * qty if bp else 0
+                    pnl = (float(sell_price) - float(bp)) * int(qty) if bp and qty else 0
                     self.logger.info(f"가상매도: {code} (손익: {pnl:+,.0f}원)")
                     trading_stock.clear_virtual_buy_info()
                     trading_stock.clear_position()

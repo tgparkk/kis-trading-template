@@ -288,7 +288,7 @@ class TestFundManagerFullFlow:
         fm.confirm_order("ORD1", 850_000)
         commission = 850_000 * COMMISSION_RATE
         total_cost = 850_000 + commission
-        assert fm.invested_funds == pytest.approx(total_cost)
+        assert fm.invested_funds == pytest.approx(850_000)
         assert fm.reserved_funds == 0
         assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
 
@@ -313,7 +313,7 @@ class TestFundManagerFullFlow:
         fm.confirm_order("BUY1", 900_000)
         commission = 900_000 * COMMISSION_RATE
         total_cost = 900_000 + commission
-        assert fm.invested_funds == pytest.approx(total_cost)
+        assert fm.invested_funds == pytest.approx(900_000)
 
         # 매도 (수익 포함) — 회수 금액이 투자금 초과 시 invested=0 보정
         fm.release_investment(950_000)
@@ -321,22 +321,24 @@ class TestFundManagerFullFlow:
 
     def test_multiple_orders_consistency(self):
         """다중 주문 시 자금 정합성 유지"""
+        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
-        
+
         fm.reserve_funds("ORD1", 900_000)
         fm.reserve_funds("ORD2", 900_000)
         fm.reserve_funds("ORD3", 900_000)
-        
+
         fm.confirm_order("ORD1", 850_000)
         fm.cancel_order("ORD2")
         fm.confirm_order("ORD3", 900_000)
-        
-        # 정합성: total = available + reserved + invested
+
+        # 정합성: total = available + reserved + invested + commission
         status = fm.get_status()
         total_check = (
             status['available_funds'] + status['reserved_funds'] + status['invested_funds']
         )
-        assert total_check == status['total_funds']
+        total_commission = 850_000 * COMMISSION_RATE + 900_000 * COMMISSION_RATE
+        assert total_check == pytest.approx(status['total_funds'] - total_commission)
 
     def test_confirm_more_than_reserved_deducts_extra(self):
         """[수정완료] 체결 금액 > 예약 금액 시 차액을 가용자금에서 추가 차감
@@ -351,13 +353,13 @@ class TestFundManagerFullFlow:
 
         commission = 600_000 * COMMISSION_RATE
         total_cost = 600_000 + commission
-        assert fm.invested_funds == pytest.approx(total_cost)
+        assert fm.invested_funds == pytest.approx(600_000)
         assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
 
-        # 정합성 유지: total == available + reserved + invested
+        # 정합성: total == available + reserved + invested + commission
         total_check = fm.available_funds + fm.reserved_funds + fm.invested_funds
-        assert total_check == pytest.approx(fm.total_funds), \
-            f"정합성: {total_check} == {fm.total_funds}"
+        assert total_check == pytest.approx(fm.total_funds - commission), \
+            f"정합성: {total_check} == {fm.total_funds} - {commission}"
 
     def test_double_confirm_ignored(self):
         """이미 confirm된 주문 재confirm 시 무시"""

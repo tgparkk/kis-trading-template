@@ -65,16 +65,30 @@ class LiquidationHandler:
                             sell_price = float(price_obj.current_price)
                     sell_price = round_to_tick(sell_price)
 
-                    # 상태 전환 후 시장가 매도 주문 실행
-                    moved = self.bot.trading_manager.move_to_sell_candidate(stock_code, "장마감 일괄청산")
-                    if moved:
-                        await self.bot.trading_manager.execute_sell_order(
-                            stock_code, quantity, sell_price, "장마감 일괄청산", market=True,
-                            force=True
+                    # 가상/실전 모드 분기
+                    is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
+                    if is_virtual:
+                        # 가상매매 - execute_virtual_sell 사용
+                        result = await self.bot.decision_engine.execute_virtual_sell(
+                            trading_stock, sell_price, "장마감 일괄청산"
                         )
-                        self.logger.info(
-                            f"장마감 청산 주문: {stock_code} {quantity}주 시장가 @{sell_price:,.0f}원"
-                        )
+                        if result:
+                            self.logger.info(
+                                f"장마감 가상청산 완료: {stock_code} {quantity}주 @{sell_price:,.0f}원"
+                            )
+                        else:
+                            self.logger.warning(f"장마감 가상청산 실패: {stock_code}")
+                    else:
+                        # 실매매 - 기존 실매도 로직
+                        moved = self.bot.trading_manager.move_to_sell_candidate(stock_code, "장마감 일괄청산")
+                        if moved:
+                            await self.bot.trading_manager.execute_sell_order(
+                                stock_code, quantity, sell_price, "장마감 일괄청산", market=True,
+                                force=True
+                            )
+                            self.logger.info(
+                                f"장마감 청산 주문: {stock_code} {quantity}주 시장가 @{sell_price:,.0f}원"
+                            )
                 except Exception as se:
                     self.logger.error(f"장마감 청산 개별 처리 오류({trading_stock.stock_code}): {se}")
 
@@ -115,24 +129,53 @@ class LiquidationHandler:
                     quantity = int(trading_stock.position.quantity)
                     current_price = 0.0  # 시장가
 
-                    moved = self.bot.trading_manager.move_to_sell_candidate(
-                        stock_code, f"{time_label} 시장가 일괄매도"
-                    )
-                    if moved:
-                        await self.bot.trading_manager.execute_sell_order(
-                            stock_code, quantity, current_price,
-                            f"{time_label} 시장가 일괄매도", market=True,
-                            force=True
+                    # 가상/실전 모드 분기
+                    is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
+                    if is_virtual:
+                        # 가상매매 - execute_virtual_sell 사용
+                        eod_sell_price = 0.0
+                        combined_data = self.bot.intraday_manager.get_combined_chart_data(stock_code)
+                        if combined_data is not None and len(combined_data) > 0:
+                            eod_sell_price = float(combined_data['close'].iloc[-1])
+                        else:
+                            price_obj = self.bot.broker.get_current_price(stock_code)
+                            if price_obj:
+                                eod_sell_price = float(price_obj.current_price)
+
+                        result = await self.bot.decision_engine.execute_virtual_sell(
+                            trading_stock, eod_sell_price,
+                            f"{time_label} 시장가 일괄매도"
                         )
-                        self.logger.info(
-                            f"{time_label} 시장가 매도: "
-                            f"{stock_code}({stock_name}) {quantity}주 시장가 주문"
-                        )
+                        if result:
+                            self.logger.info(
+                                f"{time_label} 가상매도 완료: "
+                                f"{stock_code}({stock_name}) {quantity}주"
+                            )
+                        else:
+                            self.logger.warning(
+                                f"{stock_code} 가상매도 실패 - 재시도 대상에 추가"
+                            )
+                            failed_stocks.append(stock_code)
                     else:
-                        self.logger.warning(
-                            f"{stock_code} 매도 후보 전환 실패 - 재시도 대상에 추가"
+                        # 실매매 - 기존 실매도 로직
+                        moved = self.bot.trading_manager.move_to_sell_candidate(
+                            stock_code, f"{time_label} 시장가 일괄매도"
                         )
-                        failed_stocks.append(stock_code)
+                        if moved:
+                            await self.bot.trading_manager.execute_sell_order(
+                                stock_code, quantity, current_price,
+                                f"{time_label} 시장가 일괄매도", market=True,
+                                force=True
+                            )
+                            self.logger.info(
+                                f"{time_label} 시장가 매도: "
+                                f"{stock_code}({stock_name}) {quantity}주 시장가 주문"
+                            )
+                        else:
+                            self.logger.warning(
+                                f"{stock_code} 매도 후보 전환 실패 - 재시도 대상에 추가"
+                            )
+                            failed_stocks.append(stock_code)
 
                 except Exception as se:
                     self.logger.error(
@@ -189,21 +232,47 @@ class LiquidationHandler:
                     continue  # 이미 청산됨
 
                 quantity = int(target.position.quantity)
-                moved = self.bot.trading_manager.move_to_sell_candidate(
-                    stock_code, f"EOD 청산 재시도 #{self._eod_retry_count}"
-                )
-                if moved:
-                    await self.bot.trading_manager.execute_sell_order(
-                        stock_code, quantity, 0.0,
-                        f"EOD 청산 재시도 #{self._eod_retry_count}", market=True,
-                        force=True
+                # 가상/실전 모드 분기
+                is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
+                if is_virtual:
+                    # 가상매매 - execute_virtual_sell 사용
+                    retry_sell_price = 0.0
+                    combined_data = self.bot.intraday_manager.get_combined_chart_data(stock_code)
+                    if combined_data is not None and len(combined_data) > 0:
+                        retry_sell_price = float(combined_data['close'].iloc[-1])
+                    else:
+                        price_obj = self.bot.broker.get_current_price(stock_code)
+                        if price_obj:
+                            retry_sell_price = float(price_obj.current_price)
+
+                    result = await self.bot.decision_engine.execute_virtual_sell(
+                        target, retry_sell_price,
+                        f"EOD 청산 재시도 #{self._eod_retry_count}"
                     )
-                    self.logger.info(f"EOD 재시도 성공: {stock_code} {quantity}주")
+                    if result:
+                        self.logger.info(f"EOD 가상매도 재시도 성공: {stock_code} {quantity}주")
+                    else:
+                        self.logger.warning(
+                            f"EOD 가상매도 재시도 실패: {stock_code} - 재시도 대상 유지"
+                        )
+                        still_failed.append(stock_code)
                 else:
-                    self.logger.warning(
-                        f"EOD 재시도 매도 후보 전환 실패: {stock_code} - 재시도 대상 유지"
+                    # 실매매 - 기존 실매도 로직
+                    moved = self.bot.trading_manager.move_to_sell_candidate(
+                        stock_code, f"EOD 청산 재시도 #{self._eod_retry_count}"
                     )
-                    still_failed.append(stock_code)
+                    if moved:
+                        await self.bot.trading_manager.execute_sell_order(
+                            stock_code, quantity, 0.0,
+                            f"EOD 청산 재시도 #{self._eod_retry_count}", market=True,
+                            force=True
+                        )
+                        self.logger.info(f"EOD 재시도 성공: {stock_code} {quantity}주")
+                    else:
+                        self.logger.warning(
+                            f"EOD 재시도 매도 후보 전환 실패: {stock_code} - 재시도 대상 유지"
+                        )
+                        still_failed.append(stock_code)
             except Exception as e:
                 self.logger.error(f"EOD 재시도 실패 ({stock_code}): {e}")
                 still_failed.append(stock_code)

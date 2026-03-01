@@ -319,11 +319,12 @@ class OrderCompletionHandler:
     def _set_virtual_buy_info(self, trading_stock: TradingStock) -> None:
         """가상매매 모드일 때 가상매매 기록 ID 설정"""
         try:
-            from config.settings import load_config
-            config = load_config()
+            config = self.order_manager.config
             if getattr(config, 'paper_trading', False):
-                from db.database_manager import DatabaseManager
-                db = DatabaseManager()
+                db = self.order_manager.db_manager
+                if not db:
+                    self.logger.warning("가상매매 포지션 정보 설정 실패: db_manager 없음")
+                    return
                 # 최근 가상매매 매수 기록 조회
                 open_positions = db.get_virtual_open_positions()
                 stock_positions = open_positions[
@@ -360,8 +361,10 @@ class OrderCompletionHandler:
     def _save_real_buy_record(self, trading_stock: TradingStock, order, source: str = "") -> None:
         """실거래 매수 기록 저장"""
         try:
-            from db.database_manager import DatabaseManager
-            db = DatabaseManager()
+            db = self.order_manager.db_manager
+            if not db:
+                self.logger.warning("실거래 매수 기록 저장 실패: db_manager 없음")
+                return
             reason = "체결" if not source else f"체결({source})"
             db.save_real_buy(
                 stock_code=trading_stock.stock_code,
@@ -384,8 +387,10 @@ class OrderCompletionHandler:
         """
         profit_rate = 0.0
         try:
-            from db.database_manager import DatabaseManager
-            db = DatabaseManager()
+            db = self.order_manager.db_manager
+            if not db:
+                self.logger.warning("실거래 매도 기록 저장 실패: db_manager 없음")
+                return profit_rate
             buy_id = db.get_last_open_real_buy(trading_stock.stock_code)
 
             # 수익률 계산을 위해 매수가 조회

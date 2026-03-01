@@ -420,7 +420,6 @@ class TestTradingRepositoryVirtualSell:
         )
 
         assert result is True
-        mock_conn.commit.assert_called_once()
 
     @patch('db.repositories.base.DatabaseConnection')
     @patch('db.repositories.trading.now_kst')
@@ -696,7 +695,6 @@ class TestTradingRepositoryRealBuy:
         )
 
         assert result == 101
-        mock_conn.commit.assert_called_once()
 
     @patch('db.repositories.base.DatabaseConnection')
     @patch('db.repositories.trading.now_kst')
@@ -786,7 +784,6 @@ class TestTradingRepositoryRealSell:
         )
 
         assert result is True
-        mock_conn.commit.assert_called_once()
 
         # INSERT 호출에서 profit_loss 확인
         insert_call = mock_cursor.execute.call_args_list[-1]

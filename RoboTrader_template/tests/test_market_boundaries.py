@@ -556,6 +556,7 @@ class TestEODLiquidationScenarios:
         stock2.position.quantity = 5
 
         bot = Mock()
+        bot.decision_engine.is_virtual_mode = False  # 실매매 모드
         bot.trading_manager.get_stocks_by_state.return_value = [stock1, stock2]
         bot.trading_manager.move_to_sell_candidate.return_value = True
         bot.intraday_manager.get_combined_chart_data.return_value = None

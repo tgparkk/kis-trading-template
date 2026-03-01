@@ -237,6 +237,7 @@ class TestEodLiquidationRetry:
     def _make_handler(self):
         from bot.liquidation_handler import LiquidationHandler
         bot = Mock()
+        bot.decision_engine.is_virtual_mode = False  # 실매매 모드
         bot.trading_manager = Mock()
         bot.telegram = AsyncMock()
         handler = LiquidationHandler(bot)

@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from enum import Enum
+from config.constants import DEFAULT_TARGET_PROFIT_RATE, DEFAULT_STOP_LOSS_RATE
+from utils.korean_time import now_kst
 
 
 class OrderType(Enum):
@@ -50,6 +52,8 @@ class OHLCVData:
     
     def __post_init__(self) -> None:
         """데이터 검증"""
+        if self.high_price < self.low_price:
+            raise ValueError(f"고가({self.high_price})가 저가({self.low_price})보다 낮습니다")
         if self.high_price < max(self.open_price, self.close_price):
             raise ValueError("고가가 시가/종가보다 낮습니다")
         if self.low_price > min(self.open_price, self.close_price):
@@ -120,7 +124,7 @@ class TradingSignal:
     quantity: int
     confidence: float  # 신호 신뢰도 (0.0 ~ 1.0)
     reason: str       # 신호 발생 이유
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=now_kst)
 
 
 @dataclass
@@ -131,12 +135,12 @@ class Position:
     avg_price: float
     current_price: float = 0.0
     unrealized_pnl: float = 0.0
-    entry_time: datetime = field(default_factory=datetime.now)
+    entry_time: datetime = field(default_factory=now_kst)
     
     def update_current_price(self, price: float) -> None:
         """현재가 업데이트 및 평가손익 계산"""
-        self.current_price = price
-        self.unrealized_pnl = (price - self.avg_price) * self.quantity
+        self.current_price = float(price)
+        self.unrealized_pnl = (float(price) - float(self.avg_price)) * int(self.quantity)
 
 
 @dataclass
@@ -160,9 +164,9 @@ class TradingStock:
     # 메타 정보
     selection_reason: str = ""
     prev_close: float = 0.0  # 전날 종가 (일봉 기준)
-    last_update: datetime = field(default_factory=datetime.now)
-    target_profit_rate: float = 0.03  # 목표수익률 (기본값 3%)
-    stop_loss_rate: float = 0.10  # 목표손절률 (기본값 10%)
+    last_update: datetime = field(default_factory=now_kst)
+    target_profit_rate: float = DEFAULT_TARGET_PROFIT_RATE  # 목표수익률 (constants.py 기준)
+    stop_loss_rate: float = DEFAULT_STOP_LOSS_RATE  # 목표손절률 (constants.py 기준)
     
     # 🆕 레이스 컨디션 방지 플래그
     order_processed: bool = False  # 주문 체결 처리 완료 플래그
@@ -184,11 +188,15 @@ class TradingStock:
     # 📊 패턴 데이터 로깅용 ID (매매 결과 연결)
     last_pattern_id: Optional[str] = None
 
+    # 🕐 장기보유(Stale) 포지션 관리
+    is_stale: bool = False    # 장기보유 종목 여부 (30일 이상)
+    days_held: int = 0        # 보유 일수
+
     def change_state(self, new_state: StockState, reason: str = "") -> None:
         """상태 변경 및 이력 기록"""
         old_state = self.state
         self.state = new_state
-        self.last_update = datetime.now()
+        self.last_update = now_kst()
         
         # 상태 변화 이력 기록
         self.state_history.append({
@@ -197,11 +205,17 @@ class TradingStock:
             'reason': reason,
             'timestamp': self.last_update
         })
+        # 상태 이력 100건 제한
+        if len(self.state_history) > 100:
+            self.state_history = self.state_history[-100:]
     
     def add_order(self, order_id: str) -> None:
         """주문 추가"""
         self.current_order_id = order_id
         self.order_history.append(order_id)
+        # 주문 이력 100건 제한
+        if len(self.order_history) > 100:
+            self.order_history = self.order_history[-100:]
     
     def clear_current_order(self) -> None:
         """현재 주문 클리어"""
@@ -211,8 +225,8 @@ class TradingStock:
         """포지션 설정"""
         self.position = Position(
             stock_code=self.stock_code,
-            quantity=quantity,
-            avg_price=avg_price
+            quantity=int(quantity),
+            avg_price=float(avg_price)
         )
     
     def clear_position(self) -> None:
@@ -223,9 +237,9 @@ class TradingStock:
     
     def set_virtual_buy_info(self, record_id: int, price: float, quantity: int) -> None:
         """가상 매수 정보 설정"""
-        self._virtual_buy_record_id = record_id
-        self._virtual_buy_price = price
-        self._virtual_quantity = quantity
+        self._virtual_buy_record_id = int(record_id)
+        self._virtual_buy_price = float(price)
+        self._virtual_quantity = int(quantity)
     
     def clear_virtual_buy_info(self) -> None:
         """가상 매수 정보 클리어"""

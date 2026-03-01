@@ -115,10 +115,11 @@ class FundManager:
             bool: 예약 성공 여부
         """
         with self._lock:
+            amount = float(amount)
             if self.available_funds < amount:
                 self.logger.warning(f"⚠️ 자금 부족: 요청 {amount:,.0f}원, 가용 {self.available_funds:,.0f}원")
                 return False
-            
+
             if order_id in self.order_reservations:
                 self.logger.warning(f"⚠️ 이미 예약된 주문: {order_id}")
                 return False
@@ -143,6 +144,8 @@ class FundManager:
         """
         from config.constants import COMMISSION_RATE
         with self._lock:
+            actual_amount = float(actual_amount)
+
             if order_id not in self.order_reservations:
                 self.logger.warning(f"⚠️ 예약되지 않은 주문: {order_id}")
                 return
@@ -157,8 +160,8 @@ class FundManager:
             commission = actual_amount * COMMISSION_RATE
             total_cost = actual_amount + commission
 
-            # 투자 금액으로 이동 (수수료 포함)
-            self.invested_funds += total_cost
+            # 투자 금액으로 이동 (순수 체결 금액만 - 매도 시 정확한 회수를 위해)
+            self.invested_funds += actual_amount
 
             # 차액 정산: 예약>체결이면 환불, 체결>예약이면 추가 차감
             diff = reserved_amount - total_cost
@@ -207,6 +210,7 @@ class FundManager:
             stock_code: 종목코드 (보유 종목 추적용)
         """
         with self._lock:
+            amount = float(amount)
             # 음수 방지
             if amount > self.invested_funds:
                 self.logger.warning(
@@ -233,7 +237,11 @@ class FundManager:
             pnl: 손익 금액 (양수=이익, 음수=손실)
         """
         with self._lock:
+            pnl = float(pnl)
             self.total_funds += pnl
+            if self.total_funds < 0:
+                self.logger.critical(f"총 자금 음수 감지: {self.total_funds:,.0f}원 → 0원으로 보정")
+                self.total_funds = 0
             self.available_funds += pnl
             if self.available_funds < 0:
                 self.available_funds = 0
@@ -378,7 +386,14 @@ class FundManager:
 
     def get_status(self) -> Dict:
         """자금 현황 조회"""
+        from utils.korean_time import now_kst
         with self._lock:
+            # 만료된 쿨다운 정리
+            _now = now_kst()
+            expired = [k for k, v in self._sell_cooldowns.items() if _now >= v]
+            for k in expired:
+                del self._sell_cooldowns[k]
+
             return {
                 'total_funds': self.total_funds,
                 'available_funds': self.available_funds,

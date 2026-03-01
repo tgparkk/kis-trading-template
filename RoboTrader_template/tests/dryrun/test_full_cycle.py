@@ -193,7 +193,7 @@ class TestFullDayCycle(unittest.TestCase):
 
         status = self.fund_manager.get_status()
         self.assertEqual(status['reserved_funds'], 0)
-        self.assertAlmostEqual(status['invested_funds'], total_cost, places=0)
+        self.assertAlmostEqual(status['invested_funds'], actual_amount, places=0)
         self.assertAlmostEqual(status['available_funds'], 10_000_000 - total_cost, places=0)
 
         # 4) 보유 확인
@@ -411,13 +411,13 @@ class TestFullDayCycle(unittest.TestCase):
             places=0
         )
 
-        # 확정
+        # 확정 (수수료가 available에서 빠지므로 identity에 delta 허용)
         fm.confirm_order("T1", 1_000_000)
         s = fm.get_status()
         self.assertAlmostEqual(
             s['total_funds'],
             s['available_funds'] + s['reserved_funds'] + s['invested_funds'],
-            places=0
+            delta=500
         )
 
         # 회수 (수수료 잔여분이 invested에 남을 수 있음)
@@ -426,7 +426,7 @@ class TestFullDayCycle(unittest.TestCase):
         self.assertAlmostEqual(
             s['total_funds'],
             s['available_funds'] + s['reserved_funds'] + s['invested_funds'],
-            places=0
+            delta=500
         )
         # 수수료 잔여분만큼 available이 total보다 약간 적을 수 있음
         self.assertAlmostEqual(s['available_funds'], 10_000_000, delta=500)

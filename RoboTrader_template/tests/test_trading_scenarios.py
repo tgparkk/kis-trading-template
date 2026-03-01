@@ -279,17 +279,17 @@ class TestScenario3PartialFillTimeout:
         filled_amount = 6 * 70000
         fm.confirm_order("ORD-FUND-001", filled_amount)
 
-        # 검증: 수수료 포함 투자금
+        # 검증: invested_funds는 체결금액(수수료 미포함), available은 수수료 차감
         from config.constants import COMMISSION_RATE
         commission = filled_amount * COMMISSION_RATE
         total_cost = filled_amount + commission
-        assert fm.invested_funds == pytest.approx(total_cost)
+        assert fm.invested_funds == pytest.approx(filled_amount)
         assert fm.reserved_funds == 0
         assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
 
-        # 총 자금 정합성
+        # 총 자금 정합성 (수수료만큼 차이)
         total = fm.available_funds + fm.reserved_funds + fm.invested_funds
-        assert total == pytest.approx(fm.total_funds)
+        assert total == pytest.approx(fm.total_funds - commission)
 
     @pytest.mark.asyncio
     async def test_full_scenario_partial_fill_timeout(self):
@@ -338,10 +338,10 @@ class TestScenario3PartialFillTimeout:
         total_cost = filled_amount + commission
 
         status = fm.get_status()
-        assert status['invested_funds'] == pytest.approx(total_cost)
+        assert status['invested_funds'] == pytest.approx(filled_amount)
         assert status['reserved_funds'] == 0
-        # 총 정합성
-        assert status['available_funds'] + status['invested_funds'] == pytest.approx(status['total_funds'])
+        # 총 정합성 (수수료만큼 차이)
+        assert status['available_funds'] + status['invested_funds'] == pytest.approx(status['total_funds'] - commission)
 
 
 # ============================================================================
@@ -569,7 +569,7 @@ class TestPartialFillFundConsistency:
         commission = filled_amount * COMMISSION_RATE
         total_cost = filled_amount + commission
         assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
-        assert fm.invested_funds == pytest.approx(total_cost)
+        assert fm.invested_funds == pytest.approx(filled_amount)
 
     def test_multiple_partial_fills_consistency(self):
         """여러 부분 체결 후 정합성"""
@@ -584,16 +584,16 @@ class TestPartialFillFundConsistency:
         fm.reserve_funds("ORD-2", 500_000)
         fm.confirm_order("ORD-2", 300_000)
 
-        # 검증 (수수료 포함)
+        # 검증 (invested_funds는 체결금액만, 수수료 미포함)
         c1 = 420_000 * COMMISSION_RATE
         c2 = 300_000 * COMMISSION_RATE
-        total_invested = (420_000 + c1) + (300_000 + c2)
+        total_invested = 420_000 + 300_000
         status = fm.get_status()
         assert status['invested_funds'] == pytest.approx(total_invested)
         assert status['reserved_funds'] == 0
 
         total = status['available_funds'] + status['reserved_funds'] + status['invested_funds']
-        assert total == pytest.approx(status['total_funds'])
+        assert total == pytest.approx(status['total_funds'] - c1 - c2)
 
 
 # ============================================================================

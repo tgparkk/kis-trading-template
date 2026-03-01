@@ -194,19 +194,17 @@ class TestFundScenarios:
 
     def test_investment_limit_90_reached(self):
         """투자 한도 90% 도달"""
-        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 8_500_000)
         fm.confirm_order("ORD1", 8_500_000)
 
-        commission = 8_500_000 * COMMISSION_RATE
-        total_cost = 8_500_000 + commission
+        # invested_funds = 8.5M (수수료 미포함), 투자여력: 10M*0.9 - 8.5M = 500K
         max_amt = fm.get_max_buy_amount("005930")
-        # 투자여력: 10M*0.9 - total_cost
-        assert max_amt == pytest.approx(10_000_000 * 0.9 - total_cost)
+        assert max_amt == pytest.approx(10_000_000 * 0.9 - 8_500_000)
 
     def test_fund_consistency_after_operations(self):
         """다양한 자금 연산 후 정합성 유지"""
+        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
 
         fm.reserve_funds("ORD1", 900_000)
@@ -219,8 +217,9 @@ class TestFundScenarios:
         fm.release_investment(400_000)
 
         status = fm.get_status()
+        commission = 850_000 * COMMISSION_RATE
         total_check = status['available_funds'] + status['reserved_funds'] + status['invested_funds']
-        assert total_check == status['total_funds']
+        assert total_check == pytest.approx(status['total_funds'] - commission)
 
 
 # ============================================================================

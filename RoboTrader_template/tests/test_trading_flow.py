@@ -85,8 +85,14 @@ class TestFundManagerFlow:
 
         await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
 
-        mock_bot.fund_manager.reserve_funds.assert_called_once_with('005930', 350000)
-        mock_bot.fund_manager.confirm_order.assert_called_once_with('005930', 350000)
+        mock_bot.fund_manager.reserve_funds.assert_called_once()
+        call_args = mock_bot.fund_manager.reserve_funds.call_args[0]
+        assert call_args[0].startswith('005930')
+        assert call_args[1] == 350000
+        mock_bot.fund_manager.confirm_order.assert_called_once()
+        confirm_args = mock_bot.fund_manager.confirm_order.call_args[0]
+        assert confirm_args[0].startswith('005930')
+        assert confirm_args[1] == 350000
 
     @pytest.mark.asyncio
     async def test_가상매수_실패_시_자금_취소(self, mock_bot):
@@ -121,7 +127,9 @@ class TestFundManagerFlow:
 
         await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
 
-        mock_bot.fund_manager.cancel_order.assert_called_once_with('005930')
+        mock_bot.fund_manager.cancel_order.assert_called_once()
+        cancel_args = mock_bot.fund_manager.cancel_order.call_args[0]
+        assert cancel_args[0].startswith('005930')
 
     @pytest.mark.asyncio
     async def test_자금_예약_실패_시_매수_스킵(self, mock_bot):
@@ -257,7 +265,9 @@ class TestVirtualRealBranching:
 
         await mock_bot.trading_analyzer.analyze_buy_decision(trading_stock)
 
-        mock_bot.fund_manager.cancel_order.assert_called_once_with('005930')
+        mock_bot.fund_manager.cancel_order.assert_called_once()
+        cancel_args = mock_bot.fund_manager.cancel_order.call_args[0]
+        assert cancel_args[0].startswith('005930')
 
 
 class TestStrategyCallbacks:

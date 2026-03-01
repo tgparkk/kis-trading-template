@@ -91,6 +91,7 @@ class OrderExecution:
                         # 포지션/주문 정보는 정리
                         trading_stock.clear_position()
                         trading_stock.clear_current_order()
+                        trading_stock.order_processed = False  # 재진입 시 체결 처리 플래그 리셋
                         self.state_manager.change_stock_state(
                             stock_code, StockState.SELECTED, f"재선정: {selection_reason}"
                         )
