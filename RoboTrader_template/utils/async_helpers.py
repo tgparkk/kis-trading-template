@@ -23,12 +23,11 @@ async def run_with_timeout(executor, func, *args, timeout_seconds=30, default=No
         func 결과 또는 타임아웃 시 default
     """
     loop = asyncio.get_event_loop()
+    future = loop.run_in_executor(executor, func, *args)
     try:
-        result = await asyncio.wait_for(
-            loop.run_in_executor(executor, func, *args),
-            timeout=timeout_seconds
-        )
+        result = await asyncio.wait_for(future, timeout=timeout_seconds)
         return result
     except asyncio.TimeoutError:
+        future.cancel()
         logger.warning(f"API 호출 타임아웃 ({timeout_seconds}초): {func.__name__}({args[:2]}...)")
         return default

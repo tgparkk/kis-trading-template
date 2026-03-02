@@ -10,6 +10,17 @@ from ..models import TradingStock, StockState
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
 
+# 유효한 상태 전이 맵: {현재 상태: [허용되는 다음 상태들]}
+_VALID_TRANSITIONS: Dict[StockState, List[StockState]] = {
+    StockState.SELECTED: [StockState.BUY_PENDING, StockState.COMPLETED, StockState.FAILED],
+    StockState.BUY_PENDING: [StockState.POSITIONED, StockState.SELECTED, StockState.COMPLETED, StockState.FAILED],
+    StockState.POSITIONED: [StockState.SELL_CANDIDATE, StockState.COMPLETED, StockState.FAILED],
+    StockState.SELL_CANDIDATE: [StockState.SELL_PENDING, StockState.POSITIONED, StockState.COMPLETED, StockState.FAILED],
+    StockState.SELL_PENDING: [StockState.COMPLETED, StockState.POSITIONED, StockState.SELL_CANDIDATE, StockState.FAILED],
+    StockState.COMPLETED: [StockState.SELECTED],
+    StockState.FAILED: [StockState.SELECTED, StockState.COMPLETED],
+}
+
 
 class StockStateManager:
     """
@@ -46,11 +57,12 @@ class StockStateManager:
         Args:
             trading_stock: 등록할 TradingStock 객체
         """
-        stock_code = trading_stock.stock_code
-        state = trading_stock.state
+        with self._lock:
+            stock_code = trading_stock.stock_code
+            state = trading_stock.state
 
-        self.trading_stocks[stock_code] = trading_stock
-        self.stocks_by_state[state][stock_code] = trading_stock
+            self.trading_stocks[stock_code] = trading_stock
+            self.stocks_by_state[state][stock_code] = trading_stock
 
     def unregister_stock(self, stock_code: str) -> None:
         """
@@ -59,13 +71,14 @@ class StockStateManager:
         Args:
             stock_code: 해제할 종목 코드
         """
-        if stock_code in self.trading_stocks:
-            trading_stock = self.trading_stocks[stock_code]
-            state = trading_stock.state
+        with self._lock:
+            if stock_code in self.trading_stocks:
+                trading_stock = self.trading_stocks[stock_code]
+                state = trading_stock.state
 
-            del self.trading_stocks[stock_code]
-            if stock_code in self.stocks_by_state[state]:
-                del self.stocks_by_state[state][stock_code]
+                del self.trading_stocks[stock_code]
+                if stock_code in self.stocks_by_state[state]:
+                    del self.stocks_by_state[state][stock_code]
 
     def change_stock_state(self, stock_code: str, new_state: StockState, reason: str = "") -> None:
         """
@@ -76,22 +89,31 @@ class StockStateManager:
             new_state: 새로운 상태
             reason: 변경 사유
         """
-        if stock_code not in self.trading_stocks:
-            return
+        with self._lock:
+            if stock_code not in self.trading_stocks:
+                return
 
-        trading_stock = self.trading_stocks[stock_code]
-        old_state = trading_stock.state
+            trading_stock = self.trading_stocks[stock_code]
+            old_state = trading_stock.state
 
-        # 기존 상태에서 제거
-        if stock_code in self.stocks_by_state[old_state]:
-            del self.stocks_by_state[old_state][stock_code]
+            # 상태 전이 규칙 검증 (비정상 전이는 경고만, 차단하지 않음)
+            valid_next_states = _VALID_TRANSITIONS.get(old_state, [])
+            if new_state not in valid_next_states:
+                self.logger.warning(
+                    f"[비정상 상태전이] {stock_code} {old_state.value} → {new_state.value} "
+                    f"(허용: {[s.value for s in valid_next_states]}) | 사유: {reason}"
+                )
 
-        # 새 상태로 변경
-        trading_stock.change_state(new_state, reason)
-        self.stocks_by_state[new_state][stock_code] = trading_stock
+            # 기존 상태에서 제거
+            if stock_code in self.stocks_by_state[old_state]:
+                del self.stocks_by_state[old_state][stock_code]
 
-        # 상세 상태 변화 로깅
-        self._log_detailed_state_change(trading_stock, old_state, new_state, reason)
+            # 새 상태로 변경
+            trading_stock.change_state(new_state, reason)
+            self.stocks_by_state[new_state][stock_code] = trading_stock
+
+            # 상세 상태 변화 로깅
+            self._log_detailed_state_change(trading_stock, old_state, new_state, reason)
 
     def _log_detailed_state_change(self, trading_stock: TradingStock,
                                    old_state: StockState, new_state: StockState,
@@ -193,6 +215,11 @@ class StockStateManager:
     def get_trading_stock(self, stock_code: str) -> Optional[TradingStock]:
         """
         종목 정보 조회
+
+        주의: 원본 TradingStock 객체의 참조를 반환합니다.
+        반환된 객체의 state를 직접 수정하지 마세요.
+        상태 변경은 반드시 change_stock_state()를 통해서만 수행해야
+        stocks_by_state 인덱스와의 일관성이 보장됩니다.
 
         Args:
             stock_code: 종목 코드

@@ -158,6 +158,7 @@ class TestDatabaseConnection:
         from db.connection import DatabaseConnection
 
         mock_conn = Mock()
+        mock_conn.closed = 0  # psycopg2: 0 = 정상 연결
         mock_pool = Mock()
         mock_pool.getconn.return_value = mock_conn
         DatabaseConnection._pool = mock_pool
@@ -175,6 +176,7 @@ class TestDatabaseConnection:
         from db.connection import DatabaseConnection
 
         mock_conn = Mock()
+        mock_conn.closed = 0  # psycopg2: 0 = 정상 연결
         mock_pool = Mock()
         mock_pool.getconn.return_value = mock_conn
         DatabaseConnection._pool = mock_pool

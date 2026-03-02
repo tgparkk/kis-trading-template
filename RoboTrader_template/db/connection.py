@@ -51,13 +51,26 @@ class DatabaseConnection:
 
         conn = cls._pool.getconn()
         try:
+            # Health check: 끊어진 연결이면 폐기 후 새 연결 요청
+            if conn.closed:
+                logger.warning("풀에서 닫힌 연결 감지, 폐기 후 새 연결 요청")
+                cls._pool.putconn(conn, close=True)
+                conn = cls._pool.getconn()
+
             yield conn
             conn.commit()
         except Exception:
-            conn.rollback()
+            # 연결 자체가 끊어진 경우 rollback도 실패할 수 있음
+            if not conn.closed:
+                conn.rollback()
             raise
         finally:
-            cls._pool.putconn(conn)
+            # 끊어진 연결은 폐기, 정상 연결만 풀에 반환
+            if conn.closed:
+                logger.warning("사용 중 끊어진 연결 감지, 폐기 처리")
+                cls._pool.putconn(conn, close=True)
+            else:
+                cls._pool.putconn(conn)
 
     @classmethod
     def close_all(cls):
