@@ -50,9 +50,6 @@ class OrderMonitorMixin:
         current_time = now_kst()
         orders_to_process = list(self.pending_orders.keys())
 
-        if orders_to_process:
-            self.logger.debug(f"미체결 주문 모니터링: {len(orders_to_process)}건 처리 중 ({current_time.strftime('%H:%M:%S')})")
-
         # 오탐지 복구: 최근 완료된 주문 중 실제 미체결인 것 확인
         await self._check_false_positive_filled_orders(current_time)
 
@@ -62,12 +59,6 @@ class OrderMonitorMixin:
                 if order is None:
                     continue
                 timeout_time = self.order_timeouts.get(order_id)
-
-                # 주문 상세 정보 로깅 (디버깅용)
-                elapsed_seconds = (current_time - order.timestamp).total_seconds()
-                remaining_seconds = (timeout_time - current_time).total_seconds() if timeout_time else 0
-                self.logger.debug(f"주문 {order_id} ({order.stock_code}): "
-                                f"경과 {elapsed_seconds:.0f}초, 남은시간 {remaining_seconds:.0f}초")
 
                 # 1. 체결 상태 확인
                 await self._check_order_status(order_id)
@@ -215,15 +206,6 @@ class OrderMonitorMixin:
             )
 
             if status_data:
-                # 원본 데이터 로깅 (체결 판단 오류 디버깅용)
-                self.logger.info(f"주문 상태 원본 데이터 [{order_id}]:\n"
-                               f"  - tot_ccld_qty(체결수량): {status_data.get('tot_ccld_qty')}\n"
-                               f"  - rmn_qty(잔여수량): {status_data.get('rmn_qty')}\n"
-                               f"  - ord_qty(주문수량): {status_data.get('ord_qty')}\n"
-                               f"  - cncl_yn(취소여부): {status_data.get('cncl_yn')}\n"
-                               f"  - actual_unfilled: {status_data.get('actual_unfilled')}\n"
-                               f"  - status_unknown: {status_data.get('status_unknown')}")
-
                 await self._process_order_status(order_id, order, status_data)
 
         except Exception as e:
@@ -244,10 +226,6 @@ class OrderMonitorMixin:
         is_actual_unfilled = bool(status_data.get('actual_unfilled', False))
         is_status_unknown = bool(status_data.get('status_unknown', False))
 
-        self.logger.info(f"파싱 결과 [{order_id}]: "
-                       f"filled={filled_qty}, remaining={remaining_qty}, "
-                       f"order_qty={order.quantity}, cancelled={cancelled}")
-
         # 상태 업데이트
         order.filled_quantity = filled_qty
         order.remaining_quantity = remaining_qty
@@ -265,7 +243,7 @@ class OrderMonitorMixin:
                 self._move_to_completed(order_id)
             else:
                 # 5분 미만이면 판정 유보
-                self.logger.warning(f"주문 상태 불명, 판정 유보: {order_id} - 경과: {elapsed_time:.0f}초 (5분 초과 시 타임아웃)")
+                self.logger.debug(f"주문 상태 불명, 판정 유보: {order_id} - 경과: {elapsed_time:.0f}초")
         elif is_actual_unfilled:
             # 실제 미체결 플래그가 명시된 경우 대기 유지
             self.logger.debug(f"실제 미체결 상태: {order_id} - 잔여 {remaining_qty}")
@@ -325,9 +303,7 @@ class OrderMonitorMixin:
             if avg_prvs and str(avg_prvs).replace(',', '').strip():
                 filled_price = float(str(avg_prvs).replace(',', '').strip())
                 if filled_price != order.price:
-                    slippage = filled_price - order.price
-                    slippage_pct = (slippage / order.price) * 100
-                    self.logger.info(f"실제 체결가: {filled_price:,.0f}원 (주문가 {order.price:,.0f}원, 슬리피지 {slippage:+,.0f}원/{slippage_pct:+.2f}%)")
+                    pass
         except (ValueError, TypeError) as e:
             self.logger.warning(f"체결가 파싱 오류: {e}, 주문가 사용")
             filled_price = order.price
@@ -343,7 +319,6 @@ class OrderMonitorMixin:
                     # 매수: 예약 → 투자 확정
                     self.fund_manager.confirm_order(order_id, actual_amount)
                     self.fund_manager.add_position(order.stock_code)
-                    self.logger.info(f"FundManager 매수 체결 확정: {order_id} - {actual_amount:,.0f}원")
                 elif order.order_type == OrderType.SELL:
                     sell_amount = actual_amount
                     # 매수원가 기준으로 invested_funds 회수 (손익 차이는 total_funds 조정)
@@ -377,7 +352,6 @@ class OrderMonitorMixin:
                     pnl = sell_amount - buy_cost - buy_commission - sell_commission - sell_tax
                     if pnl != 0:
                         self.fund_manager.adjust_pnl(pnl)
-                    self.logger.info(f"FundManager 매도 투자금 회수: {order_id} - 매수원가: {buy_cost:,.0f}원, 매도금: {sell_amount:,.0f}원, 손익: {pnl:+,.0f}원")
             except Exception as e:
                 self.logger.warning(f"FundManager 체결 처리 실패: {order_id} - {e}")
 
@@ -390,7 +364,6 @@ class OrderMonitorMixin:
         # TradingStockManager에 즉시 알림 (콜백)
         if self.trading_manager:
             try:
-                self.logger.info(f"TradingStockManager에 체결 알림: {order_id}")
                 await self.trading_manager.on_order_filled(order)
             except Exception as callback_err:
                 self.logger.error(f"체결 콜백 오류: {callback_err}")

@@ -113,7 +113,7 @@ class PostMarketDataSaver:
 
                     if success:
                         saved_count += 1
-                        self.logger.info(f"[{stock_code}] 분봉 데이터 DB 저장 완료: {len(combined_data)}건")
+                        self.logger.debug(f"[{stock_code}] 분봉 데이터 DB 저장 완료: {len(combined_data)}건")
                     else:
                         failed_count += 1
                         self.logger.warning(f"[{stock_code}] 분봉 데이터 DB 저장 실패")
@@ -168,7 +168,7 @@ class PostMarketDataSaver:
                     start_date = start_date_obj.strftime('%Y%m%d')
                     end_date = target_date
 
-                    self.logger.info(f"[{stock_code}] 일봉 데이터 API 조회 중... ({start_date} ~ {end_date})")
+                    self.logger.debug(f"[{stock_code}] 일봉 데이터 API 조회 중... ({start_date} ~ {end_date})")
 
                     # KIS API로 일봉 데이터 수집
                     daily_data = get_inquire_daily_itemchartprice(
@@ -198,7 +198,7 @@ class PostMarketDataSaver:
                         date_info = ""
                         if 'stck_bsop_date' in daily_data.columns:
                             date_info = f" ({daily_data.iloc[0]['stck_bsop_date']}~{daily_data.iloc[-1]['stck_bsop_date']})"
-                        self.logger.info(f"[{stock_code}] 일봉 데이터 DB 저장 완료: {len(daily_data)}일치{date_info}")
+                        self.logger.debug(f"[{stock_code}] 일봉 데이터 DB 저장 완료: {len(daily_data)}일치{date_info}")
                     else:
                         failed_count += 1
                         self.logger.warning(f"[{stock_code}] 일봉 데이터 DB 저장 실패")
@@ -230,9 +230,7 @@ class PostMarketDataSaver:
             Dict: 전체 저장 결과
         """
         try:
-            self.logger.info("=" * 80)
             self.logger.info("장 마감 후 데이터 저장 시작 (TimescaleDB)")
-            self.logger.info("=" * 80)
 
             # 종목 목록 가져오기
             with intraday_manager._lock:
@@ -248,35 +246,22 @@ class PostMarketDataSaver:
                     'text_file': None
                 }
 
-            self.logger.info(f"대상 종목: {len(stock_codes)}개")
-            self.logger.info(f"종목 코드: {', '.join(stock_codes)}")
+            self.logger.info(f"대상 종목: {len(stock_codes)}개 - {', '.join(stock_codes)}")
 
             # 1. 분봉 데이터 DB 저장
-            self.logger.info("\n" + "=" * 80)
             self.logger.info("[1] 분봉 데이터 TimescaleDB 저장")
-            self.logger.info("=" * 80)
             minute_result = self.save_minute_data_to_db(intraday_manager)
 
             # 2. 일봉 데이터 DB 저장
-            self.logger.info("\n" + "=" * 80)
             self.logger.info("[2] 일봉 데이터 TimescaleDB 저장")
-            self.logger.info("=" * 80)
             daily_result = self.save_daily_data(stock_codes)
 
             # 3. 분봉 데이터 텍스트 파일 저장 (디버깅용, 선택적)
-            self.logger.info("\n" + "=" * 80)
             self.logger.info("[3] 분봉 데이터 텍스트 파일 저장 (디버깅용)")
-            self.logger.info("=" * 80)
             text_file = self.save_minute_data_to_file(intraday_manager)
 
             # 결과 요약
-            self.logger.info("\n" + "=" * 80)
-            self.logger.info("장 마감 후 데이터 저장 완료")
-            self.logger.info("=" * 80)
-            self.logger.info(f"분봉 데이터: {minute_result['saved']}/{minute_result['total']}개 DB 저장")
-            self.logger.info(f"일봉 데이터: {daily_result['saved']}/{daily_result['total']}개 DB 저장")
-            self.logger.info(f"텍스트 파일: {text_file if text_file else '없음'}")
-            self.logger.info("=" * 80)
+            self.logger.info(f"장 마감 후 데이터 저장 완료 - 분봉: {minute_result['saved']}/{minute_result['total']}개, 일봉: {daily_result['saved']}/{daily_result['total']}개, 텍스트: {text_file if text_file else '없음'}")
 
             return {
                 'success': True,

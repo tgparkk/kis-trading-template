@@ -205,10 +205,8 @@ def get_inquire_psbl_rvsecncl_lst(tr_cont: str = "", FK100: str = "", NK100: str
     NK100 = res.getBody().ctx_area_nk100
 
     if tr_cont in ("D", "E"):  # 마지막 페이지
-        logger.debug("정정취소가능주문조회 완료")
         return dataframe
     elif tr_cont in ("F", "M"):  # 다음 페이지 존재
-        logger.debug("다음 페이지 조회 중...")
         time.sleep(PAGING_API_INTERVAL)  # 시스템 안정성을 위한 지연
         return get_inquire_psbl_rvsecncl_lst("N", FK100, NK100, dataframe)
 
@@ -325,10 +323,8 @@ def get_inquire_daily_ccld_lst(dv: str = "01", inqr_strt_dt: str = "", inqr_end_
     NK100 = res.getBody().ctx_area_nk100
 
     if tr_cont in ("D", "E"):  # 마지막 페이지
-        logger.debug("주식일별주문체결조회 완료")
         return dataframe
     elif tr_cont in ("F", "M"):  # 다음 페이지 존재
-        logger.debug("다음 페이지 조회 중...")
         time.sleep(PAGING_API_INTERVAL)
         return get_inquire_daily_ccld_lst(dv, inqr_strt_dt, inqr_end_dt, ccld_dvsn, "N", FK100, NK100, dataframe)
 

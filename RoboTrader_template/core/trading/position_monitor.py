@@ -89,12 +89,10 @@ class PositionMonitor:
     def set_decision_engine(self, decision_engine: Any) -> None:
         """매매 판단 엔진 설정 (순환 참조 방지를 위해 별도 메서드)"""
         self.decision_engine = decision_engine
-        self.logger.debug("PositionMonitor에 decision_engine 연결 완료")
 
     def set_strategy(self, strategy: Any) -> None:
         """전략 설정 (매도 시그널 생성용)"""
         self._strategy = strategy
-        self.logger.debug(f"PositionMonitor에 전략 연결: {strategy.name if strategy else 'None'}")
 
     async def start_monitoring(self) -> None:
         """종목 상태 모니터링 시작"""
@@ -124,8 +122,6 @@ class PositionMonitor:
     async def _monitor_stock_states(self) -> None:
         """종목 상태 모니터링"""
         try:
-            self.logger.debug("종목 상태 모니터링 실행")
-
             # 주문 완료 확인
             await self.completion_handler.check_order_completions()
 

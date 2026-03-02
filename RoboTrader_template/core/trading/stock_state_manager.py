@@ -108,7 +108,24 @@ class StockStateManager:
         try:
             current_time = now_kst().strftime('%H:%M:%S')
 
-            # 기본 정보
+            # 수익률 계산 (condensed line용)
+            profit_str = ""
+            profit_rate = 0.0
+            if trading_stock.position and trading_stock.position.current_price > 0 and trading_stock.position.avg_price > 0:
+                profit_rate = (
+                    (trading_stock.position.current_price - trading_stock.position.avg_price)
+                    / trading_stock.position.avg_price
+                ) * 100
+                profit_str = f" | 수익률: {profit_rate:+.2f}%"
+
+            # 단일 요약 INFO 라인
+            reason_str = f" | {reason}" if reason else ""
+            self.logger.info(
+                f"[상태변경] {trading_stock.stock_code}({trading_stock.stock_name}) "
+                f"{old_state.value} → {new_state.value}{reason_str}{profit_str}"
+            )
+
+            # 상세 정보는 DEBUG 레벨로
             log_parts = [
                 f"[{current_time}] {trading_stock.stock_code}({trading_stock.stock_name})",
                 f"상태변경: {old_state.value} -> {new_state.value}",
@@ -122,10 +139,6 @@ class StockStateManager:
                     f"@{trading_stock.position.avg_price:,.0f}원"
                 )
                 if trading_stock.position.current_price > 0:
-                    profit_rate = (
-                        (trading_stock.position.current_price - trading_stock.position.avg_price)
-                        / trading_stock.position.avg_price
-                    ) * 100
                     log_parts.append(
                         f"현재가: {trading_stock.position.current_price:,.0f}원 ({profit_rate:+.2f}%)"
                     )
@@ -154,8 +167,8 @@ class StockStateManager:
             if new_state in state_messages:
                 log_parts.append(state_messages[new_state])
 
-            # 로그 출력
-            self.logger.info("\n".join(f"  {part}" for part in log_parts))
+            # 상세 로그는 DEBUG
+            self.logger.debug("\n".join(f"  {part}" for part in log_parts))
 
         except Exception as e:
             self.logger.debug(f"상세 상태 변화 로깅 오류: {e}")

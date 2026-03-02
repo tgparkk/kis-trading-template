@@ -49,14 +49,12 @@ class SystemMonitor:
     async def run_system_monitoring_task(self) -> None:
         """시스템 모니터링 태스크"""
         try:
-            self.logger.info("DEBUG: _system_monitoring_task 시작됨")
             self.logger.info("시스템 모니터링 태스크 시작")
 
             last_api_refresh = now_kst()
             last_market_check = now_kst()
             last_portfolio_snapshot = now_kst()
 
-            self.logger.info("DEBUG: while 루프 진입 시도")
             while self.bot.is_running:
                 current_time = now_kst()
 

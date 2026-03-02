@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .models import Stock, OHLCVData, TradingConfig
 from framework import KISBroker
 from utils.logger import setup_logger
+from utils.rate_limited_logger import RateLimitedLogger
 from utils.korean_time import now_kst, is_market_open
 from utils.async_helpers import run_with_timeout
 
@@ -19,7 +20,7 @@ class RealTimeDataCollector:
     def __init__(self, config: TradingConfig, broker: KISBroker):
         self.config = config
         self.broker = broker
-        self.logger = setup_logger(__name__)
+        self.logger = RateLimitedLogger(setup_logger(__name__))
         
         self.stocks: Dict[str, Stock] = {}
         self.is_running = False
@@ -39,7 +40,8 @@ class RealTimeDataCollector:
                 name=stock_name,
                 is_candidate=True
             )
-            self.logger.info(f"종목 초기화: {stock_code} ({stock_name})")
+        if self.stocks:
+            self.logger.info(f"후보 종목 {len(self.stocks)}개 초기화 완료")
     
     def add_candidate_stock(self, stock_code: str, stock_name: Optional[str] = None) -> None:
         """후보 종목 추가"""
@@ -50,7 +52,7 @@ class RealTimeDataCollector:
                 is_candidate=True
             )
             self.config.data_collection.candidate_stocks.append(stock_code)
-            self.logger.info(f"후보 종목 추가: {stock_code} : {stock_name}")
+            self.logger.debug(f"후보 종목 추가: {stock_code} : {stock_name}")
     
     def remove_candidate_stock(self, stock_code: str) -> None:
         """후보 종목 제거"""
@@ -58,7 +60,7 @@ class RealTimeDataCollector:
             self.stocks[stock_code].is_candidate = False
             if stock_code in self.config.data_collection.candidate_stocks:
                 self.config.data_collection.candidate_stocks.remove(stock_code)
-            self.logger.info(f"후보 종목 제거: {stock_code}")
+            self.logger.debug(f"후보 종목 제거: {stock_code}")
     
     async def start_collection(self) -> None:
         """데이터 수집 시작"""

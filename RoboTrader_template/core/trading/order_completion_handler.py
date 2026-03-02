@@ -186,7 +186,7 @@ class OrderCompletionHandler:
 
                         # 매도 완료 후 즉시 재거래 준비 (COMPLETED 상태 유지)
                         if self.enable_re_trading:
-                            self.logger.info(
+                            self.logger.debug(
                                 f"{trading_stock.stock_code} 즉시 재거래 준비 완료 "
                                 "(COMPLETED 상태 유지)"
                             )
@@ -210,7 +210,7 @@ class OrderCompletionHandler:
     async def on_order_filled(self, order) -> None:
         """주문 체결 시 즉시 호출되는 콜백 메서드"""
         try:
-            self.logger.info(
+            self.logger.debug(
                 f"주문 체결 콜백 수신: {order.order_id} - {order.stock_code} "
                 f"({order.order_type.value})"
             )
@@ -269,7 +269,7 @@ class OrderCompletionHandler:
             # 전략 콜백 호출
             self._notify_strategy_order_filled(order)
 
-            self.logger.info(f"매수 체결 처리 완료 (콜백): {trading_stock.stock_code}")
+            self.logger.debug(f"매수 체결 처리 완료 (콜백): {trading_stock.stock_code}")
         else:
             self.logger.warning(
                 f"예상치 못한 상태에서 매수 체결: {trading_stock.state.value}"
@@ -301,14 +301,14 @@ class OrderCompletionHandler:
             # 전략 콜백 호출
             self._notify_strategy_order_filled(order)
 
-            self.logger.info(
+            self.logger.debug(
                 f"매도 체결 처리 완료 (콜백): {trading_stock.stock_code} "
                 f"(수익률: {profit_rate:.2f}%)"
             )
 
             # 매도 완료 후 즉시 재거래 준비 (COMPLETED 상태 유지)
             if self.enable_re_trading:
-                self.logger.info(
+                self.logger.debug(
                     f"{trading_stock.stock_code} 즉시 재거래 준비 완료 (COMPLETED 상태 유지)"
                 )
         else:

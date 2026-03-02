@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 from core.models import StockState
 from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
 from utils.logger import setup_logger
+from utils.rate_limited_logger import RateLimitedLogger
 
 if TYPE_CHECKING:
     from main import DayTradingBot
@@ -17,7 +18,7 @@ class TradingAnalyzer:
 
     def __init__(self, bot: 'DayTradingBot') -> None:
         self.bot = bot
-        self.logger = setup_logger(__name__)
+        self.logger = RateLimitedLogger(setup_logger(__name__))
 
         # FundManager를 DecisionEngine에 연결 (main.py 수정 없이)
         if hasattr(bot, 'fund_manager') and hasattr(bot, 'decision_engine'):

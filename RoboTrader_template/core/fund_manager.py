@@ -69,8 +69,7 @@ class FundManager:
             # 가용 자금 재계산
             self.available_funds = new_total - self.reserved_funds - self.invested_funds
             
-            self.logger.info(f"💰 총 자금 업데이트: {old_total:,.0f}원 → {new_total:,.0f}원")
-            self.logger.info(f"💰 가용 자금: {self.available_funds:,.0f}원")
+            self.logger.info(f"총 자금 업데이트: {old_total:,.0f}원 → {new_total:,.0f}원 (가용: {self.available_funds:,.0f}원)")
     
     def get_max_buy_amount(self, stock_code: str) -> float:
         """
@@ -96,11 +95,7 @@ class FundManager:
             # 세 조건 중 가장 작은 값
             max_amount = min(max_per_stock, remaining_investment_capacity, available_limit)
             max_amount = max(0, max_amount)  # 음수 방지
-            
-            self.logger.debug(f"💰 {stock_code} 최대 매수 가능: {max_amount:,.0f}원 "
-                            f"(종목한도: {max_per_stock:,.0f}, 투자여력: {remaining_investment_capacity:,.0f}, "
-                            f"가용자금: {available_limit:,.0f})")
-            
+
             return max_amount
     
     def reserve_funds(self, order_id: str, amount: float) -> bool:
@@ -117,7 +112,7 @@ class FundManager:
         with self._lock:
             amount = float(amount)
             if self.available_funds < amount:
-                self.logger.warning(f"⚠️ 자금 부족: 요청 {amount:,.0f}원, 가용 {self.available_funds:,.0f}원")
+                self.logger.info(f"자금 부족: 요청 {amount:,.0f}원, 가용 {self.available_funds:,.0f}원")
                 return False
 
             if order_id in self.order_reservations:
@@ -128,9 +123,6 @@ class FundManager:
             self.available_funds -= amount
             self.reserved_funds += amount
             self.order_reservations[order_id] = amount
-            
-            self.logger.info(f"💰 자금 예약: {order_id} - {amount:,.0f}원 "
-                           f"(가용: {self.available_funds:,.0f}원)")
             
             return True
     
@@ -168,8 +160,6 @@ class FundManager:
             if diff > 0:
                 # 예약보다 적게 체결 → 차액 환불
                 self.available_funds += diff
-                self.logger.info(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원, "
-                               f"수수료: {commission:,.0f}원, 환불: {diff:,.0f}원")
             elif diff < 0:
                 # 예약보다 많이 체결 → 추가 비용 차감
                 self.available_funds += diff  # diff is negative
@@ -177,8 +167,7 @@ class FundManager:
                                   f"수수료: {commission:,.0f}원, "
                                   f"추가차감: {-diff:,.0f}원 (체결>예약)")
             else:
-                self.logger.info(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원, "
-                               f"수수료: {commission:,.0f}원")
+                pass
     
     def reverse_confirm(self, order_id: str, amount: float) -> None:
         """체결 확인 취소 (오탐지 복구용) - invested → reserved"""
@@ -222,7 +211,7 @@ class FundManager:
             self.available_funds += reserved_amount
             del self.order_reservations[order_id]
             
-            self.logger.info(f"💰 주문 취소: {order_id} - 환불: {reserved_amount:,.0f}원")
+            self.logger.debug(f"💰 주문 취소: {order_id} - 환불: {reserved_amount:,.0f}원")
     
     def release_investment(self, amount: float, stock_code: str = "") -> None:
         """
@@ -337,7 +326,7 @@ class FundManager:
         with self._lock:
             cooldown_until = now_kst() + timedelta(minutes=self.sell_cooldown_minutes)
             self._sell_cooldowns[stock_code] = cooldown_until
-            self.logger.info(
+            self.logger.debug(
                 f"💰 {stock_code} 재매수 쿨다운 설정: {self.sell_cooldown_minutes}분 "
                 f"(사유: {reason})"
             )

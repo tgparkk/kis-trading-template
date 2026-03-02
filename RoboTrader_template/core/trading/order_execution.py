@@ -218,7 +218,7 @@ class OrderExecution:
                     trading_stock = self.state_manager.trading_stocks[stock_code]
                     trading_stock.add_order(order_id)
 
-                self.logger.info(f"{stock_code} 매수 주문 성공: {order_id}")
+                self.logger.debug(f"{stock_code} 매수 주문 성공: {order_id}")
                 return True
             else:
                 # 주문 실패 시 원래 상태로 되돌림 (SELECTED 또는 COMPLETED)

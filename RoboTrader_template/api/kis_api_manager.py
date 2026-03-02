@@ -257,8 +257,6 @@ class KISAPIManager:
                 positions=[]  # 보유 종목 정보는 제외 (빠른 조회용)
             )
             
-            self.logger.debug(f"💰 계좌 잔고 빠른 조회: 예수금 {dnca_tot_amt:,.0f}원 + 익일정산 {nxdy_excc_amt:,.0f}원 + 가수도정산 {prvs_rcdl_excc_amt:,.0f}원 = 가용금액 {available_amount:,.0f}원")
-            
             return account_info
             
         except Exception as e:
@@ -504,7 +502,6 @@ class KISAPIManager:
                 )
             
             # 1단계: 취소 가능한 주문 목록 조회
-            self.logger.debug(f"🔍 1단계: 취소 가능한 주문 목록 조회 중...")
             pending_orders = self._call_api_with_retry(
                 kis_order_api.get_inquire_psbl_rvsecncl_lst
             )
@@ -527,13 +524,13 @@ class KISAPIManager:
                     cancelled = order_status.get('cncl_yn', 'N')
                     
                     if filled_qty > 0 and filled_qty == order_qty:
-                        self.logger.info(f"✅ 주문이 이미 완전 체결되어 취소 불필요: {order_id}")
+                        self.logger.debug(f"주문이 이미 완전 체결되어 취소 불필요: {order_id}")
                         return OrderResult(
                             success=False,
                             message="주문이 이미 완전 체결되어 취소할 수 없습니다"
                         )
                     elif cancelled == 'Y':
-                        self.logger.info(f"✅ 주문이 이미 취소되어 있음: {order_id}")
+                        self.logger.debug(f"주문이 이미 취소되어 있음: {order_id}")
                         return OrderResult(
                             success=False,
                             message="주문이 이미 취소되어 있습니다"
@@ -546,16 +543,7 @@ class KISAPIManager:
                     message="취소 가능한 주문 없음 (이미 체결되었거나 취소된 상태일 수 있음)"
                 )
             
-            # 🔍 취소 가능한 주문 목록 상세 로깅
-            self.logger.info(f"📋 취소 가능한 주문 {len(pending_orders)}건 조회됨")
-            for idx, order in pending_orders.iterrows():
-                self.logger.debug(f"  - 주문ID: {order.get('odno', 'N/A')}, "
-                                f"종목: {order.get('pdno', 'N/A')}, "
-                                f"수량: {order.get('ord_qty', 'N/A')}, "
-                                f"잔여: {order.get('rmn_qty', 'N/A')}")
-            
             # 2단계: 해당 주문 찾기
-            self.logger.debug(f"🔍 2단계: 대상 주문 {order_id} 검색 중...")
             target_order = pending_orders[pending_orders['odno'] == order_id]
             
             if target_order.empty:
@@ -567,8 +555,6 @@ class KISAPIManager:
                     filled_qty = int(order_status.get('tot_ccld_qty', 0))
                     order_qty = int(order_status.get('ord_qty', 0))
                     cancelled = order_status.get('cncl_yn', 'N')
-                    
-                    self.logger.info(f"📊 주문 상태 확인 결과: {order_id} - 체결: {filled_qty}/{order_qty}, 취소: {cancelled}")
                     
                     if filled_qty > 0 and filled_qty == order_qty:
                         return OrderResult(
@@ -587,13 +573,6 @@ class KISAPIManager:
                 )
             
             order_data = target_order.iloc[0]
-            self.logger.info(f"✅ 취소 대상 주문 발견: {order_id}")
-            self.logger.debug(f"📋 주문 상세: 종목={order_data.get('pdno', 'N/A')}, "
-                            f"수량={order_data.get('ord_qty', 'N/A')}, "
-                            f"잔여={order_data.get('rmn_qty', 'N/A')}")
-            
-            # 3단계: 주문 취소 실행
-            self.logger.debug(f"🔍 3단계: 주문 취소 API 호출 중...")
             
             # KIS API 필드명 매핑 - 다양한 가능성 고려
             ord_orgno = ""
@@ -604,18 +583,14 @@ class KISAPIManager:
             for field in possible_orgno_fields:
                 if field in order_data and order_data[field]:
                     ord_orgno = order_data[field]
-                    self.logger.debug(f"📋 주문조직번호 필드 사용: {field} = {ord_orgno}")
                     break
             
             if not ord_orgno:
-                self.logger.error(f"❌ 주문조직번호를 찾을 수 없음: {order_id}")
-                self.logger.debug(f"📋 사용 가능한 필드: {list(order_data.keys())}")
+                self.logger.error(f"주문조직번호를 찾을 수 없음: {order_id}")
                 return OrderResult(
                     success=False,
                     message="주문조직번호를 찾을 수 없어 취소할 수 없습니다"
                 )
-            
-            self.logger.debug(f"📋 취소 API 파라미터: ord_orgno={ord_orgno}, orgn_odno={orgn_odno}")
             
             result = self._call_api_with_retry(
                 kis_order_api.get_order_rvsecncl,
@@ -647,9 +622,6 @@ class KISAPIManager:
             rt_cd = cancel_result.get('rt_cd', '')
             msg1 = cancel_result.get('msg1', '')
             
-            self.logger.info(f"📋 취소 API 응답: rt_cd={rt_cd}, msg1={msg1}")
-            self.logger.debug(f"📋 전체 응답 데이터: {cancel_result.to_dict()}")
-            
             if rt_cd == '0':  # 성공
                 self.logger.info(f"✅ 주문 취소 성공: {order_id}")
                 return OrderResult(
@@ -677,8 +649,6 @@ class KISAPIManager:
     def get_order_status(self, order_id: str) -> Optional[Dict[str, Any]]:
         """주문 상태 조회 - 미체결 주문 조회 + 체결 내역 조회 조합 (개선된 버전)"""
         try:
-            self.logger.debug(f"🔍 주문 상태 조회 시작: {order_id}")
-            
             # 1. 미체결 주문 조회 (정정취소 가능 주문)
             pending_orders = self._call_api_with_retry(
                 kis_order_api.get_inquire_psbl_rvsecncl_lst
@@ -693,8 +663,6 @@ class KISAPIManager:
                 if not target_pending.empty:
                     is_pending = True
                     pending_order_data = target_pending.iloc[0].to_dict()
-                    self.logger.debug(f"📋 미체결 주문에서 발견: {order_id}")
-            
             # 3. 체결 내역 조회 (완전 체결 확인 및 상세 정보용)
             # 🆕 체결 내역 조회 시 더 안전한 API 호출 - 당일만 조회
             daily_results = None
@@ -764,8 +732,6 @@ class KISAPIManager:
                                     filled_qty += record_filled
                                 except (ValueError, TypeError):
                                     continue
-                            self.logger.debug(f"📊 당일 체결 내역에서 체결량 확인: {order_id} - {filled_qty}주")
-                        
                     # 🔧 검증: 체결량 + 잔여량 = 주문량이어야 함
                     expected_filled = max(0, total_order_qty - remaining_qty)
                     if filled_qty != expected_filled:
@@ -792,9 +758,7 @@ class KISAPIManager:
                 
                 if filled_qty > 0:
                     self.logger.info(f"🔄 부분 체결 상태: {order_id} - 체결: {filled_qty}/{total_order_qty} (잔여: {remaining_qty})")
-                else:
-                    self.logger.debug(f"📊 미체결 상태: {order_id} - 주문량: {total_order_qty} (잔여: {remaining_qty})")
-                
+
             elif all_filled_records is not None and not all_filled_records.empty:
                 # ✅ 미체결 주문 목록에 없고 체결 내역 존재 = 완전 체결
                 
@@ -838,7 +802,6 @@ class KISAPIManager:
                         ord_qty = int(float(ord_qty_str))
                     except (ValueError, TypeError):
                         self.logger.warning(f"⚠️ 체결량 변환 실패: ccld_qty={ccld_qty_str}, ord_qty={ord_qty_str}")
-                        self.logger.debug(f"📋 전체 레코드 데이터: {record.to_dict()}")
                         ccld_qty = 0
                         ord_qty = 0
                     

@@ -8,6 +8,7 @@
 """
 import logging
 import logging.handlers
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -72,9 +73,13 @@ def _get_shared_handlers(use_kst: bool = False):
     return _shared_file_handler, _shared_console_handler
 
 
+# 환경변수로 로그 레벨 오버라이드 가능 (예: LOG_LEVEL=DEBUG)
+_default_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper(), logging.INFO)
+
+
 def setup_logger(
     name: str,
-    level: int = logging.DEBUG,
+    level: int = _default_level,
     file_path: Optional[Union[str, Path]] = None,
     use_kst: bool = False,
 ):

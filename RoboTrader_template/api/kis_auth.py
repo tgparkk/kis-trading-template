@@ -159,10 +159,7 @@ def auth(svr: str = 'prod', product: str = '01') -> bool:
 
     # 🔧 설정값 검증 추가
     if not APP_KEY or not SECRET_KEY:
-        logger.error(f"❌ KIS API 키가 설정되지 않았습니다!")
-        logger.error(f"APP_KEY: {'설정됨' if APP_KEY else '미설정'}")
-        logger.error(f"SECRET_KEY: {'설정됨' if SECRET_KEY else '미설정'}")
-        logger.error("🔧 .env 파일을 확인하고 실제 KIS API 키를 입력해주세요.")
+        logger.error(f"KIS API 키 미설정 - APP_KEY: {'설정됨' if APP_KEY else '미설정'}, SECRET_KEY: {'설정됨' if SECRET_KEY else '미설정'}")
         return False
 
     if APP_KEY == 'your_app_key_here' or SECRET_KEY == 'your_app_secret_here':
@@ -195,10 +192,7 @@ def auth(svr: str = 'prod', product: str = '01') -> bool:
                 save_token(my_token, my_expired)
                 logger.info('✅ 토큰 발급 완료')
             else:
-                logger.error(f'❌ 토큰 발급 실패! 상태코드: {res.status_code}')
-                logger.error(f'응답: {res.text}')
-                if res.status_code == 401:
-                    logger.error("🔧 API 키가 잘못되었을 가능성이 높습니다. .env 파일을 확인해주세요.")
+                logger.error(f'토큰 발급 실패 (상태코드: {res.status_code}): {res.text[:200]}')
                 return False
 
         except Exception as e:
@@ -206,7 +200,6 @@ def auth(svr: str = 'prod', product: str = '01') -> bool:
             return False
     else:
         my_token = saved_token
-        logger.debug('✅ 기존 토큰 사용')
 
     # 환경 설정
     changeTREnv(f"Bearer {my_token}", svr, product)

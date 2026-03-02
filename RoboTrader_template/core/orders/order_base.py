@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ..models import Order, OrderType, OrderStatus, TradingConfig
 from utils.logger import setup_logger
+from utils.rate_limited_logger import RateLimitedLogger
 from utils.korean_time import now_kst
 
 if TYPE_CHECKING:
@@ -24,7 +25,7 @@ class OrderManagerBase:
         self.broker = broker
         self.telegram = telegram_integration
         self.db_manager = db_manager
-        self.logger = setup_logger(__name__)
+        self.logger = RateLimitedLogger(setup_logger(__name__))
         self.trading_manager = None  # TradingStockManager (선택 연결)
 
         # 주문 저장소
@@ -152,7 +153,7 @@ class OrderManagerBase:
                 del self.order_timeouts[order_id]
                 self.logger.debug(f"타임아웃 정보 제거: {order_id}")
             else:
-                self.logger.warning(f"타임아웃 정보 없음: {order_id}")
+                self.logger.debug(f"타임아웃 정보 없음: {order_id}")
 
             # 중복 주문 방지 맵에서 해제
             self._unregister_active_order(order.stock_code, order.order_type)
