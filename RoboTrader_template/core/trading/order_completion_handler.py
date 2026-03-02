@@ -161,6 +161,8 @@ class OrderCompletionHandler:
                     if order.status == OrderStatus.FILLED:
                         # 매도 완료 - 완료 상태로 변경
                         with self.state_manager.lock:
+                            # is_selling 해제 (매도 성공 정상 경로)
+                            trading_stock.is_selling = False
                             # 수익률 계산을 위해 포지션 정보 먼저 저장
                             _buy_price = trading_stock.position.avg_price if trading_stock.position else 0
                             trading_stock.clear_position()
@@ -194,6 +196,7 @@ class OrderCompletionHandler:
                     elif order.status in [OrderStatus.CANCELLED, OrderStatus.FAILED]:
                         # 매도 실패 - 포지션 보유 상태로 되돌림
                         with self.state_manager.lock:
+                            # is_selling 해제 (매도 취소/실패 정상 경로)
                             trading_stock.is_selling = False
                             trading_stock.clear_current_order()
                             self.state_manager.change_stock_state(
@@ -280,7 +283,8 @@ class OrderCompletionHandler:
         if trading_stock.state == StockState.SELL_PENDING:
             # 체결 처리 플래그 설정
             trading_stock.order_processed = True
-            trading_stock.is_selling = False  # 매도 완료
+            # is_selling 해제 (매도 체결 콜백 정상 경로)
+            trading_stock.is_selling = False
 
             # 수익률 계산을 위해 포지션 정보 먼저 저장
             _buy_price = trading_stock.position.avg_price if trading_stock.position else 0

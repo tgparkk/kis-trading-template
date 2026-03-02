@@ -88,10 +88,12 @@ class OrderExecution:
                         # 상태 변경 및 메타 업데이트
                         trading_stock.selected_time = current_time
                         trading_stock.selection_reason = selection_reason
-                        # 포지션/주문 정보는 정리
+                        # 포지션/주문 정보 및 매매 플래그 정리
                         trading_stock.clear_position()
                         trading_stock.clear_current_order()
                         trading_stock.order_processed = False  # 재진입 시 체결 처리 플래그 리셋
+                        trading_stock.is_buying = False   # 이전 사이클 잔존 플래그 초기화
+                        trading_stock.is_selling = False   # 이전 사이클 잔존 플래그 초기화
                         self.state_manager.change_stock_state(
                             stock_code, StockState.SELECTED, f"재선정: {selection_reason}"
                         )
@@ -325,7 +327,10 @@ class OrderExecution:
                     )
                     return False
 
-                # 매도 진행 플래그 설정
+                # is_selling 설정 (매도 주문 진입점)
+                # - 성공 시: order_completion_handler에서 해제 (체결/취소/실패)
+                # - API 실패 시: 아래 except 블록에서 즉시 해제
+                # - 타임아웃 시: handle_order_timeout에서 해제
                 trading_stock.is_selling = True
 
                 # 매도 주문 중 상태로 변경
@@ -346,7 +351,7 @@ class OrderExecution:
                 self.logger.info(f"{stock_code} 매도 주문 성공: {order_id}")
                 return True
             else:
-                # 주문 실패 시 매도 후보로 되돌림
+                # 주문 실패 시 매도 후보로 되돌림 + is_selling 즉시 해제
                 with self.state_manager.lock:
                     if stock_code in self.state_manager.trading_stocks:
                         self.state_manager.trading_stocks[stock_code].is_selling = False
@@ -357,7 +362,7 @@ class OrderExecution:
 
         except Exception as e:
             self.logger.error(f"{stock_code} 매도 주문 오류: {e}")
-            # 오류 시 매도 후보로 되돌림
+            # 오류 시 매도 후보로 되돌림 + is_selling 즉시 해제
             with self.state_manager.lock:
                 if stock_code in self.state_manager.trading_stocks:
                     self.state_manager.trading_stocks[stock_code].is_selling = False
@@ -446,7 +451,8 @@ class OrderExecution:
                 elif trading_stock.state == StockState.SELL_PENDING:
                     trading_stock.current_order_id = None
                     trading_stock.order_processed = False
-                    trading_stock.is_selling = False  # 매도 플래그 초기화 (재매도 가능)
+                    # is_selling 해제 (매도 타임아웃 경로 - 재매도 가능하게)
+                    trading_stock.is_selling = False
 
                     # 매도 타임아웃 복원 후 즉시 재매도 방지 (10초 쿨다운)
                     trading_stock.last_sell_timeout_time = now_kst()
@@ -518,6 +524,7 @@ class OrderExecution:
                 return
 
             trading_stock = self.state_manager.trading_stocks[stock_code]
+            # is_selling 해제 (매도 부분 체결 타임아웃 경로)
             trading_stock.is_selling = False
             trading_stock.clear_current_order()
 

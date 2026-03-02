@@ -360,7 +360,10 @@ class PositionMonitor:
                     self.logger.warning(f"{stock_code} 이미 매도 진행 중 (중복 방지)")
                     return
 
-                # 매도 진행 플래그 설정
+                # is_selling 설정 (중복 매도 방지)
+                # 가상매매: 이 메서드 내에서 설정/해제 완결
+                # 실매매: execute_sell_order에서도 설정하지만, 여기서 먼저 설정해야
+                #         decision_engine 호출 전 다른 코루틴의 중복 매도를 차단
                 trading_stock.is_selling = True
 
                 # decision_engine을 통해 매도 실행
@@ -373,6 +376,7 @@ class PositionMonitor:
                             trading_stock, sell_price, reason
                         )
                         if success:
+                            # is_selling 해제 (가상매도 성공)
                             trading_stock.is_selling = False
                             self._record_sell_success(stock_code)
                             # FundManager 자금 반환
@@ -393,6 +397,7 @@ class PositionMonitor:
                             self.logger.info(f"{stock_code} 가상 매도 완료: {reason}")
                             return
                         else:
+                            # is_selling 해제 (가상매도 실패 - 재시도 가능하게)
                             trading_stock.is_selling = False
                             self.logger.warning(f"{stock_code} 가상 매도 실패: {reason}")
                             continue
@@ -405,7 +410,9 @@ class PositionMonitor:
                             self.logger.info(f"{stock_code} 실제 매도 주문 완료: {reason}")
                             return
 
-                # 매도 실패
+                # 매도 실패 - is_selling 해제 (재시도 루프용)
+                # 실매매: execute_sell_order 내부에서 이미 해제됨 (중복이지만 안전)
+                # move_to_sell_candidate 실패 등 OE 미도달 시 여기서 해제
                 trading_stock.is_selling = False
                 if attempt < max_retries:
                     self.logger.warning(
@@ -423,6 +430,7 @@ class PositionMonitor:
 
             except (TypeError, ValueError) as e:
                 # 코드 버그: 즉시 circuit breaker 활성화 (재시도 무의미)
+                # is_selling 해제 (안전장치 - 예외 경로)
                 trading_stock.is_selling = False
                 self.logger.error(
                     f"{stock_code} 매도 실행 코드 버그 ({type(e).__name__}): {e}"
@@ -431,6 +439,7 @@ class PositionMonitor:
                 return  # 재시도 없이 즉시 중단
 
             except Exception as e:
+                # is_selling 해제 (안전장치 - 예외 경로)
                 trading_stock.is_selling = False
                 if attempt < max_retries:
                     self.logger.warning(

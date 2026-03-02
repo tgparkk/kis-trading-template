@@ -161,6 +161,38 @@ class SystemMonitor:
                 except Exception as report_err:
                     self.logger.error(f"일일 매매 리포트 생성 오류: {report_err}")
 
+                # EOD 자금 정합성 검증 (장마감 청산 후)
+                try:
+                    self._verify_eod_fund_integrity()
+                except Exception as verify_err:
+                    self.logger.error(f"EOD 자금 정합성 검증 오류: {verify_err}")
+
+    def _verify_eod_fund_integrity(self) -> None:
+        """EOD 자금 정합성 검증 (FundManager 내부 등식 확인)"""
+        fund_manager = getattr(self.bot, 'fund_manager', None)
+        if fund_manager is None:
+            return
+
+        integrity = fund_manager.verify_fund_integrity()
+        if not integrity['is_valid']:
+            self.logger.critical(
+                f"EOD 자금 정합성 검증 실패: "
+                f"차이={integrity['discrepancy']:,.0f}원, "
+                f"total={integrity['total_funds']:,.0f}, "
+                f"available={integrity['available_funds']:,.0f}, "
+                f"reserved={integrity['reserved_funds']:,.0f}, "
+                f"invested={integrity['invested_funds']:,.0f}"
+            )
+        else:
+            self.logger.info(
+                f"EOD 자금 정합성 검증 통과: "
+                f"total={integrity['total_funds']:,.0f}원, "
+                f"available={integrity['available_funds']:,.0f}, "
+                f"reserved={integrity['reserved_funds']:,.0f}, "
+                f"invested={integrity['invested_funds']:,.0f}, "
+                f"보유종목={integrity['position_count']}개"
+            )
+
     async def _save_portfolio_snapshot(self, current_time) -> None:
         """포트폴리오 스냅샷 저장 -- 미구현"""
         self.logger.debug("포트폴리오 스냅샷 저장 기능 미구현 (스킵)")

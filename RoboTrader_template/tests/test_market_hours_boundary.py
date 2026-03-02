@@ -255,7 +255,8 @@ class TestEodLiquidationRetry:
         assert not handler.has_failed_eod_stocks()
 
     @pytest.mark.asyncio
-    async def test_retry_max_exceeded(self):
+    async def test_retry_max_exceeded_force_completes(self):
+        """재시도 한도 초과 시 강제 완료 처리 + 자금 회수 확인"""
         from bot.liquidation_handler import EOD_LIQUIDATION_MAX_RETRIES
         handler, bot = self._make_handler()
         handler._eod_failed_stocks = {"005930"}
@@ -263,11 +264,36 @@ class TestEodLiquidationRetry:
 
         mock_stock = Mock()
         mock_stock.stock_code = "005930"
-        mock_stock.position = Mock(quantity=10)
-        bot.trading_manager.get_stocks_by_state.return_value = [mock_stock]
+        mock_stock.position = Mock(quantity=10, avg_price=50000.0)
+        mock_stock.is_selling = True
+        bot.trading_manager.get_trading_stock.return_value = mock_stock
+        bot.fund_manager = Mock()
 
         result = await handler.retry_failed_eod_liquidation()
         assert result is False
+
+        # 자금 회수 확인: 50000 * 10 = 500000
+        bot.fund_manager.release_investment.assert_called_once_with(
+            500000.0, stock_code="005930"
+        )
+        bot.fund_manager.remove_position.assert_called_once_with("005930")
+
+        # 상태 COMPLETED 전환 확인
+        from core.models import StockState
+        bot.trading_manager._change_stock_state.assert_called_once()
+        call_args = bot.trading_manager._change_stock_state.call_args
+        assert call_args[0][0] == "005930"
+        assert call_args[0][1] == StockState.COMPLETED
+
+        # 포지션/플래그 클리어 확인
+        mock_stock.clear_position.assert_called_once()
+        assert mock_stock.is_selling is False
+
+        # 실패 목록 초기화 확인
+        assert not handler.has_failed_eod_stocks()
+
+        # 텔레그램 알림 확인
+        bot.telegram.notify_system_status.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_retry_succeeds_on_second_try(self):

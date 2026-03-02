@@ -346,7 +346,12 @@ class TradingDecisionEngine:
             return False
 
     def _restore_to_positioned(self, stock_code: str, reason: str) -> None:
-        """매도 실패 시 POSITIONED 상태로 복원"""
+        """매도 실패 시 POSITIONED 상태로 복원
+
+        주의: is_selling 플래그는 여기서 해제하지 않습니다.
+        - execute_sell_order 실패 시: execute_sell_order 내부에서 이미 해제
+        - move_to_sell_candidate 실패 시: 호출측(position_monitor)에서 해제
+        """
         try:
             if self.trading_manager:
                 from core.models import StockState
@@ -355,7 +360,6 @@ class TradingDecisionEngine:
                     self.trading_manager._change_stock_state(
                         stock_code, StockState.POSITIONED, f"복원: {reason}"
                     )
-                    trading_stock.is_selling = False
                     self.logger.info(f"{stock_code} POSITIONED로 복원 완료: {reason}")
         except Exception as e:
             self.logger.warning(f"{stock_code} POSITIONED 복원 실패: {e}")
@@ -370,7 +374,7 @@ class TradingDecisionEngine:
                         1순위: 전달된 sell_price
                         2순위: intraday_manager 캐시
                         3순위: broker API
-                        4순위: trading_stock.position.avg_price (매수가로 매도, 최후수단)
+                        4순위: 모두 실패 시 매도 보류 (다음 사이클 재시도)
             sell_reason: 매도 사유
 
         Returns:
@@ -398,14 +402,12 @@ class TradingDecisionEngine:
                             sell_price = float(price_obj.current_price)
                     except Exception:
                         pass
-                # 4순위: 매수 평균가 (최후수단)
+                # 4순위: 현재가 조회 모두 실패 → 매도 보류 (다음 사이클에서 재시도)
                 if sell_price is None:
-                    avg = getattr(getattr(trading_stock, 'position', None), 'avg_price', None)
-                    if avg and avg > 0:
-                        sell_price = float(avg)
-                        self.logger.warning(
-                            f"가상매도: {code} 현재가 조회 실패 → 매수 평균가로 매도 ({sell_price:,.0f}원)"
-                        )
+                    self.logger.error(
+                        f"[{code}] 현재가 조회 모두 실패 - 매도 보류 (다음 사이클 재시도)"
+                    )
+                    return False  # 매수가로 매도하면 손익 0%로 왜곡되므로 거부
 
             if not sell_price or sell_price <= 0:
                 self.logger.error(f"가상매도 취소: {code} 매도 가격 조회 완전 실패")

@@ -393,6 +393,40 @@ class FundManager:
             
             self._last_sync_time = now_kst()
 
+    def verify_fund_integrity(self) -> dict:
+        """자금 정합성 검증 - 내부 등식 확인
+
+        등식: total_funds == available_funds + reserved_funds + invested_funds
+
+        Returns:
+            dict: 검증 결과 (is_valid, discrepancy 등)
+        """
+        with self._lock:
+            # 내부 등식: total = available + reserved + invested
+            expected_total = self.available_funds + self.reserved_funds + self.invested_funds
+            discrepancy = abs(self.total_funds - expected_total)
+
+            result = {
+                'total_funds': self.total_funds,
+                'available_funds': self.available_funds,
+                'reserved_funds': self.reserved_funds,
+                'invested_funds': self.invested_funds,
+                'calculated_total': expected_total,
+                'discrepancy': discrepancy,
+                'is_valid': discrepancy < 1.0,  # 1원 미만 오차 허용
+                'position_count': len(self.current_position_codes),
+            }
+
+            if not result['is_valid']:
+                self.logger.error(
+                    f"자금 정합성 오류! total={self.total_funds:,.0f} != "
+                    f"available({self.available_funds:,.0f}) + reserved({self.reserved_funds:,.0f}) + "
+                    f"invested({self.invested_funds:,.0f}) = {expected_total:,.0f}, "
+                    f"차이={discrepancy:,.0f}원"
+                )
+
+            return result
+
     def get_status(self) -> Dict:
         """자금 현황 조회"""
         from utils.korean_time import now_kst

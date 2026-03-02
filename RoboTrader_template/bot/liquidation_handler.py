@@ -5,7 +5,7 @@
 EOD 청산 실패 복구:
 - 청산 주문 실패 시 최대 3회 재시도
 - 재시도 간 10초 대기
-- 최종 실패 시 텔레그램 알림
+- 최종 실패 시 강제 COMPLETED 처리 + 자금 회수 + CRITICAL 텔레그램 알림
 """
 import asyncio
 from typing import TYPE_CHECKING, Set
@@ -227,18 +227,12 @@ class LiquidationHandler:
 
         self._eod_retry_count += 1
         if self._eod_retry_count > EOD_LIQUIDATION_MAX_RETRIES:
-            self.logger.error(
+            self.logger.critical(
                 f"EOD 청산 재시도 한도 초과 ({EOD_LIQUIDATION_MAX_RETRIES}회): "
-                f"실패 종목 {list(self._eod_failed_stocks)}"
+                f"실패 종목 {list(self._eod_failed_stocks)} - 강제 완료 처리 시작"
             )
-            # 텔레그램 긴급 알림
-            if hasattr(self.bot, 'telegram') and self.bot.telegram:
-                try:
-                    await self.bot.telegram.notify_system_status(
-                        f"🚨 EOD 청산 최종 실패: {list(self._eod_failed_stocks)}"
-                    )
-                except Exception:
-                    pass
+            # 강제 완료 처리: 자금 회수 + 상태 전환
+            await self._force_complete_failed_stocks()
             return False
 
         self.logger.info(
@@ -313,6 +307,75 @@ class LiquidationHandler:
 
         self._eod_failed_stocks = set(still_failed)
         return len(still_failed) == 0
+
+    async def _force_complete_failed_stocks(self) -> None:
+        """EOD 청산 최종 실패 종목을 강제 완료 처리하고 자금을 회수합니다.
+
+        재시도 한도 초과 시 호출됩니다.
+        실제 매도가 이루어지지 않았으므로 PnL은 0으로 처리합니다.
+        """
+        force_completed = []
+        for stock_code in list(self._eod_failed_stocks):
+            try:
+                trading_stock = self.bot.trading_manager.get_trading_stock(stock_code)
+                if not trading_stock:
+                    self.logger.warning(
+                        f"EOD 강제완료: {stock_code} - trading_stock 없음 (이미 처리됨)"
+                    )
+                    continue
+
+                # 포지션 정보에서 투자 원금 계산
+                buy_cost = 0.0
+                if trading_stock.position and trading_stock.position.quantity > 0:
+                    buy_cost = (
+                        float(trading_stock.position.avg_price)
+                        * int(trading_stock.position.quantity)
+                    )
+
+                # 1. FundManager 자금 회수 (PnL 0 - 실제 매도 없으므로 손익 불확정)
+                if buy_cost > 0:
+                    self.bot.fund_manager.release_investment(
+                        buy_cost, stock_code=stock_code
+                    )
+                self.bot.fund_manager.remove_position(stock_code)
+
+                # 2. 상태 강제 전환 → COMPLETED
+                self.bot.trading_manager._change_stock_state(
+                    stock_code, StockState.COMPLETED,
+                    f"EOD 청산 {EOD_LIQUIDATION_MAX_RETRIES}회 실패 - 강제 완료"
+                )
+
+                # 3. 포지션 및 플래그 클리어
+                trading_stock.clear_position()
+                trading_stock.is_selling = False
+
+                force_completed.append(stock_code)
+                self.logger.critical(
+                    f"EOD 강제완료: {stock_code} - 투자금 {buy_cost:,.0f}원 회수, "
+                    f"PnL 0 처리 (실제 매도 미완료)"
+                )
+
+            except Exception as e:
+                self.logger.error(
+                    f"EOD 강제완료 처리 실패 ({stock_code}): {e}"
+                )
+
+        # 4. 텔레그램 CRITICAL 알림
+        if force_completed:
+            alert_msg = (
+                f"[CRITICAL] EOD 청산 {EOD_LIQUIDATION_MAX_RETRIES}회 실패 "
+                f"- 강제 완료 처리: {force_completed}\n"
+                f"해당 종목은 실제 매도되지 않았습니다. "
+                f"다음 영업일 수동 확인이 필요합니다."
+            )
+            if hasattr(self.bot, 'telegram') and self.bot.telegram:
+                try:
+                    await self.bot.telegram.notify_system_status(alert_msg)
+                except Exception:
+                    pass
+
+        # 실패 목록 초기화
+        self._eod_failed_stocks.clear()
 
     def has_failed_eod_stocks(self) -> bool:
         """EOD 청산 실패 종목 존재 여부"""

@@ -308,6 +308,13 @@ class OrderMonitorMixin:
             self.logger.warning(f"체결가 파싱 오류: {e}, 주문가 사용")
             filled_price = order.price
 
+        # 시장가 주문(price=0) 등으로 체결가가 0 이하이면 체결 처리 보류
+        if filled_price <= 0:
+            self.logger.warning(
+                f"체결가 비정상(0원): {order_id} ({order.stock_code}) - 다음 사이클 재확인"
+            )
+            return  # pending_orders에 남겨두고 다음 모니터링에서 재확인
+
         order.filled_price = filled_price
         order.status = OrderStatus.FILLED
 
