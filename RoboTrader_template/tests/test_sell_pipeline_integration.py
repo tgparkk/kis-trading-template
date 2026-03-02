@@ -749,9 +749,9 @@ class TestFundManagerSync:
         # After sell with profit, total_funds should increase
         assert fm.total_funds == pytest.approx(10_000_000 + pnl)
 
-        # Consistency check: commission gap persists
+        # adjust_pnl restores invariant: available = total - reserved - invested
         total = fm.available_funds + fm.reserved_funds + fm.invested_funds
-        assert total == pytest.approx(fm.total_funds - commission)
+        assert total == pytest.approx(fm.total_funds)
 
     def test_sync_with_account_corrects_discrepancy(self):
         """sync_with_account corrects discrepancy after 3 consecutive mismatches."""

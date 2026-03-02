@@ -95,9 +95,20 @@ class CircuitBreakerState:
             return self._market_wide_halt
 
     def get_active_vi_stocks(self) -> List[str]:
-        """VI 발동 중인 종목 목록"""
+        """VI 발동 중인 종목 목록 (2분 만료 필터 적용)"""
+        from utils.korean_time import now_kst
         with self._lock:
-            return list(self._active_circuit_breakers.keys())
+            _now = now_kst()
+            expired = []
+            active = []
+            for stock_code, triggered_at in self._active_circuit_breakers.items():
+                if triggered_at and (_now - triggered_at).total_seconds() > 120:
+                    expired.append(stock_code)
+                else:
+                    active.append(stock_code)
+            for code in expired:
+                self._active_circuit_breakers.pop(code, None)
+            return active
 
     def clear_all(self):
         """모든 상태 초기화 (일일 리셋)"""

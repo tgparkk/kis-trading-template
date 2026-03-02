@@ -104,11 +104,14 @@ class Order:
     target_profit_rate: Optional[float] = None  # 🆕 목표 익절률 (DB 기록용)
     stop_loss_rate: Optional[float] = None  # 🆕 목표 손절률 (DB 기록용)
     stock_name: Optional[str] = None  # 🆕 종목명 (DB 기록용)
+    original_quantity: int = 0  # 원본 주문 수량 (부분 체결 시 변경 전 보존용)
 
     def __post_init__(self) -> None:
         """초기화 후 처리"""
-        if self.remaining_quantity == 0:
+        if self.remaining_quantity == 0 and self.status == OrderStatus.PENDING:
             self.remaining_quantity = self.quantity
+        if self.original_quantity == 0 and self.status == OrderStatus.PENDING:
+            self.original_quantity = self.quantity
 
     def get_filled_price(self) -> float:
         """체결가 반환 (실제 체결가 또는 주문가)"""
@@ -305,8 +308,8 @@ class RiskManagementConfig:
     """리스크 관리 설정"""
     max_position_count: int = 20
     max_position_ratio: float = 0.3
-    stop_loss_ratio: float = 0.025
-    take_profit_ratio: float = 0.035
+    stop_loss_ratio: float = 0.03
+    take_profit_ratio: float = 0.05
     max_daily_loss: float = 0.1
 
 
@@ -315,6 +318,7 @@ class StrategyConfig:
     """전략 설정"""
     name: str = "simple_momentum"
     parameters: Dict[str, Any] = field(default_factory=dict)
+    enabled: bool = True
 
 
 @dataclass
@@ -361,7 +365,8 @@ class TradingConfig:
             ),
             strategy=StrategyConfig(
                 name=json_data.get('strategy', {}).get('name', 'simple_momentum'),
-                parameters=json_data.get('strategy', {}).get('parameters', {})
+                parameters=json_data.get('strategy', {}).get('parameters', {}),
+                enabled=json_data.get('strategy', {}).get('enabled', True)
             ),
             logging=LoggingConfig(
                 level=json_data.get('logging', {}).get('level', 'INFO'),

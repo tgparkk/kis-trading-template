@@ -12,7 +12,7 @@ from strategies.base import SignalType
 from utils.logger import setup_logger
 from utils.rate_limited_logger import RateLimitedLogger
 from utils.korean_time import now_kst, is_market_open
-from config.constants import STALE_SELL_PROFIT_THRESHOLD, STALE_SELL_LOSS_THRESHOLD
+from config.constants import STALE_SELL_PROFIT_THRESHOLD, STALE_SELL_LOSS_THRESHOLD, COMMISSION_RATE, SECURITIES_TAX_RATE
 
 # Circuit Breaker 상수
 CB_MAX_FAILURES = 3           # 일반 오류 circuit breaker 활성화 실패 횟수
@@ -384,7 +384,10 @@ class PositionMonitor:
                                 try:
                                     invested = float(_buy_price) * int(_quantity)
                                     sell_amount = float(sell_price) * int(_quantity) if sell_price else invested
-                                    pnl = sell_amount - invested
+                                    buy_commission = invested * COMMISSION_RATE
+                                    sell_commission = sell_amount * COMMISSION_RATE
+                                    sell_tax = sell_amount * SECURITIES_TAX_RATE
+                                    pnl = sell_amount - invested - buy_commission - sell_commission - sell_tax
                                     self.fund_manager.release_investment(invested, stock_code=stock_code)
                                     self.fund_manager.adjust_pnl(pnl)
                                     self.fund_manager.remove_position(stock_code)

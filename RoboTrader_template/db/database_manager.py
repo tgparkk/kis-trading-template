@@ -84,7 +84,8 @@ class DatabaseManager:
                     'financial_data',
                     'quant_factors',
                     'quant_portfolio',
-                    'daily_prices'
+                    'daily_prices',
+                    'minute_prices'
                 ]
 
                 cursor.execute('''
@@ -107,7 +108,7 @@ class DatabaseManager:
                 ''')
                 hypertables = {row[0] for row in cursor.fetchall()}
 
-                expected_hypertables = {'stock_prices', 'daily_prices'}
+                expected_hypertables = {'stock_prices', 'daily_prices', 'minute_prices'}
                 missing_hypertables = expected_hypertables - hypertables
 
                 if missing_hypertables:

@@ -269,6 +269,14 @@ class TradingStockManager:
         """
         await self._order_execution.handle_order_timeout(order)
 
+    async def on_partial_fill_timeout(self, order, filled_qty: int, filled_price: float) -> None:
+        """매수 부분 체결 타임아웃 처리"""
+        await self._order_execution.on_partial_fill_timeout(order, filled_qty, filled_price)
+
+    async def on_sell_partial_fill_timeout(self, order, filled_qty: int, filled_price: float) -> None:
+        """매도 부분 체결 타임아웃 처리"""
+        await self._order_execution.on_sell_partial_fill_timeout(order, filled_qty, filled_price)
+
     def set_re_trading_config(self, enable: bool) -> None:
         """
         재거래 설정 변경

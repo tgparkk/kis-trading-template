@@ -5,6 +5,7 @@
 from typing import TYPE_CHECKING, Optional
 
 from core.models import StockState
+from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
 from utils.logger import setup_logger
 
 if TYPE_CHECKING:
@@ -229,9 +230,14 @@ class TradingAnalyzer:
                             # 매수 원가 기준으로 invested_funds 회수
                             self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
 
-                            # 손익 반영 (매도가 - 매수가) * 수량 (sell_price가 None이면 원가 기준)
+                            # 손익 반영 (수수료/세금 포함)
                             effective_sell_price = float(sell_price) if sell_price is not None else _avg_price
-                            pnl = (effective_sell_price - _avg_price) * _quantity
+                            sell_amount = effective_sell_price * _quantity
+                            buy_cost = _avg_price * _quantity
+                            buy_commission = buy_cost * COMMISSION_RATE
+                            sell_commission = sell_amount * COMMISSION_RATE
+                            sell_tax = sell_amount * SECURITIES_TAX_RATE
+                            pnl = sell_amount - buy_cost - buy_commission - sell_commission - sell_tax
                             if pnl != 0:
                                 self.bot.fund_manager.adjust_pnl(pnl)
                                 self.logger.debug(

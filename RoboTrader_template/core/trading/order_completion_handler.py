@@ -289,7 +289,7 @@ class OrderCompletionHandler:
             self.state_manager.change_stock_state(
                 trading_stock.stock_code,
                 StockState.COMPLETED,
-                f"매도 체결 (콜백): {order.quantity}주 @{order.price:,.0f}원"
+                f"매도 체결 (콜백): {order.quantity}주 @{order.get_filled_price():,.0f}원"
             )
 
             # 실거래 매도 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)

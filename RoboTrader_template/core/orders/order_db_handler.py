@@ -42,15 +42,13 @@ class OrderDBHandlerMixin:
 
     async def _save_real_buy_to_db(self: 'OrderManagerBase', order, filled_price: float, stock_name: str) -> None:
         """실전 매수 기록 DB 저장"""
-        buy_record_id = self.db_manager.save_virtual_buy(
+        buy_record_id = self.db_manager.save_real_buy(
             stock_code=order.stock_code,
             stock_name=stock_name,
             price=filled_price,  # 실제 체결가 사용
             quantity=order.quantity,
             strategy="리밸런싱",
-            reason="실전매매",
-            target_profit_rate=order.target_profit_rate,
-            stop_loss_rate=order.stop_loss_rate
+            reason="실전매매"
         )
         if buy_record_id:
             self.logger.info(f"실전 매수 기록 저장: {order.stock_code} {order.quantity}주 @{filled_price:,.0f}원 (ID: {buy_record_id})")
@@ -68,10 +66,10 @@ class OrderDBHandlerMixin:
 
         # buy_record_id가 없으면 DB에서 조회
         if not buy_record_id:
-            buy_record_id = self.db_manager.get_last_open_virtual_buy(order.stock_code, order.quantity)
+            buy_record_id = self.db_manager.get_last_open_real_buy(order.stock_code)
 
         # 실전 매도 기록 저장
-        success = self.db_manager.save_virtual_sell(
+        success = self.db_manager.save_real_sell(
             stock_code=order.stock_code,
             stock_name=stock_name,
             price=filled_price,  # 실제 체결가 사용

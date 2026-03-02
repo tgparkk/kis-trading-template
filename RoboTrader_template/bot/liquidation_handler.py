@@ -15,6 +15,7 @@ from utils.logger import setup_logger
 from utils.korean_time import now_kst
 from utils.price_utils import round_to_tick
 from config.market_hours import MarketHours
+from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
 
 if TYPE_CHECKING:
     from main import DayTradingBot
@@ -73,6 +74,17 @@ class LiquidationHandler:
                             trading_stock, sell_price, "장마감 일괄청산"
                         )
                         if result:
+                            buy_price = trading_stock.position.avg_price if trading_stock.position else 0
+                            invested = float(buy_price) * int(quantity)
+                            _sell_amount = float(sell_price) * int(quantity) if sell_price else invested
+                            _buy_comm = invested * COMMISSION_RATE
+                            _sell_comm = _sell_amount * COMMISSION_RATE
+                            _sell_tax = _sell_amount * SECURITIES_TAX_RATE
+                            _pnl = _sell_amount - invested - _buy_comm - _sell_comm - _sell_tax
+                            self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
+                            if _pnl != 0:
+                                self.bot.fund_manager.adjust_pnl(_pnl)
+                            self.bot.fund_manager.remove_position(stock_code)
                             self.logger.info(
                                 f"장마감 가상청산 완료: {stock_code} {quantity}주 @{sell_price:,.0f}원"
                             )
@@ -147,6 +159,17 @@ class LiquidationHandler:
                             f"{time_label} 시장가 일괄매도"
                         )
                         if result:
+                            buy_price = trading_stock.position.avg_price if trading_stock.position else 0
+                            invested = float(buy_price) * int(quantity)
+                            _sell_amount = float(eod_sell_price) * int(quantity) if eod_sell_price else invested
+                            _buy_comm = invested * COMMISSION_RATE
+                            _sell_comm = _sell_amount * COMMISSION_RATE
+                            _sell_tax = _sell_amount * SECURITIES_TAX_RATE
+                            _pnl = _sell_amount - invested - _buy_comm - _sell_comm - _sell_tax
+                            self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
+                            if _pnl != 0:
+                                self.bot.fund_manager.adjust_pnl(_pnl)
+                            self.bot.fund_manager.remove_position(stock_code)
                             self.logger.info(
                                 f"{time_label} 가상매도 완료: "
                                 f"{stock_code}({stock_name}) {quantity}주"
@@ -250,6 +273,17 @@ class LiquidationHandler:
                         f"EOD 청산 재시도 #{self._eod_retry_count}"
                     )
                     if result:
+                        buy_price = target.position.avg_price if target.position else 0
+                        invested = float(buy_price) * int(quantity)
+                        _sell_amount = float(retry_sell_price) * int(quantity) if retry_sell_price else invested
+                        _buy_comm = invested * COMMISSION_RATE
+                        _sell_comm = _sell_amount * COMMISSION_RATE
+                        _sell_tax = _sell_amount * SECURITIES_TAX_RATE
+                        _pnl = _sell_amount - invested - _buy_comm - _sell_comm - _sell_tax
+                        self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
+                        if _pnl != 0:
+                            self.bot.fund_manager.adjust_pnl(_pnl)
+                        self.bot.fund_manager.remove_position(stock_code)
                         self.logger.info(f"EOD 가상매도 재시도 성공: {stock_code} {quantity}주")
                     else:
                         self.logger.warning(

@@ -55,7 +55,7 @@ class OrderExecutorMixin:
             if not getattr(self.config, "paper_trading", False) and self.fund_manager:
                 reserve_amount = price * quantity
                 # H4 fix: TradingAnalyzer에서 이미 stock_code로 예약한 경우 중복 예약 방지
-                already_reserved = self.fund_manager.order_reservations.get(stock_code, 0) > 0
+                already_reserved = self.fund_manager.has_reservation(stock_code)
                 if already_reserved:
                     self.logger.debug(f"자금 이미 예약됨 (by TradingAnalyzer): {stock_code}")
                     self._temp_reserve_ids[stock_code] = stock_code
@@ -202,12 +202,10 @@ class OrderExecutorMixin:
         temp_id = self._temp_reserve_ids.pop(stock_code, None)
         if temp_id and self.fund_manager:
             try:
-                # 임시 예약의 금액을 가져와서 실제 order_id로 재등록
-                reserved_amount = self.fund_manager.order_reservations.get(temp_id, 0)
-                if reserved_amount > 0:
-                    self.fund_manager.cancel_order(temp_id)
-                    self.fund_manager.reserve_funds(real_order_id, reserved_amount)
+                if self.fund_manager.transfer_reservation(temp_id, real_order_id):
                     self.logger.debug(f"자금 예약 이전: {temp_id} -> {real_order_id} ({stock_code})")
+                else:
+                    self.logger.warning(f"자금 예약 이전 실패: 예약 없음 {temp_id} ({stock_code})")
             except Exception as e:
                 self.logger.warning(f"자금 예약 이전 실패: {e}")
 

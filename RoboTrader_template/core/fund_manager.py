@@ -180,10 +180,33 @@ class FundManager:
                 self.logger.info(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원, "
                                f"수수료: {commission:,.0f}원")
     
+    def reverse_confirm(self, order_id: str, amount: float) -> None:
+        """체결 확인 취소 (오탐지 복구용) - invested → reserved"""
+        with self._lock:
+            amount = float(amount)
+            self.invested_funds = max(0, self.invested_funds - amount)
+            self.order_reservations[order_id] = amount
+            self.reserved_funds += amount
+            self.logger.info(f"체결 확인 취소: {order_id}, 금액: {amount:,.0f}")
+
+    def transfer_reservation(self, old_id: str, new_id: str) -> bool:
+        """예약 ID 변경 (원자적 연산)"""
+        with self._lock:
+            if old_id not in self.order_reservations:
+                return False
+            amount = self.order_reservations.pop(old_id)
+            self.order_reservations[new_id] = amount
+            return True
+
+    def has_reservation(self, order_id: str) -> bool:
+        """주문 예약 존재 여부 확인"""
+        with self._lock:
+            return self.order_reservations.get(order_id, 0) > 0
+
     def cancel_order(self, order_id: str) -> None:
         """
         주문 취소 (예약 해제)
-        
+
         Args:
             order_id: 주문 ID
         """
@@ -238,11 +261,8 @@ class FundManager:
         """
         with self._lock:
             pnl = float(pnl)
-            self.total_funds += pnl
-            if self.total_funds < 0:
-                self.logger.critical(f"총 자금 음수 감지: {self.total_funds:,.0f}원 → 0원으로 보정")
-                self.total_funds = 0
-            self.available_funds += pnl
+            self.total_funds = max(0, self.total_funds + pnl)
+            self.available_funds = self.total_funds - self.reserved_funds - self.invested_funds
             if self.available_funds < 0:
                 self.available_funds = 0
             self.logger.info(f"매매 손익 반영: {pnl:+,.0f}원 (총자금: {self.total_funds:,.0f}원)")

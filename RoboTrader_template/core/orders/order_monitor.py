@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from ..models import OrderType, OrderStatus
 from utils.korean_time import now_kst, is_market_open
 from utils.async_helpers import run_with_timeout
-from config.constants import MARKET_CLOSED_WAIT_INTERVAL, ORDER_MONITOR_INTERVAL, ORDER_MONITOR_ERROR_INTERVAL
+from config.constants import MARKET_CLOSED_WAIT_INTERVAL, ORDER_MONITOR_INTERVAL, ORDER_MONITOR_ERROR_INTERVAL, COMMISSION_RATE, SECURITIES_TAX_RATE
 
 if TYPE_CHECKING:
     from .order_base import OrderManagerBase
@@ -178,10 +178,16 @@ class OrderMonitorMixin:
 
             self.logger.warning(f"오탐지 주문 복구: {order.order_id} ({order.stock_code}) "
                               f"- 남은 타임아웃: {remaining_timeout:.0f}초")
-            self.logger.warning(
-                f"[오탐지 복구] {order.order_id} ({order.stock_code}) - "
-                f"FundManager 상태가 불일치할 수 있습니다. 수동 확인 필요"
-            )
+
+            # FundManager 상태 복원 (체결 확인 취소: invested → reserved)
+            if order.order_type == OrderType.BUY and hasattr(self, 'fund_manager') and self.fund_manager:
+                try:
+                    buy_amount = order.get_filled_price() * order.quantity
+                    if buy_amount > 0:
+                        self.fund_manager.reverse_confirm(order.order_id, buy_amount)
+                        self.logger.info(f"[오탐지 복구] FundManager 체결 취소 완료: {order.order_id} - {buy_amount:,.0f}원")
+                except Exception as fm_err:
+                    self.logger.warning(f"[오탐지 복구] FundManager 복원 실패: {order.order_id} - {fm_err}")
 
             # 텔레그램 알림
             if self.telegram:
@@ -364,8 +370,11 @@ class OrderMonitorMixin:
 
                     buy_cost = buy_price_per_share * filled_qty
                     self.fund_manager.release_investment(buy_cost, stock_code=order.stock_code)
-                    # 매매 손익을 total_funds와 available_funds에 반영
-                    pnl = sell_amount - buy_cost
+                    # 매매 손익을 total_funds와 available_funds에 반영 (수수료/세금 포함)
+                    buy_commission = buy_cost * COMMISSION_RATE
+                    sell_commission = sell_amount * COMMISSION_RATE
+                    sell_tax = sell_amount * SECURITIES_TAX_RATE
+                    pnl = sell_amount - buy_cost - buy_commission - sell_commission - sell_tax
                     if pnl != 0:
                         self.fund_manager.adjust_pnl(pnl)
                     self.logger.info(f"FundManager 매도 투자금 회수: {order_id} - 매수원가: {buy_cost:,.0f}원, 매도금: {sell_amount:,.0f}원, 손익: {pnl:+,.0f}원")

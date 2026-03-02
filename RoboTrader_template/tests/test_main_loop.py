@@ -331,11 +331,12 @@ class TestCheckEodLiquidation:
     async def test_같은_날짜_중복_실행_방지(self, mock_bot):
         """같은 날짜에 이미 실행했으면 스킵하는지"""
         today = date(2026, 2, 9)  # 월요일
-        mock_bot._last_eod_liquidation_date = today
 
         with patch('main.now_kst') as mock_now:
             mock_now.return_value = datetime(2026, 2, 9, 15, 20, tzinfo=timezone(timedelta(hours=9)))
             mock_bot.liquidation_handler = MagicMock()
+            mock_bot.liquidation_handler.get_last_eod_liquidation_date.return_value = today
+            mock_bot.liquidation_handler.has_failed_eod_stocks.return_value = False
             mock_bot.liquidation_handler.execute_end_of_day_liquidation = AsyncMock()
 
             await mock_bot._check_eod_liquidation()
@@ -345,12 +346,12 @@ class TestCheckEodLiquidation:
     @pytest.mark.asyncio
     async def test_주말_스킵(self, mock_bot):
         """주말(토,일)에는 EOD 청산을 실행하지 않는지"""
-        mock_bot._last_eod_liquidation_date = None
 
         # 2026-02-07 = 토요일
         with patch('main.now_kst') as mock_now:
             mock_now.return_value = datetime(2026, 2, 7, 15, 20, tzinfo=timezone(timedelta(hours=9)))
             mock_bot.liquidation_handler = MagicMock()
+            mock_bot.liquidation_handler.get_last_eod_liquidation_date.return_value = None
             mock_bot.liquidation_handler.execute_end_of_day_liquidation = AsyncMock()
 
             await mock_bot._check_eod_liquidation()
@@ -360,7 +361,6 @@ class TestCheckEodLiquidation:
     @pytest.mark.asyncio
     async def test_EOD_시간_도달_시_청산_실행(self, mock_bot):
         """EOD 청산 시간 도달 시 liquidation_handler를 호출하는지"""
-        mock_bot._last_eod_liquidation_date = None
 
         # 2026-02-09 = 월요일
         with patch('main.now_kst') as mock_now, \
@@ -369,18 +369,18 @@ class TestCheckEodLiquidation:
             mock_mh.is_eod_liquidation_time.return_value = True
 
             mock_bot.liquidation_handler = MagicMock()
+            mock_bot.liquidation_handler.get_last_eod_liquidation_date.return_value = None
             mock_bot.liquidation_handler.execute_end_of_day_liquidation = AsyncMock()
             mock_bot.liquidation_handler.set_last_eod_liquidation_date = MagicMock()
 
             await mock_bot._check_eod_liquidation()
 
             mock_bot.liquidation_handler.execute_end_of_day_liquidation.assert_called_once()
-            assert mock_bot._last_eod_liquidation_date == date(2026, 2, 9)
+            mock_bot.liquidation_handler.set_last_eod_liquidation_date.assert_called_once_with(date(2026, 2, 9))
 
     @pytest.mark.asyncio
     async def test_MarketHours_False_시_스킵(self, mock_bot):
         """MarketHours.is_eod_liquidation_time=False이면 스킵하는지"""
-        mock_bot._last_eod_liquidation_date = None
 
         with patch('main.now_kst') as mock_now, \
              patch('main.MarketHours') as mock_mh:
@@ -388,6 +388,7 @@ class TestCheckEodLiquidation:
             mock_mh.is_eod_liquidation_time.return_value = False
 
             mock_bot.liquidation_handler = MagicMock()
+            mock_bot.liquidation_handler.get_last_eod_liquidation_date.return_value = None
             mock_bot.liquidation_handler.execute_end_of_day_liquidation = AsyncMock()
 
             await mock_bot._check_eod_liquidation()

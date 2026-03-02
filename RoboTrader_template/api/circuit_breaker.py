@@ -42,7 +42,7 @@ class CircuitBreaker:
         self._success_count = 0
         self._last_failure_time: float = 0
         self._half_open_calls = 0
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._on_state_change_cb: Optional[Callable] = None
 
         # 통계
@@ -100,7 +100,10 @@ class CircuitBreaker:
             if current_state == CircuitState.CLOSED:
                 return True
             elif current_state == CircuitState.HALF_OPEN:
-                return self._half_open_calls < self.config.half_open_max_calls
+                if self._half_open_calls < self.config.half_open_max_calls:
+                    self._half_open_calls += 1
+                    return True
+                return False
             else:  # OPEN
                 return False
 

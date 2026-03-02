@@ -417,6 +417,11 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
                         try:
                             # 토큰 재발급 시도
                             if _auto_reauth():
+                                # 비멱등 주문(매수/매도)은 재시도하지 않음 (중복 주문 방지)
+                                if tr_id in _NON_IDEMPOTENT_TR_IDS:
+                                    logger.warning(f"⚠️ 비멱등 TR({tr_id}) - 토큰 재발급 후 재시도 안함 (중복 주문 방지)")
+                                    return ar
+
                                 logger.info("✅ 토큰 재발급 성공. API 호출을 재시도합니다.")
                                 # 헤더 업데이트 (새로운 토큰 적용)
                                 headers = _getBaseHeader()
@@ -779,6 +784,14 @@ def _auto_reauth() -> bool:
         if not current_env:
             logger.error("❌ 현재 환경 정보가 없습니다")
             return False
+
+        # 기존 토큰 파일 삭제 (stale 토큰 방지)
+        try:
+            if os.path.exists(TOKEN_FILE_PATH):
+                os.remove(TOKEN_FILE_PATH)
+                logger.debug(f"기존 토큰 파일 삭제: {TOKEN_FILE_PATH}")
+        except OSError as e:
+            logger.warning(f"토큰 파일 삭제 실패 (무시): {e}")
 
         # 기존 auth() 함수 호출하여 토큰 재발급
         # URL에서 서버 타입 판단

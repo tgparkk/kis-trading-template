@@ -96,9 +96,14 @@ def get_inquire_balance_lst(tr_cont: str = "", FK100: str = "", NK100: str = "",
     url = '/uapi/domestic-stock/v1/trading/inquire-balance'
     tr_id = "TTTC8434R"
 
+    tr_env = kis.getTREnv()
+    if tr_env is None:
+        logger.error("KIS 환경 정보 없음 - 인증 필요")
+        return dataframe
+
     params = {
-        "CANO": kis.getTREnv().my_acct,
-        "ACNT_PRDT_CD": kis.getTREnv().my_prod,
+        "CANO": tr_env.my_acct,
+        "ACNT_PRDT_CD": tr_env.my_prod,
         "AFHR_FLPR_YN": "N",                    # 시간외단일가여부
         "OFL_YN": "",                           # 오프라인여부
         "INQR_DVSN": "00",                      # 조회구분 00:전체
@@ -148,9 +153,14 @@ def get_inquire_psbl_order(pdno: str = "", ord_unpr: int = 0, tr_cont: str = "",
     url = '/uapi/domestic-stock/v1/trading/inquire-psbl-order'
     tr_id = "TTTC8908R"
 
+    tr_env = kis.getTREnv()
+    if tr_env is None:
+        logger.error("KIS 환경 정보 없음 - 인증 필요")
+        return None
+
     params = {
-        "CANO": kis.getTREnv().my_acct,         # 계좌번호 8자리
-        "ACNT_PRDT_CD": kis.getTREnv().my_prod, # 계좌상품코드 2자리
+        "CANO": tr_env.my_acct,                 # 계좌번호 8자리
+        "ACNT_PRDT_CD": tr_env.my_prod,         # 계좌상품코드 2자리
         "PDNO": pdno,                           # 상품번호(종목코드)
         "ORD_UNPR": ord_unpr,                   # 주문단가
         "ORD_DVSN": "00",                       # 주문구분 00:지정가, 01:시장가
@@ -180,9 +190,14 @@ def get_inquire_balance_rlz_pl_lst(tr_cont: str = "", FK100: str = "", NK100: st
     url = '/uapi/domestic-stock/v1/trading/inquire-balance-rlz-pl'
     tr_id = "TTTC8494R"
 
+    tr_env = kis.getTREnv()
+    if tr_env is None:
+        logger.error("KIS 환경 정보 없음 - 인증 필요")
+        return dataframe
+
     params = {
-        "CANO": kis.getTREnv().my_acct,
-        "ACNT_PRDT_CD": kis.getTREnv().my_prod,
+        "CANO": tr_env.my_acct,
+        "ACNT_PRDT_CD": tr_env.my_prod,
         "AFHR_FLPR_YN": "N",                    # 시간외단일가여부
         "OFL_YN": "",                           # 오프라인여부
         "INQR_DVSN": "00",                      # 조회구분 00:전체
@@ -239,9 +254,14 @@ def get_inquire_period_profit_lst(inqr_strt_dt: Optional[str] = None, inqr_end_d
     if inqr_end_dt is None:
         inqr_end_dt = datetime.today().strftime("%Y%m%d")
 
+    tr_env = kis.getTREnv()
+    if tr_env is None:
+        logger.error("KIS 환경 정보 없음 - 인증 필요")
+        return dataframe
+
     params = {
-        "CANO": kis.getTREnv().my_acct,
-        "ACNT_PRDT_CD": kis.getTREnv().my_prod,
+        "CANO": tr_env.my_acct,
+        "ACNT_PRDT_CD": tr_env.my_prod,
         "INQR_DVSN": "00",                      # 조회구분
         "SORT_DVSN": "00",                      # 정렬구분
         "PDNO": "",                             # 상품번호

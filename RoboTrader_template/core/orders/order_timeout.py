@@ -233,6 +233,7 @@ class OrderTimeoutMixin:
 
             # DB 기록 및 완료 처리
             original_qty = order.quantity
+            order.original_quantity = order.quantity
             order.quantity = filled_qty
             order.filled_quantity = filled_qty
             order.status = OrderStatus.FILLED
@@ -267,6 +268,7 @@ class OrderTimeoutMixin:
 
         # 3. DB 기록
         original_qty = order.quantity
+        order.original_quantity = order.quantity
         order.quantity = filled_qty
         order.filled_quantity = filled_qty
         order.status = OrderStatus.FILLED

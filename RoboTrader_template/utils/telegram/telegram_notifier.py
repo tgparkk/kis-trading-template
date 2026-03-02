@@ -11,6 +11,7 @@ from telegram.error import TelegramError
 from telegram.request import HTTPXRequest
 
 from utils.logger import setup_logger
+from utils.korean_time import now_kst
 
 
 class TelegramNotifier:
@@ -215,14 +216,14 @@ class TelegramNotifier:
     async def send_system_start(self):
         """시스템 시작 알림"""
         message = self.templates['system_start'].format(
-            time=datetime.now().strftime('%H:%M:%S')
+            time=now_kst().strftime('%H:%M:%S')
         )
         await self.send_message(message)
     
     async def send_system_stop(self):
         """시스템 종료 알림"""
         message = self.templates['system_stop'].format(
-            time=datetime.now().strftime('%H:%M:%S')
+            time=now_kst().strftime('%H:%M:%S')
         )
         await self.send_message(message)
     
@@ -293,7 +294,7 @@ class TelegramNotifier:
                                completed_orders: int):
         """시스템 상태 알림"""
         message = self.templates['system_status'].format(
-            time=datetime.now().strftime('%H:%M:%S'),
+            time=now_kst().strftime('%H:%M:%S'),
             market_status=market_status,
             pending_orders=pending_orders,
             completed_orders=completed_orders
@@ -303,7 +304,7 @@ class TelegramNotifier:
     async def send_error_alert(self, module: str, error: str):
         """오류 알림"""
         message = self.templates['error_alert'].format(
-            time=datetime.now().strftime('%H:%M:%S'),
+            time=now_kst().strftime('%H:%M:%S'),
             module=module,
             error=str(error)[:100]  # 오류 메시지 길이 제한
         )
@@ -328,7 +329,7 @@ class TelegramNotifier:
         
         # TODO: 실제 시스템 상태 조회 로직 구현
         status_message = "📊 *시스템 상태*\n\n⏰ 시간: {}\n📈 시장: 장중\n🔄 상태: 정상 동작\n📊 데이터: 수집 중".format(
-            datetime.now().strftime('%H:%M:%S')
+            now_kst().strftime('%H:%M:%S')
         )
         
         await update.message.reply_text(status_message, parse_mode="Markdown")

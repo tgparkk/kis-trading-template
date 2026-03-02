@@ -59,7 +59,6 @@ class DayTradingBot:
         self.logger = setup_logger(__name__)
         self.is_running = False
         self.pid_file = Path("robotrader.pid")
-        self._last_eod_liquidation_date = None  # 장마감 일괄청산 실행 일자
 
         # 프로세스 중복 실행 방지
         check_duplicate_process(str(self.pid_file))
@@ -136,9 +135,9 @@ class DayTradingBot:
         try:
             # config에서 전략 이름 가져오기
             strategy_config = getattr(self.config, 'strategy', None)
-            if isinstance(strategy_config, dict):
-                strategy_name = strategy_config.get('name', 'sample')
-                strategy_enabled = strategy_config.get('enabled', True)
+            if strategy_config is not None:
+                strategy_name = getattr(strategy_config, 'name', 'sample')
+                strategy_enabled = getattr(strategy_config, 'enabled', True)
             else:
                 strategy_name = 'sample'
                 strategy_enabled = True
@@ -483,8 +482,10 @@ class DayTradingBot:
             if not hasattr(self, 'liquidation_handler') or not self.liquidation_handler:
                 return
 
+            last_eod_date = self.liquidation_handler.get_last_eod_liquidation_date()
+
             # EOD 청산 실패 종목이 있으면 재시도
-            if (self._last_eod_liquidation_date == current_time.date()
+            if (last_eod_date == current_time.date()
                     and self.liquidation_handler.has_failed_eod_stocks()):
                 _last_retry = getattr(self, '_last_eod_retry_time', None)
                 if _last_retry is None or (current_time - _last_retry).total_seconds() >= 10:
@@ -493,7 +494,7 @@ class DayTradingBot:
                 return
 
             # 오늘 이미 실행했으면 스킵
-            if self._last_eod_liquidation_date == current_time.date():
+            if last_eod_date == current_time.date():
                 return
 
             # 동적 청산 시간 확인
@@ -501,11 +502,10 @@ class DayTradingBot:
                 return
 
             self.logger.info(f"EOD 일괄청산 시간 도달 ({current_time.strftime('%H:%M:%S')})")
-            self._last_eod_liquidation_date = current_time.date()
+            self.liquidation_handler.set_last_eod_liquidation_date(current_time.date())
 
             # liquidation_handler를 통해 청산 실행
             await self.liquidation_handler.execute_end_of_day_liquidation()
-            self.liquidation_handler.set_last_eod_liquidation_date(current_time.date())
 
         except Exception as e:
             self.logger.error(f"EOD 일괄청산 체크 오류: {e}")
@@ -590,7 +590,6 @@ class DayTradingBot:
 
     async def shutdown(self) -> None:
         """시스템 종료 (위임)"""
-        self.broker._connected = False
         await self.bot_initializer.shutdown()
 
 

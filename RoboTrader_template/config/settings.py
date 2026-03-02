@@ -55,7 +55,7 @@ def load_trading_config() -> TradingConfig:
 # 설정 로드
 try:
     _config = load_config()
-except FileNotFoundError as e:
+except (FileNotFoundError, KeyError) as e:
     logger.warning("%s", e)
     logger.warning("key.ini.example을 참고하여 key.ini 파일을 생성해주세요.")
     _config = {

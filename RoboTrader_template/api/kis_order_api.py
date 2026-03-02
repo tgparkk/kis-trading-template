@@ -76,14 +76,19 @@ def get_order_cash(ord_dv: str = "", itm_no: str = "", qty: int = 0, unpr: int =
             logger.warning(f"⚠️ 호가단위 오류 방지: {unpr:,}원 → {corrected_price:,}원")
             unpr = corrected_price
 
+    tr_env = kis.getTREnv()
+    if tr_env is None:
+        logger.error("KIS 환경 정보 없음 - 인증 필요")
+        return None
+
     params = {
-        "CANO": kis.getTREnv().my_acct,         # 계좌번호 8자리
-        "ACNT_PRDT_CD": kis.getTREnv().my_prod, # 계좌상품코드 2자리
+        "CANO": tr_env.my_acct,                 # 계좌번호 8자리
+        "ACNT_PRDT_CD": tr_env.my_prod,         # 계좌상품코드 2자리
         "PDNO": itm_no,                         # 종목코드(6자리)
         "ORD_DVSN": ord_dvsn,                   # 주문구분 00:지정가, 01:시장가
         "ORD_QTY": str(int(qty)),               # 주문주식수
         "ORD_UNPR": str(int(unpr))             # 주문단가
-        #"EXCG_ID_DVSN_CD": ""                       
+        #"EXCG_ID_DVSN_CD": ""
     }
 
     res = kis._url_fetch(url, tr_id, tr_cont, params, postFlag=True)
@@ -132,9 +137,14 @@ def get_order_rvsecncl(ord_orgno: str = "", orgn_odno: str = "", ord_dvsn: str =
         logger.error("주문단가 확인 필요")
         return None
 
+    tr_env = kis.getTREnv()
+    if tr_env is None:
+        logger.error("KIS 환경 정보 없음 - 인증 필요")
+        return None
+
     params = {
-        "CANO": kis.getTREnv().my_acct,
-        "ACNT_PRDT_CD": kis.getTREnv().my_prod,
+        "CANO": tr_env.my_acct,
+        "ACNT_PRDT_CD": tr_env.my_prod,
         "KRX_FWDG_ORD_ORGNO": ord_orgno,        # 한국거래소전송주문조직번호
         "ORGN_ODNO": orgn_odno,                 # 원주문번호
         "ORD_DVSN": ord_dvsn,                   # 주문구분
@@ -161,9 +171,14 @@ def get_inquire_psbl_rvsecncl_lst(tr_cont: str = "", FK100: str = "", NK100: str
     url = '/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl'
     tr_id = "TTTC8036R"
 
+    tr_env = kis.getTREnv()
+    if tr_env is None:
+        logger.error("KIS 환경 정보 없음 - 인증 필요")
+        return dataframe
+
     params = {
-        "CANO": kis.getTREnv().my_acct,
-        "ACNT_PRDT_CD": kis.getTREnv().my_prod,
+        "CANO": tr_env.my_acct,
+        "ACNT_PRDT_CD": tr_env.my_prod,
         "INQR_DVSN_1": "1",                     # 조회구분1 0:조회순서, 1:주문순, 2:종목순
         "INQR_DVSN_2": "0",                     # 조회구분2 0:전체, 1:매도, 2:매수
         "CTX_AREA_FK100": FK100,
@@ -216,9 +231,14 @@ def get_inquire_daily_ccld_obj(dv: str = "01", inqr_strt_dt: Optional[str] = Non
     if inqr_end_dt is None:
         inqr_end_dt = datetime.today().strftime("%Y%m%d")
 
+    tr_env = kis.getTREnv()
+    if tr_env is None:
+        logger.error("KIS 환경 정보 없음 - 인증 필요")
+        return None
+
     params = {
-        "CANO": kis.getTREnv().my_acct,
-        "ACNT_PRDT_CD": kis.getTREnv().my_prod,
+        "CANO": tr_env.my_acct,
+        "ACNT_PRDT_CD": tr_env.my_prod,
         "INQR_STRT_DT": inqr_strt_dt,           # 조회시작일자
         "INQR_END_DT": inqr_end_dt,             # 조회종료일자
         "SLL_BUY_DVSN_CD": "00",                # 매도매수구분 00:전체
@@ -263,9 +283,14 @@ def get_inquire_daily_ccld_lst(dv: str = "01", inqr_strt_dt: str = "", inqr_end_
     if inqr_end_dt == "":
         inqr_end_dt = datetime.today().strftime("%Y%m%d")
 
+    tr_env = kis.getTREnv()
+    if tr_env is None:
+        logger.error("KIS 환경 정보 없음 - 인증 필요")
+        return dataframe
+
     params = {
-        "CANO": kis.getTREnv().my_acct,
-        "ACNT_PRDT_CD": kis.getTREnv().my_prod,
+        "CANO": tr_env.my_acct,
+        "ACNT_PRDT_CD": tr_env.my_prod,
         "INQR_STRT_DT": inqr_strt_dt,
         "INQR_END_DT": inqr_end_dt,
         "SLL_BUY_DVSN_CD": "00",                # 매도매수구분 00:전체

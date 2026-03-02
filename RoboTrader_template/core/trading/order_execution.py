@@ -325,6 +325,9 @@ class OrderExecution:
                     )
                     return False
 
+                # 매도 진행 플래그 설정
+                trading_stock.is_selling = True
+
                 # 매도 주문 중 상태로 변경
                 self.state_manager.change_stock_state(
                     stock_code, StockState.SELL_PENDING, f"매도 주문: {reason}"
