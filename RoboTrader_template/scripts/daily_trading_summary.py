@@ -2,21 +2,20 @@
 일일 매매 판단 현황 및 수익률 요약
 
 장 마감 후(15:30) 실행하여 오늘의 매매 내역과 수익률을 확인합니다.
+PostgreSQL(TimescaleDB) 기반.
 """
 import sys
 import os
-import sqlite3
-from datetime import datetime
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from utils.korean_time import now_kst
+from db.connection import DatabaseConnection
 
 
 def print_today_trading_summary():
     """오늘의 매매 현황 요약"""
-    db_path = 'data/robotrader.db'
     today = now_kst().strftime('%Y-%m-%d')
 
     print("=" * 100)
@@ -27,7 +26,7 @@ def print_today_trading_summary():
     print("=" * 100)
     print()
 
-    with sqlite3.connect(db_path) as conn:
+    with DatabaseConnection.get_connection() as conn:
         cursor = conn.cursor()
 
         # ==================== 1. 오늘의 매매 내역 ====================
@@ -44,8 +43,8 @@ def print_today_trading_summary():
                    timestamp
             FROM virtual_trading_records
             WHERE action = 'BUY'
-              AND is_test = 0
-              AND date(timestamp, 'localtime') = date(?)
+              AND is_test = false
+              AND (timestamp AT TIME ZONE 'Asia/Seoul')::date = %s::date
             ORDER BY timestamp
         ''', (today,))
 
@@ -60,13 +59,16 @@ def print_today_trading_summary():
 
             total_buy_amount = 0
             for row in buy_records:
-                stock_code, stock_name, qty, buy_price, total_amt, target_profit, stop_loss, created_at = row
-                time_str = created_at.split()[1][:5] if ' ' in created_at else created_at[:5]
+                stock_code, stock_name, qty, buy_price, total_amt, target_profit, stop_loss, ts = row
+                time_str = ts.strftime('%H:%M') if hasattr(ts, 'strftime') else str(ts)[:5]
 
-                print(f"{time_str:<10} {stock_code:<10} {stock_name:<20} {qty:>8,} {buy_price:>12,.0f} "
-                      f"{total_amt:>15,.0f} {target_profit*100:>9.1f}% {stop_loss*100:>9.1f}%")
+                tp_str = f"{float(target_profit)*100:.1f}%" if target_profit else "N/A"
+                sl_str = f"{float(stop_loss)*100:.1f}%" if stop_loss else "N/A"
 
-                total_buy_amount += total_amt
+                print(f"{time_str:<10} {stock_code:<10} {stock_name:<20} {int(qty):>8,} {float(buy_price):>12,.0f} "
+                      f"{float(total_amt):>15,.0f} {tp_str:>10} {sl_str:>10}")
+
+                total_buy_amount += float(total_amt)
 
             print("-" * 100)
             print(f"{'총 매수 금액:':<70} {total_buy_amount:>15,.0f}원")
@@ -83,8 +85,8 @@ def print_today_trading_summary():
                    timestamp
             FROM virtual_trading_records
             WHERE action = 'SELL'
-              AND is_test = 0
-              AND date(timestamp, 'localtime') = date(?)
+              AND is_test = false
+              AND (timestamp AT TIME ZONE 'Asia/Seoul')::date = %s::date
             ORDER BY timestamp
         ''', (today,))
 
@@ -103,16 +105,18 @@ def print_today_trading_summary():
             loss_count = 0
 
             for row in sell_records:
-                stock_code, stock_name, qty, sell_price, total_amt, pl, pl_rate, created_at = row
-                time_str = created_at.split()[1][:5] if ' ' in created_at else created_at[:5]
+                stock_code, stock_name, qty, sell_price, total_amt, pl, pl_rate, ts = row
+                time_str = ts.strftime('%H:%M') if hasattr(ts, 'strftime') else str(ts)[:5]
+                pl = float(pl or 0)
+                pl_rate = float(pl_rate or 0)
 
                 pl_sign = "+" if pl >= 0 else ""
                 pl_color = "🟢" if pl >= 0 else "🔴"
 
-                print(f"{time_str:<10} {stock_code:<10} {stock_name:<20} {qty:>8,} {sell_price:>12,.0f} "
-                      f"{total_amt:>15,.0f} {pl_color}{pl:>14,.0f} {pl_sign}{pl_rate*100:>9.1f}%")
+                print(f"{time_str:<10} {stock_code:<10} {stock_name:<20} {int(qty):>8,} {float(sell_price):>12,.0f} "
+                      f"{float(total_amt):>15,.0f} {pl_color}{pl:>14,.0f} {pl_sign}{pl_rate*100:>9.1f}%")
 
-                total_sell_amount += total_amt
+                total_sell_amount += float(total_amt)
                 total_profit_loss += pl
 
                 if pl >= 0:
@@ -145,7 +149,7 @@ def print_today_trading_summary():
                 b.stop_loss_rate
             FROM virtual_trading_records b
             WHERE b.action = 'BUY'
-              AND b.is_test = 0
+              AND b.is_test = false
               AND NOT EXISTS (
                 SELECT 1 FROM virtual_trading_records s
                 WHERE s.buy_record_id = b.id
@@ -156,6 +160,7 @@ def print_today_trading_summary():
 
         holdings = cursor.fetchall()
 
+        total_unrealized_pl = 0
         if holdings:
             print(f"📦 보유 종목 ({len(holdings)}개)")
             print("-" * 120)
@@ -165,20 +170,21 @@ def print_today_trading_summary():
 
             total_buy_value = 0
             total_current_value = 0
-            total_unrealized_pl = 0
 
             for stock_code, stock_name, qty, avg_buy, target_profit, stop_loss in holdings:
+                qty = int(qty)
+                avg_buy = float(avg_buy)
                 # 최신 종가 조회
                 cursor.execute('''
                     SELECT close
                     FROM daily_prices
-                    WHERE stock_code = ?
+                    WHERE stock_code = %s
                     ORDER BY date DESC
                     LIMIT 1
                 ''', (stock_code,))
 
                 price_row = cursor.fetchone()
-                current_price = price_row[0] if price_row else avg_buy
+                current_price = float(price_row[0]) if price_row else avg_buy
 
                 buy_value = qty * avg_buy
                 current_value = qty * current_price
@@ -197,8 +203,9 @@ def print_today_trading_summary():
                 total_unrealized_pl += unrealized_pl
 
             print("-" * 120)
-            print(f"{'합계:':<50} {total_buy_value:>15,.0f} {'':<12} {total_current_value:>15,.0f} "
-                  f"{total_unrealized_pl:>15,.0f} {total_unrealized_pl/total_buy_value*100:>9.1f}%")
+            if total_buy_value > 0:
+                print(f"{'합계:':<50} {total_buy_value:>15,.0f} {'':<12} {total_current_value:>15,.0f} "
+                      f"{total_unrealized_pl:>15,.0f} {total_unrealized_pl/total_buy_value*100:>9.1f}%")
             print()
         else:
             print("📦 보유 종목: 없음")
@@ -213,69 +220,35 @@ def print_today_trading_summary():
         # 전체 매매 손익
         cursor.execute('''
             SELECT
-                SUM(CASE WHEN action = 'SELL' THEN profit_loss ELSE 0 END) as total_realized_pl,
+                COALESCE(SUM(CASE WHEN action = 'SELL' THEN profit_loss ELSE 0 END), 0) as total_realized_pl,
                 COUNT(CASE WHEN action = 'SELL' AND profit_loss > 0 THEN 1 END) as win_count,
                 COUNT(CASE WHEN action = 'SELL' AND profit_loss < 0 THEN 1 END) as loss_count,
                 COUNT(CASE WHEN action = 'SELL' THEN 1 END) as total_trades
             FROM virtual_trading_records
-            WHERE is_test = 0
+            WHERE is_test = false
         ''')
 
         pl_row = cursor.fetchone()
-        total_realized_pl, win_count, loss_count, total_trades = pl_row
+        total_realized_pl = float(pl_row[0] or 0)
+        win_count = pl_row[1] or 0
+        loss_count = pl_row[2] or 0
+        total_trades = pl_row[3] or 0
 
-        # 미실현 손익 (위에서 계산한 값 사용)
-        if not holdings:
-            total_unrealized_pl = 0
-
-        total_pl = (total_realized_pl or 0) + total_unrealized_pl
+        total_pl = total_realized_pl + total_unrealized_pl
         win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
 
-        print(f"실현 손익: {total_realized_pl or 0:>15,.0f}원")
+        print(f"실현 손익: {total_realized_pl:>15,.0f}원")
         print(f"미실현 손익: {total_unrealized_pl:>15,.0f}원")
         print(f"총 손익: {total_pl:>15,.0f}원")
         print()
-        print(f"총 매매 횟수: {total_trades or 0}회")
-        print(f"승: {win_count or 0}회, 패: {loss_count or 0}회")
+        print(f"총 매매 횟수: {total_trades}회")
+        print(f"승: {win_count}회, 패: {loss_count}회")
         print(f"승률: {win_rate:.1f}%")
         print()
 
-        # ==================== 4. 퀀트 포트폴리오 현황 ====================
+        # ==================== 4. 오늘의 데이터 수집 현황 ====================
         print("=" * 100)
-        print("4️⃣ 퀀트 포트폴리오 현황 (Top 10)")
-        print("=" * 100)
-        print()
-
-        cursor.execute('''
-            SELECT p.rank, p.stock_code, p.stock_name, p.total_score,
-                   f.value_score, f.quality_score, f.momentum_score, f.growth_score
-            FROM quant_portfolio p
-            LEFT JOIN quant_factors f
-                ON p.calc_date = f.calc_date AND p.stock_code = f.stock_code
-            WHERE p.calc_date = (SELECT MAX(calc_date) FROM quant_portfolio)
-            ORDER BY p.rank
-            LIMIT 10
-        ''')
-
-        portfolio = cursor.fetchall()
-
-        if portfolio:
-            print(f"{'순위':<6} {'종목코드':<10} {'종목명':<20} {'종합점수':>10} "
-                  f"{'Value':>8} {'Quality':>8} {'Momentum':>8} {'Growth':>8}")
-            print("-" * 90)
-
-            for rank, stock_code, stock_name, total, value, quality, momentum, growth in portfolio:
-                print(f"{rank:<6} {stock_code:<10} {stock_name:<20} {total:>10.1f} "
-                      f"{value:>8.1f} {quality:>8.1f} {momentum:>8.1f} {growth:>8.1f}")
-
-            print()
-        else:
-            print("퀀트 포트폴리오 데이터가 없습니다.")
-            print()
-
-        # ==================== 5. 오늘의 데이터 수집 현황 ====================
-        print("=" * 100)
-        print("5️⃣ 오늘의 데이터 수집 현황")
+        print("4️⃣ 오늘의 데이터 수집 현황")
         print("=" * 100)
         print()
 
@@ -283,33 +256,16 @@ def print_today_trading_summary():
         cursor.execute('''
             SELECT COUNT(DISTINCT stock_code)
             FROM daily_prices
-            WHERE date = ?
+            WHERE date = %s::date
         ''', (today,))
-        daily_count = cursor.fetchone()[0]
-
-        # 최근 퀀트 팩터 계산 날짜
-        cursor.execute('SELECT MAX(calc_date) FROM quant_factors')
-        latest_factor_date = cursor.fetchone()[0]
-
-        cursor.execute('''
-            SELECT COUNT(*)
-            FROM quant_factors
-            WHERE calc_date = ?
-        ''', (latest_factor_date,))
-        factor_count = cursor.fetchone()[0]
+        daily_count = cursor.fetchone()[0] or 0
 
         print(f"일봉 데이터 수집: {daily_count:,}개 종목 ({today})")
-        print(f"퀀트 팩터 계산: {factor_count:,}개 종목 ({latest_factor_date})")
         print()
 
     print("=" * 100)
     print("✅ 요약 완료!")
     print("=" * 100)
-    print()
-    print("💡 팁:")
-    print("  - 매일 장 마감 후(15:30) 이 스크립트를 실행하여 당일 매매 현황을 확인하세요.")
-    print("  - 보유 종목의 평가손익은 최신 종가 기준입니다.")
-    print("  - 목표 익절/손절률은 종목별로 차등 적용됩니다 (퀀트 점수 기반).")
     print()
 
 

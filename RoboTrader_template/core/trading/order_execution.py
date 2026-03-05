@@ -125,6 +125,8 @@ class OrderExecution:
             )
 
             if success:
+                # RealTimeDataCollector에도 후보 종목 등록 (실시간 현재가 모니터링)
+                self.data_collector.add_candidate_stock(stock_code, stock_name)
                 label = "재선정" if is_reentry else "선정"
                 self.logger.info(
                     f"{stock_code}({stock_name}) {label} 완료 - "

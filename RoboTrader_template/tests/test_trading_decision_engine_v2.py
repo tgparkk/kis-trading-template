@@ -111,6 +111,8 @@ class TestAnalyzeBuyDecision:
 
     def test_strategy_buy_signal(self, engine, sample_daily_data):
         from unittest.mock import MagicMock
+        # 시장 방향성 필터 비활성화 (테스트 환경)
+        engine.check_market_direction = Mock(return_value=(False, ""))
         strategy = MagicMock()
         strategy.name = "test"
         signal = MagicMock()

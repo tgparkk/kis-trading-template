@@ -213,11 +213,6 @@ class OrderCompletionHandler:
     async def on_order_filled(self, order) -> None:
         """주문 체결 시 즉시 호출되는 콜백 메서드"""
         try:
-            self.logger.debug(
-                f"주문 체결 콜백 수신: {order.order_id} - {order.stock_code} "
-                f"({order.order_type.value})"
-            )
-
             with self.state_manager.lock:
                 if order.stock_code not in self.state_manager.trading_stocks:
                     self.logger.warning(f"체결 콜백: 관리되지 않는 종목 {order.stock_code}")
@@ -229,14 +224,24 @@ class OrderCompletionHandler:
                 if (order.order_type == OrderType.BUY and
                         trading_stock.state == StockState.POSITIONED):
                     self.logger.debug(
-                        f"{order.stock_code} 이미 POSITIONED 상태 (중복 콜백 방지)"
+                        f"중복 체결 콜백 무시: {order.order_id} ({order.stock_code}) "
+                        f"- 이미 POSITIONED 상태"
                     )
                     return
 
                 # 레이스 컨디션 방지: 이미 처리된 주문인지 확인
                 if trading_stock.order_processed:
-                    self.logger.debug(f"이미 처리된 주문 (중복 방지): {order.order_id}")
+                    self.logger.debug(
+                        f"중복 체결 콜백 무시: {order.order_id} ({order.stock_code}) "
+                        f"- 이미 처리 완료"
+                    )
                     return
+
+                # 첫 번째 콜백만 INFO로 기록
+                self.logger.info(
+                    f"주문 체결 콜백 수신: {order.order_id} - {order.stock_code} "
+                    f"({order.order_type.value})"
+                )
 
                 if order.order_type == OrderType.BUY:
                     self._process_buy_fill_callback(trading_stock, order)
@@ -362,6 +367,23 @@ class OrderCompletionHandler:
         except Exception as virtual_err:
             self.logger.warning(f"가상매매 포지션 정보 설정 실패: {virtual_err}")
 
+    def _get_strategy_name(self, trading_stock: TradingStock) -> str:
+        """trading_stock에서 순수 전략 이름 추출 (DB strategy 컬럼용)
+
+        우선순위:
+        1. trading_stock.strategy_name (직접 설정된 전략명)
+        2. self.strategy.name (연결된 전략 객체)
+        3. "unknown" (최후 fallback)
+        """
+        # 1. trading_stock에 직접 설정된 전략명
+        if trading_stock.strategy_name:
+            return trading_stock.strategy_name
+        # 2. 연결된 전략 객체의 name
+        if self.strategy and hasattr(self.strategy, 'name') and self.strategy.name:
+            return self.strategy.name
+        # 3. fallback
+        return "unknown"
+
     def _save_real_buy_record(self, trading_stock: TradingStock, order, source: str = "") -> None:
         """실거래 매수 기록 저장"""
         try:
@@ -375,7 +397,7 @@ class OrderCompletionHandler:
                 stock_name=trading_stock.stock_name,
                 price=float(order.get_filled_price()),
                 quantity=int(order.quantity),
-                strategy=trading_stock.selection_reason,
+                strategy=self._get_strategy_name(trading_stock),
                 reason=reason
             )
         except Exception as db_err:
@@ -409,7 +431,7 @@ class OrderCompletionHandler:
                 stock_name=trading_stock.stock_name,
                 price=float(order.get_filled_price()),
                 quantity=int(order.quantity),
-                strategy=trading_stock.selection_reason,
+                strategy=self._get_strategy_name(trading_stock),
                 reason=reason,
                 buy_record_id=buy_id
             )

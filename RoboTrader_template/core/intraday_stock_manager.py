@@ -133,6 +133,16 @@ class IntradayStockManager:
             else:
                 success = await self.data_collector.collect_historical_data(stock_code)
 
+                # 분봉 수집과 별도로 일봉 데이터도 DB에 저장 (매수 판단에 필요)
+                try:
+                    daily_data = self.broker.get_ohlcv_data(stock_code, "D", 140)
+                    if daily_data is not None and not daily_data.empty:
+                        await self.data_collector._save_daily_to_db(stock_code, daily_data)
+                    else:
+                        self.logger.warning(f"{stock_code} 일봉 데이터 조회 실패 - 매수 판단 불가 가능")
+                except Exception as e:
+                    self.logger.warning(f"{stock_code} 일봉 데이터 DB 저장 실패 (매수 판단 영향 가능): {e}")
+
             # 시장 시작 5분 이내 선정 처리
             current_time = now_kst()
             market_hours = MarketHours.get_market_hours('KRX', current_time)

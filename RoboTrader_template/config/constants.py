@@ -132,3 +132,10 @@ CANDIDATE_MIN_PRICE = 1000           # 후보 종목 최소 가격 (원)
 CANDIDATE_MAX_PRICE = 500000         # 후보 종목 최대 가격 (원)
 CANDIDATE_MIN_DAILY_DATA = 22        # 전략에 필요한 최소 일봉 수
 CANDIDATE_DAILY_FETCH_DAYS = 60      # 일봉 API 조회 기간 (일)
+
+# =========================================================================
+# 시장 방향성 필터 (폭락장 매수 차단)
+# =========================================================================
+MARKET_DIRECTION_FILTER_ENABLED = True
+KOSPI_DECLINE_THRESHOLD = -2.5       # KOSPI -2.5% 이하일 때 매수 차단
+KOSDAQ_DECLINE_THRESHOLD = -3.0      # KOSDAQ -3.0% 이하일 때 매수 차단

@@ -126,6 +126,10 @@ class SystemMonitor:
                         selection_reason=f"{strategy.name} get_target_stocks()"
                     )
                     if success:
+                        # 순수 전략 이름 설정 (DB strategy 컬럼용)
+                        ts = trading_manager.get_trading_stock(stock_code)
+                        if ts:
+                            ts.strategy_name = strategy.name
                         registered += 1
                 except Exception as e:
                     self.logger.warning(f"전략 후보 종목 등록 실패 ({stock_code}): {e}")
@@ -258,6 +262,8 @@ class SystemMonitor:
         """시장현황 대시보드 출력"""
         if self._dashboard is None:
             return
+        if not is_market_open():
+            return  # 장 마감 후 불필요 갱신 방지
         try:
             import asyncio
             await asyncio.to_thread(self._dashboard.generate_dashboard)

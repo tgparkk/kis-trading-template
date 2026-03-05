@@ -166,6 +166,7 @@ class TradingStock:
     
     # 메타 정보
     selection_reason: str = ""
+    strategy_name: str = ""  # 순수 전략 이름 (예: "SampleStrategy") - DB strategy 컬럼용
     prev_close: float = 0.0  # 전날 종가 (일봉 기준)
     last_update: datetime = field(default_factory=now_kst)
     target_profit_rate: float = DEFAULT_TARGET_PROFIT_RATE  # 목표수익률 (constants.py 기준)

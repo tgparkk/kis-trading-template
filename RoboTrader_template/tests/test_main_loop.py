@@ -41,6 +41,8 @@ def mock_bot():
 
         from main import DayTradingBot
         bot = DayTradingBot()
+        # 시장 방향성 필터 비활성화 (테스트 환경에서 API 호출 방지)
+        bot.decision_engine.check_market_direction = MagicMock(return_value=(False, ""))
         yield bot
 
 

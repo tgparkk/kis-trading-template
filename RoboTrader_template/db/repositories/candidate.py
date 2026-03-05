@@ -84,8 +84,17 @@ class CandidateRepository(BaseRepository):
                     ORDER BY selection_date DESC, score DESC
                 '''
 
-                df = pd.read_sql_query(query, conn, params=(start_date.strftime('%Y-%m-%d %H:%M:%S'),))
-                df['selection_date'] = pd.to_datetime(df['selection_date'])
+                cursor = conn.cursor()
+                cursor.execute(query, (start_date.strftime('%Y-%m-%d %H:%M:%S'),))
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                else:
+                    df = pd.DataFrame()
+                cursor.close()
+                if not df.empty:
+                    df['selection_date'] = pd.to_datetime(df['selection_date'])
 
                 self.logger.info(f"후보 종목 이력 {len(df)}건 조회 ({days}일)")
                 return df
@@ -115,8 +124,17 @@ class CandidateRepository(BaseRepository):
                     ORDER BY c.selection_date DESC, c.score DESC
                 '''
 
-                df = pd.read_sql_query(query, conn, params=(start_date.strftime('%Y-%m-%d %H:%M:%S'),))
-                df['selection_date'] = pd.to_datetime(df['selection_date'])
+                cursor = conn.cursor()
+                cursor.execute(query, (start_date.strftime('%Y-%m-%d %H:%M:%S'),))
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                else:
+                    df = pd.DataFrame()
+                cursor.close()
+                if not df.empty:
+                    df['selection_date'] = pd.to_datetime(df['selection_date'])
                 return df
 
         except Exception as e:
@@ -141,8 +159,17 @@ class CandidateRepository(BaseRepository):
                     ORDER BY date DESC
                 '''
 
-                df = pd.read_sql_query(query, conn, params=(start_date.strftime('%Y-%m-%d %H:%M:%S'),))
-                df['date'] = pd.to_datetime(df['date'])
+                cursor = conn.cursor()
+                cursor.execute(query, (start_date.strftime('%Y-%m-%d %H:%M:%S'),))
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                else:
+                    df = pd.DataFrame()
+                cursor.close()
+                if not df.empty:
+                    df['date'] = pd.to_datetime(df['date'])
                 return df
 
         except Exception as e:

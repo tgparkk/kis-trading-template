@@ -2,6 +2,7 @@
 주문 DB 저장 처리 모듈
 - 실전 매매 거래 기록 DB 저장
 """
+import inspect
 from typing import TYPE_CHECKING
 
 from ..models import OrderType
@@ -12,6 +13,41 @@ if TYPE_CHECKING:
 
 class OrderDBHandlerMixin:
     """주문 DB 저장 관련 메서드들을 모아둔 Mixin 클래스"""
+
+    def _get_strategy_name_for_order(self: 'OrderManagerBase', stock_code: str) -> str:
+        """주문 DB 저장 시 순수 전략 이름 조회
+
+        우선순위:
+        1. trading_stock.strategy_name (직접 설정된 전략명)
+        2. config.strategy.name (설정 파일의 전략명)
+        3. "unknown" (최후 fallback)
+        """
+        # 1. TradingStock에 직접 설정된 전략명
+        if self.trading_manager and hasattr(self.trading_manager, 'get_trading_stock'):
+            try:
+                ts = self.trading_manager.get_trading_stock(stock_code)
+                # AsyncMock 등에서 coroutine이 반환될 수 있으므로 방어
+                if inspect.iscoroutine(ts):
+                    ts.close()  # 코루틴 GC 경고 방지
+                    ts = None
+                if ts and hasattr(ts, 'strategy_name') and ts.strategy_name:
+                    return ts.strategy_name
+            except Exception:
+                pass
+
+        # 2. config의 전략명
+        if self.config:
+            try:
+                strategy_cfg = getattr(self.config, 'strategy', None)
+                if strategy_cfg:
+                    name = getattr(strategy_cfg, 'name', None)
+                    if name:
+                        return str(name)
+            except Exception:
+                pass
+
+        # 3. fallback
+        return "unknown"
 
     async def _save_real_trade_to_db(self: 'OrderManagerBase', order, filled_price: float) -> None:
         """
@@ -42,12 +78,13 @@ class OrderDBHandlerMixin:
 
     async def _save_real_buy_to_db(self: 'OrderManagerBase', order, filled_price: float, stock_name: str) -> None:
         """실전 매수 기록 DB 저장"""
+        strategy_name = self._get_strategy_name_for_order(order.stock_code)
         buy_record_id = self.db_manager.save_real_buy(
             stock_code=order.stock_code,
             stock_name=stock_name,
             price=filled_price,  # 실제 체결가 사용
             quantity=order.quantity,
-            strategy="리밸런싱",
+            strategy=strategy_name,
             reason="실전매매"
         )
         if buy_record_id:
@@ -69,12 +106,13 @@ class OrderDBHandlerMixin:
             buy_record_id = self.db_manager.get_last_open_real_buy(order.stock_code)
 
         # 실전 매도 기록 저장
+        strategy_name = self._get_strategy_name_for_order(order.stock_code)
         success = self.db_manager.save_real_sell(
             stock_code=order.stock_code,
             stock_name=stock_name,
             price=filled_price,  # 실제 체결가 사용
             quantity=order.quantity,
-            strategy="리밸런싱",
+            strategy=strategy_name,
             reason="실전매매",
             buy_record_id=buy_record_id
         )

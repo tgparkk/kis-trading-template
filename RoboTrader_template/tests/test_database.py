@@ -512,7 +512,16 @@ class TestTradingRepositoryOpenPositions:
             'stop_loss_rate': 0.09
         }])
 
+        mock_cursor = Mock()
+        mock_cursor.fetchall.return_value = [(42, '005930', '삼성전자', 10, 70000, 1705276800, 'quant', '리밸런싱 매수', 0.17, 0.09)]
+        mock_cursor.description = [
+            ('id',), ('stock_code',), ('stock_name',), ('quantity',),
+            ('buy_price',), ('buy_time',), ('strategy',),
+            ('buy_reason',), ('target_profit_rate',), ('stop_loss_rate',)
+        ]
+
         mock_conn = Mock()
+        mock_conn.cursor.return_value = mock_cursor
 
         @contextmanager
         def fake_get_conn():
@@ -521,8 +530,7 @@ class TestTradingRepositoryOpenPositions:
         mock_db_conn.get_connection = fake_get_conn
 
         repo = TradingRepository()
-        with patch('db.repositories.trading.pd.read_sql_query', return_value=expected_df):
-            result = repo.get_virtual_open_positions()
+        result = repo.get_virtual_open_positions()
 
         assert not result.empty
         assert result.iloc[0]['stock_code'] == '005930'
@@ -533,7 +541,12 @@ class TestTradingRepositoryOpenPositions:
         """미체결 포지션 없음"""
         from db.repositories.trading import TradingRepository
 
+        mock_cursor = Mock()
+        mock_cursor.fetchall.return_value = []
+        mock_cursor.description = [('id',), ('stock_code',)]
+
         mock_conn = Mock()
+        mock_conn.cursor.return_value = mock_cursor
 
         @contextmanager
         def fake_get_conn():
@@ -542,8 +555,7 @@ class TestTradingRepositoryOpenPositions:
         mock_db_conn.get_connection = fake_get_conn
 
         repo = TradingRepository()
-        with patch('db.repositories.trading.pd.read_sql_query', return_value=pd.DataFrame()):
-            result = repo.get_virtual_open_positions()
+        result = repo.get_virtual_open_positions()
 
         assert result.empty
 

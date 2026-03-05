@@ -402,7 +402,7 @@ class KISAPIManager:
             return result
             
         except Exception as e:
-            self.logger.error(f"투자자별 매매동향 조회 실패: {e}")
+            self.logger.debug(f"투자자별 매매동향 조회 실패 (API 엔드포인트 미확인): {e}")
             return None
     
     # ===========================================

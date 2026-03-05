@@ -453,11 +453,12 @@ def get_investor_flow_data() -> Optional[Dict[str, Any]]:
             return result
 
         else:
-            logger.error("❌ 투자자별 매매 현황 조회 실패")
+            # Known issue: endpoint returns 404 - suppress noisy logs until correct API path is verified
+            logger.debug("투자자별 매매 현황 조회 실패 (API 엔드포인트 미확인)")
             return None
 
     except Exception as e:
-        logger.error(f"❌ 투자자별 매매 현황 오류: {e}")
+        logger.debug(f"투자자별 매매 현황 오류 (API 엔드포인트 미확인): {e}")
         return None
 
 

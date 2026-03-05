@@ -14,9 +14,32 @@ from utils.rate_limited_logger import RateLimitedLogger
 class TradingRepository(BaseRepository):
     """매매 기록 데이터 접근 클래스"""
 
+    # 전략 이름이 아닌 것으로 판단하는 패턴 (매매 사유가 strategy에 들어온 경우 감지)
+    _REASON_KEYWORDS = ['매도', '매수', '수익률', '손절', '익절', '청산', '복원', '복구', '조건', '점수']
+
     def __init__(self, db_path: str = None):
         super().__init__(db_path)
         self.logger = RateLimitedLogger(self.logger)
+
+    def _sanitize_strategy(self, strategy: str) -> str:
+        """전략 이름 검증: 매매 사유가 잘못 들어온 경우 'unknown'으로 대체
+
+        순수 전략 이름만 DB strategy 컬럼에 저장되어야 합니다.
+        매매 사유(reason)가 strategy에 잘못 전달된 경우를 감지합니다.
+        """
+        if not strategy or not isinstance(strategy, str):
+            return "unknown"
+        strategy = strategy.strip()
+        if not strategy:
+            return "unknown"
+        # 매매 사유 키워드가 포함된 경우 → 잘못된 값
+        for keyword in self._REASON_KEYWORDS:
+            if keyword in strategy:
+                self.logger.warning(
+                    f"strategy 컬럼에 매매사유가 감지됨 ('{strategy}') → 'unknown'으로 대체"
+                )
+                return "unknown"
+        return strategy
 
     # ============================
     # 실거래 관련 메서드
@@ -45,6 +68,7 @@ class TradingRepository(BaseRepository):
                       timestamp: datetime = None) -> Optional[int]:
         """실거래 매수 기록 저장"""
         try:
+            strategy = self._sanitize_strategy(strategy)
             if timestamp is None:
                 timestamp = now_kst()
             with self._get_connection() as conn:
@@ -72,6 +96,7 @@ class TradingRepository(BaseRepository):
                        buy_record_id: Optional[int] = None, timestamp: datetime = None) -> bool:
         """실거래 매도 기록 저장"""
         try:
+            strategy = self._sanitize_strategy(strategy)
             if timestamp is None:
                 timestamp = now_kst()
 
@@ -148,6 +173,7 @@ class TradingRepository(BaseRepository):
                         stop_loss_rate: float = None) -> Optional[int]:
         """가상 매수 기록 저장"""
         try:
+            strategy = self._sanitize_strategy(strategy)
             if timestamp is None:
                 timestamp = now_kst()
 
@@ -187,6 +213,7 @@ class TradingRepository(BaseRepository):
                          buy_record_id: int, timestamp: datetime = None) -> bool:
         """가상 매도 기록 저장"""
         try:
+            strategy = self._sanitize_strategy(strategy)
             if timestamp is None:
                 timestamp = now_kst()
 
@@ -305,7 +332,15 @@ class TradingRepository(BaseRepository):
                     ORDER BY b.timestamp DESC
                 '''
 
-                df = pd.read_sql_query(query, conn)
+                cursor = conn.cursor()
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                else:
+                    df = pd.DataFrame()
+                cursor.close()
                 if not df.empty and 'buy_time' in df.columns:
                     df['buy_time'] = pd.to_datetime(df['buy_time'], errors='coerce')
                 return df
@@ -341,7 +376,15 @@ class TradingRepository(BaseRepository):
                         ORDER BY s.timestamp DESC
                     '''
 
-                df = pd.read_sql_query(query, conn, params=(start_timestamp,))
+                cursor = conn.cursor()
+                cursor.execute(query, (start_timestamp,))
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                else:
+                    df = pd.DataFrame()
+                cursor.close()
                 return df
 
         except Exception as e:

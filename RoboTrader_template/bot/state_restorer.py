@@ -367,6 +367,11 @@ class StateRestorer:
                     if trading_stock:
                         trading_stock.set_position(quantity, buy_price)
 
+                        # DB에서 전략 이름 복원 (strategy 컬럼)
+                        db_strategy = holding.get('strategy', '')
+                        if db_strategy and isinstance(db_strategy, str) and db_strategy.strip():
+                            trading_stock.strategy_name = db_strategy.strip()
+
                         # 가상매수 기록 ID 복원
                         buy_record_id = int(holding.get('id', 0)) if holding.get('id') else None
                         if buy_record_id:
@@ -475,6 +480,7 @@ class StateRestorer:
                         'quantity': int(row['quantity']),
                         'buy_price': float(row['buy_price']),
                         'buy_time': row.get('buy_time'),
+                        'strategy': row.get('strategy', ''),
                         'target_profit_rate': tp_rate,
                         'stop_loss_rate': sl_rate,
                     }
@@ -538,6 +544,12 @@ class StateRestorer:
                     trading_stock = self.trading_manager.get_trading_stock(stock_code)
                     if trading_stock:
                         trading_stock.set_position(quantity, avg_price)
+
+                        # DB에서 전략 이름 복원
+                        if stock_code in db_holdings_dict:
+                            db_strategy = db_holdings_dict[stock_code].get('strategy', '')
+                            if db_strategy and isinstance(db_strategy, str) and db_strategy.strip():
+                                trading_stock.strategy_name = db_strategy.strip()
 
                         # 장기보유 체크: DB에 buy_time이 있으면 사용
                         buy_time = db_holdings_dict.get(stock_code, {}).get('buy_time') if stock_code in db_holdings_dict else None

@@ -107,6 +107,7 @@ class DomesticMarketCollector:
         self._get_investor_flow_fn = get_investor_flow_fn
         self._get_volume_rank_fn = get_volume_rank_fn
         self._cache_ttl = cache_ttl_seconds
+        self._investor_flow_warned = False  # 투자자동향 API 404 경고 1회 플래그
 
         # TTL 캐시
         self._cache: Dict[str, Any] = {}
@@ -181,7 +182,11 @@ class DomesticMarketCollector:
             change_rate = _safe_float(raw.get("bstp_nmix_prdy_ctrt"))
             volume = _safe_int(raw.get("acml_vol"))
             # 거래대금: 원 단위 -> 억원 단위 변환
-            trade_amount_raw = _safe_float(raw.get("acml_tr_pbmn"))
+            # 업종지수 API(FHPUP02100000)는 acml_tr_pbmn 필드를 반환하지 않을 수 있음
+            # 대안 필드명도 시도 (idx_tr_pbmn 등)
+            trade_amount_raw = _safe_float(
+                raw.get("acml_tr_pbmn") or raw.get("idx_tr_pbmn") or raw.get("tr_pbmn")
+            )
             trade_amount = round(trade_amount_raw / 100_000_000, 1) if trade_amount_raw else 0.0
 
             return IndexData(
@@ -212,7 +217,12 @@ class DomesticMarketCollector:
         try:
             raw: Optional[Dict[str, Any]] = self._get_investor_flow_fn()
             if raw is None:
-                self.logger.warning("투자자 매매동향 데이터 없음")
+                # Known issue: API endpoint returns 404 - 1회만 WARNING, 이후 DEBUG
+                if not self._investor_flow_warned:
+                    self.logger.warning("투자자 매매동향 API 응답 없음 (404 가능성) — 이후 반복 로그 억제")
+                    self._investor_flow_warned = True
+                else:
+                    self.logger.debug("투자자 매매동향 데이터 없음 (API 엔드포인트 미확인)")
                 return None
 
             # investor_summary는 투자자 구분별 리스트
@@ -243,7 +253,7 @@ class DomesticMarketCollector:
             )
 
         except Exception as e:
-            self.logger.error(f"투자자 매매동향 조회 오류: {e}")
+            self.logger.debug(f"투자자 매매동향 조회 오류 (API 엔드포인트 미확인): {e}")
             return None
 
     def fetch_volume_rank(self, top_n: int = 10) -> List[RankedStock]:

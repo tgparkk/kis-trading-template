@@ -407,6 +407,7 @@ class DayTradingBot:
 
             # TradingStockManager에 등록
             registered = 0
+            strategy_name = self.strategy.name if self.strategy else "unknown"
             for c in candidates:
                 success = await self.trading_manager.add_selected_stock(
                     stock_code=c.code,
@@ -415,6 +416,10 @@ class DayTradingBot:
                     prev_close=c.prev_close,
                 )
                 if success:
+                    # 순수 전략 이름 설정 (DB strategy 컬럼용)
+                    ts = self.trading_manager.get_trading_stock(c.code)
+                    if ts:
+                        ts.strategy_name = strategy_name
                     registered += 1
 
             self._candidates_loaded = True
@@ -445,6 +450,12 @@ class DayTradingBot:
             cb_state = get_circuit_breaker_state()
             if cb_state.is_market_halted():
                 self.logger.info("매수 판단 스킵: 시장 전체 서킷브레이커 발동 중")
+                return
+
+            # 시장 방향성 필터: 폭락장 매수 전체 스킵
+            is_crashing, crash_reason = self.decision_engine.check_market_direction()
+            if is_crashing:
+                self.logger.info(f"매수 판단 스킵: 시장급락 ({crash_reason})")
                 return
 
             selected_stocks = self.trading_manager.get_stocks_by_state(StockState.SELECTED)

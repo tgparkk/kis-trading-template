@@ -196,8 +196,15 @@ class CandidateSelector:
             self.logger.warning("스크리너 결과 파일 없음")
             return None
 
-        self.logger.info(f"최신 스크리너 파일 사용: {screener_files[0].name}")
-        return screener_files[0]
+        # 최신 파일이 당일자가 아니면 None 반환 (자동 수집 fallback으로 이동)
+        today_str = now_kst().strftime("%Y%m%d")
+        latest = screener_files[0]
+        if today_str not in latest.name:
+            self.logger.warning(f"당일 스크리너 없음 (최신: {latest.name}) → 자동 수집 fallback")
+            return None
+
+        self.logger.info(f"최신 스크리너 파일 사용: {latest.name}")
+        return latest
 
     def _is_etf_or_etn_screener(self, name: str) -> bool:
         """ETF/ETN 여부 확인 (스크리너용 — 브랜드명 포함)"""

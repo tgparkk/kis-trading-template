@@ -130,7 +130,15 @@ class PriceRepository(BaseRepository):
                     ORDER BY datetime
                 '''
 
-                df = pd.read_sql_query(query, conn, params=(stock_code, start_datetime, end_datetime))
+                cursor = conn.cursor()
+                cursor.execute(query, (stock_code, start_datetime, end_datetime))
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                else:
+                    df = pd.DataFrame()
+                cursor.close()
 
                 if df.empty:
                     return None
@@ -176,8 +184,17 @@ class PriceRepository(BaseRepository):
                     ORDER BY date_time ASC
                 '''
 
-                df = pd.read_sql_query(query, conn, params=(stock_code, start_date.strftime('%Y-%m-%d %H:%M:%S')))
-                df['date_time'] = pd.to_datetime(df['date_time'])
+                cursor = conn.cursor()
+                cursor.execute(query, (stock_code, start_date.strftime('%Y-%m-%d %H:%M:%S')))
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                else:
+                    df = pd.DataFrame()
+                cursor.close()
+                if not df.empty:
+                    df['date_time'] = pd.to_datetime(df['date_time'])
 
                 self.logger.debug(f"{stock_code} 가격 이력 {len(df)}건 조회")
                 return df
@@ -279,7 +296,15 @@ class PriceRepository(BaseRepository):
                     ORDER BY date ASC
                 '''
 
-                df = pd.read_sql_query(query, conn, params=(stock_code, start_date.strftime('%Y-%m-%d')))
+                cursor = conn.cursor()
+                cursor.execute(query, (stock_code, start_date.strftime('%Y-%m-%d')))
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                else:
+                    df = pd.DataFrame()
+                cursor.close()
                 if not df.empty:
                     df['date'] = pd.to_datetime(df['date'])
 

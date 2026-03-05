@@ -107,6 +107,12 @@ class PositionSyncManager:
                         ts.clear_current_order()
                         ts.is_buying = False
                         ts.order_processed = True
+                        # 전략 이름 설정 (DB strategy 컬럼용)
+                        strategy = getattr(self.bot, 'strategy', None)
+                        if strategy and hasattr(strategy, 'name'):
+                            ts.strategy_name = strategy.name
+                        else:
+                            ts.strategy_name = "unknown"
 
                         self.bot.trading_manager._change_stock_state(
                             code, StockState.POSITIONED,

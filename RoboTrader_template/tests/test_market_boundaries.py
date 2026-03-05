@@ -560,7 +560,7 @@ class TestEODLiquidationScenarios:
         bot.trading_manager.get_stocks_by_state.return_value = [stock1, stock2]
         bot.trading_manager.move_to_sell_candidate.return_value = True
         bot.intraday_manager.get_combined_chart_data.return_value = None
-        bot.broker.get_current_price.return_value = Mock(current_price=70000)
+        bot.broker.get_current_price.return_value = 70000.0
 
         # 첫 종목은 실패, 두 번째는 성공
         bot.trading_manager.execute_sell_order = AsyncMock(

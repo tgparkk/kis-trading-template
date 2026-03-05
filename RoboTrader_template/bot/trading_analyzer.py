@@ -52,7 +52,7 @@ class TradingAnalyzer:
             # 일봉 데이터 가져오기 (daily_prices 테이블에서, PostgreSQL)
             daily_data = self.bot.db_manager.price_repo.get_daily_prices(stock_code, days=140)
             if daily_data is None or daily_data.empty:
-                self.logger.debug(f"{stock_code} 일봉 데이터 없음 (daily_prices 테이블)")
+                self.logger.warning(f"{stock_code} 일봉 데이터 없음 (daily_prices 테이블) - 매수 판단 불가")
                 return
 
             if len(daily_data) < 20:

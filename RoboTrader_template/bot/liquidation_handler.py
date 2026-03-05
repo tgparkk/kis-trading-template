@@ -62,20 +62,21 @@ class LiquidationHandler:
                         sell_price = float(combined_data['close'].iloc[-1])
                     else:
                         price_obj = self.bot.broker.get_current_price(stock_code)
-                        if price_obj:
-                            sell_price = float(price_obj.current_price)
+                        if price_obj is not None and price_obj > 0:
+                            sell_price = float(price_obj)
                     sell_price = round_to_tick(sell_price)
 
                     # 가상/실전 모드 분기
                     is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
                     if is_virtual:
                         # 가상매매 - execute_virtual_sell 사용
+                        # 매도 전 포지션 정보 저장 (execute_virtual_sell이 position을 클리어하므로)
+                        _buy_price = float(trading_stock.position.avg_price) if trading_stock.position else 0
                         result = await self.bot.decision_engine.execute_virtual_sell(
                             trading_stock, sell_price, "장마감 일괄청산"
                         )
                         if result:
-                            buy_price = trading_stock.position.avg_price if trading_stock.position else 0
-                            invested = float(buy_price) * int(quantity)
+                            invested = _buy_price * int(quantity)
                             _sell_amount = float(sell_price) * int(quantity) if sell_price else invested
                             _buy_comm = invested * COMMISSION_RATE
                             _sell_comm = _sell_amount * COMMISSION_RATE
@@ -151,16 +152,17 @@ class LiquidationHandler:
                             eod_sell_price = float(combined_data['close'].iloc[-1])
                         else:
                             price_obj = self.bot.broker.get_current_price(stock_code)
-                            if price_obj:
-                                eod_sell_price = float(price_obj.current_price)
+                            if price_obj is not None and price_obj > 0:
+                                eod_sell_price = float(price_obj)
 
+                        # 매도 전 포지션 정보 저장 (execute_virtual_sell이 position을 클리어하므로)
+                        _buy_price = float(trading_stock.position.avg_price) if trading_stock.position else 0
                         result = await self.bot.decision_engine.execute_virtual_sell(
                             trading_stock, eod_sell_price,
                             f"{time_label} 시장가 일괄매도"
                         )
                         if result:
-                            buy_price = trading_stock.position.avg_price if trading_stock.position else 0
-                            invested = float(buy_price) * int(quantity)
+                            invested = _buy_price * int(quantity)
                             _sell_amount = float(eod_sell_price) * int(quantity) if eod_sell_price else invested
                             _buy_comm = invested * COMMISSION_RATE
                             _sell_comm = _sell_amount * COMMISSION_RATE
@@ -259,16 +261,17 @@ class LiquidationHandler:
                         retry_sell_price = float(combined_data['close'].iloc[-1])
                     else:
                         price_obj = self.bot.broker.get_current_price(stock_code)
-                        if price_obj:
-                            retry_sell_price = float(price_obj.current_price)
+                        if price_obj is not None and price_obj > 0:
+                            retry_sell_price = float(price_obj)
 
+                    # 매도 전 포지션 정보 저장 (execute_virtual_sell이 position을 클리어하므로)
+                    _buy_price = float(target.position.avg_price) if target.position else 0
                     result = await self.bot.decision_engine.execute_virtual_sell(
                         target, retry_sell_price,
                         f"EOD 청산 재시도 #{self._eod_retry_count}"
                     )
                     if result:
-                        buy_price = target.position.avg_price if target.position else 0
-                        invested = float(buy_price) * int(quantity)
+                        invested = _buy_price * int(quantity)
                         _sell_amount = float(retry_sell_price) * int(quantity) if retry_sell_price else invested
                         _buy_comm = invested * COMMISSION_RATE
                         _sell_comm = _sell_amount * COMMISSION_RATE

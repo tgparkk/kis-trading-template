@@ -7,10 +7,14 @@ Strategy 시스템과 연동되어 매매 판단을 수행합니다.
 
 손절/익절 체크는 PositionMonitor가 담당 (trading_stock별 설정 사용)
 """
+import time
 from typing import Tuple, Optional, TYPE_CHECKING
 import pandas as pd
 from utils.logger import setup_logger
-from config.constants import DEFAULT_STOP_LOSS_RATE, DEFAULT_TARGET_PROFIT_RATE
+from config.constants import (
+    DEFAULT_STOP_LOSS_RATE, DEFAULT_TARGET_PROFIT_RATE,
+    MARKET_DIRECTION_FILTER_ENABLED, KOSPI_DECLINE_THRESHOLD, KOSDAQ_DECLINE_THRESHOLD
+)
 
 if TYPE_CHECKING:
     from strategies.base import BaseStrategy
@@ -54,6 +58,11 @@ class TradingDecisionEngine:
 
         # FundManager 연결 (나중에 set_fund_manager로 설정)
         self.fund_manager: Optional['FundManager'] = None
+
+        # 시장 방향성 필터 캐시 (60초)
+        self._market_direction_cache: Optional[Tuple[bool, str]] = None
+        self._market_direction_cache_time: float = 0.0
+        self._MARKET_DIRECTION_CACHE_TTL = 60  # 초
 
         self.logger.info("매매 판단 엔진 초기화")
 
@@ -103,6 +112,77 @@ class TradingDecisionEngine:
         return self.DEFAULT_MAX_AMOUNT
 
     # =========================================================================
+    # 시장 방향성 필터 (폭락장 매수 차단)
+    # =========================================================================
+    def check_market_direction(self) -> Tuple[bool, str]:
+        """
+        시장 방향성 확인 - KOSPI/KOSDAQ 급락 시 매수 차단
+
+        Returns:
+            Tuple[is_crashing, reason]:
+                is_crashing=True이면 매수 차단, reason은 차단 사유
+                is_crashing=False이면 매수 허용
+        """
+        if not MARKET_DIRECTION_FILTER_ENABLED:
+            return False, ""
+
+        # 캐시 확인 (60초 이내면 캐시 결과 반환)
+        now = time.monotonic()
+        if (self._market_direction_cache is not None
+                and (now - self._market_direction_cache_time) < self._MARKET_DIRECTION_CACHE_TTL):
+            return self._market_direction_cache
+
+        # API 호출
+        try:
+            from api.kis_market_api import get_index_data
+
+            # KOSPI 지수 조회
+            kospi_data = get_index_data("0001")
+            if kospi_data:
+                try:
+                    kospi_change = float(kospi_data.get('bstp_nmix_prdy_ctrt', '0'))
+                    if kospi_change <= KOSPI_DECLINE_THRESHOLD:
+                        result = (True, f"KOSPI {kospi_change:+.2f}% (임계값: {KOSPI_DECLINE_THRESHOLD}%)")
+                        self._market_direction_cache = result
+                        self._market_direction_cache_time = now
+                        self.logger.info(
+                            f"[시장방향성필터] 매수 차단: {result[1]}"
+                        )
+                        return result
+                except (ValueError, TypeError):
+                    pass
+
+            # KOSDAQ 지수 조회
+            kosdaq_data = get_index_data("1001")
+            if kosdaq_data:
+                try:
+                    kosdaq_change = float(kosdaq_data.get('bstp_nmix_prdy_ctrt', '0'))
+                    if kosdaq_change <= KOSDAQ_DECLINE_THRESHOLD:
+                        result = (True, f"KOSDAQ {kosdaq_change:+.2f}% (임계값: {KOSDAQ_DECLINE_THRESHOLD}%)")
+                        self._market_direction_cache = result
+                        self._market_direction_cache_time = now
+                        self.logger.info(
+                            f"[시장방향성필터] 매수 차단: {result[1]}"
+                        )
+                        return result
+                except (ValueError, TypeError):
+                    pass
+
+            # 시장 정상 → 매수 허용
+            result = (False, "")
+            self._market_direction_cache = result
+            self._market_direction_cache_time = now
+            return result
+
+        except Exception as e:
+            # API 실패 시 fail-safe: 매수 허용
+            self.logger.warning(f"[시장방향성필터] API 조회 실패 (매수 허용): {e}")
+            result = (False, "")
+            self._market_direction_cache = result
+            self._market_direction_cache_time = now
+            return result
+
+    # =========================================================================
     # 매수 판단
     # =========================================================================
     async def analyze_buy_decision(self, trading_stock, daily_data) -> Tuple[bool, str, dict]:
@@ -117,6 +197,11 @@ class TradingDecisionEngine:
         try:
             code = trading_stock.stock_code
             empty = {'buy_price': 0, 'quantity': 0, 'max_buy_amount': 0}
+
+            # 시장 방향성 필터: 폭락장 매수 차단
+            is_crashing, crash_reason = self.check_market_direction()
+            if is_crashing:
+                return False, f"{code} 시장급락 매수차단 ({crash_reason})", empty
 
             if daily_data is None or len(daily_data) < 20:
                 return False, f"{code} 데이터부족", empty
@@ -297,7 +382,9 @@ class TradingDecisionEngine:
                 qty = self.virtual_trading.get_max_quantity(buy_price)
             if qty <= 0: return
 
-            strategy_name = self.strategy.name if self.strategy else "사용자전략"
+            strategy_name = self.strategy.name if self.strategy else "unknown"
+            # trading_stock에 순수 전략 이름 기록 (DB strategy 컬럼용)
+            trading_stock.strategy_name = strategy_name
             rid = self.virtual_trading.execute_virtual_buy(
                 stock_code=trading_stock.stock_code, stock_name=trading_stock.stock_name,
                 price=buy_price, quantity=qty, strategy=strategy_name, reason=buy_reason,
@@ -436,7 +523,10 @@ class TradingDecisionEngine:
                 rid = int(rid)
 
             if rid:
-                strategy_name = self.strategy.name if self.strategy else "사용자전략"
+                # 전략 이름: trading_stock에 이미 기록된 값 우선, 없으면 현재 전략
+                strategy_name = trading_stock.strategy_name or (
+                    self.strategy.name if self.strategy else "unknown"
+                )
                 ok = self.virtual_trading.execute_virtual_sell(
                     stock_code=code, stock_name=trading_stock.stock_name,
                     price=sell_price, quantity=qty, strategy=strategy_name,
