@@ -416,7 +416,11 @@ class OrderExecutorMixin:
             if not price_data:
                 return
 
-            current_price = price_data.current_price
+            # KISBroker는 float을 반환, KISAPIManager는 StockPrice 객체 반환
+            if isinstance(price_data, (int, float)):
+                current_price = float(price_data)
+            else:
+                current_price = price_data.current_price
 
             # 정정 로직
             should_adjust = False

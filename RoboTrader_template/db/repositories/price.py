@@ -245,23 +245,28 @@ class PriceRepository(BaseRepository):
                 rows_to_insert = []
                 for _, row in df_daily.iterrows():
                     # date 컬럼이 있으면 사용, 없으면 time 컬럼 사용
-                    date_val = row.get('date', row.get('time', None))
+                    date_val = row.get('date', row.get('time', row.get('stck_bsop_date', None)))
                     if date_val is None:
                         continue
 
                     if hasattr(date_val, 'strftime'):
                         date_str = date_val.strftime('%Y-%m-%d')
                     else:
-                        date_str = str(date_val)[:10]
+                        date_str = str(date_val).strip()
+                        # KIS API 'YYYYMMDD' 형식 → 'YYYY-MM-DD' 변환
+                        if len(date_str) == 8 and date_str.isdigit():
+                            date_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                        else:
+                            date_str = date_str[:10]
 
                     rows_to_insert.append((
                         stock_code,
                         date_str,
-                        row.get('open', row.get('open_price', 0)),
-                        row.get('high', row.get('high_price', 0)),
-                        row.get('low', row.get('low_price', 0)),
-                        row.get('close', row.get('close_price', 0)),
-                        int(row.get('volume', 0))
+                        float(row.get('open', row.get('open_price', row.get('stck_oprc', 0)))),
+                        float(row.get('high', row.get('high_price', row.get('stck_hgpr', 0)))),
+                        float(row.get('low', row.get('low_price', row.get('stck_lwpr', 0)))),
+                        float(row.get('close', row.get('close_price', row.get('stck_clpr', 0)))),
+                        int(row.get('volume', row.get('acml_vol', 0)))
                     ))
 
                 cursor.executemany('''

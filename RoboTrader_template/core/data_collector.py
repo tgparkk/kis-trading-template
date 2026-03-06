@@ -127,25 +127,33 @@ class RealTimeDataCollector:
             )
             
             if price_data:
-                # OHLCV 데이터 생성 (현재가 기준으로 임시 생성)
+                # KISBroker는 float을 반환, KISAPIManager는 StockPrice 객체 반환
+                if isinstance(price_data, (int, float)):
+                    current_price = float(price_data)
+                    volume = 0
+                else:
+                    current_price = price_data.current_price
+                    volume = getattr(price_data, 'volume', 0)
+
                 ohlcv = OHLCVData(
                     timestamp=now_kst(),
                     stock_code=stock_code,
-                    open_price=price_data.current_price,  # 실제로는 1분봉 데이터 필요
-                    high_price=price_data.current_price,
-                    low_price=price_data.current_price,
-                    close_price=price_data.current_price,
-                    volume=price_data.volume
+                    open_price=current_price,
+                    high_price=current_price,
+                    low_price=current_price,
+                    close_price=current_price,
+                    volume=volume
                 )
                 
                 # 종목 데이터 업데이트
                 stock = self.stocks[stock_code]
                 stock.add_ohlcv(ohlcv)
                 
-                #self.logger.debug(f"데이터 수집 완료: {stock_code} - 가격: {price_data.current_price:,.0f}원")
+                #self.logger.debug(f"데이터 수집 완료: {stock_code} - 가격: {current_price:,.0f}원")
             
         except Exception as e:
-            self.logger.error(f"종목 데이터 수집 실패 {stock_code}: {e}")
+            # 상위 _collect_all_stocks_data에서 연속 실패 카운트 관리하므로 re-raise
+            raise
     
     def _get_current_price_sync(self, stock_code: str) -> Any:
         """현재가 조회 (동기 버전)"""
