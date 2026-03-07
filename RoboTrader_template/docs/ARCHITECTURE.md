@@ -53,7 +53,8 @@ DayTradingBot (main.py, ~500줄)
 ├── LiquidationHandler (bot/)               — EOD 일괄청산
 ├── PositionSyncManager (bot/)              — 포지션 동기화
 ├── StateRestorer (bot/)                    — 상태 복원
-└── BaseStrategy (strategies/)              — 플러그인 전략
+├── TradingContext (core/)                  — 전략용 안전 API 래퍼
+└── BaseStrategy (strategies/)              — 플러그인 전략 (generate_signal만 필수)
 ```
 
 ### framework/ — 추상화 레이어
@@ -95,7 +96,8 @@ api/
 ```
 core/
 ├── models.py                    — 공통 데이터 모델 (StockState, Stock, OHLCVData 등)
-├── trading_decision_engine.py   — 매매 판단 엔진 (Strategy 연동)
+├── trading_context.py           — TradingContext: 전략용 안전 API (buy/sell에 CB/VI/시장방향 가드 내장)
+├── trading_decision_engine.py   — 매매 판단 엔진 (Strategy 연동, 매도 후 fund_manager 일원화 처리)
 ├── order_manager.py             — 주문 관리
 ├── fund_manager.py              — 자금 관리 (가상/실전)
 ├── data_collector.py            — 실시간 데이터 수집
@@ -167,4 +169,6 @@ DB: **PostgreSQL 16 + TimescaleDB 2.24.0** — Windows 로컬 직접 설치 (Por
 2. **Facade 패턴**: `DatabaseManager`가 하위 Repository들을 통합
 3. **Task Supervisor**: 메인 루프의 태스크들은 지수 백오프 재시도로 자동 복구
 4. **가상매매 모드**: `VirtualTradingManager`로 실제 주문 없이 시뮬레이션
-5. **플러그인 전략**: `BaseStrategy` 상속 + YAML 설정으로 전략 교체
+5. **플러그인 전략**: `BaseStrategy` 상속 + YAML 설정으로 전략 교체. `generate_signal()` 하나만 필수
+6. **매도 자금관리 단일화**: `execute_virtual_sell()` 내부에서 fund_manager 업데이트 일원화
+7. **전략 루프 위임**: `on_tick(ctx: TradingContext)`로 전략이 매매 루프 소유. 프레임워크는 안전장치만 제공

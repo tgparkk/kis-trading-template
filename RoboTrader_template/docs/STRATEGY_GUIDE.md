@@ -57,13 +57,15 @@ target_stocks: []
 
 ### Step 3: strategy.py 작성
 
+**최소 구현** — `generate_signal()` 하나만 구현하면 동작합니다:
+
 ```python
 """
 My Strategy — 간단한 설명
 """
-from typing import Any, Dict, Optional
+from typing import Optional
 import pandas as pd
-from ..base import BaseStrategy, OrderInfo, Signal, SignalType
+from ..base import BaseStrategy, Signal, SignalType
 
 
 class MyStrategy(BaseStrategy):
@@ -74,15 +76,58 @@ class MyStrategy(BaseStrategy):
     description = "전략 한줄 설명"
     author = "작성자"
 
+    def generate_signal(
+        self,
+        stock_code: str,
+        data: pd.DataFrame,
+        timeframe: str = 'daily',
+    ) -> Optional[Signal]:
+        if data is None or len(data) < 12:
+            return None
+
+        close = data["close"]
+        ma = close.rolling(10).mean()
+
+        if close.iloc[-1] > ma.iloc[-1] * 1.03:
+            return Signal(
+                signal_type=SignalType.BUY,
+                stock_code=stock_code,
+                confidence=75,
+                target_price=float(close.iloc[-1]) * 1.10,
+                stop_loss=float(close.iloc[-1]) * 0.95,
+                reasons=["MA 돌파"],
+            )
+
+        return None
+```
+
+> `on_init`, `on_market_open`, `on_order_filled`, `on_market_close`는 기본 구현이 제공되므로 필요할 때만 오버라이드하세요.
+
+**스윙 전략 예시** — `holding_period`만 선언하면 EOD 청산을 자동으로 건너뜁니다:
+
+```python
+class MySwingStrategy(BaseStrategy):
+    name = "MySwingStrategy"
+    holding_period = "swing"       # "intraday" | "swing" | "position"
+
+    def generate_signal(self, stock_code, data, timeframe='daily'):
+        ...
+```
+
+#### 고급 예제: 전체 라이프사이클 활용
+
+```python
+class MyAdvancedStrategy(BaseStrategy):
+    name = "MyAdvancedStrategy"
+    version = "1.0.0"
+
     def on_init(self, broker, data_provider, executor) -> bool:
         self._broker = broker
         self._data_provider = data_provider
         self._executor = executor
 
-        # config.yaml에서 파라미터 로드
         params = self.config.get("parameters", {})
         self._ma_period = params.get("ma_period", 10)
-        self._threshold = params.get("threshold", 0.03)
 
         risk = self.config.get("risk_management", {})
         self._stop_loss_pct = risk.get("stop_loss_pct", 0.05)
@@ -90,72 +135,35 @@ class MyStrategy(BaseStrategy):
 
         self.positions = {}
         self.daily_trades = 0
-
         self._is_initialized = True
         return True
 
     def on_market_open(self) -> None:
         self.daily_trades = 0
 
-    def generate_signal(
-        self,
-        stock_code: str,
-        data: pd.DataFrame,
-        timeframe: str = 'daily',
-    ) -> Optional[Signal]:
+    def generate_signal(self, stock_code, data, timeframe='daily'):
         if data is None or len(data) < self._ma_period + 2:
             return None
-
-        close = data["close"]
-        current_price = float(close.iloc[-1])
-
-        # 보유 종목이면 매도 판단
-        if stock_code in self.positions:
-            entry = self.positions[stock_code]["entry_price"]
-            pnl = (current_price - entry) / entry
-
-            if pnl >= self._take_profit_pct:
-                return Signal(
-                    signal_type=SignalType.SELL,
-                    stock_code=stock_code,
-                    confidence=80,
-                    reasons=[f"익절 ({pnl*100:+.1f}%)"],
-                )
-            if pnl <= -self._stop_loss_pct:
-                return Signal(
-                    signal_type=SignalType.SELL,
-                    stock_code=stock_code,
-                    confidence=80,
-                    reasons=[f"손절 ({pnl*100:+.1f}%)"],
-                )
-            return None
-
-        # 매수 조건 (여기에 전략 로직 구현)
-        ma = close.rolling(self._ma_period).mean()
-        if close.iloc[-1] > ma.iloc[-1] * (1 + self._threshold):
-            return Signal(
-                signal_type=SignalType.BUY,
-                stock_code=stock_code,
-                confidence=75,
-                target_price=current_price * (1 + self._take_profit_pct),
-                stop_loss=current_price * (1 - self._stop_loss_pct),
-                reasons=["MA 돌파"],
-            )
-
+        # ... 전략 로직 ...
         return None
 
-    def on_order_filled(self, order: OrderInfo) -> None:
+    def on_order_filled(self, order) -> None:
         self.daily_trades += 1
         if order.is_buy:
-            self.positions[order.stock_code] = {
-                "entry_price": order.price,
-                "entry_time": order.filled_at,
-            }
+            self.positions[order.stock_code] = {"entry_price": order.price}
         elif order.stock_code in self.positions:
             del self.positions[order.stock_code]
 
     def on_market_close(self) -> None:
         self.logger.info(f"장 마감 — 거래 {self.daily_trades}건")
+
+    def validate_config(self) -> bool:
+        """설정 유효성 커스텀 검증. False 반환 시 시스템 종료."""
+        risk = self.config.get("risk_management", {})
+        if risk.get("stop_loss_pct", 0) <= 0:
+            self.logger.error("stop_loss_pct는 0보다 커야 합니다")
+            return False
+        return True
 ```
 
 ### Step 4: \_\_init\_\_.py 작성
@@ -195,20 +203,48 @@ strategy:
 
 | 메서드 | 설명 |
 |--------|------|
-| `on_init(broker, data_provider, executor) -> bool` | 초기화. 컴포넌트 저장, 파라미터 로드 |
-| `on_market_open() -> None` | 장 시작 시 호출. 일일 카운터 리셋 |
 | `generate_signal(stock_code, data, timeframe) -> Optional[Signal]` | 매매 신호 생성. 핵심 로직 |
-| `on_order_filled(order: OrderInfo) -> None` | 체결 시 호출. 포지션 업데이트 |
-| `on_market_close() -> None` | 장 마감 시 호출. 정리 작업 |
 
-### 기본 제공 메서드
+### 기본 제공 메서드 (오버라이드 가능)
 
 | 메서드 | 설명 |
 |--------|------|
+| `on_init(broker, data_provider, executor) -> bool` | 초기화. 기본 구현이 broker/data_provider/executor를 저장 |
+| `on_market_open() -> None` | 장 시작 시 호출. 기본: no-op |
+| `on_order_filled(order: OrderInfo) -> None` | 체결 시 호출. 기본: no-op |
+| `on_market_close() -> None` | 장 마감 시 호출. 기본: no-op |
+| `on_tick(ctx: TradingContext) -> None` | 매 사이클마다 호출. 기본 구현이 generate_signal 기반으로 매수/매도 판단 수행 |
+| `should_liquidate_eod(stock_code) -> bool` | EOD 청산 여부. 기본: `holding_period == "intraday"`이면 True |
+| `validate_config() -> bool` | 설정 유효성 검증. False 반환 시 `StrategyConfigError`로 시스템 종료 |
 | `get_config() -> dict` | 전략 설정 반환 (copy) |
-| `validate_config() -> bool` | 설정 유효성 검증 (오버라이드 가능) |
 | `get_param(key, default)` | 설정값 조회 (dot notation 지원) |
 | `get_target_stocks() -> List[str]` | 대상 종목 목록 |
+
+### 클래스 속성
+
+| 속성 | 기본값 | 설명 |
+|------|--------|------|
+| `name` | `"BaseStrategy"` | 전략 이름 |
+| `version` | `"1.0.0"` | 전략 버전 |
+| `holding_period` | `"intraday"` | 보유 기간. `"intraday"` \| `"swing"` \| `"position"`. `should_liquidate_eod()`로 EOD 청산 제어 |
+
+### TradingContext API (on_tick에서 사용)
+
+`on_tick(ctx)`를 오버라이드할 때 `ctx` 객체가 제공하는 메서드:
+
+| 메서드 | 설명 |
+|--------|------|
+| `ctx.get_selected_stocks()` | SELECTED 상태 종목 목록 |
+| `ctx.get_positions()` | 보유(POSITIONED) 종목 목록 |
+| `ctx.get_daily_data(stock_code, days=60)` | 일봉 데이터 조회 (async) |
+| `ctx.get_intraday_data(stock_code)` | 분봉 데이터 조회 (async) |
+| `ctx.get_current_price(stock_code)` | 현재가 조회 (async) |
+| `ctx.buy(stock_code, signal=signal)` | 매수 주문 (서킷브레이커/VI/시장방향 가드 내장, async) |
+| `ctx.sell(stock_code, reason="...")` | 매도 주문 (중복 방지 내장, async) |
+| `ctx.get_available_funds()` | 가용 자금 |
+| `ctx.get_total_funds()` | 총 자금 |
+| `ctx.is_market_open()` | 장 오픈 여부 |
+| `ctx.get_market_phase()` | 시장 단계 (pre_market, regular 등) |
 
 ### Signal 객체
 
@@ -217,8 +253,8 @@ Signal(
     signal_type=SignalType.BUY,   # BUY, SELL, STRONG_BUY, STRONG_SELL, HOLD
     stock_code="005930",
     confidence=80.0,              # 0~100
-    target_price=75000,           # 익절 목표가 (optional)
-    stop_loss=68000,              # 손절가 (optional)
+    target_price=75000,           # 익절 목표가 (TradingDecisionEngine에서 활용)
+    stop_loss=68000,              # 손절가 (TradingDecisionEngine에서 활용)
     reasons=["사유1", "사유2"],    # 매매 사유
     metadata={},                  # 추가 데이터
 )
@@ -333,7 +369,7 @@ strategy:
 
 새 전략을 배포하기 전:
 
-- [ ] `BaseStrategy`의 5개 추상 메서드 모두 구현
+- [ ] `generate_signal()` 구현 (유일한 필수 추상 메서드)
 - [ ] `config.yaml` 작성 (strategy.name 필수)
 - [ ] `generate_signal()`이 None 또는 Signal 반환
 - [ ] 데이터 부족 시 안전하게 None 반환

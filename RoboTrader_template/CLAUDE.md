@@ -45,8 +45,10 @@ kis-trading-template/
 ### 데이터 흐름
 
 ```
-전략(generate_signal) → Signal 객체 반환
-  → TradingDecisionEngine이 Signal 해석
+[기본 경로] strategy.on_tick(ctx: TradingContext)
+  → generate_signal() 호출 → Signal 반환
+  → ctx.buy() / ctx.sell() (서킷브레이커·VI·시장방향 가드 내장)
+  → TradingDecisionEngine이 Signal 해석 (target_price/stop_loss 활용)
   → OrderManager가 주문 실행 (KIS API)
   → 체결 모니터링 → on_order_filled 콜백
   → DB 저장 + 텔레그램 알림
@@ -62,11 +64,10 @@ kis-trading-template/
 - `__init__()`: 모든 모듈 초기화 (의존 순서 중요)
 - `initialize()`: 시스템 + 전략 초기화
 - `run_daily_cycle()`: 3개 비동기 태스크를 `asyncio.gather`로 병렬 실행
-  - **메인트레이딩루프** (critical=True): 3초 간격으로 5단계 순차 실행
+  - **메인트레이딩루프** (critical=True): 3초 간격으로 순차 실행
     1. 데이터 수집 (collect_once)
     2. 미체결 주문 확인 (check_pending_orders_once)
-    3. 보유종목 체크 (check_positions_once)
-    4. 매수 판단 (매 3회 중 1회, ≈9초 간격)
+    3+4. 전략 있으면 `strategy.on_tick(ctx)` (매 9초, 30초 타임아웃), 없으면 기존 방식 fallback
     5. EOD 일괄청산 체크
   - **시스템모니터링** (critical=False)
   - **텔레그램** (critical=False)
@@ -88,7 +89,7 @@ kis-trading-template/
 
 | 파일 | 핵심 클래스 | 역할 |
 |------|------------|------|
-| `base.py` | `BaseStrategy`(ABC), `Signal`, `SignalType`, `OrderInfo` | 전략 인터페이스 정의. 라이프사이클: `on_init` → `on_market_open` → `generate_signal` → `on_order_filled` → `on_market_close` |
+| `base.py` | `BaseStrategy`(ABC), `Signal`, `SignalType`, `OrderInfo` | 전략 인터페이스 정의. 필수 추상 메서드: `generate_signal()`만. `on_init`/`on_market_open`/`on_order_filled`/`on_market_close`는 기본 구현 제공. `on_tick(ctx: TradingContext)`로 매매 루프 소유 가능. `holding_period` 속성으로 EOD 청산 제어 |
 | `config.py` | `StrategyConfig`, `StrategyLoader` | YAML 설정 로드, 전략 클래스 동적 import. `strategies/{name}/strategy.py`에서 `BaseStrategy` 서브클래스를 자동 탐색 |
 | `sample/` | `SampleStrategy` | MA5/20 크로스 + RSI 예제 |
 | `momentum/` | `MomentumStrategy` | 연속 상승 모멘텀 |
@@ -122,7 +123,8 @@ kis-trading-template/
 | `trading/` | 매매 서브모듈 (order_execution, order_completion_handler, position_monitor, stock_state_manager) |
 | `intraday/` | 장중 데이터 서브모듈 (data_collector, price_service, realtime_updater, data_quality, models) |
 | `order_manager.py` | Facade — 실제 구현은 `orders/` 서브모듈 |
-| `trading_decision_engine.py` | 매매 판단 엔진. Strategy가 있으면 `generate_signal()` 호출, 없으면 기본 손절/익절만 동작 |
+| `trading_context.py` | `TradingContext` — 전략용 안전 API 래퍼. `on_tick(ctx)`에서 사용. buy()/sell() 내부에 서킷브레이커/VI/시장방향 가드 내장 |
+| `trading_decision_engine.py` | 매매 판단 엔진. Strategy가 있으면 `generate_signal()` 호출, Signal의 target_price/stop_loss 활용. 없으면 기본 손절/익절만 동작 |
 | `fund_manager.py` | 자금 관리 (가상/실전) |
 | `data_collector.py` | 실시간 데이터 수집 |
 | `models.py` | `TradingConfig`, `StockState` 등 데이터 모델 |
@@ -189,7 +191,7 @@ strategies/my_strategy/
 
 ### 3. 최소 구현
 
-`BaseStrategy`의 4개 추상 메서드를 구현:
+`generate_signal()` 하나만 구현하면 됩니다 (`on_init` 등은 기본 구현 제공):
 
 ```python
 from strategies.base import BaseStrategy, Signal, SignalType
@@ -198,18 +200,15 @@ class MyStrategy(BaseStrategy):
     name = "MyStrategy"
     version = "1.0.0"
 
-    def on_init(self, broker, data_provider, executor) -> bool:
-        self._broker = broker
-        self._data_provider = data_provider
-        self._executor = executor
-        self._is_initialized = True
-        return True
-
-    def on_market_open(self): pass
-    def generate_signal(self, stock_code, data) -> Optional[Signal]: ...
-    def on_order_filled(self, order): pass
-    def on_market_close(self): pass
+    def generate_signal(self, stock_code, data, timeframe='daily'):
+        # 매매 로직 구현
+        ...
+        return None  # 또는 Signal 반환
 ```
+
+> `on_init`, `on_market_open`, `on_order_filled`, `on_market_close`는 필요 시 오버라이드.
+> `on_tick(ctx: TradingContext)` 오버라이드로 매매 루프 직접 제어 가능 (고급).
+> `holding_period = "swing"` 선언 시 EOD 청산 건너뜀.
 
 ### 4. Signal 반환
 
@@ -250,8 +249,8 @@ return Signal(
        ├── 메인트레이딩루프 (critical=True, 3초 간격)
        │   ├── [1/5] 데이터 수집
        │   ├── [2/5] 미체결 주문 확인
-       │   ├── [3/5] 보유종목 체크 (현재가 업데이트 + 매도 판단)
-       │   ├── [4/5] 매수 판단 (매 9초)
+       │   ├── [3+4/5] 전략 있으면 on_tick(ctx) (매 9초, 30초 타임아웃)
+       │   │          없으면 기존 check_positions + _check_buy_signals fallback
        │   └── [5/5] EOD 일괄청산 체크
        ├── 시스템모니터링 (critical=False)
        └── 텔레그램 (critical=False)
