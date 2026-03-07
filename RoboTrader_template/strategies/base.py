@@ -280,6 +280,7 @@ class BaseStrategy(ABC):
     version: str = "1.0.0"
     description: str = ""
     author: str = ""
+    holding_period: str = "intraday"
 
     def __init__(self, config: Dict[str, Any] = None):
         """
@@ -312,7 +313,6 @@ class BaseStrategy(ABC):
     # Abstract Methods (MUST implement)
     # ========================================================================
 
-    @abstractmethod
     def on_init(self, broker, data_provider, executor) -> bool:
         """
         Initialize strategy with framework components.
@@ -340,9 +340,12 @@ class BaseStrategy(ABC):
                 self._is_initialized = True
                 return True
         """
-        pass
+        self._broker = broker
+        self._data_provider = data_provider
+        self._executor = executor
+        self._is_initialized = True
+        return True
 
-    @abstractmethod
     def on_market_open(self) -> None:
         """
         Called when market opens (09:00 KST).
@@ -408,7 +411,6 @@ class BaseStrategy(ABC):
         """
         pass
 
-    @abstractmethod
     def on_order_filled(self, order: OrderInfo) -> None:
         """
         Called when an order is filled.
@@ -440,7 +442,6 @@ class BaseStrategy(ABC):
         """
         pass
 
-    @abstractmethod
     def on_market_close(self) -> None:
         """
         Called when market closes (15:30 KST).
@@ -458,6 +459,62 @@ class BaseStrategy(ABC):
                 self._cleanup_temp_data()
         """
         pass
+
+    # ========================================================================
+    # on_tick (Phase 1: Strategy-owns-the-loop)
+    # ========================================================================
+
+    async def on_tick(self, ctx: 'TradingContext'):
+        """
+        Framework calls this every cycle. Default: generate_signal-based behavior.
+
+        Override this method in your strategy to implement custom loop logic.
+        The default implementation replicates the existing generate_signal() flow:
+        - Iterates SELECTED stocks for buy signals (daily data)
+        - Iterates POSITIONED stocks for sell signals (intraday data)
+
+        Args:
+            ctx: TradingContext providing safe access to market data,
+                 orders, funds, and other framework components.
+        """
+        # Buy decisions
+        for stock in ctx.get_selected_stocks():
+            data = await ctx.get_daily_data(stock.stock_code)
+            if data is None or len(data) < 20:
+                continue
+            signal = self.generate_signal(stock.stock_code, data, timeframe='daily')
+            if signal and signal.signal_type in (SignalType.BUY, SignalType.STRONG_BUY):
+                await ctx.buy(stock.stock_code, signal=signal)
+
+        # Sell decisions
+        for stock in ctx.get_positions():
+            data = await ctx.get_intraday_data(stock.stock_code)
+            if data is not None and len(data) > 0:
+                signal = self.generate_signal(stock.stock_code, data, timeframe='intraday')
+                if signal and signal.signal_type in (SignalType.SELL, SignalType.STRONG_SELL):
+                    await ctx.sell(
+                        stock.stock_code,
+                        reason=', '.join(signal.reasons) if signal.reasons else self.name
+                    )
+
+    # ========================================================================
+    # EOD Liquidation
+    # ========================================================================
+
+    def should_liquidate_eod(self, stock_code: str) -> bool:
+        """
+        Determine whether a position should be liquidated at end of day.
+
+        Override this to implement custom EOD liquidation logic.
+        Default: liquidate if holding_period is "intraday".
+
+        Args:
+            stock_code: Stock ticker code (6 digits)
+
+        Returns:
+            bool: True if the position should be liquidated at EOD.
+        """
+        return self.holding_period == "intraday"
 
     # ========================================================================
     # Configuration Methods

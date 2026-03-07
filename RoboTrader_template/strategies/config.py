@@ -220,19 +220,25 @@ class StrategyConfig:
                     f"got {type(value).__name__}"
                 )
 
-        # Validate risk management ratios if present
+        # Validate risk management values if present
         risk_config = self.get('risk_management', {})
-        if risk_config:
-            for ratio_key in ['take_profit_ratio', 'stop_loss_ratio', 'max_position_ratio']:
-                ratio_value = risk_config.get(ratio_key)
-                if ratio_value is not None:
-                    if not isinstance(ratio_value, (int, float)):
+        if risk_config and isinstance(risk_config, dict):
+            for key, value in risk_config.items():
+                if not isinstance(value, (int, float)):
+                    continue
+
+                # _pct, _ratio, _size 접미사 키: 0~1 범위 검증
+                if key.endswith(('_pct', '_ratio', '_size')):
+                    if not (0 <= value <= 1):
                         raise StrategyConfigError(
-                            f"'{ratio_key}' must be a number, got {type(ratio_value).__name__}"
+                            f"risk_management.{key} must be between 0 and 1, got {value}"
                         )
-                    if not (0 < ratio_value <= 1):
+
+                # max_ 접두사 정수 키: 음수 검증
+                if key.startswith('max_') and isinstance(value, int):
+                    if value < 0:
                         raise StrategyConfigError(
-                            f"'{ratio_key}' must be between 0 and 1 (exclusive), got {ratio_value}"
+                            f"risk_management.{key} must not be negative, got {value}"
                         )
 
         return True
@@ -389,11 +395,22 @@ class StrategyLoader:
         config_loader = StrategyConfig(strategy_name)
         config = config_loader.load()
 
+        # Validate configuration ranges
+        config_loader.validate()
+
         # Load strategy class
         strategy_class = StrategyLoader._load_strategy_class(strategy_name)
 
-        # Instantiate and return
-        return strategy_class(config)
+        # Instantiate strategy
+        instance = strategy_class(config)
+
+        # Strategy-level validation (BaseStrategy.validate_config)
+        if not instance.validate_config():
+            raise StrategyConfigError(
+                f"Strategy '{strategy_name}' validate_config() returned False"
+            )
+
+        return instance
 
     @staticmethod
     def _load_strategy_class(strategy_name: str) -> Type['BaseStrategy']:

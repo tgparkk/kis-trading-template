@@ -59,6 +59,9 @@ class TradingDecisionEngine:
         # FundManager 연결 (나중에 set_fund_manager로 설정)
         self.fund_manager: Optional['FundManager'] = None
 
+        # 마지막 매수 신호 캐시 (execute_virtual_buy에서 target/stop 활용)
+        self._last_buy_signal = None
+
         # 시장 방향성 필터 캐시 (60초)
         self._market_direction_cache: Optional[Tuple[bool, str]] = None
         self._market_direction_cache_time: float = 0.0
@@ -217,12 +220,14 @@ class TradingDecisionEngine:
 
                     if signal and signal.signal_type in [SignalType.BUY, SignalType.STRONG_BUY]:
                         should_buy = True
+                        self._last_buy_signal = signal
                         buy_reason = ", ".join(signal.reasons) if signal.reasons else f"{self.strategy.name} 매수신호"
                         self.logger.info(f"{code} 전략 매수신호: {buy_reason} (신뢰도: {signal.confidence}%)")
                 except Exception as e:
                     self.logger.warning(f"{code} 전략 신호 생성 오류: {e}")
 
             if not should_buy:
+                self._last_buy_signal = None
                 return False, f"{code} 조건미충족", empty
 
             # 현재가 조회 (일봉 종가 대신 장중 실시간 가격 사용)
@@ -369,11 +374,17 @@ class TradingDecisionEngine:
                 self.logger.warning(f"가상매수 취소: {code} 매수 가격 조회 실패")
                 return
 
-            # 익절/손절률: 전달값 우선, 없으면 기본값 사용
+            # 익절/손절률: 전달값 우선, Signal 값 차순위, 없으면 기본값 사용
+            if target_profit_rate is None and self._last_buy_signal and self._last_buy_signal.target_price and buy_price > 0:
+                target_profit_rate = (self._last_buy_signal.target_price - buy_price) / buy_price
+            if stop_loss_rate is None and self._last_buy_signal and self._last_buy_signal.stop_loss and buy_price > 0:
+                stop_loss_rate = (buy_price - self._last_buy_signal.stop_loss) / buy_price
             if target_profit_rate is None:
                 target_profit_rate = self.DEFAULT_TAKE_PROFIT
             if stop_loss_rate is None:
                 stop_loss_rate = self.DEFAULT_STOP_LOSS
+            # 사용 후 캐시 클리어
+            self._last_buy_signal = None
 
             # 수량 결정: 전달값 우선, 없으면 VirtualTradingManager 재계산
             if quantity is not None and quantity > 0:

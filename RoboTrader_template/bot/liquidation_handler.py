@@ -53,6 +53,13 @@ class LiquidationHandler:
                     if not trading_stock.position or trading_stock.position.quantity <= 0:
                         continue
                     stock_code = trading_stock.stock_code
+
+                    # 전략이 EOD 청산을 거부하면 스킵
+                    strategy = getattr(self.bot.decision_engine, 'strategy', None)
+                    if strategy and not strategy.should_liquidate_eod(stock_code):
+                        self.logger.info(f"장마감 청산 스킵 (전략 거부): {stock_code}")
+                        continue
+
                     quantity = int(trading_stock.position.quantity)
 
                     # 가격 산정: 가능한 경우 최신 분봉 종가, 없으면 현재가 조회
@@ -138,6 +145,13 @@ class LiquidationHandler:
                         continue
 
                     stock_code = trading_stock.stock_code
+
+                    # 전략이 EOD 청산을 거부하면 스킵
+                    strategy = getattr(self.bot.decision_engine, 'strategy', None)
+                    if strategy and not strategy.should_liquidate_eod(stock_code):
+                        self.logger.info(f"{time_label} 청산 스킵 (전략 거부): {stock_code}")
+                        continue
+
                     stock_name = trading_stock.stock_name
                     quantity = int(trading_stock.position.quantity)
                     current_price = 0.0  # 시장가
