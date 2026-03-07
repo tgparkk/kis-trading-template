@@ -5,7 +5,7 @@
 from typing import TYPE_CHECKING, Optional
 
 from core.models import StockState
-from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
+
 from utils.logger import setup_logger
 from utils.rate_limited_logger import RateLimitedLogger
 
@@ -210,47 +210,14 @@ class TradingAnalyzer:
                             except Exception:
                                 pass
 
-                        # execute_virtual_sell 호출 전에 포지션 정보 저장
-                        # (execute_virtual_sell 내부에서 clear_position()이 호출되어 position이 None이 될 수 있음)
-                        _avg_price = float(trading_stock.position.avg_price) if trading_stock.position else 0
-                        _quantity = int(trading_stock.position.quantity) if trading_stock.position else 0
-
                         # move_to_sell_candidate는 가상매도에서는 직접 호출
                         self.bot.trading_manager.move_to_sell_candidate(stock_code, sell_reason)
                         # 확정된 매도가를 execute_virtual_sell에 전달
                         sell_ok = await self.bot.decision_engine.execute_virtual_sell(
                             trading_stock, sell_price, sell_reason
                         )
-                        # 투자 자금 회수 (매수 원가 기준) + 손익 별도 반영
-                        # 저장된 포지션 정보를 사용 (clear_position 이후에도 안전)
-                        if sell_ok and _avg_price > 0 and _quantity > 0:
-                            _avg_price = float(_avg_price)
-                            _quantity = int(_quantity)
-                            invested = _avg_price * _quantity
-
-                            # 매수 원가 기준으로 invested_funds 회수
-                            self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
-
-                            # 손익 반영 (수수료/세금 포함)
-                            effective_sell_price = float(sell_price) if sell_price is not None else _avg_price
-                            sell_amount = effective_sell_price * _quantity
-                            buy_cost = _avg_price * _quantity
-                            buy_commission = buy_cost * COMMISSION_RATE
-                            sell_commission = sell_amount * COMMISSION_RATE
-                            sell_tax = sell_amount * SECURITIES_TAX_RATE
-                            pnl = sell_amount - buy_cost - buy_commission - sell_commission - sell_tax
-                            if pnl != 0:
-                                self.bot.fund_manager.adjust_pnl(pnl)
-                                self.logger.debug(
-                                    f"{stock_code} 가상매도 손익 반영: {pnl:+,.0f}원 "
-                                    f"(매수가={_avg_price:,.0f}, 매도가={effective_sell_price:,.0f}, {_quantity}주)"
-                                )
-
-                            # FundManager에서 보유 종목 제거
-                            self.bot.fund_manager.remove_position(stock_code)
-                            # 매도 후 재매수 쿨다운 설정
-                            self.bot.fund_manager.set_sell_cooldown(stock_code, sell_reason)
-                        elif not sell_ok:
+                        # fund_manager 업데이트는 execute_virtual_sell() 내부에서 일원화 처리
+                        if not sell_ok:
                             # 매도 실패 시 POSITIONED로 복원
                             self.bot.trading_manager._change_stock_state(
                                 stock_code, StockState.POSITIONED, "가상 매도 실패 복원"

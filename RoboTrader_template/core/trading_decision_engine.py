@@ -13,7 +13,8 @@ import pandas as pd
 from utils.logger import setup_logger
 from config.constants import (
     DEFAULT_STOP_LOSS_RATE, DEFAULT_TARGET_PROFIT_RATE,
-    MARKET_DIRECTION_FILTER_ENABLED, KOSPI_DECLINE_THRESHOLD, KOSDAQ_DECLINE_THRESHOLD
+    MARKET_DIRECTION_FILTER_ENABLED, KOSPI_DECLINE_THRESHOLD, KOSDAQ_DECLINE_THRESHOLD,
+    COMMISSION_RATE, SECURITIES_TAX_RATE
 )
 
 if TYPE_CHECKING:
@@ -556,6 +557,22 @@ class TradingDecisionEngine:
                             )
                     except Exception as state_err:
                         self.logger.warning(f"가상매도 상태 변경 실패: {code} - {state_err}")
+                    # fund_manager 업데이트 (매도 후 자금 반환) — 단일 책임 지점
+                    if self.fund_manager and bp and qty:
+                        try:
+                            invested = float(bp) * int(qty)
+                            sell_amount = float(sell_price) * int(qty)
+                            buy_commission = invested * COMMISSION_RATE
+                            sell_commission = sell_amount * COMMISSION_RATE
+                            sell_tax = sell_amount * SECURITIES_TAX_RATE
+                            pnl_with_fees = sell_amount - invested - buy_commission - sell_commission - sell_tax
+                            self.fund_manager.release_investment(invested, stock_code=code)
+                            if pnl_with_fees != 0:
+                                self.fund_manager.adjust_pnl(pnl_with_fees)
+                            self.fund_manager.remove_position(code)
+                            self.fund_manager.set_sell_cooldown(code, sell_reason)
+                        except Exception as fm_e:
+                            self.logger.error(f"{code} 매도 후 자금관리 업데이트 실패: {fm_e}")
                 return ok
             return False
         except Exception as e:

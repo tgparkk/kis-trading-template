@@ -238,6 +238,11 @@ class TradingContext:
                 self.logger.debug(f"매도 스킵: {stock_code} 종목 정보 없음")
                 return None
 
+            # 이미 매도 진행 중이면 중복 방지
+            if getattr(trading_stock, 'is_selling', False):
+                self.logger.debug(f"매도 스킵: {stock_code} 이미 매도 진행 중")
+                return None
+
             # TradingAnalyzer를 통한 매도 판단 + 실행
             await self._trading_analyzer.analyze_sell_decision(trading_stock)
             return stock_code

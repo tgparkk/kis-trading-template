@@ -12,7 +12,7 @@ from strategies.base import SignalType
 from utils.logger import setup_logger
 from utils.rate_limited_logger import RateLimitedLogger
 from utils.korean_time import now_kst, is_market_open
-from config.constants import STALE_SELL_PROFIT_THRESHOLD, STALE_SELL_LOSS_THRESHOLD, COMMISSION_RATE, SECURITIES_TAX_RATE
+from config.constants import STALE_SELL_PROFIT_THRESHOLD, STALE_SELL_LOSS_THRESHOLD
 
 # Circuit Breaker 상수
 CB_MAX_FAILURES = 3           # 일반 오류 circuit breaker 활성화 실패 횟수
@@ -369,9 +369,6 @@ class PositionMonitor:
                 # decision_engine을 통해 매도 실행
                 if self.decision_engine:
                     if self._paper_trading:
-                        # 매도 전 포지션 정보 저장 (execute_virtual_sell이 position을 클리어하므로)
-                        _buy_price = trading_stock.position.avg_price if trading_stock.position else 0
-                        _quantity = trading_stock.position.quantity if trading_stock.position else 0
                         success = await self.decision_engine.execute_virtual_sell(
                             trading_stock, sell_price, reason
                         )
@@ -379,21 +376,7 @@ class PositionMonitor:
                             # is_selling 해제 (가상매도 성공)
                             trading_stock.is_selling = False
                             self._record_sell_success(stock_code)
-                            # FundManager 자금 반환
-                            if self.fund_manager:
-                                try:
-                                    invested = float(_buy_price) * int(_quantity)
-                                    sell_amount = float(sell_price) * int(_quantity) if sell_price else invested
-                                    buy_commission = invested * COMMISSION_RATE
-                                    sell_commission = sell_amount * COMMISSION_RATE
-                                    sell_tax = sell_amount * SECURITIES_TAX_RATE
-                                    pnl = sell_amount - invested - buy_commission - sell_commission - sell_tax
-                                    self.fund_manager.release_investment(invested, stock_code=stock_code)
-                                    self.fund_manager.adjust_pnl(pnl)
-                                    self.fund_manager.remove_position(stock_code)
-                                    self.fund_manager.set_sell_cooldown(stock_code, reason)
-                                except Exception as fm_e:
-                                    self.logger.error(f"{stock_code} 매도 후 자금관리 업데이트 실패: {fm_e}")
+                            # fund_manager 업데이트는 execute_virtual_sell() 내부에서 일원화 처리
                             self.logger.info(f"{stock_code} 가상 매도 완료: {reason}")
                             return
                         else:
