@@ -1,3 +1,5 @@
+> **DEPRECATED** — 초기 설계 문서. 실제 구현과 괴리가 있으며, 역사적 기록용으로만 보존합니다.
+
 # Trading Template Design Document
 
 ## 1. 개요

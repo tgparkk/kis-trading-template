@@ -1,3 +1,5 @@
+> **DEPRECATED** — 2026-02-03 작성된 RoboTrader_quant 분석 보고서. 현재 kis-template 코드와는 무관합니다.
+
 # RoboTrader_quant 프로젝트 분석 리포트
 
 ## 문서 정보

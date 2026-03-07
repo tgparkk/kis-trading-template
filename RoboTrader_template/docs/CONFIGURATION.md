@@ -39,32 +39,30 @@ KIS_HTS_ID = "HTS_ID"
 
 ---
 
-## 2. 데이터베이스 (`docker-compose.yml` + `.env`)
+## 2. 데이터베이스 (PostgreSQL + TimescaleDB)
 
-**TimescaleDB (PostgreSQL 확장):**
+**PostgreSQL 16 + TimescaleDB 2.24.0** (Windows 로컬 직접 설치, Docker 아님):
 
-```bash
-# DB 실행
-docker-compose up -d
-
-# 기본 접속 정보
+```
+# 접속 정보
 Host: localhost
-Port: 5432
+Port: 5433          ← 기본 5432가 아님!
 Database: robotrader
 User: robotrader
-Password: robotrader_secure_pw_2024
+Password: 1234
+서비스명: postgresql-x64-16 (Windows 서비스, 자동 시작)
 ```
 
 `.env` 파일 (또는 `.env.example` 참고):
 ```
 TIMESCALE_HOST=localhost
-TIMESCALE_PORT=5432
+TIMESCALE_PORT=5433
 TIMESCALE_DB=robotrader
 TIMESCALE_USER=robotrader
-TIMESCALE_PASSWORD=robotrader_secure_pw_2024
+TIMESCALE_PASSWORD=1234
 ```
 
-DB 초기화 스크립트: `init-scripts/` 디렉토리의 SQL 파일이 Docker 최초 실행 시 자동 적용
+DB 초기화 스크립트: `init-scripts/01-init.sql` 수동 적용. 상세 스키마는 `docs/DATABASE.md` 참고
 
 ---
 

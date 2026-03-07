@@ -26,6 +26,9 @@ kis-trading-template/
 │  strategies/          전략 레이어          │
 │  (BaseStrategy 상속 → generate_signal())  │
 ├───────────────────────────────────────────┤
+│  bot/                 봇 위임 핸들러       │
+│  (초기화, 분석, 모니터링, 청산, 동기화)     │
+├───────────────────────────────────────────┤
 │  framework/           추상화 레이어        │
 │  (Broker, DataProvider, OrderExecutor)    │
 ├───────────────────────────────────────────┤
@@ -53,13 +56,20 @@ kis-trading-template/
 
 ## 핵심 모듈 가이드
 
-### `main.py` — 진입점 (≈500줄)
+### `main.py` — 진입점 (≈630줄)
 
 - `DayTradingBot` 클래스가 전체 시스템을 관장
 - `__init__()`: 모든 모듈 초기화 (의존 순서 중요)
 - `initialize()`: 시스템 + 전략 초기화
-- `run_daily_cycle()`: 6개 비동기 태스크를 `asyncio.gather`로 병렬 실행
-  - 데이터수집, 주문모니터링, 거래모니터링, 시스템모니터링, 텔레그램, 리밸런싱
+- `run_daily_cycle()`: 3개 비동기 태스크를 `asyncio.gather`로 병렬 실행
+  - **메인트레이딩루프** (critical=True): 3초 간격으로 5단계 순차 실행
+    1. 데이터 수집 (collect_once)
+    2. 미체결 주문 확인 (check_pending_orders_once)
+    3. 보유종목 체크 (check_positions_once)
+    4. 매수 판단 (매 3회 중 1회, ≈9초 간격)
+    5. EOD 일괄청산 체크
+  - **시스템모니터링** (critical=False)
+  - **텔레그램** (critical=False)
 - `_supervised_task()`: 태스크 감독 (실패 시 지수 백오프 재시도)
 - `_load_strategy()`: `strategies/config.py`의 `StrategyLoader`로 전략 동적 로드
 
@@ -80,8 +90,13 @@ kis-trading-template/
 |------|------------|------|
 | `base.py` | `BaseStrategy`(ABC), `Signal`, `SignalType`, `OrderInfo` | 전략 인터페이스 정의. 라이프사이클: `on_init` → `on_market_open` → `generate_signal` → `on_order_filled` → `on_market_close` |
 | `config.py` | `StrategyConfig`, `StrategyLoader` | YAML 설정 로드, 전략 클래스 동적 import. `strategies/{name}/strategy.py`에서 `BaseStrategy` 서브클래스를 자동 탐색 |
-| `sample/strategy.py` | `SampleStrategy` | 이동평균 크로스 + RSI 예제 전략. 신규 전략 작성 시 참고용 |
-| `sample/config.yaml` | — | 전략 파라미터 + 리스크 설정 |
+| `sample/` | `SampleStrategy` | MA5/20 크로스 + RSI 예제 |
+| `momentum/` | `MomentumStrategy` | 연속 상승 모멘텀 |
+| `mean_reversion/` | `MeanReversionStrategy` | MA 이탈 평균회귀 |
+| `volume_breakout/` | `VolumeBreakoutStrategy` | 거래량 폭증 돌파 |
+| `bb_reversion/` | `BBReversionStrategy` | 볼린저밴드 회귀 |
+| `lynch/` | `LynchStrategy` | 피터 린치 스크리닝 |
+| `sawkami/` | `SawkamiStrategy` | 사와카미 스크리닝 |
 
 #### `Signal` 데이터클래스 (strategies/base.py)
 - `signal_type`: `STRONG_BUY`, `BUY`, `HOLD`, `SELL`, `STRONG_SELL`
@@ -103,7 +118,10 @@ kis-trading-template/
 
 | 파일/디렉토리 | 역할 |
 |--------------|------|
-| `order_manager.py` | Facade — 실제 구현은 `orders/` 서브모듈 (order_base, order_executor, order_monitor, order_timeout, order_db_handler) |
+| `orders/` | 주문 서브모듈 (order_base, order_executor, order_monitor, order_timeout, order_db_handler) |
+| `trading/` | 매매 서브모듈 (order_execution, order_completion_handler, position_monitor, stock_state_manager) |
+| `intraday/` | 장중 데이터 서브모듈 (data_collector, price_service, realtime_updater, data_quality, models) |
+| `order_manager.py` | Facade — 실제 구현은 `orders/` 서브모듈 |
 | `trading_decision_engine.py` | 매매 판단 엔진. Strategy가 있으면 `generate_signal()` 호출, 없으면 기본 손절/익절만 동작 |
 | `fund_manager.py` | 자금 관리 (가상/실전) |
 | `data_collector.py` | 실시간 데이터 수집 |
@@ -118,9 +136,12 @@ kis-trading-template/
 
 | 파일 | 역할 |
 |------|------|
-| `position_sync.py` | 포지션 동기화 |
-| `system_monitor.py` | 시스템 모니터링 |
-| `trading_analyzer.py` | 매수/매도 판단 분석 |
+| `initializer.py` | BotInitializer — 시스템 초기화 |
+| `trading_analyzer.py` | TradingAnalyzer — 매수/매도 판단 분석 |
+| `system_monitor.py` | SystemMonitor — 시스템 모니터링 |
+| `liquidation_handler.py` | LiquidationHandler — 장마감 일괄청산 |
+| `position_sync.py` | PositionSyncManager — 포지션 동기화 |
+| `state_restorer.py` | StateRestorer — 상태 복원 |
 
 ### `config/` — 설정
 
@@ -215,23 +236,25 @@ return Signal(
 1. DayTradingBot.__init__()
    ├── 프로세스 중복 실행 방지 (PID 파일)
    ├── 설정 로드 (load_config)
-   ├── 핵심 모듈 초기화 (API → DB → Telegram → DataCollector → OrderManager → ...)
-   ├── 헬퍼 및 핸들러 초기화
+   ├── 핵심 모듈 초기화 (KISBroker → DB → Telegram → DataCollector → OrderManager → ...)
+   ├── 리팩토링된 핸들러 초기화 (BotInitializer, TradingAnalyzer, SystemMonitor, ...)
    └── _load_strategy() — 전략 동적 로드
 
 2. bot.initialize()
-   ├── 시스템 초기화 (BotInitializer)
+   ├── BotInitializer.initialize_system()
    ├── 전략 초기화 (strategy.on_init)
-   └── DecisionEngine에 전략 연결
+   └── DecisionEngine + TradingManager에 전략 연결
 
 3. bot.run_daily_cycle()
-   └── asyncio.gather로 6개 태스크 병렬 실행
-       ├── 데이터수집 (data_collector.start_collection)
-       ├── 주문모니터링 (order_manager.start_monitoring)
-       ├── 거래모니터링 (trading_manager.start_monitoring)
-       ├── 시스템모니터링 (system_monitor)
-       ├── 텔레그램 (봇 폴링 + 주기적 상태 알림)
-       └── 리밸런싱 (rebalancing_handler)
+   └── asyncio.gather로 3개 태스크 병렬 실행
+       ├── 메인트레이딩루프 (critical=True, 3초 간격)
+       │   ├── [1/5] 데이터 수집
+       │   ├── [2/5] 미체결 주문 확인
+       │   ├── [3/5] 보유종목 체크 (현재가 업데이트 + 매도 판단)
+       │   ├── [4/5] 매수 판단 (매 9초)
+       │   └── [5/5] EOD 일괄청산 체크
+       ├── 시스템모니터링 (critical=False)
+       └── 텔레그램 (critical=False)
        * 각 태스크는 _supervised_task로 감독 (실패 시 지수 백오프 재시도)
 
 4. bot.shutdown()
@@ -296,18 +319,19 @@ python tests/dryrun/run_dryrun.py  # 모의 실행
 - 전략 폴더: `snake_case` (`strategies/my_strategy/`)
 
 ### 주의사항
-- `main.py`에 quant/ML 관련 import가 남아있음 (`QuantScreeningService`, `MLScreeningService` 등) — 이는 기존 코드의 잔재로, 전략별로 필요한 것만 사용
 - `.env`에 `APP_KEY`, `APP_SECRET` 등 API 키 설정 필수 (`.env.example` 참고)
 - 가상매매 모드: `VIRTUAL_MODE=true`로 실제 주문 없이 테스트 가능
-- 프로세스 중복 실행 방지: PID 파일 (`robotrader_quant.pid`) 사용
+- 프로세스 중복 실행 방지: PID 파일 (`robotrader.pid`) 사용
 
 ### 문서
 - `README.md` — 프로젝트 소개 및 빠른 시작
 - `SYSTEM_FLOW.md` — 시스템 동작 흐름 상세
+- `docs/ARCHITECTURE.md` — 시스템 아키텍처, 모듈 관계도
+- `docs/TRADING_FLOW.md` — 매매 흐름 (초기화→루프→청산)
 - `docs/STRATEGY_GUIDE.md` — 전략 개발 상세 가이드
 - `docs/DATABASE.md` — DB 스키마 문서
-- `docs/TEMPLATE_DESIGN.md` — 템플릿 설계 문서
+- `docs/CONFIGURATION.md` — 설정 가이드
 
 ---
 
-**마지막 업데이트**: 2026-02-08
+**마지막 업데이트**: 2026-03-07

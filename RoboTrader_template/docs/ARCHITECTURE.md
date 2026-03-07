@@ -142,7 +142,7 @@ db/
     └── quant.py         — 퀀트 데이터
 ```
 
-DB: **TimescaleDB** (PostgreSQL 확장) — `docker-compose.yml`로 실행
+DB: **PostgreSQL 16 + TimescaleDB 2.24.0** — Windows 로컬 직접 설치 (Port 5433)
 
 ---
 
