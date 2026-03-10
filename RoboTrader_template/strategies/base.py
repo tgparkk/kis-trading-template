@@ -478,24 +478,49 @@ class BaseStrategy(ABC):
                  orders, funds, and other framework components.
         """
         # Buy decisions
+        buy_checked = 0
+        buy_skipped = 0
+        buy_signals = 0
         for stock in ctx.get_selected_stocks():
+            buy_checked += 1
             data = await ctx.get_daily_data(stock.stock_code)
             if data is None or len(data) < 20:
+                buy_skipped += 1
                 continue
             signal = self.generate_signal(stock.stock_code, data, timeframe='daily')
             if signal and signal.signal_type in (SignalType.BUY, SignalType.STRONG_BUY):
+                buy_signals += 1
+                reasons_str = ', '.join(signal.reasons) if signal.reasons else '-'
+                self.logger.info(
+                    f"[on_tick] 매수신호: {stock.stock_code}({signal.signal_type.name}, "
+                    f"신뢰도 {signal.confidence}, 이유: {reasons_str})"
+                )
                 await ctx.buy(stock.stock_code, signal=signal)
 
         # Sell decisions
+        sell_checked = 0
+        sell_signals = 0
         for stock in ctx.get_positions():
+            sell_checked += 1
             data = await ctx.get_intraday_data(stock.stock_code)
             if data is not None and len(data) > 0:
                 signal = self.generate_signal(stock.stock_code, data, timeframe='intraday')
                 if signal and signal.signal_type in (SignalType.SELL, SignalType.STRONG_SELL):
+                    sell_signals += 1
+                    reasons_str = ', '.join(signal.reasons) if signal.reasons else '-'
+                    self.logger.info(
+                        f"[on_tick] 매도신호: {stock.stock_code}({signal.signal_type.name}, "
+                        f"신뢰도 {signal.confidence}, 이유: {reasons_str})"
+                    )
                     await ctx.sell(
                         stock.stock_code,
                         reason=', '.join(signal.reasons) if signal.reasons else self.name
                     )
+
+        self.logger.info(
+            f"[on_tick] 매수검토 {buy_checked}종목(스킵 {buy_skipped}), 신호 {buy_signals}건 | "
+            f"매도검토 {sell_checked}종목, 신호 {sell_signals}건"
+        )
 
     # ========================================================================
     # EOD Liquidation

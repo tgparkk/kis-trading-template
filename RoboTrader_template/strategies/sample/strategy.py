@@ -119,6 +119,13 @@ class SampleStrategy(BaseStrategy):
                     reasons=reasons,
                     metadata={"position": self.positions[stock_code]},
                 )
+            self.logger.debug(
+                f"[신호없음] {stock_code}: 매도조건 미달 "
+                f"(RSI={float(rsi.iloc[-1]):.1f}, "
+                f"MA{self._ma_short}={float(sma_short.iloc[-1]):.0f}"
+                f"{'>' if sma_short.iloc[-1] > sma_long.iloc[-1] else '<'}"
+                f"MA{self._ma_long}={float(sma_long.iloc[-1]):.0f})"
+            )
             return None
 
         # ── 미보유 종목이면 매수 판단 ──
@@ -142,6 +149,14 @@ class SampleStrategy(BaseStrategy):
                 },
             )
 
+        # 지표 계산까지 했지만 매수 조건 미달
+        self.logger.debug(
+            f"[신호없음] {stock_code}: 매수조건 미달 "
+            f"(RSI={float(rsi.iloc[-1]):.1f}, "
+            f"MA{self._ma_short}={float(sma_short.iloc[-1]):.0f}"
+            f"{'>' if sma_short.iloc[-1] > sma_long.iloc[-1] else '<'}"
+            f"MA{self._ma_long}={float(sma_long.iloc[-1]):.0f})"
+        )
         return None
 
     def on_order_filled(self, order: OrderInfo) -> None:
@@ -219,7 +234,18 @@ class SampleStrategy(BaseStrategy):
             ratio = volume.iloc[-1] / avg_volume.iloc[-1]
             reasons.append(f"거래량 {ratio:.1f}배 급증")
 
-        return len(reasons) >= self._min_buy_signals, reasons
+        # 진단 로그
+        gc = "O" if any("골든크로스" in r for r in reasons) else "X"
+        rs = "O" if any("과매도 탈출" in r for r in reasons) else "X"
+        vl = "O" if any("거래량" in r for r in reasons) else "X"
+        hit = len(reasons)
+        status = "매수!" if hit >= self._min_buy_signals else "미달"
+        self.logger.debug(
+            f"[매수조건] 골든크로스:{gc} RSI탈출:{rs} 거래량:{vl}"
+            f" → 충족 {hit}/{self._min_buy_signals} ({status})"
+        )
+
+        return hit >= self._min_buy_signals, reasons
 
     def _check_sell(
         self,
