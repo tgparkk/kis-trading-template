@@ -486,8 +486,14 @@ class BaseStrategy(ABC):
             data = await ctx.get_daily_data(stock.stock_code)
             if data is None or len(data) < 20:
                 buy_skipped += 1
+                if data is None:
+                    self.logger.debug(f"스킵: {stock.stock_code} - 일봉 데이터 없음")
+                else:
+                    self.logger.debug(f"스킵: {stock.stock_code} - 일봉 {len(data)}건 < 20")
                 continue
             signal = self.generate_signal(stock.stock_code, data, timeframe='daily')
+            if not signal:
+                self.logger.debug(f"스킵: {stock.stock_code} - generate_signal 반환 None (일봉 {len(data)}건)")
             if signal and signal.signal_type in (SignalType.BUY, SignalType.STRONG_BUY):
                 buy_signals += 1
                 reasons_str = ', '.join(signal.reasons) if signal.reasons else '-'

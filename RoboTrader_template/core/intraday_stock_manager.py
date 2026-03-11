@@ -135,7 +135,7 @@ class IntradayStockManager:
 
                 # 분봉 수집과 별도로 일봉 데이터도 DB에 저장 (매수 판단에 필요)
                 try:
-                    daily_data = self.broker.get_ohlcv_data(stock_code, "D", 140)
+                    daily_data = self.broker.get_ohlcv_data(stock_code, "D", 150)
                     if daily_data is not None and not daily_data.empty:
                         await self.data_collector._save_daily_to_db(stock_code, daily_data)
                     else:

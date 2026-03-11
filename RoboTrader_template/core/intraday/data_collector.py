@@ -63,8 +63,8 @@ class IntradayDataCollector:
 
             self.logger.info(f"📊 {stock_code} 일봉 데이터만 수집 (리밸런싱 모드)")
 
-            # 일봉 데이터 조회 (최근 30일)
-            daily_data = self.broker.get_ohlcv_data(stock_code, "D", 30)
+            # 일봉 데이터 조회 (최근 150일 — 150*0.7=105 > 100이어야 extended API 사용)
+            daily_data = self.broker.get_ohlcv_data(stock_code, "D", 150)
 
             if daily_data is None or daily_data.empty:
                 self.logger.error(f"❌ {stock_code} 일봉 데이터 조회 실패 - 종목 추가 중단")
