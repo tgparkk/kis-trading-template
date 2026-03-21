@@ -60,9 +60,6 @@ class TradingDecisionEngine:
         # FundManager 연결 (나중에 set_fund_manager로 설정)
         self.fund_manager: Optional['FundManager'] = None
 
-        # 마지막 매수 신호 캐시 (execute_virtual_buy에서 target/stop 활용)
-        self._last_buy_signal = None
-
         # 시장 방향성 필터 캐시 (60초)
         self._market_direction_cache: Optional[Tuple[bool, str]] = None
         self._market_direction_cache_time: float = 0.0
@@ -221,14 +218,12 @@ class TradingDecisionEngine:
 
                     if signal and signal.signal_type in [SignalType.BUY, SignalType.STRONG_BUY]:
                         should_buy = True
-                        self._last_buy_signal = signal
                         buy_reason = ", ".join(signal.reasons) if signal.reasons else f"{self.strategy.name} 매수신호"
                         self.logger.info(f"{code} 전략 매수신호: {buy_reason} (신뢰도: {signal.confidence}%)")
                 except Exception as e:
                     self.logger.warning(f"{code} 전략 신호 생성 오류: {e}")
 
             if not should_buy:
-                self._last_buy_signal = None
                 return False, f"{code} 조건미충족", empty
 
             # 현재가 조회 (일봉 종가 대신 장중 실시간 가격 사용)
@@ -245,8 +240,8 @@ class TradingDecisionEngine:
             if current_price is None and self.broker:
                 try:
                     price_obj = self.broker.get_current_price(code)
-                    if price_obj and hasattr(price_obj, 'current_price') and price_obj.current_price > 0:
-                        current_price = float(price_obj.current_price)
+                    if price_obj is not None and isinstance(price_obj, (int, float)) and price_obj > 0:
+                        current_price = float(price_obj)
                 except Exception:
                     pass
             # 3순위: 일봉 종가 fallback
@@ -261,7 +256,10 @@ class TradingDecisionEngine:
             if qty <= 0:
                 return False, f"{code} 수량부족", empty
 
-            return True, buy_reason, {'buy_price': price, 'quantity': qty, 'max_buy_amount': max_amt}
+            buy_info = {'buy_price': price, 'quantity': qty, 'max_buy_amount': max_amt}
+            if signal:
+                buy_info['signal'] = signal
+            return True, buy_reason, buy_info
 
         except Exception as e:
             self.logger.error(f"매수판단 오류: {e}")
@@ -326,7 +324,8 @@ class TradingDecisionEngine:
                                   buy_reason: str, buy_price: float = None,
                                   quantity: int = None,
                                   target_profit_rate: float = None,
-                                  stop_loss_rate: float = None) -> None:
+                                  stop_loss_rate: float = None,
+                                  signal=None) -> None:
         """가상 매수
 
         Args:
@@ -358,8 +357,8 @@ class TradingDecisionEngine:
                 if buy_price is None and self.broker:
                     try:
                         price_obj = self.broker.get_current_price(code)
-                        if price_obj and hasattr(price_obj, 'current_price') and price_obj.current_price > 0:
-                            buy_price = float(price_obj.current_price)
+                        if price_obj is not None and isinstance(price_obj, (int, float)) and price_obj > 0:
+                            buy_price = float(price_obj)
                     except Exception:
                         pass
                 # 3순위: combined_data 종가 (None이 아닐 때만)
@@ -376,16 +375,14 @@ class TradingDecisionEngine:
                 return
 
             # 익절/손절률: 전달값 우선, Signal 값 차순위, 없으면 기본값 사용
-            if target_profit_rate is None and self._last_buy_signal and self._last_buy_signal.target_price and buy_price > 0:
-                target_profit_rate = (self._last_buy_signal.target_price - buy_price) / buy_price
-            if stop_loss_rate is None and self._last_buy_signal and self._last_buy_signal.stop_loss and buy_price > 0:
-                stop_loss_rate = (buy_price - self._last_buy_signal.stop_loss) / buy_price
+            if target_profit_rate is None and signal and signal.target_price and buy_price > 0:
+                target_profit_rate = (signal.target_price - buy_price) / buy_price
+            if stop_loss_rate is None and signal and signal.stop_loss and buy_price > 0:
+                stop_loss_rate = (buy_price - signal.stop_loss) / buy_price
             if target_profit_rate is None:
                 target_profit_rate = self.DEFAULT_TAKE_PROFIT
             if stop_loss_rate is None:
                 stop_loss_rate = self.DEFAULT_STOP_LOSS
-            # 사용 후 캐시 클리어
-            self._last_buy_signal = None
 
             # 수량 결정: 전달값 우선, 없으면 VirtualTradingManager 재계산
             if quantity is not None and quantity > 0:

@@ -128,7 +128,8 @@ class TradingAnalyzer:
                         await self.bot.decision_engine.execute_virtual_buy(
                             trading_stock, None, buy_reason,
                             buy_price=buy_info['buy_price'],
-                            quantity=buy_info['quantity']
+                            quantity=buy_info['quantity'],
+                            signal=buy_info.get('signal')
                         )
                         # 자금 확정 (가상매매는 즉시 체결로 간주)
                         self.bot.fund_manager.confirm_order(_reserve_id, required_amount)
@@ -218,6 +219,7 @@ class TradingAnalyzer:
                         )
                         # fund_manager 업데이트는 execute_virtual_sell() 내부에서 일원화 처리
                         if not sell_ok:
+                            trading_stock.is_selling = False
                             # 매도 실패 시 POSITIONED로 복원
                             self.bot.trading_manager._change_stock_state(
                                 stock_code, StockState.POSITIONED, "가상 매도 실패 복원"

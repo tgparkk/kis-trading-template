@@ -131,9 +131,9 @@ class TradingContext:
                     return float(price_info['current_price'])
             # 2순위: broker API
             if self._broker:
-                price_obj = self._broker.get_current_price(stock_code)
-                if price_obj and hasattr(price_obj, 'current_price') and price_obj.current_price > 0:
-                    return float(price_obj.current_price)
+                price = self._broker.get_current_price(stock_code)
+                if price is not None and isinstance(price, (int, float)) and price > 0:
+                    return float(price)
         except Exception as e:
             self.logger.debug(f"현재가 조회 실패 ({stock_code}): {e}")
         return None
@@ -203,10 +203,6 @@ class TradingContext:
             if cb_state.is_vi_active(stock_code):
                 self.logger.debug(f"{stock_code} 매수 스킵: VI 발동 중")
                 return None
-
-            # signal이 전달된 경우 decision_engine에 캐싱
-            if signal is not None:
-                self._decision_engine._last_buy_signal = signal
 
             # TradingAnalyzer를 통한 매수 판단 + 실행
             await self._trading_analyzer.analyze_buy_decision(trading_stock)

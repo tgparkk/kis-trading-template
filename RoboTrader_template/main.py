@@ -314,7 +314,7 @@ class DayTradingBot:
         )
 
     async def _main_trading_loop(self):
-        """메인 트레이딩 루프: 데이터수집 -> 주문확인 -> on_tick(매수+매도) -> EOD 순차 실행"""
+        """메인 트레이딩 루프: 데이터수집 -> 주문확인 -> 보유종목체크 -> on_tick/매수판단 -> EOD 순차 실행"""
         import time
 
         LOOP_INTERVAL = 3  # 기본 루프 간격 (초)
@@ -356,41 +356,32 @@ class DayTradingBot:
                 except Exception as e:
                     self.logger.error(f"[2/5] 미체결 주문 확인 오류: {e}")
 
-                # 3+4. 전략 on_tick (매수 + 매도 판단을 전략이 소유)
-                # on_tick은 기존 _check_buy_signals + check_positions_once를 대체
+                # 3. 보유종목 체크 (매 반복 실행 — 손절/익절 모니터링)
                 try:
-                    if self.strategy and trading_ctx and iteration % ON_TICK_EVERY_N == 0:
-                        try:
-                            await asyncio.wait_for(
-                                self.strategy.on_tick(trading_ctx),
-                                timeout=ON_TICK_TIMEOUT
-                            )
-                        except asyncio.TimeoutError:
-                            self.logger.warning(
-                                f"on_tick 타임아웃 ({ON_TICK_TIMEOUT}초): {self.strategy.name}"
-                            )
-                    elif not self.strategy:
-                        # 전략 없으면 기존 방식 fallback
-                        # 3. 보유종목 체크 (현재가 업데이트 + 매도 판단)
-                        try:
-                            await self.trading_manager.check_positions_once()
-                        except Exception as e:
-                            self.logger.error(f"[3/5] 보유종목 체크 오류: {e}")
-                        # 4. 매수 판단 (매 N번째 반복)
-                        try:
-                            if iteration % ON_TICK_EVERY_N == 0:
-                                await self._check_buy_signals()
-                        except Exception as e:
-                            self.logger.error(f"[4/5] 매수 판단 오류: {e}")
-                    else:
-                        # 전략 있지만 on_tick 호출 주기가 아닌 반복:
-                        # 보유종목 체크는 매 반복 실행 (현재가 업데이트 필요)
-                        try:
-                            await self.trading_manager.check_positions_once()
-                        except Exception as e:
-                            self.logger.error(f"[3/5] 보유종목 체크 오류: {e}")
+                    await self.trading_manager.check_positions_once()
                 except Exception as e:
-                    self.logger.error(f"[3-4/5] on_tick/매매판단 오류: {e}")
+                    self.logger.error(f"[3/5] 보유종목 체크 오류: {e}")
+
+                # 4. 전략 on_tick 또는 기존 매수 판단
+                if self.strategy and trading_ctx and iteration % ON_TICK_EVERY_N == 0:
+                    try:
+                        await asyncio.wait_for(
+                            self.strategy.on_tick(trading_ctx),
+                            timeout=ON_TICK_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        self.logger.warning(
+                            f"on_tick 타임아웃 ({ON_TICK_TIMEOUT}초): {self.strategy.name}"
+                        )
+                    except Exception as e:
+                        self.logger.error(f"[4/5] on_tick 오류: {e}")
+                elif not self.strategy:
+                    # 전략 없으면 기존 방식 fallback (매수 판단만 — 보유종목 체크는 위에서 이미 실행)
+                    try:
+                        if iteration % ON_TICK_EVERY_N == 0:
+                            await self._check_buy_signals()
+                    except Exception as e:
+                        self.logger.error(f"[4/5] 매수 판단 오류: {e}")
 
                 # 5. 장마감 일괄청산 체크 (P0: 반드시 실행되어야 함)
                 try:

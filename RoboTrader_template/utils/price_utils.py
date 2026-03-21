@@ -5,6 +5,7 @@
 - 중복 프로세스 실행 방지
 - 설정 파일 로드
 """
+import math
 import os
 import sys
 from pathlib import Path
@@ -12,6 +13,24 @@ from utils.logger import setup_logger
 from config.settings import load_trading_config, TradingConfig
 
 logger = setup_logger(__name__)
+
+
+def _get_tick_size(price: float) -> int:
+    """KRX 호가단위 조회"""
+    if price < 1000:
+        return 1
+    elif price < 5000:
+        return 5
+    elif price < 10000:
+        return 10
+    elif price < 50000:
+        return 50
+    elif price < 100000:
+        return 100
+    elif price < 500000:
+        return 500
+    else:
+        return 1000
 
 
 def round_to_tick(price: float) -> float:
@@ -28,24 +47,10 @@ def round_to_tick(price: float) -> float:
         >>> round_to_tick(54321)
         54300  # 5만원 이상은 100원 단위
     """
-    try:
-        from api.kis_order_api import _round_to_krx_tick
-
-        if price <= 0:
-            return 0.0
-
-        original_price = price
-        rounded_price = _round_to_krx_tick(price)
-
-        # 로깅으로 가격 조정 확인
-        if abs(rounded_price - original_price) > 0:
-            logger.debug(f"💰 호가단위 조정: {original_price:,.0f}원 → {rounded_price:,.0f}원")
-
-        return float(rounded_price)
-
-    except Exception as e:
-        logger.error(f"❌ 호가단위 조정 오류: {e}")
-        return float(int(price))
+    if price <= 0:
+        return 0.0
+    tick = _get_tick_size(price)
+    return float(int(math.floor(price / tick + 0.5)) * tick)
 
 
 def check_duplicate_process(pid_file_path: str = 'robotrader.pid'):

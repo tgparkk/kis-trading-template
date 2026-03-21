@@ -67,7 +67,8 @@ kis-trading-template/
   - **메인트레이딩루프** (critical=True): 3초 간격으로 순차 실행
     1. 데이터 수집 (collect_once)
     2. 미체결 주문 확인 (check_pending_orders_once)
-    3+4. 전략 있으면 `strategy.on_tick(ctx)` (매 9초, 30초 타임아웃), 없으면 기존 방식 fallback
+    3. `check_positions_once()` (매 반복 — 손절/익절 모니터링)
+    4. 전략 있으면 `strategy.on_tick(ctx)` (매 9초, 30초 타임아웃), 없으면 기존 방식 fallback
     5. EOD 일괄청산 체크
   - **시스템모니터링** (critical=False)
   - **텔레그램** (critical=False)
@@ -249,7 +250,8 @@ return Signal(
        ├── 메인트레이딩루프 (critical=True, 3초 간격)
        │   ├── [1/5] 데이터 수집
        │   ├── [2/5] 미체결 주문 확인
-       │   ├── [3+4/5] 전략 있으면 on_tick(ctx) (매 9초, 30초 타임아웃)
+       │   ├── [3/5] check_positions_once (매 반복 — 손절/익절 모니터링)
+       │   ├── [4/5] 전략 있으면 on_tick(ctx) (매 9초, 30초 타임아웃)
        │   │          없으면 기존 check_positions + _check_buy_signals fallback
        │   └── [5/5] EOD 일괄청산 체크
        ├── 시스템모니터링 (critical=False)

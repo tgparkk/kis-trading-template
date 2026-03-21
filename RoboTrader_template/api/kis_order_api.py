@@ -13,9 +13,9 @@ logger = setup_logger(__name__)
 
 
 def _round_to_krx_tick(price: float) -> int:
-    """KRX 정확한 호가단위에 맞게 반올림 (framework/utils.py 위임)"""
-    from framework.utils import round_to_tick
-    return round_to_tick(price)
+    """KRX 정확한 호가단위에 맞게 반올림"""
+    from utils.price_utils import round_to_tick
+    return int(round_to_tick(price))
 
 
 def _validate_tick_size(price: int) -> bool:
