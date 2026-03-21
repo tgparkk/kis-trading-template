@@ -58,7 +58,7 @@ kis-trading-template/
 
 ## 핵심 모듈 가이드
 
-### `main.py` — 진입점 (≈630줄)
+### `main.py` — 진입점 (≈670줄)
 
 - `DayTradingBot` 클래스가 전체 시스템을 관장
 - `__init__()`: 모든 모듈 초기화 (의존 순서 중요)

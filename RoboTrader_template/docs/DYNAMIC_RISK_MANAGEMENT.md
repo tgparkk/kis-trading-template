@@ -2,6 +2,7 @@
 
 > 퀀트 팩터 전략에서 종목 품질에 따라 익절/손절률을 동적으로 조정하는 메커니즘을 설명합니다.
 > 이 문서는 **퀀트 전략 구현의 참고 문서**이며, kis-template 프레임워크 공통 기능이 아닙니다.
+> ⚠️ 아래 참조된 코드 경로는 퀀트 전략을 구현할 때의 **권장 구조**입니다. 기본 템플릿에는 해당 모듈이 포함되어 있지 않으며, 전략 개발 시 직접 작성해야 합니다.
 
 ---
 
@@ -135,7 +136,7 @@ composite_score = (
 #                 = 93.19 → S등급
 ```
 
-**코드 위치**: `core/quant/target_profit_loss_calculator.py`
+**코드 위치**: `core/quant/target_profit_loss_calculator.py (퀀트 전략 구현 시 작성)`
 
 ---
 
@@ -156,7 +157,7 @@ else:
     return 0.12, 0.10  # D등급: 익절 12%, 손절 10%
 ```
 
-**코드 위치**: `core/quant/target_profit_loss_calculator.py`
+**코드 위치**: `core/quant/target_profit_loss_calculator.py (퀀트 전략 구현 시 작성)`
 
 ---
 
@@ -183,7 +184,7 @@ trading_stock.stop_loss_rate = 0.08
 ```
 
 **코드 위치**:
-- `core/helpers/rebalancing_executor.py`
+- `core/helpers/rebalancing_executor.py (퀀트 전략 구현 시 작성)`
 - `db/database_manager.py`
 
 ---
@@ -298,7 +299,7 @@ for keep_item in keep_list:
 → 목표율 갱신! (더 높은 익절, 더 낮은 손절)
 ```
 
-**코드 위치**: `core/helpers/keep_list_updater.py`
+**코드 위치**: `core/helpers/keep_list_updater.py (퀀트 전략 구현 시 작성)`
 
 ---
 
@@ -341,4 +342,4 @@ DB: virtual_trading_records (target_profit_rate, stop_loss_rate)
 
 ---
 
-**마지막 업데이트**: 2026-03-07
+**마지막 업데이트**: 2026-03-22

@@ -95,11 +95,11 @@ main.py (DayTradingBot)
 ```
 
 - **broker**: `KISAPIManager` 인스턴스 (계좌/시세 조회)
-- **data_provider**: 현재 `None` 전달 (추후 `DataProvider` 연결 예정)
+- **data_provider**: `DataProvider` 인스턴스 (시세 데이터 조회)
 - **executor**: `OrderManager` 인스턴스 (주문 실행)
 
 ## 주의사항
 
-- `BaseStrategy`의 추상 메서드 5개를 **모두** 구현해야 합니다
+- `generate_signal()` 하나만 필수 구현이며, `on_init`/`on_market_open`/`on_order_filled`/`on_market_close`는 필요 시 오버라이드합니다
 - 클래스 이름은 반드시 `Strategy`로 끝나야 로더가 인식합니다
 - `config.yaml`과 `strategy.py`가 모두 있어야 유효한 전략으로 인식됩니다

@@ -51,7 +51,7 @@ daily_prices 테이블:
 12/30(월) 08:30 실행 → 12/27(금) 데이터 수집 (주말 건너뛰기)
 ```
 
-**코드 위치**: `core/ml_data_collector.py`
+**코드 위치**: `core/data_collector.py`
 
 ---
 
@@ -98,7 +98,7 @@ financial_statements 테이블:
 2. `get_income_statement()`: 손익계산서 (매출, 영업이익, 순이익 등)
 3. `get_balance_sheet()`: 대차대조표 (자산, 부채, 자본 등)
 
-**PER/PBR 계산 로직** (`core/ml_data_collector.py`):
+**PER/PBR 계산 로직** (`core/data_collector.py`):
 ```python
 # API에서 직접 제공하지 않는 경우 자체 계산
 if not per and ratio.eps > 0:
@@ -121,7 +121,7 @@ SET per = ?, pbr = ?, roe = ?, ...
 WHERE stock_code = ? AND report_date = ?
 ```
 
-**코드 위치**: `core/ml_data_collector.py`
+**코드 위치**: `core/data_collector.py`
 
 ---
 
@@ -186,6 +186,8 @@ db_manager.save_virtual_sell(
 
 ### 1.4 퀀트 포트폴리오 및 팩터 점수
 
+> ⚠️ 이 섹션은 **퀀트 전략 구현 시 참고 문서**입니다. 기본 템플릿에는 퀀트 모듈이 포함되어 있지 않습니다.
+
 > 퀀트 전략 사용 시 적용됩니다.
 
 #### 🎯 quant_portfolio / quant_factor_scores 테이블
@@ -215,7 +217,7 @@ quant_factor_scores 테이블:
 - factor_rank: 팩터 순위
 ```
 
-**코드 위치**: `core/quant/quant_screening_service.py`
+**코드 위치**: 퀀트 전략 구현 시 별도 모듈 작성 필요
 
 ---
 
@@ -353,7 +355,7 @@ for _, holding in holdings.iterrows():
    - 리스크 분석
    - 최적 파라미터 탐색
 
-**코드 위치**: `core/ml_data_collector.py`
+**코드 위치**: `core/data_collector.py`
 
 ---
 
@@ -417,8 +419,8 @@ total_score = (
 )
 ```
 
-**코드 위치**: `core/quant/quant_screening_service.py`
+**코드 위치**: 퀀트 전략 구현 시 별도 모듈 작성 필요
 
 ---
 
-**마지막 업데이트**: 2026-03-07
+**마지막 업데이트**: 2026-03-22

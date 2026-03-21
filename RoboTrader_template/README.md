@@ -192,7 +192,7 @@ screening:
 ### 3. 실행
 
 ```bash
-python main.py --strategy my_strategy
+python main.py
 ```
 
 ---
@@ -252,4 +252,4 @@ python main.py --strategy my_strategy
 
 ---
 
-**마지막 업데이트**: 2026-02-10
+**마지막 업데이트**: 2026-03-22

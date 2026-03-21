@@ -143,7 +143,7 @@ while is_running and 장중:
     [OrderManager가 주문 실행]
 ```
 
-> 💡 **퀀트 전략 예시**: 퀀트 스크리닝 전략에서는 08:55에 8단계 팩터 점수(Value, Quality, Momentum, Size 등)를 계산하여 상위 30개 종목을 선정하고, 09:05 리밸런싱으로 포트폴리오를 재구성합니다.
+> 💡 **(퀀트 전략 구현 시 참고) 퀀트 전략 예시**: 퀀트 스크리닝 전략에서는 08:55에 8단계 팩터 점수(Value, Quality, Momentum, Size 등)를 계산하여 상위 30개 종목을 선정하고, 09:05 리밸런싱으로 포트폴리오를 재구성합니다.
 
 ---
 
@@ -176,7 +176,7 @@ Signal.signal_type == BUY 또는 STRONG_BUY?
 
 **핵심**: 전략이 **BUY Signal을 반환**하면, 프레임워크가 자금 확인 후 주문을 실행합니다. 매수 시점, 종목 선정 기준, 주문 방식 등은 모두 전략에 따라 다릅니다.
 
-> 💡 **퀀트 전략 예시**: 09:05 리밸런싱 시 포트폴리오에 신규 편입된 종목을 시장가 매수하며, 종목 점수에 따라 차등 익절/손절률(S등급 20%/8%, A등급 17%/9% 등)을 설정합니다.
+> 💡 **(퀀트 전략 구현 시 참고) 퀀트 전략 예시**: 09:05 리밸런싱 시 포트폴리오에 신규 편입된 종목을 시장가 매수하며, 종목 점수에 따라 차등 익절/손절률(S등급 20%/8%, A등급 17%/9% 등)을 설정합니다.
 
 ---
 
@@ -235,7 +235,7 @@ Signal.signal_type == BUY 또는 STRONG_BUY?
 | **동적 손익비 조정** | 종목 점수에 따른 차등 관리 | 전략 로직 내 |
 | **기술적 분석** | MA, RSI, 볼린저밴드 등 | `generate_signal()` 내 |
 
-> 💡 **퀀트 리밸런싱 예시**: 매일 09:05에 포트폴리오를 재구성합니다 — 탈락 종목은 매도, 신규 종목은 매수, 유지 종목은 익절/손절률을 새 점수로 갱신합니다.
+> 💡 **(퀀트 전략 구현 시 참고) 퀀트 리밸런싱 예시**: 매일 09:05에 포트폴리오를 재구성합니다 — 탈락 종목은 매도, 신규 종목은 매수, 유지 종목은 익절/손절률을 새 점수로 갱신합니다.
 
 ---
 
@@ -384,11 +384,7 @@ strategy:
 | 주문 관리 | `core/order_manager.py` | |
 | 자금 관리 | `core/fund_manager.py` | |
 | 데이터 수집 | `core/data_collector.py` | |
-| 상태 복원 | `core/helpers/state_restoration_helper.py` | |
-| 리밸런싱 실행 | `core/helpers/rebalancing_executor.py` | 퀀트 전략 전용 |
-| 퀀트 스크리닝 | `core/quant/quant_screening_service.py` | 퀀트 전략 전용 |
-| 익절/손절률 계산 | `core/quant/target_profit_loss_calculator.py` | 퀀트 전략 전용 |
-| 스크리닝 태스크 | `core/helpers/screening_task_runner.py` | 퀀트 전략 전용 |
+| 상태 복원 | `bot/state_restorer.py` | |
 
 ---
 
@@ -425,12 +421,12 @@ strategy:
    - `strategies/sample/strategy.py` 참고
 
 2. **성과 분석**: 일일 리포트 확인
-   - `python after_market_report.py`
+   - `python scripts/daily_trading_summary.py`
 
 3. **상세 시스템 구조**:
    - [CLAUDE.md](CLAUDE.md) 참조
 
 ---
 
-**마지막 업데이트**: 2026-03-07
+**마지막 업데이트**: 2026-03-22
 **문서 버전**: 2.0

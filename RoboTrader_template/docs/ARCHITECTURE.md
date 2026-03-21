@@ -37,7 +37,7 @@
 `DayTradingBot` 클래스가 전체 시스템을 관장합니다.
 
 ```
-DayTradingBot (main.py, ~500줄)
+DayTradingBot (main.py, ~670줄)
 ├── KISBroker (framework/broker.py)         — 증권사 API 추상화
 ├── DatabaseManager (db/)                   — TimescaleDB 연동
 ├── TelegramIntegration (core/)             — 알림/명령
