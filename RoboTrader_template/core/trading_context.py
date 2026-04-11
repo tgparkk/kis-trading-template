@@ -204,8 +204,36 @@ class TradingContext:
                 self.logger.debug(f"{stock_code} 매수 스킵: VI 발동 중")
                 return None
 
+            # 일일 손실 한도 초과 시 매수 차단
+            if self._fund_manager and self._fund_manager.is_daily_loss_limit_hit():
+                limit_pct = self._fund_manager.max_daily_loss_ratio * 100
+                loss = self._fund_manager._daily_realized_loss
+                self.logger.warning(
+                    f"매수 차단: 일일 손실 한도 초과 "
+                    f"(누적손실 {loss:,.0f}원 / 한도 {limit_pct:.1f}%)"
+                )
+                return None
+
+            # 상한가 접근 시 매수 차단
+            from config.constants import PRICE_LIMIT_GUARD_RATE
+            prev_close = trading_stock.prev_close
+            if prev_close <= 0 and self._intraday_manager and hasattr(self._intraday_manager, 'get_cached_current_price'):
+                price_info = self._intraday_manager.get_cached_current_price(stock_code)
+                if price_info:
+                    prev_close = price_info.get('prev_close', 0.0)
+            if prev_close > 0:
+                current_price = await self.get_current_price(stock_code)
+                if current_price and current_price > 0:
+                    rate = (current_price - prev_close) / prev_close
+                    if rate >= PRICE_LIMIT_GUARD_RATE:
+                        self.logger.info(
+                            f"매수 차단: 상한가 접근 "
+                            f"(현재가 {current_price:,.0f} / 전일종가 {prev_close:,.0f} = +{rate * 100:.1f}%)"
+                        )
+                        return None
+
             # TradingAnalyzer를 통한 매수 판단 + 실행
-            await self._trading_analyzer.analyze_buy_decision(trading_stock)
+            await self._trading_analyzer.analyze_buy_decision(trading_stock, signal=signal)
             return stock_code
 
         except Exception as e:
@@ -238,6 +266,23 @@ class TradingContext:
             if getattr(trading_stock, 'is_selling', False):
                 self.logger.debug(f"매도 스킵: {stock_code} 이미 매도 진행 중")
                 return None
+
+            # 하한가 접근 시 경고 (매도는 차단하지 않음 — 손절 필요)
+            from config.constants import PRICE_LIMIT_GUARD_RATE
+            prev_close = trading_stock.prev_close
+            if prev_close <= 0 and self._intraday_manager and hasattr(self._intraday_manager, 'get_cached_current_price'):
+                price_info = self._intraday_manager.get_cached_current_price(stock_code)
+                if price_info:
+                    prev_close = price_info.get('prev_close', 0.0)
+            if prev_close > 0:
+                current_price = await self.get_current_price(stock_code)
+                if current_price and current_price > 0:
+                    rate = (current_price - prev_close) / prev_close
+                    if rate <= -PRICE_LIMIT_GUARD_RATE:
+                        self.logger.warning(
+                            f"매도 경고: 하한가 접근 "
+                            f"(현재가 {current_price:,.0f} / 전일종가 {prev_close:,.0f} = {rate * 100:.1f}%) — 매도 진행"
+                        )
 
             # TradingAnalyzer를 통한 매도 판단 + 실행
             await self._trading_analyzer.analyze_sell_decision(trading_stock)

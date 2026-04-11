@@ -11,7 +11,8 @@ Modules:
     - utils: 유틸리티 함수
 """
 
-from .broker import KISBroker, FundManager, Position, AccountInfo
+from .broker import KISBroker, Position, AccountInfo
+from core.fund_manager import FundManager
 from .executor import OrderExecutor, OrderRequest, OrderResult, OrderType, OrderSide, OrderStatus
 from .data import DataProvider, RealtimeDataCollector, OHLCV, PriceQuote
 from .utils import (

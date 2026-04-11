@@ -14,7 +14,7 @@ from utils.logger import setup_logger
 from config.constants import (
     DEFAULT_STOP_LOSS_RATE, DEFAULT_TARGET_PROFIT_RATE,
     MARKET_DIRECTION_FILTER_ENABLED, KOSPI_DECLINE_THRESHOLD, KOSDAQ_DECLINE_THRESHOLD,
-    COMMISSION_RATE, SECURITIES_TAX_RATE
+    COMMISSION_RATE, SECURITIES_TAX_RATE, CANDIDATE_MIN_DAILY_DATA
 )
 
 if TYPE_CHECKING:
@@ -204,11 +204,12 @@ class TradingDecisionEngine:
             if is_crashing:
                 return False, f"{code} 시장급락 매수차단 ({crash_reason})", empty
 
-            if daily_data is None or len(daily_data) < 20:
+            if daily_data is None or len(daily_data) < CANDIDATE_MIN_DAILY_DATA:
                 return False, f"{code} 데이터부족", empty
 
             should_buy = False
             buy_reason = ""
+            signal = None
 
             # Strategy가 설정된 경우 신호 생성
             if self.strategy:
@@ -337,8 +338,18 @@ class TradingDecisionEngine:
                        2순위: broker API
                        3순위: combined_data 종가 (combined_data가 있을 때만)
             quantity: 매수 수량 (None이면 VirtualTradingManager.get_max_quantity() 재계산)
-            target_profit_rate: 익절률 (None이면 DEFAULT_TARGET_PROFIT_RATE 사용)
-            stop_loss_rate: 손절률 (None이면 DEFAULT_STOP_LOSS_RATE 사용)
+            target_profit_rate: 익절률 (None이면 아래 우선순위로 결정)
+            stop_loss_rate: 손절률 (None이면 아래 우선순위로 결정)
+            signal: 전략 Signal 객체 (target_price/stop_loss 포함 시 활용)
+
+        익절/손절률 우선순위 (높을수록 먼저 적용):
+            1순위: 호출자가 명시적으로 전달한 target_profit_rate / stop_loss_rate
+            2순위: Signal.target_price / Signal.stop_loss (절대가 → 매수가 대비 비율 변환)
+            3순위: 전략 config.yaml의 risk_management.take_profit_ratio / stop_loss_ratio
+            4순위: 시스템 기본값 — trading_config.json risk_management 우선,
+                   없으면 constants.py DEFAULT_TARGET_PROFIT_RATE / DEFAULT_STOP_LOSS_RATE
+        결정된 값은 trading_stock.target_profit_rate / stop_loss_rate에 기록되어
+        PositionMonitor._analyze_sell_for_stock()에서 손익절 판단에 사용됨.
         """
         try:
             code = trading_stock.stock_code
@@ -374,15 +385,44 @@ class TradingDecisionEngine:
                 self.logger.warning(f"가상매수 취소: {code} 매수 가격 조회 실패")
                 return
 
-            # 익절/손절률: 전달값 우선, Signal 값 차순위, 없으면 기본값 사용
+            # ----------------------------------------------------------------
+            # 익절/손절률 결정 — 4단계 우선순위
+            # ----------------------------------------------------------------
+            # [1순위] 호출자 명시 값은 파라미터로 이미 수신됨 (target_profit_rate, stop_loss_rate)
+
+            # [2순위] Signal의 target_price / stop_loss (절대가 → 비율 변환)
             if target_profit_rate is None and signal and signal.target_price and buy_price > 0:
                 target_profit_rate = (signal.target_price - buy_price) / buy_price
             if stop_loss_rate is None and signal and signal.stop_loss and buy_price > 0:
                 stop_loss_rate = (buy_price - signal.stop_loss) / buy_price
+
+            # [3순위] 전략 config.yaml의 risk_management 섹션
+            if (target_profit_rate is None or stop_loss_rate is None) and self.strategy:
+                try:
+                    cfg = getattr(self.strategy, 'config', None)
+                    if isinstance(cfg, dict):
+                        rm = cfg.get('risk_management', {})
+                        if target_profit_rate is None and rm.get('take_profit_ratio'):
+                            target_profit_rate = float(rm['take_profit_ratio'])
+                        if stop_loss_rate is None and rm.get('stop_loss_ratio'):
+                            stop_loss_rate = float(rm['stop_loss_ratio'])
+                except Exception:
+                    pass  # 전략 config 조회 실패 시 4순위로 fallback
+
+            # [4순위] 시스템 기본값: trading_config.json risk_management 우선,
+            #         없으면 constants.py DEFAULT_* (클래스 상수 DEFAULT_TAKE_PROFIT / DEFAULT_STOP_LOSS)
             if target_profit_rate is None:
-                target_profit_rate = self.DEFAULT_TAKE_PROFIT
+                config_tp = getattr(
+                    getattr(self.config, 'risk_management', None),
+                    'take_profit_ratio', None
+                )
+                target_profit_rate = float(config_tp) if config_tp else self.DEFAULT_TAKE_PROFIT
             if stop_loss_rate is None:
-                stop_loss_rate = self.DEFAULT_STOP_LOSS
+                config_sl = getattr(
+                    getattr(self.config, 'risk_management', None),
+                    'stop_loss_ratio', None
+                )
+                stop_loss_rate = float(config_sl) if config_sl else self.DEFAULT_STOP_LOSS
 
             # 수량 결정: 전달값 우선, 없으면 VirtualTradingManager 재계산
             if quantity is not None and quantity > 0:
@@ -494,8 +534,8 @@ class TradingDecisionEngine:
                 if sell_price is None and self.broker:
                     try:
                         price_obj = self.broker.get_current_price(code)
-                        if price_obj and hasattr(price_obj, 'current_price') and price_obj.current_price > 0:
-                            sell_price = float(price_obj.current_price)
+                        if price_obj is not None and isinstance(price_obj, (int, float)) and price_obj > 0:
+                            sell_price = float(price_obj)
                     except Exception:
                         pass
                 # 4순위: 현재가 조회 모두 실패 → 매도 보류 (다음 사이클에서 재시도)

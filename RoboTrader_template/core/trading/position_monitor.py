@@ -12,7 +12,12 @@ from strategies.base import SignalType
 from utils.logger import setup_logger
 from utils.rate_limited_logger import RateLimitedLogger
 from utils.korean_time import now_kst, is_market_open
-from config.constants import STALE_SELL_PROFIT_THRESHOLD, STALE_SELL_LOSS_THRESHOLD
+from config.constants import (
+    STALE_SELL_PROFIT_THRESHOLD,
+    STALE_SELL_LOSS_THRESHOLD,
+    TRAILING_STOP_ACTIVATION_RATE,
+    TRAILING_STOP_CALLBACK_RATE,
+)
 
 # Circuit Breaker 상수
 CB_MAX_FAILURES = 3           # 일반 오류 circuit breaker 활성화 실패 횟수
@@ -243,6 +248,24 @@ class PositionMonitor:
                         await self._execute_sell(trading_stock, current_price, reason)
                         return
 
+                # 트레일링 스톱 체크
+                self._check_trailing_stop(trading_stock, current_price, buy_price, profit_rate)
+                if trading_stock.trailing_stop_activated:
+                    trailing_stop_price = (
+                        trading_stock.highest_price_since_buy
+                        * (1 - TRAILING_STOP_CALLBACK_RATE)
+                    )
+                    if current_price <= trailing_stop_price:
+                        reason = (
+                            f"트레일링 스톱 매도: 현재가 {current_price:,.0f}원 "
+                            f"<= 최고가({trading_stock.highest_price_since_buy:,.0f}원) "
+                            f"대비 -{TRAILING_STOP_CALLBACK_RATE:.0%} "
+                            f"(수익률 {profit_rate:.2%})"
+                        )
+                        self.logger.info(f"{stock_code} {reason}")
+                        await self._execute_sell(trading_stock, current_price, reason)
+                        return
+
                 # 목표 익절률 체크
                 if hasattr(trading_stock, 'target_profit_rate') and trading_stock.target_profit_rate:
                     if profit_rate >= trading_stock.target_profit_rate:
@@ -435,6 +458,39 @@ class PositionMonitor:
                         f"🚨 {stock_code} 매도 실행 최종 실패: {e}"
                     )
                     self._record_sell_failure(stock_code, error=e)
+
+    def _check_trailing_stop(
+        self,
+        trading_stock: TradingStock,
+        current_price: float,
+        buy_price: float,
+        profit_rate: float,
+    ) -> None:
+        """
+        트레일링 스톱 상태 업데이트 (최고가 갱신 및 활성화 판단).
+
+        - 최고가(highest_price_since_buy) 갱신: 항상 수행
+        - 활성화 조건: 수익률 >= TRAILING_STOP_ACTIVATION_RATE
+        - 활성화 후에는 비활성화하지 않음 (once-activated)
+        """
+        # 최고가 갱신
+        if (
+            trading_stock.highest_price_since_buy is None
+            or current_price > trading_stock.highest_price_since_buy
+        ):
+            trading_stock.highest_price_since_buy = current_price
+
+        # 활성화 판단 (한 번만 로그)
+        if (
+            not trading_stock.trailing_stop_activated
+            and profit_rate >= TRAILING_STOP_ACTIVATION_RATE
+        ):
+            trading_stock.trailing_stop_activated = True
+            self.logger.info(
+                f"{trading_stock.stock_code} 트레일링 스톱 활성화: "
+                f"수익률 {profit_rate:.2%} (매수가 {buy_price:,.0f}원, "
+                f"현재가 {current_price:,.0f}원)"
+            )
 
     # =========================================================================
     # Circuit Breaker 관련 메서드

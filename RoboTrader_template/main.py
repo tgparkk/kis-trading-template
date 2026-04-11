@@ -88,7 +88,10 @@ class DayTradingBot:
         # TradingStockManager에 decision_engine 연결 (쿨다운 설정용)
         self.trading_manager.set_decision_engine(self.decision_engine)
 
-        self.fund_manager = FundManager()
+        _max_daily_loss = getattr(
+            getattr(self.config, 'risk_management', None), 'max_daily_loss', 0.1
+        )
+        self.fund_manager = FundManager(max_daily_loss_ratio=_max_daily_loss)
         self.order_manager.set_fund_manager(self.fund_manager)
 
         # 일일 매매 리포트 초기화
@@ -335,9 +338,10 @@ class DayTradingBot:
                     await asyncio.sleep(30)
                     continue
 
-                # 장 시작 후 최초 1회: 스크리너 후보 로드
+                # 장 시작 후 최초 1회: 스크리너 후보 로드 + 전략 장시작 콜백
                 if not self._candidates_loaded:
                     await self._load_screener_candidates()
+                    await self._call_strategy_market_open()
 
                 iteration += 1
 
@@ -399,6 +403,20 @@ class DayTradingBot:
                 await asyncio.sleep(sleep_time)
 
         self.logger.info("메인 트레이딩 루프 종료")
+
+    async def reload_candidates(self) -> None:
+        """후보 종목 강제 재로드 (장중 스크리너 파일 갱신 시 사용)
+
+        _candidates_loaded 플래그와 재시도 카운터를 리셋한 뒤
+        즉시 _load_screener_candidates()를 호출합니다.
+
+        # TODO: 텔레그램 /reload 명령어에서 이 메서드를 호출하도록 연결
+        #        (core/telegram_integration.py 의 커맨드 핸들러 추가 필요)
+        """
+        self.logger.info("후보 종목 재로드 요청")
+        self._candidates_loaded = False
+        self._candidate_load_retries = 0
+        await self._load_screener_candidates()
 
     async def _load_screener_candidates(self):
         """후보 종목 로드: 스크리너 우선, 없으면 거래량 순위 자동 수집"""
@@ -550,6 +568,9 @@ class DayTradingBot:
 
             # liquidation_handler를 통해 청산 실행
             await self.liquidation_handler.execute_end_of_day_liquidation()
+
+            # EOD 청산 완료 후 전략 장종료 콜백
+            await self._call_strategy_market_close()
 
         except Exception as e:
             self.logger.error(f"EOD 일괄청산 체크 오류: {e}")

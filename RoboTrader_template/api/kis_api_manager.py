@@ -38,6 +38,7 @@ class StockPrice:
     change_rate: float
     volume: int
     timestamp: datetime
+    stock_name: str = ""
 
 
 @dataclass
@@ -307,7 +308,8 @@ class KISAPIManager:
                 change_amount=float(data.get('prdy_vrss', 0)),
                 change_rate=float(data.get('prdy_ctrt', 0)),
                 volume=int(data.get('acml_vol', 0)),
-                timestamp=now_kst()
+                timestamp=now_kst(),
+                stock_name=str(data.get('hts_kor_isnm', ''))
             )
             
             return stock_price

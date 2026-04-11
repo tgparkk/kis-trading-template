@@ -42,6 +42,16 @@ class BBReversionStrategy(BaseStrategy):
     version: str = "1.0.0"
     description: str = "BB lower band buy, BB middle sell in sideways (ADX<20) markets"
     author: str = "Template"
+    holding_period: str = "swing"
+
+    def get_min_data_length(self) -> int:
+        """BB20 + ADX14 + RSI14 + 거래량MA20 중 최대 + 여유 5"""
+        params = self.config.get("parameters", {})
+        bb_period = params.get("bb_period", 20)
+        adx_period = params.get("adx_period", 14)
+        rsi_period = params.get("rsi_period", 14)
+        vol_ma_period = params.get("volume_ma_period", 20)
+        return max(bb_period, adx_period, rsi_period, vol_ma_period) + 5
 
     # ------------------------------------------------------------------
     # Static evaluation methods (single-source for live + simulation)
@@ -266,14 +276,7 @@ class BBReversionStrategy(BaseStrategy):
             from .screener import BBReversionScreener
 
             screening_cfg = self.config.get("screening", {})
-            db_cfg = self.config.get("database", {})
-            screener = BBReversionScreener(
-                host=db_cfg.get("host", "172.23.208.1"),
-                port=db_cfg.get("port", 5433),
-                user=db_cfg.get("user", "postgres"),
-                password=db_cfg.get("password", "1234"),
-                dbname=db_cfg.get("dbname", "strategy_analysis"),
-            )
+            screener = BBReversionScreener()
 
             target_sectors = screening_cfg.get("target_sectors", [])
             stocks = screener.get_sector_stocks(target_sectors)

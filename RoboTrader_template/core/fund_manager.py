@@ -21,42 +21,49 @@ class FundManager:
     7. 익절/손절 후 재매수 쿨다운 관리
     """
     
-    def __init__(self, initial_funds: float = 0, max_position_count: int = 20):
+    def __init__(self, initial_funds: float = 0, max_position_count: int = 20,
+                 max_daily_loss_ratio: float = 0.1):
         """
         초기화
-        
+
         Args:
             initial_funds: 초기 자금 (0이면 API에서 조회)
             max_position_count: 동시 보유 최대 종목 수
+            max_daily_loss_ratio: 일일 최대 손실 비율 (기본 10%)
         """
         self.logger = setup_logger(__name__)
         self._lock = threading.RLock()
-        
+
         # 자금 관리
         self.total_funds = initial_funds
         self.available_funds = initial_funds
         self.reserved_funds = 0.0  # 주문 중인 금액
         self.invested_funds = 0.0  # 투자 중인 금액
-        
+
         # 주문별 예약 금액 추적
         self.order_reservations: Dict[str, float] = {}  # order_id -> reserved_amount
-        
+
         # 설정
         self.max_position_ratio = 0.09  # 종목당 최대 투자 비율 (9%)
         self.max_total_investment_ratio = 0.9  # 전체 자금 대비 최대 투자 비율 (90%)
-        
+
         # 동시 보유 종목 수 제한
         self.max_position_count = max_position_count
         self.current_position_codes: Set[str] = set()  # 현재 보유 종목 코드
-        
+
         # 익절/손절 후 재매수 쿨다운 (종목코드 → 쿨다운 만료 시각)
         self._sell_cooldowns: Dict[str, datetime] = {}
         self.sell_cooldown_minutes = 30  # 매도 후 재매수 금지 시간 (분)
-        
+
         # 잔고 동기화 추적
         self._last_sync_time: Optional[datetime] = None
         self._sync_discrepancy_count = 0  # 연속 불일치 횟수
-        
+
+        # 일일 실현 손실 추적
+        self.max_daily_loss_ratio: float = max_daily_loss_ratio  # 일일 최대 손실 비율
+        self._daily_realized_loss: float = 0.0   # 당일 누적 실현 손실액 (양수 = 손실)
+        self._daily_loss_date: str = ""           # 마지막 리셋 날짜 (YYYY-MM-DD)
+
         self.logger.info(f"💰 자금 관리자 초기화 완료 - 초기자금: {initial_funds:,.0f}원, "
                         f"최대 보유: {max_position_count}종목")
     
@@ -255,6 +262,57 @@ class FundManager:
             if self.available_funds < 0:
                 self.available_funds = 0
             self.logger.info(f"매매 손익 반영: {pnl:+,.0f}원 (총자금: {self.total_funds:,.0f}원)")
+            # 손실 발생 시 일일 손실 누적
+            if pnl < 0:
+                self.record_realized_loss(-pnl)
+
+    # =========================================================================
+    # 일일 손실 한도 관리
+    # =========================================================================
+
+    def record_realized_loss(self, amount: float) -> None:
+        """당일 실현 손실 기록
+
+        Args:
+            amount: 손실 금액 (양수값, 예: 50000 = 5만원 손실)
+        """
+        with self._lock:
+            today = datetime.now().strftime("%Y-%m-%d")
+            if self._daily_loss_date != today:
+                # 날짜가 바뀌면 자동 리셋
+                self._daily_realized_loss = 0.0
+                self._daily_loss_date = today
+            self._daily_realized_loss += float(amount)
+            loss_ratio = (self._daily_realized_loss / self.total_funds) if self.total_funds > 0 else 0
+            self.logger.info(
+                f"일일 손실 누적: {self._daily_realized_loss:,.0f}원 "
+                f"({loss_ratio*100:.1f}% / 한도 {self.max_daily_loss_ratio*100:.1f}%)"
+            )
+
+    def is_daily_loss_limit_hit(self) -> bool:
+        """일일 손실 한도 초과 여부 확인
+
+        Returns:
+            bool: 한도 초과 시 True (매수 차단 필요)
+        """
+        with self._lock:
+            today = datetime.now().strftime("%Y-%m-%d")
+            if self._daily_loss_date != today:
+                # 날짜가 바뀌면 리셋 후 False
+                self._daily_realized_loss = 0.0
+                self._daily_loss_date = today
+                return False
+            if self.total_funds <= 0:
+                return False
+            loss_ratio = self._daily_realized_loss / self.total_funds
+            return loss_ratio >= self.max_daily_loss_ratio
+
+    def reset_daily_loss(self) -> None:
+        """일일 손실 수동 리셋 (장 시작 시 또는 테스트용)"""
+        with self._lock:
+            self._daily_realized_loss = 0.0
+            self._daily_loss_date = datetime.now().strftime("%Y-%m-%d")
+            self.logger.info("일일 손실 카운터 리셋")
 
     def calculate_buy_cost(self, amount: float) -> float:
         """매수 시 실제 비용 (주문금액 + 수수료)

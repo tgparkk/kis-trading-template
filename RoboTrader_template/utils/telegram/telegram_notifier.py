@@ -326,33 +326,98 @@ class TelegramNotifier:
         """상태 조회 명령어"""
         if str(update.effective_chat.id) != self.chat_id:
             return
-        
-        # TODO: 실제 시스템 상태 조회 로직 구현
-        status_message = "📊 *시스템 상태*\n\n⏰ 시간: {}\n📈 시장: 장중\n🔄 상태: 정상 동작\n📊 데이터: 수집 중".format(
-            now_kst().strftime('%H:%M:%S')
-        )
-        
-        await update.message.reply_text(status_message, parse_mode="Markdown")
+
+        try:
+            bot = getattr(self, 'trading_bot_ref', None)
+            if bot:
+                fund = getattr(bot, 'fund_manager', None)
+                status_parts = ["📊 *시스템 상태*", ""]
+                status_parts.append(f"⏰ 시간: {now_kst().strftime('%H:%M:%S')}")
+                status_parts.append(f"🔄 상태: {'실행 중' if bot.is_running else '중지됨'}")
+                if fund:
+                    status_parts.append(f"💰 총자금: {fund.total_funds:,.0f}원")
+                    status_parts.append(f"💵 가용: {fund.available_funds:,.0f}원")
+                    status_parts.append(f"📈 투자중: {fund.invested_funds:,.0f}원")
+                    status_parts.append(f"📋 보유: {len(fund.current_position_codes)}종목")
+                await update.message.reply_text("\n".join(status_parts), parse_mode="Markdown")
+            else:
+                await update.message.reply_text("⚠️ 시스템 참조 없음")
+        except Exception as e:
+            self.logger.error(f"텔레그램 /status 처리 오류: {e}")
+            await update.message.reply_text(f"⚠️ 조회 실패: {e}")
     
     async def _cmd_positions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """포지션 조회 명령어"""
         if str(update.effective_chat.id) != self.chat_id:
             return
-        
-        # TODO: 실제 포지션 조회 로직 구현
-        positions_message = "💼 *보유 포지션*\n\n현재 보유 중인 포지션이 없습니다."
-        
-        await update.message.reply_text(positions_message, parse_mode="Markdown")
+
+        try:
+            bot = getattr(self, 'trading_bot_ref', None)
+            if bot:
+                trading_manager = getattr(bot, 'trading_manager', None)
+                summary = trading_manager.get_portfolio_summary() if trading_manager else {}
+                positions = summary.get('positions', [])
+                if positions:
+                    lines = ["💼 *보유 포지션*", ""]
+                    for p in positions:
+                        avg = p.get('avg_price', 0)
+                        cur = p.get('current_price', 0)
+                        pnl = p.get('unrealized_pnl', 0)
+                        pnl_rate = ((cur - avg) / avg * 100) if avg else 0
+                        name = p.get('stock_name') or p.get('stock_code', '')
+                        lines.append(
+                            f"• {name}({p.get('stock_code', '')}) "
+                            f"{p.get('quantity', 0):,}주 "
+                            f"@{avg:,.0f}→{cur:,.0f}원 "
+                            f"({pnl_rate:+.2f}% / {pnl:+,.0f}원)"
+                        )
+                    total_pnl = summary.get('total_unrealized_pnl', 0)
+                    lines.append(f"\n합계 평가손익: {total_pnl:+,.0f}원")
+                    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+                else:
+                    await update.message.reply_text("💼 *보유 포지션*\n\n현재 보유 중인 포지션이 없습니다.", parse_mode="Markdown")
+            else:
+                await update.message.reply_text("⚠️ 시스템 참조 없음")
+        except Exception as e:
+            self.logger.error(f"텔레그램 /positions 처리 오류: {e}")
+            await update.message.reply_text(f"⚠️ 조회 실패: {e}")
     
     async def _cmd_orders(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """주문 현황 조회 명령어"""
         if str(update.effective_chat.id) != self.chat_id:
             return
-        
-        # TODO: 실제 주문 현황 조회 로직 구현
-        orders_message = "📋 *주문 현황*\n\n미체결 주문: 0건\n완료된 주문: 0건"
-        
-        await update.message.reply_text(orders_message, parse_mode="Markdown")
+
+        try:
+            bot = getattr(self, 'trading_bot_ref', None)
+            if bot:
+                order_manager = getattr(bot, 'order_manager', None)
+                if order_manager:
+                    summary = order_manager.get_order_summary()
+                    pending_count = summary.get('pending_count', 0)
+                    completed_count = summary.get('completed_count', 0)
+                    pending_list = summary.get('pending_orders', [])
+                    lines = ["📋 *주문 현황*", ""]
+                    lines.append(f"미체결: {pending_count}건 / 완료: {completed_count}건")
+                    if pending_list:
+                        lines.append("")
+                        for o in pending_list[:10]:
+                            order_type_str = "매수" if o.get('type', '').upper() == 'BUY' else "매도"
+                            lines.append(
+                                f"• [{order_type_str}] {o.get('stock_code', '')} "
+                                f"{o.get('quantity', 0):,}주 "
+                                f"@{o.get('price', 0):,.0f}원 "
+                                f"(체결 {o.get('filled', 0)}주)"
+                            )
+                        if pending_count > 10:
+                            lines.append(f"... 외 {pending_count - 10}건")
+                    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+                else:
+                    await update.message.reply_text("📋 *주문 현황*\n\n미체결 주문: 0건", parse_mode="Markdown")
+            else:
+                await update.message.reply_text("⚠️ 시스템 참조 없음")
+        except Exception as e:
+            self.logger.error(f"텔레그램 /orders 처리 오류: {e}")
+            await update.message.reply_text(f"⚠️ 조회 실패: {e}")
     
     async def _cmd_virtual_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """가상 매매 통계 명령어"""
@@ -440,11 +505,26 @@ class TelegramNotifier:
         """시스템 종료 명령어"""
         if str(update.effective_chat.id) != self.chat_id:
             return
-        
-        await update.message.reply_text("⚠️ 시스템 종료 명령을 받았습니다. 안전하게 종료 중...")
-        
-        # TODO: 실제 시스템 종료 로직 구현
-        # 이 부분은 메인 시스템과 연동 필요
+
+        try:
+            if hasattr(self, 'trading_bot_ref') and self.trading_bot_ref is not None:
+                bot = self.trading_bot_ref
+                await update.message.reply_text("🛑 시스템을 종료합니다. 안전하게 종료 중...")
+                self.logger.info("텔레그램 /stop 명령 수신 — 시스템 종료 요청")
+                try:
+                    bot.is_running = False
+                except Exception as bot_err:
+                    self.logger.error(f"종료 신호 전달 실패: {bot_err}")
+                    await update.message.reply_text(f"⚠️ 종료 신호 전달 실패: {bot_err}")
+            else:
+                await update.message.reply_text("⚠️ 시스템 참조가 없습니다. 수동으로 프로세스를 종료해주세요.")
+                self.logger.warning("텔레그램 /stop 명령 수신 — trading_bot_ref 없음")
+        except Exception as e:
+            self.logger.error(f"텔레그램 /stop 처리 오류: {e}")
+            try:
+                await update.message.reply_text(f"⚠️ 종료 처리 중 오류가 발생했습니다: {e}")
+            except Exception:
+                pass
     
     async def shutdown(self):
         """텔레그램 봇 종료"""

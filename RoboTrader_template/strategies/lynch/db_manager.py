@@ -6,6 +6,7 @@ PostgreSQL(strategy_analysis)에 lynch_trades 테이블 자동 생성 및 CRUD.
 """
 
 import logging
+import os
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional
 
@@ -46,9 +47,14 @@ class LynchDBManager:
     );
     """
 
-    def __init__(self, host: str = "172.23.208.1", port: int = 5433,
-                 user: str = "postgres", dbname: str = "strategy_analysis"):
-        self._conn_params = dict(host=host, port=port, user=user, dbname=dbname)
+    def __init__(self):
+        self._conn_params = dict(
+            host=os.getenv('STRATEGY_DB_HOST', os.getenv('TIMESCALE_HOST', '172.23.208.1')),
+            port=int(os.getenv('STRATEGY_DB_PORT', os.getenv('TIMESCALE_PORT', 5433))),
+            user=os.getenv('STRATEGY_DB_USER', os.getenv('TIMESCALE_USER', 'postgres')),
+            password=os.getenv('STRATEGY_DB_PASSWORD', os.getenv('TIMESCALE_PASSWORD', '')),
+            dbname=os.getenv('STRATEGY_DB_NAME', 'strategy_analysis'),
+        )
         self._conn = None
         self._ensure_table()
 

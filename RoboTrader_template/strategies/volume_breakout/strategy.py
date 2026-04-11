@@ -29,6 +29,13 @@ class VolumeBreakoutStrategy(BaseStrategy):
     version: str = "1.0.0"
     description: str = "거래량 10배 폭증 + 양봉 발생 시 돌파 매매"
     author: str = "Template"
+    holding_period: str = "intraday"
+
+    def get_min_data_length(self) -> int:
+        """거래량 평균 기간 + 여유 2"""
+        params = self.config.get("parameters", {})
+        volume_avg_period = params.get("volume_avg_period", 20)
+        return volume_avg_period + 2
 
     def on_init(self, broker, data_provider, executor) -> bool:
         self._broker = broker

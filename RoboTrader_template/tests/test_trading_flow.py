@@ -327,6 +327,8 @@ class TestPositionMonitorSellSignal:
         trading_stock.position.quantity = 10
         trading_stock.target_profit_rate = 0.17
         trading_stock.stop_loss_rate = 0.09
+        trading_stock.highest_price_since_buy = None
+        trading_stock.trailing_stop_activated = False
 
         # 현재가 (손익절 안 걸리는 가격)
         intraday_manager.get_current_price_for_sell.return_value = {'current_price': 71000}

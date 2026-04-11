@@ -6,6 +6,7 @@ Screen stocks from low-volatility sectors with sideways (ADX < 20) conditions.
 Queries stock_sector table for sector filtering.
 """
 
+import os
 from typing import List, Dict, Optional
 
 try:
@@ -31,20 +32,13 @@ SECTOR_KEYWORDS = {
 class BBReversionScreener:
     """Screen low-volatility sector stocks for BB reversion strategy."""
 
-    def __init__(
-        self,
-        host: str = "172.23.208.1",
-        port: int = 5433,
-        user: str = "postgres",
-        password: str = "1234",
-        dbname: str = "strategy_analysis",
-    ):
+    def __init__(self):
         self._db_params = {
-            "host": host,
-            "port": port,
-            "user": user,
-            "password": password,
-            "dbname": dbname,
+            "host": os.getenv('STRATEGY_DB_HOST', os.getenv('TIMESCALE_HOST', '172.23.208.1')),
+            "port": int(os.getenv('STRATEGY_DB_PORT', os.getenv('TIMESCALE_PORT', 5433))),
+            "user": os.getenv('STRATEGY_DB_USER', os.getenv('TIMESCALE_USER', 'postgres')),
+            "password": os.getenv('STRATEGY_DB_PASSWORD', os.getenv('TIMESCALE_PASSWORD', '')),
+            "dbname": os.getenv('STRATEGY_DB_NAME', 'strategy_analysis'),
         }
 
     def get_sector_stocks(self, target_sectors: List[str]) -> List[Dict]:

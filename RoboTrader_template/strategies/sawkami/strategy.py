@@ -34,6 +34,15 @@ class SawkamiStrategy(BaseStrategy):
     version: str = "1.0.0"
     description: str = "영업이익 성장 + 52주 고점 하락 + 저PBR + 거래량 급증 + RSI 과매도"
     author: str = "Template"
+    holding_period: str = "swing"
+
+    def get_min_data_length(self) -> int:
+        """52주 고가(252일) + 거래량MA20 + RSI14 중 최대 + 여유 2 = 254"""
+        params = self.config.get("parameters", {})
+        high52w_period = params.get("high52w_period", 252)
+        vol_ma_period = params.get("volume_ma_period", 20)
+        rsi_period = params.get("rsi_period", 14)
+        return max(high52w_period, vol_ma_period, rsi_period) + 2
 
     def on_init(self, broker, data_provider, executor) -> bool:
         self._broker = broker
@@ -65,13 +74,7 @@ class SawkamiStrategy(BaseStrategy):
         self._paper_trading = self.config.get("paper_trading", True)
 
         # DB 매니저
-        db_cfg = self.config.get("database", {})
-        self._db = SawkamiDBManager(
-            host=db_cfg.get("host", "172.23.208.1"),
-            port=db_cfg.get("port", 5433),
-            user=db_cfg.get("user", "postgres"),
-            dbname=db_cfg.get("dbname", "strategy_analysis"),
-        )
+        self._db = SawkamiDBManager()
 
         # 상태
         self.positions: Dict[str, Dict[str, Any]] = {}

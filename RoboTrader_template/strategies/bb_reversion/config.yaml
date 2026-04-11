@@ -31,11 +31,4 @@ screening:
     - dividend
   min_trading_value: 500000000
 
-database:
-  host: "172.23.208.1"
-  port: 5433
-  user: "postgres"
-  password: "1234"
-  dbname: "strategy_analysis"
-
 paper_trading: true

@@ -5,6 +5,7 @@
 from typing import TYPE_CHECKING, Optional
 
 from core.models import StockState
+from config.constants import CANDIDATE_MIN_DAILY_DATA
 
 from utils.logger import setup_logger
 from utils.rate_limited_logger import RateLimitedLogger
@@ -24,12 +25,14 @@ class TradingAnalyzer:
         if hasattr(bot, 'fund_manager') and hasattr(bot, 'decision_engine'):
             bot.decision_engine.set_fund_manager(bot.fund_manager)
 
-    async def analyze_buy_decision(self, trading_stock, available_funds: float = None) -> None:
+    async def analyze_buy_decision(self, trading_stock, available_funds: float = None,
+                                   signal=None) -> None:
         """매수 판단 분석 (일봉 데이터 사용)
 
         Args:
             trading_stock: 거래 대상 주식
             available_funds: 사용 가능한 자금 (미리 계산된 값)
+            signal: Signal 객체 (TradingContext.buy()에서 전달, target_price/stop_loss 활용)
         """
         try:
             stock_code = trading_stock.stock_code
@@ -55,8 +58,8 @@ class TradingAnalyzer:
                 self.logger.warning(f"{stock_code} 일봉 데이터 없음 (daily_prices 테이블) - 매수 판단 불가")
                 return
 
-            if len(daily_data) < 20:
-                self.logger.debug(f"{stock_code} 일봉 데이터 부족: {len(daily_data)}개 (최소 20개 필요)")
+            if len(daily_data) < CANDIDATE_MIN_DAILY_DATA:
+                self.logger.debug(f"{stock_code} 일봉 데이터 부족: {len(daily_data)}개 (최소 {CANDIDATE_MIN_DAILY_DATA}개 필요)")
                 return
 
             self.logger.debug(f"{stock_code} 일봉 데이터 조회 완료: {len(daily_data)}건")
@@ -122,6 +125,8 @@ class TradingAnalyzer:
                     self.logger.debug(f"매수 전 상태 확인: {stock_code} 현재상태={current_stock.state.value}")
 
                 # 가상/실전 매매 분기
+                # Signal 우선순위: 엔진 재생성 신호 > 호출자 전달 신호
+                effective_signal = buy_info.get('signal') or signal
                 if self.bot.decision_engine.is_virtual_mode:
                     # 가상 매수
                     try:
@@ -129,7 +134,7 @@ class TradingAnalyzer:
                             trading_stock, None, buy_reason,
                             buy_price=buy_info['buy_price'],
                             quantity=buy_info['quantity'],
-                            signal=buy_info.get('signal')
+                            signal=effective_signal
                         )
                         # 자금 확정 (가상매매는 즉시 체결로 간주)
                         self.bot.fund_manager.confirm_order(_reserve_id, required_amount)

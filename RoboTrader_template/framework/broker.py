@@ -370,6 +370,32 @@ class KISBroker(BaseBroker):
             self.logger.error(f"Error getting price for {stock_code}: {e}")
             return None
 
+    def get_stock_name(self, stock_code: str) -> Optional[str]:
+        """
+        종목명 조회 (현재가 API 응답의 hts_kor_isnm 필드 활용)
+
+        Args:
+            stock_code: 종목코드 (6자리)
+
+        Returns:
+            str: 종목명, 조회 실패 시 None
+        """
+        if not self._connected:
+            return None
+
+        try:
+            price_data = self._kis_market_api.get_inquire_price(itm_no=stock_code)
+
+            if price_data is None or price_data.empty:
+                return None
+
+            name = str(price_data.iloc[0].get('hts_kor_isnm', ''))
+            return name if name else None
+
+        except Exception as e:
+            self.logger.error(f"Error getting stock name for {stock_code}: {e}")
+            return None
+
     def get_tradable_amount(self, stock_code: str, price: float) -> Optional[int]:
         """
         Get maximum tradable quantity for a stock at given price.
@@ -778,276 +804,5 @@ class KISBroker(BaseBroker):
         return self._api_manager
 
 
-# ============================================================================
-# Fund Manager
-# ============================================================================
-
-class FundManager:
-    """
-    Fund management for trading.
-
-    Tracks available funds, reserved amounts, and position sizing.
-    Thread-safe implementation for concurrent order processing.
-
-    Features:
-    - Track total and available funds
-    - Reserve funds for pending orders
-    - Calculate max buy amounts per stock
-    - Prevent double-spending on concurrent orders
-
-    Usage:
-        fund_manager = FundManager(initial_funds=10000000)
-
-        # Reserve funds for order
-        if fund_manager.reserve_funds("order_001", 500000):
-            # Execute order
-            ...
-            # Confirm order with actual amount
-            fund_manager.confirm_order("order_001", 495000)
-    """
-
-    def __init__(self, initial_funds: float = 0):
-        """
-        Initialize fund manager.
-
-        Args:
-            initial_funds: Initial available funds (0 = fetch from API later)
-        """
-        self.logger = setup_logger(__name__)
-        self._lock = threading.RLock()
-
-        # Fund tracking
-        self.total_funds = initial_funds
-        self.available_funds = initial_funds
-        self.reserved_funds = 0.0
-        self.invested_funds = 0.0
-
-        # Order reservations: order_id -> reserved_amount
-        self._reservations: Dict[str, float] = {}
-
-        # Settings
-        self.max_position_ratio = 0.09  # Max 9% per stock
-        self.max_total_investment = 0.90  # Max 90% total investment
-
-        self.logger.info(f"FundManager initialized with {initial_funds:,.0f} won")
-
-    def update_total_funds(self, new_total: float) -> None:
-        """
-        Update total available funds.
-
-        Args:
-            new_total: New total fund amount
-        """
-        with self._lock:
-            old_total = self.total_funds
-            self.total_funds = new_total
-
-            # Recalculate available funds
-            self.available_funds = new_total - self.reserved_funds - self.invested_funds
-
-            self.logger.info(
-                f"Funds updated: {old_total:,.0f} -> {new_total:,.0f} "
-                f"(available: {self.available_funds:,.0f})"
-            )
-
-    def get_max_buy_amount(self, stock_code: str) -> float:
-        """
-        Calculate maximum buy amount for a stock.
-
-        Considers:
-        - Per-stock position limit (max_position_ratio)
-        - Total investment limit (max_total_investment)
-        - Currently available funds
-
-        Args:
-            stock_code: Stock code
-
-        Returns:
-            float: Maximum amount available for buying
-        """
-        with self._lock:
-            # Per-stock limit
-            max_per_stock = self.total_funds * self.max_position_ratio
-
-            # Total investment limit
-            max_investment = self.total_funds * self.max_total_investment
-            remaining_capacity = max_investment - self.invested_funds - self.reserved_funds
-
-            # Available funds limit
-            available = self.available_funds
-
-            # Return minimum of all limits
-            max_amount = max(0, min(max_per_stock, remaining_capacity, available))
-
-            self.logger.debug(
-                f"Max buy for {stock_code}: {max_amount:,.0f} "
-                f"(per_stock: {max_per_stock:,.0f}, capacity: {remaining_capacity:,.0f}, "
-                f"available: {available:,.0f})"
-            )
-
-            return max_amount
-
-    def reserve_funds(self, order_id: str, amount: float) -> bool:
-        """
-        Reserve funds for a pending order.
-
-        Thread-safe method to prevent double-spending on concurrent orders.
-
-        Args:
-            order_id: Unique order identifier
-            amount: Amount to reserve
-
-        Returns:
-            bool: True if reservation successful
-        """
-        with self._lock:
-            if amount > self.available_funds:
-                self.logger.warning(
-                    f"Insufficient funds: need {amount:,.0f}, have {self.available_funds:,.0f}"
-                )
-                return False
-
-            if order_id in self._reservations:
-                self.logger.warning(f"Order already reserved: {order_id}")
-                return False
-
-            self.available_funds -= amount
-            self.reserved_funds += amount
-            self._reservations[order_id] = amount
-
-            self.logger.info(
-                f"Reserved {amount:,.0f} for order {order_id} "
-                f"(available: {self.available_funds:,.0f})"
-            )
-
-            return True
-
-    def confirm_order(self, order_id: str, actual_amount: float) -> None:
-        """
-        Confirm order and move reserved funds to invested.
-
-        Call this after an order is filled to update fund tracking.
-
-        Args:
-            order_id: Order identifier
-            actual_amount: Actual filled amount
-        """
-        with self._lock:
-            if order_id not in self._reservations:
-                self.logger.warning(f"Order not found in reservations: {order_id}")
-                return
-
-            reserved = self._reservations.pop(order_id)
-            self.reserved_funds -= reserved
-            self.invested_funds += actual_amount
-
-            # Refund difference if actual < reserved
-            refund = reserved - actual_amount
-            if refund > 0:
-                self.available_funds += refund
-
-            self.logger.info(
-                f"Order {order_id} confirmed: invested {actual_amount:,.0f}, "
-                f"refunded {refund:,.0f}"
-            )
-
-    def cancel_order(self, order_id: str) -> None:
-        """
-        Cancel order reservation and return funds.
-
-        Call this when an order is cancelled to release reserved funds.
-
-        Args:
-            order_id: Order identifier
-        """
-        with self._lock:
-            if order_id not in self._reservations:
-                self.logger.warning(f"Order not in reservations: {order_id}")
-                return
-
-            amount = self._reservations.pop(order_id)
-            self.reserved_funds -= amount
-            self.available_funds += amount
-
-            self.logger.info(
-                f"Reservation cancelled: {order_id}, returned {amount:,.0f}"
-            )
-
-    def release_investment(self, amount: float) -> None:
-        """
-        Release invested funds (after selling).
-
-        Call this after a sell order is filled to update fund tracking.
-
-        Args:
-            amount: Amount to release
-        """
-        with self._lock:
-            self.invested_funds -= amount
-            self.available_funds += amount
-
-            self.logger.info(
-                f"Investment released: {amount:,.0f} "
-                f"(available: {self.available_funds:,.0f})"
-            )
-
-    def get_status(self) -> Dict[str, float]:
-        """
-        Get current fund status.
-
-        Returns:
-            Dict: Fund status summary with keys:
-                - total_funds: Total funds
-                - available_funds: Available for trading
-                - reserved_funds: Reserved for pending orders
-                - invested_funds: Currently invested
-                - utilization_rate: Investment utilization ratio
-        """
-        with self._lock:
-            return {
-                'total_funds': self.total_funds,
-                'available_funds': self.available_funds,
-                'reserved_funds': self.reserved_funds,
-                'invested_funds': self.invested_funds,
-                'utilization_rate': (
-                    (self.reserved_funds + self.invested_funds) / self.total_funds
-                    if self.total_funds > 0 else 0
-                )
-            }
-
-    def sync_with_broker(self, broker: KISBroker) -> bool:
-        """
-        Synchronize fund status with broker.
-
-        Fetches actual balance from broker and updates internal tracking.
-
-        Args:
-            broker: KISBroker instance
-
-        Returns:
-            bool: True if sync successful
-        """
-        try:
-            balance = broker.get_account_balance()
-            if not balance:
-                self.logger.error("Failed to get balance from broker")
-                return False
-
-            total_value = balance.get('total_balance', 0)
-            available_cash = balance.get('available_cash', 0)
-            invested = balance.get('invested_amount', 0)
-
-            with self._lock:
-                self.total_funds = total_value
-                self.invested_funds = invested
-                self.available_funds = available_cash - self.reserved_funds
-
-            self.logger.info(
-                f"Synced with broker: total={total_value:,.0f}, "
-                f"available={self.available_funds:,.0f}, invested={invested:,.0f}"
-            )
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Failed to sync with broker: {e}")
-            return False
+# FundManager is defined in core/fund_manager.py — import from there.
+from core.fund_manager import FundManager  # noqa: E402, F401

@@ -28,6 +28,14 @@ class MeanReversionStrategy(BaseStrategy):
     version: str = "1.0.0"
     description: str = "MA20 대비 과도한 이탈 시 매수, 평균 복귀 시 매도"
     author: str = "Template"
+    holding_period: str = "swing"
+
+    def get_min_data_length(self) -> int:
+        """MA20 + RSI14 + 여유 2 = 22"""
+        params = self.config.get("parameters", {})
+        ma_period = params.get("ma_period", 20)
+        rsi_period = params.get("rsi_period", 14)
+        return max(ma_period, rsi_period) + 2
 
     def on_init(self, broker, data_provider, executor) -> bool:
         self._broker = broker

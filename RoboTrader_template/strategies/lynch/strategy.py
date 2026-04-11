@@ -35,6 +35,13 @@ class LynchStrategy(BaseStrategy):
     version: str = "1.0.0"
     description: str = "PEG ≤ 0.3 + 영업이익성장 70%↑ + 부채비율 200%↓ + ROE 5%↑ + RSI < 35"
     author: str = "Template"
+    holding_period: str = "swing"
+
+    def get_min_data_length(self) -> int:
+        """RSI14 + 여유 2 = 16 (재무 기반 전략, 일봉은 RSI만 사용)"""
+        params = self.config.get("parameters", {})
+        rsi_period = params.get("rsi_period", 14)
+        return rsi_period + 2
 
     def on_init(self, broker, data_provider, executor) -> bool:
         self._broker = broker
@@ -64,13 +71,7 @@ class LynchStrategy(BaseStrategy):
         self._paper_trading = self.config.get("paper_trading", True)
 
         # DB 매니저
-        db_cfg = self.config.get("database", {})
-        self._db = LynchDBManager(
-            host=db_cfg.get("host", "172.23.208.1"),
-            port=db_cfg.get("port", 5433),
-            user=db_cfg.get("user", "postgres"),
-            dbname=db_cfg.get("dbname", "strategy_analysis"),
-        )
+        self._db = LynchDBManager()
 
         # 상태
         self.positions: Dict[str, Dict[str, Any]] = {}

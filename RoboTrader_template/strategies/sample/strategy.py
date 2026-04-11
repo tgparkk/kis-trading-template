@@ -30,10 +30,18 @@ class SampleStrategy(BaseStrategy):
     version: str = "1.0.0"
     description: str = "이동평균 골든/데드크로스 + RSI 기반 매매 전략"
     author: str = "Template"
+    holding_period: str = "intraday"
 
     # ========================================================================
     # 라이프사이클
     # ========================================================================
+
+    def get_min_data_length(self) -> int:
+        """MA20 + RSI14 + 여유 2 = 22"""
+        params = self.config.get("parameters", {})
+        ma_long = params.get("ma_long_period", 20)
+        rsi_period = params.get("rsi_period", 14)
+        return max(ma_long, rsi_period) + 2
 
     def on_init(self, broker, data_provider, executor) -> bool:
         self._broker = broker

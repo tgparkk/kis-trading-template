@@ -7,6 +7,7 @@ DB 연결 실패 시에도 전략은 계속 동작 (graceful fallback).
 """
 
 import logging
+import os
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional
 
@@ -24,9 +25,14 @@ except ImportError:
 class SawkamiDBManager:
     """사와카미 전략 DB CRUD"""
 
-    def __init__(self, host: str = "172.23.208.1", port: int = 5433,
-                 user: str = "postgres", dbname: str = "strategy_analysis"):
-        self._conn_params = dict(host=host, port=port, user=user, dbname=dbname)
+    def __init__(self):
+        self._conn_params = dict(
+            host=os.getenv('STRATEGY_DB_HOST', os.getenv('TIMESCALE_HOST', '172.23.208.1')),
+            port=int(os.getenv('STRATEGY_DB_PORT', os.getenv('TIMESCALE_PORT', 5433))),
+            user=os.getenv('STRATEGY_DB_USER', os.getenv('TIMESCALE_USER', 'postgres')),
+            password=os.getenv('STRATEGY_DB_PASSWORD', os.getenv('TIMESCALE_PASSWORD', '')),
+            dbname=os.getenv('STRATEGY_DB_NAME', 'strategy_analysis'),
+        )
         self._conn = None
 
     # ========================================================================

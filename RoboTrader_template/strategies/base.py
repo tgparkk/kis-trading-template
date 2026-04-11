@@ -464,6 +464,18 @@ class BaseStrategy(ABC):
     # on_tick (Phase 1: Strategy-owns-the-loop)
     # ========================================================================
 
+    def get_min_data_length(self) -> int:
+        """
+        Return the minimum number of daily OHLCV bars required before
+        generate_signal() can produce a meaningful result.
+
+        Override this in each strategy to match the longest indicator
+        period used (e.g. MA20 + RSI14 + 2 buffer = 22).
+
+        Default: 20 (matches the historic hard-coded guard).
+        """
+        return 20
+
     async def on_tick(self, ctx: 'TradingContext'):
         """
         Framework calls this every cycle. Default: generate_signal-based behavior.
@@ -477,6 +489,8 @@ class BaseStrategy(ABC):
             ctx: TradingContext providing safe access to market data,
                  orders, funds, and other framework components.
         """
+        min_len = self.get_min_data_length()
+
         # Buy decisions
         buy_checked = 0
         buy_skipped = 0
@@ -484,12 +498,12 @@ class BaseStrategy(ABC):
         for stock in ctx.get_selected_stocks():
             buy_checked += 1
             data = await ctx.get_daily_data(stock.stock_code)
-            if data is None or len(data) < 20:
+            if data is None or len(data) < min_len:
                 buy_skipped += 1
                 if data is None:
                     self.logger.debug(f"스킵: {stock.stock_code} - 일봉 데이터 없음")
                 else:
-                    self.logger.debug(f"스킵: {stock.stock_code} - 일봉 {len(data)}건 < 20")
+                    self.logger.debug(f"스킵: {stock.stock_code} - 일봉 {len(data)}건 < {min_len}")
                 continue
             signal = self.generate_signal(stock.stock_code, data, timeframe='daily')
             if not signal:
@@ -527,6 +541,46 @@ class BaseStrategy(ABC):
             f"[on_tick] 매수검토 {buy_checked}종목(스킵 {buy_skipped}), 신호 {buy_signals}건 | "
             f"매도검토 {sell_checked}종목, 신호 {sell_signals}건"
         )
+
+    # ========================================================================
+    # Position Synchronization
+    # ========================================================================
+
+    def sync_positions(self, positions: Dict[str, Any]) -> None:
+        """
+        Synchronize self.positions with the framework's current holdings.
+
+        Called by the framework (main.py initialize phase) after on_init()
+        so that strategy-side position tracking matches the broker's actual
+        state on startup / restart.  Prevents duplicate-buy risk caused by
+        self.positions being reset to {} every time the process restarts.
+
+        The framework passes a dict whose keys are stock codes (str) and
+        whose values are position dicts compatible with the shape each
+        strategy stores in on_order_filled():
+            {
+                "quantity":    int,
+                "entry_price": float,
+                "entry_time":  datetime | None,
+            }
+
+        Strategies that store extra fields (e.g. "holding_days",
+        "bb_lower") will not have those fields populated by this call;
+        they should override sync_positions() to enrich the data as
+        needed.
+
+        Args:
+            positions: Dict[stock_code, position_dict] from
+                       TradingStockManager / broker holdings.
+        """
+        if not hasattr(self, "positions"):
+            self.positions: Dict[str, Any] = {}
+        self.positions.update(positions)
+        if positions:
+            self.logger.info(
+                f"[sync_positions] 포지션 동기화 완료: {len(positions)}종목 "
+                f"({list(positions.keys())})"
+            )
 
     # ========================================================================
     # EOD Liquidation

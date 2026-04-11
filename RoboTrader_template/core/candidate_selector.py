@@ -394,43 +394,155 @@ class CandidateSelector:
         """
         개별 종목 분석 및 점수 계산
 
-        TODO: 종목 분석 로직을 여기에 구현하세요
-
-        구현 가이드:
-        1. API로 현재가, 일봉 데이터 조회
-           price_data = self.broker.get_current_price(code)
-           daily_data = self.broker.get_ohlcv_data(code, "D", 100)
-
-        2. 점수 계산
-           score = self._calculate_stock_score(price_data, daily_data)
-
-        3. 최소 점수 기준 충족 시 CandidateStock 반환
-
-        예시 조건:
-        - 200일 신고가 돌파
-        - 거래량 전일 대비 2배 이상
-        - 양봉 (시가 < 종가)
-        - 5일 평균 거래대금 50억 이상
+        stock dict에는 code, name, market, current_price, change_rate, volume 등이 포함됩니다.
+        일봉 데이터(60일)를 조회해 거래량 추세·가격 추세·변동성·과매수 여부를 점수화하고,
+        최소 30점 이상인 종목만 CandidateStock으로 반환합니다.
         """
-        # TODO: 구현 필요
-        pass
+        from framework.data_providers.data_standardizer import DataStandardizer
+
+        code = stock.get('code', '')
+        name = stock.get('name', '')
+        market = stock.get('market', 'KRX')
+
+        if not code:
+            return None
+
+        try:
+            # 현재가 (volume rank 데이터에 이미 있으면 재사용)
+            current_price = stock.get('current_price', 0.0)
+            if not current_price:
+                current_price = self.broker.get_current_price(code) or 0.0
+
+            # 일봉 데이터 조회 (60일 — MA20 + RSI14 + 여유)
+            raw_df = self.broker.get_ohlcv_data(code, "D", 60)
+            if raw_df is None or raw_df.empty:
+                self.logger.debug(f"{code}({name}): 일봉 데이터 없음 → score=0")
+                return None
+
+            # 컬럼 표준화 (stck_clpr→close, acml_vol→volume 등)
+            daily_data = DataStandardizer.standardize_daily_data(raw_df)
+
+            score = self._calculate_stock_score(current_price, daily_data)
+
+            if score < 30.0:
+                self.logger.debug(f"{code}({name}): score={score:.1f} < 30 → 제외")
+                return None
+
+            prev_close = float(daily_data['close'].iloc[-1]) if 'close' in daily_data.columns else current_price
+            reason_parts = [f"종합점수{score:.0f}점"]
+            change_rate = stock.get('change_rate', 0.0)
+            if change_rate:
+                reason_parts.append(f"등락{change_rate:+.1f}%")
+
+            return CandidateStock(
+                code=code,
+                name=name,
+                market=market,
+                score=round(score, 1),
+                reason=', '.join(reason_parts),
+                prev_close=prev_close,
+            )
+
+        except Exception as e:
+            self.logger.warning(f"{code}({name}) 분석 실패: {e}")
+            return None
 
     def _calculate_stock_score(self, price_data, daily_data) -> float:
         """
         종목 점수 계산 (0~100)
 
-        TODO: 점수 계산 로직을 여기에 구현하세요
-
-        예시 점수 체계:
-        - 신고가 돌파: +25점
-        - 거래량 급증: +20점
-        - 양봉 형성: +10점
-        - 이동평균선 정배열: +15점
-        - RSI 적정 구간: +10점
-        - 거래대금 충분: +10점
+        점수 체계:
+        - 거래량 증가 추세 (최근 5일 평균 > 이전 15일 평균):  +25점
+        - 가격 상승 추세 (MA5 > MA20):                        +25점
+        - 적정 변동성 (ATR/가격 1~5%):                        +25점
+        - 과매수 패널티 (RSI > 70):                           -25점
         """
-        # TODO: 구현 필요
-        return 0.0
+        try:
+            import pandas as pd
+
+            if daily_data is None or daily_data.empty:
+                return 0.0
+            if 'close' not in daily_data.columns or 'volume' not in daily_data.columns:
+                return 0.0
+
+            close = daily_data['close'].astype(float)
+            volume = daily_data['volume'].astype(float)
+            n = len(close)
+
+            score = 0.0
+
+            # ── 거래량 추세 (+25) ──────────────────────────────────────────
+            # 최근 5일 평균 거래량이 이전 15일 평균보다 크면 추세 상승
+            if n >= 20:
+                recent_vol = volume.iloc[-5:].mean()
+                prev_vol = volume.iloc[-20:-5].mean()
+                if prev_vol > 0 and recent_vol > prev_vol:
+                    # 비율에 비례해 최대 25점 (2배 = 25점)
+                    ratio = min(recent_vol / prev_vol, 2.0)
+                    score += (ratio - 1.0) * 25.0
+            elif n >= 6:
+                recent_vol = volume.iloc[-3:].mean()
+                prev_vol = volume.iloc[:-3].mean()
+                if prev_vol > 0 and recent_vol > prev_vol:
+                    ratio = min(recent_vol / prev_vol, 2.0)
+                    score += (ratio - 1.0) * 25.0
+
+            # ── 가격 상승 추세 (+25) ───────────────────────────────────────
+            # MA5 > MA20 이면 정배열
+            if n >= 20:
+                ma5 = close.rolling(5).mean().iloc[-1]
+                ma20 = close.rolling(20).mean().iloc[-1]
+                if not (pd.isna(ma5) or pd.isna(ma20)) and ma20 > 0:
+                    if ma5 > ma20:
+                        score += 25.0
+            elif n >= 5:
+                # 데이터 부족 시 단순 최근 3일 상승 여부로 대체
+                if close.iloc[-1] > close.iloc[-3]:
+                    score += 15.0
+
+            # ── 적정 변동성 (+25) ──────────────────────────────────────────
+            # ATR(5) / 현재가가 1~5% 범위면 만점, 범위 밖은 선형 감소
+            if n >= 6 and 'high' in daily_data.columns and 'low' in daily_data.columns:
+                high = daily_data['high'].astype(float)
+                low = daily_data['low'].astype(float)
+                tr = (high - low).iloc[-5:]
+                atr = tr.mean()
+                ref_price = float(close.iloc[-1])
+                if ref_price > 0:
+                    vol_ratio = atr / ref_price
+                    if 0.01 <= vol_ratio <= 0.05:
+                        score += 25.0
+                    elif vol_ratio < 0.01:
+                        score += vol_ratio / 0.01 * 25.0
+                    else:  # > 0.05: 변동성 과대
+                        score += max(0.0, (0.10 - vol_ratio) / 0.05 * 25.0)
+            else:
+                # high/low 컬럼 없으면 부분 점수 부여
+                score += 12.5
+
+            # ── 과매수 패널티 (-25) ────────────────────────────────────────
+            # Wilder RSI(14) > 70 이면 과매수
+            if n >= 16:
+                delta = close.diff()
+                gain = delta.clip(lower=0)
+                loss = (-delta).clip(lower=0)
+                avg_gain = gain.ewm(alpha=1 / 14, min_periods=14).mean()
+                avg_loss = loss.ewm(alpha=1 / 14, min_periods=14).mean()
+                last_loss = float(avg_loss.iloc[-1])
+                if last_loss > 0:
+                    rs = float(avg_gain.iloc[-1]) / last_loss
+                    rsi = 100.0 - (100.0 / (1.0 + rs))
+                else:
+                    rsi = 100.0
+                if rsi > 70.0:
+                    # RSI가 70~100 구간에서 선형으로 최대 25점 패널티
+                    score -= (rsi - 70.0) / 30.0 * 25.0
+
+            return max(0.0, min(100.0, score))
+
+        except Exception as e:
+            self.logger.debug(f"점수 계산 실패: {e}")
+            return 0.0
 
     # =========================================================================
     # 퀀트/조건검색 메서드

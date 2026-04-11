@@ -28,6 +28,13 @@ class MomentumStrategy(BaseStrategy):
     version: str = "1.0.0"
     description: str = "N일 연속 상승 모멘텀을 포착하여 추세 추종 매매"
     author: str = "Template"
+    holding_period: str = "swing"
+
+    def get_min_data_length(self) -> int:
+        """연속상승 N일 + 여유 2"""
+        params = self.config.get("parameters", {})
+        consecutive_up_days = params.get("consecutive_up_days", 5)
+        return consecutive_up_days + 2
 
     def on_init(self, broker, data_provider, executor) -> bool:
         self._broker = broker

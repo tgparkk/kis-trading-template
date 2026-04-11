@@ -196,6 +196,10 @@ class TradingStock:
     is_stale: bool = False    # 장기보유 종목 여부 (30일 이상)
     days_held: int = 0        # 보유 일수
 
+    # 트레일링 스톱 추적
+    highest_price_since_buy: Optional[float] = None   # 매수 이후 최고가
+    trailing_stop_activated: bool = False             # 트레일링 스톱 활성화 여부
+
     def change_state(self, new_state: StockState, reason: str = "") -> None:
         """상태 변경 및 이력 기록"""
         old_state = self.state

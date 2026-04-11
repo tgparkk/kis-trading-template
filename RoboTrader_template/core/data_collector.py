@@ -33,8 +33,7 @@ class RealTimeDataCollector:
     def _initialize_stocks(self) -> None:
         """후보 종목 초기화"""
         for stock_code in self.config.data_collection.candidate_stocks:
-            # TODO: 종목명 조회 API 추가 필요
-            stock_name = f"Stock_{stock_code}"
+            stock_name = self._fetch_stock_name(stock_code)
             self.stocks[stock_code] = Stock(
                 code=stock_code,
                 name=stock_name,
@@ -42,17 +41,29 @@ class RealTimeDataCollector:
             )
         if self.stocks:
             self.logger.info(f"후보 종목 {len(self.stocks)}개 초기화 완료")
+
+    def _fetch_stock_name(self, stock_code: str) -> str:
+        """종목명 조회 (실패 시 기본값 반환)"""
+        try:
+            if hasattr(self.broker, 'get_stock_name'):
+                name = self.broker.get_stock_name(stock_code)
+                if name:
+                    return name
+        except Exception:
+            pass
+        return f"Stock_{stock_code}"
     
     def add_candidate_stock(self, stock_code: str, stock_name: Optional[str] = None) -> None:
         """후보 종목 추가"""
         if stock_code not in self.stocks:
+            name = stock_name or self._fetch_stock_name(stock_code)
             self.stocks[stock_code] = Stock(
                 code=stock_code,
-                name=stock_name or f"Stock_{stock_code}",
+                name=name,
                 is_candidate=True
             )
             self.config.data_collection.candidate_stocks.append(stock_code)
-            self.logger.debug(f"후보 종목 추가: {stock_code} : {stock_name}")
+            self.logger.debug(f"후보 종목 추가: {stock_code} : {name}")
     
     def remove_candidate_stock(self, stock_code: str) -> None:
         """후보 종목 제거"""
@@ -131,9 +142,11 @@ class RealTimeDataCollector:
                 if isinstance(price_data, (int, float)):
                     current_price = float(price_data)
                     volume = 0
+                    fetched_name = None
                 else:
                     current_price = price_data.current_price
                     volume = getattr(price_data, 'volume', 0)
+                    fetched_name = getattr(price_data, 'stock_name', None) or None
 
                 ohlcv = OHLCVData(
                     timestamp=now_kst(),
@@ -144,10 +157,14 @@ class RealTimeDataCollector:
                     close_price=current_price,
                     volume=volume
                 )
-                
+
                 # 종목 데이터 업데이트
                 stock = self.stocks[stock_code]
                 stock.add_ohlcv(ohlcv)
+
+                # 종목명이 아직 기본값(Stock_XXXXXX)이면 API 응답에서 갱신
+                if fetched_name and stock.name.startswith("Stock_"):
+                    stock.name = fetched_name
                 
                 #self.logger.debug(f"데이터 수집 완료: {stock_code} - 가격: {current_price:,.0f}원")
             

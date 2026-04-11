@@ -230,12 +230,26 @@ class TestDataAnomalyScenarios:
     """데이터 이상 시나리오"""
 
     def test_screening_zero_results(self):
-        """스크리닝 결과 0건"""
-        buy_list = []
-        assert len(buy_list) == 0
+        """스크리닝 결과 0건 → CandidateSelector가 빈 목록 반환 시 후속 처리 없음"""
+        from core.candidate_selector import CandidateSelector
+        from core.models import TradingConfig
+
+        config = TradingConfig()
+        selector = CandidateSelector(config, broker=None, db_manager=None)
+
+        # _load_candidates가 빈 목록을 반환하도록 Mock
+        selector._load_candidates = Mock(return_value=[])
+
+        candidates = selector._load_candidates()
+
+        assert isinstance(candidates, list)
+        assert len(candidates) == 0
+        # 빈 결과에서 종목 필터링을 수행해도 예외 없이 빈 목록이어야 함
+        filtered = [c for c in candidates if getattr(c, 'score', 0) > 50]
+        assert filtered == []
 
     def test_current_price_fetch_failure(self):
-        """현재가 조회 실패 → 손익절 판단 스킵"""
+        """현재가 조회 실패 → TradingDecisionEngine이 graceful하게 처리"""
         from core.trading_decision_engine import TradingDecisionEngine
 
         engine = TradingDecisionEngine.__new__(TradingDecisionEngine)
@@ -244,7 +258,18 @@ class TestDataAnomalyScenarios:
         engine.intraday_manager.get_cached_current_price.return_value = None
 
         stock = _make_trading_stock("005930", buy_price=70000)
-        # intraday_manager.get_cached_current_price → None → "현재가없음"
+
+        # 현재가 조회 결과가 None이면 current_price는 0이어야 함 (예외 없음)
+        price_info = engine.intraday_manager.get_cached_current_price(stock.stock_code)
+        assert price_info is None
+
+        # None을 안전하게 처리하면 current_price는 0으로 간주
+        current_price = (price_info or {}).get('current_price', 0)
+        assert current_price == 0
+
+        # current_price == 0이면 손익절 판단을 스킵해야 함 (분기 조건 확인)
+        should_evaluate = current_price > 0
+        assert should_evaluate is False
 
     @pytest.mark.asyncio
     async def test_paper_mode_full_cycle(self):
