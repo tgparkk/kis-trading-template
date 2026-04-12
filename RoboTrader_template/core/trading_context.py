@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from core.models import TradingStock
     from bot.trading_analyzer import TradingAnalyzer
     from db.database_manager import DatabaseManager
+    from utils.tick_tracer import TickTracer
 
 
 class TradingContext:
@@ -39,6 +40,7 @@ class TradingContext:
         db_manager: 'DatabaseManager',
         broker=None,
         is_running_check=None,
+        tracer: Optional['TickTracer'] = None,
     ):
         self._trading_manager = trading_manager
         self._decision_engine = decision_engine
@@ -49,6 +51,7 @@ class TradingContext:
         self._db_manager = db_manager
         self._broker = broker
         self._is_running_check = is_running_check
+        self.tracer: Optional['TickTracer'] = tracer
         self.logger = setup_logger("trading_context")
 
     # =========================================================================

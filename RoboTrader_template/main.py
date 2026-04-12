@@ -304,6 +304,8 @@ class DayTradingBot:
     def _create_trading_context(self):
         """TradingContext 인스턴스 생성"""
         from core.trading_context import TradingContext
+        from utils.tick_tracer import TickTracer
+        tracer = TickTracer(base_dir=Path("logs/tick_trace"))
         return TradingContext(
             trading_manager=self.trading_manager,
             decision_engine=self.decision_engine,
@@ -314,6 +316,7 @@ class DayTradingBot:
             db_manager=self.db_manager,
             broker=self.broker,
             is_running_check=lambda: self.is_running,
+            tracer=tracer,
         )
 
     async def _main_trading_loop(self):
