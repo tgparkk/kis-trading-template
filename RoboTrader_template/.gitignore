@@ -159,3 +159,6 @@ Thumbs.db
 # Cache data files
 cache/**/*.pkl
 council/sessions/*
+
+# TickTracer JSONL 로그 (on_tick 진단용)
+logs/tick_trace/*.jsonl
