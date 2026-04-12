@@ -502,12 +502,32 @@ class BaseStrategy(ABC):
                 buy_skipped += 1
                 if data is None:
                     self.logger.debug(f"스킵: {stock.stock_code} - 일봉 데이터 없음")
+                    if ctx.tracer:
+                        await ctx.tracer.emit({
+                            "stock_code": stock.stock_code,
+                            "event_type": "skipped",
+                            "skip_reason": "no_daily_data",
+                        })
                 else:
                     self.logger.debug(f"스킵: {stock.stock_code} - 일봉 {len(data)}건 < {min_len}")
+                    if ctx.tracer:
+                        await ctx.tracer.emit({
+                            "stock_code": stock.stock_code,
+                            "event_type": "skipped",
+                            "skip_reason": "insufficient_data",
+                            "data_len": len(data),
+                            "min_len": min_len,
+                        })
                 continue
             signal = self.generate_signal(stock.stock_code, data, timeframe='daily')
             if not signal:
                 self.logger.debug(f"스킵: {stock.stock_code} - generate_signal 반환 None (일봉 {len(data)}건)")
+                if ctx.tracer:
+                    await ctx.tracer.emit({
+                        "stock_code": stock.stock_code,
+                        "event_type": "evaluated",
+                        "signal_type": None,
+                    })
             if signal and signal.signal_type in (SignalType.BUY, SignalType.STRONG_BUY):
                 buy_signals += 1
                 reasons_str = ', '.join(signal.reasons) if signal.reasons else '-'
@@ -515,6 +535,13 @@ class BaseStrategy(ABC):
                     f"[on_tick] 매수신호: {stock.stock_code}({signal.signal_type.name}, "
                     f"신뢰도 {signal.confidence}, 이유: {reasons_str})"
                 )
+                if ctx.tracer:
+                    await ctx.tracer.emit({
+                        "stock_code": stock.stock_code,
+                        "event_type": "signal_generated",
+                        "signal_type": signal.signal_type.name,
+                        "confidence": signal.confidence,
+                    })
                 await ctx.buy(stock.stock_code, signal=signal)
 
         # Sell decisions
