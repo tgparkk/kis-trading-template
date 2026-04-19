@@ -2,6 +2,7 @@
 봇 초기화 모듈
 시스템 초기화 및 설정 관련 로직을 담당합니다.
 """
+import json
 import signal
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -115,6 +116,9 @@ class BotInitializer:
             # 주문 모니터링 중단
             self.bot.order_manager.stop_monitoring()
 
+            # 메모리 상태 DB/파일 flush (텔레그램 종료 전 — 실패해도 계속)
+            self._flush_state_to_db()
+
             # 텔레그램 통합 종료
             await self.bot.telegram.shutdown()
 
@@ -133,6 +137,109 @@ class BotInitializer:
 
         except Exception as e:
             self.logger.error(f"시스템 종료 중 오류: {e}")
+
+    def _flush_state_to_db(self) -> None:
+        """종료 시 메모리 상태를 DB/파일에 flush.
+
+        재시작 후 state_restorer가 올바른 익절/손절률과 최고가를 복원할 수 있도록
+        POSITIONED/SELL_PENDING 포지션의 런타임 상태를 영속화합니다.
+        실패해도 warning만 기록하고 shutdown을 중단하지 않습니다.
+        """
+        try:
+            trading_manager = getattr(self.bot, 'trading_manager', None)
+            if trading_manager is None:
+                return
+
+            from core.models import StockState
+            is_virtual = getattr(
+                getattr(self.bot, 'decision_engine', None), 'is_virtual_mode', True
+            )
+
+            # DB 업데이트 대상: POSITIONED 또는 SELL_PENDING 종목
+            open_states = {StockState.POSITIONED, StockState.SELL_PENDING}
+            open_stocks = [
+                ts for ts in trading_manager.trading_stocks.values()
+                if ts.state in open_states
+            ]
+
+            db_manager = getattr(self.bot, 'db_manager', None)
+            trading_repo = (
+                getattr(db_manager, 'trading', None) if db_manager else None
+            )
+
+            # 종목별 런타임 상태 수집 (JSON dump용)
+            position_states = {}
+            db_flush_count = 0
+
+            for ts in open_stocks:
+                stock_code = ts.stock_code
+                position_states[stock_code] = {
+                    'highest_price_since_buy': ts.highest_price_since_buy,
+                    'trailing_stop_activated': ts.trailing_stop_activated,
+                    'target_profit_rate': ts.target_profit_rate,
+                    'stop_loss_rate': ts.stop_loss_rate,
+                }
+
+                # BUY 레코드의 익절/손절률 UPDATE (재시작 시 복원에 사용)
+                if trading_repo is not None:
+                    try:
+                        buy_record_id = (
+                            ts._virtual_buy_record_id if is_virtual
+                            else getattr(ts, '_real_buy_record_id', None)
+                        )
+                        if buy_record_id is not None:
+                            updated = trading_repo.update_open_position_state(
+                                buy_record_id=buy_record_id,
+                                target_profit_rate=ts.target_profit_rate,
+                                stop_loss_rate=ts.stop_loss_rate,
+                                is_virtual=is_virtual,
+                            )
+                            if updated:
+                                db_flush_count += 1
+                    except Exception as db_err:
+                        self.logger.warning(
+                            f"DB flush 실패 ({stock_code}): {db_err}"
+                        )
+
+            # FundManager 일일손실 누적값 포함하여 JSON 파일에 저장
+            fund_state = {}
+            fund_manager = getattr(self.bot, 'fund_manager', None)
+            if fund_manager is not None:
+                try:
+                    today_str = now_kst().strftime('%Y-%m-%d')
+                    fund_state = {
+                        'date': today_str,
+                        'daily_realized_loss': getattr(fund_manager, '_daily_realized_loss', 0.0),
+                        'daily_loss_date': getattr(fund_manager, '_daily_loss_date', ''),
+                        'total_funds': fund_manager.total_funds,
+                    }
+                except Exception as fe:
+                    self.logger.warning(f"FundManager 상태 수집 실패: {fe}")
+
+            # logs/state/ 하위에 JSON dump
+            try:
+                log_root = Path(__file__).parent.parent / 'logs' / 'state'
+                log_root.mkdir(parents=True, exist_ok=True)
+                date_str = now_kst().strftime('%Y-%m-%d')
+                state_file = log_root / f'fund_state_{date_str}.json'
+                payload = {
+                    'timestamp': now_kst().strftime('%Y-%m-%d %H:%M:%S'),
+                    'fund': fund_state,
+                    'positions': position_states,
+                }
+                state_file.write_text(
+                    json.dumps(payload, ensure_ascii=False, indent=2),
+                    encoding='utf-8',
+                )
+                self.logger.info(
+                    f"종료 상태 flush 완료: DB {db_flush_count}건, "
+                    f"JSON {len(position_states)}종목 → {state_file}"
+                )
+            except Exception as fe:
+                self.logger.warning(f"상태 JSON 저장 실패: {fe}")
+
+        except Exception as e:
+            self.logger.warning(f"_flush_state_to_db 오류 (종료 계속): {e}")
 
     async def _cancel_pending_orders(self) -> None:
         """종료 시 미체결 주문 일괄 취소"""

@@ -53,12 +53,45 @@ class OrderMonitorMixin:
         # 오탐지 복구: 최근 완료된 주문 중 실제 미체결인 것 확인
         await self._check_false_positive_filled_orders(current_time)
 
+        # VI/CB 상태 1회 조회 (루프 내 모든 주문에 동일 적용)
+        try:
+            from config.market_hours import get_circuit_breaker_state
+            cb_state = get_circuit_breaker_state()
+            market_halted = cb_state.is_market_halted()
+        except Exception as cb_err:
+            self.logger.debug(f"VI/CB 상태 조회 실패: {cb_err}")
+            cb_state = None
+            market_halted = False
+
         for order_id in orders_to_process:
             try:
                 order = self.pending_orders.get(order_id)
                 if order is None:
                     continue
                 timeout_time = self.order_timeouts.get(order_id)
+
+                # VI/CB 가드: 시장 halt 또는 종목 VI 발동 중이면 매수 주문 즉시 취소
+                # (매도는 보유 청산 기회를 막으면 안 되므로 유지)
+                if order.order_type == OrderType.BUY and cb_state is not None:
+                    vi_active = False
+                    try:
+                        vi_active = cb_state.is_vi_active(order.stock_code)
+                    except Exception:
+                        pass
+                    if market_halted or vi_active:
+                        reason = "시장 CB" if market_halted else "종목 VI"
+                        self.logger.warning(
+                            f"{reason} 발동 - 매수 주문 즉시 취소: {order_id} ({order.stock_code})"
+                        )
+                        cancel_success = await self._cancel_with_retry(order_id)
+                        if cancel_success and self.telegram:
+                            try:
+                                await self.telegram.notify_system_status(
+                                    f"[{reason}] 진행 중 매수 주문 취소: {order.stock_code} 주문 {order_id}"
+                                )
+                            except Exception:
+                                pass
+                        continue
 
                 # 1. 체결 상태 확인
                 await self._check_order_status(order_id)

@@ -428,6 +428,36 @@ class TradingRepository(BaseRepository):
             self.logger.error(f"가상 매매 통계 조회 실패: {e}")
             return {}
 
+    def update_open_position_state(
+        self,
+        buy_record_id: int,
+        target_profit_rate: float,
+        stop_loss_rate: float,
+        is_virtual: bool = True,
+    ) -> bool:
+        """오픈 포지션 BUY 레코드의 익절/손절률 업데이트 (shutdown flush용)
+
+        재시작 시 state_restorer가 이 값을 읽어 복원하므로 최신값 유지가 중요합니다.
+        """
+        table = 'virtual_trading_records' if is_virtual else 'real_trading_records'
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f'''
+                    UPDATE {table}
+                    SET target_profit_rate = %s,
+                        stop_loss_rate = %s
+                    WHERE id = %s AND action = 'BUY'
+                    ''',
+                    (float(target_profit_rate), float(stop_loss_rate), int(buy_record_id)),
+                )
+                updated = cursor.rowcount > 0
+            return updated
+        except Exception as e:
+            self.logger.warning(f"open position 상태 업데이트 실패 (id={buy_record_id}): {e}")
+            return False
+
     def get_today_stop_loss_stocks(self, target_date: str = None) -> List[str]:
         """오늘 손절한 종목 코드 리스트"""
         try:

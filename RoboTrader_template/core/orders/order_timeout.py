@@ -166,37 +166,39 @@ class OrderTimeoutMixin:
         cancel_order()가 성공하면 _move_to_completed()로 pending_orders에서 제거합니다.
         부분 체결 타임아웃 처리에서는 이후에 직접 _move_to_completed()를 호출해야 하므로,
         이 메서드는 순수하게 broker API를 통한 잔여 수량 취소만 수행합니다.
+        ORDER_CANCEL_MAX_RETRIES 횟수만큼 재시도합니다.
         """
-        try:
-            order = self.pending_orders.get(order_id)
-            if not order:
-                return False
-            order_dvsn = "01" if order.price == 0 else "00"
-            result = await run_with_timeout(
-                self.executor, self.broker.cancel_order,
-                order_id, order.stock_code, order_dvsn,
-                timeout_seconds=35, default=None
-            )
-            if result and result.success:
-                self.logger.info(f"잔여 주문 취소 API 성공: {order_id}")
-                return True
-            elif result:
-                self.logger.warning(f"잔여 주문 취소 API 실패: {order_id} - {result.message}")
-                return False
-            else:
-                self.logger.warning(f"잔여 주문 취소 API 타임아웃: {order_id}")
-                return False
-        except Exception as e:
-            self.logger.warning(f"잔여 주문 취소 API 예외: {order_id} - {e}")
-            return False
+        for attempt in range(ORDER_CANCEL_MAX_RETRIES):
+            try:
+                order = self.pending_orders.get(order_id)
+                if not order:
+                    return False
+                order_dvsn = "01" if order.price == 0 else "00"
+                result = await run_with_timeout(
+                    self.executor, self.broker.cancel_order,
+                    order_id, order.stock_code, order_dvsn,
+                    timeout_seconds=35, default=None
+                )
+                if result and result.success:
+                    self.logger.info(f"잔여 주문 취소 API 성공: {order_id} (시도 {attempt + 1}/{ORDER_CANCEL_MAX_RETRIES})")
+                    return True
+                elif result:
+                    self.logger.warning(f"잔여 주문 취소 API 실패: {order_id} (시도 {attempt + 1}/{ORDER_CANCEL_MAX_RETRIES}) - {result.message}")
+                else:
+                    self.logger.warning(f"잔여 주문 취소 API 타임아웃: {order_id} (시도 {attempt + 1}/{ORDER_CANCEL_MAX_RETRIES})")
+            except Exception as e:
+                self.logger.warning(f"잔여 주문 취소 API 예외: {order_id} (시도 {attempt + 1}/{ORDER_CANCEL_MAX_RETRIES}) - {e}")
+            if attempt < ORDER_CANCEL_MAX_RETRIES - 1:
+                await asyncio.sleep(ORDER_CANCEL_RETRY_INTERVAL)
+        return False
 
     async def _handle_partial_fill_timeout(self: 'OrderManagerBase', order_id: str, order, filled_qty: int) -> None:
         """부분 체결 상태에서 타임아웃 처리"""
-        # 1. 잔여 주문 취소 (pending_orders 상태 변경 없이 API만 호출)
+        # 1. 잔여 주문 취소 (pending_orders 상태 변경 없이 API만 호출, 재시도 포함)
         # _cancel_with_retry 대신 _cancel_remaining_only 사용:
         # _cancel_with_retry → cancel_order → _move_to_completed 로 pending_orders에서 제거되어
         # 이후 _move_to_completed 재호출 시 order가 없어지는 이중 호출 버그 방지
-        await self._cancel_remaining_only(order_id)
+        cancel_success = await self._cancel_remaining_only(order_id)
 
         filled_price = getattr(order, 'filled_price', None) or order.price
 
@@ -247,8 +249,33 @@ class OrderTimeoutMixin:
                 )
             return
 
-        # 매수 부분 체결 처리 (기존 로직)
-        # 2. FundManager: 부분 체결 금액만 확정, 나머지는 자동 환불 (_move_to_completed에서 cancel 처리)
+        # 매수 부분 체결 처리
+        # 2. 잔여 취소 성공 여부에 따라 FundManager 처리를 분기
+        #    - 취소 실패 시: 잔여 주문이 나중에 체결될 수 있으므로 예약자금을 그대로 유지 (이중 처리 방지)
+        #    - 취소 성공 시: 부분 체결 금액만 확정, 나머지 예약자금 환불
+        if not cancel_success:
+            # 취소 실패: 예약자금 유지, 수동 확인 필요 알림
+            order_obj = self.pending_orders.get(order_id) or order
+            msg = (
+                f"매수 부분체결 잔여취소 실패 - 수동 확인 필요, 예약자금 유지: "
+                f"주문 {order_id} 종목 {order_obj.stock_code} "
+                f"체결 {filled_qty}주 / 전체 {order_obj.quantity}주"
+            )
+            self.logger.critical(msg)
+            if self.telegram:
+                try:
+                    await self.telegram.notify_system_status(msg)
+                except Exception:
+                    pass
+            # 예약자금 유지 상태로 pending에서만 제거 (FundManager 처리 건너뜀)
+            order.original_quantity = order.quantity
+            order.quantity = filled_qty
+            order.filled_quantity = filled_qty
+            order.status = OrderStatus.FILLED
+            self._move_to_completed(order_id)
+            await self._save_real_trade_to_db(order, filled_price)
+            return
+
         if self.fund_manager:
             try:
                 actual_amount = filled_price * filled_qty
@@ -256,7 +283,14 @@ class OrderTimeoutMixin:
                 self.fund_manager.add_position(order.stock_code)
                 self.logger.info(f"FundManager 매수 부분 체결 확정: {order_id} - {actual_amount:,.0f}원 ({filled_qty}주)")
             except Exception as e:
-                self.logger.warning(f"FundManager 매수 부분 체결 확정 실패: {order_id} - {e}")
+                # 자금 확정 실패: 루프 중단을 막기 위해 raise 하지 않고 CRITICAL 알림
+                msg = f"FundManager 매수 부분 체결 확정 실패 - 수동 확인 필요: {order_id} 종목 {order.stock_code} - {e}"
+                self.logger.critical(msg)
+                if self.telegram:
+                    try:
+                        await self.telegram.notify_system_status(msg)
+                    except Exception:
+                        pass
 
         self.logger.info(f"부분 체결 포지션 등록: {order.stock_code} {filled_qty}주 @{filled_price:,.0f}원")
 
