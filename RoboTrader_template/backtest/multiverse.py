@@ -100,6 +100,12 @@ class MultiverseResult:
             row["sharpe_ratio"] = round(r.sharpe_ratio, 4)
             row["max_drawdown"] = round(r.max_drawdown, 4)
             row["total_trades"] = r.total_trades
+            # Sharpe/PnL 별도 안정성
+            row["sharpe_stability_score"] = item.get("sharpe_stability_score")
+            row["sharpe_stability_grade"] = item.get("sharpe_stability_grade", "")
+            row["pnl_stability_score"] = item.get("pnl_stability_score")
+            row["pnl_stability_grade"] = item.get("pnl_stability_grade", "")
+            # 호환용 (기존 코드 경로)
             row["stability_score"] = item.get("stability_score")
             row["stability_grade"] = item.get("stability_grade", "")
             rows.append(row)
@@ -117,22 +123,27 @@ class MultiverseResult:
     # stability_report() — 텍스트 안정성 리포트
     # -----------------------------------------------------------------------
 
-    def stability_report(self, top_n: int = 5) -> str:
+    def stability_report(self, top_n: int = 5, metric: str = "pnl") -> str:
         """상위 top_n 결과의 파라미터 안정성 리포트 (텍스트).
-
-        각 결과에 대해:
-        - 파라미터 값
-        - 샤프 비율
-        - 이웃 파라미터들의 평균 샤프 비율
-        - 안정/불안정/판정불가 판정
 
         Args:
             top_n: 리포트에 포함할 상위 결과 수.
+            metric: "pnl" (기본, 수익률 기준) 또는 "sharpe" (Sharpe 기준).
 
         Returns:
             텍스트 형태의 안정성 리포트 문자열.
         """
-        lines = ["=" * 60, "파라미터 안정성 리포트", "=" * 60]
+        if metric not in ("pnl", "sharpe"):
+            metric = "pnl"
+        score_key = f"{metric}_stability_score"
+        grade_key = f"{metric}_stability_grade"
+        metric_label = "PnL(수익률)" if metric == "pnl" else "Sharpe"
+
+        lines = [
+            "=" * 60,
+            f"파라미터 안정성 리포트 — {metric_label} 기준",
+            "=" * 60,
+        ]
 
         targets = self.results[:top_n]
         if not targets:
@@ -150,13 +161,13 @@ class MultiverseResult:
             lines.append(f"  수익률: {r.total_return:+.2%}")
             lines.append(f"  거래수: {r.total_trades}건")
 
-            score = item.get("stability_score")
-            grade = item.get("stability_grade", "판정불가")
+            score = item.get(score_key)
+            grade = item.get(grade_key, "판정불가")
 
             if score is not None:
-                lines.append(f"  이웃 샤프 비율: {score:.3f} (원본 대비 {score*100:.1f}%)")
+                lines.append(f"  이웃 {metric_label} 비율: {score:.3f} (원본 대비 {score*100:.1f}%)")
             else:
-                lines.append("  이웃 샤프 비율: -")
+                lines.append(f"  이웃 {metric_label} 비율: -")
             lines.append(f"  판정: [{grade}]")
 
         lines.append("\n" + "=" * 60)
@@ -332,11 +343,18 @@ class MultiverseEngine:
             if r is not None and r["result"].total_trades >= min_trades
         ]
 
-        # 4. sharpe 기준 내림차순 정렬
-        filtered.sort(key=lambda x: x["result"].sharpe_ratio, reverse=True)
+        # 4. PnL(=total_return) 기준 내림차순 정렬 — 사장님 지침: PnL 1급 지표
+        filtered.sort(key=lambda x: x["result"].total_return, reverse=True)
 
-        # 5. 안정성 분석
-        self._analyze_stability(filtered, raw_results, keys, stability_threshold)
+        # 5. 안정성 분석 — Sharpe/PnL 양쪽 계산
+        self._analyze_stability(filtered, raw_results, keys, stability_threshold,
+                                metric="sharpe_ratio", prefix="sharpe_")
+        self._analyze_stability(filtered, raw_results, keys, stability_threshold,
+                                metric="total_return", prefix="pnl_")
+        # 호환용: 기존 stability_* 는 sharpe_* 와 동일
+        for item in filtered:
+            item["stability_score"] = item.get("sharpe_stability_score")
+            item["stability_grade"] = item.get("sharpe_stability_grade", "")
 
         elapsed = time.time() - start_time
         self.logger.info(
@@ -394,8 +412,14 @@ class MultiverseEngine:
             return {
                 "params": params_dict,
                 "result": result,
+                # 호환용 (= sharpe_*)
                 "stability_score": None,
                 "stability_grade": "",
+                # Sharpe/PnL 별도 저장 (PnL 1급 승격)
+                "sharpe_stability_score": None,
+                "sharpe_stability_grade": "",
+                "pnl_stability_score": None,
+                "pnl_stability_grade": "",
             }
         except Exception as e:
             self.logger.debug(f"조합 실패: {params_dict} — {e}")
@@ -475,45 +499,50 @@ class MultiverseEngine:
         all_results: List[Optional[Dict]],
         keys: List[str],
         threshold: float,
+        metric: str = "sharpe_ratio",
+        prefix: str = "sharpe_",
     ) -> None:
-        """파라미터 안정성 분석.
+        """파라미터 안정성 분석 (메트릭 선택 가능).
 
-        각 결과의 이웃 파라미터(±1 스텝)들의 sharpe 평균을 계산하여
-        원본 대비 비율로 안정성 등급을 부여합니다.
+        각 결과의 이웃 파라미터(±1 스텝)들의 metric 평균을 계산하여
+        원본 대비 비율로 안정성 등급을 부여합니다. metric 은 BacktestResult
+        필드명(예: "sharpe_ratio", "total_return")을 지정합니다. 결과는
+        `{prefix}stability_score`, `{prefix}stability_grade` 필드에 저장됩니다.
 
-        - 이웃 평균 / 원본 sharpe >= threshold → "안정"
-        - 이웃 평균 / 원본 sharpe < threshold  → "과적합 의심"
-        - 이웃 없음 또는 원본 sharpe <= 0      → "판정불가"
-
-        결과는 filtered 리스트를 직접 수정(in-place)합니다.
+        - 이웃 평균 / 원본 >= threshold → "안정"
+        - 이웃 평균 / 원본 < threshold  → "과적합 의심"
+        - 이웃 없음 또는 원본 <= 0      → "판정불가"
 
         Args:
             filtered: min_trades 통과 결과 리스트 (in-place 수정).
             all_results: 전체 결과 리스트 (이웃 조회용).
             keys: 파라미터 키 리스트.
             threshold: 안정 판정 기준 비율.
+            metric: BacktestResult 필드명 (기본 "sharpe_ratio").
+            prefix: 저장 필드 prefix (기본 "sharpe_").
         """
-        # params → sharpe 룩업 테이블 구축
+        score_key = f"{prefix}stability_score"
+        grade_key = f"{prefix}stability_grade"
+
+        # params → metric 룩업 테이블 구축
         lookup: Dict[tuple, float] = {}
         for r in all_results:
             if r is not None and r["result"].total_trades > 0:
                 param_key = tuple(sorted(r["params"].items()))
-                lookup[param_key] = r["result"].sharpe_ratio
+                lookup[param_key] = float(getattr(r["result"], metric))
 
         for item in filtered:
-            neighbors_sharpe: List[float] = []
+            neighbors: List[float] = []
 
             for key in keys:
                 current_val = item["params"][key]
                 grid_values = self._param_grid[key]
 
-                # 현재 값의 그리드 인덱스 탐색
                 try:
                     idx = grid_values.index(current_val)
                 except ValueError:
                     continue
 
-                # ±1 스텝 이웃 확인
                 for offset in (-1, 1):
                     ni = idx + offset
                     if 0 <= ni < len(grid_values):
@@ -521,14 +550,14 @@ class MultiverseEngine:
                         neighbor_params[key] = grid_values[ni]
                         neighbor_key = tuple(sorted(neighbor_params.items()))
                         if neighbor_key in lookup:
-                            neighbors_sharpe.append(lookup[neighbor_key])
+                            neighbors.append(lookup[neighbor_key])
 
-            # 안정성 등급 부여
-            if neighbors_sharpe and item["result"].sharpe_ratio > 0:
-                avg_neighbor = float(np.mean(neighbors_sharpe))
-                ratio = avg_neighbor / item["result"].sharpe_ratio
-                item["stability_score"] = round(ratio, 3)
-                item["stability_grade"] = "안정" if ratio >= threshold else "과적합 의심"
+            origin = float(getattr(item["result"], metric))
+            if neighbors and origin > 0:
+                avg_neighbor = float(np.mean(neighbors))
+                ratio = avg_neighbor / origin
+                item[score_key] = round(ratio, 3)
+                item[grade_key] = "안정" if ratio >= threshold else "과적합 의심"
             else:
-                item["stability_score"] = None
-                item["stability_grade"] = "판정불가"
+                item[score_key] = None
+                item[grade_key] = "판정불가"

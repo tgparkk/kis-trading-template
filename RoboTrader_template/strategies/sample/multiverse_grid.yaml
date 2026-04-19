@@ -1,0 +1,13 @@
+# SampleStrategy 파라미터 최적화 그리드
+# MultiverseEngine이 add_param()으로 순회할 값 목록
+# 점(.) 구분 경로: config.yaml의 중첩 구조를 따름
+#
+# 주의: 조합 수 = 각 값 개수의 곱. 너무 많으면 시간 폭증.
+# 현재: 4 × 3 × 3 × 3 × 3 × 3 = 972 조합
+
+parameters.ma_short_period: [3, 5, 7, 10]
+parameters.ma_long_period: [15, 20, 25]
+parameters.rsi_oversold: [25, 30, 35]
+parameters.rsi_overbought: [65, 70, 75]
+risk_management.stop_loss_pct: [0.03, 0.05, 0.07]
+risk_management.take_profit_pct: [0.05, 0.10, 0.15]

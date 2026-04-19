@@ -7,7 +7,8 @@ Queries stock_sector table for sector filtering.
 """
 
 import os
-from typing import List, Dict, Optional
+from datetime import date
+from typing import Any, Dict, List, Optional
 
 try:
     import psycopg2
@@ -15,6 +16,8 @@ except ImportError:
     psycopg2 = None
 
 import logging
+from core.candidate_selector import CandidateStock
+from strategies.screener_base import ScreenerBase
 
 logger = logging.getLogger(__name__)
 
@@ -97,3 +100,42 @@ class BBReversionScreener:
             logger.error("BB screener DB query failed: %s", e)
 
         return results
+
+
+class BBReversionScreenerAdapter(ScreenerBase):
+    """BBReversionScreener 를 ScreenerBase 인터페이스로 감싸는 어댑터."""
+
+    strategy_name = "bb_reversion"
+
+    def __init__(self, config=None, broker=None, db_manager=None) -> None:
+        # BBReversionScreener 는 config/broker 미사용 — 시그니처 통일을 위해 수용
+        self._screener = BBReversionScreener()
+
+    def default_params(self) -> Dict[str, Any]:
+        return {
+            "target_sectors": ["bank", "insurance", "utility", "food", "telecom", "dividend"],
+            "min_trading_value": 500_000_000,
+            "max_candidates": 30,
+        }
+
+    def scan(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
+        # scan_date 는 현재 기록 전용 — 실제 조회는 현재 시점 데이터 사용 (Phase 3 에서 소급 지원 예정)
+        merged = {**self.default_params(), **(params or {})}
+        target_sectors: List[str] = merged.get("target_sectors", [])
+        max_candidates: int = int(merged.get("max_candidates", 30))
+        # TODO: min_trading_value 필터 — BBReversionScreener 가 거래대금 데이터를 제공하지 않아 현재 미적용
+
+        raw = self._screener.get_sector_stocks(target_sectors)
+
+        candidates = [
+            CandidateStock(
+                code=item["stock_code"],
+                name=item["stock_name"],
+                market=item.get("market", ""),
+                score=0.0,
+                reason=f"sector={item.get('sector_name', '')}",
+            )
+            for item in raw
+        ]
+
+        return candidates[:max_candidates]

@@ -1,9 +1,10 @@
 """
 후보 종목 Repository (TimescaleDB)
 """
+import json
 import pandas as pd
-from datetime import timedelta
-from typing import List
+from datetime import date, timedelta
+from typing import Any, Dict, List, Optional
 
 from .base import BaseRepository
 from core.candidate_selector import CandidateStock
@@ -139,6 +140,139 @@ class CandidateRepository(BaseRepository):
 
         except Exception as e:
             self.logger.error(f"성과 분석 조회 실패: {e}")
+            return pd.DataFrame()
+
+    # =========================================================================
+    # screener_snapshots 헬퍼
+    # =========================================================================
+
+    def save_screener_snapshot(
+        self,
+        strategy: str,
+        scan_date: date,
+        params_hash: str,
+        params_json: Dict[str, Any],
+        candidates: List[CandidateStock],
+    ) -> bool:
+        """스크리너 결과를 screener_snapshots 에 배치 저장. ON CONFLICT DO UPDATE."""
+        try:
+            if not candidates:
+                return True
+
+            rows = [
+                (
+                    strategy,
+                    scan_date,
+                    params_hash,
+                    json.dumps(params_json, ensure_ascii=False),
+                    c.code,
+                    c.name,
+                    idx + 1,          # rank_in_snapshot (1-based)
+                    c.score if c.score else None,
+                    None,             # metadata (Phase 1.2 에서 확장)
+                )
+                for idx, c in enumerate(candidates)
+            ]
+
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.executemany(
+                    """
+                    INSERT INTO screener_snapshots
+                        (strategy, scan_date, params_hash, params_json,
+                         stock_code, stock_name, rank_in_snapshot, score, metadata)
+                    VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s::jsonb)
+                    ON CONFLICT (strategy, scan_date, params_hash, stock_code)
+                    DO UPDATE SET
+                        stock_name       = EXCLUDED.stock_name,
+                        rank_in_snapshot = EXCLUDED.rank_in_snapshot,
+                        score            = EXCLUDED.score,
+                        metadata         = EXCLUDED.metadata
+                    """,
+                    rows,
+                )
+                conn.commit()
+                self.logger.info(
+                    f"screener_snapshots 저장: strategy={strategy} date={scan_date} "
+                    f"hash={params_hash[:8]}… {len(candidates)}건"
+                )
+            return True
+
+        except Exception as e:
+            self.logger.error(f"screener_snapshots 저장 실패: {e}")
+            return False
+
+    def get_screener_snapshot(
+        self,
+        strategy: str,
+        scan_date: date,
+        params_hash: str,
+    ) -> List[Dict[str, Any]]:
+        """특정 전략·날짜·파라미터 조합의 스냅샷 조회."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT stock_code, stock_name, rank_in_snapshot, score, metadata
+                    FROM screener_snapshots
+                    WHERE strategy = %s AND scan_date = %s AND params_hash = %s
+                    ORDER BY rank_in_snapshot
+                    """,
+                    (strategy, scan_date, params_hash),
+                )
+                cols = [d[0] for d in cursor.description]
+                rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+                cursor.close()
+            return rows
+        except Exception as e:
+            self.logger.error(f"screener_snapshots 조회 실패: {e}")
+            return []
+
+    def get_snapshot_date_range(
+        self,
+        strategy: str,
+        start_date: date,
+        end_date: date,
+        params_hash: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """기간별 스냅샷 조회. params_hash 를 지정하면 특정 파라미터 조합만 반환."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                if params_hash:
+                    cursor.execute(
+                        """
+                        SELECT strategy, scan_date, params_hash, params_json,
+                               stock_code, stock_name, rank_in_snapshot, score, metadata
+                        FROM screener_snapshots
+                        WHERE strategy = %s
+                          AND scan_date BETWEEN %s AND %s
+                          AND params_hash = %s
+                        ORDER BY scan_date, rank_in_snapshot
+                        """,
+                        (strategy, start_date, end_date, params_hash),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT strategy, scan_date, params_hash, params_json,
+                               stock_code, stock_name, rank_in_snapshot, score, metadata
+                        FROM screener_snapshots
+                        WHERE strategy = %s
+                          AND scan_date BETWEEN %s AND %s
+                        ORDER BY scan_date, params_hash, rank_in_snapshot
+                        """,
+                        (strategy, start_date, end_date),
+                    )
+                rows = cursor.fetchall()
+                cols = [d[0] for d in cursor.description]
+                cursor.close()
+            if rows:
+                return pd.DataFrame(rows, columns=cols)
+            return pd.DataFrame(columns=cols)
+        except Exception as e:
+            self.logger.error(f"screener_snapshots 기간 조회 실패: {e}")
             return pd.DataFrame()
 
     def get_daily_candidate_count(self, days: int = 30) -> pd.DataFrame:

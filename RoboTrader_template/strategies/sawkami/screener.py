@@ -11,13 +11,14 @@
 import json
 import time
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 
 from core.candidate_selector import CandidateSelector, CandidateStock
 from core.models import TradingConfig
 from framework.broker import KISBroker
+from strategies.screener_base import ScreenerBase
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
 from utils.indicators import calculate_rsi_latest
@@ -552,3 +553,38 @@ class SawkamiCandidateSelector(CandidateSelector):
         if self._fundamental_cache_file.exists():
             self._fundamental_cache_file.unlink()
         self.logger.info("재무 캐시 초기화 완료")
+
+
+class SawkamiScreenerAdapter(ScreenerBase):
+    """SawkamiCandidateSelector 를 ScreenerBase 인터페이스로 감싸는 어댑터."""
+
+    strategy_name = "sawkami"
+
+    def __init__(self, config: TradingConfig, broker: KISBroker, db_manager=None) -> None:
+        self._config = config
+        self._broker = broker
+        self._db_manager = db_manager
+
+    def default_params(self) -> Dict[str, Any]:
+        return {
+            "op_income_growth_min": 30.0,
+            "pbr_max": 1.5,
+            "high52w_drop_pct": -20.0,
+            "rsi_oversold": 30,
+            "rsi_period": 14,
+            "volume_ratio_min": 1.5,
+            "volume_ma_period": 20,
+            "high52w_period": 252,
+            "max_candidates": 10,
+        }
+
+    def scan(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
+        # scan_date 는 현재 기록 전용 — 실제 조회는 현재 시점 데이터 사용 (Phase 3 에서 소급 지원 예정)
+        merged = {**self.default_params(), **(params or {})}
+        max_candidates = int(merged.pop("max_candidates", 10))
+        selector = SawkamiCandidateSelector(
+            self._config, self._broker,
+            db_manager=self._db_manager,
+            strategy_params=merged,
+        )
+        return selector.select_daily_candidates(max_candidates=max_candidates) or []

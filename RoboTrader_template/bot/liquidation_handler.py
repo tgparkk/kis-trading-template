@@ -15,7 +15,7 @@ from utils.logger import setup_logger
 from utils.korean_time import now_kst
 from utils.price_utils import round_to_tick
 from config.market_hours import MarketHours
-from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
+from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE, SCREENER_SNAPSHOT_ENABLED
 
 if TYPE_CHECKING:
     from main import DayTradingBot
@@ -228,6 +228,8 @@ class LiquidationHandler:
                 self.logger.warning(f"{time_label} 청산 실패 종목: {failed_stocks}")
             else:
                 self.logger.info(f"{time_label} 시장가 일괄매도 요청 완료")
+                # EOD 완료 후 스크리너 스냅샷 수집 (비차단)
+                await self.run_screener_snapshot_hook()
 
         except Exception as e:
             self.logger.error(f"장마감 시장가 매도 오류: {e}")
@@ -331,7 +333,8 @@ class LiquidationHandler:
         재시도 한도 초과 시 호출됩니다.
         실제 매도가 이루어지지 않았으므로 PnL은 0으로 처리합니다.
         """
-        force_completed = []
+        # {stock_code: {name, quantity, avg_price, invested}} 수동 매도용 정보 수집
+        force_completed_details = []
         for stock_code in list(self._eod_failed_stocks):
             try:
                 trading_stock = self.bot.trading_manager.get_trading_stock(stock_code)
@@ -343,11 +346,12 @@ class LiquidationHandler:
 
                 # 포지션 정보에서 투자 원금 계산
                 buy_cost = 0.0
+                quantity = 0
+                avg_price = 0.0
                 if trading_stock.position and trading_stock.position.quantity > 0:
-                    buy_cost = (
-                        float(trading_stock.position.avg_price)
-                        * int(trading_stock.position.quantity)
-                    )
+                    quantity = int(trading_stock.position.quantity)
+                    avg_price = float(trading_stock.position.avg_price)
+                    buy_cost = avg_price * quantity
 
                 # 1. FundManager 자금 회수 (PnL 0 - 실제 매도 없으므로 손익 불확정)
                 if buy_cost > 0:
@@ -366,9 +370,16 @@ class LiquidationHandler:
                 trading_stock.clear_position()
                 trading_stock.is_selling = False
 
-                force_completed.append(stock_code)
+                force_completed_details.append({
+                    'stock_code': stock_code,
+                    'stock_name': trading_stock.stock_name,
+                    'quantity': quantity,
+                    'avg_price': avg_price,
+                    'invested': buy_cost,
+                })
                 self.logger.critical(
-                    f"EOD 강제완료: {stock_code} - 투자금 {buy_cost:,.0f}원 회수, "
+                    f"EOD 강제완료: {stock_code}({trading_stock.stock_name}) "
+                    f"{quantity}주 @{avg_price:,.0f}원 - 투자금 {buy_cost:,.0f}원 회수, "
                     f"PnL 0 처리 (실제 매도 미완료)"
                 )
 
@@ -377,14 +388,9 @@ class LiquidationHandler:
                     f"EOD 강제완료 처리 실패 ({stock_code}): {e}"
                 )
 
-        # 4. 텔레그램 CRITICAL 알림
-        if force_completed:
-            alert_msg = (
-                f"[CRITICAL] EOD 청산 {EOD_LIQUIDATION_MAX_RETRIES}회 실패 "
-                f"- 강제 완료 처리: {force_completed}\n"
-                f"해당 종목은 실제 매도되지 않았습니다. "
-                f"다음 영업일 수동 확인이 필요합니다."
-            )
+        # 4. 텔레그램 CRITICAL 알림 (수동 매도 정보 포함)
+        if force_completed_details:
+            alert_msg = self._build_force_complete_alert(force_completed_details)
             if hasattr(self.bot, 'telegram') and self.bot.telegram:
                 try:
                     await self.bot.telegram.notify_system_status(alert_msg)
@@ -393,6 +399,84 @@ class LiquidationHandler:
 
         # 실패 목록 초기화
         self._eod_failed_stocks.clear()
+
+    def _build_force_complete_alert(self, details: list) -> str:
+        """강제완료 텔레그램 알림 메시지 구성 (수동 매도 안내 포함)"""
+        n = len(details)
+        total_invested = sum(d['invested'] for d in details)
+
+        lines = [
+            f"[CRITICAL] EOD 청산 {EOD_LIQUIDATION_MAX_RETRIES}회 실패 - 강제 완료 처리",
+            "해당 종목은 실제 매도되지 않았습니다. 다음 영업일 수동 확인 필요.",
+            "",
+            "[수동 매도 대상 종목]",
+        ]
+        for d in details:
+            line = (
+                f"- {d['stock_code']} {d['stock_name']}: "
+                f"{d['quantity']}주 @{d['avg_price']:,.0f}원 "
+                f"(원금 {d['invested']:,.0f}원)"
+            )
+            lines.append(line)
+
+        lines.append("")
+        lines.append(f"총 {n}건, 원금 합계 {total_invested:,.0f}원")
+
+        # 계좌번호 앞 4자리만 노출 (마스킹)
+        try:
+            from api.kis_auth import get_account_number
+            acct = get_account_number()
+            masked = f"{acct[:4]}-XX-**" if acct and len(acct) >= 4 else "알 수 없음"
+        except Exception:
+            masked = "알 수 없음"
+        lines.append(f"계좌번호: {masked} (KIS)")
+
+        return "\n".join(lines)
+
+    async def run_screener_snapshot_hook(self) -> None:
+        """EOD 완료 후 스크리너 스냅샷 수집 훅.
+
+        SCREENER_SNAPSHOT_ENABLED=true 환경변수일 때만 실행.
+        실패해도 메인 루프를 중단하지 않는다 (warning 로그만).
+        """
+        if not SCREENER_SNAPSHOT_ENABLED:
+            return
+
+        try:
+            from runners.screener_snapshot_collector import run_once, ALL_STRATEGIES
+            scan_date = now_kst().date()
+
+            broker = getattr(self.bot, 'broker', None)
+            db_manager = getattr(self.bot, 'db_manager', None)
+            config = getattr(self.bot, 'config', None)
+
+            summaries = run_once(
+                strategies=ALL_STRATEGIES,
+                scan_date=scan_date,
+                max_candidates=10,
+                dry_run=False,
+                broker=broker,
+                db_manager=db_manager,
+                config=config,
+            )
+
+            # 텔레그램 알림
+            ok_parts = [f"{s['strategy']} {s['count']}건" for s in summaries if s["ok"]]
+            if ok_parts and hasattr(self.bot, 'telegram') and self.bot.telegram:
+                msg = f"[스크리너 스냅샷] {', '.join(ok_parts)} 저장 완료 ({scan_date})"
+                try:
+                    await self.bot.telegram.notify_system_status(msg)
+                except Exception:
+                    pass
+
+            failed = [s["strategy"] for s in summaries if not s["ok"]]
+            if failed:
+                self.logger.warning("스크리너 스냅샷 일부 실패: %s", failed)
+            else:
+                self.logger.info("스크리너 스냅샷 수집 완료: %s", ok_parts)
+
+        except Exception as e:
+            self.logger.warning("스크리너 스냅샷 훅 오류 (무시): %s", e)
 
     def has_failed_eod_stocks(self) -> bool:
         """EOD 청산 실패 종목 존재 여부"""

@@ -327,6 +327,32 @@ CREATE TRIGGER update_quant_portfolio_updated_at
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =====================================================
+-- 12. screener_snapshots (일반 테이블) - 스크리너 시점 스냅샷
+-- =====================================================
+CREATE TABLE IF NOT EXISTS screener_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    strategy VARCHAR(50) NOT NULL,
+    scan_date DATE NOT NULL,
+    params_hash VARCHAR(40) NOT NULL,       -- SHA1 앞 40자 (파라미터 해시)
+    params_json JSONB NOT NULL,             -- 사용된 파라미터 원본
+    stock_code VARCHAR(20) NOT NULL,
+    stock_name VARCHAR(100),
+    rank_in_snapshot INT,                   -- 스냅샷 내 순위 (1부터)
+    score NUMERIC(10,4),                    -- 스크리너 점수 (없으면 NULL)
+    metadata JSONB,                          -- 섹터/시총/거래량 등 부가 정보
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (strategy, scan_date, params_hash, stock_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_screener_snapshots_strategy_date
+    ON screener_snapshots (strategy, scan_date);
+CREATE INDEX IF NOT EXISTS idx_screener_snapshots_params
+    ON screener_snapshots (strategy, params_hash);
+
+-- 주의: 보존 정책(자동 삭제)은 의도적으로 설정하지 않음
+-- 모든 스냅샷 데이터는 영구 보존됨
+
+-- =====================================================
 -- 완료 메시지
 -- =====================================================
 DO $$
