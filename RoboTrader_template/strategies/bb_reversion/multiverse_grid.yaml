@@ -1,8 +1,18 @@
 # BBReversionStrategy 파라미터 최적화 그리드
-# 4 × 3 × 3 × 3 × 3 = 324 조합
+# 전략 파라미터: 4 × 3 × 3 × 3 × 3 = 324 조합
 
 parameters.bb_period: [15, 20, 25, 30]
 parameters.bb_std: [1.8, 2.0, 2.2]
 parameters.rsi_oversold: [30, 35, 40]
 risk_management.stop_loss_pct: [0.02, 0.03, 0.05]
 risk_management.take_profit_pct: [0.04, 0.05, 0.07]
+
+# 스크리너 파라미터 그리드 (선택) — --screener-grid 활성 시 사용
+# screening.* 키는 전략 파라미터와 분리되어 스크리너 조합을 생성한다.
+# 3 × 3 × 2 = 18 스크리너 조합
+screening.target_sectors:
+  - ["bank", "insurance"]
+  - ["bank", "insurance", "utility"]
+  - ["dividend"]
+screening.min_trading_value: [300000000, 500000000, 1000000000]
+screening.max_candidates: [10, 20]

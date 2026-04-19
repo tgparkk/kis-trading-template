@@ -36,6 +36,7 @@ if str(_PROJ_ROOT) not in sys.path:
 
 from strategies.screener_base import ScreenerBase  # noqa: E402
 from utils.korean_time import now_kst  # noqa: E402
+from runners._adapter_factory import build_adapter  # noqa: E402
 
 _LOGGER = logging.getLogger("runners.screener_snapshot_collector")
 
@@ -44,7 +45,7 @@ ALL_STRATEGIES = ["lynch", "sawkami", "bb_reversion"]
 
 
 # ---------------------------------------------------------------------------
-# 어댑터 팩토리
+# 어댑터 팩토리 (하위 호환 래퍼 — 공통 구현은 _adapter_factory.py 참조)
 # ---------------------------------------------------------------------------
 
 def _build_adapter(
@@ -53,23 +54,7 @@ def _build_adapter(
     db_manager=None,
     config=None,
 ) -> Optional[ScreenerBase]:
-    """전략명 → 어댑터 인스턴스. 실패 시 None 반환."""
-    try:
-        if strategy_name == "lynch":
-            from strategies.lynch.screener import LynchScreenerAdapter
-            return LynchScreenerAdapter(config=config, broker=broker, db_manager=db_manager)
-        elif strategy_name == "sawkami":
-            from strategies.sawkami.screener import SawkamiScreenerAdapter
-            return SawkamiScreenerAdapter(config=config, broker=broker, db_manager=db_manager)
-        elif strategy_name == "bb_reversion":
-            from strategies.bb_reversion.screener import BBReversionScreenerAdapter
-            return BBReversionScreenerAdapter()
-        else:
-            _LOGGER.warning("알 수 없는 전략: %s", strategy_name)
-            return None
-    except Exception as e:
-        _LOGGER.error("어댑터 생성 실패 (%s): %s", strategy_name, e)
-        return None
+    return build_adapter(strategy_name, broker=broker, db_manager=db_manager, config=config)
 
 
 # ---------------------------------------------------------------------------
