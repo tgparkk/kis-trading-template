@@ -9,14 +9,17 @@ Lynch 전략 매수후보 스크리닝 모듈
 """
 
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
+
+import pandas as pd
 
 from core.candidate_selector import CandidateSelector, CandidateStock
 from core.models import TradingConfig
 from framework.broker import KISBroker
 from strategies.screener_base import ScreenerBase
+from strategies.historical_data import get_fundamentals_at, get_daily_candles_range
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
 from utils.indicators import calculate_rsi_latest
@@ -192,7 +195,13 @@ class LynchScreenerAdapter(ScreenerBase):
         }
 
     def scan(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
-        # scan_date 는 현재 기록 전용 — 실제 조회는 현재 시점 데이터 사용 (Phase 3 에서 소급 지원 예정)
+        today = datetime.now().date()
+        if scan_date >= today:
+            return self._scan_realtime(params)
+        return self._scan_historical(scan_date, params)
+
+    def _scan_realtime(self, params: Dict[str, Any]) -> List[CandidateStock]:
+        """현재 시점 데이터 기반 스캔 (기존 LynchCandidateSelector 래핑)."""
         merged = {**self.default_params(), **(params or {})}
         max_candidates = int(merged.pop("max_candidates", 10))
         selector = LynchCandidateSelector(
@@ -201,3 +210,90 @@ class LynchScreenerAdapter(ScreenerBase):
             strategy_params=merged,
         )
         return selector.select_daily_candidates(max_candidates=max_candidates) or []
+
+    def _scan_historical(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
+        """과거 특정일 기준 Lynch 후보 재구성.
+
+        외부 DB(strategy_analysis.yearly_fundamentals + daily_candles)를 활용하여
+        실시간 KIS API 호출 없이 과거 스크리닝 결과를 재현한다.
+        """
+        try:
+            merged = {**self.default_params(), **(params or {})}
+            peg_max: float = float(merged.get("peg_max", 0.3))
+            op_growth_min: float = float(merged.get("op_income_growth_min", 70.0))
+            debt_ratio_max: float = float(merged.get("debt_ratio_max", 200.0))
+            roe_min: float = float(merged.get("roe_min", 5.0))
+            rsi_oversold: float = float(merged.get("rsi_oversold", 35))
+            rsi_period: int = int(merged.get("rsi_period", 14))
+            max_candidates: int = int(merged.get("max_candidates", 10))
+
+            # 1. 전체 종목 재무 데이터 조회 (벡터화)
+            fund_df = get_fundamentals_at(None, scan_date)
+            if fund_df.empty:
+                logger.warning("Lynch historical scan: 재무 데이터 없음 (%s)", scan_date)
+                return []
+
+            # 2. 재무 필터 (pandas 벡터 연산)
+            fund_df = fund_df.dropna(subset=["per", "roe", "debt_ratio", "revenue_growth"])
+            fund_df = fund_df[
+                (fund_df["revenue_growth"] >= op_growth_min) &
+                (fund_df["debt_ratio"] <= debt_ratio_max) &
+                (fund_df["roe"] >= roe_min) &
+                (fund_df["per"] > 0) &
+                (fund_df["revenue_growth"] > 0)
+            ].copy()
+
+            # PEG 근사: per / revenue_growth <= peg_max
+            fund_df["peg"] = fund_df["per"] / fund_df["revenue_growth"]
+            fund_df = fund_df[fund_df["peg"] <= peg_max]
+
+            if fund_df.empty:
+                logger.info("Lynch historical scan (%s): 재무 필터 통과 0건", scan_date)
+                return []
+
+            logger.info("Lynch historical scan (%s): 재무 필터 통과 %d종목", scan_date, len(fund_df))
+
+            # 3. 직전 30일 일봉 로드 (RSI 계산용)
+            stock_codes = fund_df["stock_code"].tolist()
+            start = date.fromordinal(scan_date.toordinal() - 40)  # 여유분 포함
+            candles = get_daily_candles_range(stock_codes, start, scan_date)
+
+            # 4. RSI 필터 + 점수 계산
+            candidates: List[CandidateStock] = []
+            for _, row in fund_df.iterrows():
+                code = str(row["stock_code"])
+                df_c = candles.get(code)
+                if df_c is None or len(df_c) < rsi_period + 2:
+                    continue
+
+                rsi_val = calculate_rsi_latest(df_c["close"].astype(float), rsi_period)
+                if rsi_val is None or rsi_val > rsi_oversold:
+                    continue
+
+                per = float(row["per"])
+                roe = float(row["roe"])
+                rev_growth = float(row["revenue_growth"])
+                peg = float(row["peg"])
+
+                # 기존 LynchCandidateSelector 점수식과 동일
+                score = (1 / peg) * 10 + roe + rev_growth / 10
+
+                candidates.append(CandidateStock(
+                    code=code,
+                    name="",  # yearly_fundamentals 에 name 컬럼 없음
+                    market="",
+                    score=round(score, 2),
+                    reason=f"PEG {peg:.3f}, ROE {roe:.1f}%, 매출성장 {rev_growth:.1f}%, RSI {rsi_val:.1f}, scan_date={scan_date}",
+                ))
+
+            candidates.sort(key=lambda x: x.score, reverse=True)
+            selected = candidates[:max_candidates]
+            logger.info(
+                "Lynch historical scan (%s): 최종 후보 %d종목 (RSI 필터 후 %d→%d)",
+                scan_date, len(selected), len(candidates), len(selected),
+            )
+            return selected
+
+        except Exception as exc:
+            logger.warning("Lynch historical scan 실패 (%s): %s", scan_date, exc)
+            return []

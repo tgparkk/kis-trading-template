@@ -7,7 +7,7 @@ Queries stock_sector table for sector filtering.
 """
 
 import os
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 try:
@@ -18,6 +18,7 @@ except ImportError:
 import logging
 from core.candidate_selector import CandidateStock
 from strategies.screener_base import ScreenerBase
+from strategies.historical_data import get_sectors, get_trading_value_at
 
 logger = logging.getLogger(__name__)
 
@@ -119,11 +120,16 @@ class BBReversionScreenerAdapter(ScreenerBase):
         }
 
     def scan(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
-        # scan_date 는 현재 기록 전용 — 실제 조회는 현재 시점 데이터 사용 (Phase 3 에서 소급 지원 예정)
+        today = datetime.now().date()
+        if scan_date >= today:
+            return self._scan_realtime(params)
+        return self._scan_historical(scan_date, params)
+
+    def _scan_realtime(self, params: Dict[str, Any]) -> List[CandidateStock]:
+        """현재 시점 데이터 기반 스캔 (기존 로직 래핑)."""
         merged = {**self.default_params(), **(params or {})}
         target_sectors: List[str] = merged.get("target_sectors", [])
         max_candidates: int = int(merged.get("max_candidates", 30))
-        # TODO: min_trading_value 필터 — BBReversionScreener 가 거래대금 데이터를 제공하지 않아 현재 미적용
 
         raw = self._screener.get_sector_stocks(target_sectors)
 
@@ -137,5 +143,63 @@ class BBReversionScreenerAdapter(ScreenerBase):
             )
             for item in raw
         ]
-
         return candidates[:max_candidates]
+
+    def _scan_historical(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
+        """과거 특정일 기준 후보 재구성.
+
+        1) get_sectors 로 대상 섹터 종목 취득
+        2) get_trading_value_at 으로 직전 20일 평균 거래대금 조회
+        3) min_trading_value 이상 필터 후 상위 max_candidates 선정
+        """
+        merged = {**self.default_params(), **(params or {})}
+        target_sectors: List[str] = merged.get("target_sectors", [])
+        min_trading_value: float = float(merged.get("min_trading_value", 500_000_000))
+        max_candidates: int = int(merged.get("max_candidates", 30))
+
+        # 1. 대상 섹터 종목 조회 — SECTOR_KEYWORDS 를 통해 한국어 키워드로 변환
+        korean_keywords: List[str] = []
+        for key in target_sectors:
+            korean_keywords.extend(SECTOR_KEYWORDS.get(key, [key]))
+
+        sectors_df = get_sectors(target_sectors=korean_keywords if korean_keywords else None)
+        if sectors_df.empty:
+            logger.warning("BB historical scan: no sector stocks found for %s", target_sectors)
+            return []
+
+        stock_codes: List[str] = sectors_df["stock_code"].tolist()
+        # stock_code → {name, sector_name} 매핑
+        meta = {
+            row["stock_code"]: row
+            for _, row in sectors_df.iterrows()
+        }
+
+        # 2. 직전 20일 평균 거래대금
+        tv_df = get_trading_value_at(stock_codes, scan_date, lookback_days=20)
+        if tv_df.empty:
+            logger.warning("BB historical scan: trading_value data empty for %s", scan_date)
+            return []
+
+        # 3. min_trading_value 필터 + 내림차순 정렬
+        tv_df = tv_df[tv_df["avg_trading_value"] >= min_trading_value]
+        tv_df = tv_df.sort_values("avg_trading_value", ascending=False)
+
+        candidates: List[CandidateStock] = []
+        for _, row in tv_df.head(max_candidates).iterrows():
+            code = row["stock_code"]
+            info = meta.get(code, {})
+            candidates.append(
+                CandidateStock(
+                    code=code,
+                    name=info.get("stock_name", ""),
+                    market=info.get("market", ""),
+                    score=float(row["avg_trading_value"]) / 1e9,  # 단위: 십억 원
+                    reason=f"sector={info.get('sector_name', '')}, scan_date={scan_date}",
+                )
+            )
+
+        logger.info(
+            "BB historical scan (%s): %d candidates (sectors=%s, min_tv=%.0f)",
+            scan_date, len(candidates), target_sectors, min_trading_value,
+        )
+        return candidates

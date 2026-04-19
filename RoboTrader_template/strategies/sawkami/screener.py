@@ -15,10 +15,13 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
+import pandas as pd
+
 from core.candidate_selector import CandidateSelector, CandidateStock
 from core.models import TradingConfig
 from framework.broker import KISBroker
 from strategies.screener_base import ScreenerBase
+from strategies.historical_data import get_fundamentals_at, get_daily_candles_range
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
 from utils.indicators import calculate_rsi_latest
@@ -579,7 +582,13 @@ class SawkamiScreenerAdapter(ScreenerBase):
         }
 
     def scan(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
-        # scan_date 는 현재 기록 전용 — 실제 조회는 현재 시점 데이터 사용 (Phase 3 에서 소급 지원 예정)
+        today = datetime.now().date()
+        if scan_date >= today:
+            return self._scan_realtime(params)
+        return self._scan_historical(scan_date, params)
+
+    def _scan_realtime(self, params: Dict[str, Any]) -> List[CandidateStock]:
+        """현재 시점 데이터 기반 스캔 (기존 SawkamiCandidateSelector 래핑)."""
         merged = {**self.default_params(), **(params or {})}
         max_candidates = int(merged.pop("max_candidates", 10))
         selector = SawkamiCandidateSelector(
@@ -588,3 +597,126 @@ class SawkamiScreenerAdapter(ScreenerBase):
             strategy_params=merged,
         )
         return selector.select_daily_candidates(max_candidates=max_candidates) or []
+
+    def _scan_historical(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
+        """과거 특정일 기준 Sawkami 후보 재구성.
+
+        외부 DB(strategy_analysis.yearly_fundamentals + daily_candles)를 활용하여
+        실시간 KIS API 호출 없이 과거 스크리닝 결과를 재현한다.
+        """
+        try:
+            merged = {**self.default_params(), **(params or {})}
+            op_growth_min: float = float(merged.get("op_income_growth_min", 30.0))
+            pbr_max: float = float(merged.get("pbr_max", 1.5))
+            high52w_drop_pct: float = float(merged.get("high52w_drop_pct", -20.0))
+            rsi_oversold: float = float(merged.get("rsi_oversold", 30))
+            rsi_period: int = int(merged.get("rsi_period", 14))
+            vol_ratio_min: float = float(merged.get("volume_ratio_min", 1.5))
+            vol_ma_period: int = int(merged.get("volume_ma_period", 20))
+            high52w_period: int = int(merged.get("high52w_period", 252))
+            max_candidates: int = int(merged.get("max_candidates", 10))
+
+            # 1. 재무 필터 (벡터화)
+            fund_df = get_fundamentals_at(None, scan_date)
+            if fund_df.empty:
+                logger.warning("Sawkami historical scan: 재무 데이터 없음 (%s)", scan_date)
+                return []
+
+            fund_df = fund_df.dropna(subset=["revenue_growth", "pbr"])
+            fund_df = fund_df[
+                (fund_df["revenue_growth"] >= op_growth_min) &
+                (fund_df["pbr"] > 0) &
+                (fund_df["pbr"] <= pbr_max)
+            ].copy()
+
+            if fund_df.empty:
+                logger.info("Sawkami historical scan (%s): 재무 필터 통과 0건", scan_date)
+                return []
+
+            logger.info("Sawkami historical scan (%s): 재무 필터 통과 %d종목", scan_date, len(fund_df))
+
+            # 2. 52주 고점 + RSI + 거래량 계산을 위해 일봉 로드
+            # high52w_period(252) + vol_ma_period(20) 여유분으로 약 300일
+            lookback_days = high52w_period + vol_ma_period + 10
+            start = date.fromordinal(scan_date.toordinal() - lookback_days)
+            stock_codes = fund_df["stock_code"].tolist()
+            candles = get_daily_candles_range(stock_codes, start, scan_date)
+
+            # 3. 기술적 필터 + 점수 계산
+            candidates: List[CandidateStock] = []
+            for _, row in fund_df.iterrows():
+                code = str(row["stock_code"])
+                df_c = candles.get(code)
+                if df_c is None or len(df_c) < rsi_period + 2:
+                    continue
+
+                closes = df_c["close"].astype(float)
+                highs = df_c["high"].astype(float)
+                volumes = df_c["volume"].astype(float)
+
+                current_price = float(closes.iloc[-1])
+                if current_price <= 0:
+                    continue
+
+                # 52주 고점 근접도
+                w52_highs = highs.tail(high52w_period)
+                if len(w52_highs) == 0:
+                    continue
+                w52_high = float(w52_highs.max())
+                if w52_high <= 0:
+                    continue
+                drop_pct = (current_price / w52_high - 1) * 100
+                # high52w_drop_pct = -20.0: -20% 이상 하락한 종목만 통과
+                # drop_pct 가 -20% 보다 크면(덜 하락) 제외, -20% 이하(더 하락)면 통과
+                if drop_pct > high52w_drop_pct:
+                    continue
+
+                # RSI
+                rsi_val = calculate_rsi_latest(closes, rsi_period)
+                if rsi_val is None or rsi_val > rsi_oversold:
+                    continue
+
+                # 거래량 비율: 최근 5일 평균 / 직전 vol_ma_period 평균
+                if len(volumes) < vol_ma_period:
+                    continue
+                vol_ma = float(volumes.tail(vol_ma_period).mean())
+                if vol_ma <= 0:
+                    continue
+                recent_vol = float(volumes.tail(5).mean())
+                vol_ratio = recent_vol / vol_ma
+                if vol_ratio < vol_ratio_min:
+                    continue
+
+                pbr = float(row["pbr"])
+                rev_growth = float(row["revenue_growth"])
+
+                # 사와카미 복합 점수 (기존 _calculate_sawkami_score 로직 재활용)
+                score = 0.0
+                score += min(25.0, max(0.0, (rev_growth - 30) / 170 * 25))
+                score += min(25.0, max(0.0, (abs(drop_pct) - 20) / 40 * 25))
+                score += min(20.0, max(0.0, (30 - rsi_val) / 30 * 20))
+                score += min(15.0, max(0.0, (1.5 - pbr) / 1.5 * 15))
+                score += min(15.0, max(0.0, (vol_ratio - 1.5) / 3.5 * 15))
+
+                candidates.append(CandidateStock(
+                    code=code,
+                    name="",
+                    market="",
+                    score=round(score, 2),
+                    reason=(
+                        f"매출성장 {rev_growth:.1f}%, 52주고점대비 {drop_pct:.1f}%, "
+                        f"PBR {pbr:.2f}, RSI {rsi_val:.1f}, 거래량 {vol_ratio:.1f}x, scan_date={scan_date}"
+                    ),
+                ))
+
+            candidates.sort(key=lambda x: x.score, reverse=True)
+            selected = candidates[:max_candidates]
+            logger.info(
+                "Sawkami historical scan (%s): 최종 후보 %d종목",
+                scan_date, len(selected),
+            )
+            return selected
+
+        except Exception as exc:
+            logger.warning("Sawkami historical scan 실패 (%s): %s", scan_date, exc)
+            return []
