@@ -501,7 +501,10 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
                         logger.error(f"API 오류: {res.status_code} - {res.text}")
                         return None
                 else:
-                    logger.error(f"API 오류: {res.status_code} - {res.text}")
+                    if res.status_code == 404:
+                        logger.debug(f"API 404 (엔드포인트 미지원 가능): {url} tr_id={tr_id}")
+                    else:
+                        logger.error(f"API 오류: {res.status_code} - {res.text}")
                     return None
 
         except requests.exceptions.Timeout as e:
