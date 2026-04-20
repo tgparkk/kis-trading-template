@@ -77,6 +77,7 @@ echo RoboTrader_template 시작 중...
 echo 종료하려면 Ctrl+C를 누르세요.
 echo.
 set PYTHONIOENCODING=utf-8
+set SCREENER_SNAPSHOT_ENABLED=true
 python -X utf8 main.py %* 1>> "%LOGFILE%" 2>&1
 
 REM 종료 메시지
