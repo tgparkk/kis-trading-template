@@ -39,11 +39,13 @@ Example:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+
+_ONTICK_SKIP_LOG_INTERVAL = timedelta(minutes=10)
 
 
 # ============================================================================
@@ -300,6 +302,9 @@ class BaseStrategy(ABC):
         # State
         self._is_initialized = False
 
+        # on_tick 스킵 로그 쓰로틀: key=(stock_code, reason), value=마지막 로그 시각
+        self._ontick_skip_log: Dict[tuple, datetime] = {}
+
         # Logger (will be set up if framework utils available)
         self.logger = None
         try:
@@ -464,6 +469,16 @@ class BaseStrategy(ABC):
     # on_tick (Phase 1: Strategy-owns-the-loop)
     # ========================================================================
 
+    def _should_log_ontick(self, stock_code: str, reason: str) -> bool:
+        """on_tick 스킵 로그를 10분에 1회만 허용 (로그 폭주 방지)."""
+        key = (stock_code, reason)
+        now = datetime.now()
+        last = self._ontick_skip_log.get(key)
+        if last is None or now - last >= _ONTICK_SKIP_LOG_INTERVAL:
+            self._ontick_skip_log[key] = now
+            return True
+        return False
+
     def get_min_data_length(self) -> int:
         """
         Return the minimum number of daily OHLCV bars required before
@@ -501,7 +516,8 @@ class BaseStrategy(ABC):
             if data is None or len(data) < min_len:
                 buy_skipped += 1
                 if data is None:
-                    self.logger.debug(f"스킵: {stock.stock_code} - 일봉 데이터 없음")
+                    if self._should_log_ontick(stock.stock_code, "no_daily_data"):
+                        self.logger.info(f"[신호없음] {stock.stock_code}: 일봉 데이터 없음 (DB 조회 실패)")
                     if ctx.tracer:
                         await ctx.tracer.emit({
                             "stock_code": stock.stock_code,
@@ -509,7 +525,10 @@ class BaseStrategy(ABC):
                             "skip_reason": "no_daily_data",
                         })
                 else:
-                    self.logger.debug(f"스킵: {stock.stock_code} - 일봉 {len(data)}건 < {min_len}")
+                    if self._should_log_ontick(stock.stock_code, "insufficient_data"):
+                        self.logger.info(
+                            f"[신호없음] {stock.stock_code}: 일봉 {len(data)}건 < min_len={min_len}"
+                        )
                     if ctx.tracer:
                         await ctx.tracer.emit({
                             "stock_code": stock.stock_code,
@@ -521,7 +540,10 @@ class BaseStrategy(ABC):
                 continue
             signal = self.generate_signal(stock.stock_code, data, timeframe='daily')
             if not signal:
-                self.logger.debug(f"스킵: {stock.stock_code} - generate_signal 반환 None (일봉 {len(data)}건)")
+                if self._should_log_ontick(stock.stock_code, "signal_none"):
+                    self.logger.info(
+                        f"[신호없음] {stock.stock_code}: generate_signal None 반환 (일봉 {len(data)}건)"
+                    )
                 if ctx.tracer:
                     await ctx.tracer.emit({
                         "stock_code": stock.stock_code,

@@ -15,12 +15,14 @@ Sample Strategy — 이동평균 크로스 + RSI
   3. 익절(+10%) 또는 손절(-5%) 도달
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
 from ..base import BaseStrategy, OrderInfo, Signal, SignalType
+
+_SKIP_LOG_INTERVAL = timedelta(minutes=10)
 
 
 class SampleStrategy(BaseStrategy):
@@ -70,6 +72,9 @@ class SampleStrategy(BaseStrategy):
         self.daily_trades = 0
         self.daily_profit = 0.0
 
+        # 반복 스킵 로그 쓰로틀: key=(stock_code, reason), value=마지막 로그 시각
+        self._last_skip_log: Dict[tuple, datetime] = {}
+
         self._is_initialized = True
         self.logger.info(
             f"{self.name} v{self.version} 초기화 완료 "
@@ -90,6 +95,16 @@ class SampleStrategy(BaseStrategy):
         else:
             self.logger.info("장 시작 — 보유 종목 없음")
 
+    def _should_log(self, stock_code: str, reason: str) -> bool:
+        """10분에 1회만 같은 (종목, 사유) 조합 INFO 로그를 허용."""
+        key = (stock_code, reason)
+        now = datetime.now()
+        last = self._last_skip_log.get(key)
+        if last is None or now - last >= _SKIP_LOG_INTERVAL:
+            self._last_skip_log[key] = now
+            return True
+        return False
+
     def generate_signal(
         self,
         stock_code: str,
@@ -99,10 +114,19 @@ class SampleStrategy(BaseStrategy):
         # 최소 데이터 길이 확인
         min_len = max(self._ma_long, self._rsi_period) + 2
         if data is None or len(data) < min_len:
+            data_len = 0 if data is None else len(data)
+            if self._should_log(stock_code, "data_insufficient"):
+                self.logger.info(
+                    f"[신호없음] {stock_code}: 일봉 {data_len}건 < min_len={min_len}"
+                )
             return None
 
         # 일일 거래 한도 확인
         if self.daily_trades >= self._max_daily_trades:
+            if self._should_log(stock_code, "daily_trades_limit"):
+                self.logger.info(
+                    f"[신호없음] {stock_code}: 일일거래 {self.daily_trades}/{self._max_daily_trades} 한도 초과"
+                )
             return None
 
         # 지표 계산
@@ -127,13 +151,14 @@ class SampleStrategy(BaseStrategy):
                     reasons=reasons,
                     metadata={"position": self.positions[stock_code]},
                 )
-            self.logger.debug(
-                f"[신호없음] {stock_code}: 매도조건 미달 "
-                f"(RSI={float(rsi.iloc[-1]):.1f}, "
-                f"MA{self._ma_short}={float(sma_short.iloc[-1]):.0f}"
-                f"{'>' if sma_short.iloc[-1] > sma_long.iloc[-1] else '<'}"
-                f"MA{self._ma_long}={float(sma_long.iloc[-1]):.0f})"
-            )
+            if self._should_log(stock_code, "sell_cond_miss"):
+                self.logger.info(
+                    f"[신호없음] {stock_code}: 매도조건 미달 "
+                    f"(RSI={float(rsi.iloc[-1]):.1f}, "
+                    f"MA{self._ma_short}={float(sma_short.iloc[-1]):.0f}"
+                    f"{'>' if sma_short.iloc[-1] > sma_long.iloc[-1] else '<'}"
+                    f"MA{self._ma_long}={float(sma_long.iloc[-1]):.0f})"
+                )
             return None
 
         # ── 미보유 종목이면 매수 판단 ──
@@ -158,13 +183,14 @@ class SampleStrategy(BaseStrategy):
             )
 
         # 지표 계산까지 했지만 매수 조건 미달
-        self.logger.debug(
-            f"[신호없음] {stock_code}: 매수조건 미달 "
-            f"(RSI={float(rsi.iloc[-1]):.1f}, "
-            f"MA{self._ma_short}={float(sma_short.iloc[-1]):.0f}"
-            f"{'>' if sma_short.iloc[-1] > sma_long.iloc[-1] else '<'}"
-            f"MA{self._ma_long}={float(sma_long.iloc[-1]):.0f})"
-        )
+        if self._should_log(stock_code, "buy_cond_miss"):
+            self.logger.info(
+                f"[신호없음] {stock_code}: 매수조건 미달 "
+                f"(RSI={float(rsi.iloc[-1]):.1f}, "
+                f"MA{self._ma_short}={float(sma_short.iloc[-1]):.0f}"
+                f"{'>' if sma_short.iloc[-1] > sma_long.iloc[-1] else '<'}"
+                f"MA{self._ma_long}={float(sma_long.iloc[-1]):.0f})"
+            )
         return None
 
     def on_order_filled(self, order: OrderInfo) -> None:

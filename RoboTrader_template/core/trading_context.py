@@ -5,8 +5,8 @@ TradingContext - 전략에게 제공되는 안전한 도구 모음
 내부적으로 기존 컴포넌트들(trading_manager, decision_engine, fund_manager 등)을
 래핑하여 전략에게 간결한 인터페이스를 제공합니다.
 """
-from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import pandas as pd
 
@@ -53,6 +53,9 @@ class TradingContext:
         self._is_running_check = is_running_check
         self.tracer: Optional['TickTracer'] = tracer
         self.logger = setup_logger("trading_context")
+        # 일봉 조회 실패 로그 쓰로틀: key=(stock_code, reason), value=마지막 로그 시각
+        self._daily_log_cache: Dict[Tuple[str, str], datetime] = {}
+        self._daily_log_interval = timedelta(minutes=10)
 
     # =========================================================================
     # a) 시장 상태
@@ -90,6 +93,24 @@ class TradingContext:
                 data = self._db_manager.price_repo.get_daily_prices(stock_code, days=days)
                 if data is not None and not data.empty:
                     return data
+                # 데이터가 비어 있거나 None인 경우 10분에 1회 INFO 로그
+                reason = "empty" if (data is not None) else "none"
+                key = (stock_code, f"daily_{reason}")
+                now = datetime.now()
+                last = self._daily_log_cache.get(key)
+                if last is None or now - last >= self._daily_log_interval:
+                    self._daily_log_cache[key] = now
+                    cnt = len(data) if data is not None else 0
+                    self.logger.info(
+                        f"[일봉조회] {stock_code}: DB 반환 {cnt}건 (days={days}) — 데이터 없음"
+                    )
+            else:
+                key = (stock_code, "no_db")
+                now = datetime.now()
+                last = self._daily_log_cache.get(key)
+                if last is None or now - last >= self._daily_log_interval:
+                    self._daily_log_cache[key] = now
+                    self.logger.info(f"[일봉조회] {stock_code}: db_manager 없음 — 스킵")
             return None
         except Exception as e:
             self.logger.debug(f"일봉 데이터 조회 실패 ({stock_code}): {e}")
