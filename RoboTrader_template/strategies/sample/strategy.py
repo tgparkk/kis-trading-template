@@ -4,9 +4,9 @@ Sample Strategy — 이동평균 크로스 + RSI
 
 간단하지만 실제 동작하는 예제 전략입니다.
 
-매수 조건 (2개 이상 충족 시):
-  1. 5일 이동평균이 20일 이동평균을 골든크로스
-  2. RSI(14)가 과매도(30) 구간에서 탈출
+매수 조건 (1개 이상 충족 시):
+  1. 5일 이동평균이 20일 이동평균보다 위 (상승 추세)
+  2. RSI(14)가 과매도(40 이하) 영역
   3. 거래량이 20일 평균의 1.5배 이상
 
 매도 조건 (1개 이상 충족 시):
@@ -244,19 +244,16 @@ class SampleStrategy(BaseStrategy):
     ) -> Tuple[bool, List[str]]:
         reasons: List[str] = []
 
-        # 1) 골든크로스
-        if (
-            sma_short.iloc[-1] > sma_long.iloc[-1]
-            and sma_short.iloc[-2] <= sma_long.iloc[-2]
-        ):
+        # 1) 단기 우위 상태 (MA5 > MA20 상태)
+        if sma_short.iloc[-1] > sma_long.iloc[-1]:
             reasons.append(
-                f"{self._ma_short}일선이 {self._ma_long}일선 골든크로스"
+                f"{self._ma_short}일선 > {self._ma_long}일선 (상승 추세)"
             )
 
-        # 2) RSI 과매도 탈출
-        if rsi.iloc[-2] < self._rsi_oversold and rsi.iloc[-1] >= self._rsi_oversold:
+        # 2) RSI 과매도 영역 (RSI < rsi_oversold 상태)
+        if rsi.iloc[-1] < self._rsi_oversold:
             reasons.append(
-                f"RSI({self._rsi_period}) 과매도 탈출 ({rsi.iloc[-1]:.1f})"
+                f"RSI({self._rsi_period}) 과매도 영역 ({rsi.iloc[-1]:.1f})"
             )
 
         # 3) 거래량 급증
@@ -269,13 +266,13 @@ class SampleStrategy(BaseStrategy):
             reasons.append(f"거래량 {ratio:.1f}배 급증")
 
         # 진단 로그
-        gc = "O" if any("골든크로스" in r for r in reasons) else "X"
-        rs = "O" if any("과매도 탈출" in r for r in reasons) else "X"
+        gc = "O" if any("상승 추세" in r for r in reasons) else "X"
+        rs = "O" if any("과매도 영역" in r for r in reasons) else "X"
         vl = "O" if any("거래량" in r for r in reasons) else "X"
         hit = len(reasons)
         status = "매수!" if hit >= self._min_buy_signals else "미달"
         self.logger.debug(
-            f"[매수조건] 골든크로스:{gc} RSI탈출:{rs} 거래량:{vl}"
+            f"[매수조건] MA단기우위:{gc} RSI과매도:{rs} 거래량:{vl}"
             f" → 충족 {hit}/{self._min_buy_signals} ({status})"
         )
 

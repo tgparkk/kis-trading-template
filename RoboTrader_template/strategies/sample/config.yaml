@@ -17,7 +17,7 @@ parameters:
 
   # RSI 설정
   rsi_period: 14           # RSI 계산 기간
-  rsi_oversold: 30         # 과매도 기준선
+  rsi_oversold: 40         # 과매도 기준선
   rsi_overbought: 70       # 과매수 기준선
 
   # 거래량 설정
