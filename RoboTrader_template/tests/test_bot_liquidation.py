@@ -440,3 +440,89 @@ class TestEodStateHelpers:
         handler.set_last_eod_liquidation_date(today)
 
         assert handler.get_last_eod_liquidation_date() == today
+
+
+# ---------------------------------------------------------------------------
+# run_screener_snapshot_hook — 호출 위치 버그 수정 검증
+# ---------------------------------------------------------------------------
+
+class TestScreenerSnapshotHook:
+    """스크리너 스냅샷 훅 호출 동작 검증"""
+
+    def _make_market_hours_patch(self):
+        """MarketHours 패치 헬퍼"""
+        from unittest.mock import patch
+        return patch('bot.liquidation_handler.MarketHours', **{
+            'return_value.get_market_hours.return_value': {
+                'eod_liquidation_hour': 15,
+                'eod_liquidation_minute': 20,
+            }
+        })
+
+    @pytest.mark.asyncio
+    async def test_hook_called_even_when_no_positions(self):
+        """보유 포지션이 0개일 때도 스크리너 스냅샷 훅이 호출된다 (핵심 버그 수정 검증)"""
+        bot = _make_bot(positioned_stocks=[])
+        handler = _make_handler(bot)
+
+        with patch('bot.liquidation_handler.MarketHours') as mock_mh, \
+             patch('bot.liquidation_handler.SCREENER_SNAPSHOT_ENABLED', True), \
+             patch.object(handler, 'run_screener_snapshot_hook', new=AsyncMock()) as mock_hook:
+            mock_mh.get_market_hours.return_value = {
+                'eod_liquidation_hour': 15,
+                'eod_liquidation_minute': 20,
+            }
+            await handler.execute_end_of_day_liquidation()
+
+        mock_hook.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_hook_called_when_positions_exist_and_sell_succeeds(self):
+        """포지션이 있고 매도 성공 시에도 스크리너 스냅샷 훅이 호출된다"""
+        stock = _make_trading_stock("005930")
+        bot = _make_bot(positioned_stocks=[stock], is_virtual=True, virtual_sell_result=True)
+        handler = _make_handler(bot)
+
+        with patch('bot.liquidation_handler.MarketHours') as mock_mh, \
+             patch('bot.liquidation_handler.SCREENER_SNAPSHOT_ENABLED', True), \
+             patch.object(handler, 'run_screener_snapshot_hook', new=AsyncMock()) as mock_hook:
+            mock_mh.get_market_hours.return_value = {
+                'eod_liquidation_hour': 15,
+                'eod_liquidation_minute': 20,
+            }
+            await handler.execute_end_of_day_liquidation()
+
+        mock_hook.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_hook_not_called_twice_on_same_day(self):
+        """같은 날 run_screener_snapshot_hook을 두 번 호출해도 실제 로직은 1회만 실행된다"""
+        from datetime import date
+        bot = _make_bot(positioned_stocks=[])
+        handler = _make_handler(bot)
+
+        # _snapshot_done_date 가드: 이미 오늘 날짜로 설정되어 있으면 내부 실행 없이 즉시 반환
+        today = date(2026, 4, 22)
+        handler._snapshot_done_date = today
+
+        with patch('bot.liquidation_handler.SCREENER_SNAPSHOT_ENABLED', True), \
+             patch('bot.liquidation_handler.now_kst') as mock_now:
+            mock_now.return_value.date.return_value = today
+
+            # run_once 패치: 실행되면 안 됨
+            with patch('runners.screener_snapshot_collector.run_once') as mock_run:
+                await handler.run_screener_snapshot_hook()
+
+        mock_run.assert_not_called()  # 당일 이미 실행됐으므로 스킵
+
+    @pytest.mark.asyncio
+    async def test_hook_disabled_when_screener_snapshot_not_enabled(self):
+        """SCREENER_SNAPSHOT_ENABLED=False 이면 훅이 실행되지 않는다"""
+        bot = _make_bot(positioned_stocks=[])
+        handler = _make_handler(bot)
+
+        with patch('bot.liquidation_handler.SCREENER_SNAPSHOT_ENABLED', False), \
+             patch('runners.screener_snapshot_collector.run_once') as mock_run:
+            await handler.run_screener_snapshot_hook()
+
+        mock_run.assert_not_called()

@@ -34,6 +34,7 @@ class LiquidationHandler:
         self._last_eod_liquidation_date = None
         self._eod_failed_stocks: Set[str] = set()  # 청산 실패 종목 추적
         self._eod_retry_count: int = 0
+        self._snapshot_done_date = None  # 스크리너 스냅샷 중복 호출 방지
 
     async def liquidate_all_positions_end_of_day(self) -> None:
         """장 마감 직전 보유 포지션 전량 시장가 일괄 청산"""
@@ -131,105 +132,105 @@ class LiquidationHandler:
             if not positioned_stocks:
                 self.logger.info(f"{time_label} 시장가 매도: 보유 포지션 없음")
                 self._eod_failed_stocks.clear()
-                return
-
-            self.logger.info(
-                f"{time_label} 시장가 일괄매도 시작: {len(positioned_stocks)}종목"
-            )
-
-            failed_stocks = []
-
-            for trading_stock in positioned_stocks:
-                try:
-                    if not trading_stock.position or trading_stock.position.quantity <= 0:
-                        continue
-
-                    stock_code = trading_stock.stock_code
-
-                    # 전략이 EOD 청산을 거부하면 스킵
-                    strategy = getattr(self.bot.decision_engine, 'strategy', None)
-                    if strategy and not strategy.should_liquidate_eod(stock_code):
-                        self.logger.info(f"{time_label} 청산 스킵 (전략 거부): {stock_code}")
-                        continue
-
-                    stock_name = trading_stock.stock_name
-                    quantity = int(trading_stock.position.quantity)
-                    current_price = 0.0  # 시장가
-
-                    # 가상/실전 모드 분기
-                    is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
-                    if is_virtual:
-                        # 가상매매 - execute_virtual_sell 사용
-                        eod_sell_price = 0.0
-                        combined_data = self.bot.intraday_manager.get_combined_chart_data(stock_code)
-                        if combined_data is not None and len(combined_data) > 0:
-                            eod_sell_price = float(combined_data['close'].iloc[-1])
-                        else:
-                            price_obj = self.bot.broker.get_current_price(stock_code)
-                            if price_obj is not None and price_obj > 0:
-                                eod_sell_price = float(price_obj)
-
-                        # 매도 전 포지션 정보 저장 (execute_virtual_sell이 position을 클리어하므로)
-                        _buy_price = float(trading_stock.position.avg_price) if trading_stock.position else 0
-                        result = await self.bot.decision_engine.execute_virtual_sell(
-                            trading_stock, eod_sell_price,
-                            f"{time_label} 시장가 일괄매도"
-                        )
-                        if result:
-                            invested = _buy_price * int(quantity)
-                            _sell_amount = float(eod_sell_price) * int(quantity) if eod_sell_price else invested
-                            _buy_comm = invested * COMMISSION_RATE
-                            _sell_comm = _sell_amount * COMMISSION_RATE
-                            _sell_tax = _sell_amount * SECURITIES_TAX_RATE
-                            _pnl = _sell_amount - invested - _buy_comm - _sell_comm - _sell_tax
-                            self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
-                            if _pnl != 0:
-                                self.bot.fund_manager.adjust_pnl(_pnl)
-                            self.bot.fund_manager.remove_position(stock_code)
-                            self.logger.info(
-                                f"{time_label} 가상매도 완료: "
-                                f"{stock_code}({stock_name}) {quantity}주"
-                            )
-                        else:
-                            self.logger.warning(
-                                f"{stock_code} 가상매도 실패 - 재시도 대상에 추가"
-                            )
-                            failed_stocks.append(stock_code)
-                    else:
-                        # 실매매 - 기존 실매도 로직
-                        moved = self.bot.trading_manager.move_to_sell_candidate(
-                            stock_code, f"{time_label} 시장가 일괄매도"
-                        )
-                        if moved:
-                            await self.bot.trading_manager.execute_sell_order(
-                                stock_code, quantity, current_price,
-                                f"{time_label} 시장가 일괄매도", market=True,
-                                force=True
-                            )
-                            self.logger.info(
-                                f"{time_label} 시장가 매도: "
-                                f"{stock_code}({stock_name}) {quantity}주 시장가 주문"
-                            )
-                        else:
-                            self.logger.warning(
-                                f"{stock_code} 매도 후보 전환 실패 - 재시도 대상에 추가"
-                            )
-                            failed_stocks.append(stock_code)
-
-                except Exception as se:
-                    self.logger.error(
-                        f"{time_label} 시장가 매도 개별 처리 오류({trading_stock.stock_code}): {se}"
-                    )
-                    failed_stocks.append(trading_stock.stock_code)
-
-            self._eod_failed_stocks = set(failed_stocks)
-
-            if failed_stocks:
-                self.logger.warning(f"{time_label} 청산 실패 종목: {failed_stocks}")
             else:
-                self.logger.info(f"{time_label} 시장가 일괄매도 요청 완료")
-                # EOD 완료 후 스크리너 스냅샷 수집 (비차단)
-                await self.run_screener_snapshot_hook()
+                self.logger.info(
+                    f"{time_label} 시장가 일괄매도 시작: {len(positioned_stocks)}종목"
+                )
+
+                failed_stocks = []
+
+                for trading_stock in positioned_stocks:
+                    try:
+                        if not trading_stock.position or trading_stock.position.quantity <= 0:
+                            continue
+
+                        stock_code = trading_stock.stock_code
+
+                        # 전략이 EOD 청산을 거부하면 스킵
+                        strategy = getattr(self.bot.decision_engine, 'strategy', None)
+                        if strategy and not strategy.should_liquidate_eod(stock_code):
+                            self.logger.info(f"{time_label} 청산 스킵 (전략 거부): {stock_code}")
+                            continue
+
+                        stock_name = trading_stock.stock_name
+                        quantity = int(trading_stock.position.quantity)
+                        current_price = 0.0  # 시장가
+
+                        # 가상/실전 모드 분기
+                        is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
+                        if is_virtual:
+                            # 가상매매 - execute_virtual_sell 사용
+                            eod_sell_price = 0.0
+                            combined_data = self.bot.intraday_manager.get_combined_chart_data(stock_code)
+                            if combined_data is not None and len(combined_data) > 0:
+                                eod_sell_price = float(combined_data['close'].iloc[-1])
+                            else:
+                                price_obj = self.bot.broker.get_current_price(stock_code)
+                                if price_obj is not None and price_obj > 0:
+                                    eod_sell_price = float(price_obj)
+
+                            # 매도 전 포지션 정보 저장 (execute_virtual_sell이 position을 클리어하므로)
+                            _buy_price = float(trading_stock.position.avg_price) if trading_stock.position else 0
+                            result = await self.bot.decision_engine.execute_virtual_sell(
+                                trading_stock, eod_sell_price,
+                                f"{time_label} 시장가 일괄매도"
+                            )
+                            if result:
+                                invested = _buy_price * int(quantity)
+                                _sell_amount = float(eod_sell_price) * int(quantity) if eod_sell_price else invested
+                                _buy_comm = invested * COMMISSION_RATE
+                                _sell_comm = _sell_amount * COMMISSION_RATE
+                                _sell_tax = _sell_amount * SECURITIES_TAX_RATE
+                                _pnl = _sell_amount - invested - _buy_comm - _sell_comm - _sell_tax
+                                self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
+                                if _pnl != 0:
+                                    self.bot.fund_manager.adjust_pnl(_pnl)
+                                self.bot.fund_manager.remove_position(stock_code)
+                                self.logger.info(
+                                    f"{time_label} 가상매도 완료: "
+                                    f"{stock_code}({stock_name}) {quantity}주"
+                                )
+                            else:
+                                self.logger.warning(
+                                    f"{stock_code} 가상매도 실패 - 재시도 대상에 추가"
+                                )
+                                failed_stocks.append(stock_code)
+                        else:
+                            # 실매매 - 기존 실매도 로직
+                            moved = self.bot.trading_manager.move_to_sell_candidate(
+                                stock_code, f"{time_label} 시장가 일괄매도"
+                            )
+                            if moved:
+                                await self.bot.trading_manager.execute_sell_order(
+                                    stock_code, quantity, current_price,
+                                    f"{time_label} 시장가 일괄매도", market=True,
+                                    force=True
+                                )
+                                self.logger.info(
+                                    f"{time_label} 시장가 매도: "
+                                    f"{stock_code}({stock_name}) {quantity}주 시장가 주문"
+                                )
+                            else:
+                                self.logger.warning(
+                                    f"{stock_code} 매도 후보 전환 실패 - 재시도 대상에 추가"
+                                )
+                                failed_stocks.append(stock_code)
+
+                    except Exception as se:
+                        self.logger.error(
+                            f"{time_label} 시장가 매도 개별 처리 오류({trading_stock.stock_code}): {se}"
+                        )
+                        failed_stocks.append(trading_stock.stock_code)
+
+                self._eod_failed_stocks = set(failed_stocks)
+
+                if failed_stocks:
+                    self.logger.warning(f"{time_label} 청산 실패 종목: {failed_stocks}")
+                else:
+                    self.logger.info(f"{time_label} 시장가 일괄매도 요청 완료")
+
+            # 포지션 유무에 무관하게 EOD 완료 후 스크리너 스냅샷 수집 (비차단, 하루 1회)
+            await self.run_screener_snapshot_hook()
 
         except Exception as e:
             self.logger.error(f"장마감 시장가 매도 오류: {e}")
@@ -438,9 +439,16 @@ class LiquidationHandler:
 
         SCREENER_SNAPSHOT_ENABLED=true 환경변수일 때만 실행.
         실패해도 메인 루프를 중단하지 않는다 (warning 로그만).
+        하루 1회만 실행 (중복 호출 방지).
         """
         if not SCREENER_SNAPSHOT_ENABLED:
             return
+
+        # 당일 이미 실행했으면 스킵 (15:00 재시도 루프에서 중복 호출 방지)
+        today = now_kst().date()
+        if self._snapshot_done_date == today:
+            return
+        self._snapshot_done_date = today
 
         try:
             from runners.screener_snapshot_collector import run_once, ALL_STRATEGIES

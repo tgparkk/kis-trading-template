@@ -171,6 +171,34 @@ class SystemMonitor:
                 except Exception as verify_err:
                     self.logger.error(f"EOD 자금 정합성 검증 오류: {verify_err}")
 
+                # EOD 스크리너 스냅샷 저장 여부 검증 (D6)
+                try:
+                    self._verify_screener_snapshot()
+                except Exception as snap_err:
+                    self.logger.error(f"EOD 스크리너 스냅샷 검증 오류: {snap_err}")
+
+    def _verify_screener_snapshot(self) -> None:
+        """EOD 스크리너 스냅샷 저장 여부 검증 (D6)"""
+        from config.constants import SCREENER_SNAPSHOT_ENABLED
+        if not SCREENER_SNAPSHOT_ENABLED:
+            return
+
+        try:
+            from db.connection import DatabaseConnection
+            with DatabaseConnection.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM screener_snapshots WHERE scan_date = CURRENT_DATE"
+                    )
+                    row = cur.fetchone()
+                    count = row[0] if row else 0
+            if count == 0:
+                self.logger.warning("EOD 스크리너 스냅샷이 저장되지 않음 (당일 0건)")
+            else:
+                self.logger.info(f"EOD 스크리너 스냅샷 저장 확인: {count}건")
+        except Exception as e:
+            self.logger.warning(f"스크리너 스냅샷 DB 조회 오류 (무시): {e}")
+
     def _verify_eod_fund_integrity(self) -> None:
         """EOD 자금 정합성 검증 (FundManager 내부 등식 확인)"""
         fund_manager = getattr(self.bot, 'fund_manager', None)
