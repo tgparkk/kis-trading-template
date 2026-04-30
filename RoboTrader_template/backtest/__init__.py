@@ -25,7 +25,13 @@ Usage:
     print(results.top(10))
 """
 
-from backtest.engine import BacktestEngine, BacktestResult
+from backtest.engine import BacktestEngine, BacktestResult, make_screener_snapshot_provider
 from backtest.multiverse import MultiverseEngine, MultiverseResult
 
-__all__ = ["BacktestEngine", "BacktestResult", "MultiverseEngine", "MultiverseResult"]
+__all__ = [
+    "BacktestEngine",
+    "BacktestResult",
+    "make_screener_snapshot_provider",
+    "MultiverseEngine",
+    "MultiverseResult",
+]

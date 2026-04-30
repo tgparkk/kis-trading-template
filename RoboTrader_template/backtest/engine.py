@@ -26,13 +26,21 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from datetime import date as DateType
+from typing import Callable, Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
 
-from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
+from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE, TRAILING_STOP_CALLBACK_RATE
 from strategies.base import BaseStrategy, SignalType
+
+# CandidateRepository는 make_screener_snapshot_provider 헬퍼에서 사용.
+# DB 의존성이 없는 환경(순수 백테스트)에서는 import만 해두고 실제 호출은 provider 내부에서 발생.
+try:
+    from db.repositories.candidate import CandidateRepository as CandidateRepository
+except ImportError:  # DB 패키지 없는 경량 환경
+    CandidateRepository = None  # type: ignore[assignment,misc]
 
 
 # ============================================================================
@@ -63,9 +71,16 @@ class BacktestResult:
     total_trades: int
     trades: List[Dict]
     equity_curve: List[float]
+    sells_by_reason: Dict[str, int] = field(default_factory=dict)
+    candidate_pool_hits: int = 0  # 후보 풀이 적용된 일자 수 (candidate_provider 사용 시)
 
     def summary(self) -> str:
         """결과 요약 문자열 반환."""
+        reason_str = ""
+        if self.sells_by_reason:
+            parts = [f"{k}={v}" for k, v in sorted(self.sells_by_reason.items())]
+            reason_str = f"  매도사유=({','.join(parts)})"
+        pool_str = f"  후보풀적용={self.candidate_pool_hits}일" if self.candidate_pool_hits > 0 else ""
         return (
             f"총수익률={self.total_return:+.2%}  "
             f"승률={self.win_rate:.1%}  "
@@ -74,6 +89,8 @@ class BacktestResult:
             f"샤프={self.sharpe_ratio:.2f}  "
             f"손익비={self.profit_loss_ratio:.2f}  "
             f"거래={self.total_trades}건"
+            f"{reason_str}"
+            f"{pool_str}"
         )
 
 
@@ -159,6 +176,7 @@ class BacktestEngine:
         daily_data: Dict[str, pd.DataFrame],
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
+        candidate_provider: Optional[Callable[[str, str], List[str]]] = None,
     ) -> BacktestResult:
         """
         백테스트 실행.
@@ -170,6 +188,10 @@ class BacktestEngine:
                         날짜 오름차순 정렬 필요
             start_date: 백테스트 시작일 ("YYYY-MM-DD"), None이면 데이터 전체
             end_date: 백테스트 종료일 ("YYYY-MM-DD"), None이면 데이터 전체
+            candidate_provider: (strategy_name: str, scan_date: str) → List[str]
+                                 매 일자의 진입 가능 종목 코드 리스트를 반환하는 콜백.
+                                 None이면 stock_codes 전체를 universe로 사용 (기존 동작).
+                                 반환 리스트가 비어있으면 해당 일자 진입 스킵 (보수적 fallback).
 
         Returns:
             BacktestResult: 백테스트 결과
@@ -182,9 +204,17 @@ class BacktestEngine:
 
         # 상태 초기화
         cash = self.initial_capital
-        positions: Dict[str, Dict] = {}  # {stock_code: {qty, entry_price, entry_date}}
+        positions: Dict[str, Dict] = {}  # {stock_code: {qty, entry_price, entry_date, entry_cost, peak_price}}
         completed_trades: List[Dict] = []
         equity_curve: List[float] = []
+        sells_by_reason: Dict[str, int] = {
+            "stop_loss": 0,
+            "trailing": 0,
+            "take_profit": 0,
+            "strategy_signal": 0,
+            "eod": 0,
+        }
+        candidate_pool_hits: int = 0  # candidate_provider가 후보 풀을 반환한 일자 수
 
         # 전략 상태 초기화
         self.strategy.positions = {}
@@ -192,24 +222,68 @@ class BacktestEngine:
 
         min_len = self.strategy.get_min_data_length()
 
+        # 전략 리스크 파라미터 (없으면 기본값)
+        stop_loss_rate = getattr(self.strategy, "_stop_loss_pct", 0.05)
+        take_profit_rate = getattr(self.strategy, "_take_profit_pct", 0.10)
+        is_intraday = getattr(self.strategy, "holding_period", "intraday") == "intraday"
+
         for date in all_dates:
             self.strategy.daily_trades = 0  # 일일 거래 카운터 초기화
 
             # 1) 매도 판단: 보유 종목에 대해 당일 데이터로 신호 확인
             for code in list(positions.keys()):
                 df_slice = self._get_data_up_to(daily_data, code, date)
-                if df_slice is None or len(df_slice) < min_len:
+                if df_slice is None or len(df_slice) == 0:
                     continue
 
-                signal = self.strategy.generate_signal(code, df_slice, timeframe='daily')
-                if signal is None:
-                    continue
+                row = df_slice.iloc[-1]
+                day_high = float(row.get("high", row["close"]))
+                day_low = float(row.get("low", row["close"]))
+                day_close = float(row["close"])
+                pos = positions[code]
+                qty = pos["qty"]
+                entry_price = pos["entry_price"]
 
-                if signal.is_sell:
-                    sell_price = float(df_slice["close"].iloc[-1])
-                    pos = positions[code]
-                    qty = pos["qty"]
+                # 최고가 갱신 (트레일링스톱 추적)
+                pos["peak_price"] = max(pos["peak_price"], day_high)
+                peak_price = pos["peak_price"]
 
+                sell_price: Optional[float] = None
+                sell_reason: str = ""
+
+                # 우선순위 1: 손절 — 일봉 low가 손절가 이하
+                stop_loss_price = entry_price * (1 - stop_loss_rate)
+                if day_low <= stop_loss_price:
+                    sell_price = stop_loss_price
+                    sell_reason = "stop_loss"
+
+                # 우선순위 2: 트레일링스톱 — 고가 대비 -3% (손절 미발동 시)
+                elif peak_price > entry_price:
+                    trailing_stop_price = peak_price * (1 - TRAILING_STOP_CALLBACK_RATE)
+                    if day_low <= trailing_stop_price:
+                        sell_price = trailing_stop_price
+                        sell_reason = "trailing"
+
+                # 우선순위 3: 익절 — 일봉 high가 익절가 이상
+                if sell_price is None:
+                    take_profit_price = entry_price * (1 + take_profit_rate)
+                    if day_high >= take_profit_price:
+                        sell_price = take_profit_price
+                        sell_reason = "take_profit"
+
+                # 우선순위 4: 전략 매도 신호 (데이터 충분 시에만)
+                if sell_price is None and len(df_slice) >= min_len:
+                    signal = self.strategy.generate_signal(code, df_slice, timeframe='daily')
+                    if signal is not None and signal.is_sell:
+                        sell_price = day_close
+                        sell_reason = "strategy_signal"
+
+                # 우선순위 5: EOD 청산 (intraday 전략만)
+                if sell_price is None and is_intraday:
+                    sell_price = day_close
+                    sell_reason = "eod"
+
+                if sell_price is not None:
                     # 매도 비용 = 수수료 + 증권거래세
                     sell_cost = sell_price * qty * (self.commission_rate + self.tax_rate)
                     proceeds = sell_price * qty - sell_cost
@@ -222,28 +296,46 @@ class BacktestEngine:
                         "stock_code": code,
                         "entry_date": pos["entry_date"],
                         "exit_date": date,
-                        "entry_price": pos["entry_price"],
+                        "entry_price": entry_price,
                         "exit_price": sell_price,
                         "quantity": qty,
                         "pnl": pnl,
                         "pnl_pct": pnl_pct,
-                        "signal_type": signal.signal_type.value,
-                        "reasons": signal.reasons,
+                        "signal_type": sell_reason,
+                        "reasons": [sell_reason],
                     })
+                    sells_by_reason[sell_reason] = sells_by_reason.get(sell_reason, 0) + 1
 
                     del positions[code]
                     if code in self.strategy.positions:
                         del self.strategy.positions[code]
 
                     self.logger.debug(
-                        f"[{date}] 매도: {code} {qty}주 @ {sell_price:,.0f}원 "
+                        f"[{date}] 매도({sell_reason}): {code} {qty}주 @ {sell_price:,.0f}원 "
                         f"(수익률 {pnl_pct:+.2%})"
                     )
 
             # 2) 매수 판단: 포지션 여유 있으면 미보유 종목 신호 확인
             available_slots = self.max_positions - len(positions)
             if available_slots > 0:
-                for code in stock_codes:
+                # candidate_provider가 제공된 경우 해당 일자의 후보 풀로 universe 한정
+                if candidate_provider is not None:
+                    candidate_codes = candidate_provider(self.strategy.name, date)
+                    if candidate_codes:
+                        candidate_pool_hits += 1
+                        candidate_set: Set[str] = set(candidate_codes)
+                        buy_universe = [c for c in stock_codes if c in candidate_set]
+                        self.logger.debug(
+                            f"[{date}] 후보 풀 적용: {len(stock_codes)}종목 → {len(buy_universe)}종목"
+                        )
+                    else:
+                        # 후보 풀 비어있으면 진입 스킵 (보수적 fallback)
+                        self.logger.debug(f"[{date}] 후보 풀 없음 → 진입 스킵")
+                        buy_universe = []
+                else:
+                    buy_universe = stock_codes
+
+                for code in buy_universe:
                     if code in positions:
                         continue
                     if available_slots <= 0:
@@ -282,6 +374,7 @@ class BacktestEngine:
                             "entry_price": buy_price,
                             "entry_date": date,
                             "entry_cost": total_cost,
+                            "peak_price": buy_price,
                         }
                         self.strategy.positions[code] = {
                             "quantity": qty,
@@ -334,6 +427,7 @@ class BacktestEngine:
                 "signal_type": "forced_exit",
                 "reasons": ["백테스트 종료 강제청산"],
             })
+            sells_by_reason["forced_exit"] = sells_by_reason.get("forced_exit", 0) + 1
 
         # equity_curve 마지막 값 업데이트 (강제청산 반영)
         if equity_curve and positions:
@@ -342,6 +436,8 @@ class BacktestEngine:
         return self._calculate_metrics(
             completed_trades=completed_trades,
             equity_curve=equity_curve,
+            sells_by_reason=sells_by_reason,
+            candidate_pool_hits=candidate_pool_hits,
         )
 
     # ========================================================================
@@ -395,11 +491,14 @@ class BacktestEngine:
         self,
         completed_trades: List[Dict],
         equity_curve: List[float],
+        sells_by_reason: Optional[Dict[str, int]] = None,
+        candidate_pool_hits: int = 0,
     ) -> BacktestResult:
         """성과 지표 계산."""
         total_trades = len(completed_trades)
         final_equity = equity_curve[-1] if equity_curve else self.initial_capital
         total_return = (final_equity - self.initial_capital) / self.initial_capital
+        sells_by_reason = sells_by_reason or {}
 
         if total_trades == 0:
             return BacktestResult(
@@ -412,6 +511,8 @@ class BacktestEngine:
                 total_trades=0,
                 trades=completed_trades,
                 equity_curve=equity_curve,
+                sells_by_reason=sells_by_reason,
+                candidate_pool_hits=candidate_pool_hits,
             )
 
         pnl_pcts = [t["pnl_pct"] for t in completed_trades]
@@ -438,6 +539,8 @@ class BacktestEngine:
             total_trades=total_trades,
             trades=completed_trades,
             equity_curve=equity_curve,
+            sells_by_reason=sells_by_reason,
+            candidate_pool_hits=candidate_pool_hits,
         )
 
     @staticmethod
@@ -474,4 +577,75 @@ class BacktestEngine:
             total_trades=0,
             trades=[],
             equity_curve=[],
+            sells_by_reason={},
         )
+
+
+# ============================================================================
+# 헬퍼 팩토리: screener_snapshots DB 기반 candidate_provider 생성
+# ============================================================================
+
+def make_screener_snapshot_provider(
+    strategy_name: str,
+    params_hash: Optional[str] = None,
+) -> Callable[[str, str], List[str]]:
+    """
+    screener_snapshots DB 테이블에서 날짜별 후보 코드 리스트를 반환하는
+    candidate_provider 콜백을 생성합니다.
+
+    Usage:
+        from backtest.engine import BacktestEngine, make_screener_snapshot_provider
+
+        provider = make_screener_snapshot_provider("SampleStrategy")
+        result = engine.run(
+            stock_codes=all_codes,
+            daily_data=data,
+            candidate_provider=provider,
+        )
+
+    Args:
+        strategy_name: screener_snapshots.strategy 컬럼값 (예: "SampleStrategy")
+        params_hash: 특정 파라미터 해시로 한정할 경우 지정. None이면 해당 날짜의
+                     모든 파라미터 해시 스냅샷을 합산해 후보 풀 구성.
+
+    Returns:
+        (strategy_name: str, scan_date: str) → List[str] 형태의 콜백.
+        DB 조회 실패 또는 스냅샷 없는 날짜는 빈 리스트를 반환합니다.
+    """
+    # 조회 결과를 날짜별로 캐싱해 반복 DB 호출 방지
+    _cache: Dict[str, List[str]] = {}
+
+    def _provider(strategy: str, scan_date: str) -> List[str]:
+        if scan_date in _cache:
+            return _cache[scan_date]
+
+        try:
+            if CandidateRepository is None:
+                raise ImportError("db.repositories.candidate 패키지를 사용할 수 없습니다")
+
+            repo = CandidateRepository()
+            parsed_date = DateType.fromisoformat(scan_date)
+
+            if params_hash:
+                rows = repo.get_screener_snapshot(strategy_name, parsed_date, params_hash)
+                codes = [r["stock_code"] for r in rows]
+            else:
+                df = repo.get_snapshot_date_range(
+                    strategy=strategy_name,
+                    start_date=parsed_date,
+                    end_date=parsed_date,
+                    params_hash=None,
+                )
+                codes = df["stock_code"].tolist() if not df.empty else []
+
+            _cache[scan_date] = codes
+            return codes
+
+        except Exception as e:
+            logging.getLogger("backtest.screener_provider").warning(
+                f"screener_snapshots 조회 실패 [{scan_date}]: {e}"
+            )
+            _cache[scan_date] = []
+            return []
+
+    return _provider
