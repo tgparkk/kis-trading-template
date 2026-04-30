@@ -27,6 +27,7 @@ class FinancialRatioEntry:
     operating_income_growth: float
     net_income_growth: float
     roe_value: float
+    per: float
     eps: float
     sps: float
     bps: float
@@ -34,6 +35,16 @@ class FinancialRatioEntry:
     liability_ratio: float
     created_at: datetime
     raw: Dict[str, Any]
+
+    @property
+    def roe(self) -> float:
+        """roe_value 별칭 (Lynch 전략 호환)"""
+        return self.roe_value
+
+    @property
+    def debt_ratio(self) -> float:
+        """liability_ratio 별칭 (Lynch 전략 호환)"""
+        return self.liability_ratio
 
     @staticmethod
     def from_api_output(data: Dict[str, Any]) -> "FinancialRatioEntry":
@@ -43,6 +54,14 @@ class FinancialRatioEntry:
             except (ValueError, TypeError):
                 return 0.0
 
+        # KIS API 재무비율 응답의 PER 키 후보 (우선순위 순)
+        per_raw = (
+            data.get("per_pbr_rate")
+            or data.get("per")
+            or data.get("eps_per_rto")
+            or data.get("stk_per")
+        )
+
         return FinancialRatioEntry(
             stock_code=str(data.get("stck_cd", "") or data.get("stk_cd", "") or "").strip(),
             statement_ym=str(data.get("stac_yymm", "")).strip(),
@@ -50,6 +69,7 @@ class FinancialRatioEntry:
             operating_income_growth=to_float(data.get("bsop_prfi_inrt")),
             net_income_growth=to_float(data.get("ntin_inrt")),
             roe_value=to_float(data.get("roe_val")),
+            per=to_float(per_raw),
             eps=to_float(data.get("eps")),
             sps=to_float(data.get("sps")),
             bps=to_float(data.get("bps")),
@@ -133,11 +153,14 @@ def financial_ratios_to_dataframe(ratios: List[FinancialRatioEntry]) -> pd.DataF
             "operating_income_growth": r.operating_income_growth,
             "net_income_growth": r.net_income_growth,
             "roe_value": r.roe_value,
+            "roe": r.roe_value,
+            "per": r.per,
             "eps": r.eps,
             "sps": r.sps,
             "bps": r.bps,
             "reserve_ratio": r.reserve_ratio,
             "liability_ratio": r.liability_ratio,
+            "debt_ratio": r.liability_ratio,
             "created_at": r.created_at
         }
         for r in ratios
