@@ -8,7 +8,7 @@ Emergency Sell Path (2026-03-01):
 """
 import json
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, List, Optional
 from utils.logger import setup_logger
 from utils.rate_limited_logger import RateLimitedLogger
@@ -36,6 +36,10 @@ class VirtualTradingManager:
         self.virtual_investment_amount = 10000  # 기본값 (실제 계좌 조회 실패시 사용)
         self.virtual_balance = 0  # 현재 잔고 (가상 또는 실전)
         self.initial_balance = 0  # 시작 잔고 (수익률 계산용)
+
+        # buy_time 추적: stock_code → buy_time(KST datetime)
+        # DB의 virtual_trading_records.timestamp(BUY 행)과 동기화됨
+        self._buy_times: Dict[str, datetime] = {}
 
         # Emergency Sell Path: DB 저장 실패 시 재시도 큐
         self._pending_sell_records: List[Dict] = []
@@ -227,12 +231,15 @@ class VirtualTradingManager:
                 if buy_record_id:
                     # 가상 잔고에서 매수 금액 + 수수료 차감
                     self.update_virtual_balance(total_cost_with_fee, "매수")
-                    
+
+                    # buy_time 메모리에 기록 (DB timestamp와 동기화)
+                    self._buy_times[stock_code] = now_kst()
+
                     profit_rate = self.get_virtual_profit_rate()
                     self.logger.info(f"💰 가상 매수 완료: {stock_code}({stock_name}) "
                                    f"{quantity}주 @{price:,.0f}원 (총 {total_cost:,.0f}원) "
                                    f"잔고: {self.virtual_balance:,.0f}원 ({profit_rate:+.2f}%)")
-                    
+
                     return buy_record_id
                 else:
                     self.logger.error(f"❌ 가상 매수 DB 저장 실패: {stock_code}")
@@ -308,6 +315,9 @@ class VirtualTradingManager:
                     'retry_count': 0,
                 }
                 self._pending_sell_records.append(pending_record)
+
+            # buy_time 메모리에서 제거 (포지션 청산)
+            self._buy_times.pop(stock_code, None)
 
             # 메모리 업데이트는 이미 완료했으므로 항상 True 반환
             return True
@@ -432,6 +442,49 @@ class VirtualTradingManager:
             f"📋 미저장 매도 기록: {count}건 대기 중 (최대 재시도: {max_retries}회)"
         )
         self._last_pending_log_time = now_kst()
+
+    # =========================================================================
+    # buy_time / days_held / is_stale 추적
+    # =========================================================================
+
+    def restore_buy_time(self, stock_code: str, buy_time: datetime) -> None:
+        """봇 재시작 시 DB timestamp(BUY 행)로 buy_time 복원 (state_restorer 호환)
+
+        Args:
+            stock_code: 종목코드
+            buy_time: DB에서 읽은 매수 시각 (timezone-aware 권장)
+        """
+        if buy_time is not None:
+            self._buy_times[stock_code] = buy_time
+
+    def get_position_buy_time(self, stock_code: str) -> Optional[datetime]:
+        """종목의 매수 시각 반환 (없으면 None)"""
+        return self._buy_times.get(stock_code)
+
+    def get_days_held(self, stock_code: str) -> int:
+        """종목 보유 캘린더일 수 계산 (state_restorer와 동일 기준: 캘린더일)
+
+        Returns:
+            int: 보유 일수 (buy_time 없으면 0)
+        """
+        buy_time = self._buy_times.get(stock_code)
+        if buy_time is None:
+            return 0
+        today = now_kst()
+        if buy_time.tzinfo:
+            delta = today - buy_time
+        else:
+            delta = today.replace(tzinfo=None) - buy_time
+        return max(0, delta.days)
+
+    def is_stale_position(self, stock_code: str) -> bool:
+        """보유 일수가 STALE_POSITION_DAYS 이상인지 확인
+
+        Returns:
+            bool: True면 장기보유(stale), False면 정상 보유
+        """
+        from config.constants import STALE_POSITION_DAYS
+        return self.get_days_held(stock_code) >= STALE_POSITION_DAYS
 
     def get_virtual_balance_info(self) -> dict:
         """가상매매 잔고 정보 반환"""
