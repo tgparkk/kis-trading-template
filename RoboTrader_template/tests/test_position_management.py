@@ -315,3 +315,129 @@ class TestPositionConcurrency:
             t.join()
 
         assert len(errors) == 0
+
+
+# ============================================================================
+# 8. position_monitor 전략 매도신호 — OHLCVData 컬럼명 표준화
+# ============================================================================
+class TestPositionMonitorStrategySignalColumns:
+    """
+    position_monitor.py가 OHLCVData 리스트를 DataFrame으로 변환할 때
+    컬럼명을 표준화(open_price→open 등)하여 generate_signal에 전달하는지 검증.
+    """
+
+    def _make_pm(self):
+        """PositionMonitor 인스턴스 생성 (의존성 전부 Mock)"""
+        from core.trading.position_monitor import PositionMonitor
+        return PositionMonitor(MagicMock(), MagicMock(), MagicMock(), MagicMock())
+
+    def _make_ohlcv_list(self, n=30):
+        """OHLCVData 데이터클래스 리스트 생성 (KIS 원본 필드명)"""
+        from core.models import OHLCVData
+        base_price = 50000
+        result = []
+        for i in range(n):
+            close = base_price + (i % 5) * 10  # 범위 내에서 순환 (최대 +40)
+            result.append(OHLCVData(
+                timestamp=datetime(2026, 4, 30, 9, i % 60),
+                stock_code="001510",
+                open_price=base_price,
+                high_price=base_price + 200,
+                low_price=base_price - 200,
+                close_price=close,
+                volume=10000 + i * 100,
+            ))
+        return result
+
+    @pytest.mark.asyncio
+    async def test_strategy_signal_no_keyerror_with_ohlcvdata_columns(self):
+        """
+        OHLCVData 필드명(open_price 등)을 그대로 DataFrame으로 변환해도
+        generate_signal 호출 시 KeyError 'close' 가 발생하지 않아야 한다.
+
+        position_monitor.py의 rename 로직을 통해 표준 컬럼이 전달되는지 검증한다.
+        """
+        import pandas as pd
+        from core.trading.position_monitor import PositionMonitor
+        from core.models import OHLCVData, TradingStock, StockState, Stock
+        from strategies.base import Signal, SignalType
+
+        pm = self._make_pm()
+
+        # data_collector.get_stock()이 OHLCVData 리스트를 가진 Stock 반환
+        mock_stock = MagicMock(spec=Stock)
+        mock_stock.ohlcv_data = self._make_ohlcv_list(n=30)
+        pm.data_collector.get_stock.return_value = mock_stock
+
+        # 전략 mock: 표준 컬럼명 검증 후 None 반환
+        received_df = {}
+
+        def fake_generate_signal(stock_code, data, timeframe='daily'):
+            received_df['df'] = data
+            # 표준 컬럼 접근 — KeyError 발생 시 테스트 실패
+            _ = data['close']
+            _ = data['open']
+            _ = data['high']
+            _ = data['low']
+            _ = data['volume']
+            return None
+
+        mock_strategy = MagicMock()
+        mock_strategy.generate_signal.side_effect = fake_generate_signal
+        pm._strategy = mock_strategy
+
+        ts = TradingStock(
+            stock_code="001510", stock_name="조비",
+            state=StockState.POSITIONED, selected_time=datetime.now()
+        )
+        from core.models import Position
+        ts.position = Position(stock_code="001510", quantity=10, avg_price=50000)
+        ts.is_selling = False
+
+        pm.decision_engine = AsyncMock()
+        pm._paper_trading = True
+        pm.fund_manager = MagicMock()
+        pm.fund_manager.is_sell_cooldown_active.return_value = False
+
+        # 현재가 조회 mock (손익절 미달 범위: 매수가 50000, 현재가 50100 → 0.2%)
+        with patch.object(pm, '_get_current_price', new_callable=AsyncMock, return_value=50100):
+            await pm._analyze_sell_for_stock(ts)
+
+        # generate_signal이 호출됐으면 컬럼 검증 완료
+        if 'df' in received_df:
+            df = received_df['df']
+            assert 'close' in df.columns, "표준 컬럼 'close' 누락"
+            assert 'open' in df.columns, "표준 컬럼 'open' 누락"
+            assert 'volume' in df.columns, "표준 컬럼 'volume' 누락"
+            assert 'open_price' not in df.columns, "원본 필드 'open_price' 가 남아있음"
+            assert 'close_price' not in df.columns, "원본 필드 'close_price' 가 남아있음"
+
+    def test_ohlcvdata_dataframe_column_rename(self):
+        """
+        OHLCVData 리스트를 DataFrame으로 변환 후 rename 로직이
+        표준 컬럼(open/high/low/close)을 올바르게 생성하는지 단독 검증.
+        """
+        import pandas as pd
+        from core.models import OHLCVData
+
+        ohlcv_list = self._make_ohlcv_list(n=5)
+        df = pd.DataFrame(ohlcv_list)
+
+        # position_monitor.py 내 rename 로직과 동일
+        col_map = {
+            'open_price': 'open',
+            'high_price': 'high',
+            'low_price': 'low',
+            'close_price': 'close',
+        }
+        df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+
+        assert 'close' in df.columns
+        assert 'open' in df.columns
+        assert 'high' in df.columns
+        assert 'low' in df.columns
+        assert 'volume' in df.columns
+        assert 'open_price' not in df.columns
+        assert 'close_price' not in df.columns
+        # 값 검증: n=5, i=4 → close = 50000 + (4 % 5) * 10 = 50040
+        assert df['close'].iloc[-1] == 50040

@@ -298,6 +298,16 @@ class PositionMonitor:
                         if price_data and hasattr(price_data, 'ohlcv_data') and len(price_data.ohlcv_data) > 0:
                             import pandas as pd
                             intraday_data = pd.DataFrame(price_data.ohlcv_data)
+                            # OHLCVData 데이터클래스 필드명 → 전략이 기대하는 표준 컬럼명으로 변환
+                            _col_map = {
+                                'open_price': 'open',
+                                'high_price': 'high',
+                                'low_price': 'low',
+                                'close_price': 'close',
+                            }
+                            intraday_data = intraday_data.rename(
+                                columns={k: v for k, v in _col_map.items() if k in intraday_data.columns}
+                            )
 
                         if intraday_data is not None and len(intraday_data) > 0:
                             signal = self._strategy.generate_signal(
