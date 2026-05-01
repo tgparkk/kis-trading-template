@@ -312,6 +312,7 @@ class TestPositionMonitorSellSignal:
             reasons=['RSI 과매수'],
         )
         mock_strategy.generate_signal.return_value = sell_signal
+        mock_strategy.max_holding_days = None  # max_holding_days 분기 건너뜀 (이 테스트의 목적은 generate_signal 호출 확인)
         monitor.set_strategy(mock_strategy)
 
         # decision_engine 설정

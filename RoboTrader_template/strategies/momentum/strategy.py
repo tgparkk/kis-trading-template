@@ -45,7 +45,8 @@ class MomentumStrategy(BaseStrategy):
         self._consecutive_up_days = params.get("consecutive_up_days", 5)
         self._min_daily_change_pct = params.get("min_daily_change_pct", 0.0)
         self._min_total_change_pct = params.get("min_total_change_pct", 3.0)
-        self._max_holding_days = params.get("max_holding_days", 10)
+        # C1/C4: 프레임워크 max_holding_days 위임 (PositionMonitor / BacktestEngine이 자동 트리거)
+        self.max_holding_days = params.get("max_holding_days", 10)
 
         risk = self.config.get("risk_management", {})
         self._stop_loss_pct = risk.get("stop_loss_pct", 0.05)
@@ -163,7 +164,6 @@ class MomentumStrategy(BaseStrategy):
     ) -> Optional[Signal]:
         pos = self.positions[stock_code]
         entry_price = pos["entry_price"]
-        holding_days = pos.get("holding_days", 0)
         pnl_pct = (current_price - entry_price) / entry_price
 
         reasons: List[str] = []
@@ -176,15 +176,16 @@ class MomentumStrategy(BaseStrategy):
         if pnl_pct <= -self._stop_loss_pct:
             reasons.append(f"손절 도달 ({pnl_pct * 100:+.1f}%)")
 
-        # 보유기간 초과
-        if holding_days >= self._max_holding_days:
-            reasons.append(f"보유기간 {holding_days}일 초과")
-
         # 2일 연속 하락
         close = data["close"]
         if len(close) >= 3:
             if close.iloc[-1] < close.iloc[-2] < close.iloc[-3]:
                 reasons.append("2일 연속 하락 전환")
+
+        # 보유기간 초과 (generate_signal 직접 호출 경로용; 프레임워크도 max_holding_days로 처리)
+        holding_days = pos.get("holding_days", 0)
+        if self.max_holding_days is not None and holding_days >= self.max_holding_days:
+            reasons.append(f"보유기간 초과 ({holding_days}일 >= {self.max_holding_days}일)")
 
         if not reasons:
             return None

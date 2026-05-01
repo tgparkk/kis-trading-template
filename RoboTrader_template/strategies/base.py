@@ -284,6 +284,12 @@ class BaseStrategy(ABC):
     author: str = ""
     holding_period: str = "intraday"
 
+    # 최대 보유일 제한.
+    # None이면 무제한 (기본). 정수로 설정하면 PositionMonitor가 해당 일수 초과 시
+    # 자동으로 시간 기반 매도를 트리거한다.
+    # C4에서 각 스윙 전략의 __init__에서 config params.max_holding_days로 설정된다.
+    max_holding_days: "Optional[int]" = None
+
     def __init__(self, config: Dict[str, Any] = None):
         """
         Initialize strategy with configuration.

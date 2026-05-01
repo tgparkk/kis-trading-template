@@ -54,6 +54,8 @@ class MeanReversionStrategy(BaseStrategy):
         self._stop_loss_pct = risk.get("stop_loss_pct", 0.07)
         self._take_profit_pct = risk.get("take_profit_pct", 0.12)
         self._max_daily_trades = risk.get("max_daily_trades", 5)
+        # C4: 프레임워크 max_holding_days 표준 키
+        self.max_holding_days = params.get("max_holding_days", 7)
 
         self.positions: Dict[str, Dict[str, Any]] = {}
         self.daily_trades = 0

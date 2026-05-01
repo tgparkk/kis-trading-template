@@ -248,6 +248,24 @@ class PositionMonitor:
                         await self._execute_sell(trading_stock, current_price, reason)
                         return
 
+                # 보유기간 초과 체크 (max_holding_days, 우선순위: stale > trailing > max_holding > take_profit > strategy_signal)
+                if self._strategy and getattr(self._strategy, 'max_holding_days', None) is not None:
+                    days_held = getattr(trading_stock, 'days_held', None)
+                    if days_held is None:
+                        # VirtualTradingManager 경유로 days_held 계산 시도
+                        if (self.decision_engine and
+                                hasattr(self.decision_engine, 'virtual_trading') and
+                                self.decision_engine.virtual_trading is not None):
+                            days_held = self.decision_engine.virtual_trading.get_days_held(stock_code)
+                        else:
+                            days_held = 0
+                    max_days = self._strategy.max_holding_days
+                    if isinstance(days_held, int) and days_held >= max_days:
+                        reason = f"보유기간 {days_held}일 초과 (한도: {max_days}일)"
+                        self.logger.info(f"{stock_code} {reason}")
+                        await self._execute_sell(trading_stock, current_price, reason)
+                        return
+
                 # 트레일링 스톱 체크
                 self._check_trailing_stop(trading_stock, current_price, buy_price, profit_rate)
                 if trading_stock.trailing_stop_activated:

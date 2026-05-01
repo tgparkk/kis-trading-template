@@ -12,11 +12,13 @@ parameters:
   adx_exit: 30
   volume_ratio_min: 1.2
   volume_ma_period: 20
+  # 최대 보유일 제한 (프레임워크 max_holding_days 표준 키)
+  max_holding_days: 15
 
 risk_management:
   stop_loss_pct: 0.03
   take_profit_pct: 0.05
-  max_holding_days: 15
+  max_holding_days: 15  # 전략 내부 evaluate_sell_conditions용 (기존 유지)
   max_positions: 5
   position_size_pct: 0.2
   max_daily_trades: 10

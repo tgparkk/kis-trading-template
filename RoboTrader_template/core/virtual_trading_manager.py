@@ -462,20 +462,19 @@ class VirtualTradingManager:
         return self._buy_times.get(stock_code)
 
     def get_days_held(self, stock_code: str) -> int:
-        """종목 보유 캘린더일 수 계산 (state_restorer와 동일 기준: 캘린더일)
+        """종목 보유 영업일 수 계산 (주말·공휴일 제외)
 
         Returns:
-            int: 보유 일수 (buy_time 없으면 0)
+            int: 보유 영업일 수 (buy_time 없으면 0)
         """
         buy_time = self._buy_times.get(stock_code)
         if buy_time is None:
             return 0
+        from utils.korean_holidays import count_trading_days_between
         today = now_kst()
-        if buy_time.tzinfo:
-            delta = today - buy_time
-        else:
-            delta = today.replace(tzinfo=None) - buy_time
-        return max(0, delta.days)
+        buy_naive = buy_time.replace(tzinfo=None) if buy_time.tzinfo else buy_time
+        today_naive = today.replace(tzinfo=None)
+        return max(0, count_trading_days_between(buy_naive, today_naive))
 
     def is_stale_position(self, stock_code: str) -> bool:
         """보유 일수가 STALE_POSITION_DAYS 이상인지 확인

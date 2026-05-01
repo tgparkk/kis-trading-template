@@ -183,6 +183,7 @@ class BacktestEngine:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         candidate_provider: Optional[Callable[[str, str], List[str]]] = None,
+        force_eod_liquidation: Optional[bool] = None,
     ) -> BacktestResult:
         """
         백테스트 실행.
@@ -198,6 +199,10 @@ class BacktestEngine:
                                  매 일자의 진입 가능 종목 코드 리스트를 반환하는 콜백.
                                  None이면 stock_codes 전체를 universe로 사용 (기존 동작).
                                  반환 리스트가 비어있으면 해당 일자 진입 스킵 (보수적 fallback).
+            force_eod_liquidation: EOD 청산 제어 옵션.
+                None (기본): holding_period에 따라 자동 결정 (intraday→청산, swing→보유).
+                True: 강제 EOD 청산 — swing 전략도 매일 청산.
+                False: EOD 청산 비활성 — intraday 전략도 다음날 보유 가능.
 
         Returns:
             BacktestResult: 백테스트 결과
@@ -216,6 +221,7 @@ class BacktestEngine:
         sells_by_reason: Dict[str, int] = {
             "stop_loss": 0,
             "trailing": 0,
+            "max_holding": 0,
             "take_profit": 0,
             "strategy_signal": 0,
             "eod": 0,
@@ -232,6 +238,17 @@ class BacktestEngine:
         stop_loss_rate = getattr(self.strategy, "_stop_loss_pct", 0.05)
         take_profit_rate = getattr(self.strategy, "_take_profit_pct", 0.10)
         is_intraday = getattr(self.strategy, "holding_period", "intraday") == "intraday"
+
+        # force_eod_liquidation 해석:
+        #   None → holding_period 기반 자동 (is_intraday 사용)
+        #   True  → 무조건 EOD 청산 (swing도 포함)
+        #   False → 무조건 EOD 비활성 (intraday도 다일 보유 가능)
+        if force_eod_liquidation is True:
+            eod_active = True
+        elif force_eod_liquidation is False:
+            eod_active = False
+        else:
+            eod_active = is_intraday
 
         for date in all_dates:
             self.strategy.daily_trades = 0  # 일일 거래 카운터 초기화
@@ -270,22 +287,41 @@ class BacktestEngine:
                         sell_price = trailing_stop_price
                         sell_reason = "trailing"
 
-                # 우선순위 3: 익절 — 일봉 high가 익절가 이상
+                # 우선순위 3: 보유기간 초과 (max_holding_days) — 영업일 기준
+                if sell_price is None:
+                    strategy_max_days = getattr(self.strategy, 'max_holding_days', None)
+                    if strategy_max_days is not None:
+                        entry_date_str = pos["entry_date"]
+                        try:
+                            from datetime import date as _date, datetime as _datetime
+                            from utils.korean_holidays import count_trading_days_between
+                            entry_dt = _date.fromisoformat(entry_date_str)
+                            current_dt = _date.fromisoformat(date)
+                            entry_dtime = _datetime(entry_dt.year, entry_dt.month, entry_dt.day)
+                            current_dtime = _datetime(current_dt.year, current_dt.month, current_dt.day)
+                            days_held = count_trading_days_between(entry_dtime, current_dtime)
+                        except (ValueError, TypeError):
+                            days_held = 0
+                        if days_held >= strategy_max_days:
+                            sell_price = day_close
+                            sell_reason = "max_holding"
+
+                # 우선순위 4: 익절 — 일봉 high가 익절가 이상
                 if sell_price is None:
                     take_profit_price = entry_price * (1 + take_profit_rate)
                     if day_high >= take_profit_price:
                         sell_price = take_profit_price
                         sell_reason = "take_profit"
 
-                # 우선순위 4: 전략 매도 신호 (데이터 충분 시에만)
+                # 우선순위 5: 전략 매도 신호 (데이터 충분 시에만)
                 if sell_price is None and len(df_slice) >= min_len:
                     signal = self.strategy.generate_signal(code, df_slice, timeframe='daily')
                     if signal is not None and signal.is_sell:
                         sell_price = day_close
                         sell_reason = "strategy_signal"
 
-                # 우선순위 5: EOD 청산 (intraday 전략만)
-                if sell_price is None and is_intraday:
+                # 우선순위 6: EOD 청산 (eod_active 여부에 따라)
+                if sell_price is None and eod_active:
                     sell_price = day_close
                     sell_reason = "eod"
 

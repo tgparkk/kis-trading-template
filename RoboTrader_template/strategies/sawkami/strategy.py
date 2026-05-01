@@ -69,6 +69,8 @@ class SawkamiStrategy(BaseStrategy):
         self._max_positions = risk.get("max_positions", 10)
         self._max_daily_loss_pct = risk.get("max_daily_loss_pct", 5.0)
         self._max_per_stock_amount = risk.get("max_per_stock_amount", 5_000_000)
+        # C4: 프레임워크 max_holding_days 표준 키 (parameters 우선, fallback risk.max_hold_days)
+        self.max_holding_days = params.get("max_holding_days", risk.get("max_hold_days", 40))
 
         # 안전장치
         self._paper_trading = self.config.get("paper_trading", True)

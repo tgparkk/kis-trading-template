@@ -248,6 +248,8 @@ class BBReversionStrategy(BaseStrategy):
         self._max_hold_days = risk.get("max_holding_days", 15)
         self._max_positions = risk.get("max_positions", 5)
         self._max_daily_trades = risk.get("max_daily_trades", 10)
+        # C4: 프레임워크 max_holding_days 표준 키 (parameters 섹션 우선, fallback risk)
+        self.max_holding_days = params.get("max_holding_days", risk.get("max_holding_days", 15))
 
         self._paper_trading = self.config.get("paper_trading", True)
 

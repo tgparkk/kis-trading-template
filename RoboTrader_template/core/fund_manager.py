@@ -1,10 +1,146 @@
 """
 자금 관리 시스템
+================
+
+공통 자금관리 인터페이스(FundManagerProtocol)와 실제 구현(FundManager)을 제공합니다.
+
+C3 설계 원칙:
+- FundManagerProtocol: typing.Protocol 기반 구조적 서브타이핑 인터페이스
+  - reserve(amount, order_id) → bool
+  - commit(order_id, actual_amount) → None   (예약 → 투자 확정)
+  - release(amount, stock_code) → None       (매도 후 투자 회수)
+  - realize(pnl) → None                      (실현 손익 반영)
+  - available_balance → float                (즉시 사용 가능 자금)
+  - total_invested → float                   (현재 투자 중 금액)
+- FundManager: 실제 구현 (기존 API 유지 + Protocol 호환 프로퍼티 추가)
+- MockFundManager: BacktestEngine용 인메모리 경량 구현
 """
 import threading
 from datetime import datetime
 from typing import Dict, Optional, Set
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:  # Python 3.7 호환
+    from typing_extensions import Protocol, runtime_checkable  # type: ignore[assignment]
 from utils.logger import setup_logger
+
+
+# ============================================================================
+# 공통 인터페이스 (Protocol)
+# ============================================================================
+
+@runtime_checkable
+class FundManagerProtocol(Protocol):
+    """
+    자금관리 공통 인터페이스 (구조적 서브타이핑).
+
+    VirtualTradingManager, BacktestEngine의 MockFundManager, FundManager 모두
+    이 인터페이스를 구현해야 한다.
+
+    메서드 의미:
+        reserve(amount, order_id)    — 매수 전 자금 예약 (available_balance 감소)
+        commit(order_id, actual)     — 체결 확인 (reserved → invested)
+        release(amount, stock_code)  — 매도 후 자금 회수 (invested → available)
+        realize(pnl)                 — 실현 손익 반영 (total 조정)
+        available_balance            — 즉시 사용 가능 자금
+        total_invested               — 현재 투자 중 금액 합계
+    """
+
+    def reserve(self, amount: float, order_id: str = "") -> bool:
+        """자금 예약. 성공 시 True, 잔고 부족 시 False."""
+        ...
+
+    def commit(self, order_id: str, actual_amount: float) -> None:
+        """예약 → 투자 확정 (체결 완료 시 호출)."""
+        ...
+
+    def release(self, amount: float, stock_code: str = "") -> None:
+        """매도 완료 후 투자 자금 회수."""
+        ...
+
+    def realize(self, pnl: float) -> None:
+        """실현 손익을 total에 반영 (양수=이익, 음수=손실)."""
+        ...
+
+    @property
+    def available_balance(self) -> float:
+        """즉시 사용 가능 자금."""
+        ...
+
+    @property
+    def total_invested(self) -> float:
+        """현재 투자 중 금액 합계."""
+        ...
+
+
+# ============================================================================
+# BacktestEngine용 인메모리 경량 구현
+# ============================================================================
+
+class MockFundManager:
+    """
+    BacktestEngine용 인메모리 자금관리 (FundManagerProtocol 호환).
+
+    DB/스레드락 없이 순수 파이썬 연산만 사용.
+    동일 매매 시나리오에서 FundManager와 ±0.01% 이내 일치를 보장.
+
+    Usage:
+        mock_fm = MockFundManager(initial_capital=10_000_000)
+        mock_fm.reserve(1_000_000, "ORD1")
+        mock_fm.commit("ORD1", 950_000)
+        mock_fm.release(950_000)
+        print(mock_fm.available_balance)
+    """
+
+    def __init__(self, initial_capital: float = 0.0):
+        self._total = initial_capital
+        self._available = initial_capital
+        self._invested = 0.0
+        self._reserved: Dict[str, float] = {}
+
+    # -- FundManagerProtocol 구현 --
+
+    def reserve(self, amount: float, order_id: str = "") -> bool:
+        amount = float(amount)
+        if self._available < amount:
+            return False
+        self._available -= amount
+        if order_id:
+            self._reserved[order_id] = self._reserved.get(order_id, 0) + amount
+        return True
+
+    def commit(self, order_id: str, actual_amount: float) -> None:
+        actual_amount = float(actual_amount)
+        reserved = self._reserved.pop(order_id, 0.0)
+        # 예약 해제 후 투자 이동; 차액은 available로 반환
+        diff = reserved - actual_amount
+        self._available += diff
+        self._invested += actual_amount
+
+    def release(self, amount: float, stock_code: str = "") -> None:
+        amount = float(amount)
+        self._invested = max(0.0, self._invested - amount)
+        self._available += amount
+
+    def realize(self, pnl: float) -> None:
+        pnl = float(pnl)
+        self._total = max(0.0, self._total + pnl)
+        # available 조정: total 변화분을 available에 흡수
+        self._available = max(0.0, self._available + pnl)
+
+    @property
+    def available_balance(self) -> float:
+        return self._available
+
+    @property
+    def total_invested(self) -> float:
+        return self._invested
+
+    # -- 직접 접근 편의 프로퍼티 (BacktestEngine 내부용) --
+
+    @property
+    def total_funds(self) -> float:
+        return self._total
 
 
 class FundManager:
@@ -484,6 +620,39 @@ class FundManager:
                 )
 
             return result
+
+    # =========================================================================
+    # FundManagerProtocol 호환 인터페이스 (C3)
+    # =========================================================================
+    # 기존 메서드(reserve_funds, confirm_order, release_investment, adjust_pnl)를
+    # Protocol 표준명으로 위임한다. 기존 호출자는 영향 없음.
+
+    def reserve(self, amount: float, order_id: str = "") -> bool:
+        """FundManagerProtocol: reserve_funds 위임."""
+        oid = order_id or f"_proto_{id(self)}"
+        return self.reserve_funds(oid, amount)
+
+    def commit(self, order_id: str, actual_amount: float) -> None:
+        """FundManagerProtocol: confirm_order 위임."""
+        self.confirm_order(order_id, actual_amount)
+
+    def release(self, amount: float, stock_code: str = "") -> None:
+        """FundManagerProtocol: release_investment 위임."""
+        self.release_investment(amount, stock_code)
+
+    def realize(self, pnl: float) -> None:
+        """FundManagerProtocol: adjust_pnl 위임."""
+        self.adjust_pnl(pnl)
+
+    @property
+    def available_balance(self) -> float:
+        """FundManagerProtocol: available_funds 프로퍼티."""
+        return self.available_funds
+
+    @property
+    def total_invested(self) -> float:
+        """FundManagerProtocol: invested_funds 프로퍼티."""
+        return self.invested_funds
 
     def get_status(self) -> Dict:
         """자금 현황 조회"""

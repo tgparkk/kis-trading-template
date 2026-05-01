@@ -20,7 +20,7 @@ parameters:
   # 최소 누적 상승률 (5일간 총 상승률, %)
   min_total_change_pct: 3.0
 
-  # 보유 기간 제한 (거래일 기준)
+  # 최대 보유일 제한 (프레임워크 max_holding_days 표준 키 — PositionMonitor/BacktestEngine 자동 트리거)
   max_holding_days: 10
 
 # -----------------------------------------------------------------------------
