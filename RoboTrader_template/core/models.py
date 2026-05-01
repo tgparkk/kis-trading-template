@@ -334,6 +334,15 @@ class LoggingConfig:
 
 
 @dataclass
+class CandidateFiltersConfig:
+    """후보 종목 필터 설정 (D2: 손실 블랙리스트)"""
+    exclude_recent_losses: bool = True       # 최근 5영업일 손실 종목 임시 제외
+    recent_loss_days_back: int = 5           # 임시 제외 기준 영업일 수
+    exclude_persistent_losses: bool = True   # 연속 3회 손실 종목 영구 제외
+    persistent_loss_count: int = 3           # 영구 제외 기준 연속 손실 횟수
+
+
+@dataclass
 class TradingConfig:
     """거래 설정 통합"""
     data_collection: DataCollectionConfig = field(default_factory=DataCollectionConfig)
@@ -341,8 +350,9 @@ class TradingConfig:
     risk_management: RiskManagementConfig = field(default_factory=RiskManagementConfig)
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
-    paper_trading: bool = True  # 🆕 가상 매매 모드 (기본 활성화)
-    rebalancing_mode: bool = False  # 🆕 리밸런싱 모드 (일봉 데이터만 수집)
+    candidate_filters: CandidateFiltersConfig = field(default_factory=CandidateFiltersConfig)
+    paper_trading: bool = True  # 가상 매매 모드 (기본 활성화)
+    rebalancing_mode: bool = False  # 리밸런싱 모드 (일봉 데이터만 수집)
     
     @classmethod
     def from_json(cls, json_data: Dict[str, Any]) -> 'TradingConfig':

@@ -6,7 +6,7 @@
 """
 import json
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Callable
 from dataclasses import dataclass
 
 from .models import TradingConfig
@@ -97,6 +97,12 @@ class CandidateSelector:
                 )
                 candidates.append(candidate)
 
+            # 5. 안전성 필터 (거래정지·VI·관리종목·단일가매매)
+            candidates = self._filter_unsafe_stocks(candidates)
+
+            # 6. 손실 블랙리스트 (최근 5영업일 손실 + 연속 3회 손실)
+            candidates = self._apply_loss_blacklist(candidates)
+
             self.selection_stats['passed_detailed_analysis'] = len(candidates)
             self.selection_stats['final_selected'] = len(candidates)
             self.selection_stats['last_selection_time'] = now_kst()
@@ -147,9 +153,8 @@ class CandidateSelector:
             # trading_amount 기준 내림차순 정렬
             filtered.sort(key=lambda x: x.get('trading_amount', 0), reverse=True)
 
-            # 상위 N개 선정
-            selected = filtered[:max_candidates]
-            self.selection_stats['final_selected'] = len(selected)
+            # 상위 N개 선정 (안전성 필터 전 여유분 확보)
+            selected = filtered[:max_candidates * 2]
             self.selection_stats['last_selection_time'] = now_kst()
 
             candidates = []
@@ -168,8 +173,19 @@ class CandidateSelector:
                     prev_close=float(close),
                 )
                 candidates.append(candidate)
-                self.logger.info(f"  후보: {candidate.code}({candidate.name}) "
-                                 f"score={candidate.score} - {candidate.reason}")
+
+            # 안전성 필터 (거래정지·VI·관리종목·단일가매매)
+            candidates = self._filter_unsafe_stocks(candidates)
+            # 손실 블랙리스트 (최근 5영업일 + 연속 3회 손실)
+            candidates = self._apply_loss_blacklist(candidates)
+            # 여유분 확보 후 실제 max_candidates로 최종 절삭
+            candidates = candidates[:max_candidates]
+
+            self.selection_stats['final_selected'] = len(candidates)
+
+            for c in candidates:
+                self.logger.info(f"  후보: {c.code}({c.name}) "
+                                 f"score={c.score} - {c.reason}")
 
             return candidates
 
@@ -385,6 +401,215 @@ class CandidateSelector:
                 continue
             filtered.append(c)
         return filtered
+
+    # =========================================================================
+    # 손실 블랙리스트 (D2: 최근 손실 / 연속 손실 종목 제외)
+    # =========================================================================
+
+    def _apply_loss_blacklist(
+        self,
+        candidates: List[CandidateStock],
+        trading_repo=None,
+    ) -> List[CandidateStock]:
+        """최근 손실 / 연속 손실 종목을 후보 풀에서 제거.
+
+        config.candidate_filters.exclude_recent_losses 또는
+        config.candidate_filters.exclude_persistent_losses 가 False이면
+        해당 필터는 적용하지 않습니다.
+
+        Args:
+            candidates: 필터링 전 후보 리스트
+            trading_repo: 테스트용 의존성 주입 (TradingRepository 인스턴스).
+                          None이면 db_manager 경유 또는 새 인스턴스 생성 시도.
+
+        Returns:
+            블랙리스트 제외 후 후보 리스트.
+        """
+        cfg = getattr(self.config, 'candidate_filters', None)
+        if cfg is None:
+            return candidates
+
+        exclude_recent = getattr(cfg, 'exclude_recent_losses', True)
+        exclude_persistent = getattr(cfg, 'exclude_persistent_losses', True)
+
+        if not exclude_recent and not exclude_persistent:
+            return candidates
+
+        if not candidates:
+            return candidates
+
+        # repo 획득
+        repo = trading_repo
+        if repo is None:
+            try:
+                from db.repositories.trading import TradingRepository
+                repo = TradingRepository()
+            except Exception as e:
+                self.logger.warning(f"TradingRepository 초기화 실패 → 블랙리스트 스킵: {e}")
+                return candidates
+
+        blacklist: set = set()
+
+        if exclude_recent:
+            days_back = getattr(cfg, 'recent_loss_days_back', 5)
+            try:
+                recent = repo.get_losing_stocks(days_back=days_back, min_losses=1)
+                blacklist |= recent
+            except Exception as e:
+                self.logger.warning(f"최근 손실 종목 조회 실패 → 스킵: {e}")
+
+        if exclude_persistent:
+            loss_count = getattr(cfg, 'persistent_loss_count', 3)
+            try:
+                persistent = repo.get_persistently_failed_stocks(consecutive_losses=loss_count)
+                blacklist |= persistent
+            except Exception as e:
+                self.logger.warning(f"연속 손실 종목 조회 실패 → 스킵: {e}")
+
+        if not blacklist:
+            return candidates
+
+        safe: List[CandidateStock] = []
+        for c in candidates:
+            if c.code in blacklist:
+                self.logger.info(f"손실 블랙리스트 제외: {c.code}({c.name})")
+            else:
+                safe.append(c)
+
+        excluded = len(candidates) - len(safe)
+        if excluded > 0:
+            self.logger.info(f"손실 블랙리스트: {len(candidates)}건 → {len(safe)}건 ({excluded}건 제외)")
+
+        return safe
+
+    # =========================================================================
+    # 안전성 필터 (D1: VI/거래정지/관리종목/단일가매매)
+    # =========================================================================
+
+    def _get_stock_safety_info(self, code: str) -> Optional[Dict]:
+        """KIS API 종목 기본정보 조회 (거래정지·VI·관리종목 판별용).
+
+        실패 시 None 반환 — 호출부에서 보수적 통과(false negative 허용) 처리.
+        """
+        try:
+            from api.kis_market_api import get_stock_basic_info
+            info = get_stock_basic_info(code)
+            if info is None:
+                return None
+            if hasattr(info, 'to_dict'):
+                return info.to_dict() if callable(info.to_dict) else dict(info)
+            if hasattr(info, '__dict__'):
+                return info.__dict__
+            if isinstance(info, dict):
+                return info
+            return None
+        except Exception as e:
+            self.logger.debug(f"{code} 종목정보 조회 실패: {e}")
+            return None
+
+    def _is_trading_halted(self, info: Dict) -> bool:
+        """거래정지 여부 판별.
+
+        KIS API 응답 필드: iscd_stat_cls_code(종목상태구분코드)
+        - '09': 거래정지  기타 값 = 정상
+        """
+        if not info:
+            return False
+        stat = str(info.get('iscd_stat_cls_code', '') or info.get('stat_cls_code', '') or '')
+        return stat == '09'
+
+    def _is_vi_active(self, info: Dict) -> bool:
+        """VI(변동성완화장치) 발동 중 여부 판별.
+
+        KIS API 응답 필드: vi_cls_code
+        - '0': 미발동  '1': 정적VI  '2': 동적VI  '3': 동적+정적 모두
+        """
+        if not info:
+            return False
+        vi = str(info.get('vi_cls_code', '') or '')
+        return vi in ('1', '2', '3')
+
+    def _is_managed_stock(self, info: Dict) -> bool:
+        """관리종목·투자주의·소수계좌집중 여부 판별.
+
+        KIS API 응답 필드:
+        - mrkt_warn_cls_code: 시장경고구분  '00'=없음 '01'=주의 '02'=경고 '03'=위험예고
+        - invt_caful_yn: 투자유의 여부 ('Y'/'N')
+        - mang_issu_yn: 관리종목 여부 ('Y'/'N')
+        """
+        if not info:
+            return False
+        warn = str(info.get('mrkt_warn_cls_code', '') or '')
+        if warn and warn != '00':
+            return True
+        if str(info.get('mang_issu_yn', '') or '') == 'Y':
+            return True
+        if str(info.get('invt_caful_yn', '') or '') == 'Y':
+            return True
+        return False
+
+    def _is_single_price_match(self, info: Dict) -> bool:
+        """단일가매매(정리매매 등) 여부 판별.
+
+        KIS API 응답 필드: ssts_hot_yn (정리매매여부) 또는 mrkt_trtm_cls_code
+        - ssts_hot_yn = 'Y': 단일가(정리매매)
+        """
+        if not info:
+            return False
+        if str(info.get('ssts_hot_yn', '') or '') == 'Y':
+            return True
+        trtm = str(info.get('mrkt_trtm_cls_code', '') or '')
+        return trtm not in ('', '0', '00')
+
+    def _filter_unsafe_stocks(
+        self,
+        candidates: List[CandidateStock],
+        _get_info_fn: Optional[Callable[[str], Optional[Dict]]] = None,
+    ) -> List[CandidateStock]:
+        """후보 풀에서 거래정지·VI·관리종목·단일가매매 종목 사전 제거.
+
+        Args:
+            candidates: 필터링 전 후보 리스트
+            _get_info_fn: 테스트용 의존성 주입 콜백 (기본: _get_stock_safety_info)
+
+        Returns:
+            안전한 종목만 포함한 리스트. API 실패 시 보수적 통과(종목 유지).
+        """
+        if not candidates:
+            return candidates
+
+        get_info = _get_info_fn if _get_info_fn is not None else self._get_stock_safety_info
+        safe: List[CandidateStock] = []
+
+        for c in candidates:
+            info = get_info(c.code)
+            if info is None:
+                # API 조회 실패 → 보수적 통과 (false negative 허용)
+                safe.append(c)
+                continue
+
+            reasons = []
+            if self._is_trading_halted(info):
+                reasons.append("거래정지")
+            if self._is_vi_active(info):
+                reasons.append("VI발동")
+            if self._is_managed_stock(info):
+                reasons.append("관리종목")
+            if self._is_single_price_match(info):
+                reasons.append("단일가매매")
+
+            if reasons:
+                self.logger.info(
+                    f"후보 제외: {c.code}({c.name}) — {', '.join(reasons)}"
+                )
+            else:
+                safe.append(c)
+
+        excluded = len(candidates) - len(safe)
+        if excluded > 0:
+            self.logger.info(f"안전성 필터: {len(candidates)}건 → {len(safe)}건 ({excluded}건 제외)")
+
+        return safe
 
     # =========================================================================
     # 분석 메서드 (사용자 구현 필요)

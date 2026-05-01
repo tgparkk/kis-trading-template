@@ -458,6 +458,83 @@ class TradingRepository(BaseRepository):
             self.logger.warning(f"open position 상태 업데이트 실패 (id={buy_record_id}): {e}")
             return False
 
+    def get_losing_stocks(self, days_back: int = 5, min_losses: int = 1) -> set:
+        """최근 N영업일 매도 손실 종목 코드 set 반환.
+
+        Args:
+            days_back: 과거 영업일 기준 조회 범위 (기본 5영업일)
+            min_losses: 손실 매도 최소 횟수 (기본 1회 이상)
+
+        Returns:
+            손실 종목 코드 set. DB 실패 시 빈 set 반환.
+        """
+        try:
+            from utils.korean_holidays import count_trading_days_between
+            from datetime import timedelta
+
+            # 캘린더 일 수를 늘려 영업일 days_back개를 포함하도록 넉넉하게 계산
+            # 영업일 1개 ≒ 캘린더 1.4일 → 2배 마진 적용
+            lookback_calendar_days = days_back * 2 + 5
+            cutoff_dt = now_kst() - timedelta(days=lookback_calendar_days)
+            cutoff_str = cutoff_dt.strftime('%Y-%m-%d %H:%M:%S')
+
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT stock_code, COUNT(1) as loss_count
+                    FROM virtual_trading_records
+                    WHERE action = 'SELL'
+                      AND profit_loss < 0
+                      AND timestamp >= %s
+                    GROUP BY stock_code
+                    HAVING COUNT(1) >= %s
+                ''', (cutoff_str, min_losses))
+                rows = cursor.fetchall()
+                return {row[0] for row in rows}
+        except Exception as e:
+            self.logger.error(f"최근 손실 종목 조회 실패: {e}")
+            return set()
+
+    def get_persistently_failed_stocks(self, consecutive_losses: int = 3) -> set:
+        """연속 N회 손실 종목 코드 set 반환 (영구 블랙리스트 대상).
+
+        매도 이력을 시간순 정렬 후 마지막 consecutive_losses건이 모두 손실인 종목.
+
+        Args:
+            consecutive_losses: 연속 손실 판단 기준 횟수 (기본 3회)
+
+        Returns:
+            연속 손실 종목 코드 set. DB 실패 시 빈 set 반환.
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                # 종목별 최근 consecutive_losses건 매도 이력 조회
+                cursor.execute('''
+                    SELECT DISTINCT stock_code FROM virtual_trading_records
+                    WHERE action = 'SELL'
+                ''')
+                all_codes = [row[0] for row in cursor.fetchall()]
+
+                persistent: set = set()
+                for code in all_codes:
+                    cursor.execute('''
+                        SELECT profit_loss FROM virtual_trading_records
+                        WHERE stock_code = %s AND action = 'SELL'
+                        ORDER BY timestamp DESC
+                        LIMIT %s
+                    ''', (code, consecutive_losses))
+                    recent = cursor.fetchall()
+                    if len(recent) < consecutive_losses:
+                        continue
+                    if all(row[0] < 0 for row in recent):
+                        persistent.add(code)
+
+                return persistent
+        except Exception as e:
+            self.logger.error(f"연속 손실 종목 조회 실패: {e}")
+            return set()
+
     def get_today_stop_loss_stocks(self, target_date: str = None) -> List[str]:
         """오늘 손절한 종목 코드 리스트"""
         try:
