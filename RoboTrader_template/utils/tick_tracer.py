@@ -43,19 +43,24 @@ class TickTracer:
         self.enabled = enabled
         self._lock = asyncio.Lock()
 
-    async def emit(self, event: Dict[str, Any]) -> None:
+    async def emit(self, event: Dict[str, Any], strategy_name: str = "") -> None:
         """이벤트를 오늘 날짜 JSONL 파일에 한 줄 추가.
 
         ts 필드(KST ISO 8601)는 자동으로 맨 앞에 삽입된다.
+        strategy_name이 제공되고 event에 없으면 자동 추가된다.
         event dict는 수정하지 않는다 (shallow copy 사용).
 
         Args:
             event: 기록할 이벤트 딕셔너리. 최소 필드 없음 — 호출자 책임.
+            strategy_name: 이벤트를 발생시킨 전략 이름 (없으면 빈 문자열).
         """
         if not self.enabled:
             return
 
-        record = {"ts": self._now_iso(), **event}
+        extra: Dict[str, Any] = {}
+        if strategy_name and "strategy_name" not in event:
+            extra["strategy_name"] = strategy_name
+        record = {"ts": self._now_iso(), **extra, **event}
         path = self.base_dir / f"{date.today().isoformat()}.jsonl"
 
         async with self._lock:

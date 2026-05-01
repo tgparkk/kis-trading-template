@@ -50,19 +50,41 @@ class StockStateManager:
         """Lock 객체 반환"""
         return self._lock
 
-    def register_stock(self, trading_stock: TradingStock) -> None:
+    def register_stock(self, trading_stock: TradingStock) -> bool:
         """
         종목 등록
 
+        POSITIONED 또는 BUY_PENDING 상태인 기존 종목이 있으면 두 번째 등록을 거부합니다.
+        실매매 중인 종목(BUY_PENDING 포함)을 다른 전략이 가로채지 못하도록 차단합니다.
+        그 외 상태(SELECTED, COMPLETED, FAILED 등)는 덮어쓰기 허용합니다.
+
         Args:
             trading_stock: 등록할 TradingStock 객체
+
+        Returns:
+            True: 등록 성공, False: POSITIONED/BUY_PENDING 중복으로 거부
         """
         with self._lock:
             stock_code = trading_stock.stock_code
-            state = trading_stock.state
+            existing = self.trading_stocks.get(stock_code)
 
+            if existing is not None:
+                if existing.state in (StockState.POSITIONED, StockState.BUY_PENDING):
+                    self.logger.info(
+                        f"[중복등록거부] {stock_code} — "
+                        f"기존 owner={existing.owner_strategy_name} state={existing.state.name}, "
+                        f"신규 owner={trading_stock.owner_strategy_name}"
+                    )
+                    return False
+                # 그 외 상태(SELECTED 등)는 덮어쓰기 허용
+                old_state = existing.state
+                if stock_code in self.stocks_by_state[old_state]:
+                    del self.stocks_by_state[old_state][stock_code]
+
+            state = trading_stock.state
             self.trading_stocks[stock_code] = trading_stock
             self.stocks_by_state[state][stock_code] = trading_stock
+            return True
 
     def unregister_stock(self, stock_code: str) -> None:
         """

@@ -53,12 +53,17 @@ class TestRegisterUnregister:
         # Should not raise
         manager.unregister_stock("999999")
 
-    def test_register_overwrites(self, manager, sample_stock):
+    def test_register_duplicate_rejected(self, manager, sample_stock):
+        """POSITIONED 상태 종목의 중복 등록은 거부되고 첫 번째 등록이 유지된다."""
         manager.register_stock(sample_stock)
+        # POSITIONED 상태로 전이 후 두 번째 등록 시도
+        manager.change_stock_state("005930", StockState.BUY_PENDING)
+        manager.change_stock_state("005930", StockState.POSITIONED)
         new_stock = TradingStock(stock_code="005930", stock_name="삼성전자2",
-                                  state=StockState.POSITIONED, selected_time=datetime.now())
-        manager.register_stock(new_stock)
-        assert manager.trading_stocks["005930"].stock_name == "삼성전자2"
+                                  state=StockState.SELECTED, selected_time=datetime.now())
+        result = manager.register_stock(new_stock)
+        assert result is False
+        assert manager.trading_stocks["005930"].stock_name == "삼성전자"
 
 
 class TestChangeState:

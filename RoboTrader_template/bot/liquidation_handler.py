@@ -55,10 +55,13 @@ class LiquidationHandler:
                         continue
                     stock_code = trading_stock.stock_code
 
-                    # 전략이 EOD 청산을 거부하면 스킵
-                    strategy = getattr(self.bot.decision_engine, 'strategy', None)
-                    if strategy and not strategy.should_liquidate_eod(stock_code):
-                        self.logger.info(f"장마감 청산 스킵 (전략 거부): {stock_code}")
+                    # trading_stock의 owner_strategy 우선 참조
+                    owner = getattr(trading_stock, 'owner_strategy', None)
+                    strategy_for_eod = owner or getattr(self.bot.decision_engine, 'strategy', None)
+
+                    if strategy_for_eod and not strategy_for_eod.should_liquidate_eod(stock_code):
+                        name = getattr(strategy_for_eod, 'name', 'unknown')
+                        self.logger.info(f"EOD 청산 스킵 (전략 {name} 거부): {stock_code}")
                         continue
 
                     quantity = int(trading_stock.position.quantity)
@@ -146,10 +149,13 @@ class LiquidationHandler:
 
                         stock_code = trading_stock.stock_code
 
-                        # 전략이 EOD 청산을 거부하면 스킵
-                        strategy = getattr(self.bot.decision_engine, 'strategy', None)
-                        if strategy and not strategy.should_liquidate_eod(stock_code):
-                            self.logger.info(f"{time_label} 청산 스킵 (전략 거부): {stock_code}")
+                        # trading_stock의 owner_strategy 우선 참조
+                        owner = getattr(trading_stock, 'owner_strategy', None)
+                        strategy_for_eod = owner or getattr(self.bot.decision_engine, 'strategy', None)
+
+                        if strategy_for_eod and not strategy_for_eod.should_liquidate_eod(stock_code):
+                            name = getattr(strategy_for_eod, 'name', 'unknown')
+                            self.logger.info(f"{time_label} EOD 청산 스킵 (전략 {name} 거부): {stock_code}")
                             continue
 
                         stock_name = trading_stock.stock_name

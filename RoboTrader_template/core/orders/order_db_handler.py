@@ -19,8 +19,10 @@ class OrderDBHandlerMixin:
 
         우선순위:
         1. trading_stock.strategy_name (직접 설정된 전략명)
-        2. config.strategy.name (설정 파일의 전략명)
-        3. "unknown" (최후 fallback)
+        2. "unknown" + WARNING (다전략 환경에서 strategy_name 미설정 시 오귀속 방지)
+
+        Note: config.strategy.name fallback은 단일 전략 환경에서만 의미가 있어
+              다전략 환경에서 잘못된 전략으로 기록될 수 있으므로 제거.
         """
         # 1. TradingStock에 직접 설정된 전략명
         if self.trading_manager and hasattr(self.trading_manager, 'get_trading_stock'):
@@ -35,18 +37,11 @@ class OrderDBHandlerMixin:
             except Exception:
                 pass
 
-        # 2. config의 전략명
-        if self.config:
-            try:
-                strategy_cfg = getattr(self.config, 'strategy', None)
-                if strategy_cfg:
-                    name = getattr(strategy_cfg, 'name', None)
-                    if name:
-                        return str(name)
-            except Exception:
-                pass
-
-        # 3. fallback
+        # 2. strategy_name 미설정 — 다전략 환경에서 오귀속 위험
+        self.logger.warning(
+            f"[{stock_code}] trading_stock.strategy_name 미설정. "
+            f"DB 기록을 'unknown'으로 저장. 다전략 환경에서는 strategy_name을 명시적으로 설정하세요."
+        )
         return "unknown"
 
     async def _save_real_trade_to_db(self: 'OrderManagerBase', order, filled_price: float) -> None:

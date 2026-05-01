@@ -330,6 +330,7 @@ class TestPositionMonitorSellSignal:
         trading_stock.stop_loss_rate = 0.09
         trading_stock.highest_price_since_buy = None
         trading_stock.trailing_stop_activated = False
+        trading_stock.owner_strategy = None  # E4: owner_strategy 우선 참조 → None으로 명시해 self._strategy fallback 보장
 
         # 현재가 (손익절 안 걸리는 가격)
         intraday_manager.get_current_price_for_sell.return_value = {'current_price': 71000}

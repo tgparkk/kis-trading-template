@@ -249,7 +249,9 @@ class PositionMonitor:
                         return
 
                 # 보유기간 초과 체크 (max_holding_days, 우선순위: stale > trailing > max_holding > take_profit > strategy_signal)
-                if self._strategy and getattr(self._strategy, 'max_holding_days', None) is not None:
+                # 우선순위: trading_stock.owner_strategy → self._strategy
+                strategy_for_sell = trading_stock.owner_strategy or self._strategy
+                if strategy_for_sell and getattr(strategy_for_sell, 'max_holding_days', None) is not None:
                     days_held = getattr(trading_stock, 'days_held', None)
                     if days_held is None:
                         # VirtualTradingManager 경유로 days_held 계산 시도
@@ -259,7 +261,7 @@ class PositionMonitor:
                             days_held = self.decision_engine.virtual_trading.get_days_held(stock_code)
                         else:
                             days_held = 0
-                    max_days = self._strategy.max_holding_days
+                    max_days = strategy_for_sell.max_holding_days
                     if isinstance(days_held, int) and days_held >= max_days:
                         reason = f"보유기간 {days_held}일 초과 (한도: {max_days}일)"
                         self.logger.info(f"{stock_code} {reason}")
@@ -308,7 +310,8 @@ class PositionMonitor:
                             return
 
                 # 전략 매도 시그널 체크 (손익절 안 걸린 경우)
-                if self._strategy and hasattr(self._strategy, 'generate_signal'):
+                # 우선순위: trading_stock.owner_strategy → self._strategy
+                if strategy_for_sell and hasattr(strategy_for_sell, 'generate_signal'):
                     try:
                         # 장중 데이터 조회 (intraday)
                         intraday_data = None
@@ -328,11 +331,11 @@ class PositionMonitor:
                             )
 
                         if intraday_data is not None and len(intraday_data) > 0:
-                            signal = self._strategy.generate_signal(
+                            signal = strategy_for_sell.generate_signal(
                                 stock_code, intraday_data, timeframe='intraday'
                             )
                             if signal and signal.signal_type in (SignalType.SELL, SignalType.STRONG_SELL):
-                                reason = ", ".join(signal.reasons) if signal.reasons else f"{self._strategy.name} 매도신호"
+                                reason = ", ".join(signal.reasons) if signal.reasons else f"{strategy_for_sell.name} 매도신호"
                                 self.logger.info(f"{stock_code} 전략 매도 신호: {reason} (신뢰도: {signal.confidence}%)")
                                 await self._execute_sell(trading_stock, current_price, reason)
                                 return

@@ -827,3 +827,102 @@ class CandidateSelector:
     def get_condition_search_candidates(self, seq: str, max_candidates: int = 10) -> Optional[List[Dict]]:
         """조건검색 결과 조회 (호환성 유지용 래퍼)"""
         return self.get_condition_search_results(seq)
+
+    # =========================================================================
+    # 전략별 후보 풀 분리 (E6)
+    # =========================================================================
+
+    def select_candidates_per_strategy(
+        self,
+        strategies: Dict,
+        max_per_strategy: int = 10,
+    ) -> Dict[str, List[CandidateStock]]:
+        """전략별 독립 후보 풀 반환 (E6).
+
+        각 전략에 대해 screener_snapshots DB 스냅샷(오늘 날짜 기준)에서 후보를
+        조회하고, 없으면 공통 스크리너 JSON → 거래량 순위 순서로 fallback합니다.
+
+        종목 중복 처리: strategies dict 순서상 **첫 번째 전략이 우선**합니다.
+        이미 앞선 전략에 배정된 종목 코드는 이후 전략의 풀에서 제거됩니다.
+
+        Args:
+            strategies: {strategy_name: BaseStrategy} 딕셔너리 (E1 에서 구축)
+            max_per_strategy: 전략당 최대 후보 수 (기본 10)
+
+        Returns:
+            {strategy_name: List[CandidateStock]}
+        """
+        result: Dict[str, List[CandidateStock]] = {}
+        assigned_codes: set = set()  # 중복 방지용
+
+        for strategy_name in strategies:
+            raw = self._fetch_candidates_for_strategy(strategy_name, max_per_strategy)
+
+            # 이미 다른 전략에 배정된 종목 제거
+            deduped: List[CandidateStock] = []
+            for c in raw:
+                if c.code in assigned_codes:
+                    self.logger.info(
+                        f"[E6] {c.code}({c.name}) — {strategy_name} 후보 제외 "
+                        f"(선행 전략이 이미 배정)"
+                    )
+                else:
+                    deduped.append(c)
+                    assigned_codes.add(c.code)
+
+            result[strategy_name] = deduped
+            self.logger.info(
+                f"[E6] {strategy_name}: 후보 {len(deduped)}종목"
+            )
+
+        return result
+
+    def _fetch_candidates_for_strategy(
+        self,
+        strategy_name: str,
+        max_candidates: int,
+    ) -> List[CandidateStock]:
+        """단일 전략의 후보를 DB 스냅샷 → 스크리너 JSON 순으로 조회.
+
+        DB 스냅샷이 오늘 날짜 기준으로 비어 있으면 공통 스크리너 JSON에서 로드합니다.
+        두 경로 모두 실패하면 빈 리스트를 반환합니다 (거래량 순위 API는 async이므로
+        여기서는 호출하지 않습니다 — _load_screener_candidates의 async fallback 활용).
+        """
+        # 1순위: screener_snapshots DB (오늘 날짜)
+        try:
+            today_str = now_kst().strftime("%Y-%m-%d")
+            from backtest.engine import make_screener_snapshot_provider
+            provider = make_screener_snapshot_provider(strategy_name)
+            codes = provider(strategy_name, today_str)
+            if codes:
+                # code 리스트 → CandidateStock 변환 (name/score는 미상)
+                candidates = [
+                    CandidateStock(
+                        code=code,
+                        name=code,  # 이름 정보 없음 — trading_stock 등록 시 갱신 가능
+                        market="KRX",
+                        score=50.0,
+                        reason=f"screener_snapshot({strategy_name})",
+                        prev_close=0.0,
+                    )
+                    for code in codes[:max_candidates]
+                ]
+                self.logger.info(
+                    f"[E6] {strategy_name}: screener_snapshots {len(candidates)}건"
+                )
+                return candidates
+        except Exception as e:
+            self.logger.debug(f"[E6] {strategy_name} DB 스냅샷 조회 실패: {e}")
+
+        # 2순위: 공통 스크리너 JSON
+        try:
+            candidates = self.load_from_screener(max_candidates=max_candidates)
+            if candidates:
+                self.logger.info(
+                    f"[E6] {strategy_name}: 스크리너 JSON fallback {len(candidates)}건"
+                )
+                return candidates
+        except Exception as e:
+            self.logger.debug(f"[E6] {strategy_name} 스크리너 JSON 조회 실패: {e}")
+
+        return []

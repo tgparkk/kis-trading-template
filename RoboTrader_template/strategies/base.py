@@ -284,6 +284,11 @@ class BaseStrategy(ABC):
     author: str = ""
     holding_period: str = "intraday"
 
+    # 전략별 자금 상한 비율 (1.0 = 전체 사용 가능).
+    # StrategyLoader.load_strategies()가 spec의 max_capital_pct 값으로 덮어씀.
+    # E2 FundManager가 이 값을 참조해 reserve 거부.
+    max_capital_pct: float = 1.0
+
     # 최대 보유일 제한.
     # None이면 무제한 (기본). 정수로 설정하면 PositionMonitor가 해당 일수 초과 시
     # 자동으로 시간 기반 매도를 트리거한다.

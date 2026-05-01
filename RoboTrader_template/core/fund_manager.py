@@ -17,7 +17,7 @@ C3 설계 원칙:
 """
 import threading
 from datetime import datetime
-from typing import Dict, Optional, Set
+from typing import Callable, Dict, Optional, Set
 try:
     from typing import Protocol, runtime_checkable
 except ImportError:  # Python 3.7 호환
@@ -158,7 +158,9 @@ class FundManager:
     """
     
     def __init__(self, initial_funds: float = 0, max_position_count: int = 20,
-                 max_daily_loss_ratio: float = 0.1):
+                 max_daily_loss_ratio: float = 0.1,
+                 strategy_max_pct_provider: Optional[Callable[[str], float]] = None,
+                 max_daily_loss_ratio_per_strategy: float = 0.05):
         """
         초기화
 
@@ -166,6 +168,8 @@ class FundManager:
             initial_funds: 초기 자금 (0이면 API에서 조회)
             max_position_count: 동시 보유 최대 종목 수
             max_daily_loss_ratio: 일일 최대 손실 비율 (기본 10%)
+            strategy_max_pct_provider: 전략명 → max_capital_pct 콜백 (다전략 환경에서 봇이 주입)
+            max_daily_loss_ratio_per_strategy: 전략별 일일 최대 손실 비율 (기본 5%)
         """
         self.logger = setup_logger(__name__)
         self._lock = threading.RLock()
@@ -178,6 +182,10 @@ class FundManager:
 
         # 주문별 예약 금액 추적
         self.order_reservations: Dict[str, float] = {}  # order_id -> reserved_amount
+
+        # 전략별 투자 추적
+        self._invested_by_strategy: Dict[str, float] = {}  # strategy_name -> invested amount
+        self._strategy_max_pct_provider: Optional[Callable[[str], float]] = strategy_max_pct_provider
 
         # 설정
         self.max_position_ratio = 0.09  # 종목당 최대 투자 비율 (9%)
@@ -197,8 +205,10 @@ class FundManager:
 
         # 일일 실현 손실 추적
         self.max_daily_loss_ratio: float = max_daily_loss_ratio  # 일일 최대 손실 비율
+        self.max_daily_loss_ratio_per_strategy: float = max_daily_loss_ratio_per_strategy
         self._daily_realized_loss: float = 0.0   # 당일 누적 실현 손실액 (양수 = 손실)
         self._daily_loss_date: str = ""           # 마지막 리셋 날짜 (YYYY-MM-DD)
+        self._daily_realized_loss_by_strategy: Dict[str, float] = {}  # strategy_name -> loss
 
         self.logger.info(f"💰 자금 관리자 초기화 완료 - 초기자금: {initial_funds:,.0f}원, "
                         f"최대 보유: {max_position_count}종목")
@@ -241,19 +251,34 @@ class FundManager:
 
             return max_amount
     
-    def reserve_funds(self, order_id: str, amount: float) -> bool:
+    def reserve_funds(self, order_id: str, amount: float, *, strategy_name: str = "") -> bool:
         """
         자금 예약 (주문 실행 전)
-        
+
         Args:
             order_id: 주문 ID
             amount: 예약할 금액
-            
+            strategy_name: 전략명 (keyword-only). 지정 시 전략별 상한 체크.
+
         Returns:
             bool: 예약 성공 여부
         """
         with self._lock:
             amount = float(amount)
+
+            # 전략별 자금 상한 체크
+            if strategy_name and self._strategy_max_pct_provider is not None and self.total_funds > 0:
+                max_pct = self._strategy_max_pct_provider(strategy_name)
+                cap = self.total_funds * max_pct
+                current = self._invested_by_strategy.get(strategy_name, 0.0)
+                if current + amount > cap:
+                    self.logger.info(
+                        f"[{strategy_name}] 전략별 자금 상한 초과: "
+                        f"현재투자 {current:,.0f}원 + 요청 {amount:,.0f}원 > 상한 {cap:,.0f}원 "
+                        f"({max_pct:.0%})"
+                    )
+                    return False
+
             if self.available_funds < amount:
                 self.logger.info(f"자금 부족: 요청 {amount:,.0f}원, 가용 {self.available_funds:,.0f}원")
                 return False
@@ -261,12 +286,18 @@ class FundManager:
             if order_id in self.order_reservations:
                 self.logger.warning(f"⚠️ 이미 예약된 주문: {order_id}")
                 return False
-            
+
             # 자금 예약
             self.available_funds -= amount
             self.reserved_funds += amount
             self.order_reservations[order_id] = amount
-            
+
+            # 전략별 투자 누적
+            if strategy_name:
+                self._invested_by_strategy[strategy_name] = (
+                    self._invested_by_strategy.get(strategy_name, 0.0) + amount
+                )
+
             return True
     
     def confirm_order(self, order_id: str, actual_amount: float) -> None:
@@ -406,27 +437,38 @@ class FundManager:
     # 일일 손실 한도 관리
     # =========================================================================
 
-    def record_realized_loss(self, amount: float) -> None:
+    def record_realized_loss(self, amount: float, strategy_name: str = "") -> None:
         """당일 실현 손실 기록
 
         Args:
             amount: 손실 금액 (양수값, 예: 50000 = 5만원 손실)
+            strategy_name: 전략명 (지정 시 전략별 손실도 누적)
         """
         with self._lock:
             today = datetime.now().strftime("%Y-%m-%d")
             if self._daily_loss_date != today:
                 # 날짜가 바뀌면 자동 리셋
                 self._daily_realized_loss = 0.0
+                self._daily_realized_loss_by_strategy = {}
                 self._daily_loss_date = today
             self._daily_realized_loss += float(amount)
+            if strategy_name:
+                self._daily_realized_loss_by_strategy[strategy_name] = (
+                    self._daily_realized_loss_by_strategy.get(strategy_name, 0.0) + float(amount)
+                )
             loss_ratio = (self._daily_realized_loss / self.total_funds) if self.total_funds > 0 else 0
             self.logger.info(
                 f"일일 손실 누적: {self._daily_realized_loss:,.0f}원 "
                 f"({loss_ratio*100:.1f}% / 한도 {self.max_daily_loss_ratio*100:.1f}%)"
+                + (f" [{strategy_name}]" if strategy_name else "")
             )
 
-    def is_daily_loss_limit_hit(self) -> bool:
+    def is_daily_loss_limit_hit(self, strategy_name: Optional[str] = None) -> bool:
         """일일 손실 한도 초과 여부 확인
+
+        Args:
+            strategy_name: 전략명 지정 시 해당 전략의 손실 한도 체크.
+                           None(기본)이면 전체 누적 손실 체크.
 
         Returns:
             bool: 한도 초과 시 True (매수 차단 필요)
@@ -436,10 +478,15 @@ class FundManager:
             if self._daily_loss_date != today:
                 # 날짜가 바뀌면 리셋 후 False
                 self._daily_realized_loss = 0.0
+                self._daily_realized_loss_by_strategy = {}
                 self._daily_loss_date = today
                 return False
             if self.total_funds <= 0:
                 return False
+            if strategy_name is not None:
+                strat_loss = self._daily_realized_loss_by_strategy.get(strategy_name, 0.0)
+                strat_ratio = strat_loss / self.total_funds
+                return strat_ratio >= self.max_daily_loss_ratio_per_strategy
             loss_ratio = self._daily_realized_loss / self.total_funds
             return loss_ratio >= self.max_daily_loss_ratio
 
@@ -447,6 +494,7 @@ class FundManager:
         """일일 손실 수동 리셋 (장 시작 시 또는 테스트용)"""
         with self._lock:
             self._daily_realized_loss = 0.0
+            self._daily_realized_loss_by_strategy = {}
             self._daily_loss_date = datetime.now().strftime("%Y-%m-%d")
             self.logger.info("일일 손실 카운터 리셋")
 

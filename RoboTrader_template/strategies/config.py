@@ -19,15 +19,18 @@ Usage:
 """
 
 from pathlib import Path
-from typing import Dict, Any, Optional, Type, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, Type, TYPE_CHECKING
 import importlib
 import importlib.util
+import logging
 import sys
 
 import yaml
 
 if TYPE_CHECKING:
     from .base import BaseStrategy
+
+logger = logging.getLogger(__name__)
 
 
 class StrategyConfigError(Exception):
@@ -411,6 +414,38 @@ class StrategyLoader:
             )
 
         return instance
+
+    @staticmethod
+    def load_strategies(strategy_specs: List[Dict[str, Any]]) -> Dict[str, 'BaseStrategy']:
+        """N개 전략을 동시 로드.
+
+        Args:
+            strategy_specs: [{"name": str, "enabled": bool, "max_capital_pct": float, ...}, ...]
+
+        Returns:
+            Dict[name, BaseStrategy] — enabled=True인 전략만 반환.
+
+        Side effect:
+            sum(max_capital_pct for enabled) > 1.0이면 WARNING 로그.
+        """
+        instances: Dict[str, 'BaseStrategy'] = {}
+        total_pct = 0.0
+
+        for spec in strategy_specs:
+            if not spec.get("enabled", True):
+                continue
+            name = spec["name"]
+            instance = StrategyLoader.load_strategy(name)
+            instance.max_capital_pct = float(spec.get("max_capital_pct", 1.0))
+            instances[name] = instance
+            total_pct += instance.max_capital_pct
+
+        if total_pct > 1.0:
+            logger.warning(
+                f"전략별 max_capital_pct 합계 {total_pct:.2%} > 100%. 의도된 설정인지 확인 권장."
+            )
+
+        return instances
 
     @staticmethod
     def _load_strategy_class(strategy_name: str) -> Type['BaseStrategy']:

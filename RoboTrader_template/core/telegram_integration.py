@@ -168,7 +168,8 @@ class TelegramIntegration:
                 order_type=order_data.get('order_type', ''),
                 quantity=order_data.get('quantity', 0),
                 price=order_data.get('price', 0),
-                order_id=order_data.get('order_id', '')
+                order_id=order_data.get('order_id', ''),
+                strategy_name=order_data.get('strategy_name', '')
             )
         except Exception as e:
             self.logger.error(f"주문 실행 알림 실패: {e}")
@@ -191,7 +192,8 @@ class TelegramIntegration:
                 order_type=order_data.get('order_type', ''),
                 quantity=order_data.get('quantity', 0),
                 price=order_data.get('price', 0),
-                pnl=pnl
+                pnl=pnl,
+                strategy_name=order_data.get('strategy_name', '')
             )
         except Exception as e:
             self.logger.error(f"주문 체결 알림 실패: {e}")

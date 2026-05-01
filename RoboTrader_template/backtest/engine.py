@@ -274,6 +274,9 @@ class BacktestEngine:
                 sell_price: Optional[float] = None
                 sell_reason: str = ""
 
+                # owner_strategy 우선 (다전략 지원 대비), 없으면 self.strategy fallback
+                _pos_strategy = pos.get("owner_strategy") or self.strategy
+
                 # 우선순위 1: 손절 — 일봉 low가 손절가 이하
                 stop_loss_price = entry_price * (1 - stop_loss_rate)
                 if day_low <= stop_loss_price:
@@ -289,7 +292,7 @@ class BacktestEngine:
 
                 # 우선순위 3: 보유기간 초과 (max_holding_days) — 영업일 기준
                 if sell_price is None:
-                    strategy_max_days = getattr(self.strategy, 'max_holding_days', None)
+                    strategy_max_days = getattr(_pos_strategy, 'max_holding_days', None)
                     if strategy_max_days is not None:
                         entry_date_str = pos["entry_date"]
                         try:
@@ -315,7 +318,7 @@ class BacktestEngine:
 
                 # 우선순위 5: 전략 매도 신호 (데이터 충분 시에만)
                 if sell_price is None and len(df_slice) >= min_len:
-                    signal = self.strategy.generate_signal(code, df_slice, timeframe='daily')
+                    signal = _pos_strategy.generate_signal(code, df_slice, timeframe='daily')
                     if signal is not None and signal.is_sell:
                         sell_price = day_close
                         sell_reason = "strategy_signal"
@@ -417,6 +420,7 @@ class BacktestEngine:
                             "entry_date": date,
                             "entry_cost": total_cost,
                             "peak_price": buy_price,
+                            "owner_strategy": self.strategy,  # 다전략 지원 대비: 매수 시점 전략 기록
                         }
                         self.strategy.positions[code] = {
                             "quantity": qty,

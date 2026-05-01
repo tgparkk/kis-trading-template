@@ -432,8 +432,9 @@ class TradingDecisionEngine:
             if qty <= 0: return
 
             strategy_name = self.strategy.name if self.strategy else "unknown"
-            # trading_stock에 순수 전략 이름 기록 (DB strategy 컬럼용)
-            trading_stock.strategy_name = strategy_name
+            # trading_stock에 소유 전략 기록 (DB용 이름 + 메모리용 인스턴스)
+            trading_stock.owner_strategy_name = strategy_name
+            trading_stock.owner_strategy = self.strategy
             rid = self.virtual_trading.execute_virtual_buy(
                 stock_code=trading_stock.stock_code, stock_name=trading_stock.stock_name,
                 price=buy_price, quantity=qty, strategy=strategy_name, reason=buy_reason,

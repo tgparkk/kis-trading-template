@@ -227,10 +227,12 @@ class TelegramNotifier:
         )
         await self.send_message(message)
     
-    async def send_order_placed(self, stock_code: str, stock_name: str, order_type: str, 
-                              quantity: int, price: float, order_id: str):
+    async def send_order_placed(self, stock_code: str, stock_name: str, order_type: str,
+                              quantity: int, price: float, order_id: str,
+                              strategy_name: str = ""):
         """주문 실행 알림"""
-        message = self.templates['order_placed'].format(
+        prefix = f"[{strategy_name}] " if strategy_name else ""
+        message = prefix + self.templates['order_placed'].format(
             stock_code=stock_code,
             stock_name=stock_name,
             order_type="매수" if order_type.lower() == "buy" else "매도",
@@ -241,9 +243,11 @@ class TelegramNotifier:
         await self.send_message(message)
     
     async def send_order_filled(self, stock_code: str, stock_name: str, order_type: str,
-                              quantity: int, price: float, pnl: float = 0):
+                              quantity: int, price: float, pnl: float = 0,
+                              strategy_name: str = ""):
         """주문 체결 알림"""
-        message = self.templates['order_filled'].format(
+        prefix = f"[{strategy_name}] " if strategy_name else ""
+        message = prefix + self.templates['order_filled'].format(
             stock_code=stock_code,
             stock_name=stock_name,
             order_type="매수" if order_type.lower() == "buy" else "매도",

@@ -166,7 +166,7 @@ class TradingStock:
     
     # 메타 정보
     selection_reason: str = ""
-    strategy_name: str = ""  # 순수 전략 이름 (예: "SampleStrategy") - DB strategy 컬럼용
+    owner_strategy_name: str = ""  # DB 저장용 전략 이름 (예: "SampleStrategy")
     prev_close: float = 0.0  # 전날 종가 (일봉 기준)
     last_update: datetime = field(default_factory=now_kst)
     target_profit_rate: float = DEFAULT_TARGET_PROFIT_RATE  # 목표수익률 (constants.py 기준)
@@ -199,6 +199,18 @@ class TradingStock:
     # 트레일링 스톱 추적
     highest_price_since_buy: Optional[float] = None   # 매수 이후 최고가
     trailing_stop_activated: bool = False             # 트레일링 스톱 활성화 여부
+
+    # 다전략: 매수 체결 시 소유 전략 인스턴스 (메모리 전용, DB 비저장)
+    owner_strategy: Optional[Any] = field(default=None, repr=False)
+
+    @property
+    def strategy_name(self) -> str:
+        """하위 호환용 별칭 — owner_strategy_name을 미러링"""
+        return self.owner_strategy_name
+
+    @strategy_name.setter
+    def strategy_name(self, value: str) -> None:
+        self.owner_strategy_name = value
 
     def change_state(self, new_state: StockState, reason: str = "") -> None:
         """상태 변경 및 이력 기록"""

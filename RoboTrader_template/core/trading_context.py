@@ -41,6 +41,8 @@ class TradingContext:
         broker=None,
         is_running_check=None,
         tracer: Optional['TickTracer'] = None,
+        strategy_name: str = "",
+        strategies_dict: Optional[Dict] = None,
     ):
         self._trading_manager = trading_manager
         self._decision_engine = decision_engine
@@ -52,6 +54,8 @@ class TradingContext:
         self._broker = broker
         self._is_running_check = is_running_check
         self.tracer: Optional['TickTracer'] = tracer
+        self._current_strategy_name: str = strategy_name
+        self._strategies_dict: Dict = strategies_dict or {}
         self.logger = setup_logger("trading_context")
         # 일봉 조회 실패 로그 쓰로틀: key=(stock_code, reason), value=마지막 로그 시각
         self._daily_log_cache: Dict[Tuple[str, str], datetime] = {}
@@ -223,6 +227,23 @@ class TradingContext:
                 self.logger.debug(f"매수 스킵: {stock_code} 종목 정보 없음")
                 return None
 
+            # 중복 소유권 가드: POSITIONED/BUY_PENDING 상태 종목은 다른 전략이 매수 불가
+            from core.models import StockState
+            from core.trading.stock_state_manager import StockStateManager
+            stock_state_mgr = getattr(self._trading_manager, 'stock_state_manager', None)
+            if stock_state_mgr is not None:
+                existing = stock_state_mgr.trading_stocks.get(stock_code)
+                if existing is not None and existing.state in (
+                    StockState.POSITIONED, StockState.BUY_PENDING
+                ):
+                    existing_owner = existing.owner_strategy_name or "unknown"
+                    self.logger.info(
+                        f"매수 거부: {stock_code}는 이미 {existing_owner} 소유 "
+                        f"(state={existing.state.name}), "
+                        f"{self._current_strategy_name or 'unknown'} 매수 차단"
+                    )
+                    return None
+
             # 개별 종목 VI 발동 시 매수 스킵
             if cb_state.is_vi_active(stock_code):
                 self.logger.debug(f"{stock_code} 매수 스킵: VI 발동 중")
@@ -258,6 +279,12 @@ class TradingContext:
 
             # TradingAnalyzer를 통한 매수 판단 + 실행
             await self._trading_analyzer.analyze_buy_decision(trading_stock, signal=signal)
+
+            # 매수 성공 후 소유 전략 기록
+            if self._current_strategy_name:
+                trading_stock.owner_strategy_name = self._current_strategy_name
+                trading_stock.owner_strategy = self._strategies_dict.get(self._current_strategy_name)
+
             return stock_code
 
         except Exception as e:
@@ -284,6 +311,15 @@ class TradingContext:
             trading_stock = self._trading_manager.get_trading_stock(stock_code)
             if trading_stock is None:
                 self.logger.debug(f"매도 스킵: {stock_code} 종목 정보 없음")
+                return None
+
+            # 소유권 가드: 다른 전략 소유 종목 매도 거부
+            owner_name = getattr(trading_stock, 'owner_strategy_name', '')
+            if owner_name and self._current_strategy_name and owner_name != self._current_strategy_name:
+                self.logger.info(
+                    f"매도 거부: {stock_code}는 {owner_name} 소유, "
+                    f"{self._current_strategy_name}이 호출"
+                )
                 return None
 
             # 이미 매도 진행 중이면 중복 방지

@@ -374,7 +374,18 @@ class StateRestorer:
                         # DB에서 전략 이름 복원 (strategy 컬럼)
                         db_strategy = holding.get('strategy', '')
                         if db_strategy and isinstance(db_strategy, str) and db_strategy.strip():
-                            trading_stock.strategy_name = db_strategy.strip()
+                            name = db_strategy.strip()
+                            trading_stock.owner_strategy_name = name
+                            # DayTradingBot.strategies dict에서 해당 전략 인스턴스 조회
+                            bot_strategies = getattr(self.bot, 'strategies', {})
+                            if name in bot_strategies:
+                                trading_stock.owner_strategy = bot_strategies[name]
+                            else:
+                                # 이번 실행에서 비활성화된 전략 → 기본 손절/익절만 적용
+                                self.logger.warning(
+                                    f"복원된 종목 {trading_stock.stock_code}의 owner 전략 "
+                                    f"{name}이 비활성. 기본 정책 적용."
+                                )
 
                         # 가상매수 기록 ID 복원
                         buy_record_id = int(holding.get('id', 0)) if holding.get('id') else None

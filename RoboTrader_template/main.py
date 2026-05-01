@@ -8,7 +8,7 @@ import sys
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 import pandas as pd
 
 # Windows 콘솔 UTF-8 인코딩 설정 (이모지 출력 지원)
@@ -118,7 +118,8 @@ class DayTradingBot:
 
         # Strategy 시스템 초기화
         self.strategy: Optional[BaseStrategy] = None
-        self._load_strategy()
+        self.strategies: Dict[str, BaseStrategy] = {}
+        self._load_strategies()
 
         # CandidateSelector 초기화
         self.candidate_selector = CandidateSelector(self.config, self.broker, self.db_manager)
@@ -133,35 +134,48 @@ class DayTradingBot:
         self.logger.info(f"종료 신호 수신: {signum}")
         self.is_running = False
 
-    def _load_strategy(self):
-        """전략 로드 (config에서 지정된 전략 사용)"""
+    def _load_strategies(self):
+        """다중 또는 단일 전략 로드. backward compat 보장."""
         try:
-            # config에서 전략 이름 가져오기
-            strategy_config = getattr(self.config, 'strategy', None)
-            if strategy_config is not None:
-                strategy_name = getattr(strategy_config, 'name', 'sample')
-                strategy_enabled = getattr(strategy_config, 'enabled', True)
+            strategies_spec = getattr(self.config, 'strategies', None)
+
+            if strategies_spec and isinstance(strategies_spec, list) and len(strategies_spec) > 0:
+                # 다중 전략 모드
+                self.strategies = StrategyLoader.load_strategies(strategies_spec)
+                self.logger.info(f"다중 전략 로드: {list(self.strategies.keys())}")
             else:
-                strategy_name = 'sample'
-                strategy_enabled = True
+                # backward compat: 단일 전략 모드
+                strategy_config = getattr(self.config, 'strategy', None)
+                if strategy_config is not None:
+                    strategy_enabled = getattr(strategy_config, 'enabled', True)
+                    if not strategy_enabled:
+                        self.logger.info("전략 시스템 비활성화됨 (config.strategy.enabled=False)")
+                        return
+                    if isinstance(strategy_config, dict):
+                        name = strategy_config.get('name', 'sample')
+                    else:
+                        name = getattr(strategy_config, 'name', 'sample') or 'sample'
+                    self.strategies = {name: StrategyLoader.load_strategy(name)}
+                    self.logger.info(f"단일 전략 로드(legacy): {name}")
+                else:
+                    self.strategies = {}
+                    self.logger.warning("전략 미설정 — fallback 모드")
 
-            if not strategy_enabled:
-                self.logger.info("전략 시스템 비활성화됨 (config.strategy.enabled=False)")
-                return
-
-            # 전략 로드
-            self.strategy = StrategyLoader.load_strategy(strategy_name)
-            self.logger.info(f"전략 로드 완료: {self.strategy.name} v{self.strategy.version}")
+            # backward compat: self.strategy = 첫 전략
+            if self.strategies:
+                self.strategy = next(iter(self.strategies.values()))
 
         except FileNotFoundError as e:
             self.logger.warning(f"전략 파일 없음 (기본 동작 사용): {e}")
             self.strategy = None
+            self.strategies = {}
         except StrategyConfigError as e:
             self.logger.critical(f"전략 설정 오류 (시스템 중단): {e}")
             raise
         except Exception as e:
             self.logger.warning(f"전략 로드 실패 (기본 동작 사용): {e}")
             self.strategy = None
+            self.strategies = {}
 
     async def _initialize_strategy(self) -> bool:
         """전략 초기화 (on_init 호출)"""
@@ -301,7 +315,7 @@ class DayTradingBot:
                     self.logger.warning(f"[{name}] {delay}초 후 재시도...")
                     await asyncio.sleep(delay)
 
-    def _create_trading_context(self):
+    def _create_trading_context(self, strategy_name: str = ""):
         """TradingContext 인스턴스 생성"""
         from core.trading_context import TradingContext
         from utils.tick_tracer import TickTracer
@@ -317,7 +331,22 @@ class DayTradingBot:
             broker=self.broker,
             is_running_check=lambda: self.is_running,
             tracer=tracer,
+            strategy_name=strategy_name,
+            strategies_dict=self.strategies,
         )
+
+    def ctx_for_strategy(self, strategy_name: str):
+        """전략별 TradingContext 인스턴스 생성/캐싱.
+
+        같은 strategy_name 호출 시 같은 인스턴스 반환 (메모리 절약).
+        """
+        if not hasattr(self, '_strategy_contexts'):
+            self._strategy_contexts: Dict = {}
+        if strategy_name not in self._strategy_contexts:
+            self._strategy_contexts[strategy_name] = self._create_trading_context(
+                strategy_name=strategy_name
+            )
+        return self._strategy_contexts[strategy_name]
 
     async def _main_trading_loop(self):
         """메인 트레이딩 루프: 데이터수집 -> 주문확인 -> 보유종목체크 -> on_tick/매수판단 -> EOD 순차 실행"""
@@ -329,9 +358,6 @@ class DayTradingBot:
 
         self.logger.info("메인 트레이딩 루프 시작")
         iteration = 0
-
-        # TradingContext 생성 (전략이 있을 때만)
-        trading_ctx = self._create_trading_context() if self.strategy else None
 
         while self.is_running:
             loop_start = time.monotonic()
@@ -369,20 +395,25 @@ class DayTradingBot:
                 except Exception as e:
                     self.logger.error(f"[3/5] 보유종목 체크 오류: {e}")
 
-                # 4. 전략 on_tick 또는 기존 매수 판단
-                if self.strategy and trading_ctx and iteration % ON_TICK_EVERY_N == 0:
+                # 4. 전략 on_tick — 라운드로빈 (5전략이면 9초×5=45초마다 전부 순환)
+                if self.strategies and iteration % ON_TICK_EVERY_N == 0:
+                    strategy_names = list(self.strategies.keys())
+                    idx = (iteration // ON_TICK_EVERY_N) % len(strategy_names)
+                    name = strategy_names[idx]
+                    strat = self.strategies[name]
+                    ctx = self.ctx_for_strategy(name)
                     try:
                         await asyncio.wait_for(
-                            self.strategy.on_tick(trading_ctx),
+                            strat.on_tick(ctx),
                             timeout=ON_TICK_TIMEOUT
                         )
                     except asyncio.TimeoutError:
-                        self.logger.warning(
-                            f"on_tick 타임아웃 ({ON_TICK_TIMEOUT}초): {self.strategy.name}"
+                        self.logger.error(
+                            f"전략 {name} on_tick 타임아웃 ({ON_TICK_TIMEOUT}초)"
                         )
                     except Exception as e:
-                        self.logger.error(f"[4/5] on_tick 오류: {e}")
-                elif not self.strategy:
+                        self.logger.error(f"[4/5] on_tick 오류 ({name}): {e}")
+                elif not self.strategies:
                     # 전략 없으면 기존 방식 fallback (매수 판단만 — 보유종목 체크는 위에서 이미 실행)
                     try:
                         if iteration % ON_TICK_EVERY_N == 0:
@@ -422,7 +453,11 @@ class DayTradingBot:
         await self._load_screener_candidates()
 
     async def _load_screener_candidates(self):
-        """후보 종목 로드: 스크리너 우선, 없으면 거래량 순위 자동 수집"""
+        """후보 종목 로드: 스크리너 우선, 없으면 거래량 순위 자동 수집.
+
+        다중 전략(self.strategies dict)이 있으면 전략별 독립 후보 풀을 구성합니다.
+        단일/없음 전략이면 기존 단일 풀 동작을 유지합니다(backward compat).
+        """
         if self._candidates_loaded:
             return
 
@@ -434,6 +469,12 @@ class DayTradingBot:
             elif hasattr(strategy_config, 'parameters'):
                 max_candidates = strategy_config.parameters.get('max_candidates', 10)
 
+            # ── 다중 전략 모드 ────────────────────────────────────────────────
+            if len(self.strategies) > 1:
+                await self._load_candidates_multi_strategy(max_candidates)
+                return
+
+            # ── 단일/없음 전략 모드 (backward compat) ────────────────────────
             # 1순위: 스크리너 JSON에서 로드
             candidates = self.candidate_selector.load_from_screener(
                 max_candidates=max_candidates
@@ -481,8 +522,8 @@ class DayTradingBot:
 
             # 텔레그램 알림
             try:
-                msg = (f"📊 후보 종목 등록: {registered}종목\n"
-                       + "\n".join(f"  • {c.code}({c.name})" for c in candidates[:registered]))
+                msg = (f"후보 종목 등록: {registered}종목\n"
+                       + "\n".join(f"  - {c.code}({c.name})" for c in candidates[:registered]))
                 await self.telegram.notify_system_status(msg)
             except Exception:
                 pass
@@ -495,6 +536,77 @@ class DayTradingBot:
                 self.logger.error("후보 종목 로딩 3회 실패 - 금일 매수 불가")
             else:
                 self.logger.warning(f"후보 종목 로딩 실패 ({self._candidate_load_retries}/3) - 재시도 예정")
+
+    async def _load_candidates_multi_strategy(self, max_per_strategy: int = 10) -> None:
+        """다중 전략 모드: 전략별 독립 후보 풀을 로드하고 TradingStockManager에 등록.
+
+        - select_candidates_per_strategy()로 전략별 후보를 중복 없이 분리합니다.
+        - 같은 종목이 두 전략에 등장하면 선행 전략만 등록하고 INFO 로그를 남깁니다.
+        - 후보가 전혀 없는 전략은 거래량 순위 API fallback을 시도합니다.
+        """
+        pool_by_strategy = self.candidate_selector.select_candidates_per_strategy(
+            self.strategies, max_per_strategy=max_per_strategy
+        )
+
+        # 빈 풀 전략은 거래량 순위 fallback
+        for strategy_name, candidates in pool_by_strategy.items():
+            if not candidates:
+                self.logger.info(
+                    f"[E6] {strategy_name}: 후보 없음 → 거래량 순위 fallback 시작"
+                )
+                try:
+                    fallback = await self.candidate_selector.select_daily_candidates(
+                        max_candidates=max_per_strategy
+                    )
+                    # 이미 등록된 코드는 제외
+                    registered_codes = set(self.trading_manager.trading_stocks.keys())
+                    fallback = [c for c in fallback if c.code not in registered_codes]
+                    pool_by_strategy[strategy_name] = fallback
+                except Exception as e:
+                    self.logger.warning(f"[E6] {strategy_name} fallback 실패: {e}")
+
+        total_registered = 0
+        for strategy_name, candidates in pool_by_strategy.items():
+            for c in candidates:
+                # 이미 등록된 종목 중복 가드 (stock_state_manager 수준 방어선 추가)
+                if c.code in self.trading_manager.trading_stocks:
+                    self.logger.info(
+                        f"[E6] {c.code}({c.name}) 이미 등록됨 — "
+                        f"{strategy_name} 두 번째 등록 거부"
+                    )
+                    continue
+
+                success = await self.trading_manager.add_selected_stock(
+                    stock_code=c.code,
+                    stock_name=c.name,
+                    selection_reason=c.reason,
+                    prev_close=c.prev_close,
+                )
+                if success:
+                    ts = self.trading_manager.get_trading_stock(c.code)
+                    if ts:
+                        ts.strategy_name = strategy_name
+                    total_registered += 1
+
+        self._candidates_loaded = True
+        self.logger.info(
+            f"[E6] 다중 전략 후보 등록 완료: {total_registered}종목 "
+            f"({len(self.strategies)}전략)"
+        )
+
+        # 텔레그램 알림
+        try:
+            lines = []
+            for s_name, cands in pool_by_strategy.items():
+                if cands:
+                    lines.append(
+                        f"  [{s_name}] "
+                        + ", ".join(f"{c.code}({c.name})" for c in cands)
+                    )
+            msg = f"후보 종목 등록: {total_registered}종목\n" + "\n".join(lines)
+            await self.telegram.notify_system_status(msg)
+        except Exception:
+            pass
 
     async def _check_buy_signals(self):
         """SELECTED 상태 종목 1회 매수 판단"""
