@@ -361,6 +361,7 @@ class TradingConfig:
     order_management: OrderManagementConfig = field(default_factory=OrderManagementConfig)
     risk_management: RiskManagementConfig = field(default_factory=RiskManagementConfig)
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
+    strategies: Optional[List[Dict[str, Any]]] = None  # 다중 전략 리스트 (우선)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     candidate_filters: CandidateFiltersConfig = field(default_factory=CandidateFiltersConfig)
     paper_trading: bool = True  # 가상 매매 모드 (기본 활성화)
@@ -399,6 +400,7 @@ class TradingConfig:
                 level=json_data.get('logging', {}).get('level', 'INFO'),
                 file_retention_days=json_data.get('logging', {}).get('file_retention_days', 30)
             ),
+            strategies=json_data.get('strategies', None),
             paper_trading=json_data.get('paper_trading', True),
             rebalancing_mode=json_data.get('rebalancing_mode', False)
         )

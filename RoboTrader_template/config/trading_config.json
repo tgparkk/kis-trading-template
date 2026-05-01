@@ -29,6 +29,23 @@
       "max_candidates": 10
     }
   },
+  "strategies": [
+    {
+      "name": "sample",
+      "enabled": true,
+      "max_capital_pct": 0.33
+    },
+    {
+      "name": "lynch",
+      "enabled": true,
+      "max_capital_pct": 0.33
+    },
+    {
+      "name": "bb_reversion",
+      "enabled": true,
+      "max_capital_pct": 0.33
+    }
+  ],
   "duplicate_signal_prevention": {
     "enabled": true,
     "overlap_threshold": 0.5,
