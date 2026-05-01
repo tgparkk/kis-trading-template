@@ -232,7 +232,7 @@ class TestBotMethods:
 
     def test_has_strategy_methods(self):
         from main import DayTradingBot
-        assert hasattr(DayTradingBot, '_load_strategy')
+        assert hasattr(DayTradingBot, '_load_strategies')
         assert hasattr(DayTradingBot, '_initialize_strategy')
         assert hasattr(DayTradingBot, '_call_strategy_market_open')
         assert hasattr(DayTradingBot, '_call_strategy_market_close')

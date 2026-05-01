@@ -21,10 +21,15 @@ def _ensure_module(name, attrs=None):
     return sys.modules[name]
 
 
-# psycopg2
-_ensure_module('psycopg2')
-_ensure_module('psycopg2.pool')
-_ensure_module('psycopg2.extensions')
+# psycopg2 — only mock when not actually installed
+try:
+    import psycopg2  # noqa: F401
+    import psycopg2.pool  # noqa: F401
+    import psycopg2.extensions  # noqa: F401
+except ImportError:
+    _ensure_module('psycopg2')
+    _ensure_module('psycopg2.pool')
+    _ensure_module('psycopg2.extensions')
 
 # telegram
 _tg = _ensure_module('telegram', {
