@@ -101,9 +101,11 @@ class TestBuyTimeDaysHeld:
         assert vtm._buy_times['005930'] == kst_now
 
     def test_days_held_calculation_1day(self):
-        """매수 후 1일 경과 시 days_held == 1"""
+        """매수 당일 days_held == 1 (count_trading_days_between는 양 끝 포함 카운트)"""
         vtm = _make_vtm()
-        buy_time = datetime(2026, 4, 29, 9, 0, 0, tzinfo=timezone.utc)
+        # production: count_trading_days_between(buy, today) — 매수일 당일 포함
+        # buy=4/30(오늘) → count(4/30, 4/30) = 1
+        buy_time = datetime(2026, 4, 30, 9, 0, 0, tzinfo=timezone.utc)
         vtm._buy_times['005930'] = buy_time
 
         now_time = datetime(2026, 4, 30, 9, 0, 0, tzinfo=timezone.utc)
@@ -113,9 +115,11 @@ class TestBuyTimeDaysHeld:
         assert days == 1
 
     def test_days_held_calculation_5days(self):
-        """매수 후 5일 경과 시 days_held == 5"""
+        """매수일 포함 영업일 5일 경과 시 days_held == 5"""
         vtm = _make_vtm()
-        buy_time = datetime(2026, 4, 25, 9, 0, 0, tzinfo=timezone.utc)
+        # production: count_trading_days_between(buy, today) — 매수일 당일 포함
+        # buy=4/24(금) → count(4/24, 4/30) = 5 (4/24,4/27,4/28,4/29,4/30)
+        buy_time = datetime(2026, 4, 24, 9, 0, 0, tzinfo=timezone.utc)
         vtm._buy_times['005930'] = buy_time
 
         now_time = datetime(2026, 4, 30, 9, 0, 0, tzinfo=timezone.utc)
@@ -139,31 +143,32 @@ class TestIsStaleFlagAfter30Days:
     """test_is_stale_flag_after_30_days"""
 
     def test_not_stale_before_30_days(self):
-        """29일 보유 시 is_stale_position == False"""
+        """영업일 29일 보유 시 is_stale_position == False"""
         vtm = _make_vtm()
-        buy_time = datetime(2026, 4, 1, 9, 0, 0, tzinfo=timezone.utc)
+        # count_trading_days_between(buy, 4/30) == 29 → buy=2026-03-23(월)
+        buy_time = datetime(2026, 3, 23, 9, 0, 0, tzinfo=timezone.utc)
         vtm._buy_times['005930'] = buy_time
 
-        # 29일 후
         now_time = datetime(2026, 4, 30, 9, 0, 0, tzinfo=timezone.utc)
         with patch('core.virtual_trading_manager.now_kst', return_value=now_time):
             assert vtm.is_stale_position('005930') is False
 
     def test_stale_at_exactly_30_days(self):
-        """정확히 30일 보유 시 is_stale_position == True"""
+        """정확히 영업일 30일 보유 시 is_stale_position == True"""
         vtm = _make_vtm()
-        buy_time = datetime(2026, 3, 31, 9, 0, 0, tzinfo=timezone.utc)
+        # count_trading_days_between(buy, 4/30) == 30 → buy=2026-03-20(금)
+        buy_time = datetime(2026, 3, 20, 9, 0, 0, tzinfo=timezone.utc)
         vtm._buy_times['005930'] = buy_time
 
-        # 30일 후
         now_time = datetime(2026, 4, 30, 9, 0, 0, tzinfo=timezone.utc)
         with patch('core.virtual_trading_manager.now_kst', return_value=now_time):
             assert vtm.is_stale_position('005930') is True
 
     def test_stale_after_30_days(self):
-        """31일 보유 시 is_stale_position == True"""
+        """영업일 31일 보유 시 is_stale_position == True"""
         vtm = _make_vtm()
-        buy_time = datetime(2026, 3, 30, 9, 0, 0, tzinfo=timezone.utc)
+        # count_trading_days_between(buy, 4/30) == 31 → buy=2026-03-19(목)
+        buy_time = datetime(2026, 3, 19, 9, 0, 0, tzinfo=timezone.utc)
         vtm._buy_times['005930'] = buy_time
 
         now_time = datetime(2026, 4, 30, 9, 0, 0, tzinfo=timezone.utc)
@@ -177,8 +182,9 @@ class TestStateRestorerCompatibility:
     def test_restore_buy_time_from_db(self):
         """restore_buy_time()으로 DB timestamp 복원 후 days_held 계산 가능"""
         vtm = _make_vtm()
-        # buy_time과 now를 동일 시각(09:00)으로 맞춰 날짜 차이 10일이 명확하게 나오도록
-        db_buy_time = datetime(2026, 4, 20, 9, 0, 0, tzinfo=timezone.utc)
+        # count_trading_days_between(buy, 4/30) == 10 → buy=2026-04-17(금)
+        # (4/17,4/20,4/21,4/22,4/23,4/24,4/27,4/28,4/29,4/30 = 10 영업일)
+        db_buy_time = datetime(2026, 4, 17, 9, 0, 0, tzinfo=timezone.utc)
 
         vtm.restore_buy_time('005930', db_buy_time)
 

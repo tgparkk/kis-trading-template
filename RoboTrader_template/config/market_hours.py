@@ -271,13 +271,38 @@ class MarketHours:
 
     @classmethod
     def _is_holiday(cls, market: str, dt: datetime) -> bool:
-        """공휴일 여부 확인 (내부 헬퍼)"""
+        """공휴일 여부 확인 (내부 헬퍼)
+
+        KRX: holidays.KR 백엔드 + 근로자의 날 수동 보완 (korean_holidays 모듈)
+        NYSE/NASDAQ: holidays.NYSE 백엔드
+        TSE: holidays.JP 백엔드
+        fallback: import 실패 시 False 반환 (주말 체크는 호출부에서 별도 수행)
+        """
         if market == 'KRX':
             try:
                 from utils.korean_holidays import is_fixed_holiday, is_lunar_holiday, is_special_holiday
                 return is_fixed_holiday(dt) or is_lunar_holiday(dt) or is_special_holiday(dt)
             except ImportError:
                 return False
+
+        if market in ('NYSE', 'NASDAQ'):
+            try:
+                import holidays as _hlib
+                nyse = _hlib.NYSE(years=dt.year)
+                d = dt.date() if hasattr(dt, 'date') else dt
+                return d in nyse
+            except Exception:
+                return False
+
+        if market == 'TSE':
+            try:
+                import holidays as _hlib
+                jp = _hlib.JP(years=dt.year)
+                d = dt.date() if hasattr(dt, 'date') else dt
+                return d in jp
+            except Exception:
+                return False
+
         return False
 
     @classmethod

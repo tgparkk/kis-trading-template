@@ -284,10 +284,13 @@ class TestHolidayDetection:
         assert prev.weekday() == 4  # 금요일
 
     def test_previous_trading_day_skips_holiday(self):
-        """이전 영업일: 설날 연휴 건너뛰기"""
-        dt = datetime(2025, 1, 31)  # 금요일 (1/28~30 설날)
+        """이전 영업일: 설날 연휴 건너뛰기
+        2025-01-27은 정부 지정 임시공휴일(holidays.KR 반영)이므로
+        2025-01-31에서 이전 영업일은 2025-01-24(금)이다.
+        """
+        dt = datetime(2025, 1, 31)  # 금요일 (1/27 임시공휴일 + 1/28~30 설날 연휴)
         prev = get_previous_trading_day(dt)
-        assert prev.day == 27  # 1/27 월요일
+        assert prev.day == 24  # 1/24 금요일 (1/27 임시공휴일 포함하여 건너뜀)
 
     def test_next_trading_day_skips_weekend(self):
         """다음 영업일: 금요일 → 월요일"""

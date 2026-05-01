@@ -382,6 +382,92 @@ class TestStateRestorerEdgeCases:
         restorer._restore_candidates.assert_called_once()
         restorer._restore_holdings_from_real_account.assert_called_once()
 
+
+# ============================================================================
+# days_held 영업일 기준 테스트 (결재 #1)
+# ============================================================================
+
+class TestDaysHeldBusinessDays:
+    """days_held가 영업일 기준으로 계산되는지 검증"""
+
+    def _make_trading_stock(self):
+        """days_held / is_stale 속성을 가진 Mock TradingStock"""
+        ts = MagicMock()
+        ts.days_held = 0
+        ts.is_stale = False
+        ts.stock_code = "005930"
+        ts.stock_name = "삼성전자"
+        return ts
+
+    def test_days_held_business_days_only(self, restorer):
+        """캘린더 7일(설 연휴 4일 포함) → 영업일 3일
+
+        기간: 2026-02-13(금) ~ 2026-02-19(목)
+        주말: 2/14(토), 2/15(일) = 2일
+        공휴일: 2/16(설전날), 2/17(설날), 2/18(설다음날) = 3일
+        영업일: 2/13(금), 2/19(목) = 2일 (start 포함)
+        """
+        from datetime import timezone as _tz
+        ts = self._make_trading_stock()
+        buy_time = datetime(2026, 2, 13, 9, 30, 0, tzinfo=_tz.utc)
+
+        with patch('bot.state_restorer.now_kst') as mock_now:
+            mock_now.return_value = datetime(2026, 2, 19, 10, 0, 0)
+            restorer._apply_stale_position_check(ts, buy_time, 0.05, 0.03)
+
+        # 2/13(금, 영업일) + 2/19(목, 영업일) = 2 영업일
+        assert ts.days_held == 2, (
+            f"설 연휴 포함 캘린더 7일 → 영업일 2이어야 함, 실제: {ts.days_held}"
+        )
+
+    def test_days_held_normal_week(self, restorer):
+        """공휴일 없는 평일 5일 = 영업일 5일"""
+        from datetime import timezone as _tz
+        ts = self._make_trading_stock()
+        # 2026-04-20(월) 매수 → 2026-04-24(금) today (5 영업일)
+        buy_time = datetime(2026, 4, 20, 9, 30, 0, tzinfo=_tz.utc)
+
+        with patch('bot.state_restorer.now_kst') as mock_now:
+            mock_now.return_value = datetime(2026, 4, 24, 10, 0, 0)
+            restorer._apply_stale_position_check(ts, buy_time, 0.05, 0.03)
+
+        assert ts.days_held == 5, (
+            f"평일 5일 → 영업일 5이어야 함, 실제: {ts.days_held}"
+        )
+
+    def test_days_held_includes_labor_day_exclusion(self, restorer):
+        """근로자의 날(5/1) 포함 주 — 영업일에서 제외"""
+        from datetime import timezone as _tz
+        ts = self._make_trading_stock()
+        # 2026-04-27(월) 매수 → 2026-05-01(금, 근로자의날) today
+        # 영업일: 4/27(월), 4/28(화), 4/29(수), 4/30(목) = 4일 (5/1 제외)
+        buy_time = datetime(2026, 4, 27, 9, 30, 0, tzinfo=_tz.utc)
+
+        with patch('bot.state_restorer.now_kst') as mock_now:
+            mock_now.return_value = datetime(2026, 5, 1, 10, 0, 0)
+            restorer._apply_stale_position_check(ts, buy_time, 0.05, 0.03)
+
+        assert ts.days_held == 4, (
+            f"근로자의날 포함 → 영업일 4이어야 함, 실제: {ts.days_held}"
+        )
+
+    def test_days_held_calendar_vs_business_difference(self, restorer):
+        """캘린더일과 영업일의 차이를 검증 — 주말 포함 7일 = 영업일 5일"""
+        from datetime import timezone as _tz
+        ts = self._make_trading_stock()
+        # 2026-04-20(월) ~ 2026-04-26(일): 캘린더 7일, 영업일 5일
+        buy_time = datetime(2026, 4, 20, 9, 30, 0, tzinfo=_tz.utc)
+
+        with patch('bot.state_restorer.now_kst') as mock_now:
+            mock_now.return_value = datetime(2026, 4, 26, 10, 0, 0)
+            restorer._apply_stale_position_check(ts, buy_time, 0.05, 0.03)
+
+        # 캘린더 7일이지만 영업일 = 5 (주말 제외)
+        assert ts.days_held == 5, (
+            f"주말 포함 캘린더 7일 → 영업일 5이어야 함, 실제: {ts.days_held}"
+        )
+        assert ts.days_held < 7, "영업일이 캘린더일보다 작아야 한다 (주말 제외)"
+
     @pytest.mark.asyncio
     async def test_restore_todays_candidates_전체_예외_시_크래시_없음(self, base_deps):
         """restore_todays_candidates 내부에서 예외가 발생해도 시스템이 크래시하지 않는지"""

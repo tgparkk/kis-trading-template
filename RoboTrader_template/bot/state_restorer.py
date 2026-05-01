@@ -165,7 +165,10 @@ class StateRestorer:
                 # 변환 불가 시 스킵
                 return target_profit_rate, stop_loss_rate
 
-            days_held = (today - buy_date).days if buy_date.tzinfo else (today.replace(tzinfo=None) - buy_date).days
+            from utils.korean_holidays import count_trading_days_between
+            buy_date_naive = buy_date.replace(tzinfo=None) if buy_date.tzinfo else buy_date
+            today_naive = today.replace(tzinfo=None)
+            days_held = count_trading_days_between(buy_date_naive, today_naive)
             trading_stock.days_held = max(0, days_held)
 
             stock_code = trading_stock.stock_code
