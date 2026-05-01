@@ -30,8 +30,10 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from itertools import product
-from typing import Any, Dict, List, Optional, Type
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import numpy as np
 import pandas as pd
@@ -66,21 +68,21 @@ class MultiverseResult:
     # top() — 상위 N개 DataFrame
     # -----------------------------------------------------------------------
 
-    def top(self, n: int = 10, sort_by: str = "sharpe_ratio") -> pd.DataFrame:
+    def top(self, n: int = 10, sort_by: str = "calmar_ratio") -> pd.DataFrame:
         """상위 N개 결과를 DataFrame으로 반환.
 
         Args:
             n: 반환할 결과 수.
             sort_by: 정렬 기준 컬럼명.
                      BacktestResult 필드 이름 사용:
-                     "sharpe_ratio", "total_return", "win_rate",
-                     "max_drawdown", "total_trades" 등.
+                     "calmar_ratio" (기본), "sortino_ratio", "sharpe_ratio",
+                     "total_return", "win_rate", "max_drawdown", "total_trades".
                      "stability_score"도 사용 가능.
 
         Returns:
             컬럼 구성:
             - 각 파라미터명 (예: ma_short_period, rsi_oversold)
-            - total_return, win_rate, sharpe_ratio,
+            - total_return, win_rate, sharpe_ratio, calmar_ratio, sortino_ratio,
               max_drawdown, total_trades, stability_grade
         """
         if not self.results:
@@ -98,8 +100,25 @@ class MultiverseResult:
             row["total_return"] = round(r.total_return, 4)
             row["win_rate"] = round(r.win_rate, 4)
             row["sharpe_ratio"] = round(r.sharpe_ratio, 4)
+            row["calmar_ratio"] = round(r.calmar_ratio, 4)
+            row["sortino_ratio"] = round(r.sortino_ratio, 4)
             row["max_drawdown"] = round(r.max_drawdown, 4)
             row["total_trades"] = r.total_trades
+            # IS/OOS 메트릭 (있는 경우)
+            if "is_metrics" in item:
+                im: BacktestResult = item["is_metrics"]
+                row["is_calmar"] = round(im.calmar_ratio, 4)
+                row["is_return"] = round(im.total_return, 4)
+            if "oos_metrics" in item:
+                om: BacktestResult = item["oos_metrics"]
+                row["oos_calmar"] = round(om.calmar_ratio, 4)
+                row["oos_return"] = round(om.total_return, 4)
+                row["oos_degradation"] = round(item.get("oos_degradation", 0.0), 4)
+            # 워크포워드 메트릭 (있는 경우)
+            if "wf_window_pfs" in item:
+                pfs = item["wf_window_pfs"]
+                row["wf_min_pf"] = round(min(pfs), 4) if pfs else None
+                row["wf_pass"] = item.get("wf_pass", False)
             # Sharpe/PnL 별도 안정성
             row["sharpe_stability_score"] = item.get("sharpe_stability_score")
             row["sharpe_stability_grade"] = item.get("sharpe_stability_grade", "")
@@ -118,6 +137,83 @@ class MultiverseResult:
             df = df.sort_values(sort_by, ascending=ascending)
 
         return df.head(n).reset_index(drop=True)
+
+    # -----------------------------------------------------------------------
+    # walkforward_passing() — 워크포워드 통과 조합 필터
+    # -----------------------------------------------------------------------
+
+    def walkforward_passing(self) -> "MultiverseResult":
+        """모든 워크포워드 윈도우 PF > 1.0을 통과한 조합만 반환.
+
+        run_walkforward() 실행 결과에 "wf_window_pfs" 필드가 있는 조합 중
+        모든 윈도우의 profit_factor가 1.0을 초과하는 것만 필터링합니다.
+
+        Returns:
+            필터링된 MultiverseResult (원본 elapsed_seconds / total_combinations 유지).
+        """
+        passing = [
+            item for item in self.results
+            if item.get("wf_pass", False)
+        ]
+        return MultiverseResult(
+            results=passing,
+            total_combinations=self.total_combinations,
+            filtered_count=len(passing),
+            elapsed_seconds=self.elapsed_seconds,
+        )
+
+    # -----------------------------------------------------------------------
+    # to_parquet() — Parquet 저장
+    # -----------------------------------------------------------------------
+
+    def to_parquet(self, path: str, top_n: int = 0) -> None:
+        """결과를 Parquet 파일로 저장.
+
+        Args:
+            path: 저장할 .parquet 파일 경로.
+            top_n: 0이면 전체, 양수이면 calmar_ratio 기준 상위 N개만 저장.
+        """
+        try:
+            import pyarrow  # noqa: F401  — pyarrow 설치 확인
+        except ImportError:
+            logging.getLogger("backtest.multiverse").warning(
+                "pyarrow가 설치되지 않아 Parquet 저장을 건너뜁니다. "
+                "pip install pyarrow 를 실행하세요."
+            )
+            return
+
+        n = top_n if top_n > 0 else len(self.results)
+        df = self.top(n=n, sort_by="calmar_ratio")
+        if df.empty:
+            logging.getLogger("backtest.multiverse").warning("Parquet 저장: 데이터 없음")
+            return
+
+        out_path = Path(path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(str(out_path), index=False)
+        logging.getLogger("backtest.multiverse").info(f"Parquet 저장: {out_path}")
+
+    # -----------------------------------------------------------------------
+    # to_csv() — CSV 저장 (보강)
+    # -----------------------------------------------------------------------
+
+    def to_csv(self, path: str, top_n: int = 0) -> None:
+        """결과를 CSV 파일로 저장.
+
+        Args:
+            path: 저장할 .csv 파일 경로.
+            top_n: 0이면 전체, 양수이면 calmar_ratio 기준 상위 N개만 저장.
+        """
+        n = top_n if top_n > 0 else len(self.results)
+        df = self.top(n=n, sort_by="calmar_ratio")
+        if df.empty:
+            logging.getLogger("backtest.multiverse").warning("CSV 저장: 데이터 없음")
+            return
+
+        out_path = Path(path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(str(out_path), index=False, encoding="utf-8-sig")
+        logging.getLogger("backtest.multiverse").info(f"CSV 저장: {out_path}")
 
     # -----------------------------------------------------------------------
     # stability_report() — 텍스트 안정성 리포트
@@ -488,6 +584,344 @@ class MultiverseEngine:
         for part in parts[:-1]:
             cur = cur.setdefault(part, {})
         cur[parts[-1]] = value
+
+    # -----------------------------------------------------------------------
+    # run_oos_split() — IS/OOS 자동 분리
+    # -----------------------------------------------------------------------
+
+    def run_oos_split(
+        self,
+        start: str,
+        end: str,
+        oos_ratio: float = 0.2,
+        min_trades: int = 20,
+        n_jobs: int = 1,
+        stability_threshold: float = 0.7,
+    ) -> MultiverseResult:
+        """IS/OOS 자동 분리 백테스트.
+
+        start~end 기간을 (1-oos_ratio) / oos_ratio 비율로 분리하여
+        IS 구간 전체 그리드 탐색 후, PF(profit_factor) >= 1.0 또는 calmar > 0인
+        후보만 OOS 구간 재검증합니다.
+
+        Args:
+            start: 백테스트 전체 시작일 ("YYYY-MM-DD").
+            end: 백테스트 전체 종료일 ("YYYY-MM-DD").
+            oos_ratio: OOS 비율 (0.0~1.0, 기본 0.2 = 20%).
+                       IS 비율 = 1 - oos_ratio.
+            min_trades: 최소 거래 수 필터 (기본 20).
+            n_jobs: 병렬 스레드 수 (기본 1).
+            stability_threshold: 안정성 판정 기준 비율 (기본 0.7).
+
+        Returns:
+            MultiverseResult: IS/OOS 메트릭이 모두 포함된 결과.
+                              각 item에 "is_metrics", "oos_metrics",
+                              "oos_degradation" 필드가 추가됩니다.
+                              result 필드는 IS metrics를 가리킵니다 (backward compat).
+        """
+        if not self._param_grid:
+            self.logger.warning("파라미터 그리드가 비어있습니다. add_param()을 먼저 호출하세요.")
+            return MultiverseResult(
+                results=[], total_combinations=0,
+                filtered_count=0, elapsed_seconds=0.0,
+            )
+
+        # 날짜 분리
+        from datetime import datetime as _dt, timedelta as _td
+        start_dt = _dt.strptime(start[:10], "%Y-%m-%d")
+        end_dt = _dt.strptime(end[:10], "%Y-%m-%d")
+        total_days = (end_dt - start_dt).days
+        if total_days <= 0:
+            raise ValueError(f"start({start}) >= end({end}): 유효한 날짜 범위를 지정하세요.")
+        if not (0.0 < oos_ratio < 1.0):
+            raise ValueError(f"oos_ratio={oos_ratio}: 0.0 초과 1.0 미만이어야 합니다.")
+
+        is_days = int(total_days * (1.0 - oos_ratio))
+        is_end_dt = start_dt + _td(days=is_days)
+        oos_start_dt = is_end_dt + _td(days=1)
+
+        is_end = is_end_dt.strftime("%Y-%m-%d")
+        oos_start = oos_start_dt.strftime("%Y-%m-%d")
+
+        self.logger.info(
+            f"IS/OOS 분리: IS={start}~{is_end} ({is_days}일), "
+            f"OOS={oos_start}~{end} ({total_days - is_days}일)"
+        )
+
+        # 파라미터 조합 생성
+        keys = list(self._param_grid.keys())
+        value_lists = [self._param_grid[k] for k in keys]
+        combinations = list(product(*value_lists))
+        total = len(combinations)
+        self.logger.info(f"IS 그리드 탐색: {total}개 조합, {n_jobs} 스레드")
+
+        start_time = time.time()
+
+        # IS 구간 전체 탐색
+        saved_start, saved_end = self.start_date, self.end_date
+        self.start_date, self.end_date = start, is_end
+        if n_jobs <= 1:
+            is_raw = [self._run_single(keys, combo) for combo in combinations]
+        else:
+            is_raw = self._run_parallel(keys, combinations, n_jobs)
+        self.start_date, self.end_date = saved_start, saved_end
+
+        # IS min_trades 필터
+        is_filtered = [
+            r for r in is_raw
+            if r is not None and r["result"].total_trades >= min_trades
+        ]
+        is_filtered.sort(key=lambda x: x["result"].total_return, reverse=True)
+
+        # 안정성 분석 (IS 구간 기준)
+        self._analyze_stability(is_filtered, is_raw, keys, stability_threshold,
+                                metric="sharpe_ratio", prefix="sharpe_")
+        self._analyze_stability(is_filtered, is_raw, keys, stability_threshold,
+                                metric="total_return", prefix="pnl_")
+        for item in is_filtered:
+            item["stability_score"] = item.get("sharpe_stability_score")
+            item["stability_grade"] = item.get("sharpe_stability_grade", "")
+
+        # IS 후보 필터: profit_factor >= 1.0 근사 (total_return >= 0) 또는 calmar > 0.
+        # 두 조건 모두 미충족이면 OOS 비용을 아끼기 위해 스킵.
+        # IS 결과가 전혀 없거나 모두 음수인 경우 전체를 OOS 검증 대상에 포함
+        # (전수 OOS 비용 허용: 그리드가 소규모인 경우).
+        _positive_is = [
+            item for item in is_filtered
+            if item["result"].total_return >= 0 or item["result"].calmar_ratio > 0
+        ]
+        oos_candidates = _positive_is if _positive_is else is_filtered
+        self.logger.info(
+            f"IS 통과 {len(is_filtered)}개 → OOS 검증 후보 {len(oos_candidates)}개"
+        )
+
+        # OOS 구간 재검증
+        self.start_date, self.end_date = oos_start, end
+        for item in oos_candidates:
+            combo = tuple(item["params"][k] for k in keys)
+            oos_item = self._run_single(keys, combo)
+            if oos_item is not None:
+                oos_result = oos_item["result"]
+            else:
+                # OOS 실패 → 빈 결과
+                oos_result = self._empty_backtest_result()
+            item["is_metrics"] = item["result"]   # IS 메트릭 보존
+            item["oos_metrics"] = oos_result
+            # backward compat: result = IS metrics
+            # oos_degradation = (is_calmar - oos_calmar) / max(is_calmar, 1e-9)
+            is_calmar = item["is_metrics"].calmar_ratio
+            oos_calmar = oos_result.calmar_ratio
+            item["oos_degradation"] = (is_calmar - oos_calmar) / max(abs(is_calmar), 1e-9)
+        self.start_date, self.end_date = saved_start, saved_end
+
+        # OOS 검증 안 된 항목도 is_metrics만 설정 (degradation 없음)
+        oos_candidate_set = {id(item) for item in oos_candidates}
+        for item in is_filtered:
+            if id(item) not in oos_candidate_set:
+                item["is_metrics"] = item["result"]
+
+        elapsed = time.time() - start_time
+        self.logger.info(
+            f"IS/OOS 완료: {len(is_filtered)}/{total}개 IS 통과, "
+            f"{len(oos_candidates)}개 OOS 검증, {elapsed:.1f}초"
+        )
+
+        return MultiverseResult(
+            results=is_filtered,
+            total_combinations=total,
+            filtered_count=len(is_filtered),
+            elapsed_seconds=elapsed,
+        )
+
+    def _empty_backtest_result(self) -> "BacktestResult":
+        """OOS 백테스트 실패 시 반환할 빈 BacktestResult."""
+        return BacktestResult(
+            total_return=0.0, win_rate=0.0, avg_profit=0.0,
+            max_drawdown=0.0, sharpe_ratio=0.0, calmar_ratio=0.0,
+            sortino_ratio=0.0, profit_loss_ratio=0.0, total_trades=0,
+            trades=[], equity_curve=[], sells_by_reason={},
+        )
+
+    # -----------------------------------------------------------------------
+    # run_walkforward() — 워크포워드 검증
+    # -----------------------------------------------------------------------
+
+    def run_walkforward(
+        self,
+        start: str,
+        end: str,
+        is_window: int = 252,
+        oos_window: int = 63,
+        n_windows: int = 6,
+        min_trades: int = 20,
+        n_jobs: int = 1,
+        stability_threshold: float = 0.7,
+    ) -> MultiverseResult:
+        """워크포워드 검증.
+
+        start~end 기간을 n_windows 개의 롤링 윈도우로 분할하여
+        각 윈도우에서 IS=is_window일 / OOS=oos_window일 백테스트를 수행합니다.
+        모든 윈도우에서 OOS profit_factor > 1.0이면 wf_pass=True.
+
+        Args:
+            start: 전체 시작일 ("YYYY-MM-DD").
+            end: 전체 종료일 ("YYYY-MM-DD").
+            is_window: IS 기간 (영업일 근사, 기본 252 ≈ 1년).
+            oos_window: OOS 기간 (영업일 근사, 기본 63 ≈ 3개월).
+            n_windows: 윈도우 수 (기본 6). 데이터 부족 시 가능한 윈도우만 사용.
+            min_trades: IS 기간 최소 거래 수 필터 (기본 20).
+            n_jobs: 병렬 스레드 수 (기본 1).
+            stability_threshold: 안정성 판정 기준 비율 (기본 0.7).
+
+        Returns:
+            MultiverseResult: 각 item에 wf_window_pfs(윈도우별 OOS PF 리스트),
+                              wf_pass(모든 윈도우 PF > 1.0) 필드 포함.
+        """
+        if not self._param_grid:
+            self.logger.warning("파라미터 그리드가 비어있습니다. add_param()을 먼저 호출하세요.")
+            return MultiverseResult(
+                results=[], total_combinations=0,
+                filtered_count=0, elapsed_seconds=0.0,
+            )
+
+        from datetime import datetime as _dt, timedelta as _td
+
+        start_dt = _dt.strptime(start[:10], "%Y-%m-%d")
+        end_dt = _dt.strptime(end[:10], "%Y-%m-%d")
+        total_days = (end_dt - start_dt).days
+        stride = is_window + oos_window  # 윈도우 간격 (캘린더일 근사)
+
+        # 윈도우 경계 계산 (rolling, 겹치지 않는 stride)
+        windows: List[Tuple[str, str, str, str]] = []  # (is_start, is_end, oos_start, oos_end)
+        for i in range(n_windows):
+            w_start_dt = start_dt + _td(days=i * stride)
+            is_end_dt = w_start_dt + _td(days=is_window - 1)
+            oos_start_dt = is_end_dt + _td(days=1)
+            oos_end_dt = oos_start_dt + _td(days=oos_window - 1)
+            if oos_end_dt > end_dt:
+                # 마지막 OOS가 범위를 벗어나면 잘라내거나 종료
+                if w_start_dt >= end_dt:
+                    break
+                oos_end_dt = end_dt
+            windows.append((
+                w_start_dt.strftime("%Y-%m-%d"),
+                is_end_dt.strftime("%Y-%m-%d"),
+                oos_start_dt.strftime("%Y-%m-%d"),
+                oos_end_dt.strftime("%Y-%m-%d"),
+            ))
+
+        if not windows:
+            self.logger.warning("유효한 워크포워드 윈도우가 없습니다. 기간을 늘리거나 윈도우 크기를 줄이세요.")
+            return MultiverseResult(
+                results=[], total_combinations=0,
+                filtered_count=0, elapsed_seconds=0.0,
+            )
+
+        self.logger.info(f"워크포워드: {len(windows)}개 윈도우, is={is_window}일, oos={oos_window}일")
+
+        keys = list(self._param_grid.keys())
+        value_lists = [self._param_grid[k] for k in keys]
+        combinations = list(product(*value_lists))
+        total = len(combinations)
+
+        start_time = time.time()
+        saved_start, saved_end = self.start_date, self.end_date
+
+        # 조합별 윈도우 PF 누적
+        # combo_key → {"is_results": [BacktestResult, ...], "oos_pfs": [float, ...]}
+        combo_accum: Dict[tuple, Dict] = {
+            combo: {"is_results": [], "oos_pfs": [], "all_is_pass": True}
+            for combo in combinations
+        }
+
+        for w_idx, (is_start, is_end, oos_start, oos_end) in enumerate(windows):
+            self.logger.info(
+                f"  윈도우 {w_idx+1}/{len(windows)}: "
+                f"IS={is_start}~{is_end}, OOS={oos_start}~{oos_end}"
+            )
+
+            # IS 실행
+            self.start_date, self.end_date = is_start, is_end
+            if n_jobs <= 1:
+                is_raw = [self._run_single(keys, combo) for combo in combinations]
+            else:
+                is_raw = self._run_parallel(keys, combinations, n_jobs)
+
+            # OOS 실행
+            self.start_date, self.end_date = oos_start, oos_end
+            if n_jobs <= 1:
+                oos_raw = [self._run_single(keys, combo) for combo in combinations]
+            else:
+                oos_raw = self._run_parallel(keys, combinations, n_jobs)
+
+            for combo, is_item, oos_item in zip(combinations, is_raw, oos_raw):
+                acc = combo_accum[combo]
+                # IS min_trades 미달이면 이 윈도우 IS 실패 표시
+                if is_item is None or is_item["result"].total_trades < min_trades:
+                    acc["all_is_pass"] = False
+                    acc["oos_pfs"].append(0.0)
+                    continue
+                acc["is_results"].append(is_item["result"])
+
+                # OOS profit_factor = (1 + total_return) 근사 (거래 없으면 0)
+                if oos_item is not None and oos_item["result"].total_trades > 0:
+                    oos_tr = oos_item["result"].total_return
+                    oos_pf = max(0.0, 1.0 + oos_tr)  # total_return 기반 proxy
+                else:
+                    oos_pf = 0.0
+                acc["oos_pfs"].append(oos_pf)
+
+        self.start_date, self.end_date = saved_start, saved_end
+
+        # 전체 IS 기간으로 최종 백테스트 (대표 메트릭 계산)
+        self.start_date, self.end_date = start, end
+        if n_jobs <= 1:
+            full_raw = [self._run_single(keys, combo) for combo in combinations]
+        else:
+            full_raw = self._run_parallel(keys, combinations, n_jobs)
+        self.start_date, self.end_date = saved_start, saved_end
+
+        # 필터 + 워크포워드 메트릭 조립
+        filtered: List[Dict] = []
+        for combo, full_item in zip(combinations, full_raw):
+            if full_item is None or full_item["result"].total_trades < min_trades:
+                continue
+            acc = combo_accum[combo]
+            pfs = acc["oos_pfs"]
+            wf_pass = bool(pfs) and all(pf > 1.0 for pf in pfs)
+            full_item["wf_window_pfs"] = pfs
+            full_item["wf_pass"] = wf_pass
+            # 안정성 필드 초기화
+            full_item["stability_score"] = None
+            full_item["stability_grade"] = ""
+            full_item["sharpe_stability_score"] = None
+            full_item["sharpe_stability_grade"] = ""
+            full_item["pnl_stability_score"] = None
+            full_item["pnl_stability_grade"] = ""
+            filtered.append(full_item)
+
+        filtered.sort(key=lambda x: x["result"].total_return, reverse=True)
+        self._analyze_stability(filtered, full_raw, keys, stability_threshold,
+                                metric="sharpe_ratio", prefix="sharpe_")
+        self._analyze_stability(filtered, full_raw, keys, stability_threshold,
+                                metric="total_return", prefix="pnl_")
+        for item in filtered:
+            item["stability_score"] = item.get("sharpe_stability_score")
+            item["stability_grade"] = item.get("sharpe_stability_grade", "")
+
+        elapsed = time.time() - start_time
+        wf_pass_count = sum(1 for item in filtered if item.get("wf_pass", False))
+        self.logger.info(
+            f"워크포워드 완료: {len(filtered)}/{total}개 통과, "
+            f"wf_pass={wf_pass_count}개, {elapsed:.1f}초"
+        )
+
+        return MultiverseResult(
+            results=filtered,
+            total_combinations=total,
+            filtered_count=len(filtered),
+            elapsed_seconds=elapsed,
+        )
 
     # -----------------------------------------------------------------------
     # _analyze_stability() — 파라미터 안정성 분석

@@ -90,6 +90,21 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--max-combinations", type=int, default=100,
                    help="스크리너 × 전략 파라미터 조합 안전 상한 (기본 100). "
                         "초과 시 에러로 종료하고 그리드 축소를 권고한다.")
+    # ------ IS/OOS · 워크포워드 옵션 ------
+    p.add_argument("--start",
+                   help="백테스트 시작일 YYYY-MM-DD. --start/--end 가 모두 있으면 --days 무시.")
+    p.add_argument("--end",
+                   help="백테스트 종료일 YYYY-MM-DD.")
+    p.add_argument("--oos-ratio", type=float, default=0.2,
+                   help="OOS 비율 (0.0~1.0, 기본 0.2). --mode oos_split 시 사용.")
+    p.add_argument("--mode", choices=["plain", "oos_split", "walkforward"], default="plain",
+                   help="실행 모드: plain(기본) | oos_split(IS/OOS 분리) | walkforward(워크포워드)")
+    p.add_argument("--is-window", type=int, default=252,
+                   help="워크포워드 IS 기간 (캘린더일, 기본 252). --mode walkforward 시 사용.")
+    p.add_argument("--oos-window", type=int, default=63,
+                   help="워크포워드 OOS 기간 (캘린더일, 기본 63). --mode walkforward 시 사용.")
+    p.add_argument("--n-windows", type=int, default=6,
+                   help="워크포워드 윈도우 수 (기본 6). --mode walkforward 시 사용.")
     return p.parse_args()
 
 
@@ -332,14 +347,32 @@ def _write_screener_grid_markdown(
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _resolve_date_range(args: argparse.Namespace) -> Tuple[Optional[str], Optional[str]]:
+    """--start/--end 또는 --days 에서 (start_date, end_date) 결정."""
+    if args.start and args.end:
+        return args.start, args.end
+    if args.start or args.end:
+        # 한쪽만 있으면 경고 후 days 사용
+        print(f"[OPT] 경고: --start 와 --end 는 함께 사용해야 합니다. --days={args.days} 로 폴백.",
+              file=sys.stderr)
+    return None, None
+
+
 def _run_mv(
     strategy_class: Any,
     daily_data: Dict[str, pd.DataFrame],
     stock_codes: List[str],
     strategy_grid: Dict[str, List[Any]],
     args: argparse.Namespace,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ) -> MultiverseResult:
-    """MultiverseEngine 생성 + 전략 파라미터 그리드 추가 후 실행."""
+    """MultiverseEngine 생성 + 전략 파라미터 그리드 추가 후 실행.
+
+    Args:
+        start_date: 백테스트 시작일 (None이면 데이터 전체).
+        end_date: 백테스트 종료일 (None이면 데이터 전체).
+    """
     mv = MultiverseEngine(
         strategy_class=strategy_class,
         daily_data=daily_data,
@@ -347,6 +380,8 @@ def _run_mv(
         initial_capital=args.initial_capital,
         max_positions=args.max_positions,
         position_size_pct=args.position_size_pct,
+        start_date=start_date,
+        end_date=end_date,
     )
     for key, values in strategy_grid.items():
         if not isinstance(values, list) or not values:
@@ -354,7 +389,34 @@ def _run_mv(
                   file=sys.stderr)
             continue
         mv.add_param(key, values)
-    return mv.run(min_trades=args.min_trades, n_jobs=args.n_jobs)
+
+    mode = getattr(args, "mode", "plain")
+    if mode == "oos_split":
+        s, e = _resolve_date_range(args)
+        if s is None or e is None:
+            print("[OPT] --mode oos_split 은 --start 와 --end 가 필요합니다.", file=sys.stderr)
+            return mv.run(min_trades=args.min_trades, n_jobs=args.n_jobs)
+        return mv.run_oos_split(
+            start=s, end=e,
+            oos_ratio=args.oos_ratio,
+            min_trades=args.min_trades,
+            n_jobs=args.n_jobs,
+        )
+    elif mode == "walkforward":
+        s, e = _resolve_date_range(args)
+        if s is None or e is None:
+            print("[OPT] --mode walkforward 은 --start 와 --end 가 필요합니다.", file=sys.stderr)
+            return mv.run(min_trades=args.min_trades, n_jobs=args.n_jobs)
+        return mv.run_walkforward(
+            start=s, end=e,
+            is_window=args.is_window,
+            oos_window=args.oos_window,
+            n_windows=args.n_windows,
+            min_trades=args.min_trades,
+            n_jobs=args.n_jobs,
+        )
+    else:
+        return mv.run(min_trades=args.min_trades, n_jobs=args.n_jobs)
 
 
 def _extract_summary_from_result(

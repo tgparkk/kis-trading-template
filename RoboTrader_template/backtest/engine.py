@@ -57,6 +57,8 @@ class BacktestResult:
         avg_profit: 평균 수익률 (거래당)
         max_drawdown: 최대 낙폭 (MDD, 양수: 예 0.15 = -15%)
         sharpe_ratio: 샤프 비율 (무위험 수익률 0% 기준)
+        calmar_ratio: 칼마 비율 (연환산 수익률 / MDD). MDD=0이면 0.
+        sortino_ratio: 소르티노 비율 (하방 편차 기반, 무위험률 0% 가정).
         profit_loss_ratio: 손익비 (평균 수익 / 평균 손실)
         total_trades: 완료된 왕복 거래 수 (매수→매도 쌍)
         trades: 개별 거래 기록 리스트
@@ -67,6 +69,8 @@ class BacktestResult:
     avg_profit: float
     max_drawdown: float
     sharpe_ratio: float
+    calmar_ratio: float
+    sortino_ratio: float
     profit_loss_ratio: float
     total_trades: int
     trades: List[Dict]
@@ -87,6 +91,8 @@ class BacktestResult:
             f"평균수익={self.avg_profit:+.2%}  "
             f"MDD={self.max_drawdown:.2%}  "
             f"샤프={self.sharpe_ratio:.2f}  "
+            f"칼마={self.calmar_ratio:.2f}  "
+            f"소르티노={self.sortino_ratio:.2f}  "
             f"손익비={self.profit_loss_ratio:.2f}  "
             f"거래={self.total_trades}건"
             f"{reason_str}"
@@ -501,12 +507,15 @@ class BacktestEngine:
         sells_by_reason = sells_by_reason or {}
 
         if total_trades == 0:
+            mdd = self._calc_mdd(equity_curve)
             return BacktestResult(
                 total_return=total_return,
                 win_rate=0.0,
                 avg_profit=0.0,
-                max_drawdown=self._calc_mdd(equity_curve),
+                max_drawdown=mdd,
                 sharpe_ratio=0.0,
+                calmar_ratio=0.0,
+                sortino_ratio=0.0,
                 profit_loss_ratio=0.0,
                 total_trades=0,
                 trades=completed_trades,
@@ -528,6 +537,8 @@ class BacktestEngine:
 
         mdd = self._calc_mdd(equity_curve)
         sharpe = self._calc_sharpe(equity_curve)
+        calmar = self._calc_calmar(total_return, mdd, len(equity_curve))
+        sortino = self._calc_sortino(equity_curve)
 
         return BacktestResult(
             total_return=total_return,
@@ -535,6 +546,8 @@ class BacktestEngine:
             avg_profit=avg_profit,
             max_drawdown=mdd,
             sharpe_ratio=sharpe,
+            calmar_ratio=calmar,
+            sortino_ratio=sortino,
             profit_loss_ratio=profit_loss_ratio,
             total_trades=total_trades,
             trades=completed_trades,
@@ -565,6 +578,45 @@ class BacktestEngine:
             return 0.0
         return float(excess.mean() / excess.std() * np.sqrt(252))
 
+    @staticmethod
+    def _calc_calmar(total_return: float, mdd: float, n_days: int) -> float:
+        """칼마 비율 계산 (연환산 수익률 / MDD).
+
+        Args:
+            total_return: 누적 수익률 (예: 0.12 = +12%).
+            mdd: 최대 낙폭 (양수, 예: 0.15 = 15%).
+            n_days: 백테스트 일수 (연율화 기준).
+
+        Returns:
+            CAGR / MDD. MDD가 0이면 0 반환.
+        """
+        if mdd <= 0 or n_days <= 0:
+            return 0.0
+        years = n_days / 252.0
+        # 복리 연환산: (1 + total_return)^(1/years) - 1
+        cagr = (1.0 + total_return) ** (1.0 / years) - 1.0
+        return float(cagr / mdd)
+
+    @staticmethod
+    def _calc_sortino(equity_curve: List[float], risk_free_rate: float = 0.0) -> float:
+        """소르티노 비율 계산 (하방 편차 기반, 연율화, 무위험률 기본 0%).
+
+        하방 편차 = 음수 초과 수익률의 표준편차.
+        """
+        if len(equity_curve) < 2:
+            return 0.0
+        arr = np.array(equity_curve, dtype=float)
+        daily_returns = np.diff(arr) / arr[:-1]
+        excess = daily_returns - risk_free_rate / 252
+        downside = excess[excess < 0]
+        if len(downside) == 0:
+            # 손실 일자 없으면 무한대 → 실용상 큰 값 반환
+            return float(excess.mean() * np.sqrt(252)) if excess.mean() > 0 else 0.0
+        downside_std = float(np.std(downside))
+        if downside_std == 0:
+            return 0.0
+        return float(excess.mean() / downside_std * np.sqrt(252))
+
     def _empty_result(self) -> BacktestResult:
         """데이터 없을 때 반환하는 빈 결과."""
         return BacktestResult(
@@ -573,6 +625,8 @@ class BacktestEngine:
             avg_profit=0.0,
             max_drawdown=0.0,
             sharpe_ratio=0.0,
+            calmar_ratio=0.0,
+            sortino_ratio=0.0,
             profit_loss_ratio=0.0,
             total_trades=0,
             trades=[],
