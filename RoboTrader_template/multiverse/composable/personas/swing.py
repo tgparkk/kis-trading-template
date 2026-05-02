@@ -1,10 +1,10 @@
-"""스윙 페르소나 — 볼린저밴드 + RSI 회귀 전략.
+"""스윙 페르소나 — 볼린저밴드 + RSI 회귀 전략 + z-score Universe 정렬.
 
 알고리즘 요약:
-  - Universe: corp_events 필터 후 상위 10종목
-  - Scorer: 5일 모멘텀 수익률
-  - Regime: prev_kospi_return_filter == "positive_only" 이면 양봉 시장만, 그 외 항상 risk_on
-  - SignalGen: BB 하단 이탈 후 종가가 하단 위로 회복 + RSI < 35 이면 BUY
+  - Universe: corp_events 필터 후 5일 모멘텀 z-score 정규화 상위 10종목
+  - Scorer: Universe._score_cache에서 정규화 점수 조회 (재계산 없음)
+  - Regime: global_risk_mode != risk_off_avoid 이면 risk_on
+  - SignalGen: Universe 상위 통과 + BB 하단 이탈 후 회복 + RSI < 40 이면 BUY
   - Sizer: 동일 비중 (equal weight)
   - ExitRule: RSI > exit_rsi_overbought OR 손절 hard_stop_pct 초과
   - Rebalancer: 매주 월요일
@@ -12,7 +12,9 @@
 """
 from __future__ import annotations
 
+import math
 from datetime import date
+from typing import Dict, Tuple
 
 import pandas as pd
 
@@ -24,6 +26,22 @@ _UNIVERSE_TOP_N = 10
 _BB_PERIOD = 20
 _BB_STD = 2.0
 _RSI_PERIOD = 14
+
+# 캐시 키: (as_of_date, config_hash) → {symbol: normalized_score}
+_ScoreCache = Dict[Tuple, Dict[str, float]]
+
+
+def _z_normalize(values: list[float]) -> list[float]:
+    """Universe-wide z-score 정규화. std=0이면 0 반환."""
+    finite = [v for v in values if not math.isnan(v)]
+    if not finite:
+        return [0.0] * len(values)
+    mean = sum(finite) / len(finite)
+    variance = sum((v - mean) ** 2 for v in finite) / len(finite)
+    std = math.sqrt(variance)
+    if std == 0:
+        return [0.0] * len(values)
+    return [(v - mean) / std if not math.isnan(v) else 0.0 for v in values]
 
 
 def _calc_rsi(closes: pd.Series, period: int = 14) -> float:
@@ -42,23 +60,58 @@ def _calc_rsi(closes: pd.Series, period: int = 14) -> float:
 class _SwingUniverse:
     def __init__(self, candidate_symbols: list[str]) -> None:
         self.candidates = candidate_symbols
+        # (as_of_date, config_hash) → {symbol: normalized_score}
+        self._score_cache: _ScoreCache = {}
 
     def select(self, ctx: PITContext, paramset: ParamSet) -> list[str]:
         from RoboTrader_template.multiverse.data import corp_events
+
         filtered = corp_events.filter_universe(self.candidates, ctx.as_of_date)
-        return filtered[:_UNIVERSE_TOP_N]
+        if not filtered:
+            return []
+
+        cache_key = (ctx.as_of_date, paramset.config_hash())
+        if cache_key not in self._score_cache:
+            self._score_cache[cache_key] = self._compute_scores(ctx, filtered)
+
+        scores = self._score_cache[cache_key]
+        ranked = sorted(scores, key=lambda s: scores[s], reverse=True)
+        return ranked[:_UNIVERSE_TOP_N]
+
+    def _compute_scores(
+        self, ctx: PITContext, symbols: list[str]
+    ) -> Dict[str, float]:
+        """5일 모멘텀 raw → z-score 정규화."""
+        mom_raw: list[float] = []
+
+        for sym in symbols:
+            df = ctx.read_daily(symbol=sym, lookback_days=10)
+            if df is not None and not df.empty and len(df) >= 5:
+                try:
+                    m = float(df["close"].iloc[-1] / df["close"].iloc[-5] - 1)
+                except Exception:
+                    m = math.nan
+            else:
+                m = math.nan
+            mom_raw.append(m)
+
+        mom_z = _z_normalize(mom_raw)
+
+        scores: Dict[str, float] = {}
+        for i, sym in enumerate(symbols):
+            scores[sym] = mom_z[i]
+        return scores
 
 
 class _SwingScorer:
+    def __init__(self, universe: _SwingUniverse) -> None:
+        self._universe = universe
+
     def score(self, ctx: PITContext, symbol: str, paramset: ParamSet) -> float:
-        """5일 모멘텀 수익률."""
-        df = ctx.read_daily(symbol=symbol, lookback_days=10)
-        if df is None or df.empty or len(df) < 5:
-            return 0.0
-        try:
-            return float(df["close"].iloc[-1] / df["close"].iloc[-5] - 1)
-        except Exception:
-            return 0.0
+        """Universe 캐시에서 정규화 점수 조회. 캐시 미스 시 0.0."""
+        cache_key = (ctx.as_of_date, paramset.config_hash())
+        scores = self._universe._score_cache.get(cache_key, {})
+        return scores.get(symbol, 0.0)
 
 
 class _SwingRegime:
@@ -68,8 +121,17 @@ class _SwingRegime:
 
 
 class _SwingSignalGen:
+    def __init__(self, universe: _SwingUniverse) -> None:
+        self._universe = universe
+
     def generate(self, ctx: PITContext, symbol: str, paramset: ParamSet) -> str:
-        """BB 하단 이탈 후 회복 + RSI < 35 이면 BUY."""
+        """Universe 상위 통과 + BB 하단 이탈 후 회복 + RSI < 40 이면 BUY."""
+        # Universe 상위 통과 가드
+        cache_key = (ctx.as_of_date, paramset.config_hash())
+        scores = self._universe._score_cache.get(cache_key, {})
+        if symbol not in scores:
+            return "HOLD"
+
         df = ctx.read_daily(symbol=symbol, lookback_days=_BB_PERIOD + 5)
         if df is None or df.empty or len(df) < _BB_PERIOD:
             return "HOLD"
@@ -88,7 +150,7 @@ class _SwingSignalGen:
         bb_bounce = (prev_close <= prev_lower) and (last_close > last_lower)
 
         rsi = _calc_rsi(closes, _RSI_PERIOD)
-        if bb_bounce and rsi < 35:
+        if bb_bounce and rsi < 40:
             return "BUY"
         return "HOLD"
 
@@ -142,12 +204,15 @@ def build_swing_strategy(
     paramset: ParamSet, candidate_symbols: list[str]
 ) -> ComposableStrategy:
     """스윙 페르소나 ComposableStrategy 팩토리."""
+    universe = _SwingUniverse(candidate_symbols)
+    scorer = _SwingScorer(universe)
+    signal_gen = _SwingSignalGen(universe)
     return ComposableStrategy(
         paramset=paramset,
-        universe=_SwingUniverse(candidate_symbols),
-        scorer=_SwingScorer(),
+        universe=universe,
+        scorer=scorer,
         regime=_SwingRegime(),
-        signal_gen=_SwingSignalGen(),
+        signal_gen=signal_gen,
         sizer=_SwingSizer(),
         exit_rule=_SwingExitRule(),
         rebalancer=_SwingRebalancer(),

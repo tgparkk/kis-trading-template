@@ -1,10 +1,10 @@
 """단타 페르소나 — 일봉 모멘텀 기반 (호가 없는 일봉 단타).
 
 알고리즘 요약:
-  - Universe: corp_events 필터 후 상위 20종목 (변동성 높은 단타 후보)
-  - Scorer: 5일 변동성 (일봉 표준편차)
+  - Universe: corp_events 필터 후 5일 변동성 z-score 정규화 상위 20종목
+  - Scorer: Universe._score_cache에서 정규화 점수 조회 (재계산 없음)
   - Regime: 항상 risk_on (단타는 국면 무관 단기 기회 포착)
-  - SignalGen: 전일 양봉(종가>시가) + 거래량 급증(전일 대비 1.5배 이상) 이면 BUY
+  - SignalGen: Universe 상위 통과 + 전일 양봉(종가>시가) + 거래량 급증(2.0배 이상) 이면 BUY
   - Sizer: 소형 포지션 — max_weight_per_stock * 0.5
   - ExitRule: 다음 날 EOD 청산 (held_days >= 1) 또는 hard_stop_pct 손절
   - Rebalancer: 매일 (daily)
@@ -12,7 +12,9 @@
 """
 from __future__ import annotations
 
+import math
 from datetime import date
+from typing import Dict, Tuple
 
 import pandas as pd
 
@@ -22,32 +24,82 @@ from RoboTrader_template.multiverse.engine.pit_engine import PITContext
 
 _UNIVERSE_TOP_N = 20
 _VOL_WINDOW = 5
-_VOL_SURGE_RATIO = 1.5
+_VOL_SURGE_RATIO = 2.0  # 거래비용 보정: 단타 245bp+슬리피지 50bp → 2.0배로 강화
 _INTRADAY_HOLD_DAYS = 1  # 단타 최대 보유일 강제
+
+# 캐시 키: (as_of_date, config_hash) → {symbol: normalized_score}
+_ScoreCache = Dict[Tuple, Dict[str, float]]
+
+
+def _z_normalize(values: list[float]) -> list[float]:
+    """Universe-wide z-score 정규화. std=0이면 0 반환."""
+    finite = [v for v in values if not math.isnan(v)]
+    if not finite:
+        return [0.0] * len(values)
+    mean = sum(finite) / len(finite)
+    variance = sum((v - mean) ** 2 for v in finite) / len(finite)
+    std = math.sqrt(variance)
+    if std == 0:
+        return [0.0] * len(values)
+    return [(v - mean) / std if not math.isnan(v) else 0.0 for v in values]
 
 
 class _IntradayUniverse:
     def __init__(self, candidate_symbols: list[str]) -> None:
         self.candidates = candidate_symbols
+        # (as_of_date, config_hash) → {symbol: normalized_score}
+        self._score_cache: _ScoreCache = {}
 
     def select(self, ctx: PITContext, paramset: ParamSet) -> list[str]:
         from RoboTrader_template.multiverse.data import corp_events
+
         filtered = corp_events.filter_universe(self.candidates, ctx.as_of_date)
-        return filtered[:_UNIVERSE_TOP_N]
+        if not filtered:
+            return []
+
+        cache_key = (ctx.as_of_date, paramset.config_hash())
+        if cache_key not in self._score_cache:
+            self._score_cache[cache_key] = self._compute_scores(ctx, filtered)
+
+        scores = self._score_cache[cache_key]
+        ranked = sorted(scores, key=lambda s: scores[s], reverse=True)
+        return ranked[:_UNIVERSE_TOP_N]
+
+    def _compute_scores(
+        self, ctx: PITContext, symbols: list[str]
+    ) -> Dict[str, float]:
+        """5일 변동성(일봉 수익률 표준편차) raw → z-score 정규화."""
+        vol_raw: list[float] = []
+
+        for sym in symbols:
+            df = ctx.read_daily(symbol=sym, lookback_days=_VOL_WINDOW + 2)
+            if df is not None and not df.empty and len(df) >= _VOL_WINDOW:
+                try:
+                    closes = df["close"].astype(float)
+                    v = float(closes.pct_change().dropna().std())
+                    vol_raw.append(v if not math.isnan(v) else math.nan)
+                except Exception:
+                    vol_raw.append(math.nan)
+            else:
+                vol_raw.append(math.nan)
+
+        vol_z = _z_normalize(vol_raw)
+
+        scores: Dict[str, float] = {}
+        for i, sym in enumerate(symbols):
+            scores[sym] = vol_z[i]
+        return scores
 
 
 class _IntradayScorer:
+    def __init__(self, universe: _IntradayUniverse) -> None:
+        self._universe = universe
+
     def score(self, ctx: PITContext, symbol: str, paramset: ParamSet) -> float:
-        """5일 변동성 (일봉 수익률 표준편차) — 높을수록 단타 기회."""
-        df = ctx.read_daily(symbol=symbol, lookback_days=_VOL_WINDOW + 2)
-        if df is None or df.empty or len(df) < _VOL_WINDOW:
-            return 0.0
-        try:
-            closes = df["close"].astype(float)
-            vol = float(closes.pct_change().dropna().std())
-            return max(vol, 0.0)
-        except Exception:
-            return 0.0
+        """Universe 캐시에서 정규화 점수 조회. 캐시 미스 시 0.0."""
+        cache_key = (ctx.as_of_date, paramset.config_hash())
+        scores = self._universe._score_cache.get(cache_key, {})
+        return scores.get(symbol, 0.0)
 
 
 class _IntradayRegime:
@@ -57,8 +109,17 @@ class _IntradayRegime:
 
 
 class _IntradaySignalGen:
+    def __init__(self, universe: _IntradayUniverse) -> None:
+        self._universe = universe
+
     def generate(self, ctx: PITContext, symbol: str, paramset: ParamSet) -> str:
-        """전일 양봉 + 거래량 급증 이면 BUY."""
+        """Universe 상위 통과 + 전일 양봉 + 거래량 2.0배 급증 이면 BUY."""
+        # Universe 상위 통과 가드
+        cache_key = (ctx.as_of_date, paramset.config_hash())
+        scores = self._universe._score_cache.get(cache_key, {})
+        if symbol not in scores:
+            return "HOLD"
+
         df = ctx.read_daily(symbol=symbol, lookback_days=_VOL_WINDOW + 2)
         if df is None or df.empty or len(df) < 2:
             return "HOLD"
@@ -79,10 +140,10 @@ class _IntradaySignalGen:
         # 전일 양봉 확인
         is_bullish = prev_close > prev_open
 
-        # 거래량 급증 확인 (최근 _VOL_WINDOW일 평균 대비)
+        # 거래량 급증 확인 (최근 _VOL_WINDOW일 평균 대비 2.0배 이상)
         if len(df) >= _VOL_WINDOW + 1:
             avg_vol = float(
-                df["volume"].astype(float).iloc[-(  _VOL_WINDOW + 1):-1].mean()
+                df["volume"].astype(float).iloc[-(_VOL_WINDOW + 1):-1].mean()
             )
             vol_surge = (avg_vol > 0) and (prev_vol >= avg_vol * _VOL_SURGE_RATIO)
         else:
@@ -137,12 +198,15 @@ def build_intraday_strategy(
     paramset: ParamSet, candidate_symbols: list[str]
 ) -> ComposableStrategy:
     """단타(일봉 모멘텀) 페르소나 ComposableStrategy 팩토리."""
+    universe = _IntradayUniverse(candidate_symbols)
+    scorer = _IntradayScorer(universe)
+    signal_gen = _IntradaySignalGen(universe)
     return ComposableStrategy(
         paramset=paramset,
-        universe=_IntradayUniverse(candidate_symbols),
-        scorer=_IntradayScorer(),
+        universe=universe,
+        scorer=scorer,
         regime=_IntradayRegime(),
-        signal_gen=_IntradaySignalGen(),
+        signal_gen=signal_gen,
         sizer=_IntradaySizer(),
         exit_rule=_IntradayExitRule(),
         rebalancer=_IntradayRebalancer(),
