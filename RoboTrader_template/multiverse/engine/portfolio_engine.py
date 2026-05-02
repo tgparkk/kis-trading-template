@@ -80,26 +80,30 @@ def _get_portfolio_trading_dates(
 ) -> List[date]:
     """start_date ~ end_date 사이 거래일 목록 반환.
 
-    후보 종목 중 첫 번째 종목의 일봉을 이용. 실패 시 평일 fallback.
+    모든 후보 종목의 거래일 합집합을 사용 (어떤 종목이든 한 종목이라도 거래된 날 포함).
+    빈 결과 시 평일 fallback.
     """
     import pandas as pd
 
     if candidate_symbols:
-        symbol = candidate_symbols[0]
         lookback = (end_date - start_date).days + 10
-        df = pit_reader.read_daily(
-            symbol=symbol,
-            as_of_date=end_date,
-            lookback_days=lookback,
-        )
-        if not df.empty:
-            dates = sorted(
-                [d for d in df["date"].tolist() if start_date <= d <= end_date]
+        all_dates: set = set()
+        for symbol in candidate_symbols:
+            df = pit_reader.read_daily(
+                symbol=symbol,
+                as_of_date=end_date,
+                lookback_days=lookback,
             )
-            if dates:
-                if dates[-1] < end_date:
-                    dates.append(end_date)
-                return dates
+            if df.empty:
+                continue
+            for d in df["date"].tolist():
+                if start_date <= d <= end_date:
+                    all_dates.add(d)
+        dates = sorted(all_dates)
+        if dates:
+            if dates[-1] < end_date:
+                dates.append(end_date)
+            return dates
 
     # fallback: 평일 목록
     days = pd.bdate_range(start=start_date, end=end_date)

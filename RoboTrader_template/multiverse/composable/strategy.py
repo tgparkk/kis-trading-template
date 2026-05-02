@@ -3,18 +3,31 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from RoboTrader_template.multiverse.engine.pit_engine import Signal
+from RoboTrader_template.multiverse.composable.universe import Universe
+from RoboTrader_template.multiverse.composable.scorer import Scorer
+from RoboTrader_template.multiverse.composable.regime import Regime
+from RoboTrader_template.multiverse.composable.signal_gen import SignalGenerator
+from RoboTrader_template.multiverse.composable.sizer import Sizer
+from RoboTrader_template.multiverse.composable.exit_rule import ExitRule
+from RoboTrader_template.multiverse.composable.rebalancer import Rebalancer
+from RoboTrader_template.multiverse.composable.holding_cap import HoldingCap
 
 if TYPE_CHECKING:
     from RoboTrader_template.multiverse.engine.pit_engine import PITContext
     from RoboTrader_template.multiverse.composable.paramset import ParamSet
-    from RoboTrader_template.multiverse.composable.universe import Universe
-    from RoboTrader_template.multiverse.composable.scorer import Scorer
-    from RoboTrader_template.multiverse.composable.regime import Regime
-    from RoboTrader_template.multiverse.composable.signal_gen import SignalGenerator
-    from RoboTrader_template.multiverse.composable.sizer import Sizer
-    from RoboTrader_template.multiverse.composable.exit_rule import ExitRule
-    from RoboTrader_template.multiverse.composable.rebalancer import Rebalancer
-    from RoboTrader_template.multiverse.composable.holding_cap import HoldingCap
+
+
+def _check_protocol(obj: object, proto: type, name: str) -> None:
+    """obj가 proto Protocol을 만족하지 않으면 TypeError raise.
+
+    Python의 @runtime_checkable Protocol은 메서드 이름 존재 여부만 체크하므로
+    인자 갯수/타입까지는 검증하지 않는다. 그래도 메서드 자체 누락은 조기에 잡을 수 있다.
+    """
+    if not isinstance(obj, proto):
+        raise TypeError(
+            f"{name} must implement {proto.__name__} Protocol "
+            f"(got {type(obj).__name__})"
+        )
 
 
 class ComposableStrategy:
@@ -35,6 +48,15 @@ class ComposableStrategy:
         rebalancer: "Rebalancer",
         holding_cap: "HoldingCap",
     ) -> None:
+        _check_protocol(universe, Universe, "universe")
+        _check_protocol(scorer, Scorer, "scorer")
+        _check_protocol(regime, Regime, "regime")
+        _check_protocol(signal_gen, SignalGenerator, "signal_gen")
+        _check_protocol(sizer, Sizer, "sizer")
+        _check_protocol(exit_rule, ExitRule, "exit_rule")
+        _check_protocol(rebalancer, Rebalancer, "rebalancer")
+        _check_protocol(holding_cap, HoldingCap, "holding_cap")
+
         self.paramset = paramset
         self.universe = universe
         self.scorer = scorer

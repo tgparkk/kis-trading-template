@@ -587,3 +587,276 @@ def test_p7_portfolio_stop_full_exit(base_paramset):
     assert all(t.side == "SELL" for t in stop_exits), (
         "portfolio_stop 이유의 BUY가 있음 (BUG)"
     )
+
+
+# ================================================================== #
+# P8 — _get_portfolio_trading_dates union 방식
+# ================================================================== #
+
+def test_get_portfolio_trading_dates_uses_union():
+    """모든 candidate 종목의 거래일 union을 사용해 첫 종목 의존성 제거."""
+    # 종목 A: 5월 1~3일만 거래 (3일치)
+    # 종목 B: 5월 1~10일 거래 (10일치)
+    # 종목 C: 5월 5~10일 거래 (6일치)
+    # 기대: union = 5월 1~10일 (10일)
+    from unittest.mock import patch
+    from RoboTrader_template.multiverse.engine.portfolio_engine import _get_portfolio_trading_dates
+
+    a_dates = [date(2026, 5, 1), date(2026, 5, 2), date(2026, 5, 3)]
+    b_dates = [date(2026, 5, d) for d in range(1, 11)]
+    c_dates = [date(2026, 5, d) for d in range(5, 11)]
+
+    def _read_daily_mock(symbol, as_of_date, lookback_days):
+        if symbol == "A":
+            return pd.DataFrame({
+                "date": a_dates, "close": [100] * 3,
+                "open": [100] * 3, "high": [100] * 3,
+                "low": [100] * 3, "volume": [1000] * 3,
+            })
+        if symbol == "B":
+            return pd.DataFrame({
+                "date": b_dates, "close": [200] * 10,
+                "open": [200] * 10, "high": [200] * 10,
+                "low": [200] * 10, "volume": [1000] * 10,
+            })
+        if symbol == "C":
+            return pd.DataFrame({
+                "date": c_dates, "close": [300] * 6,
+                "open": [300] * 6, "high": [300] * 6,
+                "low": [300] * 6, "volume": [1000] * 6,
+            })
+        return pd.DataFrame()
+
+    with patch(
+        "RoboTrader_template.multiverse.engine.portfolio_engine.pit_reader.read_daily",
+        side_effect=_read_daily_mock,
+    ):
+        # A를 첫 번째에 둬도(이전엔 3일치만 잡힘) union으로 10일 모두 나와야 함
+        result = _get_portfolio_trading_dates(
+            start_date=date(2026, 5, 1),
+            end_date=date(2026, 5, 10),
+            candidate_symbols=["A", "B", "C"],
+        )
+
+    assert len(result) == 10, f"기대 10일, 실제 {len(result)}일"
+    assert result[0] == date(2026, 5, 1)
+    assert result[-1] == date(2026, 5, 10)
+    assert all(date(2026, 5, 1) <= d <= date(2026, 5, 10) for d in result)
+
+
+def test_get_portfolio_trading_dates_empty_candidates_fallback():
+    """빈 candidate일 때 평일 fallback 동작 유지."""
+    from RoboTrader_template.multiverse.engine.portfolio_engine import _get_portfolio_trading_dates
+
+    result = _get_portfolio_trading_dates(
+        start_date=date(2026, 5, 4),  # 월
+        end_date=date(2026, 5, 8),    # 금
+        candidate_symbols=[],
+    )
+    # 5/4~5/8 평일 5일 (월~금)
+    assert len(result) == 5
+
+
+def test_get_portfolio_trading_dates_all_empty_data_fallback():
+    """모든 candidate가 빈 일봉이면 평일 fallback."""
+    from unittest.mock import patch
+    from RoboTrader_template.multiverse.engine.portfolio_engine import _get_portfolio_trading_dates
+
+    with patch(
+        "RoboTrader_template.multiverse.engine.portfolio_engine.pit_reader.read_daily",
+        return_value=pd.DataFrame(),
+    ):
+        result = _get_portfolio_trading_dates(
+            start_date=date(2026, 5, 4),
+            end_date=date(2026, 5, 8),
+            candidate_symbols=["X", "Y", "Z"],
+        )
+    assert len(result) == 5  # 평일 fallback
+
+
+# ================================================================== #
+# P9 — 8 모듈 모두 paramset 인자를 전달받는지 검증
+# ================================================================== #
+
+def test_all_modules_receive_paramset(base_paramset):
+    """portfolio_engine이 8 Composable 모듈 호출 시 paramset 인자를 모두 전달하는지 검증.
+
+    5/2에 발견된 paramset 누락 버그(TypeError) 회귀 방지.
+    각 모듈의 call_args에 paramset이 positional 또는 keyword로 포함됐는지 확인한다.
+    """
+    from dataclasses import replace as dc_replace
+
+    ps = dc_replace(base_paramset, rebalance_frequency="daily", max_positions=2)
+
+    strategy = _build_mock_strategy(
+        ps,
+        signal_decisions={"A": "BUY", "B": "BUY"},
+        scores={"A": 2.0, "B": 1.0},
+    )
+    strategy.sizer.size.return_value = 5
+
+    # 보유 포지션이 생기도록 exit_rule / holding_cap 을 항상 HOLD로 설정
+    # (5 거래일 동안 BUY → 2일차부터 exit 체크 호출 보장)
+    strategy.exit_rule.should_exit.return_value = (False, "")
+    strategy.holding_cap.should_force_exit_by_age.return_value = False
+
+    with _patch_pit(dates=_WEEK1, open_price=100.0), _patch_corp_events():
+        run_portfolio_backtest(
+            strategy=strategy,
+            candidate_symbols=["A", "B"],
+            start_date=_WEEK1[0],
+            end_date=_WEEK1[-1],
+            initial_capital=1_000_000.0,
+        )
+
+    def _paramset_in_call(mock_method):
+        """mock_method의 모든 call 중 하나라도 ps가 인자에 포함됐으면 True."""
+        for call in mock_method.call_args_list:
+            args, kwargs = call
+            if ps in args or kwargs.get("paramset") is ps:
+                return True
+        return False
+
+    # universe.select(ctx, paramset)
+    assert strategy.universe.select.called, "universe.select 미호출"
+    assert _paramset_in_call(strategy.universe.select), (
+        "universe.select에 paramset 전달 누락"
+    )
+
+    # scorer.score(ctx, sym, paramset)
+    assert strategy.scorer.score.called, "scorer.score 미호출"
+    assert _paramset_in_call(strategy.scorer.score), (
+        "scorer.score에 paramset 전달 누락"
+    )
+
+    # regime.is_risk_on(ctx, paramset)
+    assert strategy.regime.is_risk_on.called, "regime.is_risk_on 미호출"
+    assert _paramset_in_call(strategy.regime.is_risk_on), (
+        "regime.is_risk_on에 paramset 전달 누락"
+    )
+
+    # signal_gen.generate(ctx, sym, paramset)
+    assert strategy.signal_gen.generate.called, "signal_gen.generate 미호출"
+    assert _paramset_in_call(strategy.signal_gen.generate), (
+        "signal_gen.generate에 paramset 전달 누락"
+    )
+
+    # sizer.size(capital, score, paramset)
+    assert strategy.sizer.size.called, "sizer.size 미호출"
+    assert _paramset_in_call(strategy.sizer.size), (
+        "sizer.size에 paramset 전달 누락"
+    )
+
+    # exit_rule.should_exit(ctx, pos_dict, paramset) — 보유 포지션 생긴 후 호출
+    assert strategy.exit_rule.should_exit.called, (
+        "exit_rule.should_exit 미호출 — 보유 포지션이 생기지 않았을 가능성"
+    )
+    assert _paramset_in_call(strategy.exit_rule.should_exit), (
+        "exit_rule.should_exit에 paramset 전달 누락"
+    )
+
+    # holding_cap.should_force_exit_by_age(pos_dict, date, paramset)
+    assert strategy.holding_cap.should_force_exit_by_age.called, (
+        "holding_cap.should_force_exit_by_age 미호출"
+    )
+    assert _paramset_in_call(strategy.holding_cap.should_force_exit_by_age), (
+        "holding_cap.should_force_exit_by_age에 paramset 전달 누락"
+    )
+
+    # rebalancer.should_rebalance(date, paramset)
+    assert strategy.rebalancer.should_rebalance.called, "rebalancer.should_rebalance 미호출"
+    assert _paramset_in_call(strategy.rebalancer.should_rebalance), (
+        "rebalancer.should_rebalance에 paramset 전달 누락"
+    )
+
+
+# ================================================================== #
+# P10 — ComposableStrategy isinstance 가드
+# ================================================================== #
+
+def test_composable_strategy_rejects_invalid_module():
+    """8 모듈 중 하나가 Protocol을 만족하지 않으면 TypeError raise.
+
+    MagicMock은 임의 attribute에 응답하므로 isinstance(Protocol) → True 통과.
+    아무 메서드도 없는 _Bad 클래스로 Protocol 위반 케이스를 검증한다.
+    """
+    import pytest
+    from unittest.mock import MagicMock
+    from RoboTrader_template.multiverse.composable.strategy import ComposableStrategy
+
+    class _Bad:
+        """Protocol 메서드가 전혀 없는 클래스."""
+        pass
+
+    # 최소 유효 더미 — 각 Protocol 메서드 이름만 구현
+    class _OkUniverse:
+        def select(self, ctx, paramset): return []
+
+    class _OkScorer:
+        def score(self, ctx, symbol, paramset): return 0.0
+
+    class _OkRegime:
+        def is_risk_on(self, ctx, paramset): return True
+
+    class _OkSignalGen:
+        def generate(self, ctx, symbol, paramset): return "HOLD"
+
+    class _OkSizer:
+        def size(self, capital, score, paramset): return 0
+
+    class _OkExitRule:
+        def should_exit(self, ctx, position, paramset): return (False, "")
+
+    class _OkRebalancer:
+        def should_rebalance(self, current_date, paramset): return True
+
+    class _OkHoldingCap:
+        def should_force_exit_by_age(self, position, current_date, paramset): return False
+
+    ok_kwargs = dict(
+        paramset=MagicMock(),
+        universe=_OkUniverse(),
+        scorer=_OkScorer(),
+        regime=_OkRegime(),
+        signal_gen=_OkSignalGen(),
+        sizer=_OkSizer(),
+        exit_rule=_OkExitRule(),
+        rebalancer=_OkRebalancer(),
+        holding_cap=_OkHoldingCap(),
+    )
+
+    # universe 위반
+    with pytest.raises(TypeError, match="universe"):
+        ComposableStrategy(**{**ok_kwargs, "universe": _Bad()})
+
+    # scorer 위반
+    with pytest.raises(TypeError, match="scorer"):
+        ComposableStrategy(**{**ok_kwargs, "scorer": _Bad()})
+
+    # regime 위반
+    with pytest.raises(TypeError, match="regime"):
+        ComposableStrategy(**{**ok_kwargs, "regime": _Bad()})
+
+    # signal_gen 위반
+    with pytest.raises(TypeError, match="signal_gen"):
+        ComposableStrategy(**{**ok_kwargs, "signal_gen": _Bad()})
+
+    # sizer 위반
+    with pytest.raises(TypeError, match="sizer"):
+        ComposableStrategy(**{**ok_kwargs, "sizer": _Bad()})
+
+    # exit_rule 위반
+    with pytest.raises(TypeError, match="exit_rule"):
+        ComposableStrategy(**{**ok_kwargs, "exit_rule": _Bad()})
+
+    # rebalancer 위반
+    with pytest.raises(TypeError, match="rebalancer"):
+        ComposableStrategy(**{**ok_kwargs, "rebalancer": _Bad()})
+
+    # holding_cap 위반
+    with pytest.raises(TypeError, match="holding_cap"):
+        ComposableStrategy(**{**ok_kwargs, "holding_cap": _Bad()})
+
+    # 모두 유효한 경우는 정상 생성
+    strategy = ComposableStrategy(**ok_kwargs)
+    assert strategy.universe is ok_kwargs["universe"]
