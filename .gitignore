@@ -34,3 +34,7 @@ Thumbs.db
 # Archive (separated quant code)
 _archived/
 test_output*.txt
+
+# Backtest artifacts & agent metadata
+output/
+.omc/
