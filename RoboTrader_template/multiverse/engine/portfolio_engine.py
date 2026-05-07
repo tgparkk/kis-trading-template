@@ -54,6 +54,7 @@ class PortfolioPosition:
     atr_at_entry: float | None = None
     lock_step: int = 0
     paramset_id: str = ""
+    trailing_high: float = 0.0  # 트레일링 스톱용 포지션 진입 후 최고가 추적
 
 
 @dataclass
@@ -163,8 +164,12 @@ def _prev_close_price(symbol: str, trade_date: date) -> Optional[float]:
     return float(df["close"].iloc[-1])
 
 
-def _position_to_dict(pos: PortfolioPosition) -> dict:
-    """exit_rule / holding_cap 인터페이스용 dict 변환."""
+def _position_to_dict(pos: PortfolioPosition, current_price: Optional[float] = None) -> dict:
+    """exit_rule / holding_cap 인터페이스용 dict 변환.
+
+    current_price: 당일 시가(또는 직전 종가). None이면 entry_price로 폴백.
+    trailing_high: 트레일링 스톱용 최고가 추적값.
+    """
     return {
         "symbol": pos.symbol,
         "qty": pos.qty,
@@ -173,6 +178,8 @@ def _position_to_dict(pos: PortfolioPosition) -> dict:
         "held_days": pos.held_days,
         "atr_at_entry": pos.atr_at_entry,
         "lock_step": pos.lock_step,
+        "current_price": current_price if current_price is not None else pos.entry_price,
+        "trailing_high": pos.trailing_high,
     }
 
 
@@ -456,10 +463,18 @@ def _run_portfolio_loop(
         # ----------------------------------------------------------
         for sym in list(positions.keys()):
             pos = positions[sym]
-            pos_dict = _position_to_dict(pos)
 
             open_price = pit_reader.read_open(symbol=sym, date=trade_date)
             high_low = pit_reader.read_high_low(symbol=sym, date=trade_date)
+
+            # trailing_high 갱신: 당일 고가 > 현재 trailing_high 이면 업데이트
+            if high_low is not None:
+                today_high, _ = high_low
+                if today_high > pos.trailing_high:
+                    pos.trailing_high = today_high
+
+            # current_price: 당일 시가 우선, 없으면 entry_price 폴백
+            pos_dict = _position_to_dict(pos, current_price=open_price)
 
             # 4a. 보유기간 상한 초과 → 다음 거래일 강제 청산 예약
             if strategy.holding_cap.should_force_exit_by_age(pos_dict, trade_date, strategy.paramset):
