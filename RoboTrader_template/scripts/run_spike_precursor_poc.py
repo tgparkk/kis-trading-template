@@ -6,14 +6,20 @@
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# 프로젝트 루트를 sys.path에 추가 (RoboTrader_template 패키지 import 가능하게)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 import argparse
 import csv
 import json
 import logging
-import sys
 import time
 from datetime import date, datetime
-from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO,
