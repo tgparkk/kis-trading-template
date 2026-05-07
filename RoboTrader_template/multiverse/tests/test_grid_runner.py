@@ -1,4 +1,5 @@
-"""Phase 5b: GridRunner + IS/OOS/WF + Markdown 리포트 회귀 테스트 (7개)."""
+"""Phase 5b: GridRunner + IS/OOS/WF + Markdown 리포트 회귀 테스트 (7개) +
+spike_precursor 페르소나 candidate_symbols 주입 검증 (5개)."""
 import pytest
 from datetime import date, timedelta
 from pathlib import Path
@@ -217,3 +218,151 @@ def test_markdown_report_generated(tmp_path, make_paramset, mock_portfolio_resul
         assert md_path.exists()
         content = md_path.read_text(encoding="utf-8")
         assert "Multiverse Report" in content
+
+
+# ---------------------------------------------------------------------------
+# spike_precursor 페르소나 candidate_symbols 주입 검증 (5건)
+# 5/3 빌드 에러 재발 방지: build_spike_precursor_strategy(ps, candidate_symbols)
+# strategy_factory 클로저가 candidate_symbols 를 올바르게 캡처해야 한다.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def make_spike_paramset():
+    """spike_precursor 용 유효한 ParamSet 생성 헬퍼."""
+    from RoboTrader_template.multiverse.composable.personas._grid import (
+        expand_grid_spike_precursor,
+    )
+
+    def _make():
+        grid = expand_grid_spike_precursor()
+        assert grid, "expand_grid_spike_precursor()가 빈 리스트를 반환"
+        return grid[0]
+
+    return _make
+
+
+def test_spike_precursor_factory_builds_without_error(make_spike_paramset):
+    """build_spike_precursor_strategy(ps, candidate_symbols) 빌드 에러 없음."""
+    from RoboTrader_template.multiverse.composable.personas import (
+        build_spike_precursor_strategy,
+    )
+
+    ps = make_spike_paramset()
+    symbols = ["005930", "000660"]
+    strategy = build_spike_precursor_strategy(ps, symbols)
+    assert strategy is not None
+
+
+def test_spike_precursor_factory_captures_candidate_symbols(make_spike_paramset):
+    """strategy_factory 클로저가 candidate_symbols 을 올바르게 캡처한다."""
+    from RoboTrader_template.multiverse.composable.personas import (
+        build_spike_precursor_strategy,
+    )
+
+    ps = make_spike_paramset()
+    symbols = ["005930", "000660", "035420"]
+
+    # 클로저 패턴 — run_multiverse_grid.py 및 run_spike_precursor_poc.py 와 동일
+    _syms = symbols
+
+    def _factory(paramset):
+        return build_spike_precursor_strategy(paramset, _syms)
+
+    strategy = _factory(ps)
+    # universe 내부의 candidates 리스트가 주입된 symbols 와 일치해야 한다
+    assert strategy.universe.candidates == symbols
+
+
+def test_spike_precursor_factory_missing_candidate_symbols_raises(make_spike_paramset):
+    """candidate_symbols 없이 build_spike_precursor_strategy 호출 시 TypeError 발생 확인."""
+    from RoboTrader_template.multiverse.composable.personas import (
+        build_spike_precursor_strategy,
+    )
+
+    ps = make_spike_paramset()
+    with pytest.raises(TypeError):
+        build_spike_precursor_strategy(ps)  # candidate_symbols 인자 누락 → TypeError
+
+
+def test_spike_precursor_grid_runner_plain_1cell(
+    tmp_path, make_spike_paramset, mock_portfolio_result
+):
+    """spike_precursor 1개 ParamSet으로 plain 모드 grid_runner 1회 실행 — 빌드 에러 없이 완료."""
+    from RoboTrader_template.multiverse.composable.personas import (
+        build_spike_precursor_strategy,
+    )
+
+    ps = make_spike_paramset()
+    symbols = ["005930", "000660"]
+    _syms = symbols
+
+    def _factory(paramset):
+        return build_spike_precursor_strategy(paramset, _syms)
+
+    with patch(
+        "RoboTrader_template.multiverse.runner.grid_runner.run_portfolio_backtest",
+        return_value=mock_portfolio_result(),
+    ):
+        cfg = GridRunConfig(
+            mode="plain",
+            start_date=date(2025, 1, 2),
+            end_date=date(2025, 12, 30),
+            initial_capital=100_000_000.0,
+            candidate_symbols=symbols,
+            output_dir=tmp_path,
+            n_jobs=1,
+        )
+        result = run_grid(config=cfg, paramsets=[ps], strategy_factory=_factory)
+        assert result.n_cells_evaluated == 1
+
+
+def test_all_5_personas_factory_candidate_symbols_injection(
+    tmp_path, make_paramset, make_spike_paramset, mock_portfolio_result
+):
+    """5 페르소나 모두 strategy_factory 클로저가 candidate_symbols 를 정상 주입한다.
+
+    run_multiverse_grid.py 의 _run_persona() 클로저 패턴 그대로 재현.
+    """
+    from RoboTrader_template.multiverse.composable.personas import (
+        build_quant_strategy,
+        build_long_term_strategy,
+        build_swing_strategy,
+        build_intraday_strategy,
+        build_spike_precursor_strategy,
+    )
+
+    symbols = ["005930", "000660"]
+    generic_ps = make_paramset()
+    spike_ps = make_spike_paramset()
+
+    persona_cases = [
+        ("quant",           build_quant_strategy,           generic_ps),
+        ("long_term",       build_long_term_strategy,        generic_ps),
+        ("swing",           build_swing_strategy,            generic_ps),
+        ("intraday",        build_intraday_strategy,         generic_ps),
+        ("spike_precursor", build_spike_precursor_strategy,  spike_ps),
+    ]
+
+    for persona_name, factory_fn, ps in persona_cases:
+        _syms = symbols
+
+        def _factory(paramset, _fn=factory_fn, _s=_syms):
+            return _fn(paramset, _s)
+
+        with patch(
+            "RoboTrader_template.multiverse.runner.grid_runner.run_portfolio_backtest",
+            return_value=mock_portfolio_result(),
+        ):
+            cfg = GridRunConfig(
+                mode="plain",
+                start_date=date(2025, 1, 2),
+                end_date=date(2025, 3, 31),
+                initial_capital=10_000_000.0,
+                candidate_symbols=symbols,
+                output_dir=tmp_path / persona_name,
+                n_jobs=1,
+            )
+            result = run_grid(config=cfg, paramsets=[ps], strategy_factory=_factory)
+            assert result.n_cells_evaluated == 1, (
+                f"{persona_name}: n_cells_evaluated={result.n_cells_evaluated} (기대 1)"
+            )

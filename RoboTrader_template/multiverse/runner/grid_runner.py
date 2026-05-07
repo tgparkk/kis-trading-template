@@ -49,6 +49,8 @@ class GridRunConfig:
     dsr_threshold: float = 0.95
     # 1급 정렬 키 (기본 calmar)
     primary_metric: str = "calmar"
+    # 유니버스 필터 ("all" 또는 "kospi200_pit")
+    universe_filter: str = "all"
 
 
 @dataclass
@@ -108,6 +110,7 @@ def run_grid(
             start_date=ws,
             end_date=we,
             initial_capital=config.initial_capital,
+            universe_filter=config.universe_filter,
         )
         runtime = time.monotonic() - t0
         metrics: Metrics = compute_metrics(
@@ -132,7 +135,11 @@ def run_grid(
             end_date=we,
             metrics=asdict(metrics) | {"dsr": dsr, "passes_dsr": passes_dsr(dsr, config.dsr_threshold)},
             runtime_seconds=runtime,
-            extra={"final_equity": result.final_equity},
+            extra={
+                "final_equity": result.final_equity,
+                "precision": result.precision,
+                "expectancy": result.expectancy,
+            },
         )
 
     # 병렬 실행

@@ -7,12 +7,26 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
+import dataclasses
+
 from RoboTrader_template.multiverse.composable import (
     ComposableStrategy,
     build_intraday_strategy,
     build_long_term_strategy,
     build_quant_strategy,
     build_swing_strategy,
+)
+from RoboTrader_template.multiverse.composable.personas.spike_precursor import (
+    build_spike_precursor_strategy,
+    _SpikeSignalGen,
+)
+from RoboTrader_template.multiverse.composable.personas.spike_precursor_inverse import (
+    build_spike_precursor_inverse_strategy,
+    _SpikeInverseSignalGen,
+)
+from RoboTrader_template.multiverse.composable.personas.trend_starter import (
+    build_trend_starter_strategy,
+    _TSSignalGen,
 )
 from RoboTrader_template.multiverse.composable.personas.quant import (
     _QuantUniverse,
@@ -451,3 +465,233 @@ def test_intraday_signal_gen_volume_surge_threshold(valid_paramset):
     ctx3.read_daily.return_value = _make_df(avg_vol, avg_vol * 3.0, 100, 110)
     sig3 = signal_gen.generate(ctx3, "Z", valid_paramset)
     assert sig3 == "HOLD", f"캐시에 없는 종목 Z → HOLD여야 하나 실제={sig3}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# spike_precursor 페르소나 (3건)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_spike_precursor_strategy_builds(valid_paramset):
+    """spike_precursor 페르소나가 ComposableStrategy를 반환하고 signal_fn이 호출 가능."""
+    s = build_spike_precursor_strategy(valid_paramset, ["005930", "000660"])
+    assert isinstance(s, ComposableStrategy)
+
+    sig = s.signal_fn(_mock_ctx(), symbol="005930", position=None, capital=10_000_000)
+    assert sig.action in {"BUY", "SELL", "HOLD"}
+
+
+def _make_spike_df(
+    n_rows: int = 30,
+    base_close: float = 50_000.0,
+    vol_high: bool = False,
+) -> pd.DataFrame:
+    """spike_features 계산에 충분한 합성 일봉 DataFrame 생성.
+
+    vol_high=True 이면 마지막 행의 거래량을 20배 높여 vol_zscore_20 >> 1.5.
+    """
+    import numpy as np
+
+    rng = list(range(n_rows))
+    closes = [base_close + i * 10 for i in rng]
+    highs = [c * 1.01 for c in closes]
+    lows = [c * 0.99 for c in closes]
+    base_vol = 1_000_000
+    volumes = [base_vol] * n_rows
+    if vol_high:
+        volumes[-1] = base_vol * 20  # vol_zscore_20 >> 1.5
+    return pd.DataFrame(
+        {"close": closes, "high": highs, "low": lows, "volume": volumes}
+    )
+
+
+def test_spike_signal_gen_buy_hold_branches(valid_paramset):
+    """_SpikeSignalGen: 피처 매칭수 충족 시 BUY, 미충족 시 HOLD."""
+    # spike_match_min=1 로 완화 (모든 피처가 매칭되지 않아도 1개만 매칭되면 BUY)
+    ps_easy = dataclasses.replace(valid_paramset, spike_match_min=1, spike_vol_z_thresh=1.5)
+    signal_gen = _SpikeSignalGen()
+
+    # vol_high=True → vol_zscore_20 >> 1.5 → F1 매칭 → BUY (match_min=1)
+    ctx_buy = MagicMock()
+    ctx_buy.read_daily.return_value = _make_spike_df(n_rows=30, vol_high=True)
+    sig_buy = signal_gen.generate(ctx_buy, "005930", ps_easy)
+    assert sig_buy == "BUY", f"vol 급증 + match_min=1 → BUY 기대, 실제={sig_buy}"
+
+    # spike_match_min=5 (5개 모두 충족해야) + 일반 데이터 → HOLD
+    ps_strict = dataclasses.replace(valid_paramset, spike_match_min=5)
+    ctx_hold = MagicMock()
+    ctx_hold.read_daily.return_value = _make_spike_df(n_rows=30, vol_high=False)
+    sig_hold = signal_gen.generate(ctx_hold, "005930", ps_strict)
+    assert sig_hold == "HOLD", f"match_min=5 + 일반 데이터 → HOLD 기대, 실제={sig_hold}"
+
+    # 빈 DataFrame → HOLD
+    ctx_empty = MagicMock()
+    ctx_empty.read_daily.return_value = pd.DataFrame()
+    sig_empty = signal_gen.generate(ctx_empty, "005930", ps_easy)
+    assert sig_empty == "HOLD", f"빈 DataFrame → HOLD 기대, 실제={sig_empty}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# spike_precursor_inverse 페르소나 (3건)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_spike_precursor_inverse_strategy_builds(valid_paramset):
+    """spike_precursor_inverse 페르소나가 ComposableStrategy를 반환하고 signal_fn이 호출 가능."""
+    s = build_spike_precursor_inverse_strategy(valid_paramset, ["005930", "000660"])
+    assert isinstance(s, ComposableStrategy)
+
+    sig = s.signal_fn(_mock_ctx(), symbol="005930", position=None, capital=10_000_000)
+    assert sig.action in {"BUY", "SELL", "HOLD"}
+
+
+def _make_low_vol_df(n_rows: int = 30, base_close: float = 50_000.0) -> pd.DataFrame:
+    """거래량 침체·좁은 박스권 합성 DataFrame — inverse 조건 충족용.
+
+    - vol_zscore_20 << 0 (침체): 마지막 행 거래량 = 기본의 20% (극소)
+    - ma20_dist 음수: close를 MA20보다 낮게 설정 (단조 감소 후 회복 없음)
+    - atr_ratio 낮음: high/low를 close ±0.3% 수준으로 좁게
+    - box_squeeze 낮음: 10일 고저가 폭이 좁음 (close ±0.5% 이내)
+    - vol_trend 낮음: 최근 5일 거래량 < 20일 평균 (감소)
+    """
+    # 단조 감소 close → MA20 아래 유지
+    closes = [base_close - i * 200 for i in range(n_rows)]
+    highs = [c * 1.003 for c in closes]   # atr 좁게
+    lows = [c * 0.997 for c in closes]    # atr 좁게
+    base_vol = 1_000_000
+    # 앞부분 고거래량, 마지막 5일은 20% 수준 → vol_trend 낮음
+    volumes = [base_vol] * (n_rows - 5) + [int(base_vol * 0.2)] * 5
+    return pd.DataFrame(
+        {"close": closes, "high": highs, "low": lows, "volume": volumes}
+    )
+
+
+def test_spike_inverse_signal_gen_buy_hold_branches(valid_paramset):
+    """_SpikeInverseSignalGen: 반전 조건 충족 시 BUY, 원본 조건(고거래량) 데이터엔 HOLD."""
+    signal_gen = _SpikeInverseSignalGen()
+
+    # inverse 조건 완화 (match_min=1, vol_z_thresh=0.5 → vol_zscore_20 <= 0.5 충족 기대)
+    ps_easy = dataclasses.replace(
+        valid_paramset,
+        spike_match_min=1,
+        spike_vol_z_thresh=0.5,       # F1: vol_zscore_20 <= 0.5 (침체 기준)
+        spike_ma20_dist_min=-0.10,
+        spike_ma20_dist_max=-0.02,    # F2: 음의 이격
+        spike_atr_max=0.025,          # F3: 낮은 변동성
+        spike_box_max=0.07,           # F4: 좁은 박스
+        spike_vol_trend_min=1.0,      # F5: vol_trend <= 1.0 (감소)
+    )
+
+    # 거래량 침체 데이터 → F1(vol_zscore_20 낮음) + F5(vol_trend 낮음) 등 match_min=1 충족 기대
+    ctx_buy = MagicMock()
+    ctx_buy.read_daily.return_value = _make_low_vol_df(n_rows=30)
+    sig_buy = signal_gen.generate(ctx_buy, "005930", ps_easy)
+    assert sig_buy == "BUY", f"거래량 침체 + match_min=1 → BUY 기대, 실제={sig_buy}"
+
+    # match_min=5 (5개 모두 충족 필요) + 고거래량(원본) 데이터 → HOLD
+    ps_strict = dataclasses.replace(valid_paramset, spike_match_min=5)
+    ctx_hold = MagicMock()
+    ctx_hold.read_daily.return_value = _make_spike_df(n_rows=30, vol_high=True)
+    sig_hold = signal_gen.generate(ctx_hold, "005930", ps_strict)
+    assert sig_hold == "HOLD", f"고거래량 + match_min=5 → HOLD 기대, 실제={sig_hold}"
+
+    # 빈 DataFrame → HOLD
+    ctx_empty = MagicMock()
+    ctx_empty.read_daily.return_value = pd.DataFrame()
+    sig_empty = signal_gen.generate(ctx_empty, "005930", ps_easy)
+    assert sig_empty == "HOLD", f"빈 DataFrame → HOLD 기대, 실제={sig_empty}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# trend_starter 페르소나 (3건)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_trend_starter_strategy_builds(valid_paramset):
+    """trend_starter 페르소나가 ComposableStrategy를 반환하고 signal_fn이 호출 가능."""
+    s = build_trend_starter_strategy(valid_paramset, ["005930", "000660"])
+    assert isinstance(s, ComposableStrategy)
+
+    sig = s.signal_fn(_mock_ctx(), symbol="005930", position=None, capital=10_000_000)
+    assert sig.action in {"BUY", "SELL", "HOLD"}
+
+
+def _make_ts_buy_df(n_rows: int = 30, base_close: float = 50_000.0) -> pd.DataFrame:
+    """trend_starter F1+F3+F4 모두 충족하는 합성 일봉 DataFrame.
+
+    - F1 vol_zscore_20 >= 1.5: window20 교대 패턴(mean=1M, std≈200K) + D-1=2M → z≈4.9
+    - F3 atr_ratio    >= 0.06: 일봉 진폭 ±7% → atr_ratio≈0.17
+    - F4 box_squeeze  >= 0.20: sin 진동(±13%)으로 최근 10일 박스 폭≈44%
+    """
+    # close: sin 진동 ±13% → 최근 10일 고저 폭 40%+ 보장
+    closes = [
+        base_close * (1 + 0.13 * math.sin(i * 2 * math.pi / 8))
+        for i in range(n_rows)
+    ]
+    # high/low: 일봉 진폭 ±7% → ATR/close ≈ 0.17 (임계 0.06 충분 초과)
+    highs = [c * 1.07 for c in closes]
+    lows = [c * 0.93 for c in closes]
+    # volume: window20 교대 패턴(800K/1200K) → mean=1M, std≈200K
+    #         D-1=2M → z=(2M-1M)/200K≈4.9 (임계 1.5 충분 초과)
+    volumes = [
+        1_000_000 + (200_000 if i % 2 == 0 else -200_000)
+        for i in range(n_rows)
+    ]
+    volumes[-1] = 2_000_000  # D-1 거래량 급증
+    return pd.DataFrame(
+        {"close": closes, "high": highs, "low": lows, "volume": volumes}
+    )
+
+
+def test_trend_starter_signal_gen_buy_when_all_three_match(valid_paramset):
+    """_TSSignalGen: F1+F3+F4 모두 충족 → BUY."""
+    ps = dataclasses.replace(
+        valid_paramset,
+        ts_volz_min=1.5,
+        ts_atr_min=0.06,
+        ts_box_min=0.20,
+    )
+    signal_gen = _TSSignalGen()
+
+    ctx_buy = MagicMock()
+    ctx_buy.read_daily.return_value = _make_ts_buy_df(n_rows=30)
+    sig_buy = signal_gen.generate(ctx_buy, "005930", ps)
+    assert sig_buy == "BUY", f"F1+F3+F4 모두 충족 → BUY 기대, 실제={sig_buy}"
+
+
+def test_trend_starter_signal_gen_hold_when_any_missing(valid_paramset):
+    """_TSSignalGen: F1+F3+F4 중 하나라도 부족 → HOLD, 빈 데이터 → HOLD."""
+    signal_gen = _TSSignalGen()
+
+    # 빈 DataFrame → HOLD
+    ctx_empty = MagicMock()
+    ctx_empty.read_daily.return_value = pd.DataFrame()
+    sig_empty = signal_gen.generate(ctx_empty, "005930", valid_paramset)
+    assert sig_empty == "HOLD", f"빈 DataFrame → HOLD 기대, 실제={sig_empty}"
+
+    # 임계값 매우 높여 어떤 합성 데이터로도 충족 불가 → HOLD
+    ps_strict = dataclasses.replace(
+        valid_paramset,
+        ts_volz_min=99.0,
+        ts_atr_min=99.0,
+        ts_box_min=99.0,
+    )
+    ctx_strict = MagicMock()
+    ctx_strict.read_daily.return_value = _make_ts_buy_df(n_rows=30)
+    sig_strict = signal_gen.generate(ctx_strict, "005930", ps_strict)
+    assert sig_strict == "HOLD", (
+        f"임계값 매우 높음 → HOLD 기대, 실제={sig_strict}"
+    )
+
+    # F1만 충족(거래량 급증)하지만 F3/F4 불충족 (좁은 박스, 작은 진폭)
+    n = 30
+    closes = [50_000.0] * n  # 변동 없음 → atr 0, box 0
+    highs = [c * 1.001 for c in closes]
+    lows = [c * 0.999 for c in closes]
+    volumes = [1_000_000] * n
+    volumes[-1] = 1_000_000 * 20  # F1만 충족
+    df_one = pd.DataFrame({"close": closes, "high": highs, "low": lows, "volume": volumes})
+    ctx_one = MagicMock()
+    ctx_one.read_daily.return_value = df_one
+    ps_one = dataclasses.replace(
+        valid_paramset, ts_volz_min=1.5, ts_atr_min=0.06, ts_box_min=0.20
+    )
+    sig_one = signal_gen.generate(ctx_one, "005930", ps_one)
+    assert sig_one == "HOLD", f"F1만 충족 → HOLD 기대, 실제={sig_one}"

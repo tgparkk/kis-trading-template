@@ -27,6 +27,7 @@ from typing import Dict, List, Optional, Tuple
 
 from RoboTrader_template.multiverse.data import corp_events as _corp_events
 from RoboTrader_template.multiverse.data import pit_reader
+from RoboTrader_template.multiverse.data.pit_reader import backtest_session
 from RoboTrader_template.multiverse.engine.pit_engine import (
     BUY_FEE_BPS,
     SELL_FEE_BPS,
@@ -67,6 +68,8 @@ class PortfolioBacktestResult:
     rebalance_dates: List[date]               # 리밸런싱이 실제 트리거된 날짜
     paramset_id: str
     paused_until: date | None                 # portfolio_pause로 차단 중이면 마지막 차단 종료일
+    precision: float = 0.0                   # 신호 → 라벨 양성(+5% 도달) 비율 (0~1)
+    expectancy: float = 0.0                  # 거래당 평균 손익 (원)
 
 
 # ------------------------------------------------------------------ #
@@ -186,6 +189,7 @@ def run_portfolio_backtest(
     initial_capital: float,
     use_minute: bool = False,
     market_cap_top_pct_map: dict[str, bool] | None = None,
+    universe_filter: str = "all",
 ) -> PortfolioBacktestResult:
     """포트폴리오 백테스트 — 상위 N 종목 동시 보유.
 
@@ -205,6 +209,9 @@ def run_portfolio_backtest(
         True면 분봉 모드 — 슬리피지 +20bp 추가.
     market_cap_top_pct_map:
         symbol → bool. True면 시총 상위 30% 가정 → 슬리피지 25bp.
+    universe_filter:
+        "all" (기본값, 기존 동작 유지) 또는 "kospi200_pit".
+        "kospi200_pit" 지정 시 리밸런싱 시점마다 KOSPI200 PIT 교집합 필터 적용.
     """
     ps = strategy.paramset
     paramset_id = ps.paramset_id() if hasattr(ps, "paramset_id") else ""
@@ -232,12 +239,84 @@ def run_portfolio_backtest(
     # 리밸런싱 주기 추적
     prev_trade_date: date | None = None
 
-    trading_dates = _get_portfolio_trading_dates(start_date, end_date, candidate_symbols)
+    # precision / expectancy 추적용 내부 누산기
+    # symbol → (entry_price, qty, buy_fee, entry_date)
+    _entry_tracker: Dict[str, Tuple[float, int, float, date]] = {}
+    _pnl_list: List[float] = []           # 거래당 실현 손익 (원)
+    _precision_total: int = 0             # precision 분모 (BUY 체결 건수)
+    _precision_hits: int = 0             # precision 분자 (entry 당일 고가 ≥ entry*1.05)
 
-    logger.debug(
-        "[portfolio_engine] %s~%s — %d 거래일, %d 후보 종목",
-        start_date, end_date, len(trading_dates), len(candidate_symbols),
-    )
+    with backtest_session():  # 단일 DB 연결 재사용 — connect() 비용(~220ms/call) 제거
+        # _get_portfolio_trading_dates도 session 안에서 실행 — read_daily() 재사용 적용
+        trading_dates = _get_portfolio_trading_dates(start_date, end_date, candidate_symbols)
+
+        logger.debug(
+            "[portfolio_engine] %s~%s — %d 거래일, %d 후보 종목",
+            start_date, end_date, len(trading_dates), len(candidate_symbols),
+        )
+
+        return _run_portfolio_loop(
+            strategy=strategy,
+            candidate_symbols=candidate_symbols,
+            start_date=start_date,
+            end_date=end_date,
+            initial_capital=initial_capital,
+            use_minute=use_minute,
+            market_cap_top_pct_map=market_cap_top_pct_map,
+            universe_filter=universe_filter,
+            ps=ps,
+            paramset_id=paramset_id,
+            mkt_map=mkt_map,
+            trades=trades,
+            skipped_signals=skipped_signals,
+            daily_equity=daily_equity,
+            rebalance_dates=rebalance_dates,
+            cash=cash,
+            positions=positions,
+            pending_orders=pending_orders,
+            paused_until=paused_until,
+            full_exit_pending=full_exit_pending,
+            prev_equity=prev_equity,
+            prev_trade_date=prev_trade_date,
+            trading_dates=trading_dates,
+            _entry_tracker=_entry_tracker,
+            _pnl_list=_pnl_list,
+            _precision_total=_precision_total,
+            _precision_hits=_precision_hits,
+        )
+
+
+def _run_portfolio_loop(
+    *,
+    strategy,
+    candidate_symbols,
+    start_date,
+    end_date,
+    initial_capital,
+    use_minute,
+    market_cap_top_pct_map,
+    universe_filter,
+    ps,
+    paramset_id,
+    mkt_map,
+    trades,
+    skipped_signals,
+    daily_equity,
+    rebalance_dates,
+    cash,
+    positions,
+    pending_orders,
+    paused_until,
+    full_exit_pending,
+    prev_equity,
+    prev_trade_date,
+    trading_dates,
+    _entry_tracker,
+    _pnl_list,
+    _precision_total,
+    _precision_hits,
+) -> "PortfolioBacktestResult":
+    """거래일 루프 실행 — backtest_session() 컨텍스트 안에서 호출됨."""
 
     for trade_date in trading_dates:
 
@@ -296,6 +375,10 @@ def run_portfolio_backtest(
                     "[portfolio_engine] %s %s SELL(pending:%s) qty=%d price=%.2f",
                     trade_date, sym, reason, pos.qty, exec_price,
                 )
+                # expectancy 추적: 매도 실현 손익 계산
+                if sym in _entry_tracker:
+                    _ep, _eq, _ef, _ed = _entry_tracker.pop(sym)
+                    _pnl_list.append(exec_price * pos.qty - fee - (_ep * _eq + _ef))
                 del positions[sym]
 
             elif side == "BUY":
@@ -352,6 +435,14 @@ def run_portfolio_backtest(
                     "[portfolio_engine] %s %s BUY qty=%d price=%.2f",
                     trade_date, sym, qty, exec_price,
                 )
+                # precision 추적: 매수 당일 고가 ≥ entry_price * 1.05 여부
+                _entry_tracker[sym] = (exec_price, qty, fee, trade_date)
+                _precision_total += 1
+                _buy_high_low = pit_reader.read_high_low(symbol=sym, date=trade_date)
+                if _buy_high_low is not None:
+                    _buy_high, _ = _buy_high_low
+                    if _buy_high >= exec_price * 1.05:
+                        _precision_hits += 1
 
         pending_orders.clear()
 
@@ -409,6 +500,10 @@ def run_portfolio_backtest(
                         "[portfolio_engine] %s %s SL 체결 price=%.2f",
                         trade_date, sym, sl_price,
                     )
+                    # expectancy 추적: SL 실현 손익 계산
+                    if sym in _entry_tracker:
+                        _ep, _eq, _ef, _ed = _entry_tracker.pop(sym)
+                        _pnl_list.append(sl_price * pos.qty - fee - (_ep * _eq + _ef))  # type: ignore[operator]
                     del positions[sym]
 
         # ----------------------------------------------------------
@@ -429,6 +524,13 @@ def run_portfolio_backtest(
             if regime_ok:
                 # 5b. Universe 선정 + corp_events 필터
                 selected = strategy.universe.select(ctx, strategy.paramset)
+
+                # KOSPI200 PIT 교집합 필터 (universe_filter="kospi200_pit" 시 적용)
+                if universe_filter == "kospi200_pit":
+                    from RoboTrader_template.multiverse.data.kospi200_pit import get_kospi200_pit
+                    kospi200_codes = set(get_kospi200_pit(trade_date))
+                    selected = [s for s in selected if s in kospi200_codes]
+
                 # corp_events 자동 필터 적용
                 filtered = _corp_events.filter_universe(selected, trade_date)
 
@@ -517,6 +619,10 @@ def run_portfolio_backtest(
 
     final_equity = daily_equity[-1][1] if daily_equity else initial_capital
 
+    # precision / expectancy 최종 계산
+    _precision_val = _precision_hits / _precision_total if _precision_total > 0 else 0.0
+    _expectancy_val = sum(_pnl_list) / len(_pnl_list) if _pnl_list else 0.0
+
     return PortfolioBacktestResult(
         start_date=start_date,
         end_date=end_date,
@@ -528,4 +634,6 @@ def run_portfolio_backtest(
         rebalance_dates=rebalance_dates,
         paramset_id=paramset_id,
         paused_until=paused_until,
+        precision=_precision_val,
+        expectancy=_expectancy_val,
     )
