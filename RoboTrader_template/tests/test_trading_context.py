@@ -296,6 +296,13 @@ class TestBuy:
     # get_circuit_breaker_state는 buy() 내부 local import이므로
     # 패치 대상은 config.market_hours.get_circuit_breaker_state
 
+    @pytest.fixture(autouse=True)
+    def patch_eod_not_time(self):
+        """기존 buy() 테스트가 실행 시각(15:00 이후)에 영향받지 않도록
+        is_eod_liquidation_time을 기본 False로 패치. EOD 가드 전용 테스트에서 override."""
+        with patch('config.market_hours.MarketHours.is_eod_liquidation_time', return_value=False):
+            yield
+
     def _make_buy_ctx(self, cb_halted=False, vi_active=False,
                       is_crashing=False, daily_loss_hit=False,
                       trading_stock_override=None):
@@ -404,6 +411,40 @@ class TestBuy:
         with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
             result = await ctx.buy("005930")
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_buy_blocked_after_eod_liquidation_time_intraday(self):
+        """안 C: EOD 청산 시간 이후 intraday 전략은 매수 차단"""
+        ctx, cb_state, analyzer = self._make_buy_ctx()
+        # _current_strategy_name과 _strategies_dict에 holding_period='intraday' 전략 등록
+        intraday_strat = Mock()
+        intraday_strat.holding_period = 'intraday'
+        ctx._current_strategy_name = 'sample'
+        ctx._strategies_dict = {'sample': intraday_strat}
+
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state), \
+             patch('config.market_hours.MarketHours.is_eod_liquidation_time', return_value=True):
+            result = await ctx.buy("005930")
+
+        assert result is None
+        analyzer.analyze_buy_decision.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_buy_allowed_after_eod_liquidation_time_swing(self):
+        """안 C: EOD 청산 시간 이후라도 swing 전략은 매수 허용"""
+        ctx, cb_state, analyzer = self._make_buy_ctx()
+        # holding_period='swing' 전략 등록
+        swing_strat = Mock()
+        swing_strat.holding_period = 'swing'
+        ctx._current_strategy_name = 'lynch'
+        ctx._strategies_dict = {'lynch': swing_strat}
+
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state), \
+             patch('config.market_hours.MarketHours.is_eod_liquidation_time', return_value=True):
+            result = await ctx.buy("005930")
+
+        assert result == "005930"
+        analyzer.analyze_buy_decision.assert_awaited_once()
 
 
 # ============================================================================

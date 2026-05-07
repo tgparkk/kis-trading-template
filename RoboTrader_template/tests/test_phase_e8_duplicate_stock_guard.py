@@ -268,7 +268,8 @@ class TestBuyRejectedForOtherStrategyOwnedStock:
 
         async def run():
             with patch("config.market_hours.get_circuit_breaker_state") as mock_cb, \
-                 patch("config.constants.PRICE_LIMIT_GUARD_RATE", 0.3):
+                 patch("config.constants.PRICE_LIMIT_GUARD_RATE", 0.3), \
+                 patch("config.market_hours.MarketHours.is_eod_liquidation_time", return_value=False):
                 cb = MagicMock()
                 cb.is_market_halted.return_value = False
                 cb.is_vi_active.return_value = False

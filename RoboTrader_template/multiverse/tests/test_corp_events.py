@@ -1,4 +1,4 @@
-"""Phase 1 + Phase 2 corp_events 테스트."""
+"""Phase 1 + Phase 2 corp_events 테스트 + D4 적재 분포/매핑/통합 검증."""
 import pytest
 from datetime import date, timedelta
 from unittest.mock import patch, MagicMock
@@ -131,7 +131,7 @@ def test_is_administrative_end_date_past_is_false():
 
     with patch.object(corp_events, "_conn") as mock_conn_ctx:
         mock_conn_ctx.return_value.__enter__ = lambda s: conn_mock
-        mock_conn_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn_ctx.return_value.__exit__ = MagicMock(return_flag=False)
 
         result = corp_events.is_administrative("TEST006", today)
 
@@ -151,3 +151,172 @@ def test_is_halted_end_date_null_is_true():
         result = corp_events.is_halted("TEST007", today)
 
     assert result is True
+
+
+# ------------------------------------------------------------------ #
+# D4: 적재 분포 검증 (실 DB)
+# ------------------------------------------------------------------ #
+
+def _try_connect_robotrader():
+    """robotrader DB 연결 시도. 실패 시 None 반환."""
+    import os
+    import psycopg2
+    try:
+        return psycopg2.connect(
+            host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
+            port=int(os.getenv("TIMESCALE_PORT", "5433")),
+            user=os.getenv("TIMESCALE_USER", "robotrader"),
+            password=os.getenv("TIMESCALE_PASSWORD", "1234"),
+            database=os.getenv("TIMESCALE_DB", "robotrader"),
+        )
+    except Exception:
+        return None
+
+
+@pytest.fixture(scope="module")
+def robotrader_conn():
+    """모듈 스코프 robotrader DB 연결."""
+    conn = _try_connect_robotrader()
+    if conn is None:
+        pytest.skip("robotrader DB 연결 실패 (환경 없음)")
+    yield conn
+    conn.close()
+
+
+class TestCorpEventsDistribution:
+    """D4-a: 적재 분포 — 4개 event_type 모두 1건 이상, 총 행수 ≥ 50."""
+
+    def test_all_four_event_types_present(self, robotrader_conn):
+        """split / rights_issue / bonus_issue / administrative 4개 타입 모두 존재.
+
+        실제 적재: split 2 / rights_issue 82 / bonus_issue 8 / administrative 2.
+        caution/warning/halt는 KIND 404 한계로 0건 — 강제하지 않음.
+        """
+        with robotrader_conn.cursor() as cur:
+            cur.execute(
+                "SELECT event_type, COUNT(*) FROM corp_events "
+                "GROUP BY event_type ORDER BY event_type;"
+            )
+            rows = cur.fetchall()
+
+        distribution = {etype: cnt for etype, cnt in rows}
+        required_types = {"split", "rights_issue", "bonus_issue", "administrative"}
+        missing = required_types - distribution.keys()
+        assert not missing, (
+            f"corp_events에 없는 event_type: {missing}. "
+            f"실제 분포: {distribution}"
+        )
+        for etype in required_types:
+            assert distribution[etype] >= 1, (
+                f"{etype} 건수 {distribution[etype]} < 1"
+            )
+
+    def test_total_row_count_above_50(self, robotrader_conn):
+        """corp_events 총 행수 ≥ 50 (D2 backfill 94건 기준)."""
+        with robotrader_conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM corp_events;")
+            total = cur.fetchone()[0]
+        assert total >= 50, f"corp_events 총 행수 {total} < 50"
+
+
+class TestCorpEventsSymbolMapping:
+    """D4-b: 종목 매핑 — distinct codes, 6자리 zero-padding."""
+
+    def test_distinct_stock_codes_above_30(self, robotrader_conn):
+        """distinct stock_code ≥ 30 (D2 backfill 42종목 기준)."""
+        with robotrader_conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(DISTINCT stock_code) FROM corp_events;"
+            )
+            count = cur.fetchone()[0]
+        assert count >= 30, (
+            f"corp_events distinct stock_code {count} < 30"
+        )
+
+    def test_all_stock_codes_are_6digits(self, robotrader_conn):
+        """모든 stock_code가 정확히 6자리여야 한다."""
+        with robotrader_conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_code FROM corp_events "
+                "WHERE LENGTH(stock_code) != 6 LIMIT 5;"
+            )
+            bad_rows = cur.fetchall()
+        assert not bad_rows, (
+            f"6자리 아닌 stock_code 발견: {[r[0] for r in bad_rows]}"
+        )
+
+    def test_zero_padded_codes_present(self, robotrader_conn):
+        """'0'으로 시작하는 종목코드가 1건 이상 존재 — zero-padding 정상 적재.
+
+        실제: 62건이 '0'으로 시작 (000390, 000990 등).
+        """
+        with robotrader_conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM corp_events WHERE stock_code LIKE '0%';"
+            )
+            count = cur.fetchone()[0]
+        assert count >= 1, (
+            f"'0'으로 시작하는 stock_code가 없음 — zero-padding 누락 의심"
+        )
+
+    def test_no_stock_code_numeric_overflow(self, robotrader_conn):
+        """stock_code가 숫자 문자열 형태여야 한다 (비숫자 문자 없음)."""
+        with robotrader_conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_code FROM corp_events "
+                "WHERE stock_code !~ '^[0-9]+$' LIMIT 5;"
+            )
+            bad_rows = cur.fetchall()
+        assert not bad_rows, (
+            f"비숫자 stock_code 발견: {[r[0] for r in bad_rows]}"
+        )
+
+
+class TestFilterUniverseIntegration:
+    """D4-c: filter_universe 통합 — 실 DB 5종목 호출."""
+
+    def test_filter_universe_returns_list_with_real_codes(self):
+        """실제 corp_events에 존재하는 종목 포함해 filter_universe 호출.
+
+        rights_issue 이 있는 종목(035420, 000390)을 포함해 5종목 테스트.
+        관리종목/거래정지가 아닌 종목은 결과에 포함되어야 한다.
+        함수가 예외 없이 list를 반환하는지 통합 확인.
+        """
+        # 실 DB 연결 확인
+        conn = _try_connect_robotrader()
+        if conn is None:
+            pytest.skip("robotrader DB 연결 실패")
+        conn.close()
+
+        sample_codes = ["005930", "000660", "035420", "000390", "051910"]
+        result = corp_events.filter_universe(
+            sample_codes, as_of_date=date(2026, 4, 30)
+        )
+        assert isinstance(result, list), "filter_universe가 list를 반환하지 않음"
+        # 결과는 입력보다 작거나 같아야 함
+        assert len(result) <= len(sample_codes), (
+            f"결과 종목 수 {len(result)} > 입력 {len(sample_codes)} — 필터 로직 이상"
+        )
+        # 결과의 모든 코드는 입력에 있어야 함
+        for code in result:
+            assert code in sample_codes, (
+                f"결과에 입력에 없는 종목코드 포함: {code}"
+            )
+
+    def test_filter_universe_empty_input_returns_empty(self):
+        """빈 리스트 입력 → 빈 리스트 반환."""
+        result = corp_events.filter_universe([], as_of_date=date(2026, 4, 30))
+        assert result == []
+
+    def test_filter_universe_future_date_excludes_nothing_extra(self):
+        """미래 날짜 기준도 예외 없이 동작 — 함수 안정성 확인."""
+        conn = _try_connect_robotrader()
+        if conn is None:
+            pytest.skip("robotrader DB 연결 실패")
+        conn.close()
+
+        result = corp_events.filter_universe(
+            ["005930", "000660"],
+            as_of_date=date(2030, 12, 31),
+        )
+        assert isinstance(result, list)

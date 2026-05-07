@@ -71,6 +71,15 @@ if exist "robotrader_template.pid" (
     echo 기존 프로세스가 실행 중이 아니라면 robotrader_template.pid를 삭제하세요.
 )
 
+REM ===== 사전 헬스체크 (사장님 결재 후 활성화) =====
+REM python -X utf8 scripts\preflight_strategy_validate.py --verbose
+REM if errorlevel 1 (
+REM     echo [헬스체크 실패] 봇 시작 중단. 위 오류를 확인하세요.
+REM     pause
+REM     exit /b 1
+REM )
+REM ===================================================
+
 REM 프로그램 실행
 echo.
 echo RoboTrader_template 시작 중...
