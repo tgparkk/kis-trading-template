@@ -275,7 +275,7 @@ def main() -> None:
     else:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         base = Path(__file__).resolve().parent.parent / "output"
-        output_dir = base / f"multiverse_trend_starter_poc_{ts}"
+        output_dir = base / f"multiverse_trend_starter_v2_poc_{ts}"
 
     logger.info(
         "Trend Starter PoC 시작 — start=%s end=%s top_n=%d max_cells=%d n_jobs=%d",

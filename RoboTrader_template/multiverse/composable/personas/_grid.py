@@ -410,44 +410,62 @@ def expand_grid_spike_precursor_inverse() -> list[ParamSet]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# trend_starter 그리드 (432셀)
+# trend_starter 그리드 v2 (270셀)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def expand_grid_trend_starter() -> list[ParamSet]:
-    """trend_starter 페르소나 압축 그리드.
+    """trend_starter 페르소나 압축 그리드 v2 — ATR 기반 손익비 재설계.
 
     데이터 분석(2023~2026 4년) 결과 기반:
       F3 atr_ratio>=0.06 AND F1 vol_zscore_20>=1.5 → 양성률 11.76% (3.74x lift).
 
-    축:
-      ts_atr_min:     {0.05, 0.06, 0.07, 0.08}    — 4
-      ts_volz_min:    {1.0, 1.5, 2.0}              — 3
-      ts_box_min:     {0.15, 0.20, 0.25}           — 3
-      ts_target_pct:  {0.10, 0.15, 0.20}           — 3
-      ts_hold_days:   {5, 10}                       — 2
-      ts_stop_pct:    {-0.05, -0.08}                — 2
+    진입 필터 (고정, 데이터 분석 최적값):
+      ts_atr_min  = 0.06
+      ts_volz_min = 1.5
+      ts_box_min  = 0.20
 
-    이론 합: 4×3×3×3×2×2 = 432셀
-    PoC max_cells 슬라이싱은 호출측 책임.
+    그리드 축:
+      ts_sl_atr_mult:       {1.0, 1.5, 2.0}     — 3
+      ts_tp_atr_mult:       {2.0, 3.0, 4.0}     — 3
+      ts_trail_trigger_atr: {0, 1.5, 2.0}        — 3 (0=트레일링 비활성)
+      ts_trail_offset_atr:  {0.5, 1.0}           — 2 (trigger=0이면 0.5만 사용)
+      ts_hold_days:         {2, 3, 5}            — 3
+      max_positions:        {3, 5}               — 2
+
+    유효 셀 계산 (ts_tp_atr_mult > ts_sl_atr_mult 제약 적용):
+      유효 (sl, tp) 조합: 8쌍 (sl=2.0, tp=2.0 제외)
+      trail_trigger=0:  8 × 1 × 1 × 3 × 2 =  48셀 (offset 무의미 → 0.5 고정)
+      trail_trigger>0:  8 × 2 × 2 × 3 × 2 = 192셀
+      합계: 240셀
     """
     result: list[ParamSet] = []
 
-    for atr_min in [0.05, 0.06, 0.07, 0.08]:
-        for volz_min in [1.0, 1.5, 2.0]:
-            for box_min in [0.15, 0.20, 0.25]:
-                for target_pct in [0.10, 0.15, 0.20]:
-                    for hold_days in [5, 10]:
-                        for stop_pct in [-0.05, -0.08]:
+    # 진입 필터 (고정)
+    atr_min = 0.06
+    volz_min = 1.5
+    box_min = 0.20
+
+    for sl_mult in [1.0, 1.5, 2.0]:
+        for tp_mult in [2.0, 3.0, 4.0]:
+            for trail_trigger in [0.0, 1.5, 2.0]:
+                # trail_trigger=0 이면 offset 탐색 불필요 (0.5 고정)
+                offsets = [0.5] if trail_trigger == 0.0 else [0.5, 1.0]
+                for trail_offset in offsets:
+                    for hold_days in [2, 3, 5]:
+                        for max_pos in [3, 5]:
                             ps = _try_build(
-                                holding_max_days=10,
+                                holding_max_days=hold_days,
                                 rebalance_frequency="daily",
                                 max_weight_per_stock=0.20,
+                                max_positions=max_pos,
                                 ts_atr_min=atr_min,
                                 ts_volz_min=volz_min,
                                 ts_box_min=box_min,
-                                ts_target_pct=target_pct,
+                                ts_sl_atr_mult=sl_mult,
+                                ts_tp_atr_mult=tp_mult,
+                                ts_trail_trigger_atr=trail_trigger,
+                                ts_trail_offset_atr=trail_offset,
                                 ts_hold_days=hold_days,
-                                ts_stop_pct=stop_pct,
                             )
                             if ps is not None:
                                 result.append(ps)

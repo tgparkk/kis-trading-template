@@ -231,14 +231,18 @@ def test_spike_precursor_inverse_no_overlap_with_normal():
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_trend_starter_grid_size():
-    """trend_starter 그리드 크기 ~432.
+    """trend_starter 그리드 크기 240 (v2 — ATR 기반 손익비 재설계).
 
-    축: 4(atr) × 3(volz) × 3(box) × 3(target) × 2(hold) × 2(stop) = 432.
-    validate 실패 셀 없으므로 정확히 432.
+    이론 합 270에서 ts_tp_atr_mult > ts_sl_atr_mult 제약으로
+    sl=2.0, tp=2.0 조합(30셀)이 validate 실패로 제외 → 240셀.
+
+    trail_trigger=0: (3sl×3tp-1invalid) × 1 × 1 × 3 × 2 =  48셀
+    trail_trigger>0: (3sl×3tp-1invalid) × 2 × 2 × 3 × 2 = 192셀
+    합계: 240셀 정확히.
     """
     grid = expand_grid_trend_starter()
-    assert 400 <= len(grid) <= 432, (
-        f"trend_starter grid 크기={len(grid)} (기대 400~432)"
+    assert len(grid) == 240, (
+        f"trend_starter grid 크기={len(grid)} (기대 240)"
     )
 
 
