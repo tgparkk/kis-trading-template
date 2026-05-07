@@ -17,10 +17,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# 프로젝트 루트를 sys.path에 추가 (RoboTrader_template 패키지 import 가능하게)
+# 프로젝트 루트 + RoboTrader_template 디렉토리를 sys.path에 추가
+# - _PROJECT_ROOT: RoboTrader_template 패키지 import용 (from RoboTrader_template.xxx)
+# - _PKG_ROOT: 내부 bare import용 (from utils.logger, from config.xxx 등)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_PKG_ROOT = _PROJECT_ROOT / "RoboTrader_template"
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
+if str(_PKG_ROOT) not in sys.path:
+    sys.path.insert(1, str(_PKG_ROOT))
 
 import argparse
 import json
