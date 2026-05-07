@@ -39,6 +39,7 @@ class StateRestorer:
         broker=None,
         fund_manager=None,
         virtual_trading_manager=None,
+        strategies=None,
     ) -> None:
         """
         Args:
@@ -50,6 +51,7 @@ class StateRestorer:
             broker: KISBroker (실전 모드에서 계좌 조회용)
             fund_manager: FundManager 인스턴스 (자금 동기화용)
             virtual_trading_manager: VirtualTradingManager 인스턴스 (가상 잔고 동기화용)
+            strategies: {name: BaseStrategy} 딕셔너리 (owner_strategy 복원용)
         """
         self.trading_manager = trading_manager
         self.db_manager = db_manager
@@ -59,6 +61,7 @@ class StateRestorer:
         self.broker = broker
         self.fund_manager = fund_manager
         self.virtual_trading_manager = virtual_trading_manager
+        self.strategies = strategies or {}
 
         # 가상/실전 모드 플래그
         self.is_paper_trading = getattr(config, 'paper_trading', True) if config else True
@@ -376,13 +379,13 @@ class StateRestorer:
                         if db_strategy and isinstance(db_strategy, str) and db_strategy.strip():
                             name = db_strategy.strip()
                             trading_stock.owner_strategy_name = name
-                            # DayTradingBot.strategies dict에서 해당 전략 인스턴스 조회
-                            bot_strategies = getattr(self.bot, 'strategies', {})
+                            # strategies dict에서 해당 전략 인스턴스 조회
+                            bot_strategies = self.strategies
                             if name in bot_strategies:
                                 trading_stock.owner_strategy = bot_strategies[name]
                             else:
                                 # 이번 실행에서 비활성화된 전략 → 기본 손절/익절만 적용
-                                self.logger.warning(
+                                logger.warning(
                                     f"복원된 종목 {trading_stock.stock_code}의 owner 전략 "
                                     f"{name}이 비활성. 기본 정책 적용."
                                 )

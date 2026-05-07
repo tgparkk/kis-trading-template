@@ -104,7 +104,12 @@ class DayTradingBot:
         self.liquidation_handler = LiquidationHandler(self)
         self.position_sync_manager = PositionSyncManager(self)
 
-        # 상태 복원 헬퍼 초기화
+        # Strategy 시스템 초기화
+        self.strategy: Optional[BaseStrategy] = None
+        self.strategies: Dict[str, BaseStrategy] = {}
+        self._load_strategies()
+
+        # 상태 복원 헬퍼 초기화 (strategies 로드 후 생성해야 참조 전달 가능)
         self.state_restoration_helper = StateRestorer(
             trading_manager=self.trading_manager,
             db_manager=self.db_manager,
@@ -114,12 +119,8 @@ class DayTradingBot:
             broker=self.broker,
             fund_manager=self.fund_manager,
             virtual_trading_manager=self.decision_engine.virtual_trading,
+            strategies=self.strategies,
         )
-
-        # Strategy 시스템 초기화
-        self.strategy: Optional[BaseStrategy] = None
-        self.strategies: Dict[str, BaseStrategy] = {}
-        self._load_strategies()
 
         # CandidateSelector 초기화
         self.candidate_selector = CandidateSelector(self.config, self.broker, self.db_manager)
@@ -178,30 +179,38 @@ class DayTradingBot:
             self.strategies = {}
 
     async def _initialize_strategy(self) -> bool:
-        """전략 초기화 (on_init 호출)"""
-        if self.strategy is None:
+        """전략 초기화 (on_init 호출) — 다중 전략 모드 지원"""
+        if not self.strategies:
             return True  # 전략 없으면 성공으로 처리
 
-        try:
-            # 전략 초기화 - broker, data_provider, executor 전달
-            init_result = self.strategy.on_init(
-                broker=self.broker,
-                data_provider=self.data_collector,
-                executor=self.order_manager
-            )
+        failed_names = []
+        for name, strat in list(self.strategies.items()):
+            try:
+                init_result = strat.on_init(
+                    broker=self.broker,
+                    data_provider=self.data_collector,
+                    executor=self.order_manager
+                )
+                if init_result:
+                    self.logger.info(f"전략 초기화 완료: {strat.name}")
+                else:
+                    self.logger.warning(f"전략 초기화 실패: {strat.name}")
+                    failed_names.append(name)
+            except Exception as e:
+                self.logger.warning(f"전략 초기화 오류 ({name}): {e}")
+                failed_names.append(name)
 
-            if init_result:
-                self.logger.info(f"전략 초기화 완료: {self.strategy.name}")
-                return True
-            else:
-                self.logger.warning(f"전략 초기화 실패: {self.strategy.name}")
-                self.strategy = None
-                return True  # 시스템은 계속 동작
+        # 초기화 실패 전략은 제거
+        for name in failed_names:
+            del self.strategies[name]
 
-        except Exception as e:
-            self.logger.warning(f"전략 초기화 오류: {e}")
+        # backward compat: self.strategy 갱신
+        if self.strategies:
+            self.strategy = next(iter(self.strategies.values()))
+        else:
             self.strategy = None
-            return True  # 시스템은 계속 동작
+
+        return True  # 시스템은 계속 동작
 
     async def _call_strategy_market_open(self):
         """장 시작 시 전략 콜백 호출"""
@@ -401,18 +410,31 @@ class DayTradingBot:
                     idx = (iteration // ON_TICK_EVERY_N) % len(strategy_names)
                     name = strategy_names[idx]
                     strat = self.strategies[name]
-                    ctx = self.ctx_for_strategy(name)
-                    try:
-                        await asyncio.wait_for(
-                            strat.on_tick(ctx),
-                            timeout=ON_TICK_TIMEOUT
+
+                    # 안 B: EOD 청산 완료 후 intraday 전략 on_tick 스킵 (F1 재매수 사고 방지)
+                    _eod_done_today = (
+                        hasattr(self, 'liquidation_handler')
+                        and self.liquidation_handler is not None
+                        and self.liquidation_handler.get_last_eod_liquidation_date() == now_kst().date()
+                    )
+                    _is_intraday = getattr(strat, 'holding_period', 'intraday') == 'intraday'
+                    if _eod_done_today and _is_intraday:
+                        self.logger.debug(
+                            f"[4/5] on_tick 스킵: EOD 청산 완료 후 intraday 전략 ({name})"
                         )
-                    except asyncio.TimeoutError:
-                        self.logger.error(
-                            f"전략 {name} on_tick 타임아웃 ({ON_TICK_TIMEOUT}초)"
-                        )
-                    except Exception as e:
-                        self.logger.error(f"[4/5] on_tick 오류 ({name}): {e}")
+                    else:
+                        ctx = self.ctx_for_strategy(name)
+                        try:
+                            await asyncio.wait_for(
+                                strat.on_tick(ctx),
+                                timeout=ON_TICK_TIMEOUT
+                            )
+                        except asyncio.TimeoutError:
+                            self.logger.error(
+                                f"전략 {name} on_tick 타임아웃 ({ON_TICK_TIMEOUT}초)"
+                            )
+                        except Exception as e:
+                            self.logger.error(f"[4/5] on_tick 오류 ({name}): {e}")
                 elif not self.strategies:
                     # 전략 없으면 기존 방식 fallback (매수 판단만 — 보유종목 체크는 위에서 이미 실행)
                     try:

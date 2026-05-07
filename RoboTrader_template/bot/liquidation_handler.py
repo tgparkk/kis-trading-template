@@ -15,7 +15,7 @@ from utils.logger import setup_logger
 from utils.korean_time import now_kst
 from utils.price_utils import round_to_tick
 from config.market_hours import MarketHours
-from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE, SCREENER_SNAPSHOT_ENABLED
+from config.constants import SCREENER_SNAPSHOT_ENABLED
 
 if TYPE_CHECKING:
     from main import DayTradingBot
@@ -81,22 +81,11 @@ class LiquidationHandler:
                     is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
                     if is_virtual:
                         # 가상매매 - execute_virtual_sell 사용
-                        # 매도 전 포지션 정보 저장 (execute_virtual_sell이 position을 클리어하므로)
-                        _buy_price = float(trading_stock.position.avg_price) if trading_stock.position else 0
                         result = await self.bot.decision_engine.execute_virtual_sell(
                             trading_stock, sell_price, "장마감 일괄청산"
                         )
+                        # fund_manager 업데이트는 execute_virtual_sell() 내부에서 일원화 처리 (F4 fix 2026-05-04)
                         if result:
-                            invested = _buy_price * int(quantity)
-                            _sell_amount = float(sell_price) * int(quantity) if sell_price else invested
-                            _buy_comm = invested * COMMISSION_RATE
-                            _sell_comm = _sell_amount * COMMISSION_RATE
-                            _sell_tax = _sell_amount * SECURITIES_TAX_RATE
-                            _pnl = _sell_amount - invested - _buy_comm - _sell_comm - _sell_tax
-                            self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
-                            if _pnl != 0:
-                                self.bot.fund_manager.adjust_pnl(_pnl)
-                            self.bot.fund_manager.remove_position(stock_code)
                             self.logger.info(
                                 f"장마감 가상청산 완료: {stock_code} {quantity}주 @{sell_price:,.0f}원"
                             )
@@ -175,23 +164,12 @@ class LiquidationHandler:
                                 if price_obj is not None and price_obj > 0:
                                     eod_sell_price = float(price_obj)
 
-                            # 매도 전 포지션 정보 저장 (execute_virtual_sell이 position을 클리어하므로)
-                            _buy_price = float(trading_stock.position.avg_price) if trading_stock.position else 0
                             result = await self.bot.decision_engine.execute_virtual_sell(
                                 trading_stock, eod_sell_price,
                                 f"{time_label} 시장가 일괄매도"
                             )
+                            # fund_manager 업데이트는 execute_virtual_sell() 내부에서 일원화 처리 (F4 fix 2026-05-04)
                             if result:
-                                invested = _buy_price * int(quantity)
-                                _sell_amount = float(eod_sell_price) * int(quantity) if eod_sell_price else invested
-                                _buy_comm = invested * COMMISSION_RATE
-                                _sell_comm = _sell_amount * COMMISSION_RATE
-                                _sell_tax = _sell_amount * SECURITIES_TAX_RATE
-                                _pnl = _sell_amount - invested - _buy_comm - _sell_comm - _sell_tax
-                                self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
-                                if _pnl != 0:
-                                    self.bot.fund_manager.adjust_pnl(_pnl)
-                                self.bot.fund_manager.remove_position(stock_code)
                                 self.logger.info(
                                     f"{time_label} 가상매도 완료: "
                                     f"{stock_code}({stock_name}) {quantity}주"
@@ -287,23 +265,12 @@ class LiquidationHandler:
                         if price_obj is not None and price_obj > 0:
                             retry_sell_price = float(price_obj)
 
-                    # 매도 전 포지션 정보 저장 (execute_virtual_sell이 position을 클리어하므로)
-                    _buy_price = float(target.position.avg_price) if target.position else 0
                     result = await self.bot.decision_engine.execute_virtual_sell(
                         target, retry_sell_price,
                         f"EOD 청산 재시도 #{self._eod_retry_count}"
                     )
+                    # fund_manager 업데이트는 execute_virtual_sell() 내부에서 일원화 처리 (F4 fix 2026-05-04)
                     if result:
-                        invested = _buy_price * int(quantity)
-                        _sell_amount = float(retry_sell_price) * int(quantity) if retry_sell_price else invested
-                        _buy_comm = invested * COMMISSION_RATE
-                        _sell_comm = _sell_amount * COMMISSION_RATE
-                        _sell_tax = _sell_amount * SECURITIES_TAX_RATE
-                        _pnl = _sell_amount - invested - _buy_comm - _sell_comm - _sell_tax
-                        self.bot.fund_manager.release_investment(invested, stock_code=stock_code)
-                        if _pnl != 0:
-                            self.bot.fund_manager.adjust_pnl(_pnl)
-                        self.bot.fund_manager.remove_position(stock_code)
                         self.logger.info(f"EOD 가상매도 재시도 성공: {stock_code} {quantity}주")
                     else:
                         self.logger.warning(

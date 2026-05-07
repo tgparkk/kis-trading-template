@@ -120,9 +120,19 @@ class SystemMonitor:
             registered = 0
             for stock_code in target_stocks:
                 try:
+                    # 종목명 조회: broker.get_stock_name 우선, 실패 시 stock_code 그대로
+                    stock_name = stock_code
+                    try:
+                        broker = getattr(self.bot, 'broker', None)
+                        if broker and hasattr(broker, 'get_stock_name'):
+                            fetched = broker.get_stock_name(stock_code)
+                            if fetched:
+                                stock_name = fetched
+                    except Exception:
+                        pass
                     success = await trading_manager.add_selected_stock(
                         stock_code=stock_code,
-                        stock_name=stock_code,  # 종목명은 나중에 업데이트됨
+                        stock_name=stock_name,
                         selection_reason=f"{strategy.name} get_target_stocks()"
                     )
                     if success:
@@ -178,26 +188,39 @@ class SystemMonitor:
                     self.logger.error(f"EOD 스크리너 스냅샷 검증 오류: {snap_err}")
 
     def _verify_screener_snapshot(self) -> None:
-        """EOD 스크리너 스냅샷 저장 여부 검증 (D6)"""
+        """EOD 스크리너 스냅샷 실행 여부 검증 (D6)
+
+        run_screener_snapshot_hook()이 오늘 실행됐는지를 1차 확인한다.
+        실행됐으면 DB 행 수와 무관하게 정상 (후보 0건은 정상 결과).
+        실행 기록이 없으면 WARNING.
+        """
         from config.constants import SCREENER_SNAPSHOT_ENABLED
         if not SCREENER_SNAPSHOT_ENABLED:
             return
 
-        try:
-            from db.connection import DatabaseConnection
-            with DatabaseConnection.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT COUNT(*) FROM screener_snapshots WHERE scan_date = CURRENT_DATE"
-                    )
-                    row = cur.fetchone()
-                    count = row[0] if row else 0
-            if count == 0:
-                self.logger.warning("EOD 스크리너 스냅샷이 저장되지 않음 (당일 0건)")
-            else:
-                self.logger.info(f"EOD 스크리너 스냅샷 저장 확인: {count}건")
-        except Exception as e:
-            self.logger.warning(f"스크리너 스냅샷 DB 조회 오류 (무시): {e}")
+        today = now_kst().date()
+
+        # 1차: 훅 실행 여부 확인 (DB 없이 판단 가능)
+        lh = getattr(self.bot, 'liquidation_handler', None)
+        snapshot_done_date = getattr(lh, '_snapshot_done_date', None) if lh else None
+        if snapshot_done_date == today:
+            # 훅이 오늘 실행됨 — DB 행 수도 참고로 로깅
+            try:
+                from db.connection import DatabaseConnection
+                with DatabaseConnection.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT COUNT(*) FROM screener_snapshots WHERE scan_date = CURRENT_DATE"
+                        )
+                        row = cur.fetchone()
+                        count = row[0] if row else 0
+                self.logger.info(f"EOD 스크리너 스냅샷 실행 완료 (DB 저장 {count}건, 0건은 후보 없음)")
+            except Exception as e:
+                self.logger.info(f"EOD 스크리너 스냅샷 실행 완료 (DB 조회 오류: {e})")
+            return
+
+        # 2차: 훅 미실행 → WARNING
+        self.logger.warning("EOD 스크리너 스냅샷 훅이 오늘 실행되지 않음 (_snapshot_done_date 미설정)")
 
     def _verify_eod_fund_integrity(self) -> None:
         """EOD 자금 정합성 검증 (FundManager 내부 등식 확인)"""

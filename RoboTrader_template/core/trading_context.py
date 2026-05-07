@@ -259,6 +259,17 @@ class TradingContext:
                 )
                 return None
 
+            # EOD 청산 시간 이후 intraday 전략 매수 차단 (안 C: F1 재매수 사고 방지)
+            if MarketHours.is_eod_liquidation_time():
+                current_strategy = self._strategies_dict.get(self._current_strategy_name)
+                hp = getattr(current_strategy, 'holding_period', 'intraday') if current_strategy else 'intraday'
+                if hp == 'intraday':
+                    self.logger.info(
+                        f"매수 차단: EOD 청산 시간 이후 intraday 전략 매수 불가 "
+                        f"(전략={self._current_strategy_name or 'unknown'})"
+                    )
+                    return None
+
             # 상한가 접근 시 매수 차단
             from config.constants import PRICE_LIMIT_GUARD_RATE
             prev_close = trading_stock.prev_close
