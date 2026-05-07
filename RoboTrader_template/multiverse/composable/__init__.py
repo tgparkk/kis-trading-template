@@ -25,6 +25,9 @@ from RoboTrader_template.multiverse.composable.personas import (
     build_swing_strategy,
     build_long_term_strategy,
     build_intraday_strategy,
+    build_spike_precursor_strategy,
+    build_spike_precursor_inverse_strategy,
+    build_trend_starter_strategy,
 )
 
 __all__ = [
@@ -42,4 +45,7 @@ __all__ = [
     "build_swing_strategy",
     "build_long_term_strategy",
     "build_intraday_strategy",
+    "build_spike_precursor_strategy",
+    "build_spike_precursor_inverse_strategy",
+    "build_trend_starter_strategy",
 ]

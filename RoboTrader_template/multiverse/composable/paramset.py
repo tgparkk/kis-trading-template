@@ -187,6 +187,27 @@ class ParamSet:
     holding_max_days: Optional[int]  # None=무제한, {5, 10, 20, 60}
 
     # ------------------------------------------------------------------ #
+    # V. Spike Precursor 임계값 (7)
+    # ------------------------------------------------------------------ #
+    spike_vol_z_thresh: float = 1.5      # F1 vol_zscore_20 임계값
+    spike_ma20_dist_min: float = -0.05   # F2 이격률 하한
+    spike_ma20_dist_max: float = 0.10    # F2 이격률 상한
+    spike_atr_max: float = 0.04          # F3 atr_ratio 상한 (변동성 압축)
+    spike_box_max: float = 0.12          # F4 box_squeeze 상한
+    spike_vol_trend_min: float = 1.2     # F5 vol_trend 하한
+    spike_match_min: int = 3             # 5개 중 몇 개 매칭해야 BUY
+
+    # ------------------------------------------------------------------ #
+    # W. Trend Starter 임계값 (6)
+    # ------------------------------------------------------------------ #
+    ts_atr_min: float = 0.06        # F3 atr_ratio 하한 (>=)
+    ts_volz_min: float = 1.5        # F1 vol_zscore_20 하한 (>=)
+    ts_box_min: float = 0.20        # F4 box_squeeze 하한 (>=)
+    ts_target_pct: float = 0.15     # 익절 목표 (양수)
+    ts_hold_days: int = 5           # 보유 상한 (1~30)
+    ts_stop_pct: float = -0.08      # 손절선 (음수)
+
+    # ------------------------------------------------------------------ #
     # 메서드
     # ------------------------------------------------------------------ #
 
@@ -229,6 +250,26 @@ class ParamSet:
         if self.ma_mid >= self.ma_long:
             raise ValueError(
                 f"ma_mid({self.ma_mid}) < ma_long({self.ma_long}) 조건 위반"
+            )
+
+        # V: spike_match_min 범위 (1~5)
+        if not (1 <= self.spike_match_min <= 5):
+            raise ValueError(
+                f"spike_match_min({self.spike_match_min})은 1~5 범위여야 합니다"
+            )
+
+        # W: trend_starter 제약
+        if not (1 <= self.ts_hold_days <= 30):
+            raise ValueError(
+                f"ts_hold_days({self.ts_hold_days})는 1~30 범위여야 합니다"
+            )
+        if self.ts_target_pct <= 0:
+            raise ValueError(
+                f"ts_target_pct({self.ts_target_pct})는 양수여야 합니다"
+            )
+        if self.ts_stop_pct >= 0:
+            raise ValueError(
+                f"ts_stop_pct({self.ts_stop_pct})는 음수여야 합니다"
             )
 
     def to_dict(self) -> dict:
