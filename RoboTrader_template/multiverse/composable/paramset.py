@@ -198,14 +198,18 @@ class ParamSet:
     spike_match_min: int = 3             # 5개 중 몇 개 매칭해야 BUY
 
     # ------------------------------------------------------------------ #
-    # W. Trend Starter 임계값 (6)
+    # W. Trend Starter 임계값 (10)
     # ------------------------------------------------------------------ #
     ts_atr_min: float = 0.06        # F3 atr_ratio 하한 (>=)
     ts_volz_min: float = 1.5        # F1 vol_zscore_20 하한 (>=)
     ts_box_min: float = 0.20        # F4 box_squeeze 하한 (>=)
-    ts_target_pct: float = 0.15     # 익절 목표 (양수)
+    ts_target_pct: float = 0.15     # 익절 목표 (양수) — 하위 호환, ATR 기반 미사용 시 폴백
     ts_hold_days: int = 5           # 보유 상한 (1~30)
-    ts_stop_pct: float = -0.08      # 손절선 (음수)
+    ts_stop_pct: float = -0.08      # 손절선 (음수) — 하위 호환, ATR 기반 미사용 시 폴백
+    ts_sl_atr_mult: float = 1.5     # ATR 기반 손절 배수 (손절 = entry - ATR × mult)
+    ts_tp_atr_mult: float = 3.0     # ATR 기반 익절 배수 (익절 = entry + ATR × mult)
+    ts_trail_trigger_atr: float = 0.0   # 트레일링 시작 ATR 배수 (0=비활성)
+    ts_trail_offset_atr: float = 0.5    # 트레일링 간격 ATR 배수
 
     # ------------------------------------------------------------------ #
     # 메서드
@@ -270,6 +274,27 @@ class ParamSet:
         if self.ts_stop_pct >= 0:
             raise ValueError(
                 f"ts_stop_pct({self.ts_stop_pct})는 음수여야 합니다"
+            )
+        # W (ATR 기반 신규 필드)
+        if self.ts_sl_atr_mult <= 0:
+            raise ValueError(
+                f"ts_sl_atr_mult({self.ts_sl_atr_mult})는 양수여야 합니다"
+            )
+        if self.ts_tp_atr_mult <= 0:
+            raise ValueError(
+                f"ts_tp_atr_mult({self.ts_tp_atr_mult})는 양수여야 합니다"
+            )
+        if self.ts_tp_atr_mult <= self.ts_sl_atr_mult:
+            raise ValueError(
+                f"ts_tp_atr_mult({self.ts_tp_atr_mult}) > ts_sl_atr_mult({self.ts_sl_atr_mult}) 조건 위반"
+            )
+        if self.ts_trail_trigger_atr < 0:
+            raise ValueError(
+                f"ts_trail_trigger_atr({self.ts_trail_trigger_atr})는 0 이상이어야 합니다"
+            )
+        if self.ts_trail_offset_atr <= 0:
+            raise ValueError(
+                f"ts_trail_offset_atr({self.ts_trail_offset_atr})는 양수여야 합니다"
             )
 
     def to_dict(self) -> dict:

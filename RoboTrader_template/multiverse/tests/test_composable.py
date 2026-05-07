@@ -84,8 +84,8 @@ def valid_paramset() -> ParamSet:
 
 
 def test_paramset_has_84_fields():
-    """ParamSet은 정확히 97개 필드를 가져야 함 (84 + 7 spike + 6 trend_starter)."""
-    assert len(fields(ParamSet)) == 97
+    """ParamSet은 정확히 101개 필드를 가져야 함 (84 + 7 spike + 6 trend_starter 기존 + 4 ATR 신규)."""
+    assert len(fields(ParamSet)) == 101
 
 
 # ============================================================ #
