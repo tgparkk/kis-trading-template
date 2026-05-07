@@ -27,7 +27,7 @@ class SawkamiDBManager:
 
     def __init__(self):
         self._conn_params = dict(
-            host=os.getenv('STRATEGY_DB_HOST', os.getenv('TIMESCALE_HOST', '172.23.208.1')),
+            host=os.getenv('STRATEGY_DB_HOST', os.getenv('TIMESCALE_HOST', '127.0.0.1')),
             port=int(os.getenv('STRATEGY_DB_PORT', os.getenv('TIMESCALE_PORT', 5433))),
             user=os.getenv('STRATEGY_DB_USER', os.getenv('TIMESCALE_USER', 'postgres')),
             password=os.getenv('STRATEGY_DB_PASSWORD', os.getenv('TIMESCALE_PASSWORD', '')),

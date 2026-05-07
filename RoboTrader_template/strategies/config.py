@@ -27,6 +27,13 @@ import sys
 
 import yaml
 
+# _pct 접미사이지만 0~1 비율이 아닌 퍼센트포인트 임계값 키 화이트리스트.
+# 이 키들은 risk_management 내에서 음수이거나 절대값 1 초과가 허용됨.
+PCT_THRESHOLD_WHITELIST: frozenset = frozenset({
+    'entry_deviation_pct',  # mean_reversion: BB 편차 임계값 (퍼센트포인트, e.g. -10.0)
+    'high52w_drop_pct',     # sawkami: 52주 고점 대비 낙폭 트리거 (퍼센트포인트, e.g. -20.0)
+})
+
 if TYPE_CHECKING:
     from .base import BaseStrategy
 
@@ -231,7 +238,8 @@ class StrategyConfig:
                     continue
 
                 # _pct, _ratio, _size 접미사 키: 0~1 범위 검증
-                if key.endswith(('_pct', '_ratio', '_size')):
+                # (PCT_THRESHOLD_WHITELIST에 등록된 퍼센트포인트 임계값 키는 제외)
+                if key.endswith(('_pct', '_ratio', '_size')) and key not in PCT_THRESHOLD_WHITELIST:
                     if not (0 <= value <= 1):
                         raise StrategyConfigError(
                             f"risk_management.{key} must be between 0 and 1, got {value}"
