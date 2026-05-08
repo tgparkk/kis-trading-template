@@ -18,6 +18,7 @@ from typing import Dict, Tuple
 
 import pandas as pd
 
+from RoboTrader_template.multiverse.composable._normalize import z_normalize as _z_normalize
 from RoboTrader_template.multiverse.composable.paramset import ParamSet
 from RoboTrader_template.multiverse.composable.strategy import ComposableStrategy
 from RoboTrader_template.multiverse.engine.pit_engine import PITContext
@@ -29,19 +30,6 @@ _INTRADAY_HOLD_DAYS = 1  # 단타 최대 보유일 강제
 
 # 캐시 키: (as_of_date, config_hash) → {symbol: normalized_score}
 _ScoreCache = Dict[Tuple, Dict[str, float]]
-
-
-def _z_normalize(values: list[float]) -> list[float]:
-    """Universe-wide z-score 정규화. std=0이면 0 반환."""
-    finite = [v for v in values if not math.isnan(v)]
-    if not finite:
-        return [0.0] * len(values)
-    mean = sum(finite) / len(finite)
-    variance = sum((v - mean) ** 2 for v in finite) / len(finite)
-    std = math.sqrt(variance)
-    if std == 0:
-        return [0.0] * len(values)
-    return [(v - mean) / std if not math.isnan(v) else 0.0 for v in values]
 
 
 class _IntradayUniverse:
