@@ -34,6 +34,14 @@ import time
 from datetime import date, datetime
 from typing import Callable
 
+# Windows cp949 환경에서 em-dash 등 Unicode 문자 로깅 시 UnicodeEncodeError 방지
+# Python 3.7+ sys.stdout.reconfigure 사용; errors='replace'로 실패해도 프로세스 유지
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
