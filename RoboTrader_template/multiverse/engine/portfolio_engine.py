@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Dict, List, Optional, Tuple
 
+import psycopg2
+
 from RoboTrader_template.multiverse.data import corp_events as _corp_events
 from RoboTrader_template.multiverse.data import pit_reader
 from RoboTrader_template.multiverse.data.pit_reader import backtest_session
@@ -84,30 +86,49 @@ def _get_portfolio_trading_dates(
 ) -> List[date]:
     """start_date ~ end_date 사이 거래일 목록 반환.
 
-    모든 후보 종목의 거래일 합집합을 사용 (어떤 종목이든 한 종목이라도 거래된 날 포함).
+    모든 후보 종목의 거래일 합집합을 단일 SELECT DISTINCT 쿼리로 조회.
+    read_daily() 루프 제거 — 종목마다 DataFrame 생성 + 신규 연결 비용 없음.
     빈 결과 시 평일 fallback.
     """
     import pandas as pd
 
     if candidate_symbols:
-        lookback = (end_date - start_date).days + 10
-        all_dates: set = set()
-        for symbol in candidate_symbols:
-            df = pit_reader.read_daily(
-                symbol=symbol,
-                as_of_date=end_date,
-                lookback_days=lookback,
+        sql = r"""
+            SELECT DISTINCT date
+            FROM daily_prices
+            WHERE stock_code = ANY(%(symbols)s)
+              AND date BETWEEN %(start_date)s AND %(end_date)s
+              AND date::text ~ '^\d{4}-\d{2}-\d{2}$'
+            ORDER BY date
+        """
+        try:
+            conn = psycopg2.connect(
+                **pit_reader._QUANT_DB_DEFAULTS,
+                database=pit_reader._QUANT_DB,
             )
-            if df.empty:
-                continue
-            for d in df["date"].tolist():
-                if start_date <= d <= end_date:
-                    all_dates.add(d)
-        dates = sorted(all_dates)
-        if dates:
-            if dates[-1] < end_date:
-                dates.append(end_date)
-            return dates
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        sql,
+                        dict(
+                            symbols=candidate_symbols,
+                            start_date=start_date.isoformat(),
+                            end_date=end_date.isoformat(),
+                        ),
+                    )
+                    rows = cur.fetchall()
+                conn.commit()
+            finally:
+                conn.close()
+
+            dates = [r[0] if isinstance(r[0], date) else r[0].date() for r in rows]
+            dates = sorted(dates)
+            if dates:
+                return dates
+        except Exception as exc:
+            logger.warning(
+                "[portfolio_engine] _get_portfolio_trading_dates DB 조회 실패, fallback 사용: %s", exc
+            )
 
     # fallback: 평일 목록
     days = pd.bdate_range(start=start_date, end=end_date)

@@ -594,44 +594,31 @@ def test_p7_portfolio_stop_full_exit(base_paramset):
 # ================================================================== #
 
 def test_get_portfolio_trading_dates_uses_union():
-    """모든 candidate 종목의 거래일 union을 사용해 첫 종목 의존성 제거."""
-    # 종목 A: 5월 1~3일만 거래 (3일치)
-    # 종목 B: 5월 1~10일 거래 (10일치)
-    # 종목 C: 5월 5~10일 거래 (6일치)
-    # 기대: union = 5월 1~10일 (10일)
-    from unittest.mock import patch
+    """단일 SELECT DISTINCT 쿼리로 모든 candidate 종목 거래일 union 반환 검증.
+
+    DB 연결을 mock하여 A(3일)/B(10일)/C(6일) union = 5월 1~10일(10일)을 반환하도록 설정.
+    """
+    from unittest.mock import patch, MagicMock
     from RoboTrader_template.multiverse.engine.portfolio_engine import _get_portfolio_trading_dates
 
-    a_dates = [date(2026, 5, 1), date(2026, 5, 2), date(2026, 5, 3)]
-    b_dates = [date(2026, 5, d) for d in range(1, 11)]
-    c_dates = [date(2026, 5, d) for d in range(5, 11)]
+    # SELECT DISTINCT date 쿼리가 반환할 union 결과 (5월 1~10일, 10행)
+    union_dates = [date(2026, 5, d) for d in range(1, 11)]
 
-    def _read_daily_mock(symbol, as_of_date, lookback_days):
-        if symbol == "A":
-            return pd.DataFrame({
-                "date": a_dates, "close": [100] * 3,
-                "open": [100] * 3, "high": [100] * 3,
-                "low": [100] * 3, "volume": [1000] * 3,
-            })
-        if symbol == "B":
-            return pd.DataFrame({
-                "date": b_dates, "close": [200] * 10,
-                "open": [200] * 10, "high": [200] * 10,
-                "low": [200] * 10, "volume": [1000] * 10,
-            })
-        if symbol == "C":
-            return pd.DataFrame({
-                "date": c_dates, "close": [300] * 6,
-                "open": [300] * 6, "high": [300] * 6,
-                "low": [300] * 6, "volume": [1000] * 6,
-            })
-        return pd.DataFrame()
+    mock_cursor = MagicMock()
+    mock_cursor.__enter__ = lambda s: s
+    mock_cursor.__exit__ = MagicMock(return_value=False)
+    mock_cursor.fetchall.return_value = [(d,) for d in union_dates]
+
+    mock_conn = MagicMock()
+    mock_conn.__enter__ = lambda s: s
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value = mock_cursor
 
     with patch(
-        "RoboTrader_template.multiverse.engine.portfolio_engine.pit_reader.read_daily",
-        side_effect=_read_daily_mock,
+        "RoboTrader_template.multiverse.engine.portfolio_engine.psycopg2.connect",
+        return_value=mock_conn,
     ):
-        # A를 첫 번째에 둬도(이전엔 3일치만 잡힘) union으로 10일 모두 나와야 함
+        # A를 첫 번째에 둬도 단일 쿼리 union으로 10일 모두 나와야 함
         result = _get_portfolio_trading_dates(
             start_date=date(2026, 5, 1),
             end_date=date(2026, 5, 10),
