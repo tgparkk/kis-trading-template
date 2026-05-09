@@ -24,8 +24,9 @@ from RoboTrader_template.multiverse.engine.pit_engine import PITContext
 # 캐시 키: (as_of_date, config_hash) → {symbol: normalized_score}
 _ScoreCache = Dict[Tuple, Dict[str, float]]
 
-# 5년 백테스트(1260 거래일)에서 무한 성장 방지 — 최근 30 거래일분만 보존
-_MAX_CACHE_KEYS = 30
+# 5년 백테스트(1260 거래일) 전체 보존 — 인스턴스당 ~1MB로 제한적
+# 30으로 좁히면 cache hit 거의 안 일어나 _compute_scores 재계산 비용 폭증 (5/9 v4 측정)
+_MAX_CACHE_KEYS = 1300
 
 
 class _QuantUniverse:
