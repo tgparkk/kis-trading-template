@@ -24,6 +24,9 @@ from RoboTrader_template.multiverse.engine.pit_engine import PITContext
 # 캐시 키: (as_of_date, config_hash) → {symbol: normalized_score}
 _ScoreCache = Dict[Tuple, Dict[str, float]]
 
+# 5년 백테스트(1260 거래일)에서 무한 성장 방지 — 최근 30 거래일분만 보존
+_MAX_CACHE_KEYS = 30
+
 
 class _QuantUniverse:
     def __init__(self, candidate_symbols: list[str]) -> None:
@@ -41,6 +44,10 @@ class _QuantUniverse:
         cache_key = (ctx.as_of_date, paramset.config_hash())
         if cache_key not in self._score_cache:
             self._score_cache[cache_key] = self._compute_scores(ctx, filtered, paramset)
+            # 상한 초과 시 가장 오래된 키 1개 제거 (date 기준 정렬 — 튜플 첫 원소)
+            if len(self._score_cache) > _MAX_CACHE_KEYS:
+                oldest = sorted(self._score_cache)[0]
+                del self._score_cache[oldest]
 
         scores = self._score_cache[cache_key]
         ranked = sorted(scores, key=lambda s: scores[s], reverse=True)
