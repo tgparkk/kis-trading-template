@@ -253,15 +253,15 @@ def run_portfolio_backtest(
     _precision_total: int = 0             # precision 분모 (BUY 체결 건수)
     _precision_hits: int = 0             # precision 분자 (entry 당일 고가 ≥ entry*1.05)
 
+    # 패치 #1 (5/9 stall fix): trading_dates 계산을 session 밖으로 — DB 포화 회피
+    trading_dates = _get_portfolio_trading_dates(start_date, end_date, candidate_symbols)
+
+    logger.debug(
+        "[portfolio_engine] %s~%s — %d 거래일, %d 후보 종목",
+        start_date, end_date, len(trading_dates), len(candidate_symbols),
+    )
+
     with backtest_session():  # 단일 DB 연결 재사용 — connect() 비용(~220ms/call) 제거
-        # _get_portfolio_trading_dates도 session 안에서 실행 — read_daily() 재사용 적용
-        trading_dates = _get_portfolio_trading_dates(start_date, end_date, candidate_symbols)
-
-        logger.debug(
-            "[portfolio_engine] %s~%s — %d 거래일, %d 후보 종목",
-            start_date, end_date, len(trading_dates), len(candidate_symbols),
-        )
-
         return _run_portfolio_loop(
             strategy=strategy,
             candidate_symbols=candidate_symbols,
