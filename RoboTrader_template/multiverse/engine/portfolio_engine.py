@@ -121,7 +121,19 @@ def _get_portfolio_trading_dates(
             finally:
                 conn.close()
 
-            dates = [r[0] if isinstance(r[0], date) else r[0].date() for r in rows]
+            # daily_prices.date는 PostgreSQL TEXT 타입 — string으로 들어옴
+            dates: List[date] = []
+            for r in rows:
+                val = r[0]
+                if isinstance(val, date):
+                    dates.append(val)
+                elif isinstance(val, str):
+                    try:
+                        dates.append(date.fromisoformat(val))
+                    except ValueError:
+                        continue  # malformed (정규식 필터로 거의 도달 안 함)
+                else:
+                    dates.append(val.date())  # datetime fallback
             dates = sorted(dates)
             if dates:
                 return dates
