@@ -164,3 +164,18 @@ STATE_RESTORATION_AUTO_RECONCILE = False
 import os as _os
 SCREENER_SNAPSHOT_ENABLED = _os.getenv("SCREENER_SNAPSHOT_ENABLED", "false").lower() == "true"
 del _os
+
+# =============================================================================
+# 장 시작 동시 진입 억제 (Entry Throttle)
+# =============================================================================
+# 마지막 신규 진입 이후 다음 신규 진입까지 최소 대기 시간 (초).
+# 0이면 쿨다운 비활성화.
+ENTRY_COOLDOWN_SECONDS: int = 60
+
+# on_tick 한 사이클(≈9초 루프) 내 신규 진입 허용 최대 개수.
+# 0이면 제한 없음.
+MAX_NEW_ENTRIES_PER_CYCLE: int = 3
+
+# 사이클 경계 판정 윈도우 (초). on_tick 주기(9초)보다 약간 크게.
+# _cycle_start_time 기준으로 이 시간이 지나면 새 사이클로 간주해 카운터 리셋.
+ENTRY_CYCLE_WINDOW_SECONDS: int = 15

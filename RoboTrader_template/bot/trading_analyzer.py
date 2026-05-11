@@ -142,8 +142,11 @@ class TradingAnalyzer:
                         self.bot.fund_manager.add_position(stock_code)
                         # 매수 쿨다운 설정
                         trading_stock.set_buy_time(_now_kst())
-                        # 상태를 POSITIONED로 반영하여 이후 매도 판단 루프에 포함
+                        # 상태를 BUY_PENDING → POSITIONED 2단계로 전이 (실전 경로와 일관성)
                         try:
+                            self.bot.trading_manager._change_stock_state(
+                                stock_code, StockState.BUY_PENDING, "가상 매수 주문"
+                            )
                             self.bot.trading_manager._change_stock_state(
                                 stock_code, StockState.POSITIONED, "가상 매수 체결"
                             )

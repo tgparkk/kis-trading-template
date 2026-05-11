@@ -85,7 +85,8 @@ class DatabaseManager:
                     'quant_factors',
                     'quant_portfolio',
                     'daily_prices',
-                    'minute_prices'
+                    'minute_prices',
+                    'paper_trading_state',
                 ]
 
                 cursor.execute('''
@@ -201,6 +202,12 @@ class DatabaseManager:
 
     def get_today_stop_loss_stocks(self, target_date: str = None) -> List[str]:
         return self.trading_repo.get_today_stop_loss_stocks(target_date)
+
+    def upsert_paper_eod_balance(self, trade_date, eod_balance: float) -> bool:
+        return self.trading_repo.upsert_paper_eod_balance(trade_date, eod_balance)
+
+    def get_latest_paper_eod_balance(self) -> 'Optional[float]':
+        return self.trading_repo.get_latest_paper_eod_balance()
 
     # ============================
     # 퀀트 관련 (QuantRepository 위임)

@@ -5,9 +5,12 @@ Sample Strategy — 이동평균 크로스 + RSI
 간단하지만 실제 동작하는 예제 전략입니다.
 
 매수 조건 (1개 이상 충족 시):
-  1. 5일 이동평균이 20일 이동평균보다 위 (상승 추세)
+  1. 5일 이동평균이 20일 이동평균보다 위 (상승 추세) + RSI < rsi_entry_max(60)
   2. RSI(14)가 과매도(40 이하) 영역
   3. 거래량이 20일 평균의 1.5배 이상
+
+필터 (매수 전 공통 차단):
+  - 장 시작 후 market_open_skip_minutes(5분) 이내 신규 진입 보류
 
 매도 조건 (1개 이상 충족 시):
   1. 5일 이동평균이 20일 이동평균을 데드크로스
@@ -15,7 +18,7 @@ Sample Strategy — 이동평균 크로스 + RSI
   3. 익절(+10%) 또는 손절(-5%) 도달
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -57,8 +60,11 @@ class SampleStrategy(BaseStrategy):
         self._rsi_period = params.get("rsi_period", 14)
         self._rsi_oversold = params.get("rsi_oversold", 30)
         self._rsi_overbought = params.get("rsi_overbought", 70)
+        self._rsi_entry_max = params.get("rsi_entry_max", 60)
         self._volume_multiplier = params.get("volume_multiplier", 1.5)
         self._min_buy_signals = params.get("min_buy_signals", 2)
+        skip_min = params.get("market_open_skip_minutes", 5)
+        self._market_open_until = time(9, skip_min)
 
         # 리스크 파라미터
         risk = self.config.get("risk_management", {})
@@ -162,6 +168,18 @@ class SampleStrategy(BaseStrategy):
             return None
 
         # ── 미보유 종목이면 매수 판단 ──
+
+        # (나) 장 초반 진입 제한 — 09:00~09:0N 사이 신규 진입 보류
+        now_time = datetime.now().time()
+        if time(9, 0) <= now_time < self._market_open_until:
+            if self._should_log(stock_code, "market_open_skip"):
+                self.logger.info(
+                    f"[신호없음] {stock_code}: 장 초반 진입 보류 "
+                    f"(현재 {now_time.strftime('%H:%M:%S')}, "
+                    f"09:00~{self._market_open_until.strftime('%H:%M')} 차단)"
+                )
+            return None
+
         buy, reasons = self._check_buy(
             sma_short, sma_long, rsi, data["volume"], avg_volume
         )
@@ -244,8 +262,11 @@ class SampleStrategy(BaseStrategy):
     ) -> Tuple[bool, List[str]]:
         reasons: List[str] = []
 
-        # 1) 단기 우위 상태 (MA5 > MA20 상태)
-        if sma_short.iloc[-1] > sma_long.iloc[-1]:
+        # 1) 단기 우위 상태 (MA5 > MA20) + RSI 과열 제외 (RSI < rsi_entry_max)
+        if (
+            sma_short.iloc[-1] > sma_long.iloc[-1]
+            and rsi.iloc[-1] < self._rsi_entry_max
+        ):
             reasons.append(
                 f"{self._ma_short}일선 > {self._ma_long}일선 (상승 추세)"
             )

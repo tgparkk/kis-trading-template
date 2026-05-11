@@ -55,21 +55,47 @@ class VirtualTradingManager:
         """잔고 초기화 (가상/실전 모드에 따라 다르게 처리)"""
         try:
             if self.paper_trading:
-                # 🎯 가상매매 모드: 1000만원으로 설정
-                self.virtual_balance = 10000000  # 1천만원
-                self.initial_balance = self.virtual_balance
+                # 가상매매 모드: 전일 EOD 잔고 이월, 없으면 1000만원 fallback
                 self.virtual_investment_amount = 1000000  # 종목당 100만원
-                self.logger.info(f"💰 가상 잔고 설정 (가상매매 모드): {self.virtual_balance:,.0f}원 (종목당: {self.virtual_investment_amount:,.0f}원)")
+                carried = self._load_paper_eod_balance()
+                if carried is not None:
+                    self.virtual_balance = carried
+                    self.initial_balance = carried
+                    self.logger.info(
+                        f"가상 잔고 이월 (paper_trading_state): {self.virtual_balance:,.0f}원 "
+                        f"(종목당: {self.virtual_investment_amount:,.0f}원)"
+                    )
+                else:
+                    self.virtual_balance = 10000000  # 1천만원 (첫 실행 fallback)
+                    self.initial_balance = self.virtual_balance
+                    self.logger.info(
+                        f"가상 잔고 설정 (초기/fallback): {self.virtual_balance:,.0f}원 "
+                        f"(종목당: {self.virtual_investment_amount:,.0f}원)"
+                    )
             else:
-                # 🎯 실전 모드: 실제 계좌 잔고 조회
+                # 실전 모드: 실제 계좌 잔고 조회
                 self._initialize_real_balance()
 
         except Exception as e:
-            self.logger.error(f"❌ 잔고 초기화 오류: {e}")
+            self.logger.error(f"잔고 초기화 오류: {e}")
             # 오류 시 기본값 사용
             self.virtual_balance = 10000000
             self.initial_balance = self.virtual_balance
             self.virtual_investment_amount = 1000000
+
+    def _load_paper_eod_balance(self) -> 'Optional[float]':
+        """paper_trading_state에서 가장 최근 EOD 잔고 조회.
+
+        Returns:
+            float: 저장된 잔고, 없거나 DB 없으면 None
+        """
+        if not self.db_manager:
+            return None
+        try:
+            return self.db_manager.get_latest_paper_eod_balance()
+        except Exception as e:
+            self.logger.warning(f"paper EOD 잔고 로드 실패 (fallback 사용): {e}")
+            return None
 
     def _initialize_real_balance(self) -> None:
         """실전 모드: 실제 계좌 잔고로 초기화"""
@@ -485,12 +511,104 @@ class VirtualTradingManager:
         from config.constants import STALE_POSITION_DAYS
         return self.get_days_held(stock_code) >= STALE_POSITION_DAYS
 
+    def save_paper_trading_state(self) -> bool:
+        """현재 가상 잔고를 오늘 날짜로 paper_trading_state에 UPSERT.
+
+        EOD 처리 완료 시점에 liquidation_handler가 호출한다.
+
+        Returns:
+            bool: 저장 성공 여부
+        """
+        if not self.db_manager:
+            self.logger.warning("DB 매니저 없음 — paper EOD 잔고 저장 생략")
+            return False
+        try:
+            today = now_kst().date()
+            ok = self.db_manager.upsert_paper_eod_balance(today, self.virtual_balance)
+            if ok:
+                self.logger.info(
+                    f"paper EOD 잔고 저장: {today} {self.virtual_balance:,.0f}원"
+                )
+            return ok
+        except Exception as e:
+            self.logger.error(f"paper EOD 잔고 저장 오류: {e}")
+            return False
+
+    def get_cumulative_profit_info(self) -> dict:
+        """DB 전체 누적 실현손익 기반 성과 정보 반환 (P2 보조 메서드).
+
+        virtual_trading_records의 is_test=TRUE SELL 레코드의 profit_loss 합계.
+        profit_loss는 (sell_price - buy_price) * qty — 수수료/세금 미포함.
+        수수료+거래세 추정치를 차감하여 순손익을 근사한다.
+
+        Returns:
+            dict: cumulative_gross_pnl, cumulative_net_pnl (추정), trade_count,
+                  current_balance, initial_balance (=10,000,000)
+        """
+        BASE_BALANCE = 10_000_000
+        result = {
+            'cumulative_gross_pnl': 0.0,
+            'cumulative_net_pnl': 0.0,
+            'trade_count': 0,
+            'current_balance': self.virtual_balance,
+            'initial_balance': BASE_BALANCE,
+        }
+        if not self.db_manager:
+            return result
+        try:
+            from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
+            with self.db_manager.trading_repo._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT
+                        COALESCE(SUM(s.profit_loss), 0)            AS gross_pnl,
+                        COALESCE(SUM(s.price * s.quantity), 0)     AS total_sell_value,
+                        COALESCE(SUM(b.price * s.quantity), 0)     AS total_buy_value,
+                        COUNT(*)                                    AS trade_count
+                    FROM virtual_trading_records s
+                    JOIN virtual_trading_records b ON s.buy_record_id = b.id
+                    WHERE s.action = 'SELL' AND s.is_test = TRUE
+                ''')
+                row = cursor.fetchone()
+            if row:
+                gross_pnl = float(row[0])
+                total_sell_value = float(row[1])
+                total_buy_value = float(row[2])
+                trade_count = int(row[3])
+                # 수수료: 매수·매도 각 COMMISSION_RATE, 거래세: 매도에 SECURITIES_TAX_RATE
+                estimated_fees = (
+                    total_buy_value * COMMISSION_RATE
+                    + total_sell_value * (COMMISSION_RATE + SECURITIES_TAX_RATE)
+                )
+                net_pnl = gross_pnl - estimated_fees
+                result.update({
+                    'cumulative_gross_pnl': gross_pnl,
+                    'cumulative_net_pnl': net_pnl,
+                    'trade_count': trade_count,
+                })
+        except Exception as e:
+            self.logger.warning(f"누적 손익 조회 실패: {e}")
+        return result
+
+    def log_cumulative_profit(self) -> None:
+        """누적 실현손익을 INFO 로그에 한 줄 출력 (EOD 또는 필요 시점에 호출)."""
+        info = self.get_cumulative_profit_info()
+        net = info['cumulative_net_pnl']
+        gross = info['cumulative_gross_pnl']
+        count = info['trade_count']
+        base = info['initial_balance']
+        net_rate = (net / base * 100) if base > 0 else 0.0
+        self.logger.info(
+            f"[누적손익] {count}건 실현 | 순손익(추정) {net:+,.0f}원 ({net_rate:+.2f}%) "
+            f"| 총손익(수수료전) {gross:+,.0f}원 | 현재잔고 {self.virtual_balance:,.0f}원"
+        )
+
     def get_virtual_balance_info(self) -> dict:
         """가상매매 잔고 정보 반환"""
         try:
             profit_amount = self.virtual_balance - self.initial_balance
             profit_rate = self.get_virtual_profit_rate()
-            
+
             return {
                 'current_balance': self.virtual_balance,
                 'initial_balance': self.initial_balance,
@@ -499,5 +617,5 @@ class VirtualTradingManager:
                 'investment_amount_per_stock': self.virtual_investment_amount
             }
         except Exception as e:
-            self.logger.error(f"❌ 가상 잔고 정보 조회 오류: {e}")
+            self.logger.error(f"가상 잔고 정보 조회 오류: {e}")
             return {}

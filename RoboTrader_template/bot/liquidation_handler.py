@@ -216,6 +216,9 @@ class LiquidationHandler:
             # 포지션 유무에 무관하게 EOD 완료 후 스크리너 스냅샷 수집 (비차단, 하루 1회)
             await self.run_screener_snapshot_hook()
 
+            # EOD 잔고 이월: 가상매매 모드일 때 오늘 잔고를 DB에 저장
+            self._save_paper_eod_balance_if_virtual()
+
         except Exception as e:
             self.logger.error(f"장마감 시장가 매도 오류: {e}")
 
@@ -458,6 +461,29 @@ class LiquidationHandler:
 
         except Exception as e:
             self.logger.warning("스크리너 스냅샷 훅 오류 (무시): %s", e)
+
+    def _save_paper_eod_balance_if_virtual(self) -> None:
+        """가상매매 모드일 때 현재 잔고를 paper_trading_state에 저장.
+
+        실패해도 메인 루프를 중단하지 않는다 (warning 로그만).
+        """
+        try:
+            is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
+            if not is_virtual:
+                return
+            virtual_mgr = getattr(self.bot, 'virtual_trading_manager', None)
+            if virtual_mgr is None:
+                # fund_manager 경유 시도 (구조에 따라 다를 수 있음)
+                virtual_mgr = getattr(self.bot, 'fund_manager', None)
+                virtual_mgr = getattr(virtual_mgr, 'virtual_trading_manager', None) if virtual_mgr else None
+            if virtual_mgr is None:
+                self.logger.warning("paper EOD 잔고 저장 생략: virtual_trading_manager 참조 불가")
+                return
+            ok = virtual_mgr.save_paper_trading_state()
+            if ok:
+                virtual_mgr.log_cumulative_profit()
+        except Exception as e:
+            self.logger.warning(f"paper EOD 잔고 저장 훅 오류 (무시): {e}")
 
     def has_failed_eod_stocks(self) -> bool:
         """EOD 청산 실패 종목 존재 여부"""

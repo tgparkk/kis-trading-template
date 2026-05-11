@@ -17,14 +17,18 @@ parameters:
 
   # RSI 설정
   rsi_period: 14           # RSI 계산 기간
-  rsi_oversold: 40         # 과매도 기준선
-  rsi_overbought: 70       # 과매수 기준선
+  rsi_oversold: 40         # 과매도 기준선 (조건2: RSI < 이 값이면 매수 신호)
+  rsi_overbought: 70       # 과매수 기준선 (매도 신호)
+  rsi_entry_max: 60        # MA 상승 추세 진입 상한 (RSI >= 이 값이면 과열로 조건1 차단)
 
   # 거래량 설정
   volume_multiplier: 1.5   # 평균 대비 N배 이상이면 급증 판단
 
   # 매수 신호 최소 충족 조건 수 (1~3)
   min_buy_signals: 1
+
+  # 장 초반 진입 제한 (분): 09:00~09:N분 사이 신규 매수 보류
+  market_open_skip_minutes: 5
 
 # -----------------------------------------------------------------------------
 # 리스크 관리

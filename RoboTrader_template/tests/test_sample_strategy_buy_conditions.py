@@ -55,6 +55,7 @@ def _make_strategy() -> SampleStrategy:
     s._rsi_period = 14
     s._rsi_oversold = 40
     s._rsi_overbought = 70
+    s._rsi_entry_max = 60
     s._volume_multiplier = 1.5
     s._min_buy_signals = 1
     return s
@@ -324,7 +325,12 @@ class TestGenerateSignalIntegration:
         return s
 
     def test_generate_signal_buy_on_ma_state(self):
-        """MA5>MA20 상태 DataFrame → BUY Signal 반환."""
+        """MA5>MA20 상태 DataFrame → BUY Signal 반환.
+
+        _calculate_rsi를 목킹해 RSI=50 (finite, < rsi_entry_max=60) 고정.
+        순수 MA 조건 동작을 검증한다.
+        """
+        from unittest.mock import patch
         from strategies.base import SignalType
 
         s = self._make_strat_initialized()
@@ -339,7 +345,11 @@ class TestGenerateSignalIntegration:
             "volume": [1_000_000] * 30,
         })
 
-        signal = s.generate_signal("005930", df)
+        # RSI=50 고정 (rsi_entry_max=60 미만 → MA 조건 차단 없음)
+        fixed_rsi = pd.Series([50.0] * 30)
+        with patch.object(SampleStrategy, "_calculate_rsi", return_value=fixed_rsi):
+            signal = s.generate_signal("005930", df)
+
         assert signal is not None
         assert signal.signal_type == SignalType.BUY
         assert any("상승 추세" in r for r in signal.reasons)

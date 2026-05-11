@@ -353,6 +353,18 @@ CREATE INDEX IF NOT EXISTS idx_screener_snapshots_params
 -- 모든 스냅샷 데이터는 영구 보존됨
 
 -- =====================================================
+-- 13. paper_trading_state (일반 테이블) - 가상매매 EOD 잔고 이월
+-- =====================================================
+CREATE TABLE IF NOT EXISTS paper_trading_state (
+    trade_date  DATE PRIMARY KEY,
+    eod_balance NUMERIC(15, 2) NOT NULL,
+    updated_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- 주의: 보존 정책(자동 삭제)은 의도적으로 설정하지 않음
+-- 모든 잔고 이력은 영구 보존됨
+
+-- =====================================================
 -- 완료 메시지
 -- =====================================================
 DO $$

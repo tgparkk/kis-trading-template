@@ -556,3 +556,58 @@ class TradingRepository(BaseRepository):
         except Exception as e:
             self.logger.error(f"손절 종목 조회 실패: {e}")
             return []
+
+    # ============================
+    # 가상매매 잔고 이월 (paper_trading_state)
+    # ============================
+
+    def upsert_paper_eod_balance(self, trade_date, eod_balance: float) -> bool:
+        """장마감 가상매매 잔고를 paper_trading_state에 UPSERT.
+
+        Args:
+            trade_date: 저장할 날짜 (date 또는 'YYYY-MM-DD' 문자열)
+            eod_balance: 해당 날짜 장마감 가상 잔고 (원)
+        """
+        try:
+            if hasattr(trade_date, 'strftime'):
+                trade_date_str = trade_date.strftime('%Y-%m-%d')
+            else:
+                trade_date_str = str(trade_date)
+
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO paper_trading_state (trade_date, eod_balance, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (trade_date)
+                    DO UPDATE SET eod_balance = EXCLUDED.eod_balance,
+                                  updated_at  = NOW()
+                ''', (trade_date_str, float(eod_balance)))
+                self.logger.info(
+                    f"paper_trading_state UPSERT: {trade_date_str} 잔고 {eod_balance:,.0f}원"
+                )
+                return True
+        except Exception as e:
+            self.logger.error(f"paper_trading_state UPSERT 실패: {e}")
+            return False
+
+    def get_latest_paper_eod_balance(self) -> Optional[float]:
+        """가장 최근 영업일의 paper EOD 잔고 반환.
+
+        Returns:
+            float: 저장된 잔고 (원), 없으면 None
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT eod_balance
+                    FROM paper_trading_state
+                    ORDER BY trade_date DESC
+                    LIMIT 1
+                ''')
+                row = cursor.fetchone()
+                return float(row[0]) if row else None
+        except Exception as e:
+            self.logger.error(f"paper_trading_state 조회 실패: {e}")
+            return None

@@ -13,6 +13,11 @@ import pandas as pd
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, is_market_open
 from config.market_hours import MarketHours, MarketPhase
+from config.constants import (
+    ENTRY_COOLDOWN_SECONDS,
+    MAX_NEW_ENTRIES_PER_CYCLE,
+    ENTRY_CYCLE_WINDOW_SECONDS,
+)
 
 if TYPE_CHECKING:
     from core.trading_stock_manager import TradingStockManager
@@ -60,6 +65,15 @@ class TradingContext:
         # 일봉 조회 실패 로그 쓰로틀: key=(stock_code, reason), value=마지막 로그 시각
         self._daily_log_cache: Dict[Tuple[str, str], datetime] = {}
         self._daily_log_interval = timedelta(minutes=10)
+        # ── 장 시작 동시 진입 억제 (Entry Throttle) ──────────────────────────
+        # 쿨다운/사이클 제한 설정 (constants.py에서 로드, 테스트에서 직접 override 가능)
+        self._entry_cooldown_seconds: int = ENTRY_COOLDOWN_SECONDS
+        self._max_new_entries_per_cycle: int = MAX_NEW_ENTRIES_PER_CYCLE
+        self._entry_cycle_window_seconds: int = ENTRY_CYCLE_WINDOW_SECONDS
+        # 런타임 상태
+        self._last_new_entry_time: Optional[datetime] = None  # 마지막 신규 진입 시각
+        self._cycle_start_time: Optional[datetime] = None     # 현재 사이클 시작 시각
+        self._new_entries_this_cycle: int = 0                  # 현재 사이클 신규 진입 수
 
     # =========================================================================
     # a) 시장 상태
@@ -288,8 +302,46 @@ class TradingContext:
                         )
                         return None
 
+            # ── 장 시작 동시 진입 억제 ─────────────────────────────────────────
+            _now = now_kst()
+
+            # 사이클 카운터 리셋: 윈도우가 경과했으면 새 사이클 시작
+            if (self._cycle_start_time is None
+                    or (_now - self._cycle_start_time).total_seconds()
+                    >= self._entry_cycle_window_seconds):
+                self._cycle_start_time = _now
+                self._new_entries_this_cycle = 0
+
+            # (나) 사이클당 신규 진입 개수 제한
+            if (self._max_new_entries_per_cycle > 0
+                    and self._new_entries_this_cycle >= self._max_new_entries_per_cycle):
+                self.logger.info(
+                    f"[진입억제] {stock_code} 매수 스킵 — "
+                    f"이번 사이클 신규 진입 {self._new_entries_this_cycle}건 "
+                    f"(한도 {self._max_new_entries_per_cycle}건)"
+                )
+                return None
+
+            # (가) 종목간 진입 쿨다운
+            if (self._entry_cooldown_seconds > 0
+                    and self._last_new_entry_time is not None):
+                elapsed = (_now - self._last_new_entry_time).total_seconds()
+                if elapsed < self._entry_cooldown_seconds:
+                    remaining = int(self._entry_cooldown_seconds - elapsed)
+                    self.logger.info(
+                        f"[진입억제] {stock_code} 매수 스킵 — "
+                        f"쿨다운 {remaining}초 남음 "
+                        f"(마지막 진입 {int(elapsed)}초 전)"
+                    )
+                    return None
+            # ─────────────────────────────────────────────────────────────────
+
             # TradingAnalyzer를 통한 매수 판단 + 실행
             await self._trading_analyzer.analyze_buy_decision(trading_stock, signal=signal)
+
+            # 신규 진입 성공 — 쿨다운/사이클 카운터 갱신
+            self._last_new_entry_time = now_kst()
+            self._new_entries_this_cycle += 1
 
             # 매수 성공 후 소유 전략 기록
             if self._current_strategy_name:

@@ -12,9 +12,11 @@ core/trading_context.py의 13개 public 메서드 커버리지:
 import pytest
 import asyncio
 import pandas as pd
+from datetime import timedelta
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 from core.trading_context import TradingContext
+from utils.korean_time import now_kst
 
 
 # ============================================================================
@@ -445,6 +447,149 @@ class TestBuy:
 
         assert result == "005930"
         analyzer.analyze_buy_decision.assert_awaited_once()
+
+
+# ============================================================================
+# d-2) buy() — 장 시작 동시 진입 억제 (Entry Throttle)
+# ============================================================================
+
+class TestBuyEntryThrottle:
+    """Entry Throttle 가드 전용 테스트.
+
+    쿨다운/사이클 한도를 인스턴스 변수로 직접 주입하여
+    시간 의존성을 최소화한다.
+    """
+
+    @pytest.fixture(autouse=True)
+    def patch_eod_not_time(self):
+        with patch('config.market_hours.MarketHours.is_eod_liquidation_time', return_value=False):
+            yield
+
+    def _make_throttle_ctx(self, cooldown=60, max_entries=3, cycle_window=15):
+        """Entry Throttle 설정이 주입된 buy() 통과 가능 컨텍스트"""
+        cb_state = Mock()
+        cb_state.is_market_halted.return_value = False
+        cb_state.is_vi_active.return_value = False
+
+        decision_engine = Mock()
+        decision_engine.check_market_direction.return_value = (False, "")
+
+        fund_manager = Mock()
+        fund_manager.is_daily_loss_limit_hit.return_value = False
+        fund_manager.max_daily_loss_ratio = 0.02
+        fund_manager._daily_realized_loss = 0
+
+        stock = _make_trading_stock_mock(prev_close=0)
+        trading_manager = Mock()
+        trading_manager.get_trading_stock.return_value = stock
+        trading_manager.stock_state_manager = None
+
+        trading_analyzer = AsyncMock()
+        broker = Mock()
+        broker.get_current_price.return_value = None
+
+        ctx = _make_context(
+            decision_engine=decision_engine,
+            fund_manager=fund_manager,
+            trading_manager=trading_manager,
+            trading_analyzer=trading_analyzer,
+            intraday_manager=_make_intraday_no_price(),
+            broker=broker,
+        )
+        # 쿨다운/사이클 설정 주입 (constants 기본값 대신)
+        ctx._entry_cooldown_seconds = cooldown
+        ctx._max_new_entries_per_cycle = max_entries
+        ctx._entry_cycle_window_seconds = cycle_window
+
+        return ctx, cb_state, trading_analyzer
+
+    # ── 쿨다운 테스트 ──────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_first_buy_passes_cooldown(self):
+        """첫 진입은 쿨다운 없이 통과"""
+        ctx, cb_state, analyzer = self._make_throttle_ctx(cooldown=60)
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            result = await ctx.buy("005930")
+        assert result == "005930"
+        analyzer.analyze_buy_decision.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_second_buy_blocked_within_cooldown(self):
+        """첫 진입 직후 두 번째 진입은 쿨다운에 의해 차단"""
+        ctx, cb_state, analyzer = self._make_throttle_ctx(cooldown=60)
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            await ctx.buy("005930")          # 1번 진입 — 통과
+            result = await ctx.buy("000660") # 2번 진입 — 차단
+        assert result is None
+        assert analyzer.analyze_buy_decision.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_second_buy_passes_after_cooldown_expires(self):
+        """쿨다운 시간이 지나면 두 번째 진입 허용"""
+        from datetime import datetime, timezone, timedelta
+        ctx, cb_state, analyzer = self._make_throttle_ctx(cooldown=60)
+        # 마지막 진입 시각을 70초 전으로 설정
+        ctx._last_new_entry_time = now_kst() - timedelta(seconds=70)
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            result = await ctx.buy("000660")
+        assert result == "000660"
+        analyzer.analyze_buy_decision.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cooldown_disabled_when_zero(self):
+        """쿨다운 0이면 연속 진입 허용"""
+        ctx, cb_state, analyzer = self._make_throttle_ctx(cooldown=0)
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            await ctx.buy("005930")
+            result = await ctx.buy("000660")
+        assert result == "000660"
+        assert analyzer.analyze_buy_decision.await_count == 2
+
+    # ── 사이클 한도 테스트 ──────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_cycle_limit_blocks_excess_entries(self):
+        """사이클 한도 초과 시 추가 진입 차단"""
+        ctx, cb_state, analyzer = self._make_throttle_ctx(cooldown=0, max_entries=2)
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            await ctx.buy("005930")           # 1/2 — 통과
+            await ctx.buy("000660")           # 2/2 — 통과
+            result = await ctx.buy("035420")  # 초과 — 차단
+        assert result is None
+        assert analyzer.analyze_buy_decision.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_cycle_counter_resets_after_window(self):
+        """사이클 윈도우 경과 후 카운터가 리셋돼 새 진입 허용"""
+        ctx, cb_state, analyzer = self._make_throttle_ctx(cooldown=0, max_entries=1, cycle_window=10)
+        # 사이클 시작을 20초 전으로 설정해 윈도우 경과 상태 만들기
+        ctx._cycle_start_time = now_kst() - timedelta(seconds=20)
+        ctx._new_entries_this_cycle = 1  # 이미 1번 진입했던 것처럼
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            result = await ctx.buy("005930")  # 새 사이클 → 통과
+        assert result == "005930"
+        analyzer.analyze_buy_decision.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cycle_limit_disabled_when_zero(self):
+        """max_entries=0이면 사이클 한도 없음"""
+        ctx, cb_state, analyzer = self._make_throttle_ctx(cooldown=0, max_entries=0)
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            for code in ["005930", "000660", "035420", "051910"]:
+                await ctx.buy(code)
+        assert analyzer.analyze_buy_decision.await_count == 4
+
+    @pytest.mark.asyncio
+    async def test_state_updated_after_successful_buy(self):
+        """성공적인 매수 후 쿨다운 시각과 사이클 카운터가 갱신됨"""
+        ctx, cb_state, _ = self._make_throttle_ctx(cooldown=60, max_entries=3)
+        assert ctx._last_new_entry_time is None
+        assert ctx._new_entries_this_cycle == 0
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            await ctx.buy("005930")
+        assert ctx._last_new_entry_time is not None
+        assert ctx._new_entries_this_cycle == 1
 
 
 # ============================================================================
