@@ -473,7 +473,12 @@ class LiquidationHandler:
                 return
             virtual_mgr = getattr(self.bot, 'virtual_trading_manager', None)
             if virtual_mgr is None:
-                # fund_manager 경유 시도 (구조에 따라 다를 수 있음)
+                # 정규 경로: decision_engine.virtual_trading (단일/다중 전략 모두 동일)
+                virtual_mgr = getattr(
+                    getattr(self.bot, 'decision_engine', None), 'virtual_trading', None
+                )
+            if virtual_mgr is None:
+                # legacy fallback: fund_manager 경유
                 virtual_mgr = getattr(self.bot, 'fund_manager', None)
                 virtual_mgr = getattr(virtual_mgr, 'virtual_trading_manager', None) if virtual_mgr else None
             if virtual_mgr is None:

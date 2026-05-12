@@ -147,3 +147,73 @@ class TestRetryFailedEodLiquidationFundManagerOnce:
         bot.fund_manager.release_investment.assert_not_called()
         bot.fund_manager.adjust_pnl.assert_not_called()
         bot.fund_manager.remove_position.assert_not_called()
+
+
+class TestSavePaperEodBalanceMultiStrategy:
+    """_save_paper_eod_balance_if_virtual: 다중 전략 모드 wiring 검증
+
+    bug: b21d363 — 다중 전략 모드에서 bot.virtual_trading_manager 속성이 없어
+    항상 WARNING 로그만 출력되고 save_paper_trading_state가 호출되지 않던 문제.
+    fix: decision_engine.virtual_trading 경로를 정규 경로로 추가.
+    """
+
+    def _make_multi_strategy_bot(self):
+        """다중 전략 모드 bot: bot.virtual_trading_manager 속성 없음,
+        decision_engine.virtual_trading 에 VirtualTradingManager 존재."""
+        bot = MagicMock(spec=[
+            'decision_engine', 'fund_manager', 'trading_manager',
+            'intraday_manager', 'broker', 'telegram',
+        ])
+        bot.decision_engine.is_virtual_mode = True
+        # 다중 전략 모드: bot에 virtual_trading_manager 속성 없음
+        # (spec 제한으로 getattr 시 AttributeError → getattr default None 반환)
+        bot.decision_engine.virtual_trading = MagicMock()
+        bot.decision_engine.virtual_trading.save_paper_trading_state = Mock(return_value=True)
+        bot.decision_engine.virtual_trading.log_cumulative_profit = Mock()
+        bot.fund_manager.release_investment = Mock()
+        bot.trading_manager.get_stocks_by_state = Mock(return_value=[])
+        bot.intraday_manager.get_combined_chart_data = Mock(return_value=None)
+        bot.broker.get_current_price = Mock(return_value=70000.0)
+        bot.telegram = None
+        return bot
+
+    def test_save_called_via_decision_engine_virtual_trading(self):
+        """다중 전략 모드에서 decision_engine.virtual_trading 경로로
+        save_paper_trading_state가 호출되어야 함."""
+        bot = self._make_multi_strategy_bot()
+        handler = LiquidationHandler(bot)
+
+        handler._save_paper_eod_balance_if_virtual()
+
+        bot.decision_engine.virtual_trading.save_paper_trading_state.assert_called_once()
+
+    def test_log_cumulative_profit_called_on_success(self):
+        """save_paper_trading_state 성공 시 log_cumulative_profit도 호출되어야 함."""
+        bot = self._make_multi_strategy_bot()
+        handler = LiquidationHandler(bot)
+
+        handler._save_paper_eod_balance_if_virtual()
+
+        bot.decision_engine.virtual_trading.log_cumulative_profit.assert_called_once()
+
+    def test_no_warning_logged_when_virtual_trading_found(self):
+        """decision_engine.virtual_trading 경로가 있으면 WARNING이 발생하지 않아야 함."""
+        bot = self._make_multi_strategy_bot()
+        handler = LiquidationHandler(bot)
+
+        with patch.object(handler.logger, 'warning') as mock_warn:
+            handler._save_paper_eod_balance_if_virtual()
+
+        # "virtual_trading_manager 참조 불가" 경고가 없어야 함
+        for call in mock_warn.call_args_list:
+            assert '참조 불가' not in str(call)
+
+    def test_skipped_when_not_virtual_mode(self):
+        """is_virtual_mode=False 면 save 호출 없이 조기 리턴."""
+        bot = self._make_multi_strategy_bot()
+        bot.decision_engine.is_virtual_mode = False
+        handler = LiquidationHandler(bot)
+
+        handler._save_paper_eod_balance_if_virtual()
+
+        bot.decision_engine.virtual_trading.save_paper_trading_state.assert_not_called()
