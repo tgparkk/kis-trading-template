@@ -448,8 +448,46 @@ class TradingDecisionEngine:
                     f"가상매수: {trading_stock.stock_code} {qty}주 @{buy_price:,.0f} "
                     f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%)"
                 )
+                # 전략 콜백: daily_trades / daily_profit 갱신 (실매매 경로와 동등성 보장)
+                self._notify_strategy_order_filled(
+                    side="buy",
+                    stock_code=trading_stock.stock_code,
+                    price=buy_price,
+                    quantity=qty,
+                    order_id=f"VIRT-BUY-{rid}",
+                )
         except Exception as e:
             self.logger.error(f"가상매수오류: {e}")
+
+    def _notify_strategy_order_filled(self, side: str, stock_code: str,
+                                       price: float, quantity: int,
+                                       order_id: str = "") -> None:
+        """전략의 on_order_filled 콜백을 가상매매 경로에서도 호출.
+
+        실매매 경로는 OrderCompletionHandler._notify_strategy_order_filled가 담당.
+        가상매매는 VirtualTradingManager가 strategy를 알지 못하므로
+        decision_engine에서 일원화하여 통보한다.
+
+        호출 실패는 매매 결과를 무효화하지 않으므로 WARNING으로 격리한다.
+        """
+        try:
+            if not self.strategy or not hasattr(self.strategy, 'on_order_filled'):
+                return
+            from strategies.base import OrderInfo
+            from utils.korean_time import now_kst
+            order_info = OrderInfo(
+                order_id=order_id or f"VIRT-{side.upper()}-{stock_code}",
+                stock_code=stock_code,
+                side=side,
+                quantity=int(quantity),
+                price=float(price),
+                filled_at=now_kst(),
+            )
+            self.strategy.on_order_filled(order_info)
+        except Exception as e:
+            self.logger.warning(
+                f"가상매매 전략 on_order_filled 콜백 오류: {stock_code} {side} - {e}"
+            )
 
     async def execute_real_sell(self, trading_stock, sell_reason: str) -> bool:
         """실제 매도"""
@@ -611,6 +649,19 @@ class TradingDecisionEngine:
                             self.fund_manager.set_sell_cooldown(code, sell_reason)
                         except Exception as fm_e:
                             self.logger.error(f"{code} 매도 후 자금관리 업데이트 실패: {fm_e}")
+                    # 전략 콜백: daily_trades / daily_profit 갱신 (실매매 경로와 동등성 보장).
+                    # 주의: 콜백은 strategy.positions[]에서 entry 정보를 조회하므로
+                    # trading_stock.clear_position() 호출 이전에 호출되어야 한다.
+                    # 위 분기에서 이미 clear_position 후이지만, strategy 측 positions는
+                    # strategy.on_order_filled의 자체 로직(self.positions[code]에서 entry 조회)에
+                    # 의존하므로 가상매도 호출 순서는 안전하다 (sync_positions 또는 매수 콜백에서 채워짐).
+                    self._notify_strategy_order_filled(
+                        side="sell",
+                        stock_code=code,
+                        price=sell_price,
+                        quantity=int(qty) if qty else 0,
+                        order_id=f"VIRT-SELL-{rid}",
+                    )
                 return ok
             return False
         except Exception as e:

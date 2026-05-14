@@ -150,6 +150,8 @@ class SampleStrategy(BaseStrategy):
                 stock_code, current_price, sma_short, sma_long, rsi
             )
             if sell:
+                # 카운터 가산은 on_order_filled에서만 수행 (단일 진실 원칙).
+                # 가상매매 경로도 decision_engine에서 strategy.on_order_filled을 호출하도록 보강됨.
                 return Signal(
                     signal_type=SignalType.SELL,
                     stock_code=stock_code,

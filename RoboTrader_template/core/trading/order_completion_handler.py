@@ -9,6 +9,7 @@ import pandas as pd
 from ..models import TradingStock, StockState, OrderStatus, OrderType
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
+from strategies.base import OrderInfo
 
 if TYPE_CHECKING:
     from .stock_state_manager import StockStateManager
@@ -54,14 +55,20 @@ class OrderCompletionHandler:
         """전략의 on_order_filled 콜백 호출"""
         try:
             if self.strategy and hasattr(self.strategy, 'on_order_filled'):
-                order_info = {
-                    'order_id': order.order_id,
-                    'stock_code': order.stock_code,
-                    'order_type': order.order_type.value if hasattr(order.order_type, 'value') else str(order.order_type),
-                    'quantity': order.quantity,
-                    'price': order.price,
-                    'filled_at': now_kst(),
-                }
+                # OrderInfo 객체로 변환하여 전달 (strategy.on_order_filled는 OrderInfo를 기대)
+                order_type = order.order_type
+                if hasattr(order_type, 'value'):
+                    side = order_type.value  # "buy" or "sell"
+                else:
+                    side = str(order_type).lower()
+                order_info = OrderInfo(
+                    order_id=str(order.order_id),
+                    stock_code=order.stock_code,
+                    side=side,
+                    quantity=int(order.quantity),
+                    price=float(order.get_filled_price()),
+                    filled_at=now_kst(),
+                )
                 self.strategy.on_order_filled(order_info)
                 self.logger.debug(f"전략 on_order_filled 콜백 호출: {order.stock_code}")
         except Exception as e:

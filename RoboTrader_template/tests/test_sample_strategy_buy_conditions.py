@@ -432,5 +432,207 @@ class TestGenerateSignalIntegration:
         assert signal is None or signal.signal_type == SignalType.BUY
 
 
+# ============================================================================
+# Test: on_order_filled 카운터 갱신
+# ============================================================================
+
+class TestOnOrderFilled:
+    """on_order_filled 호출 시 daily_trades / daily_profit 갱신 및 한도 가드 검증."""
+
+    def _make_initialized_strategy(self) -> SampleStrategy:
+        from unittest.mock import MagicMock
+        s = _make_strategy()
+        s.on_init(MagicMock(), MagicMock(), MagicMock())
+        return s
+
+    def _make_order(self, side: str, stock_code: str, price: float,
+                    quantity: int = 10) -> object:
+        from strategies.base import OrderInfo
+        from datetime import datetime
+        return OrderInfo(
+            order_id="TEST001",
+            stock_code=stock_code,
+            side=side,
+            quantity=quantity,
+            price=price,
+            filled_at=datetime.now(),
+        )
+
+    def test_buy_fill_increments_daily_trades(self):
+        """매수 체결 후 daily_trades == 1."""
+        s = self._make_initialized_strategy()
+        assert s.daily_trades == 0
+
+        order = self._make_order("buy", "005930", 10000.0, quantity=10)
+        s.on_order_filled(order)
+
+        assert s.daily_trades == 1
+
+    def test_sell_fill_increments_daily_trades(self):
+        """매도 체결 후 daily_trades 추가 증가."""
+        s = self._make_initialized_strategy()
+        # 먼저 포지션 추가 (매수 체결 시뮬)
+        buy_order = self._make_order("buy", "005930", 10000.0, quantity=10)
+        s.on_order_filled(buy_order)
+        assert s.daily_trades == 1
+
+        sell_order = self._make_order("sell", "005930", 11000.0, quantity=10)
+        s.on_order_filled(sell_order)
+        assert s.daily_trades == 2
+
+    def test_sell_fill_updates_daily_profit(self):
+        """매도 체결 후 daily_profit = (매도가 - 매수가) * 수량."""
+        s = self._make_initialized_strategy()
+        buy_price = 10000.0
+        sell_price = 11000.0
+        quantity = 10
+
+        buy_order = self._make_order("buy", "005930", buy_price, quantity=quantity)
+        s.on_order_filled(buy_order)
+        assert s.daily_profit == 0.0
+
+        sell_order = self._make_order("sell", "005930", sell_price, quantity=quantity)
+        s.on_order_filled(sell_order)
+
+        expected_profit = (sell_price - buy_price) * quantity  # 10,000원
+        assert s.daily_profit == pytest.approx(expected_profit)
+
+    def test_daily_trades_limit_guard(self):
+        """daily_trades == max_daily_trades 일 때 generate_signal이 None 반환."""
+        s = self._make_initialized_strategy()
+        s._max_daily_trades = 2
+
+        # 2번 매수 체결 → 한도 도달
+        for i in range(2):
+            order = self._make_order("buy", f"00593{i}", 10000.0)
+            s.on_order_filled(order)
+
+        assert s.daily_trades == 2
+
+        # 일봉 데이터 준비 (min_len 충족)
+        prices = [float(9900 + i) for i in range(30)]
+        df = pd.DataFrame({
+            "open": [p * 0.995 for p in prices],
+            "high": [p * 1.005 for p in prices],
+            "low": [p * 0.990 for p in prices],
+            "close": prices,
+            "volume": [2_000_000] * 30,
+        })
+
+        signal = s.generate_signal("999999", df)
+        assert signal is None, "daily_trades 한도 초과 시 신호 없어야 함"
+
+    def test_daily_reset_on_market_open(self):
+        """on_market_open 호출 시 daily_trades / daily_profit 0으로 리셋."""
+        s = self._make_initialized_strategy()
+
+        buy_order = self._make_order("buy", "005930", 10000.0, quantity=10)
+        s.on_order_filled(buy_order)
+        sell_order = self._make_order("sell", "005930", 11000.0, quantity=10)
+        s.on_order_filled(sell_order)
+
+        assert s.daily_trades == 2
+        assert s.daily_profit == pytest.approx(10000.0)
+
+        s.on_market_open()
+
+        assert s.daily_trades == 0
+        assert s.daily_profit == 0.0
+
+
+# ============================================================================
+# Test: 가상매매 경로 → strategy.on_order_filled 통보 (HIGH 버그 회귀)
+# ============================================================================
+
+class TestVirtualOrderNotifiesStrategy:
+    """5/14 가상매매 daily_trades=0 출력 버그 회귀 — decision_engine 가상매매 경로
+    가 strategy.on_order_filled을 호출하여 daily_trades / daily_profit이 누적되는지.
+    """
+
+    def _make_decision_engine_with_strategy(self):
+        from unittest.mock import MagicMock
+        from core.trading_decision_engine import TradingDecisionEngine
+
+        engine = TradingDecisionEngine.__new__(TradingDecisionEngine)
+        # logger / strategy만 필요한 헬퍼 함수 단위 검증
+        import logging
+        engine.logger = logging.getLogger("test")
+        engine.strategy = MagicMock()
+        engine.strategy.on_order_filled = MagicMock()
+        return engine
+
+    def test_notify_buy_invokes_strategy_callback(self):
+        engine = self._make_decision_engine_with_strategy()
+        engine._notify_strategy_order_filled(
+            side="buy", stock_code="005930", price=10000.0,
+            quantity=10, order_id="VIRT-BUY-1",
+        )
+        engine.strategy.on_order_filled.assert_called_once()
+        called_order = engine.strategy.on_order_filled.call_args[0][0]
+        assert called_order.is_buy
+        assert called_order.stock_code == "005930"
+        assert called_order.quantity == 10
+        assert called_order.price == pytest.approx(10000.0)
+
+    def test_notify_sell_invokes_strategy_callback(self):
+        engine = self._make_decision_engine_with_strategy()
+        engine._notify_strategy_order_filled(
+            side="sell", stock_code="005930", price=11000.0,
+            quantity=10, order_id="VIRT-SELL-1",
+        )
+        engine.strategy.on_order_filled.assert_called_once()
+        called_order = engine.strategy.on_order_filled.call_args[0][0]
+        assert called_order.is_sell
+        assert called_order.price == pytest.approx(11000.0)
+
+    def test_notify_no_strategy_is_noop(self):
+        """전략이 None이면 조용히 noop — 예외 없음."""
+        engine = self._make_decision_engine_with_strategy()
+        engine.strategy = None
+        # 예외 발생하지 않아야 함
+        engine._notify_strategy_order_filled(
+            side="buy", stock_code="005930", price=10000.0, quantity=10,
+        )
+
+    def test_notify_callback_exception_isolated(self):
+        """전략 콜백 내부 예외가 매매 결과를 무효화하지 않음 (WARNING 격리)."""
+        engine = self._make_decision_engine_with_strategy()
+        engine.strategy.on_order_filled.side_effect = RuntimeError("simulated")
+        # 예외가 외부로 전파되지 않아야 함
+        engine._notify_strategy_order_filled(
+            side="buy", stock_code="005930", price=10000.0, quantity=10,
+        )
+
+    def test_end_to_end_daily_trades_increments(self):
+        """SampleStrategy + 헬퍼 결합 — 가상매매 콜백 통보 후 daily_trades 증가."""
+        from unittest.mock import MagicMock
+        from core.trading_decision_engine import TradingDecisionEngine
+
+        engine = TradingDecisionEngine.__new__(TradingDecisionEngine)
+        import logging
+        engine.logger = logging.getLogger("test")
+
+        # 실제 SampleStrategy를 strategy로 연결
+        s = _make_strategy()
+        s.on_init(MagicMock(), MagicMock(), MagicMock())
+        engine.strategy = s
+
+        # 매수 통보
+        engine._notify_strategy_order_filled(
+            side="buy", stock_code="005930", price=10000.0,
+            quantity=10, order_id="VIRT-BUY-1",
+        )
+        assert s.daily_trades == 1
+        assert "005930" in s.positions
+
+        # 매도 통보
+        engine._notify_strategy_order_filled(
+            side="sell", stock_code="005930", price=11000.0,
+            quantity=10, order_id="VIRT-SELL-1",
+        )
+        assert s.daily_trades == 2
+        assert s.daily_profit == pytest.approx(10000.0)  # (11000-10000)*10
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
