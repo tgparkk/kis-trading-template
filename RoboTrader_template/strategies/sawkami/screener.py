@@ -4,7 +4,7 @@
 사와카미 가치투자 전략에 맞는 종목 선정:
   1차: 시장 필터 (KOSPI+KOSDAQ, 우선주/ETF 제외)
   2차: 재무 필터 (영업이익 YoY 30%↑, PBR < 1.5) — 캐싱
-  3차: 기술적 필터 (52주고점 -20%, RSI<30, 거래량 1.5x) — 매일 변동
+  3차: 기술적 필터 (52주고점 -15%, RSI<35, 거래량 1.2x) — 매일 변동 (2026-05-14 완화)
   최종: 복합 점수 정렬
 """
 
@@ -49,10 +49,11 @@ class SawkamiCandidateSelector(CandidateSelector):
     """
 
     # 기술적 필터 기본값
-    DEFAULT_HIGH52W_DROP_PCT = -20.0   # 52주 고점 대비 하락률
-    DEFAULT_RSI_OVERSOLD = 30          # RSI 과매도 기준
+    # 2026-05-14 임계값 완화: 8영업일 후보 0건 해소 (drop -20→-15, RSI 30→35, vol 1.5→1.2)
+    DEFAULT_HIGH52W_DROP_PCT = -15.0   # 52주 고점 대비 하락률
+    DEFAULT_RSI_OVERSOLD = 35          # RSI 과매도 기준
     DEFAULT_RSI_PERIOD = 14
-    DEFAULT_VOL_RATIO_MIN = 1.5        # 20일 평균 대비 거래량 배수
+    DEFAULT_VOL_RATIO_MIN = 1.2        # 20일 평균 대비 거래량 배수
     DEFAULT_VOL_MA_PERIOD = 20
     DEFAULT_HIGH52W_PERIOD = 252       # 52주 ≈ 252 거래일
 
@@ -130,7 +131,7 @@ class SawkamiCandidateSelector(CandidateSelector):
     def _apply_fundamental_filters(self, stocks: List[Dict],
                                         batch_size: int = 20) -> List[SawkamiFundamentalData]:
         """
-        2차 재무 필터링 — 영업이익 YoY 30%↑, PBR < 1.5
+        2차 재무 필터링 — 영업이익 YoY 30%↑, PBR < 1.5 (유지)
 
         캐시 활용: 재무 데이터는 분기 단위로 변경되므로 24시간 캐싱.
         Rate limit 고려: batch_size 단위로 처리 + delay.
@@ -216,7 +217,7 @@ class SawkamiCandidateSelector(CandidateSelector):
         self, fund_stocks: List[SawkamiFundamentalData]
     ) -> List[CandidateStock]:
         """
-        3차 기술적 필터링 — 52주고점 -20%, RSI<30, 거래량 1.5x
+        3차 기술적 필터링 — 52주고점 -15%, RSI<35, 거래량 1.2x (2026-05-14 완화)
 
         매일 변하는 데이터이므로 캐싱하지 않음.
         """
@@ -569,13 +570,14 @@ class SawkamiScreenerAdapter(ScreenerBase):
         self._db_manager = db_manager
 
     def default_params(self) -> Dict[str, Any]:
+        # 2026-05-14 임계값 완화: 8영업일 후보 0건 해소 (drop -20→-15, RSI 30→35, vol 1.5→1.2)
         return {
             "op_income_growth_min": 30.0,
             "pbr_max": 1.5,
-            "high52w_drop_pct": -20.0,
-            "rsi_oversold": 30,
+            "high52w_drop_pct": -15.0,
+            "rsi_oversold": 35,
             "rsi_period": 14,
-            "volume_ratio_min": 1.5,
+            "volume_ratio_min": 1.2,
             "volume_ma_period": 20,
             "high52w_period": 252,
             "max_candidates": 10,
@@ -606,12 +608,13 @@ class SawkamiScreenerAdapter(ScreenerBase):
         """
         try:
             merged = {**self.default_params(), **(params or {})}
+            # 2026-05-14 임계값 완화: 8영업일 후보 0건 해소 (drop -20→-15, RSI 30→35, vol 1.5→1.2)
             op_growth_min: float = float(merged.get("op_income_growth_min", 30.0))
             pbr_max: float = float(merged.get("pbr_max", 1.5))
-            high52w_drop_pct: float = float(merged.get("high52w_drop_pct", -20.0))
-            rsi_oversold: float = float(merged.get("rsi_oversold", 30))
+            high52w_drop_pct: float = float(merged.get("high52w_drop_pct", -15.0))
+            rsi_oversold: float = float(merged.get("rsi_oversold", 35))
             rsi_period: int = int(merged.get("rsi_period", 14))
-            vol_ratio_min: float = float(merged.get("volume_ratio_min", 1.5))
+            vol_ratio_min: float = float(merged.get("volume_ratio_min", 1.2))
             vol_ma_period: int = int(merged.get("volume_ma_period", 20))
             high52w_period: int = int(merged.get("high52w_period", 252))
             max_candidates: int = int(merged.get("max_candidates", 10))
@@ -666,8 +669,8 @@ class SawkamiScreenerAdapter(ScreenerBase):
                 if w52_high <= 0:
                     continue
                 drop_pct = (current_price / w52_high - 1) * 100
-                # high52w_drop_pct = -20.0: -20% 이상 하락한 종목만 통과
-                # drop_pct 가 -20% 보다 크면(덜 하락) 제외, -20% 이하(더 하락)면 통과
+                # 2026-05-14 완화: high52w_drop_pct = -15.0 (이전 -20.0)
+                # drop_pct 가 임계값보다 크면(덜 하락) 제외, 임계값 이하(더 하락)면 통과
                 if drop_pct > high52w_drop_pct:
                     continue
 

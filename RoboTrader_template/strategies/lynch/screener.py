@@ -3,7 +3,7 @@ Lynch 전략 매수후보 스크리닝 모듈
 
 피터 린치 PEG 전략에 맞는 종목 선정:
   1차: 시장 필터 (KOSPI+KOSDAQ, 우선주/ETF 제외)
-  2차: 재무 필터 (PEG≤0.3, 영업이익 YoY≥70%, 부채비율≤200%, ROE≥5%)
+  2차: 재무 필터 (PEG≤1.3, 영업이익 YoY≥30%, 부채비율≤200%, ROE≥5%)
   3차: 기술적 필터 (RSI<35)
   최종: 복합 점수 정렬
 """
@@ -39,8 +39,9 @@ class LynchCandidateSelector(CandidateSelector):
         self.logger = setup_logger(__name__)
 
         params = strategy_params or {}
-        self.peg_max = params.get("peg_max", 0.3)
-        self.op_growth_min = params.get("op_income_growth_min", 70.0)
+        # 2026-05-14 임계값 완화: PEG≤0.3 → 1.3, 영업이익 YoY≥70% → 30% (8영업일 후보 0건 해소)
+        self.peg_max = params.get("peg_max", 1.3)
+        self.op_growth_min = params.get("op_income_growth_min", 30.0)
         self.debt_ratio_max = params.get("debt_ratio_max", 200.0)
         self.roe_min = params.get("roe_min", 5.0)
         self.rsi_oversold = params.get("rsi_oversold", 35)
@@ -184,9 +185,10 @@ class LynchScreenerAdapter(ScreenerBase):
         self._db_manager = db_manager
 
     def default_params(self) -> Dict[str, Any]:
+        # 2026-05-14 임계값 완화: PEG≤0.3 → 1.3, 영업이익 YoY≥70% → 30% (8영업일 후보 0건 해소)
         return {
-            "peg_max": 0.3,
-            "op_income_growth_min": 70.0,
+            "peg_max": 1.3,
+            "op_income_growth_min": 30.0,
             "debt_ratio_max": 200.0,
             "roe_min": 5.0,
             "rsi_oversold": 35,
@@ -219,8 +221,9 @@ class LynchScreenerAdapter(ScreenerBase):
         """
         try:
             merged = {**self.default_params(), **(params or {})}
-            peg_max: float = float(merged.get("peg_max", 0.3))
-            op_growth_min: float = float(merged.get("op_income_growth_min", 70.0))
+            # 2026-05-14 임계값 완화: PEG≤0.3 → 1.3, 영업이익 YoY≥70% → 30% (8영업일 후보 0건 해소)
+            peg_max: float = float(merged.get("peg_max", 1.3))
+            op_growth_min: float = float(merged.get("op_income_growth_min", 30.0))
             debt_ratio_max: float = float(merged.get("debt_ratio_max", 200.0))
             roe_min: float = float(merged.get("roe_min", 5.0))
             rsi_oversold: float = float(merged.get("rsi_oversold", 35))

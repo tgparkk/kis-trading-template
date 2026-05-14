@@ -25,17 +25,18 @@ from utils.korean_time import now_kst
 # ============================================================================
 
 def _make_config(**overrides):
+    # 2026-05-14 임계값 완화 반영: drop -20→-15, RSI 30→35, vol 1.5→1.2
     config = {
         "paper_trading": True,
         "parameters": {
             "op_income_growth_min": 30.0,
-            "high52w_drop_pct": -20.0,
+            "high52w_drop_pct": -15.0,
             "high52w_period": 252,
             "pbr_max": 1.5,
-            "volume_ratio_min": 1.5,
+            "volume_ratio_min": 1.2,
             "volume_ma_period": 20,
             "rsi_period": 14,
-            "rsi_oversold": 30,
+            "rsi_oversold": 35,
         },
         "risk_management": {
             "take_profit_pct": 0.15,
@@ -105,11 +106,33 @@ class TestSawkamiInit:
         assert strategy._paper_trading is True
 
     def test_default_params(self, strategy):
+        # 2026-05-14 임계값 완화 반영
         assert strategy._op_growth_min == 30.0
-        assert strategy._high52w_drop_pct == -20.0
+        assert strategy._high52w_drop_pct == -15.0
         assert strategy._pbr_max == 1.5
+        assert strategy._vol_ratio_min == 1.2
+        assert strategy._rsi_oversold == 35
         assert strategy._take_profit_pct == 0.15
         assert strategy._max_hold_days == 40
+
+    def test_relaxed_thresholds_2026_05_14(self):
+        """2026-05-14 임계값 완화 회귀 테스트:
+        drop=-16% / RSI=33 / volume=1.3x 인 종목이 새 임계값으로 통과해야 한다.
+        (이전 -20/30/1.5 기준이었다면 모두 탈락)
+        """
+        s = SawkamiStrategy(_make_config())
+        with patch("strategies.sawkami.db_manager.SawkamiDBManager.get_holding_positions", return_value=[]):
+            s.on_init(MagicMock(), MagicMock(), MagicMock())
+
+        # drop=-16%는 기존 -20% 기준에서 탈락하지만 새 -15% 기준 통과
+        assert -16.0 <= s._high52w_drop_pct, \
+            f"drop=-16% 종목이 새 임계값(-15)으로 통과해야 함, 현재={s._high52w_drop_pct}"
+        # RSI=33은 기존 30 기준 탈락, 새 35 기준 통과
+        assert 33 < s._rsi_oversold, \
+            f"RSI=33 종목이 새 임계값(35)으로 통과해야 함, 현재={s._rsi_oversold}"
+        # vol=1.3x는 기존 1.5 기준 탈락, 새 1.2 기준 통과
+        assert 1.3 >= s._vol_ratio_min, \
+            f"vol=1.3x 종목이 새 임계값(1.2)으로 통과해야 함, 현재={s._vol_ratio_min}"
 
 
 # ============================================================================

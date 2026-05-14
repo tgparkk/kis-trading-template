@@ -4,10 +4,10 @@ Sawkami Strategy — 사와카미 가치투자 전략
 
 매수 조건 (5개 모두 충족):
   1. 영업이익 YoY 성장률 30% 이상
-  2. 52주 고점 대비 -20% 이상 하락
+  2. 52주 고점 대비 -15% 이상 하락  ※ 2026-05-14 완화 (-20% → -15%)
   3. PBR < 1.5
-  4. 거래량이 20일 평균의 1.5배 이상
-  5. RSI(14) < 30
+  4. 거래량이 20일 평균의 1.2배 이상  ※ 2026-05-14 완화 (1.5x → 1.2x)
+  5. RSI(14) < 35                     ※ 2026-05-14 완화 (30 → 35)
 
 매도 조건 (1개 이상 충족 시):
   - 익절: +15%
@@ -51,13 +51,14 @@ class SawkamiStrategy(BaseStrategy):
 
         # 매수 파라미터
         params = self.config.get("parameters", {})
+        # 2026-05-14 임계값 완화: drop -20→-15, RSI 30→35, vol 1.5→1.2 (8영업일 후보 0건 해소)
         self._op_growth_min = params.get("op_income_growth_min", 30.0)
-        self._high52w_drop_pct = params.get("high52w_drop_pct", -20.0)
+        self._high52w_drop_pct = params.get("high52w_drop_pct", -15.0)
         self._pbr_max = params.get("pbr_max", 1.5)
-        self._vol_ratio_min = params.get("volume_ratio_min", 1.5)
+        self._vol_ratio_min = params.get("volume_ratio_min", 1.2)
         self._vol_ma_period = params.get("volume_ma_period", 20)
         self._rsi_period = params.get("rsi_period", 14)
-        self._rsi_oversold = params.get("rsi_oversold", 30)
+        self._rsi_oversold = params.get("rsi_oversold", 35)
         self._high52w_period = params.get("high52w_period", 252)
 
         # 매도 / 리스크 파라미터

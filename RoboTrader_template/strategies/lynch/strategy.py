@@ -3,8 +3,8 @@ Lynch Strategy — 피터 린치 PEG 기반 가치+성장 전략
 ====================================================
 
 매수 조건 (모두 충족):
-  1. PEG ≤ 0.3  (PER / 영업이익성장률%)
-  2. 영업이익 YoY ≥ 70%
+  1. PEG ≤ 1.3  (PER / 영업이익성장률%)  ※ 2026-05-14 완화 (0.3 → 1.3)
+  2. 영업이익 YoY ≥ 30%                  ※ 2026-05-14 완화 (70% → 30%)
   3. 부채비율 ≤ 200%
   4. ROE ≥ 5%
   5. RSI(14) < 35
@@ -33,7 +33,7 @@ class LynchStrategy(BaseStrategy):
 
     name: str = "LynchStrategy"
     version: str = "1.0.0"
-    description: str = "PEG ≤ 0.3 + 영업이익성장 70%↑ + 부채비율 200%↓ + ROE 5%↑ + RSI < 35"
+    description: str = "PEG ≤ 1.3 + 영업이익성장 30%↑ + 부채비율 200%↓ + ROE 5%↑ + RSI < 35"
     author: str = "Template"
     holding_period: str = "swing"
 
@@ -50,8 +50,9 @@ class LynchStrategy(BaseStrategy):
 
         # 매수 파라미터
         params = self.config.get("parameters", {})
-        self._peg_max = params.get("peg_max", 0.3)
-        self._op_growth_min = params.get("op_income_growth_min", 70.0)
+        # 2026-05-14 임계값 완화: PEG≤0.3 → 1.3, 영업이익 YoY≥70% → 30% (8영업일 후보 0건 해소)
+        self._peg_max = params.get("peg_max", 1.3)
+        self._op_growth_min = params.get("op_income_growth_min", 30.0)
         self._debt_ratio_max = params.get("debt_ratio_max", 200.0)
         self._roe_min = params.get("roe_min", 5.0)
         self._rsi_period = params.get("rsi_period", 14)
@@ -194,8 +195,8 @@ class LynchStrategy(BaseStrategy):
         current_price: float,
         rsi_value: float,
         fundamentals: Dict[str, Any],
-        peg_max: float = 0.3,
-        op_growth_min: float = 70.0,
+        peg_max: float = 1.3,
+        op_growth_min: float = 30.0,
         debt_ratio_max: float = 200.0,
         roe_min: float = 5.0,
         rsi_oversold: float = 35.0,
