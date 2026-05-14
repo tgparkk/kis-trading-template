@@ -471,16 +471,11 @@ class LiquidationHandler:
             is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
             if not is_virtual:
                 return
-            virtual_mgr = getattr(self.bot, 'virtual_trading_manager', None)
-            if virtual_mgr is None:
-                # 정규 경로: decision_engine.virtual_trading (단일/다중 전략 모두 동일)
-                virtual_mgr = getattr(
-                    getattr(self.bot, 'decision_engine', None), 'virtual_trading', None
-                )
-            if virtual_mgr is None:
-                # legacy fallback: fund_manager 경유
-                virtual_mgr = getattr(self.bot, 'fund_manager', None)
-                virtual_mgr = getattr(virtual_mgr, 'virtual_trading_manager', None) if virtual_mgr else None
+            virtual_mgr = getattr(
+                getattr(self.bot, 'decision_engine', None),
+                'virtual_trading',
+                None,
+            )
             if virtual_mgr is None:
                 self.logger.warning("paper EOD 잔고 저장 생략: virtual_trading_manager 참조 불가")
                 return

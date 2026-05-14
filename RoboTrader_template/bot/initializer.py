@@ -86,9 +86,16 @@ class BotInitializer:
 
     async def _initialize_fund_manager(self) -> None:
         """자금 관리자 초기화"""
-        # 테스트 기간: 가상매매 모드로 항상 1000만원 설정
         if self.bot.decision_engine.is_virtual_mode:
-            total_funds = 10000000  # 가상매매 모드: 1천만원
+            # 가상매매: VirtualTradingManager가 D-1 잔고를 이미 이월했으므로 그 값을 사용
+            virtual_trading = getattr(self.bot.decision_engine, 'virtual_trading', None)
+            total_funds = (
+                virtual_trading.get_virtual_balance()
+                if virtual_trading is not None
+                else 0
+            )
+            if total_funds <= 0:
+                total_funds = 10000000  # fallback: 1천만원
             self.bot.fund_manager.update_total_funds(total_funds)
             self.logger.info(f"자금 관리자 초기화 완료 (가상매매 모드): {total_funds:,.0f}원")
         else:

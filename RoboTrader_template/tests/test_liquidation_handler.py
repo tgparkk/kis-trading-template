@@ -217,3 +217,36 @@ class TestSavePaperEodBalanceMultiStrategy:
         handler._save_paper_eod_balance_if_virtual()
 
         bot.decision_engine.virtual_trading.save_paper_trading_state.assert_not_called()
+
+    def test_no_bot_virtual_trading_manager_attr_still_works(self):
+        """bot.virtual_trading_manager 속성이 아예 없어도 decision_engine.virtual_trading
+        경로로 정상 동작해야 함 (결함 B 수정 회귀 방지)."""
+        bot = self._make_multi_strategy_bot()
+        # bot.virtual_trading_manager 속성이 spec 제한으로 이미 없는 구조 (MagicMock spec 사용)
+        # decision_engine.virtual_trading 경로만 존재
+        handler = LiquidationHandler(bot)
+
+        handler._save_paper_eod_balance_if_virtual()
+
+        # decision_engine.virtual_trading 경로로 save가 호출되어야 함
+        bot.decision_engine.virtual_trading.save_paper_trading_state.assert_called_once()
+
+    def test_warning_when_decision_engine_virtual_trading_missing(self):
+        """decision_engine.virtual_trading도 없으면 warning 로그 후 조기 리턴."""
+        bot = MagicMock(spec=[
+            'decision_engine', 'fund_manager', 'trading_manager',
+            'intraday_manager', 'broker', 'telegram',
+        ])
+        bot.decision_engine.is_virtual_mode = True
+        # decision_engine.virtual_trading 없음 → getattr default None
+        bot.decision_engine.configure_mock(**{'virtual_trading': None})
+        bot.trading_manager.get_stocks_by_state = Mock(return_value=[])
+        bot.telegram = None
+
+        handler = LiquidationHandler(bot)
+
+        with patch.object(handler.logger, 'warning') as mock_warn:
+            handler._save_paper_eod_balance_if_virtual()
+
+        warn_messages = [str(c) for c in mock_warn.call_args_list]
+        assert any('참조 불가' in msg for msg in warn_messages)

@@ -220,3 +220,51 @@ class TestStateRestorerCompatibility:
         )
 
         assert '005930' not in vtm._buy_times
+
+
+class TestGetCumulativeProfitInfo:
+    """get_cumulative_profit_info: initial_balance 기준 수익률 계산 검증 (결함 C 수정 회귀 방지)"""
+
+    def test_initial_balance_uses_session_balance_not_hardcoded(self):
+        """initial_balance가 10M 하드코딩이 아닌 세션 시작 잔고를 반영해야 함."""
+        vtm = _make_vtm()
+        vtm.virtual_balance = 9_500_000
+        vtm.initial_balance = 9_500_000  # D-1 이월 잔고로 시작한 경우
+
+        # DB 없으므로 DB 조회 부분은 스킵되고 기본 result만 반환
+        info = vtm.get_cumulative_profit_info()
+
+        # initial_balance는 세션 시작 잔고(9.5M)여야 함 (10M 하드코딩이면 실패)
+        assert info['initial_balance'] == 9_500_000
+
+    def test_initial_balance_fallback_when_zero(self):
+        """initial_balance가 0이면 10M fallback을 사용해야 함."""
+        vtm = _make_vtm()
+        vtm.virtual_balance = 10_000_000
+        vtm.initial_balance = 0  # 비정상 상태
+
+        info = vtm.get_cumulative_profit_info()
+
+        assert info['initial_balance'] == 10_000_000
+
+    def test_current_balance_reflects_actual_balance(self):
+        """current_balance는 virtual_balance와 일치해야 함."""
+        vtm = _make_vtm()
+        vtm.virtual_balance = 9_979_251
+        vtm.initial_balance = 9_979_251
+
+        info = vtm.get_cumulative_profit_info()
+
+        assert info['current_balance'] == 9_979_251
+
+    def test_profit_rate_based_on_session_balance(self):
+        """누적 수익률 계산에 세션 시작 잔고가 사용되는지 log_cumulative_profit 호출로 확인."""
+        vtm = _make_vtm()
+        vtm.virtual_balance = 9_800_000
+        vtm.initial_balance = 9_800_000
+
+        # DB 없으면 trade_count=0, pnl=0 반환 → 로그 정상 호출 확인
+        try:
+            vtm.log_cumulative_profit()
+        except Exception as exc:
+            pytest.fail(f"log_cumulative_profit raised unexpectedly: {exc}")

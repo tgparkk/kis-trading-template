@@ -545,13 +545,14 @@ class VirtualTradingManager:
             dict: cumulative_gross_pnl, cumulative_net_pnl (추정), trade_count,
                   current_balance, initial_balance (=10,000,000)
         """
-        BASE_BALANCE = 10_000_000
+        # 세션 시작 잔고를 기준으로 누적 수익률 계산 (D-1 이월 잔고 또는 최초 10M)
+        session_base = self.initial_balance if self.initial_balance > 0 else 10_000_000
         result = {
             'cumulative_gross_pnl': 0.0,
             'cumulative_net_pnl': 0.0,
             'trade_count': 0,
             'current_balance': self.virtual_balance,
-            'initial_balance': BASE_BALANCE,
+            'initial_balance': session_base,
         }
         if not self.db_manager:
             return result
@@ -599,7 +600,7 @@ class VirtualTradingManager:
         base = info['initial_balance']
         net_rate = (net / base * 100) if base > 0 else 0.0
         self.logger.info(
-            f"[누적손익] {count}건 실현 | 순손익(추정) {net:+,.0f}원 ({net_rate:+.2f}%) "
+            f"[누적손익] {count}건 실현 | 순손익(추정) {net:+,.0f}원 ({net_rate:+.2f}%, 세션누적) "
             f"| 총손익(수수료전) {gross:+,.0f}원 | 현재잔고 {self.virtual_balance:,.0f}원"
         )
 
