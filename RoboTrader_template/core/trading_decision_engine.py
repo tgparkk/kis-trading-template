@@ -424,6 +424,24 @@ class TradingDecisionEngine:
                 )
                 stop_loss_rate = float(config_sl) if config_sl else self.DEFAULT_STOP_LOSS
 
+            # ----------------------------------------------------------------
+            # [옵션 D-A] 손절 하한 -3.0% 강제 적용 (사장님 결재 2026-05-14)
+            # ----------------------------------------------------------------
+            # 일부 종목에서 동적 산출 손절률이 -1.95% ~ -2.99%로 비정상적으로
+            # 좁게 산출되는 케이스(예: 5/14 한온시스템) 방지.
+            # 4단계 우선순위 전 경로(호출자 명시/Signal/config/시스템 기본값)가
+            # 합류하는 이 지점에서 강제 적용하므로, DB 저장(line 441) 및
+            # trading_stock.stop_loss_rate(line 446)까지 일관되게 하한 보장.
+            STOP_LOSS_FLOOR = 0.03  # 손절률 절댓값 하한 (3.0%)
+            if stop_loss_rate is not None and stop_loss_rate < STOP_LOSS_FLOOR:
+                original_sl = stop_loss_rate
+                stop_loss_rate = STOP_LOSS_FLOOR
+                self.logger.info(
+                    f"손절 하한 적용: {trading_stock.stock_code} "
+                    f"{original_sl*100:.2f}% → {stop_loss_rate*100:.2f}% "
+                    f"(하한 {STOP_LOSS_FLOOR*100:.1f}%)"
+                )
+
             # 수량 결정: 전달값 우선, 없으면 VirtualTradingManager 재계산
             if quantity is not None and quantity > 0:
                 qty = quantity

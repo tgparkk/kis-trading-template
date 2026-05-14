@@ -11,6 +11,9 @@ Sample Strategy — 이동평균 크로스 + RSI
 
 필터 (매수 전 공통 차단):
   - 장 시작 후 market_open_skip_minutes(5분) 이내 신규 진입 보류
+  - [옵션 D-C 2026-05-14] entry_block_window_start ~ entry_block_window_end
+    (기본 09:05~09:08) 신규 진입 보류 — 해당 윈도우 승률 17% (n=6) 회피
+    09:00 시가 진입(승률 47%)은 유지, 09:08 이후 진입 허용
 
 매도 조건 (1개 이상 충족 시):
   1. 5일 이동평균이 20일 이동평균을 데드크로스
@@ -65,6 +68,16 @@ class SampleStrategy(BaseStrategy):
         self._min_buy_signals = params.get("min_buy_signals", 2)
         skip_min = params.get("market_open_skip_minutes", 5)
         self._market_open_until = time(9, skip_min)
+
+        # [옵션 D-C 2026-05-14] 09:05~09:08 진입 차단 윈도우
+        # scientist 분석: 해당 시간대 매수 승률 17% (n=6)
+        # 기본값: 09:05:00 ~ 09:08:00 차단 (09:05 <= t < 09:08)
+        block_start_min = params.get("entry_block_window_start_min", 5)
+        block_end_min = params.get("entry_block_window_end_min", 8)
+        self._entry_block_start = time(9, block_start_min)
+        self._entry_block_end = time(9, block_end_min)
+        # block_start >= block_end 이면 윈도우 비활성 (회귀 호환용)
+        self._entry_block_enabled = block_start_min < block_end_min
 
         # 리스크 파라미터
         risk = self.config.get("risk_management", {})
@@ -179,6 +192,19 @@ class SampleStrategy(BaseStrategy):
                     f"[신호없음] {stock_code}: 장 초반 진입 보류 "
                     f"(현재 {now_time.strftime('%H:%M:%S')}, "
                     f"09:00~{self._market_open_until.strftime('%H:%M')} 차단)"
+                )
+            return None
+
+        # (나-2) [옵션 D-C] 09:05~09:08 진입 차단 윈도우 — 승률 17% (n=6) 회피
+        if self._entry_block_enabled and \
+                self._entry_block_start <= now_time < self._entry_block_end:
+            if self._should_log(stock_code, "entry_block_window"):
+                self.logger.info(
+                    f"[신호없음] {stock_code}: 차단 윈도우 진입 보류 "
+                    f"(현재 {now_time.strftime('%H:%M:%S')}, "
+                    f"{self._entry_block_start.strftime('%H:%M')}~"
+                    f"{self._entry_block_end.strftime('%H:%M')} 차단, "
+                    f"승률 17% 구간)"
                 )
             return None
 
