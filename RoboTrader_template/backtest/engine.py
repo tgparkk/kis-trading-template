@@ -162,6 +162,22 @@ class BacktestEngine:
         if not hasattr(self.strategy, "_min_buy_signals"):
             self.strategy._min_buy_signals = params.get("min_buy_signals", 2)
 
+        # BBReversionStrategy / BBReversionORStrategy fallback (on_init not called in backtest path)
+        if not hasattr(self.strategy, "_bb_period"):
+            self.strategy._bb_period = params.get("bb_period", 20)
+        if not hasattr(self.strategy, "_bb_std"):
+            self.strategy._bb_std = params.get("bb_std", 2.0)
+        if not hasattr(self.strategy, "_adx_period"):
+            self.strategy._adx_period = params.get("adx_period", 14)
+        if not hasattr(self.strategy, "_adx_max"):
+            self.strategy._adx_max = params.get("adx_max", 20)
+        if not hasattr(self.strategy, "_adx_exit"):
+            self.strategy._adx_exit = params.get("adx_exit", 30)
+        if not hasattr(self.strategy, "_vol_ratio_min"):
+            self.strategy._vol_ratio_min = params.get("volume_ratio_min", 1.2)
+        if not hasattr(self.strategy, "_vol_ma_period"):
+            self.strategy._vol_ma_period = params.get("volume_ma_period", 20)
+
         risk = self.strategy.config.get("risk_management", {})
         if not hasattr(self.strategy, "_stop_loss_pct"):
             self.strategy._stop_loss_pct = risk.get("stop_loss_pct", 0.05)
