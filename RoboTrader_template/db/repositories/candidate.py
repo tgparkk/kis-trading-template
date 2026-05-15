@@ -104,44 +104,6 @@ class CandidateRepository(BaseRepository):
             self.logger.error(f"후보 종목 이력 조회 실패: {e}")
             return pd.DataFrame()
 
-    def get_candidate_performance(self, days: int = 30) -> pd.DataFrame:
-        """후보 종목 성과 분석"""
-        try:
-            start_date = now_kst() - timedelta(days=days)
-
-            with self._get_connection() as conn:
-                query = '''
-                    SELECT
-                        c.stock_code, c.stock_name, c.selection_date, c.score,
-                        COUNT(p.id) as price_records,
-                        AVG(p.close_price) as avg_price,
-                        MAX(p.high_price) as max_price,
-                        MIN(p.low_price) as min_price
-                    FROM candidate_stocks c
-                    LEFT JOIN stock_prices p ON c.stock_code = p.stock_code
-                        AND p.date_time >= c.selection_date
-                    WHERE c.selection_date >= %s
-                    GROUP BY c.id, c.stock_code, c.stock_name, c.selection_date, c.score
-                    ORDER BY c.selection_date DESC, c.score DESC
-                '''
-
-                cursor = conn.cursor()
-                cursor.execute(query, (start_date.strftime('%Y-%m-%d %H:%M:%S'),))
-                rows = cursor.fetchall()
-                if rows:
-                    columns = [desc[0] for desc in cursor.description]
-                    df = pd.DataFrame(rows, columns=columns)
-                else:
-                    df = pd.DataFrame()
-                cursor.close()
-                if not df.empty:
-                    df['selection_date'] = pd.to_datetime(df['selection_date'])
-                return df
-
-        except Exception as e:
-            self.logger.error(f"성과 분석 조회 실패: {e}")
-            return pd.DataFrame()
-
     # =========================================================================
     # screener_snapshots 헬퍼
     # =========================================================================

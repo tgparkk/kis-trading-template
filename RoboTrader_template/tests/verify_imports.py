@@ -80,7 +80,7 @@ MODULES = {
     ],
     "utils": [
         "utils", "utils.logger", "utils.korean_time", "utils.price_utils",
-        "utils.async_helpers", "utils.data_cache", "utils.korean_holidays",
+        "utils.async_helpers", "utils.korean_holidays",
     ],
 }
 

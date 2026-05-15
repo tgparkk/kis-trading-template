@@ -89,7 +89,7 @@ class HealthChecker:
     def _check_tables(self):
         """필수 테이블 존재 확인"""
         required_tables = [
-            'daily_prices', 'minute_prices', 'candidate_stocks',
+            'daily_prices', 'candidate_stocks',
             'virtual_trading_records', 'real_trading_records',
             'financial_data', 'quant_factors', 'quant_portfolio'
         ]
@@ -118,7 +118,7 @@ class HealthChecker:
                 """)
                 hypertables = [row[0] for row in cur.fetchall()]
 
-        expected = ['daily_prices', 'minute_prices']
+        expected = ['daily_prices']
         found = [h for h in expected if h in hypertables]
         if len(found) == len(expected):
             return f"{', '.join(found)}"

@@ -1,7 +1,7 @@
 """
 통합 데이터 로더
-- 파일 기반 캐시와 DB 시스템을 모두 지원
-- 우선순위: DB > 파일 캐시
+- DB 기반 데이터 로드 (PriceRepository 경유)
+- 우선순위: DB > 파일 캐시(일봉 전용)
 """
 import pickle
 import pandas as pd
@@ -9,22 +9,20 @@ from pathlib import Path
 from typing import Optional
 
 from utils.logger import setup_logger
-from utils.data_cache import DataCache
 
 
 logger = setup_logger(__name__)
 
 
 class UnifiedDataLoader:
-    """통합 데이터 로더 (DB + 파일 캐시)"""
-    
+    """통합 데이터 로더 (DB 기반)"""
+
     def __init__(self, db_path: str = None):
         """
         Args:
             db_path: (deprecated) 더 이상 사용하지 않음. DB 접근은 PriceRepository를 통해 수행.
         """
         self.logger = setup_logger(__name__)
-        self.file_cache = DataCache()
         self.daily_cache_dir = Path("cache/daily")
 
         self.logger.info("통합 데이터 로더 초기화 완료 (PostgreSQL via PriceRepository)")
@@ -73,22 +71,16 @@ class UnifiedDataLoader:
     
     def load_minute_data(self, stock_code: str, date_str: str) -> Optional[pd.DataFrame]:
         """
-        분봉 데이터 로드 (파일 캐시만 지원, 향후 DB 지원 예정)
-        
+        분봉 데이터 로드 (DB 미지원 — None 반환)
+
         Args:
             stock_code: 종목코드
             date_str: 날짜 (YYYYMMDD)
-            
+
         Returns:
-            pd.DataFrame: 분봉 데이터 또는 None
+            None
         """
-        try:
-            # 파일 캐시에서 조회
-            return self.file_cache.load_data(stock_code, date_str)
-            
-        except Exception as e:
-            self.logger.error(f"분봉 데이터 로드 오류 ({stock_code}, {date_str}): {e}")
-            return None
+        return None
     
     def load_daily_history(self, stock_code: str, days: int = 100,
                           end_date: str = None) -> Optional[pd.DataFrame]:

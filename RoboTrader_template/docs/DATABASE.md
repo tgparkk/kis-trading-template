@@ -77,44 +77,7 @@ SELECT * FROM daily_prices WHERE date = '2026-01-20';
 
 ---
 
-### 2.2 minute_prices (Hypertable) - 분봉 데이터
-
-> TimescaleDB Hypertable / 청크 간격: 1일 / 압축: 7일 후 자동 압축 / **자동 삭제 없음** / PK: (stock_code, datetime)
-
-| 컬럼 | 타입 | Nullable | 설명 |
-|---|---|---|---|
-| stock_code | VARCHAR(10) | NO | 종목코드 |
-| datetime | TIMESTAMPTZ | NO | 시각 |
-| open | NUMERIC(15,2) | YES | 시가 |
-| high | NUMERIC(15,2) | YES | 고가 |
-| low | NUMERIC(15,2) | YES | 저가 |
-| close | NUMERIC(15,2) | YES | 종가 |
-| volume | BIGINT | YES | 거래량 |
-| created_at | TIMESTAMPTZ | YES | 생성일시 (자동) |
-
-**정책:**
-- 압축(compression): 7일 경과 후 자동 압축 (데이터 유지, 용량 절감)
-- 삭제(retention): **없음** - 모든 데이터 영구 보존
-
-**인덱스:**
-- `minute_prices_pkey` - PK (stock_code, datetime)
-- `idx_minute_prices_code` - stock_code
-- `idx_minute_prices_datetime` - datetime DESC
-- `idx_minute_prices_code_date` - (stock_code, datetime DESC)
-
-**사용 예시:**
-```sql
--- 특정 종목의 특정일 분봉
-SELECT * FROM minute_prices
-WHERE stock_code = '005930'
-  AND datetime >= '2026-01-20 09:00:00'
-  AND datetime < '2026-01-21 00:00:00'
-ORDER BY datetime;
-```
-
----
-
-### 2.3 candidate_stocks - 매수 후보 종목
+### 2.2 candidate_stocks - 매수 후보 종목
 
 > 일반 테이블 / PK: id (SERIAL)
 
@@ -303,25 +266,7 @@ ORDER BY datetime;
 
 ---
 
-### 2.10 stock_prices (레거시) - 기존 호환용
-
-> 일반 테이블 / PK: id (SERIAL) / UNIQUE: (stock_code, date_time) / 현재 비어있음
-
-| 컬럼 | 타입 | Nullable | 설명 |
-|---|---|---|---|
-| id | SERIAL | NO | PK |
-| stock_code | VARCHAR(10) | NO | 종목코드 |
-| date_time | TIMESTAMPTZ | NO | 일시 |
-| open_price | NUMERIC(15,2) | YES | 시가 |
-| high_price | NUMERIC(15,2) | YES | 고가 |
-| low_price | NUMERIC(15,2) | YES | 저가 |
-| close_price | NUMERIC(15,2) | YES | 종가 |
-| volume | BIGINT | YES | 거래량 |
-| created_at | TIMESTAMPTZ | YES | 생성일시 (자동) |
-
----
-
-### 2.11 trading_records (레거시) - 기존 호환용
+### 2.10 trading_records (레거시) - 기존 호환용
 
 > 일반 테이블 / PK: id (SERIAL) / 현재 비어있음
 
@@ -341,9 +286,8 @@ ORDER BY datetime;
 ## 3. 테이블 관계도
 
 ```
-daily_prices (Hypertable)          minute_prices (Hypertable)
-    PK: stock_code + date              PK: stock_code + datetime
-                                       압축: 7일 후 자동
+daily_prices (Hypertable)
+    PK: stock_code + date
 
 candidate_stocks
     PK: id
@@ -370,12 +314,6 @@ quant_factors                       quant_portfolio
 
 ## 4. TimescaleDB 정책
 
-### 압축 정책
-- **대상**: minute_prices
-- **조건**: 7일 경과 후 자동 압축
-- **효과**: 저장 공간 60~90% 절약, 읽기 성능 유지
-- **세그먼트**: stock_code 기준
-
 ### 보존 정책 (삭제)
 - **없음**: 모든 데이터 영구 보존
 - **주의**: retention policy 절대 설정하지 않을 것
@@ -392,7 +330,6 @@ quant_factors                       quant_portfolio
 | `init-scripts/01-init.sql` | 스키마 초기화 SQL |
 | `scripts/migrate_to_timescaledb.py` | SQLite→PostgreSQL 마이그레이션 |
 | `core/post_market_data_saver.py` | 장 마감 후 데이터 저장 로직 |
-| `utils/data_cache.py` | 데이터 캐시 (Deprecated, PriceRepository로 위임) |
 
 ---
 

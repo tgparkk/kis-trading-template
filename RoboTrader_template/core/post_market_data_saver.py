@@ -1,7 +1,6 @@
 """
 장 마감 후 데이터 저장 전담 모듈
 - 일봉 데이터 저장 (TimescaleDB daily_prices)
-- 분봉 데이터 저장 (TimescaleDB minute_prices)
 - 텍스트 파일 저장 (디버깅용)
 """
 from typing import Dict, List, Optional
@@ -72,67 +71,6 @@ class PostMarketDataSaver:
         except Exception as e:
             self.logger.error(f"❌ 분봉 데이터 텍스트 파일 저장 실패: {e}")
             return None
-
-    def save_minute_data_to_db(self, intraday_manager, target_date: str = None) -> Dict[str, int]:
-        """
-        메모리에 있는 분봉 데이터를 TimescaleDB에 저장
-
-        Args:
-            intraday_manager: IntradayStockManager 인스턴스
-            target_date: 기준 날짜 (YYYYMMDD), None이면 오늘
-
-        Returns:
-            Dict: {'total': 전체 종목 수, 'saved': 저장 성공 수, 'failed': 실패 수}
-        """
-        try:
-            if target_date is None:
-                target_date = now_kst().strftime('%Y%m%d')
-
-            with intraday_manager._lock:
-                stock_codes = list(intraday_manager.selected_stocks.keys())
-
-            if not stock_codes:
-                self.logger.info("분봉 저장할 종목 없음")
-                return {'total': 0, 'saved': 0, 'failed': 0}
-
-            self.logger.info(f"분봉 데이터 DB 저장 시작: {len(stock_codes)}개 종목 (기준일: {target_date})")
-
-            saved_count = 0
-            failed_count = 0
-
-            for stock_code in stock_codes:
-                try:
-                    combined_data = intraday_manager.get_combined_chart_data(stock_code)
-
-                    if combined_data is None or combined_data.empty:
-                        self.logger.debug(f"[{stock_code}] 분봉 데이터 없음")
-                        continue
-
-                    # TimescaleDB에 저장
-                    success = self.price_repo.save_minute_data(stock_code, target_date, combined_data)
-
-                    if success:
-                        saved_count += 1
-                        self.logger.debug(f"[{stock_code}] 분봉 데이터 DB 저장 완료: {len(combined_data)}건")
-                    else:
-                        failed_count += 1
-                        self.logger.warning(f"[{stock_code}] 분봉 데이터 DB 저장 실패")
-
-                except Exception as e:
-                    self.logger.error(f"[{stock_code}] 분봉 저장 오류: {e}")
-                    failed_count += 1
-
-            self.logger.info(f"분봉 데이터 DB 저장 완료: {saved_count}/{len(stock_codes)}개 성공")
-
-            return {
-                'total': len(stock_codes),
-                'saved': saved_count,
-                'failed': failed_count
-            }
-
-        except Exception as e:
-            self.logger.error(f"분봉 데이터 DB 저장 중 오류: {e}")
-            return {'total': 0, 'saved': 0, 'failed': 0}
 
     def save_daily_data(self, stock_codes: List[str], target_date: str = None, days_back: int = 100) -> Dict[str, int]:
         """
@@ -221,7 +159,7 @@ class PostMarketDataSaver:
 
     def save_all_data(self, intraday_manager) -> Dict[str, any]:
         """
-        장 마감 후 모든 데이터 저장 (일봉 + 분봉 → TimescaleDB)
+        장 마감 후 모든 데이터 저장 (일봉 → TimescaleDB, 분봉 → 텍스트 파일)
 
         Args:
             intraday_manager: IntradayStockManager 인스턴스
@@ -242,30 +180,24 @@ class PostMarketDataSaver:
                     'success': False,
                     'message': '저장할 종목 없음',
                     'daily_data': {'total': 0, 'saved': 0, 'failed': 0},
-                    'minute_data': {'total': 0, 'saved': 0, 'failed': 0},
                     'text_file': None
                 }
 
             self.logger.info(f"대상 종목: {len(stock_codes)}개 - {', '.join(stock_codes)}")
 
-            # 1. 분봉 데이터 DB 저장
-            self.logger.info("[1] 분봉 데이터 TimescaleDB 저장")
-            minute_result = self.save_minute_data_to_db(intraday_manager)
-
-            # 2. 일봉 데이터 DB 저장
-            self.logger.info("[2] 일봉 데이터 TimescaleDB 저장")
+            # 1. 일봉 데이터 DB 저장
+            self.logger.info("[1] 일봉 데이터 TimescaleDB 저장")
             daily_result = self.save_daily_data(stock_codes)
 
-            # 3. 분봉 데이터 텍스트 파일 저장 (디버깅용, 선택적)
-            self.logger.info("[3] 분봉 데이터 텍스트 파일 저장 (디버깅용)")
+            # 2. 분봉 데이터 텍스트 파일 저장 (디버깅용, 선택적)
+            self.logger.info("[2] 분봉 데이터 텍스트 파일 저장 (디버깅용)")
             text_file = self.save_minute_data_to_file(intraday_manager)
 
             # 결과 요약
-            self.logger.info(f"장 마감 후 데이터 저장 완료 - 분봉: {minute_result['saved']}/{minute_result['total']}개, 일봉: {daily_result['saved']}/{daily_result['total']}개, 텍스트: {text_file if text_file else '없음'}")
+            self.logger.info(f"장 마감 후 데이터 저장 완료 - 일봉: {daily_result['saved']}/{daily_result['total']}개, 텍스트: {text_file if text_file else '없음'}")
 
             return {
                 'success': True,
-                'minute_data': minute_result,
                 'daily_data': daily_result,
                 'text_file': text_file
             }
@@ -275,7 +207,6 @@ class PostMarketDataSaver:
             return {
                 'success': False,
                 'error': str(e),
-                'minute_data': {'total': 0, 'saved': 0, 'failed': 0},
                 'daily_data': {'total': 0, 'saved': 0, 'failed': 0},
                 'text_file': None
             }

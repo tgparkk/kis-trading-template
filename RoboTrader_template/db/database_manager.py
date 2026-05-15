@@ -78,14 +78,12 @@ class DatabaseManager:
                 # 핵심 테이블 존재 확인
                 required_tables = [
                     'candidate_stocks',
-                    'stock_prices',
                     'virtual_trading_records',
                     'real_trading_records',
                     'financial_data',
                     'quant_factors',
                     'quant_portfolio',
                     'daily_prices',
-                    'minute_prices',
                     'paper_trading_state',
                 ]
 
@@ -109,7 +107,7 @@ class DatabaseManager:
                 ''')
                 hypertables = {row[0] for row in cursor.fetchall()}
 
-                expected_hypertables = {'stock_prices', 'daily_prices', 'minute_prices'}
+                expected_hypertables = {'daily_prices'}
                 missing_hypertables = expected_hypertables - hypertables
 
                 if missing_hypertables:
@@ -131,30 +129,8 @@ class DatabaseManager:
     def get_candidate_history(self, days: int = 30) -> pd.DataFrame:
         return self.candidate_repo.get_candidate_history(days)
 
-    def get_candidate_performance(self, days: int = 30) -> pd.DataFrame:
-        return self.candidate_repo.get_candidate_performance(days)
-
     def get_daily_candidate_count(self, days: int = 30) -> pd.DataFrame:
         return self.candidate_repo.get_daily_candidate_count(days)
-
-    # ============================
-    # 가격 데이터 관련 (PriceRepository 위임)
-    # ============================
-
-    def save_price_data(self, stock_code: str, price_data) -> bool:
-        return self.price_repo.save_price_data(stock_code, price_data)
-
-    def save_minute_data(self, stock_code: str, date_str: str, df_minute) -> bool:
-        return self.price_repo.save_minute_data(stock_code, date_str, df_minute)
-
-    def get_minute_data(self, stock_code: str, date_str: str):
-        return self.price_repo.get_minute_data(stock_code, date_str)
-
-    def has_minute_data(self, stock_code: str, date_str: str) -> bool:
-        return self.price_repo.has_minute_data(stock_code, date_str)
-
-    def get_price_history(self, stock_code: str, days: int = 30) -> pd.DataFrame:
-        return self.price_repo.get_price_history(stock_code, days)
 
     # ============================
     # 매매 기록 관련 (TradingRepository 위임)
@@ -241,8 +217,6 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('DELETE FROM candidate_stocks WHERE selection_date < %s',
                              (cutoff_date.strftime('%Y-%m-%d %H:%M:%S'),))
-                cursor.execute('DELETE FROM stock_prices WHERE date_time < %s',
-                             (cutoff_date.strftime('%Y-%m-%d %H:%M:%S'),))
                 conn.commit()
                 self.logger.info(f"{keep_days}일 이전 데이터 정리 완료")
 
@@ -255,7 +229,7 @@ class DatabaseManager:
             with DatabaseConnection.get_connection() as conn:
                 cursor = conn.cursor()
                 stats = {}
-                tables = ['candidate_stocks', 'stock_prices', 'trading_records',
+                tables = ['candidate_stocks', 'trading_records',
                          'virtual_trading_records', 'real_trading_records']
                 for table in tables:
                     try:

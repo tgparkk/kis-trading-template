@@ -303,7 +303,6 @@ Signal.signal_type == BUY 또는 STRONG_BUY?
 ┌─────────────────────────────────────────────────┐
 │           데이터 수집 & 저장                     │
 │  - daily_prices (일봉)                          │
-│  - minute_prices (분봉)                         │
 │  - financial_statements (재무제표)              │
 │  - candidate_stocks (후보 종목)                  │
 └─────────────────────────────────────────────────┘

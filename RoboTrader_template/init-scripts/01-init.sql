@@ -39,44 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_prices_code ON daily_prices(stock_code);
 CREATE INDEX IF NOT EXISTS idx_daily_prices_date ON daily_prices(date DESC);
 
 -- =====================================================
--- 2. minute_prices (Hypertable) - 분봉 데이터
--- =====================================================
-CREATE TABLE IF NOT EXISTS minute_prices (
-    stock_code VARCHAR(10) NOT NULL,
-    datetime TIMESTAMPTZ NOT NULL,
-    open NUMERIC(15, 2),
-    high NUMERIC(15, 2),
-    low NUMERIC(15, 2),
-    close NUMERIC(15, 2),
-    volume BIGINT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (stock_code, datetime)
-);
-
--- Hypertable로 변환 (1일 청크)
-SELECT create_hypertable('minute_prices', 'datetime',
-    chunk_time_interval => INTERVAL '1 day',
-    if_not_exists => TRUE
-);
-
--- 인덱스
-CREATE INDEX IF NOT EXISTS idx_minute_prices_code ON minute_prices(stock_code);
-CREATE INDEX IF NOT EXISTS idx_minute_prices_datetime ON minute_prices(datetime DESC);
-CREATE INDEX IF NOT EXISTS idx_minute_prices_code_date ON minute_prices(stock_code, datetime DESC);
-
--- 압축 정책 (7일 이후 자동 압축)
-ALTER TABLE minute_prices SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'stock_code'
-);
-
-SELECT add_compression_policy('minute_prices', INTERVAL '7 days', if_not_exists => TRUE);
-
--- 주의: 보존 정책(자동 삭제)은 의도적으로 설정하지 않음
--- 모든 데이터는 영구 보존됨
-
--- =====================================================
--- 3. candidate_stocks (일반 테이블) - 후보 종목
+-- 2. candidate_stocks (일반 테이블) - 후보 종목
 -- =====================================================
 CREATE TABLE IF NOT EXISTS candidate_stocks (
     id SERIAL PRIMARY KEY,
@@ -259,26 +222,7 @@ CREATE INDEX IF NOT EXISTS idx_quant_portfolio_date ON quant_portfolio(calc_date
 CREATE INDEX IF NOT EXISTS idx_quant_portfolio_rank ON quant_portfolio(calc_date, rank);
 
 -- =====================================================
--- 10. stock_prices (일반 테이블) - 기존 호환용 종목 가격 데이터
--- =====================================================
-CREATE TABLE IF NOT EXISTS stock_prices (
-    id SERIAL PRIMARY KEY,
-    stock_code VARCHAR(10) NOT NULL,
-    date_time TIMESTAMPTZ NOT NULL,
-    open_price NUMERIC(15, 2),
-    high_price NUMERIC(15, 2),
-    low_price NUMERIC(15, 2),
-    close_price NUMERIC(15, 2),
-    volume BIGINT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(stock_code, date_time)
-);
-
--- 인덱스
-CREATE INDEX IF NOT EXISTS idx_price_code_date ON stock_prices(stock_code, date_time DESC);
-
--- =====================================================
--- 11. trading_records (일반 테이블) - 레거시 매매 기록
+-- 10. trading_records (일반 테이블) - 레거시 매매 기록
 -- =====================================================
 CREATE TABLE IF NOT EXISTS trading_records (
     id SERIAL PRIMARY KEY,
@@ -374,7 +318,6 @@ BEGIN
     RAISE NOTICE '=====================================================';
     RAISE NOTICE 'Hypertables created:';
     RAISE NOTICE '  - daily_prices (7-day chunks)';
-    RAISE NOTICE '  - minute_prices (1-day chunks, compression after 7 days, NO auto-delete)';
     RAISE NOTICE '';
     RAISE NOTICE 'Regular tables created:';
     RAISE NOTICE '  - candidate_stocks';
@@ -384,7 +327,6 @@ BEGIN
     RAISE NOTICE '  - financial_statements';
     RAISE NOTICE '  - quant_factors';
     RAISE NOTICE '  - quant_portfolio';
-    RAISE NOTICE '  - stock_prices (legacy compatibility)';
     RAISE NOTICE '  - trading_records (legacy)';
     RAISE NOTICE '=====================================================';
 END $$;

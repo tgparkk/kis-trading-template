@@ -422,11 +422,3 @@ class IntradayStockManager:
         """실시간 데이터 품질 검사"""
         return self.quality_checker.check_data_quality(stock_code)
 
-    # ========================================
-    # 하위 호환성 유지 메서드 (deprecated)
-    # ========================================
-
-    def _save_minute_data_to_file(self) -> None:
-        """[DEPRECATED] PostMarketDataSaver 사용"""
-        self.logger.warning("⚠️ _save_minute_data_to_file은 deprecated입니다.")
-        return self.data_saver.save_minute_data_to_file(self)

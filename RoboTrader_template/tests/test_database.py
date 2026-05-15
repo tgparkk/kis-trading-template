@@ -1154,15 +1154,6 @@ class TestDatabaseManagerFacade:
         assert result is True
         manager.candidate_repo.save_candidate_stocks.assert_called_once()
 
-    def test_save_price_data_delegates(self):
-        """save_price_data가 price_repo에 위임"""
-        manager = self._make_manager()
-        manager.price_repo.save_price_data.return_value = True
-
-        result = manager.save_price_data("005930", {"close": 70000})
-        assert result is True
-        manager.price_repo.save_price_data.assert_called_once()
-
     def test_save_quant_portfolio_delegates(self):
         """save_quant_portfolio가 quant_repo에 위임"""
         manager = self._make_manager()
@@ -1209,8 +1200,8 @@ class TestDatabaseManagerUtility:
         manager = self._make_manager()
         manager.cleanup_old_data(keep_days=90)
 
-        # DELETE가 2번 호출됨 (candidate_stocks, stock_prices)
-        assert mock_cursor.execute.call_count == 2
+        # DELETE가 1번 호출됨 (candidate_stocks)
+        assert mock_cursor.execute.call_count == 1
 
     @patch('db.database_manager.DatabaseConnection')
     def test_get_database_stats(self, mock_db_conn):
