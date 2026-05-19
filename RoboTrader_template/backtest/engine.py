@@ -221,8 +221,8 @@ class BacktestEngine:
                                  반환 리스트가 비어있으면 해당 일자 진입 스킵 (보수적 fallback).
             force_eod_liquidation: EOD 청산 제어 옵션.
                 None (기본): holding_period에 따라 자동 결정 (intraday→청산, swing→보유).
-                True: 강제 EOD 청산 — swing 전략도 매일 청산.
-                False: EOD 청산 비활성 — intraday 전략도 다음날 보유 가능.
+                True: 강제 EOD 청산 - swing 전략도 매일 청산.
+                False: EOD 청산 비활성 - intraday 전략도 다음날 보유 가능.
 
         Returns:
             BacktestResult: 백테스트 결과
@@ -297,20 +297,20 @@ class BacktestEngine:
                 # owner_strategy 우선 (다전략 지원 대비), 없으면 self.strategy fallback
                 _pos_strategy = pos.get("owner_strategy") or self.strategy
 
-                # 우선순위 1: 손절 — 일봉 low가 손절가 이하
+                # 우선순위 1: 손절 - 일봉 low가 손절가 이하
                 stop_loss_price = entry_price * (1 - stop_loss_rate)
                 if day_low <= stop_loss_price:
                     sell_price = stop_loss_price
                     sell_reason = "stop_loss"
 
-                # 우선순위 2: 트레일링스톱 — 고가 대비 -3% (손절 미발동 시)
+                # 우선순위 2: 트레일링스톱 - 고가 대비 -3% (손절 미발동 시)
                 elif peak_price > entry_price:
                     trailing_stop_price = peak_price * (1 - TRAILING_STOP_CALLBACK_RATE)
                     if day_low <= trailing_stop_price:
                         sell_price = trailing_stop_price
                         sell_reason = "trailing"
 
-                # 우선순위 3: 보유기간 초과 (max_holding_days) — 영업일 기준
+                # 우선순위 3: 보유기간 초과 (max_holding_days) - 영업일 기준
                 if sell_price is None:
                     strategy_max_days = getattr(_pos_strategy, 'max_holding_days', None)
                     if strategy_max_days is not None:
@@ -329,7 +329,7 @@ class BacktestEngine:
                             sell_price = day_close
                             sell_reason = "max_holding"
 
-                # 우선순위 4: 익절 — 일봉 high가 익절가 이상
+                # 우선순위 4: 익절 - 일봉 high가 익절가 이상
                 if sell_price is None:
                     take_profit_price = entry_price * (1 + take_profit_rate)
                     if day_high >= take_profit_price:
@@ -792,7 +792,7 @@ class BacktestEngine:
         """
         trades_today: List[Dict] = []
         sells_by_reason_delta: Dict[str, int] = {}
-        # 당일 이미 진입했던 종목 — 청산 후 재진입 차단 (종목당 일일 1회 진입)
+        # 당일 이미 진입했던 종목 - 청산 후 재진입 차단 (종목당 일일 1회 진입)
         entered_today: set = set()
 
         # EOD 시각 파싱 (HH:MM → 분 단위 정수, 비교용)
@@ -877,7 +877,7 @@ class BacktestEngine:
                             sell_reason = "intraday_trail"
                     # 전략 매도 신호
                     if sell_price is None:
-                        # .loc[:ts] — copy 없이 뷰로 슬라이스 (O(log N))
+                        # .loc[:ts] - copy 없이 뷰로 슬라이스 (O(log N))
                         df_slice = df_idx.loc[:ts]
                         if not df_slice.empty:
                             sig = strategy.generate_signal(code, df_slice, timeframe="minute")
@@ -953,7 +953,7 @@ class BacktestEngine:
                 if bar_high == 0 and bar_low == 0:
                     continue
 
-                # 전략 신호 확인: .loc[:ts] — copy 없이 뷰로 슬라이스
+                # 전략 신호 확인: .loc[:ts] - copy 없이 뷰로 슬라이스
                 df_slice = df_idx.loc[:ts]
                 if df_slice.empty:
                     continue
@@ -984,7 +984,7 @@ class BacktestEngine:
                     "high_water": fill_price,
                     "capital_allocated": total_cost,
                 }
-                entered_today.add(code)  # 진입 기록 — 당일 재진입 차단
+                entered_today.add(code)  # 진입 기록 - 당일 재진입 차단
                 available_slots -= 1
 
                 if verbose:
@@ -1094,7 +1094,7 @@ class BacktestEngine:
                         kospi_market_up_by_date[_trade_d] = prev_close > prev_prev_close
                     # else: 키 누락 → 전략에서 fallback 통과
         except Exception as _exc:
-            self.logger.warning(f"run_minute: KS11 일봉 사전로드 실패 — kospi_market_up 결손 ({_exc})")
+            self.logger.warning(f"run_minute: KS11 일봉 사전로드 실패 - kospi_market_up 결손 ({_exc})")
 
         # skip_dates 전처리: prefix와 완전 일치 모두 지원
         skip_set: Set[str] = set()
@@ -1140,12 +1140,14 @@ class BacktestEngine:
                     _today_codes = list(stock_codes) if stock_codes else []
 
                 # 전일 일봉 거래량 조회 (당일 후보만)
+                # 1차: daily_candles, 2차 fallback: minute_candles 일별 sum(volume)
                 _prev_vol: Dict[str, float] = {}
                 try:
                     if _today_codes:
                         from db.connection import DatabaseConnection
                         with DatabaseConnection.get_connection() as _conn:
                             _cur = _conn.cursor()
+                            # 1차: daily_candles
                             _cur.execute(
                                 """SELECT stock_code, acml_vol FROM daily_candles
                                    WHERE stock_code = ANY(%s)
@@ -1157,9 +1159,34 @@ class BacktestEngine:
                             )
                             for _code, _vol in _cur.fetchall():
                                 try:
-                                    _prev_vol[_code] = float(_vol or 0.0)
+                                    _v = float(_vol or 0.0)
                                 except (TypeError, ValueError):
-                                    _prev_vol[_code] = 0.0
+                                    _v = 0.0
+                                if _v > 0:
+                                    _prev_vol[_code] = _v
+
+                            # 2차 fallback: 1차에서 누락/0인 종목은 minute_candles 일별 sum(volume)
+                            _missing = [c for c in _today_codes if c not in _prev_vol]
+                            if _missing:
+                                _td = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:8]}"
+                                _cur.execute(
+                                    """SELECT stock_code, SUM(volume)::bigint AS vol
+                                       FROM minute_candles
+                                       WHERE stock_code = ANY(%s)
+                                         AND datetime::date = (
+                                           SELECT MAX(datetime::date) FROM minute_candles
+                                           WHERE stock_code = ANY(%s) AND datetime::date < %s
+                                         )
+                                       GROUP BY stock_code""",
+                                    (_missing, _missing, _td),
+                                )
+                                for _code, _vol in _cur.fetchall():
+                                    try:
+                                        _v = float(_vol or 0.0)
+                                    except (TypeError, ValueError):
+                                        _v = 0.0
+                                    if _v > 0:
+                                        _prev_vol[_code] = _v
                             _cur.close()
                 except Exception as _exc:
                     self.logger.warning(f"run_minute: {trade_date} prev_day_volume 조회 실패 ({_exc})")

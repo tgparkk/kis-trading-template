@@ -1,4 +1,4 @@
-"""ORB v2 — 거래량 + KOSPI 시장환경 필터 추가."""
+"""ORB v2 - 거래량 + KOSPI 시장환경 필터 추가."""
 
 from datetime import time
 from typing import Optional
@@ -14,8 +14,8 @@ class OrbV2Strategy(IntradayBaseStrategy):
     """ORB v1 진입 게이트 + 거래량 필터 + KOSPI 시장환경 필터.
 
     필요한 일별 외부 데이터 (set_daily_context로 주입):
-      ctx["prev_day_volume"]: dict[stock_code -> float] — 전일 일봉 거래량
-      ctx["kospi_market_up"]: bool — 직전 거래일 KOSPI 종가 > 그 전 거래일 종가이면 True
+      ctx["prev_day_volume"]: dict[stock_code -> float] - 전일 일봉 거래량
+      ctx["kospi_market_up"]: bool - 직전 거래일 KOSPI 종가 > 그 전 거래일 종가이면 True
 
     결손 fallback: 누락 시 해당 필터 미적용 (통과시킴).
     """
@@ -105,7 +105,7 @@ class OrbV2Strategy(IntradayBaseStrategy):
         if prev_vol <= 0:
             if stock_code not in self._warned_missing_prev_vol:
                 self.logger.warning(
-                    f"{stock_code} 전일 일봉 거래량 누락 — volume 필터 미적용"
+                    f"{stock_code} 전일 일봉 거래량 누락 - volume 필터 미적용"
                 )
                 self._warned_missing_prev_vol.add(stock_code)
             return True  # fallback
@@ -123,7 +123,7 @@ class OrbV2Strategy(IntradayBaseStrategy):
             date_key = self._daily_ctx_date or "unknown"
             if date_key not in self._warned_missing_kospi:
                 self.logger.warning(
-                    f"{date_key} kospi_market_up 결손 — market 필터 미적용"
+                    f"{date_key} kospi_market_up 결손 - market 필터 미적용"
                 )
                 self._warned_missing_kospi.add(date_key)
             return True  # fallback

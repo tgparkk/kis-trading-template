@@ -1000,3 +1000,171 @@ class TestSetDailyContextCall:
         # YYYYMMDD 포맷 보장
         for d in called_dates:
             assert len(d) == 8 and d.isdigit()
+
+
+# ============================================================================
+# Task 5b: prev_day_volume minute_candles fallback 검증
+# ============================================================================
+
+class TestPrevDayVolumeFallback:
+    """run_minute의 prev_day_volume이 daily_candles 결손 시 minute_candles로 fallback 하는지 검증."""
+
+    def test_fallback_called_when_daily_missing(self):
+        """daily_candles에 없는 종목은 minute_candles SUM(volume)으로 fallback.
+
+        - 첫 SELECT (daily_candles)가 빈 결과
+        - 두 번째 SELECT (minute_candles)가 호출되어 [("999999", 12345)] 반환
+        - ctx의 prev_day_volume["999999"] == 12345.0
+        """
+        import pandas as pd
+        from unittest.mock import patch, MagicMock
+        from backtest.engine import BacktestEngine
+        from strategies.intraday.orb_v2.strategy import OrbV2Strategy
+
+        strat = OrbV2Strategy({})
+        captured_ctx: list = []
+        original_set = strat.set_daily_context
+
+        def _spy(date, ctx):
+            captured_ctx.append((date, dict(ctx) if ctx else {}))
+            return original_set(date, ctx)
+
+        strat.set_daily_context = _spy
+
+        engine = BacktestEngine(strategy=strat, initial_capital=10_000_000, max_positions=3)
+
+        # fetchall 응답 순서:
+        #   1) KS11 일봉 사전로드 (블록 A) -> []
+        #   2) trade_date 1: daily_candles -> []  (결손)
+        #   3) trade_date 1: minute_candles fallback -> [("999999", 12345)]
+        #   4) trade_date 2: daily_candles -> []
+        #   5) trade_date 2: minute_candles fallback -> [("999999", 12345)]
+        #   6) trade_date 3: daily_candles -> []
+        #   7) trade_date 3: minute_candles fallback -> [("999999", 12345)]
+        fetch_results = iter([
+            [],                          # KS11 일봉 사전로드
+            [], [("999999", 12345)],     # day 1
+            [], [("999999", 12345)],     # day 2
+            [], [("999999", 12345)],     # day 3
+        ])
+
+        mock_cur = MagicMock()
+        mock_cur.execute = MagicMock()
+        mock_cur.fetchall = MagicMock(side_effect=fetch_results)
+
+        mock_conn = MagicMock()
+        mock_conn.cursor = MagicMock(return_value=mock_cur)
+
+        mock_conn_ctx = MagicMock()
+        mock_conn_ctx.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn_ctx.__exit__ = MagicMock(return_value=False)
+
+        with patch("db.connection.DatabaseConnection.get_connection", return_value=mock_conn_ctx):
+            with patch("db.repositories.price.PriceRepository") as mock_repo_cls:
+                mock_repo = MagicMock()
+                mock_repo.fetch_minute_candles.return_value = pd.DataFrame()
+                mock_repo_cls.return_value = mock_repo
+
+                with patch.object(
+                    engine,
+                    "_get_trading_days_range",
+                    return_value=["20260401", "20260402", "20260403"],
+                ):
+                    engine.run_minute(
+                        stock_codes=["999999"],
+                        start_date="20260401",
+                        end_date="20260403",
+                        candidate_provider=lambda d: ["999999"],
+                    )
+
+        # 거래일별 ctx에 prev_day_volume["999999"] == 12345.0 들어있어야 함
+        assert len(captured_ctx) >= 1, f"set_daily_context가 한 번도 호출되지 않음"
+        found_any = False
+        for _date, ctx in captured_ctx:
+            pv = ctx.get("prev_day_volume", {})
+            if pv.get("999999") == 12345.0:
+                found_any = True
+                break
+        assert found_any, (
+            f"minute_candles fallback이 작동하지 않음. "
+            f"captured_ctx={captured_ctx!r}"
+        )
+
+    def test_daily_candles_takes_priority(self):
+        """daily_candles에 값이 있으면 minute_candles fallback을 호출하지 않음.
+
+        - 첫 SELECT (daily_candles)가 [("999999", 50000)] 반환
+        - minute_candles 쿼리는 실행되지 않아야 함 (_missing 리스트가 빔)
+        - ctx의 prev_day_volume["999999"] == 50000.0
+        """
+        import pandas as pd
+        from unittest.mock import patch, MagicMock
+        from backtest.engine import BacktestEngine
+        from strategies.intraday.orb_v2.strategy import OrbV2Strategy
+
+        strat = OrbV2Strategy({})
+        captured_ctx: list = []
+        original_set = strat.set_daily_context
+
+        def _spy(date, ctx):
+            captured_ctx.append((date, dict(ctx) if ctx else {}))
+            return original_set(date, ctx)
+
+        strat.set_daily_context = _spy
+
+        engine = BacktestEngine(strategy=strat, initial_capital=10_000_000, max_positions=3)
+
+        # fetchall 응답 순서:
+        #   1) KS11 일봉 사전로드 -> []
+        #   2) trade_date 1: daily_candles -> [("999999", 50000)]  (값 존재)
+        #   (minute_candles 쿼리 없음 - _missing 빔)
+        #   3) trade_date 2: daily_candles -> [("999999", 50000)]
+        #   4) trade_date 3: daily_candles -> [("999999", 50000)]
+        fetch_results = iter([
+            [],                           # KS11 일봉 사전로드
+            [("999999", 50000)],          # day 1: daily_candles (충분)
+            [("999999", 50000)],          # day 2
+            [("999999", 50000)],          # day 3
+        ])
+
+        mock_cur = MagicMock()
+        mock_cur.execute = MagicMock()
+        mock_cur.fetchall = MagicMock(side_effect=fetch_results)
+
+        mock_conn = MagicMock()
+        mock_conn.cursor = MagicMock(return_value=mock_cur)
+
+        mock_conn_ctx = MagicMock()
+        mock_conn_ctx.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn_ctx.__exit__ = MagicMock(return_value=False)
+
+        with patch("db.connection.DatabaseConnection.get_connection", return_value=mock_conn_ctx):
+            with patch("db.repositories.price.PriceRepository") as mock_repo_cls:
+                mock_repo = MagicMock()
+                mock_repo.fetch_minute_candles.return_value = pd.DataFrame()
+                mock_repo_cls.return_value = mock_repo
+
+                with patch.object(
+                    engine,
+                    "_get_trading_days_range",
+                    return_value=["20260401", "20260402", "20260403"],
+                ):
+                    engine.run_minute(
+                        stock_codes=["999999"],
+                        start_date="20260401",
+                        end_date="20260403",
+                        candidate_provider=lambda d: ["999999"],
+                    )
+
+        # daily_candles 값(50000.0)이 ctx에 반영돼야 함
+        assert len(captured_ctx) >= 1
+        found_any = False
+        for _date, ctx in captured_ctx:
+            pv = ctx.get("prev_day_volume", {})
+            if pv.get("999999") == 50000.0:
+                found_any = True
+                break
+        assert found_any, (
+            f"daily_candles 값이 ctx에 반영되지 않음. "
+            f"captured_ctx={captured_ctx!r}"
+        )
