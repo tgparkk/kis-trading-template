@@ -1,0 +1,15 @@
+strategy:
+  name: ORB_v2
+  version: 2.0.0
+  description: "Opening Range Breakout + 당일누적/전일일봉 거래량 필터 + KS11 전일 상승 필터"
+
+parameters:
+  box_minutes: 30
+  volume_ratio_threshold: 1.0    # 당일 누적 거래량 / 전일 일봉 ≥ 이 값
+  use_market_filter: true        # 전일 KS11 일봉이 상승한 날만 진입
+
+risk_management:
+  stop_loss_pct: 0.03
+  take_profit_pct: 0.06
+  max_holding_minutes: null
+  eod_cutoff_buy: "15:00"
