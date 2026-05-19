@@ -163,3 +163,53 @@ class TestOrbV2Strategy:
         sig = strat.generate_signal("005930", df, "minute")
         # ctx 없으면 두 필터 모두 fallback → 통과
         assert sig is not None
+
+
+class TestOrbV2RegistryLoading:
+    def test_all_8_orb_v2_keys_loadable(self):
+        import sys
+        import os
+        # scripts/ 디렉토리가 sys.path에 없으면 추가
+        scripts_dir = os.path.join(os.path.dirname(__file__), "..", "scripts")
+        project_root = os.path.join(os.path.dirname(__file__), "..")
+        for p in [scripts_dir, project_root]:
+            p_abs = os.path.abspath(p)
+            if p_abs not in sys.path:
+                sys.path.insert(0, p_abs)
+        from run_intraday_tournament import _load_strategy
+        keys = [
+            "orb_v2_vr05_nomkt", "orb_v2_vr05_mkt",
+            "orb_v2_vr10_nomkt", "orb_v2_vr10_mkt",
+            "orb_v2_vr15_nomkt", "orb_v2_vr15_mkt",
+            "orb_v2_vr20_nomkt", "orb_v2_vr20_mkt",
+        ]
+        for k in keys:
+            strat = _load_strategy(k)
+            assert strat.name == "ORB_v2"
+            # params 주입 검증
+            if "nomkt" in k:
+                assert strat._use_market_filter is False
+            else:
+                assert strat._use_market_filter is True
+            if "vr05" in k:
+                assert strat._volume_ratio_threshold == 0.5
+            elif "vr10" in k:
+                assert strat._volume_ratio_threshold == 1.0
+            elif "vr15" in k:
+                assert strat._volume_ratio_threshold == 1.5
+            elif "vr20" in k:
+                assert strat._volume_ratio_threshold == 2.0
+
+    def test_legacy_string_entries_still_work(self):
+        """기존 string 형식 registry 항목이 깨지지 않는지."""
+        import sys
+        import os
+        scripts_dir = os.path.join(os.path.dirname(__file__), "..", "scripts")
+        project_root = os.path.join(os.path.dirname(__file__), "..")
+        for p in [scripts_dir, project_root]:
+            p_abs = os.path.abspath(p)
+            if p_abs not in sys.path:
+                sys.path.insert(0, p_abs)
+        from run_intraday_tournament import _load_strategy
+        strat = _load_strategy("orb")
+        assert strat.name == "ORB"
