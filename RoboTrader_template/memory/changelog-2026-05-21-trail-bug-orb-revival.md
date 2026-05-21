@@ -1,4 +1,14 @@
-# 2026-05-21 trail_pct 엔진 버그 → ORB 부활 + SL/TP 그리드 착수
+# 2026-05-21 trail_pct 버그 → "ORB 부활" → dynamic universe 룩어헤드 발견 (부활 무효)
+
+> ## [정정 2026-05-21 심야] "ORB 부활" 결론 무효 — dynamic universe 룩어헤드
+>
+> 본문 §5의 **"plain ORB 부활(+0.45%/일·승51%·합격)"** 및 한줄 요약의 ORB 합격 결론은
+> **dynamic universe 룩어헤드 편향으로 오염**되었습니다.
+>
+> `build_universe_for_date`가 거래일 당일의 종일 OHLCV로 universe를 선별 → 백테스트가
+> "그날 크게 움직일 종목"을 미리 보고 거래한 셈. 수정(universe를 D-1로 빌드) 후 재검증
+> 스모크: orb 전 설정 손실(평균 -0.67%/일, 승률 33%, 합격 0/4). **ORB는 엣지 없음.**
+> 상세는 아래 §7.
 
 ## 한줄 요약
 
@@ -67,6 +77,39 @@ trail OFF vs ON 직접 비교로 버그 확증:
 - **목적**: aprmay 합격이 국면운인지 진짜인지 판정 + trail-OFF 환경의 최적 SL/TP 재발견
 - workers=16. 1차 실행이 DB 커넥션 풀(`max_conn=10`) 초과로 중지 → `run_tournament()`에 풀 사전초기화(`max_conn=max(24, workers+8)`) 추가 후 재실행.
 - 결과 위치: `reports/tournament_orb_sltp_grid/20260521_085340/` — 결과는 후속 changelog에 박제 예정.
+
+## 7. dynamic universe 룩어헤드 발견 + 수정 (이 문서의 핵심 정정)
+
+### 7.1 발견 경위
+SL/TP 그리드 토너먼트(§6) 64/72 진행 시점에 결과가 물리적으로 불가능 — orb pos3/SL2/TP6 = +13,641% 누적·승률 84.7%. 스모킹건: **TP가 높을수록 승률이 높음**(TP2 59~64% vs TP6 80~91%) — 정상이면 역(逆)이어야 함.
+
+### 7.2 근본 원인 (코드 + 실측 확정)
+- `run_minute()`이 `candidate_provider(trade_date)`를 거래 당일 날짜로 호출 (engine.py:1138·1202).
+- `build_universe_for_date(X)`가 `minute_candles WHERE trade_date=X`의 그날 종일 `MAX(high)/MIN(low)/SUM(amount)`로 변동성 상위 50 선별.
+- ∴ X일 09:00 트레이딩 시작 시점에 universe는 이미 "X일 종일 최고 변동성 50종목" — 명백한 룩어헤드.
+- 실측(2026-04-09): universe(X) 50종목의 당일 실현 변동성 평균 16.44%(최소조차 10.64%) vs 시장 6.46%. 연속일 멤버십 공통 12~22/50 (Jaccard 0.14~0.28).
+
+### 7.3 왜 과거 결과가 전부 오염됐나
+3겹의 버그가 룩어헤드를 가리고 있었음: ① 5/16 과잉거래(비용 609%) ② 5/17~20 trail 버그 ③ 둘 다 수정 → 룩어헤드 민낯 노출. **5/16 이후 dynamic-universe 토너먼트 전부 무효** — 본문 §5 "ORB 부활" 포함.
+
+### 7.4 수정
+`scripts/run_intraday_tournament.py` `_make_dynamic_provider`: universe(X)를 직전 거래일 P(D-1) 데이터로 빌드. 순수 헬퍼 `_prior_trading_day`/`_load_trading_days` 추가. TDD red→green, 단위테스트 51 passed. 캐시(`{date}.parquet`)는 per-date 랭킹이라 그대로 유효 — 재구축 불필요. `kospi_market_up` 감사 결과 이미 정상(D-1 사용).
+
+### 7.5 수정 후 재검증 스모크 (orb, 2026-04-01~05-15, D-1 universe)
+| SL/TP | 일수익률 | 승률 | MDD | 누적 PnL |
+|---|---|---|---|---|
+| SL3/TP6 | -0.42% | 39.4% | -17.1% | -13.6% |
+| SL2/TP6 | -0.65% | 33.3% | -24.6% | -20.0% |
+| SL3/TP2 | -0.65% | 30.3% | -20.9% | -19.9% |
+| SL2/TP2 | -0.96% | 27.3% | -28.6% | -27.5% |
+
+before/after (orb pos3 SL2 TP6): **+13,641%·승84.7% → -20.0%·승33.3%**.
+
+### 7.6 정직한 결론
+- 룩어헤드 수정은 작동 확정 (4자리 % 소멸, 승률 현실화, TP-승률 역상관 해소).
+- **plain ORB는 엣지가 없다** — 평균 -0.67%/일, 승률 33%, 합격 0/4. "ORB 부활"은 100% 룩어헤드였음.
+- research-2026-05-20 예측과 정확히 일치: "단독 ORB는 죽었고 Stocks-in-Play(RVOL+갭+촉매) 필터와만 부활." 현 dynamic universe는 "변동성 상위 50"일 뿐 촉매/RVOL 필터 부재.
+- **다음 단계**: universe를 Stocks-in-Play 방식으로 재설계 후 분봉 전략 재검증.
 
 ## 관련 문서
 - [changelog-2026-05-20-orb-v2-tournament-aborted.md](changelog-2026-05-20-orb-v2-tournament-aborted.md) — 정정 노트 추가됨
