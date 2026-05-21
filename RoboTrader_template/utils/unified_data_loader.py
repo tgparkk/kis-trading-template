@@ -9,9 +9,14 @@ from pathlib import Path
 from typing import Optional
 
 from utils.logger import setup_logger
-
+from utils.minute_cache import MinuteCache
 
 logger = setup_logger(__name__)
+
+# 모듈 레벨 싱글톤 캐시 — 프로세스 재시작 전까지 유지
+_minute_cache = MinuteCache(
+    root_dir=Path(__file__).parent.parent / "cache" / "minute"
+)
 
 
 class UnifiedDataLoader:
@@ -71,16 +76,39 @@ class UnifiedDataLoader:
     
     def load_minute_data(self, stock_code: str, date_str: str) -> Optional[pd.DataFrame]:
         """
-        분봉 데이터 로드 (DB 미지원 — None 반환)
+        분봉 데이터 로드 (메모리/Parquet 캐시 → DB 순).
 
         Args:
             stock_code: 종목코드
-            date_str: 날짜 (YYYYMMDD)
+            date_str: 날짜 (YYYYMMDD 또는 YYYY-MM-DD)
 
         Returns:
-            None
+            pd.DataFrame: 분봉 데이터 (빈 결과이면 None 반환)
         """
-        return None
+        try:
+            # 1. 캐시 조회
+            cached = _minute_cache.get(stock_code, date_str)
+            if cached is not None:
+                return cached
+
+            # 2. DB 조회
+            from db.repositories.price import PriceRepository
+            price_repo = PriceRepository()
+            df = price_repo.get_minute_prices(stock_code, date_str)
+
+            if df is not None and not df.empty:
+                _minute_cache.put(stock_code, date_str, df)
+                self.logger.debug(
+                    f"[{stock_code}] 분봉 데이터 DB 로드: {date_str} ({len(df)}건)"
+                )
+                return df
+
+            self.logger.debug(f"[{stock_code}] 분봉 데이터 없음: {date_str}")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"분봉 데이터 로드 오류 ({stock_code}, {date_str}): {e}")
+            return None
     
     def load_daily_history(self, stock_code: str, days: int = 100,
                           end_date: str = None) -> Optional[pd.DataFrame]:

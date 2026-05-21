@@ -9,3 +9,6 @@ license = {text = "MIT"}
 [tool.pytest.ini_options]
 testpaths = ["RoboTrader_template/tests"]
 asyncio_mode = "auto"
+markers = [
+    "slow: 느린 테스트 (DB 대량 조회 등) — pytest -m 'not slow' 로 제외",
+]

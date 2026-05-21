@@ -142,6 +142,109 @@ class PriceRepository(BaseRepository):
             self.logger.error(f"일봉 데이터 조회 실패 ({stock_code}): {e}")
             return pd.DataFrame()
 
+    # ===== 분봉 데이터 메서드 (minute_candles 테이블) =====
+
+    def get_minute_prices(self, stock_code: str, trade_date: str) -> pd.DataFrame:
+        """minute_candles에서 단일 종목 1일치 분봉 반환 (datetime 오름차순).
+
+        Args:
+            stock_code: 종목코드 (예: '005930')
+            trade_date: 거래일 YYYYMMDD 또는 YYYY-MM-DD
+
+        Returns:
+            DataFrame with columns: datetime, open, high, low, close, volume, amount
+            빈 결과 시 빈 DataFrame.
+        """
+        try:
+            # YYYY-MM-DD → YYYYMMDD 정규화 (DB 컬럼은 YYYYMMDD 문자열)
+            if len(trade_date) == 10 and trade_date[4] == '-':
+                trade_date = trade_date.replace('-', '')
+
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''
+                    SELECT stock_code, datetime, open, high, low, close, volume, amount
+                    FROM minute_candles
+                    WHERE stock_code = %s AND trade_date = %s
+                    ORDER BY datetime
+                    ''',
+                    (stock_code, trade_date)
+                )
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                    df['datetime'] = pd.to_datetime(df['datetime'])
+                else:
+                    df = pd.DataFrame()
+                cursor.close()
+
+            self.logger.debug(f"{stock_code} 분봉 데이터 {len(df)}건 조회 ({trade_date})")
+            return df
+
+        except Exception as e:
+            self.logger.error(f"분봉 데이터 조회 실패 ({stock_code}, {trade_date}): {e}")
+            return pd.DataFrame()
+
+    def get_minute_prices_bulk(self, stock_codes: list, trade_date: str) -> dict:
+        """다중 종목 1일치 분봉 일괄 조회 (단일 SQL IN (...) 사용).
+
+        Args:
+            stock_codes: 종목코드 리스트
+            trade_date: 거래일 YYYYMMDD 또는 YYYY-MM-DD
+
+        Returns:
+            dict[stock_code -> DataFrame]. 데이터 없는 종목은 빈 DataFrame.
+        """
+        if not stock_codes:
+            return {}
+
+        try:
+            # YYYY-MM-DD → YYYYMMDD 정규화 (DB 컬럼은 YYYYMMDD 문자열)
+            if len(trade_date) == 10 and trade_date[4] == '-':
+                trade_date = trade_date.replace('-', '')
+
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                # psycopg2는 list → ANY(%s) 형식 지원
+                cursor.execute(
+                    '''
+                    SELECT stock_code, datetime, open, high, low, close, volume, amount
+                    FROM minute_candles
+                    WHERE stock_code = ANY(%s) AND trade_date = %s
+                    ORDER BY stock_code, datetime
+                    ''',
+                    (list(stock_codes), trade_date)
+                )
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df_all = pd.DataFrame(rows, columns=columns)
+                    df_all['datetime'] = pd.to_datetime(df_all['datetime'])
+                else:
+                    df_all = pd.DataFrame()
+                cursor.close()
+
+            # stock_code별로 분리
+            result: dict = {}
+            for code in stock_codes:
+                if not df_all.empty and 'stock_code' in df_all.columns:
+                    sub = df_all[df_all['stock_code'] == code].reset_index(drop=True)
+                else:
+                    sub = pd.DataFrame()
+                result[code] = sub
+
+            self.logger.debug(
+                f"분봉 일괄 조회 {len(stock_codes)}종목 ({trade_date}), "
+                f"총 {len(df_all)}건"
+            )
+            return result
+
+        except Exception as e:
+            self.logger.error(f"분봉 일괄 조회 실패 ({trade_date}): {e}")
+            return {code: pd.DataFrame() for code in stock_codes}
+
     def get_latest_daily_price(self, stock_code: str) -> Optional[dict]:
         """최신 일봉 데이터 1건 조회"""
         try:
