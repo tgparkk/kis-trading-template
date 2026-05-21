@@ -21,14 +21,17 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 # ── DB 모듈 격리 fixture ─────────────────────────────────────────────────────
+# 주의: 'db.connection' 등 db.* 패키지 모듈은 reset 대상에서 제외한다.
+# db.connection을 pop하면 부모 패키지 'db'에 stale 서브모듈 참조가 남아
+# 이후 import 시 sys.modules에 None sentinel이 들어가고, 그 None이
+# 다른 테스트 파일(test_backtest_engine_minute.py)로 새어나가 patch가 빗나간다.
+# 이 파일 테스트는 'utils.intraday_universe.DatabaseConnection.get_connection'을
+# 직접 patch하므로 db.* 모듈 자체를 reset할 필요가 없다.
 _DB_MODULES_TO_RESET = [
     'psycopg2',
     'psycopg2.pool',
     'psycopg2.extras',
     'psycopg2.extensions',
-    'db.connection',
-    'db.repositories.base',
-    'db.repositories.price',
     'utils.unified_data_loader',
     'utils.minute_cache',
     'utils.intraday_universe',
@@ -37,11 +40,26 @@ _DB_MODULES_TO_RESET = [
 
 @pytest.fixture(autouse=True)
 def _reset_modules():
-    """다른 테스트가 psycopg2를 mock으로 교체했을 때 격리."""
-    saved = {}
+    """각 테스트마다 db/psycopg2 모듈을 격리하고, 테스트 후 원상 복구.
+
+    동작:
+    1. setup: 테스트 진입 직전의 모듈 객체를 스냅샷(saved)한 뒤 모두 pop
+       → 테스트는 다른 테스트가 남긴 mock에 오염되지 않은 fresh import를 받는다.
+    2. teardown: 테스트가 import/mock한 모듈을 전부 제거한 뒤 saved를 복원
+       → 각 테스트는 자기가 발견한 상태 그대로 남겨, 다른 테스트 파일
+         (test_backtest_engine_minute.py 등)로 pollution이 새지 않는다.
+
+    중요: sys.modules에는 실패한 서브모듈 import의 sentinel로 None이 들어갈 수
+    있다. None을 그대로 복원하면 이후 `import db.connection`이 빈(None) 모듈을
+    돌려줘 AttributeError가 난다. 따라서 saved에는 None이 아닌 모듈만 담는다.
+    """
+    saved = {
+        mod: sys.modules[mod]
+        for mod in _DB_MODULES_TO_RESET
+        if sys.modules.get(mod) is not None
+    }
     for mod in _DB_MODULES_TO_RESET:
-        if mod in sys.modules:
-            saved[mod] = sys.modules.pop(mod)
+        sys.modules.pop(mod, None)
     yield
     for mod in _DB_MODULES_TO_RESET:
         sys.modules.pop(mod, None)
@@ -386,3 +404,139 @@ def test_real_db_20260515():
         assert len(code) == 6 and code.isdigit(), f"종목코드 형식 오류: {code}"
 
     print(f"\n[slow] 20260515 universe: {len(codes)}종목")
+
+
+# ── dynamic provider 룩어헤드 편향 수정 테스트 ────────────────────────────────
+#
+# 배경 (확정된 근본 원인):
+#   `_make_dynamic_provider`가 만드는 provider `_provider(trade_date)`가
+#   `build_universe_for_date(trade_date)`를 거래 당일과 같은 날짜로 호출했다.
+#   universe는 그날 종일 데이터(MAX(high)/MIN(low)/SUM(amount))로 변동성 상위 50을
+#   뽑으므로 X일 09:00 트레이딩 시작 시점에 X일 종일 데이터를 미리 본 셈 = 룩어헤드.
+# 수정: 거래일 X의 universe는 직전 거래일 P(D-1) 데이터로 만들어야 한다.
+
+class TestPriorTradingDay:
+    """_prior_trading_day 순수함수 단위 테스트 (DB 불필요)."""
+
+    TRADING_DAYS = ['20250828', '20250829', '20250901', '20250902', '20250903']
+
+    def _fn(self):
+        from scripts.run_intraday_tournament import _prior_trading_day
+        return _prior_trading_day
+
+    def test_normal_prior_day(self):
+        """캘린더에 존재하는 거래일 → 바로 직전 거래일 반환."""
+        fn = self._fn()
+        assert fn('20250901', self.TRADING_DAYS) == '20250829'
+        assert fn('20250903', self.TRADING_DAYS) == '20250902'
+
+    def test_first_day_returns_none(self):
+        """캘린더 최초일 → 직전 거래일 없음 → None."""
+        fn = self._fn()
+        assert fn('20250828', self.TRADING_DAYS) is None
+
+    def test_date_before_calendar_returns_none(self):
+        """캘린더 시작보다 이전 날짜 → None."""
+        fn = self._fn()
+        assert fn('20250101', self.TRADING_DAYS) is None
+
+    def test_date_between_trading_days(self):
+        """두 거래일 사이의 (휴장) 날짜 → 가장 가까운 이전 거래일 반환."""
+        fn = self._fn()
+        # 20250830, 20250831은 거래일이 아님 → 직전 거래일은 20250829
+        assert fn('20250831', self.TRADING_DAYS) == '20250829'
+
+    def test_date_after_calendar(self):
+        """캘린더 끝보다 이후 날짜 → 마지막 거래일 (엄격히 작은 최대값)."""
+        fn = self._fn()
+        assert fn('20251231', self.TRADING_DAYS) == '20250903'
+
+    def test_empty_calendar_returns_none(self):
+        """빈 캘린더 → None."""
+        fn = self._fn()
+        assert fn('20250901', []) is None
+
+
+class TestDynamicProviderLookahead:
+    """dynamic provider가 당일이 아닌 직전 거래일 데이터로 universe를 만드는지 검증.
+
+    현재(버그) 코드에서는 build_universe_for_date가 trade_date 그대로 호출되어 실패(red),
+    수정 후에는 직전 거래일 P로 호출되어 통과(green) 해야 한다.
+    """
+
+    TRADING_DAYS = ['20250828', '20250829', '20250901', '20250902']
+
+    def test_provider_builds_with_prior_trading_day(self):
+        """provider(X) 호출 시 build_universe_for_date가 X가 아닌 직전 거래일 P로 호출됨."""
+        from scripts.run_intraday_tournament import _make_dynamic_provider
+
+        called_dates = []
+
+        def _fake_build(trade_date, **kwargs):
+            called_dates.append(trade_date)
+            return ['A00001', 'A00002']
+
+        with patch(
+            'scripts.run_intraday_tournament._load_trading_days',
+            return_value=list(self.TRADING_DAYS),
+        ), patch(
+            'utils.intraday_universe.build_universe_for_date',
+            side_effect=_fake_build,
+        ):
+            provider = _make_dynamic_provider(cache_dir='cache/intraday_universe', top_n=50)
+            result = provider('20250901')
+
+        assert result == ['A00001', 'A00002']
+        # 핵심 단언: 거래 당일(20250901)이 아니라 직전 거래일(20250829)로 build 됨
+        assert called_dates == ['20250829'], (
+            f"build_universe_for_date가 직전 거래일이 아닌 날짜로 호출됨: {called_dates}. "
+            f"룩어헤드 편향 — 거래일 X의 universe는 D-1로 만들어야 함."
+        )
+
+    def test_provider_first_day_returns_empty(self):
+        """캘린더 최초일에는 직전 거래일이 없으므로 빈 리스트 반환, build 미호출."""
+        from scripts.run_intraday_tournament import _make_dynamic_provider
+
+        called_dates = []
+
+        def _fake_build(trade_date, **kwargs):
+            called_dates.append(trade_date)
+            return ['X']
+
+        with patch(
+            'scripts.run_intraday_tournament._load_trading_days',
+            return_value=list(self.TRADING_DAYS),
+        ), patch(
+            'utils.intraday_universe.build_universe_for_date',
+            side_effect=_fake_build,
+        ):
+            provider = _make_dynamic_provider(cache_dir='cache/intraday_universe', top_n=50)
+            result = provider('20250828')  # 캘린더 최초일
+
+        assert result == []
+        assert called_dates == [], "최초일에는 build_universe_for_date를 호출하면 안 됨"
+
+    def test_provider_normalizes_dashed_date(self):
+        """YYYY-MM-DD 입력도 정규화되어 직전 거래일로 build 됨."""
+        from scripts.run_intraday_tournament import _make_dynamic_provider
+
+        called_dates = []
+
+        def _fake_build(trade_date, **kwargs):
+            called_dates.append(trade_date)
+            return ['A00001']
+
+        with patch(
+            'scripts.run_intraday_tournament._load_trading_days',
+            return_value=list(self.TRADING_DAYS),
+        ), patch(
+            'utils.intraday_universe.build_universe_for_date',
+            side_effect=_fake_build,
+        ):
+            provider = _make_dynamic_provider(cache_dir='cache/intraday_universe', top_n=50)
+            result = provider('2025-09-02')
+
+        assert result == ['A00001']
+        assert called_dates == ['20250901'], (
+            f"YYYY-MM-DD 정규화 실패 또는 직전 거래일 매핑 오류: {called_dates}"
+        )

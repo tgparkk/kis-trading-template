@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import argparse
+import bisect
 import importlib
 import logging
 import sys
@@ -158,12 +159,72 @@ def _make_screener_provider() -> Callable[[str], List[str]]:
     return _provider
 
 
+def _normalize_trade_date(trade_date: str) -> str:
+    """거래일 문자열 정규화: YYYY-MM-DD → YYYYMMDD.
+
+    build_universe_for_date와 동일한 방식. 이미 YYYYMMDD면 그대로 반환.
+    """
+    if len(trade_date) == 10 and trade_date[4] == '-':
+        return trade_date.replace('-', '')
+    return trade_date
+
+
+def _prior_trading_day(trade_date: str, trading_days: List[str]) -> Optional[str]:
+    """trade_date보다 엄격히 작은(직전) 거래일을 반환.
+
+    룩어헤드 편향 방지용 — 거래일 X의 universe는 직전 거래일 P(D-1) 데이터로 만들어야 한다.
+
+    Args:
+        trade_date: 기준 거래일 'YYYYMMDD' (또는 'YYYY-MM-DD' — 정규화됨).
+        trading_days: 정렬된 거래일 'YYYYMMDD' 문자열 리스트.
+
+    Returns:
+        trade_date보다 엄격히 작은 거래일 중 최대값. 없으면 None.
+        (캘린더 최초일이거나, 캘린더 시작보다 이전 날짜인 경우 None.)
+    """
+    norm = _normalize_trade_date(trade_date)
+    # bisect_left: norm 이상인 첫 위치 → 그 직전 인덱스가 "엄격히 작은 최대값"
+    idx = bisect.bisect_left(trading_days, norm)
+    if idx == 0:
+        return None
+    return trading_days[idx - 1]
+
+
+def _load_trading_days() -> List[str]:
+    """minute_candles의 distinct trade_date를 정렬된 'YYYYMMDD' 문자열 리스트로 반환.
+
+    전체 기간 조회 — 백테스트 윈도우로 제한하지 않는다.
+    (예: 20250901의 D-1은 8월말이며 백테스트 시작일 밖이지만 minute_candles에 존재.)
+    조회 실패 시 빈 리스트.
+    """
+    from db.connection import DatabaseConnection
+
+    try:
+        with DatabaseConnection.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT DISTINCT trade_date FROM minute_candles ORDER BY trade_date"
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+        return [str(row[0]) for row in rows]
+    except Exception as exc:
+        logger.warning(f"거래일 캘린더 조회 실패: {exc}")
+        return []
+
+
 def _make_dynamic_provider(
     cache_dir: Optional[str] = None,
     top_n: int = 50,
     rank_by: str = "volatility_pct",
 ) -> Callable[[str], List[str]]:
     """intraday_universe.build_universe_for_date 기반 동적 provider.
+
+    룩어헤드 편향 수정: 거래일 X의 universe는 X 당일이 아닌 직전 거래일 P(D-1)
+    데이터로 만든다. build_universe_for_date(X)는 X일 종일 변동성 랭킹을 쓰므로
+    X일 09:00 트레이딩 시작 시점에 X일 종일 데이터를 미리 본 셈이 된다.
+    캐시 ({date}.parquet)는 그 날짜의 순수 변동성 랭킹이라 그대로 유효 —
+    수정된 provider가 build_universe_for_date(P)를 부르면 {P}.parquet 캐시를 정상 적중.
 
     직원 A의 산출물 - import 실패 시 빈 리스트 반환하는 stub으로 대체.
 
@@ -176,12 +237,27 @@ def _make_dynamic_provider(
     effective_top_n: Optional[int] = top_n if top_n > 0 else None
 
     try:
-        from utils.intraday_universe import build_universe_for_date as _build
+        # 모듈 자체를 import — build_universe_for_date를 모듈 경유로 호출해
+        # 테스트에서 monkeypatch가 가능하도록 한다.
+        from utils import intraday_universe as _iu
+
+        # 거래일 캘린더는 closure에서 1회 lazy 조회 후 재사용.
+        _trading_days_cache: List[Optional[List[str]]] = [None]
 
         def _provider(trade_date: str) -> List[str]:
             try:
-                return _build(
-                    trade_date,
+                if _trading_days_cache[0] is None:
+                    _trading_days_cache[0] = _load_trading_days()
+                trading_days = _trading_days_cache[0]
+
+                # 직전 거래일 P 결정 (룩어헤드 방지)
+                prior = _prior_trading_day(trade_date, trading_days)
+                if prior is None:
+                    # 데이터 최초일 — D-1 없음
+                    return []
+
+                return _iu.build_universe_for_date(
+                    prior,
                     cache_dir=cache_path,
                     top_n=effective_top_n,
                     rank_by=rank_by,
