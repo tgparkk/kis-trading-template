@@ -1,0 +1,12 @@
+strategy:
+  name: RedToGreen
+  version: 1.0.0
+  description: "레드 투 그린 — 전일 종가를 처음 상향 돌파하는 분봉에 매수"
+
+parameters: {}
+
+risk_management:
+  stop_loss_pct: 0.01
+  take_profit_pct: 0.02
+  max_holding_minutes: null
+  eod_cutoff_buy: "15:00"

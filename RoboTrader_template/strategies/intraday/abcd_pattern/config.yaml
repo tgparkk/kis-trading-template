@@ -1,0 +1,16 @@
+strategy:
+  name: abcd_pattern
+  version: 1.0.0
+  description: "ABCD 4점 변곡점 패턴 분봉 진입"
+
+parameters:
+  pivot_window: 5       # pivot high/low 검출 rolling window
+  retr_min: 0.38        # BC 되돌림 최소 비율 (38%)
+  retr_max: 0.62        # BC 되돌림 최대 비율 (62%)
+  min_bars: 40          # 최소 분봉 수
+
+risk_management:
+  stop_loss_pct: 0.01        # 손절 1%
+  take_profit_pct: 0.02      # 익절 2%
+  max_holding_minutes: null  # 보유 시간 제한 없음
+  eod_cutoff_buy: "15:00"    # 이후 신규 매수 차단

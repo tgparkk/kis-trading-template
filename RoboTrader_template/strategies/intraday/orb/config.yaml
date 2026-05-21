@@ -1,0 +1,13 @@
+strategy:
+  name: ORB
+  version: 1.0.0
+  description: "Opening Range Breakout — 개장 N분 박스 상단 돌파 시 매수"
+
+parameters:
+  box_minutes: 30
+
+risk_management:
+  stop_loss_pct: 0.01
+  take_profit_pct: 0.02
+  max_holding_minutes: null
+  eod_cutoff_buy: "15:00"

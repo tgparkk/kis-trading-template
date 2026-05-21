@@ -1,0 +1,16 @@
+strategy:
+  name: Pullback
+  version: 1.0.0
+  description: "눌림목 매수 — EMA 단조 상승 추세 중 EMA 근처 후퇴 후 회복 시 매수"
+
+parameters:
+  ema_period: 5
+  lookback_bars: 5
+  lower_band: 0.99
+  upper_band: 1.005
+
+risk_management:
+  stop_loss_pct: 0.01
+  take_profit_pct: 0.02
+  max_holding_minutes: null
+  eod_cutoff_buy: "15:00"

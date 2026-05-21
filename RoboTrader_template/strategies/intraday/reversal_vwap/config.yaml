@@ -1,0 +1,13 @@
+strategy:
+  name: reversal_vwap
+  version: 1.0.0
+  description: "분봉 VWAP 이탈 후 재돌파 반전 진입"
+
+parameters:
+  deviation_pct: 0.01  # VWAP 대비 이탈 기준 비율 (1%)
+
+risk_management:
+  stop_loss_pct: 0.01        # 손절 1%
+  take_profit_pct: 0.02      # 익절 2%
+  max_holding_minutes: null  # 보유 시간 제한 없음
+  eod_cutoff_buy: "15:00"    # 이후 신규 매수 차단

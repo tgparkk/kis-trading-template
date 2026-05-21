@@ -1,0 +1,14 @@
+strategy:
+  name: VWAPTrade
+  version: 1.0.0
+  description: "VWAP 추세 추종 — 가격이 VWAP 위 + 거래량 z-score 임계값 초과 시 매수"
+
+parameters:
+  vol_zscore_threshold: 1.0
+  vol_window: 20
+
+risk_management:
+  stop_loss_pct: 0.01
+  take_profit_pct: 0.02
+  max_holding_minutes: null
+  eod_cutoff_buy: "15:00"

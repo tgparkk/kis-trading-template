@@ -1,0 +1,14 @@
+strategy:
+  name: reversal_rsi
+  version: 1.0.0
+  description: "분봉 RSI 과매도 반등 진입"
+
+parameters:
+  rsi_period: 14      # RSI 계산 기간
+  rsi_threshold: 30   # 과매도 기준선 (이 값 미만이면 과매도)
+
+risk_management:
+  stop_loss_pct: 0.01        # 손절 1%
+  take_profit_pct: 0.02      # 익절 2%
+  max_holding_minutes: null  # 보유 시간 제한 없음
+  eod_cutoff_buy: "15:00"    # 이후 신규 매수 차단

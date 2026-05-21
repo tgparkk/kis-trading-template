@@ -1,0 +1,13 @@
+strategy:
+  name: SupportResistance
+  version: 1.0.0
+  description: "전일 피벗 S1 지지선 근처 매수 — Floor Trader's Pivot 방법론"
+
+parameters:
+  near_s1_band_pct: 0.005
+
+risk_management:
+  stop_loss_pct: 0.01
+  take_profit_pct: 0.02
+  max_holding_minutes: null
+  eod_cutoff_buy: "15:00"

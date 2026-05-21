@@ -1,0 +1,14 @@
+strategy:
+  name: ma_trend
+  version: 1.0.0
+  description: "분봉 EMA 골든크로스 추세 추종 진입"
+
+parameters:
+  fast_period: 5    # 단기 EMA 기간
+  slow_period: 20   # 장기 EMA 기간
+
+risk_management:
+  stop_loss_pct: 0.01        # 손절 1%
+  take_profit_pct: 0.02      # 익절 2%
+  max_holding_minutes: null  # 보유 시간 제한 없음
+  eod_cutoff_buy: "15:00"    # 이후 신규 매수 차단
