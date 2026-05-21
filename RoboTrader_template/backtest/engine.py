@@ -1010,7 +1010,7 @@ class BacktestEngine:
         eod_time: str = "15:20",
         stop_loss_pct: float = 0.01,
         take_profit_pct: float = 0.02,
-        trail_pct: Optional[float] = 0.005,
+        trail_pct: Optional[float] = None,
         skip_dates: Optional[Set[str]] = None,
         verbose: bool = False,
     ) -> BacktestResult:
@@ -1110,7 +1110,7 @@ class BacktestEngine:
         cash = initial_capital
         positions: Dict[str, Dict] = {}
         completed_trades: List[Dict] = []
-        equity_curve: List[float] = []
+        equity_curve: List[float] = [initial_capital]  # 초기자본을 curve[0]에 포함 (docstring 준수)
         sells_by_reason: Dict[str, int] = {
             "eod_t0": 0,
             "intraday_sl": 0,

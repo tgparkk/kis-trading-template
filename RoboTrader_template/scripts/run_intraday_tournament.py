@@ -225,18 +225,23 @@ def _write_report_md(df: pd.DataFrame, out_dir: Path) -> None:
             return "\n".join(lines)
 
     desired_cols = [
-        "rank", "strategy", "universe", "max_positions", "sl_pct", "tp_pct",
+        "rank", "strategy", "universe", "max_positions", "sl_pct", "tp_pct", "trail_pct",
         "avg_daily_return_pct", "win_rate_pct", "calmar", "mdd_pct",
         "pass", "composite_score",
     ]
     # DataFrame에 실제 존재하는 컬럼만 사용 (기존 결과 파일 호환성 유지)
     report_cols = [c for c in desired_cols if c in df.columns]
 
+    # trail_pct 표시용 — DataFrame에서 첫 번째 값 추출 (전역 단일값)
+    _trail_val = df["trail_pct"].iloc[0] if "trail_pct" in df.columns and len(df) > 0 else None
+    _trail_display = f"{_trail_val:.3f}" if _trail_val is not None else "none (비활성)"
+
     lines = [
         "# 분봉 데이트레이딩 10전략 토너먼트 1라운드",
         "",
         f"- 생성 일시: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"- 시나리오 수: {len(df)}",
+        f"- trail_pct: {_trail_display}",
         "- 합격선: 일수익률 >= 0.3% AND 일승률 >= 50% AND MDD >= -15%",
         "- 종합점수 = 0.4×z(일수익률) + 0.3×z(일승률) + 0.3×z(Calmar)",
         "",
@@ -298,19 +303,22 @@ def _run_scenario(
     skip_dates: Set[str],
     sl_pct: Optional[float] = None,
     tp_pct: Optional[float] = None,
+    trail_pct: Optional[float] = None,
 ) -> Tuple[int, dict]:
     """단일 시나리오 실행 (ThreadPoolExecutor worker 함수).
 
     Args:
         sl_pct: 손절 비율 (예: 0.01 = 1%). None이면 전략 디폴트 사용.
         tp_pct: 익절 비율 (예: 0.02 = 2%). None이면 전략 디폴트 사용.
+        trail_pct: 트레일링 스톱 비율 (예: 0.01 = 1%). None이면 비활성.
 
     Returns:
         (scenario_idx, metrics_dict)
     """
     sl_label = f"{sl_pct:.3f}" if sl_pct is not None else "default"
     tp_label = f"{tp_pct:.3f}" if tp_pct is not None else "default"
-    label = f"[{scenario_idx}/{total_scenarios}] {strat_key} / {uni} / pos={n_pos} / SL={sl_label} / TP={tp_label}"
+    trail_label = f"{trail_pct:.3f}" if trail_pct is not None else "off"
+    label = f"[{scenario_idx}/{total_scenarios}] {strat_key} / {uni} / pos={n_pos} / SL={sl_label} / TP={tp_label} / trail={trail_label}"
     logger.info(f"시나리오 시작: {label}")
 
     try:
@@ -347,6 +355,7 @@ def _run_scenario(
             run_kwargs["stop_loss_pct"] = sl_pct
         if tp_pct is not None:
             run_kwargs["take_profit_pct"] = tp_pct
+        run_kwargs["trail_pct"] = trail_pct  # 항상 명시적으로 전달 (None=비활성)
 
         result = engine.run_minute(**run_kwargs)
 
@@ -360,6 +369,7 @@ def _run_scenario(
             "max_positions": n_pos,
             "sl_pct": effective_sl,
             "tp_pct": effective_tp,
+            "trail_pct": trail_pct,  # None이면 그대로 None (pandas/parquet 저장 가능)
         })
 
         logger.info(
@@ -382,6 +392,7 @@ def _run_scenario(
             "max_positions": n_pos,
             "sl_pct": effective_sl,
             "tp_pct": effective_tp,
+            "trail_pct": trail_pct,
         })
         return scenario_idx, zero
 
@@ -426,6 +437,13 @@ def run_tournament(args: argparse.Namespace) -> None:
             rank_by=getattr(args, "dynamic_rank_by", "volatility_pct"),
         )
 
+    # --trail 파싱: none/off/빈값 → None, 숫자 → float
+    _trail_raw = getattr(args, "trail", None)
+    if _trail_raw is None or str(_trail_raw).strip().lower() in ("none", "off", ""):
+        trail_pct: Optional[float] = None
+    else:
+        trail_pct = float(_trail_raw)
+
     # SL/TP 그리드 파싱
     sl_list: List[Optional[float]] = (
         [float(x) for x in args.sl_grid.split(",")]
@@ -450,6 +468,13 @@ def run_tournament(args: argparse.Namespace) -> None:
     total_scenarios = len(scenarios)
     n_workers = getattr(args, "workers", 8)
 
+    # DB 커넥션 풀 사전 초기화 — workers=16 등 고병렬 시 기본 max_conn=10 초과 방지.
+    # initialize()는 멱등: _pool이 없을 때만 실제 초기화되므로 중복 호출 안전.
+    from db.connection import DatabaseConnection
+    _pool_max = max(24, n_workers + 8)
+    DatabaseConnection.initialize(min_conn=4, max_conn=_pool_max)
+    logger.info(f"DB 커넥션 풀 사전 초기화: min=4 max={_pool_max} (workers={n_workers})")
+
     logger.info(
         f"토너먼트 시작: 전략 {len(strategy_keys)}개 x universe {len(universe_types)}개 "
         f"x max_positions {max_positions_list} x SL {len(sl_list)}개 x TP {len(tp_list)}개 "
@@ -464,7 +489,7 @@ def run_tournament(args: argparse.Namespace) -> None:
             _, metrics = _run_scenario(
                 idx, total_scenarios, strat_key, uni, n_pos,
                 providers, args, skip_dates,
-                sl_pct=sl_pct, tp_pct=tp_pct,
+                sl_pct=sl_pct, tp_pct=tp_pct, trail_pct=trail_pct,
             )
             all_results.append(metrics)
     else:
@@ -476,7 +501,7 @@ def run_tournament(args: argparse.Namespace) -> None:
                     _run_scenario,
                     idx, total_scenarios, strat_key, uni, n_pos,
                     providers, args, skip_dates,
-                    sl_pct, tp_pct,
+                    sl_pct, tp_pct, trail_pct,
                 )
                 futures_map[future] = (idx, strat_key, uni, n_pos, sl_pct, tp_pct)
 
@@ -612,6 +637,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--dynamic-rank-by", choices=["volatility_pct", "amount_sum"], default="volatility_pct",
         help="dynamic universe top_n 적용 기준 (기본: volatility_pct)",
+    )
+    p.add_argument(
+        "--trail", default=None,
+        metavar="PCT|none",
+        help=(
+            "트레일링 스톱 비율 (예: 0.01=1%%). "
+            "미지정/none이면 비활성. 기본 None. "
+            "모든 시나리오에 동일하게 적용되는 전역값."
+        ),
     )
     p.add_argument(
         "--sl-grid", default=None,

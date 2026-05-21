@@ -740,8 +740,8 @@ class TestSkipDates:
                 skip_dates={date1},  # date1만 skip
             )
 
-        # date1은 skip, date2만 처리 → equity_curve 길이 1 (date2 1일치)
-        assert len(result.equity_curve) == 1
+        # date1은 skip, date2만 처리 → equity_curve 길이 2 (초기자본 + date2 EOD)
+        assert len(result.equity_curve) == 2
         # date2에서 매수 후 EOD 청산 → eod_t0 >= 1
         assert result.sells_by_reason.get("eod_t0", 0) >= 1
 
