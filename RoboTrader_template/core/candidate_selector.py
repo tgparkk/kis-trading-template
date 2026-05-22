@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from .models import TradingConfig
 from framework.broker import KISBroker
 from utils.logger import setup_logger
-from utils.korean_time import now_kst
+from utils.korean_time import now_kst, get_previous_trading_day
 
 
 @dataclass
@@ -888,12 +888,13 @@ class CandidateSelector:
         두 경로 모두 실패하면 빈 리스트를 반환합니다 (거래량 순위 API는 async이므로
         여기서는 호출하지 않습니다 — _load_screener_candidates의 async fallback 활용).
         """
-        # 1순위: screener_snapshots DB (오늘 날짜)
+        # 1순위: screener_snapshots DB (직전 영업일 — EOD 스냅샷은 D-1에 생성됨)
         try:
-            today_str = now_kst().strftime("%Y-%m-%d")
+            prev_trading_day = get_previous_trading_day(now_kst())
+            prev_day_str = prev_trading_day.strftime("%Y-%m-%d")
             from backtest.engine import make_screener_snapshot_provider
             provider = make_screener_snapshot_provider(strategy_name)
-            codes = provider(strategy_name, today_str)
+            codes = provider(strategy_name, prev_day_str)
             if codes:
                 # code 리스트 → CandidateStock 변환 (name/score는 미상)
                 candidates = [
@@ -908,7 +909,7 @@ class CandidateSelector:
                     for code in codes[:max_candidates]
                 ]
                 self.logger.info(
-                    f"[E6] {strategy_name}: screener_snapshots {len(candidates)}건"
+                    f"[E6] {strategy_name}: screener_snapshots {len(candidates)}건 (D-1={prev_day_str})"
                 )
                 return candidates
         except Exception as e:

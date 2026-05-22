@@ -56,6 +56,27 @@ except ImportError:
             return "market_open"
         else:
             return "after_market"
+
+    def get_previous_trading_day(dt: datetime = None, market: str = 'KRX') -> datetime:
+        """전 영업일 반환 (fallback: 주말만 건너뛰기, 공휴일 캘린더 없음)
+
+        config.market_hours import 실패 시 사용되는 최소 구현.
+        공휴일 캘린더가 없으므로 주말(토/일)만 건너뛴다.
+        """
+        from datetime import timedelta
+
+        if dt is None:
+            dt = now_kst()
+
+        prev_day = dt.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+
+        # 최대 10일 전까지 검색 (연휴 대비 — 공휴일은 미반영)
+        for _ in range(10):
+            if prev_day.weekday() < 5:  # 월(0) ~ 금(4)
+                return prev_day
+            prev_day -= timedelta(days=1)
+
+        return prev_day
 else:
     # config.market_hours를 정상적으로 import한 경우
     def now_kst() -> datetime:
