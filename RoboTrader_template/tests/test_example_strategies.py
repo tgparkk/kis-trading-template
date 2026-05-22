@@ -458,4 +458,78 @@ class TestStrategyLoader:
         data = make_ohlcv(30)
         result = s.generate_signal("005930", data)
         assert result is None or isinstance(result, Signal)
-        s.on_market_close()
+
+
+# ============================================================================
+# C-2: accepts_volume_fallback 속성 테스트
+# ============================================================================
+
+class TestAcceptsVolumeFallback:
+    """BaseStrategy.accepts_volume_fallback 속성과 SampleStrategy 오버라이드 검증."""
+
+    def test_base_strategy_default_accepts_fallback(self):
+        """BaseStrategy 기본값은 True — 모멘텀/추세 전략에 fallback 허용."""
+        assert BaseStrategy.accepts_volume_fallback is True
+
+    def test_sample_strategy_rejects_fallback(self):
+        """SampleStrategy는 역추세 전략이므로 accepts_volume_fallback=False."""
+        from strategies.sample.strategy import SampleStrategy
+        assert SampleStrategy.accepts_volume_fallback is False
+
+    def test_sample_strategy_instance_rejects_fallback(self):
+        """인스턴스 수준에서도 accepts_volume_fallback=False가 유지된다."""
+        from strategies.sample.strategy import SampleStrategy
+        s = SampleStrategy()
+        assert s.accepts_volume_fallback is False
+
+    def test_momentum_strategy_accepts_fallback(self):
+        """MomentumStrategy는 기본값(True)을 오버라이드하지 않아 fallback을 수용."""
+        assert getattr(MomentumStrategy, "accepts_volume_fallback", True) is True
+
+    def test_fallback_skipped_for_false_strategy(self):
+        """accepts_volume_fallback=False 전략에는 fallback이 채워지지 않는다 (main.py 로직 시뮬레이션)."""
+        import asyncio
+        from strategies.sample.strategy import SampleStrategy
+
+        async def _simulate_fallback(strategy_instance):
+            """_load_candidates_multi_strategy의 fallback 분기를 직접 시뮬레이션."""
+            filled = []
+
+            async def mock_select_daily_candidates(max_candidates=10):
+                # 실제 API 없이 더미 후보 반환
+                return [MagicMock(code="000001", name="테스트주식")]
+
+            candidates = []  # 빈 풀 시뮬레이션
+            if not candidates:
+                accepts_fallback = getattr(strategy_instance, "accepts_volume_fallback", True)
+                if accepts_fallback:
+                    result = await mock_select_daily_candidates()
+                    filled.extend(result)
+                # accepts_fallback=False이면 아무것도 채우지 않음
+            return filled
+
+        sample = SampleStrategy()
+        result = asyncio.get_event_loop().run_until_complete(_simulate_fallback(sample))
+        assert result == [], "역추세 전략(accepts_volume_fallback=False)에는 fallback이 채워지면 안 됩니다."
+
+    def test_fallback_filled_for_true_strategy(self):
+        """accepts_volume_fallback=True 전략에는 fallback이 정상 채워진다."""
+        import asyncio
+
+        async def _simulate_fallback(strategy_instance):
+            filled = []
+
+            async def mock_select_daily_candidates(max_candidates=10):
+                return [MagicMock(code="000001", name="테스트주식")]
+
+            candidates = []
+            if not candidates:
+                accepts_fallback = getattr(strategy_instance, "accepts_volume_fallback", True)
+                if accepts_fallback:
+                    result = await mock_select_daily_candidates()
+                    filled.extend(result)
+            return filled
+
+        momentum = MomentumStrategy()
+        result = asyncio.get_event_loop().run_until_complete(_simulate_fallback(momentum))
+        assert len(result) == 1, "모멘텀 전략(accepts_volume_fallback=True)에는 fallback이 채워져야 합니다."

@@ -573,6 +573,14 @@ class DayTradingBot:
         # 빈 풀 전략은 거래량 순위 fallback
         for strategy_name, candidates in pool_by_strategy.items():
             if not candidates:
+                strategy_instance = self.strategies.get(strategy_name)
+                accepts_fallback = getattr(strategy_instance, "accepts_volume_fallback", True)
+                if not accepts_fallback:
+                    self.logger.warning(
+                        f"[E6] {strategy_name}: 거래량 fallback은 역추세 전략과 부적합 "
+                        f"— 후보 미공급, 매매 스킵 (전용 스크리너 필요)"
+                    )
+                    continue
                 self.logger.info(
                     f"[E6] {strategy_name}: 후보 없음 → 거래량 순위 fallback 시작"
                 )

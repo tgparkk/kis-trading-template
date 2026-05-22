@@ -295,6 +295,14 @@ class BaseStrategy(ABC):
     # C4에서 각 스윙 전략의 __init__에서 config params.max_holding_days로 설정된다.
     max_holding_days: "Optional[int]" = None
 
+    # 거래량 순위 fallback 후보 수용 여부.
+    # 스크리너 스냅샷(D-1)이 없어 후보 풀이 비었을 때, _load_candidates_multi_strategy()가
+    # 거래량 상위 종목으로 풀을 채우는 "fallback"을 실행한다.
+    # - 모멘텀/추세 전략처럼 거래량 급등주가 전략 로직과 잘 맞는 경우: True (기본값)
+    # - 역추세/가치 전략처럼 거래량 급등주가 오히려 논리 미스매치인 경우: False로 오버라이드
+    #   → False이면 빈 풀을 그대로 유지하고 해당 전략은 당일 매매를 스킵한다.
+    accepts_volume_fallback: bool = True
+
     def __init__(self, config: Dict[str, Any] = None):
         """
         Initialize strategy with configuration.

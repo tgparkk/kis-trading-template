@@ -39,6 +39,8 @@ class SampleStrategy(BaseStrategy):
     description: str = "이동평균 골든/데드크로스 + RSI 기반 매매 전략"
     author: str = "Template"
     holding_period: str = "intraday"
+    # 역추세/과매도 전략 — 거래량 급등주 fallback과 논리 미스매치이므로 비활성
+    accepts_volume_fallback: bool = False
 
     # ========================================================================
     # 라이프사이클
