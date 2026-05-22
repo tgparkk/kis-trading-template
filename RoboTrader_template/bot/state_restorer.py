@@ -83,6 +83,33 @@ class StateRestorer:
         except Exception as e:
             logger.error(f"❌ 종목 복원 실패: {e}")
 
+    def _resolve_owner_strategy(self, name: str):
+        """전략 이름으로 strategies dict에서 인스턴스를 조회한다.
+
+        1차: bot_strategies 키(폴더명)로 직접 조회
+        2차: 전략 클래스명(strategy.name 속성)으로 보조 매핑 조회
+        둘 다 실패하면 None 반환.
+
+        Args:
+            name: DB에 저장된 전략 식별자 (폴더명 또는 클래스명)
+
+        Returns:
+            BaseStrategy 인스턴스 또는 None
+        """
+        bot_strategies = self.strategies
+        # 1차: 폴더명 키로 직접 조회
+        matched = bot_strategies.get(name)
+        if matched is not None:
+            return matched
+        # 2차: 클래스명(strategy.name 속성) 보조 매핑 — lazy 생성
+        if not hasattr(self, '_by_class_name_cache'):
+            self._by_class_name_cache = {
+                s.name: s
+                for s in bot_strategies.values()
+                if getattr(s, 'name', None)
+            }
+        return self._by_class_name_cache.get(name)
+
     def _sync_fund_manager_for_position(self, stock_code: str, quantity: int, buy_price: float) -> float:
         """복원된 포지션에 대해 FundManager 자금을 동기화
 
@@ -379,12 +406,11 @@ class StateRestorer:
                         if db_strategy and isinstance(db_strategy, str) and db_strategy.strip():
                             name = db_strategy.strip()
                             trading_stock.owner_strategy_name = name
-                            # strategies dict에서 해당 전략 인스턴스 조회
-                            bot_strategies = self.strategies
-                            if name in bot_strategies:
-                                trading_stock.owner_strategy = bot_strategies[name]
+                            matched = self._resolve_owner_strategy(name)
+                            if matched is not None:
+                                trading_stock.owner_strategy = matched
                             else:
-                                # 이번 실행에서 비활성화된 전략 → 기본 손절/익절만 적용
+                                # 폴더명·클래스명 모두 불일치 → 비활성 전략
                                 logger.warning(
                                     f"복원된 종목 {trading_stock.stock_code}의 owner 전략 "
                                     f"{name}이 비활성. 기본 정책 적용."

@@ -59,8 +59,17 @@ class TradingContext:
         self._broker = broker
         self._is_running_check = is_running_check
         self.tracer: Optional['TickTracer'] = tracer
-        self._current_strategy_name: str = strategy_name
         self._strategies_dict: Dict = strategies_dict or {}
+        # strategy_name은 폴더명(dict 키)일 수 있음.
+        # _strategy_key: _strategies_dict 조회용 키(폴더명) — dict lookup에는 항상 이 값을 사용.
+        # _current_strategy_name: 표기명 — 전략 인스턴스의 .name 속성(클래스명)을 우선 사용해
+        #   BUY/SELL DB 기록·로그가 동일한 표기로 통일되도록 함. dict 키로는 절대 사용 금지.
+        self._strategy_key: str = strategy_name
+        _strat_instance = self._strategies_dict.get(strategy_name)
+        if _strat_instance and getattr(_strat_instance, 'name', None):
+            self._current_strategy_name: str = _strat_instance.name
+        else:
+            self._current_strategy_name: str = strategy_name
         self.logger = setup_logger("trading_context")
         # 일봉 조회 실패 로그 쓰로틀: key=(stock_code, reason), value=마지막 로그 시각
         self._daily_log_cache: Dict[Tuple[str, str], datetime] = {}
@@ -275,7 +284,7 @@ class TradingContext:
 
             # EOD 청산 시간 이후 intraday 전략 매수 차단 (안 C: F1 재매수 사고 방지)
             if MarketHours.is_eod_liquidation_time():
-                current_strategy = self._strategies_dict.get(self._current_strategy_name)
+                current_strategy = self._strategies_dict.get(self._strategy_key)
                 hp = getattr(current_strategy, 'holding_period', 'intraday') if current_strategy else 'intraday'
                 if hp == 'intraday':
                     self.logger.info(
@@ -346,7 +355,7 @@ class TradingContext:
             # 매수 성공 후 소유 전략 기록
             if self._current_strategy_name:
                 trading_stock.owner_strategy_name = self._current_strategy_name
-                trading_stock.owner_strategy = self._strategies_dict.get(self._current_strategy_name)
+                trading_stock.owner_strategy = self._strategies_dict.get(self._strategy_key)
 
             return stock_code
 

@@ -418,10 +418,11 @@ class TestBuy:
     async def test_buy_blocked_after_eod_liquidation_time_intraday(self):
         """안 C: EOD 청산 시간 이후 intraday 전략은 매수 차단"""
         ctx, cb_state, analyzer = self._make_buy_ctx()
-        # _current_strategy_name과 _strategies_dict에 holding_period='intraday' 전략 등록
+        # _strategies_dict 키는 폴더명. EOD 가드는 _strategy_key(폴더명)로 조회해야 함.
         intraday_strat = Mock()
         intraday_strat.holding_period = 'intraday'
-        ctx._current_strategy_name = 'sample'
+        ctx._strategy_key = 'sample'
+        ctx._current_strategy_name = 'SampleStrategy'  # 표기명(클래스명) ≠ 폴더명
         ctx._strategies_dict = {'sample': intraday_strat}
 
         with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state), \
@@ -433,12 +434,18 @@ class TestBuy:
 
     @pytest.mark.asyncio
     async def test_buy_allowed_after_eod_liquidation_time_swing(self):
-        """안 C: EOD 청산 시간 이후라도 swing 전략은 매수 허용"""
+        """안 C: EOD 청산 시간 이후라도 swing 전략은 매수 허용
+
+        회귀 가드: 폴더명(_strategy_key)≠클래스명(_current_strategy_name)일 때
+        EOD 가드가 _current_strategy_name으로 dict를 조회하면 None→intraday로
+        오판해 swing 전략 매수를 잘못 차단한다. _strategy_key로 조회해야 통과.
+        """
         ctx, cb_state, analyzer = self._make_buy_ctx()
-        # holding_period='swing' 전략 등록
+        # holding_period='swing' 전략 등록. 폴더명 'lynch' ≠ 클래스명 'LynchStrategy'
         swing_strat = Mock()
         swing_strat.holding_period = 'swing'
-        ctx._current_strategy_name = 'lynch'
+        ctx._strategy_key = 'lynch'
+        ctx._current_strategy_name = 'LynchStrategy'
         ctx._strategies_dict = {'lynch': swing_strat}
 
         with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state), \
@@ -447,6 +454,45 @@ class TestBuy:
 
         assert result == "005930"
         analyzer.analyze_buy_decision.assert_awaited_once()
+
+    def test_init_separates_folder_key_from_display_name(self):
+        """폴더명(dict 키)과 표기명(클래스명)이 다를 때 __init__이 둘을 분리 저장한다.
+
+        strategies_dict 키는 폴더명('sample'), 인스턴스 .name은 클래스명('SampleStrategy').
+        - _strategy_key: 폴더명 그대로 ('sample') — dict 조회용
+        - _current_strategy_name: 인스턴스 .name ('SampleStrategy') — 표기/DB 기록용
+        """
+        strat = Mock()
+        strat.name = 'SampleStrategy'
+        ctx = _make_context(strategy_name='sample',
+                            strategies_dict={'sample': strat})
+        assert ctx._strategy_key == 'sample'
+        assert ctx._current_strategy_name == 'SampleStrategy'
+
+    @pytest.mark.asyncio
+    async def test_buy_sets_owner_strategy_with_folder_class_name_mismatch(self):
+        """매수 성공 시 owner_strategy가 폴더명≠클래스명 상황에서도 올바른 인스턴스로 설정된다.
+
+        회귀 가드: _strategies_dict.get()을 표기명(_current_strategy_name)으로 호출하면
+        키가 폴더명이라 항상 None이 되어 종목별 owner 전략 추적이 깨진다.
+        _strategy_key(폴더명)로 조회해야 실제 전략 인스턴스가 owner로 설정된다.
+        """
+        the_stock = _make_trading_stock_mock(prev_close=0)
+        ctx, cb_state, analyzer = self._make_buy_ctx(trading_stock_override=the_stock)
+
+        strat = Mock()
+        strat.name = 'SampleStrategy'
+        ctx._strategy_key = 'sample'          # dict 키 = 폴더명
+        ctx._current_strategy_name = 'SampleStrategy'  # 표기명 = 클래스명
+        ctx._strategies_dict = {'sample': strat}
+
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            result = await ctx.buy("005930")
+
+        assert result == "005930"
+        # owner_strategy_name은 표기명, owner_strategy는 실제 인스턴스(None 아님)
+        assert the_stock.owner_strategy_name == 'SampleStrategy'
+        assert the_stock.owner_strategy is strat
 
 
 # ============================================================================

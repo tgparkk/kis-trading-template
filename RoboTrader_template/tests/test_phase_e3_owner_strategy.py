@@ -131,78 +131,7 @@ def test_owner_strategy_instance_recorded():
 
 
 # ===========================================================================
-# 3. StateRestorer — 봇 재시작 후 DB 복원 시 인스턴스 연결
-# ===========================================================================
-
-def test_state_restorer_links_owner_strategy():
-    """DB 복원 시 bot.strategies에 전략이 있으면 owner_strategy가 연결된다"""
-    ts = _make_trading_stock("000660", "SK하이닉스")
-    strategy = _make_strategy("SampleStrategy")
-
-    # bot mock
-    bot = MagicMock()
-    bot.strategies = {"SampleStrategy": strategy}
-
-    from bot.state_restorer import StateRestorer
-    restorer = StateRestorer.__new__(StateRestorer)
-    restorer.bot = bot
-    restorer.logger = MagicMock()
-
-    # holding dict에서 복원 로직 직접 실행
-    holding = {"strategy": "SampleStrategy"}
-    db_strategy = holding.get("strategy", "")
-    if db_strategy and isinstance(db_strategy, str) and db_strategy.strip():
-        name = db_strategy.strip()
-        ts.owner_strategy_name = name
-        bot_strategies = getattr(restorer.bot, "strategies", {})
-        if name in bot_strategies:
-            ts.owner_strategy = bot_strategies[name]
-        else:
-            restorer.logger.warning(
-                f"복원된 종목 {ts.stock_code}의 owner 전략 {name}이 비활성. 기본 정책 적용."
-            )
-
-    assert ts.owner_strategy_name == "SampleStrategy"
-    assert ts.owner_strategy is strategy
-
-
-# ===========================================================================
-# 4. StateRestorer — 비활성 전략이면 owner_strategy=None + WARNING
-# ===========================================================================
-
-def test_state_restorer_disabled_strategy_warning():
-    """DB에 기록된 전략이 현재 bot.strategies에 없으면 owner_strategy=None + WARNING 로그"""
-    ts = _make_trading_stock("035720", "카카오")
-
-    bot = MagicMock()
-    bot.strategies = {}  # 비활성 — 해당 전략 없음
-
-    from bot.state_restorer import StateRestorer
-    restorer = StateRestorer.__new__(StateRestorer)
-    restorer.bot = bot
-    restorer.logger = MagicMock()
-
-    holding = {"strategy": "OldStrategy"}
-    db_strategy = holding.get("strategy", "")
-    if db_strategy and isinstance(db_strategy, str) and db_strategy.strip():
-        name = db_strategy.strip()
-        ts.owner_strategy_name = name
-        bot_strategies = getattr(restorer.bot, "strategies", {})
-        if name in bot_strategies:
-            ts.owner_strategy = bot_strategies[name]
-        else:
-            restorer.logger.warning(
-                f"복원된 종목 {ts.stock_code}의 owner 전략 {name}이 비활성. 기본 정책 적용."
-            )
-
-    assert ts.owner_strategy_name == "OldStrategy"
-    assert ts.owner_strategy is None
-    restorer.logger.warning.assert_called_once()
-    assert "비활성" in restorer.logger.warning.call_args[0][0]
-
-
-# ===========================================================================
-# 5. strategy_name property — 하위 호환성
+# 3. strategy_name property — 하위 호환성
 # ===========================================================================
 
 def test_strategy_name_property_backward_compat():
@@ -220,3 +149,68 @@ def test_strategy_name_property_backward_compat():
     # setter via owner_strategy_name 직접
     ts.owner_strategy_name = "BBReversionStrategy"
     assert ts.strategy_name == "BBReversionStrategy"
+
+
+# ===========================================================================
+# 4. StateRestorer — DB 클래스명 / bot_strategies 폴더명 불일치 양방향 호환
+# ===========================================================================
+
+def _make_restorer_with_strategies(strategies_dict: dict):
+    """StateRestorer 인스턴스를 최소 mock으로 생성."""
+    from bot.state_restorer import StateRestorer
+    restorer = StateRestorer.__new__(StateRestorer)
+    restorer.strategies = strategies_dict
+    return restorer
+
+
+def test_state_restorer_class_name_matches_when_key_is_folder_name():
+    """DB에 클래스명("SampleStrategy")이 저장됐을 때
+    bot_strategies 키가 폴더명("sample")이어도 owner_strategy가 복원된다.
+
+    시나리오 ①: 클래스명 2차 매핑 경로를 검증.
+    """
+    strategy = _make_strategy("SampleStrategy")  # strategy.name = "SampleStrategy"
+    restorer = _make_restorer_with_strategies({"sample": strategy})
+
+    matched = restorer._resolve_owner_strategy("SampleStrategy")  # DB 값 = 클래스명
+
+    assert matched is strategy, "클래스명으로 보조 매핑에서 찾아야 한다"
+
+
+def test_state_restorer_folder_name_still_works_for_legacy_records():
+    """과거 레코드에 폴더명("sample")이 남아 있을 때도 인스턴스가 반환된다.
+
+    시나리오 ②: 폴더명 1차 조회 경로를 검증.
+    """
+    strategy = _make_strategy("SampleStrategy")
+    restorer = _make_restorer_with_strategies({"sample": strategy})
+
+    matched = restorer._resolve_owner_strategy("sample")  # DB 값 = 폴더명 (레거시)
+
+    assert matched is strategy, "폴더명 키로 직접 조회돼야 한다"
+
+
+def test_state_restorer_both_lookups_fail_returns_none():
+    """폴더명·클래스명 모두 불일치 시 None을 반환한다.
+
+    시나리오 ③: 비활성 전략 분기 검증.
+    """
+    strategy = _make_strategy("MomentumStrategy")
+    restorer = _make_restorer_with_strategies({"momentum": strategy})
+
+    matched = restorer._resolve_owner_strategy("ObsoleteStrategy")
+
+    assert matched is None, "미등록 전략이면 None을 반환해야 한다"
+
+
+def test_state_restorer_class_name_key_also_works():
+    """bot_strategies 키가 클래스명인 경우(폴더명=클래스명 동일 환경)에도 동작한다.
+
+    시나리오 ④: 1차 조회(폴더명 = 클래스명)에서 바로 성공하는 경로를 검증.
+    """
+    strategy = _make_strategy("LynchStrategy")
+    restorer = _make_restorer_with_strategies({"LynchStrategy": strategy})
+
+    matched = restorer._resolve_owner_strategy("LynchStrategy")
+
+    assert matched is strategy
