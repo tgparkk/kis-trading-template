@@ -47,6 +47,23 @@ risk_management:
   max_daily_trades: 5      # 일일 최대 거래 횟수
 
 # -----------------------------------------------------------------------------
+# 스크리닝 (EOD 스크리너 — strategies/sample/screener.py)
+# SampleScreener 가 D-1 확정 일봉으로 후보를 선정해 screener_snapshots 에 저장.
+# 후보 기준: RSI < rsi_max  또는  (MA5 > MA20 AND RSI < rsi_trend_max)
+# 룩어헤드 방지: scan_date 의 직전 영업일(D-1)까지만 일봉 사용.
+# bb_reversion config 의 screening.* 섹션과 동일한 위치·톤.
+# -----------------------------------------------------------------------------
+screening:
+  rsi_period: 14
+  rsi_max: 45.0              # 단독 과매도 진입 임계값 (RSI < 이 값이면 후보)
+  rsi_trend_max: 60.0        # MA5>MA20 추세 시 RSI 상한
+  ma_short: 5
+  ma_long: 20
+  min_trading_value: 500000000   # 직전 평균 거래대금 하한 (유동성 필터, 원)
+  trading_value_lookback: 20     # 거래대금 평균 산출 영업일 수
+  max_candidates: 10
+
+# -----------------------------------------------------------------------------
 # 대상 종목 (generate_signal에 전달되는 종목 코드 목록)
 # 비워두면 framework의 종목 선정 로직을 따릅니다.
 # -----------------------------------------------------------------------------

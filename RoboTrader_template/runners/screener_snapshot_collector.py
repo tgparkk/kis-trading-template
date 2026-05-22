@@ -41,7 +41,7 @@ from runners._adapter_factory import build_adapter  # noqa: E402
 _LOGGER = logging.getLogger("runners.screener_snapshot_collector")
 
 # 지원 전략 목록
-ALL_STRATEGIES = ["lynch", "sawkami", "bb_reversion"]
+ALL_STRATEGIES = ["lynch", "sawkami", "bb_reversion", "sample"]
 
 
 # ---------------------------------------------------------------------------

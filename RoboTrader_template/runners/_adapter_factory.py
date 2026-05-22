@@ -29,6 +29,9 @@ def build_adapter(
         elif strategy_name == "bb_reversion":
             from strategies.bb_reversion.screener import BBReversionScreenerAdapter
             return BBReversionScreenerAdapter()
+        elif strategy_name == "sample":
+            from strategies.sample.screener import SampleScreenerAdapter
+            return SampleScreenerAdapter()
         else:
             _LOGGER.warning("알 수 없는 전략: %s", strategy_name)
             return None
