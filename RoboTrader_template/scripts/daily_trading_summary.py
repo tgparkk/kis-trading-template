@@ -13,6 +13,10 @@ sys.path.insert(0, project_root)
 from utils.korean_time import now_kst
 from db.connection import DatabaseConnection
 
+# virtual_trading_records.source — robotrader DB는 형제 프로젝트(RoboTrader)와
+# 테이블을 공유하므로, 이 프로젝트(kis-template) 데이터만 집계하도록 필터링한다.
+SOURCE_KIS_TEMPLATE = 'kis_template'
+
 
 def print_today_trading_summary():
     """오늘의 매매 현황 요약"""
@@ -44,9 +48,10 @@ def print_today_trading_summary():
             FROM virtual_trading_records
             WHERE action = 'BUY'
               AND is_test = false
+              AND source = %s
               AND (timestamp AT TIME ZONE 'Asia/Seoul')::date = %s::date
             ORDER BY timestamp
-        ''', (today,))
+        ''', (SOURCE_KIS_TEMPLATE, today))
 
         buy_records = cursor.fetchall()
 
@@ -86,9 +91,10 @@ def print_today_trading_summary():
             FROM virtual_trading_records
             WHERE action = 'SELL'
               AND is_test = false
+              AND source = %s
               AND (timestamp AT TIME ZONE 'Asia/Seoul')::date = %s::date
             ORDER BY timestamp
-        ''', (today,))
+        ''', (SOURCE_KIS_TEMPLATE, today))
 
         sell_records = cursor.fetchall()
 
@@ -150,13 +156,14 @@ def print_today_trading_summary():
             FROM virtual_trading_records b
             WHERE b.action = 'BUY'
               AND b.is_test = false
+              AND b.source = %s
               AND NOT EXISTS (
                 SELECT 1 FROM virtual_trading_records s
                 WHERE s.buy_record_id = b.id
                   AND s.action = 'SELL'
               )
             ORDER BY b.stock_name
-        ''')
+        ''', (SOURCE_KIS_TEMPLATE,))
 
         holdings = cursor.fetchall()
 
@@ -226,7 +233,8 @@ def print_today_trading_summary():
                 COUNT(CASE WHEN action = 'SELL' THEN 1 END) as total_trades
             FROM virtual_trading_records
             WHERE is_test = false
-        ''')
+              AND source = %s
+        ''', (SOURCE_KIS_TEMPLATE,))
 
         pl_row = cursor.fetchone()
         total_realized_pl = float(pl_row[0] or 0)

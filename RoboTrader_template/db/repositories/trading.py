@@ -17,6 +17,10 @@ class TradingRepository(BaseRepository):
     # 전략 이름이 아닌 것으로 판단하는 패턴 (매매 사유가 strategy에 들어온 경우 감지)
     _REASON_KEYWORDS = ['매도', '매수', '수익률', '손절', '익절', '청산', '복원', '복구', '조건', '점수']
 
+    # virtual_trading_records.source 값 — 이 repository는 kis-template 전용이므로
+    # 모든 INSERT/SELECT는 이 출처 태그를 사용한다. (robotrader 형제 프로젝트와 테이블 공유)
+    SOURCE_KIS_TEMPLATE = 'kis_template'
+
     def __init__(self, db_path: str = None):
         super().__init__(db_path)
         self.logger = RateLimitedLogger(self.logger)
@@ -192,11 +196,12 @@ class TradingRepository(BaseRepository):
                 cursor.execute('''
                     INSERT INTO virtual_trading_records
                     (stock_code, stock_name, action, quantity, price, timestamp, strategy, reason, is_test,
-                     target_profit_rate, stop_loss_rate, created_at)
-                    VALUES (%s, %s, 'BUY', %s, %s, %s, %s, %s, true, %s, %s, %s)
+                     target_profit_rate, stop_loss_rate, created_at, source)
+                    VALUES (%s, %s, 'BUY', %s, %s, %s, %s, %s, true, %s, %s, %s, %s)
                     RETURNING id
                 ''', (stock_code, stock_name, quantity, price, timestamp_str,
-                      strategy, reason, target_profit_rate, stop_loss_rate, created_at_str))
+                      strategy, reason, target_profit_rate, stop_loss_rate, created_at_str,
+                      self.SOURCE_KIS_TEMPLATE))
 
                 result = cursor.fetchone()
                 buy_record_id = result[0] if result else None
@@ -239,11 +244,12 @@ class TradingRepository(BaseRepository):
                     SELECT SUM(b.quantity * b.price) / NULLIF(SUM(b.quantity), 0)
                     FROM virtual_trading_records b
                     WHERE b.stock_code = %s AND b.action = 'BUY' AND b.is_test = true
+                      AND b.source = %s
                       AND NOT EXISTS (
                           SELECT 1 FROM virtual_trading_records s
                           WHERE s.buy_record_id = b.id AND s.action = 'SELL'
                       )
-                ''', (stock_code,))
+                ''', (stock_code, self.SOURCE_KIS_TEMPLATE))
 
                 avg_result = cursor.fetchone()
                 if not avg_result or avg_result[0] is None:
@@ -266,10 +272,11 @@ class TradingRepository(BaseRepository):
                     cursor.execute('''
                         INSERT INTO virtual_trading_records
                         (stock_code, stock_name, action, quantity, price, timestamp, strategy, reason,
-                         is_test, profit_loss, profit_rate, buy_record_id, created_at)
-                        VALUES (%s, %s, 'SELL', %s, %s, %s, %s, %s, true, %s, %s, %s, %s)
+                         is_test, profit_loss, profit_rate, buy_record_id, created_at, source)
+                        VALUES (%s, %s, 'SELL', %s, %s, %s, %s, %s, true, %s, %s, %s, %s, %s)
                     ''', (stock_code, stock_name, quantity, price, timestamp_str,
-                          strategy, reason, profit_loss, profit_rate, buy_record_id, created_at_str))
+                          strategy, reason, profit_loss, profit_rate, buy_record_id, created_at_str,
+                          self.SOURCE_KIS_TEMPLATE))
                 except psycopg2.IntegrityError:
                     conn.rollback()
                     self.logger.warning(f"{stock_code} Race condition 차단")
@@ -291,22 +298,24 @@ class TradingRepository(BaseRepository):
                     cursor.execute('''
                         SELECT b.id FROM virtual_trading_records b
                         WHERE b.stock_code = %s AND b.action = 'BUY' AND b.is_test = true
+                          AND b.source = %s
                           AND NOT EXISTS (
                             SELECT 1 FROM virtual_trading_records s
                             WHERE s.buy_record_id = b.id AND s.action = 'SELL'
                           )
                         ORDER BY b.timestamp DESC LIMIT 1
-                    ''', (stock_code,))
+                    ''', (stock_code, self.SOURCE_KIS_TEMPLATE))
                 else:
                     cursor.execute('''
                         SELECT b.id FROM virtual_trading_records b
                         LEFT JOIN virtual_trading_records s
                             ON b.id = s.buy_record_id AND s.action = 'SELL'
                         WHERE b.stock_code = %s AND b.action = 'BUY' AND b.is_test = true
+                          AND b.source = %s
                         GROUP BY b.id, b.quantity, b.timestamp
                         HAVING b.quantity - COALESCE(SUM(s.quantity), 0) > 0
                         ORDER BY b.timestamp ASC LIMIT 1
-                    ''', (stock_code,))
+                    ''', (stock_code, self.SOURCE_KIS_TEMPLATE))
 
                 row = cursor.fetchone()
                 return int(row[0]) if row else None
@@ -325,6 +334,7 @@ class TradingRepository(BaseRepository):
                            b.target_profit_rate, b.stop_loss_rate
                     FROM virtual_trading_records b
                     WHERE b.action = 'BUY' AND b.is_test = true
+                        AND b.source = %s
                         AND NOT EXISTS (
                             SELECT 1 FROM virtual_trading_records s
                             WHERE s.buy_record_id = b.id AND s.action = 'SELL'
@@ -333,7 +343,7 @@ class TradingRepository(BaseRepository):
                 '''
 
                 cursor = conn.cursor()
-                cursor.execute(query)
+                cursor.execute(query, (self.SOURCE_KIS_TEMPLATE,))
                 rows = cursor.fetchall()
                 if rows:
                     columns = [desc[0] for desc in cursor.description]
@@ -362,6 +372,7 @@ class TradingRepository(BaseRepository):
                                timestamp, strategy, reason, profit_loss, profit_rate, buy_record_id
                         FROM virtual_trading_records
                         WHERE timestamp >= %s AND is_test = true
+                          AND source = %s
                         ORDER BY timestamp DESC
                     '''
                 else:
@@ -373,11 +384,12 @@ class TradingRepository(BaseRepository):
                         FROM virtual_trading_records s
                         JOIN virtual_trading_records b ON s.buy_record_id = b.id
                         WHERE s.action = 'SELL' AND s.timestamp >= %s AND s.is_test = true
+                          AND s.source = %s
                         ORDER BY s.timestamp DESC
                     '''
 
                 cursor = conn.cursor()
-                cursor.execute(query, (start_timestamp,))
+                cursor.execute(query, (start_timestamp, self.SOURCE_KIS_TEMPLATE))
                 rows = cursor.fetchall()
                 if rows:
                     columns = [desc[0] for desc in cursor.description]
@@ -486,9 +498,10 @@ class TradingRepository(BaseRepository):
                     WHERE action = 'SELL'
                       AND profit_loss < 0
                       AND timestamp >= %s
+                      AND source = %s
                     GROUP BY stock_code
                     HAVING COUNT(1) >= %s
-                ''', (cutoff_str, min_losses))
+                ''', (cutoff_str, self.SOURCE_KIS_TEMPLATE, min_losses))
                 rows = cursor.fetchall()
                 return {row[0] for row in rows}
         except Exception as e:
@@ -513,7 +526,8 @@ class TradingRepository(BaseRepository):
                 cursor.execute('''
                     SELECT DISTINCT stock_code FROM virtual_trading_records
                     WHERE action = 'SELL'
-                ''')
+                      AND source = %s
+                ''', (self.SOURCE_KIS_TEMPLATE,))
                 all_codes = [row[0] for row in cursor.fetchall()]
 
                 persistent: set = set()
@@ -521,9 +535,10 @@ class TradingRepository(BaseRepository):
                     cursor.execute('''
                         SELECT profit_loss FROM virtual_trading_records
                         WHERE stock_code = %s AND action = 'SELL'
+                          AND source = %s
                         ORDER BY timestamp DESC
                         LIMIT %s
-                    ''', (code, consecutive_losses))
+                    ''', (code, self.SOURCE_KIS_TEMPLATE, consecutive_losses))
                     recent = cursor.fetchall()
                     if len(recent) < consecutive_losses:
                         continue
@@ -547,8 +562,9 @@ class TradingRepository(BaseRepository):
                     SELECT DISTINCT stock_code FROM virtual_trading_records
                     WHERE action = 'SELL'
                       AND DATE(timestamp) = %s
+                      AND source = %s
                       AND (reason LIKE '%%손절%%' OR reason LIKE '%%stop%%loss%%')
-                ''', (target_date,))
+                ''', (target_date, self.SOURCE_KIS_TEMPLATE))
 
                 result = cursor.fetchall()
                 return [row[0] for row in result]

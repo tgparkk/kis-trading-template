@@ -558,6 +558,9 @@ class VirtualTradingManager:
             return result
         try:
             from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
+            # source 필터: 형제 프로젝트 RoboTrader 레코드(macd_cross_alt 등)가
+            # 손익 집계에 섞이지 않도록 kis-template 출처만 합산한다.
+            source_tag = self.db_manager.trading_repo.SOURCE_KIS_TEMPLATE
             with self.db_manager.trading_repo._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -569,7 +572,8 @@ class VirtualTradingManager:
                     FROM virtual_trading_records s
                     JOIN virtual_trading_records b ON s.buy_record_id = b.id
                     WHERE s.action = 'SELL' AND s.is_test = TRUE
-                ''')
+                      AND s.source = %s
+                ''', (source_tag,))
                 row = cursor.fetchone()
             if row:
                 gross_pnl = float(row[0])
