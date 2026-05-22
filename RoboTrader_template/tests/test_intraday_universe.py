@@ -540,3 +540,328 @@ class TestDynamicProviderLookahead:
         assert called_dates == ['20250901'], (
             f"YYYY-MM-DD 정규화 실패 또는 직전 거래일 매핑 오류: {called_dates}"
         )
+
+
+# ── Stocks-in-Play (D-1) universe 테스트 ──────────────────────────────────────
+#
+# spec-2026-05-22-sip-universe.md §3, §6 준수.
+# build_stocks_in_play_universe는 daily_agg DataFrame을 주입받는 순수함수 —
+# DB 없이 합성 데이터로 게이트/랭킹/룩어헤드 차단을 검증한다.
+
+
+def _make_daily_agg(rows: list[dict]) -> pd.DataFrame:
+    """일별 집계 결과와 동일한 스키마의 합성 DataFrame 생성.
+
+    columns: stock_code, trade_date, volume, amount, close
+    (stock_code, trade_date) 정렬.
+    """
+    df = pd.DataFrame(
+        rows, columns=['stock_code', 'trade_date', 'volume', 'amount', 'close']
+    )
+    return df.sort_values(['stock_code', 'trade_date']).reset_index(drop=True)
+
+
+def _gen_history(
+    stock_code: str,
+    dates: list[str],
+    *,
+    volume: float,
+    amount: float,
+    close: float,
+) -> list[dict]:
+    """한 종목의 균일 이력 행들을 생성 (게이트 분모 채우기용)."""
+    return [
+        {'stock_code': stock_code, 'trade_date': d,
+         'volume': volume, 'amount': amount, 'close': close}
+        for d in dates
+    ]
+
+
+# rvol_window=4를 쓰는 컴팩트 테스트 캘린더 (이력 요건 = window+1 = 5거래일)
+_SIP_DATES = ['20260101', '20260102', '20260103', '20260104', '20260105']
+_SIP_ASOF = '20260105'
+
+
+class TestBuildStocksInPlayUniverse:
+    """build_stocks_in_play_universe 순수함수 단위 테스트 (DB 불필요)."""
+
+    def _fn(self):
+        from utils.intraday_universe import build_stocks_in_play_universe
+        return build_stocks_in_play_universe
+
+    def _base_stock(
+        self,
+        code: str,
+        *,
+        base_volume: float = 1_000_000,
+        asof_volume: float = 5_000_000,
+        base_close: float = 10_000.0,
+        asof_close: float = 11_000.0,
+        asof_amount: float = 5e10,
+    ) -> list[dict]:
+        """한 종목의 5거래일 이력 생성.
+
+        앞 4일: base_volume / base_close (RVOL 분모 + asof-1 close 제공),
+        asof일: asof_volume / asof_close / asof_amount.
+        기본값은 전 게이트 통과 (RVOL 5.0, 등락 10%, amount 5e10, close 11000).
+        """
+        prior = _SIP_DATES[:-1]  # 4일
+        rows = _gen_history(
+            code, prior,
+            volume=base_volume, amount=5e10, close=base_close,
+        )
+        rows.append({
+            'stock_code': code, 'trade_date': _SIP_ASOF,
+            'volume': asof_volume, 'amount': asof_amount, 'close': asof_close,
+        })
+        return rows
+
+    def test_rvol_gate(self):
+        """RVOL < rvol_min 종목 제외."""
+        fn = self._fn()
+        rows = []
+        # PASS: 분모 평균 1M, asof 3M → RVOL 3.0 >= 2.0
+        rows += self._base_stock('PASS', base_volume=1_000_000, asof_volume=3_000_000)
+        # FAIL: 분모 평균 1M, asof 1.5M → RVOL 1.5 < 2.0
+        rows += self._base_stock('FAIL', base_volume=1_000_000, asof_volume=1_500_000)
+        daily_agg = _make_daily_agg(rows)
+
+        result = fn(
+            _SIP_ASOF, daily_agg,
+            rvol_min=2.0, abs_return_min=0.0,
+            min_amount=0.0, min_price=0.0,
+            rvol_window=4, top_n=30,
+        )
+        assert result == ['PASS'], f"RVOL 게이트 미적용: {result}"
+
+    def test_abs_return_gate(self):
+        """전일 등락(절대값) < abs_return_min 종목 제외."""
+        fn = self._fn()
+        rows = []
+        # PASS: asof-1 close 10000 → asof close 11000 → 등락 +10%
+        rows += self._base_stock('PASS', base_close=10_000.0, asof_close=11_000.0)
+        # FAIL: asof-1 close 10000 → asof close 10100 → 등락 +1%
+        rows += self._base_stock('FAIL', base_close=10_000.0, asof_close=10_100.0)
+        daily_agg = _make_daily_agg(rows)
+
+        result = fn(
+            _SIP_ASOF, daily_agg,
+            rvol_min=0.0, abs_return_min=0.03,
+            min_amount=0.0, min_price=0.0,
+            rvol_window=4, top_n=30,
+        )
+        assert result == ['PASS'], f"등락 게이트 미적용: {result}"
+
+    def test_abs_return_gate_negative_direction(self):
+        """등락은 절대값 — 하락도 임계값 이상이면 통과."""
+        fn = self._fn()
+        # asof-1 close 10000 → asof close 9000 → 등락 -10%, |등락|=10%
+        rows = self._base_stock('DOWN', base_close=10_000.0, asof_close=9_000.0)
+        daily_agg = _make_daily_agg(rows)
+
+        result = fn(
+            _SIP_ASOF, daily_agg,
+            rvol_min=0.0, abs_return_min=0.03,
+            min_amount=0.0, min_price=0.0,
+            rvol_window=4, top_n=30,
+        )
+        assert result == ['DOWN'], "하락 종목도 |등락| 임계값 이상이면 통과해야 함"
+
+    def test_amount_and_price_gate(self):
+        """amount < min_amount 또는 close < min_price 종목 제외."""
+        fn = self._fn()
+        rows = []
+        # PASS: amount 5e10, close 11000
+        rows += self._base_stock('OK', asof_amount=5e10, asof_close=11_000.0)
+        # FAIL_AMT: amount 1e9 < 1e10
+        rows += self._base_stock('LOW_AMT', asof_amount=1e9, asof_close=11_000.0)
+        # FAIL_PRC: close 2000 < 3000 (asof-1 close도 2000으로 등락 0이지만 abs_return_min=0이라 통과)
+        low_prc = self._base_stock('LOW_PRC', asof_close=2_000.0)
+        for r in low_prc:
+            r['close'] = 2_000.0
+        rows += low_prc
+        daily_agg = _make_daily_agg(rows)
+
+        result = fn(
+            _SIP_ASOF, daily_agg,
+            rvol_min=0.0, abs_return_min=0.0,
+            min_amount=1e10, min_price=3000.0,
+            rvol_window=4, top_n=30,
+        )
+        assert result == ['OK'], f"amount/price 게이트 미적용: {result}"
+
+    def test_top_n_ranking_by_rvol(self):
+        """통과 종목 > top_n → RVOL 내림차순 top_n 반환."""
+        fn = self._fn()
+        rows = []
+        # 5종목, 분모 평균 동일(1M), asof volume만 다름 → RVOL 차등
+        specs = [
+            ('R2', 2_000_000),  # RVOL 2.0
+            ('R5', 5_000_000),  # RVOL 5.0
+            ('R3', 3_000_000),  # RVOL 3.0
+            ('R8', 8_000_000),  # RVOL 8.0
+            ('R4', 4_000_000),  # RVOL 4.0
+        ]
+        for code, av in specs:
+            rows += self._base_stock(code, base_volume=1_000_000, asof_volume=av)
+        daily_agg = _make_daily_agg(rows)
+
+        result = fn(
+            _SIP_ASOF, daily_agg,
+            rvol_min=2.0, abs_return_min=0.0,
+            min_amount=0.0, min_price=0.0,
+            rvol_window=4, top_n=3,
+        )
+        assert result == ['R8', 'R5', 'R4'], (
+            f"RVOL 내림차순 top_n=3 미적용: {result}"
+        )
+
+    def test_insufficient_history_excluded(self):
+        """이력 < rvol_window + 1 종목 제외."""
+        fn = self._fn()
+        rows = []
+        # FULL: 5거래일 이력 (window=4 → 요건 5) → 통과
+        rows += self._base_stock('FULL')
+        # SHORT: 3거래일 이력만 → 제외
+        short_dates = _SIP_DATES[:2]  # 2일 prior
+        rows += _gen_history(
+            'SHORT', short_dates, volume=1_000_000, amount=5e10, close=10_000.0
+        )
+        rows.append({
+            'stock_code': 'SHORT', 'trade_date': _SIP_ASOF,
+            'volume': 5_000_000, 'amount': 5e10, 'close': 11_000.0,
+        })
+        daily_agg = _make_daily_agg(rows)
+
+        result = fn(
+            _SIP_ASOF, daily_agg,
+            rvol_min=0.0, abs_return_min=0.0,
+            min_amount=0.0, min_price=0.0,
+            rvol_window=4, top_n=30,
+        )
+        assert result == ['FULL'], (
+            f"이력 부족(rvol_window+1 미만) 종목이 제외되지 않음: {result}"
+        )
+
+    def test_no_lookahead_future_rows_ignored(self):
+        """asof 이후 데이터를 추가해도 결과가 불변이어야 함 (룩어헤드 차단).
+
+        함수가 daily_agg를 trade_date <= asof_date로 먼저 필터하므로
+        asof 이후 행이 RVOL/등락/게이트 계산에 들어가면 안 된다.
+        """
+        fn = self._fn()
+        base_rows = self._base_stock('STK', base_volume=1_000_000, asof_volume=3_000_000)
+        daily_agg_clean = _make_daily_agg(base_rows)
+        result_clean = fn(
+            _SIP_ASOF, daily_agg_clean,
+            rvol_min=2.0, abs_return_min=0.03,
+            min_amount=1e10, min_price=3000.0,
+            rvol_window=4, top_n=30,
+        )
+
+        # asof 이후 (미래) 행 추가 — 극단적 값으로 계산 오염 시도
+        future_rows = list(base_rows) + [
+            {'stock_code': 'STK', 'trade_date': '20260106',
+             'volume': 999_999_999, 'amount': 1.0, 'close': 1.0},
+            {'stock_code': 'STK', 'trade_date': '20260107',
+             'volume': 0, 'amount': 0.0, 'close': 0.0},
+        ]
+        daily_agg_future = _make_daily_agg(future_rows)
+        result_future = fn(
+            _SIP_ASOF, daily_agg_future,
+            rvol_min=2.0, abs_return_min=0.03,
+            min_amount=1e10, min_price=3000.0,
+            rvol_window=4, top_n=30,
+        )
+
+        assert result_future == result_clean, (
+            f"룩어헤드 차단 실패 — asof 이후 행이 결과를 바꿈.\n"
+            f"  asof 이하만: {result_clean}\n  asof 이후 포함: {result_future}"
+        )
+
+    def test_empty_input_returns_empty(self):
+        """빈 daily_agg → 빈 리스트."""
+        fn = self._fn()
+        empty = _make_daily_agg([])
+        result = fn(_SIP_ASOF, empty, rvol_window=4)
+        assert result == []
+
+
+# ── load_daily_aggregates 캐시 테스트 ─────────────────────────────────────────
+
+
+class TestLoadDailyAggregates:
+    """load_daily_aggregates parquet 캐시 동작 테스트."""
+
+    _AGG_COLUMNS = ['stock_code', 'trade_date', 'volume', 'amount', 'close']
+
+    def _make_agg_cursor(self, rows: list[tuple]) -> MagicMock:
+        """일별 집계 SQL 결과를 반환하는 cursor mock."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = rows
+        mock_cursor.description = [(c,) for c in self._AGG_COLUMNS]
+        return mock_cursor
+
+    def test_cache_miss_then_hit(self, tmp_path):
+        """첫 호출은 DB 집계 후 parquet 저장, 두 번째는 캐시 재사용 (DB 미호출)."""
+        from utils.intraday_universe import load_daily_aggregates
+
+        rows = [
+            ('000001', '20260101', 1_000_000, 5e10, 10_000.0),
+            ('000001', '20260102', 1_200_000, 6e10, 10_500.0),
+            ('000002', '20260101', 2_000_000, 7e10, 20_000.0),
+        ]
+        mock_cursor = self._make_agg_cursor(rows)
+        ctx = _make_mock_conn_ctx(mock_cursor)
+
+        # 1) 캐시 miss → DB 집계 → parquet 저장
+        with patch(
+            'utils.intraday_universe.DatabaseConnection.get_connection',
+            return_value=ctx,
+        ):
+            df_first = load_daily_aggregates(cache_dir=tmp_path)
+
+        assert list(df_first.columns) == self._AGG_COLUMNS
+        assert len(df_first) == 3
+        cache_file = tmp_path / '_daily_agg.parquet'
+        assert cache_file.exists(), "DB 집계 후 _daily_agg.parquet이 저장되어야 함"
+
+        # 2) 캐시 hit → DB 전혀 호출 안 함
+        with patch(
+            'utils.intraday_universe.DatabaseConnection.get_connection'
+        ) as mock_db:
+            df_second = load_daily_aggregates(cache_dir=tmp_path)
+            mock_db.assert_not_called()
+
+        assert len(df_second) == 3, "캐시 hit 시 같은 행 수여야 함"
+        assert list(df_second.columns) == self._AGG_COLUMNS
+        pd.testing.assert_frame_equal(
+            df_first.reset_index(drop=True),
+            df_second.reset_index(drop=True),
+        )
+
+    def test_result_sorted_by_stock_and_date(self, tmp_path):
+        """결과는 (stock_code, trade_date) 정렬."""
+        from utils.intraday_universe import load_daily_aggregates
+
+        # 일부러 뒤섞인 순서로 반환
+        rows = [
+            ('000002', '20260102', 2_000_000, 7e10, 20_000.0),
+            ('000001', '20260102', 1_200_000, 6e10, 10_500.0),
+            ('000002', '20260101', 2_100_000, 7e10, 19_000.0),
+            ('000001', '20260101', 1_000_000, 5e10, 10_000.0),
+        ]
+        mock_cursor = self._make_agg_cursor(rows)
+        ctx = _make_mock_conn_ctx(mock_cursor)
+
+        with patch(
+            'utils.intraday_universe.DatabaseConnection.get_connection',
+            return_value=ctx,
+        ):
+            df = load_daily_aggregates(cache_dir=tmp_path)
+
+        ordered = list(zip(df['stock_code'], df['trade_date']))
+        assert ordered == [
+            ('000001', '20260101'), ('000001', '20260102'),
+            ('000002', '20260101'), ('000002', '20260102'),
+        ], f"(stock_code, trade_date) 정렬 안 됨: {ordered}"

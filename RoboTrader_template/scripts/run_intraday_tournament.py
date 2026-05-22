@@ -277,6 +277,78 @@ def _make_dynamic_provider(
     return _provider
 
 
+def _make_stocks_in_play_provider(
+    cache_dir: Optional[str] = None,
+    rvol_min: float = 2.0,
+    abs_return_min: float = 0.03,
+    top_n: int = 30,
+) -> Callable[[str], List[str]]:
+    """D-1 Stocks-in-Play universe provider.
+
+    거래일 X의 universe를 직전 거래일 P(D-1) 시점 데이터만으로 선별한다.
+    spec-2026-05-22-sip-universe.md §4.3 준수 — 룩어헤드 구조적 차단.
+
+    closure에서 (a) load_daily_aggregates 1회 lazy 로드,
+    (b) 거래일 캘린더 1회 로드(_load_trading_days 재사용),
+    (c) _provider(trade_date): _prior_trading_day로 asof=D-1 산출 →
+        build_stocks_in_play_universe(asof, daily_agg, ...).
+
+    Args:
+        cache_dir: daily_agg parquet 캐시 디렉토리. None이면 캐시 미사용.
+        rvol_min: 최소 RVOL (기본 2.0).
+        abs_return_min: 최소 전일 등락 절대값 (기본 0.03 = 3%).
+        top_n: 상위 N개로 cap (기본 30).
+    """
+    cache_path: Optional[Path] = Path(cache_dir) if cache_dir else None
+
+    try:
+        # 모듈 경유 호출 — 테스트에서 monkeypatch 가능하도록.
+        from utils import intraday_universe as _iu
+
+        # daily_agg와 거래일 캘린더는 closure에서 1회 lazy 로드 후 재사용.
+        _daily_agg_cache: List[Optional[pd.DataFrame]] = [None]
+        _trading_days_cache: List[Optional[List[str]]] = [None]
+
+        def _provider(trade_date: str) -> List[str]:
+            try:
+                if _daily_agg_cache[0] is None:
+                    _daily_agg_cache[0] = _iu.load_daily_aggregates(
+                        cache_dir=cache_path
+                    )
+                daily_agg = _daily_agg_cache[0]
+
+                if _trading_days_cache[0] is None:
+                    _trading_days_cache[0] = _load_trading_days()
+                trading_days = _trading_days_cache[0]
+
+                # 직전 거래일 P(D-1) 산출 (룩어헤드 방지)
+                asof = _prior_trading_day(trade_date, trading_days)
+                if asof is None:
+                    # 데이터 최초일 — D-1 없음
+                    return []
+
+                return _iu.build_stocks_in_play_universe(
+                    asof,
+                    daily_agg,
+                    rvol_min=rvol_min,
+                    abs_return_min=abs_return_min,
+                    top_n=top_n,
+                )
+            except Exception as exc:
+                logger.warning(f"sip universe 조회 실패 [{trade_date}]: {exc}")
+                return []
+
+    except ImportError:
+        logger.warning(
+            "utils.intraday_universe 로드 불가 - sip provider를 stub으로 대체합니다."
+        )
+
+        def _provider(trade_date: str) -> List[str]:  # type: ignore[misc]
+            return []
+
+    return _provider
+
+
 def _parse_skip_dates(raw_list: Optional[List[str]]) -> Set[str]:
     """CLI --skip 값 리스트 → set (완전 일치 + prefix 모두 지원)."""
     if not raw_list:
@@ -491,7 +563,7 @@ def run_tournament(args: argparse.Namespace) -> None:
 
     # universe 타입 목록
     universe_types: List[str] = [u.strip() for u in args.universe.split(",")]
-    valid_universes = {"screener", "dynamic"}
+    valid_universes = {"screener", "dynamic", "sip"}
     invalid_uni = set(universe_types) - valid_universes
     if invalid_uni:
         raise ValueError(f"유효하지 않은 universe 타입: {invalid_uni}. 선택: {valid_universes}")
@@ -511,6 +583,13 @@ def run_tournament(args: argparse.Namespace) -> None:
             cache_dir=getattr(args, "dynamic_cache", None) or "cache/intraday_universe",
             top_n=getattr(args, "dynamic_top_n", 50),
             rank_by=getattr(args, "dynamic_rank_by", "volatility_pct"),
+        )
+    if "sip" in universe_types:
+        providers["sip"] = _make_stocks_in_play_provider(
+            cache_dir=getattr(args, "dynamic_cache", None) or "cache/intraday_universe",
+            rvol_min=getattr(args, "sip_rvol_min", 2.0),
+            abs_return_min=getattr(args, "sip_return_min", 0.03),
+            top_n=getattr(args, "sip_top_n", 30),
         )
 
     # --trail 파싱: none/off/빈값 → None, 숫자 → float
@@ -673,7 +752,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--universe", default="screener,dynamic",
         metavar="TYPE[,TYPE]",
-        help="universe 타입: screener / dynamic / screener,dynamic (기본: screener,dynamic)",
+        help=(
+            "universe 타입: screener / dynamic / sip (D-1 Stocks-in-Play) "
+            "/ 쉼표 조합 (기본: screener,dynamic)"
+        ),
     )
     p.add_argument(
         "--strategies", default="all",
@@ -713,6 +795,21 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--dynamic-rank-by", choices=["volatility_pct", "amount_sum"], default="volatility_pct",
         help="dynamic universe top_n 적용 기준 (기본: volatility_pct)",
+    )
+    p.add_argument(
+        "--sip-rvol-min", type=float, default=2.0,
+        metavar="X",
+        help="sip universe 최소 RVOL (기본: 2.0). --universe sip 일 때만 사용.",
+    )
+    p.add_argument(
+        "--sip-return-min", type=float, default=0.03,
+        metavar="PCT",
+        help="sip universe 최소 전일 등락 절대값 (소수, 기본: 0.03 = 3%%).",
+    )
+    p.add_argument(
+        "--sip-top-n", type=int, default=30,
+        metavar="N",
+        help="sip universe 상위 N개 종목으로 제한 (기본: 30).",
     )
     p.add_argument(
         "--trail", default=None,
