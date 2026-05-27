@@ -134,6 +134,9 @@ class BookBacktester:
                             "entry_price": fill,
                             "qty": qty,
                         }
+                        reason_str = ", ".join(signal.reasons) if signal.reasons else (
+                            getattr(self.strategy, "target_rule", None) or "signal"
+                        )
                         trades.append({
                             "stock_code": stock_code,
                             "side": "buy",
@@ -141,7 +144,7 @@ class BookBacktester:
                             "datetime": str(bar_next.get("datetime", "")),
                             "price": fill,
                             "qty": qty,
-                            "reason": ", ".join(signal.reasons),
+                            "reason": reason_str,
                             "entry_price": fill,
                             "pnl_pct": 0.0,
                         })

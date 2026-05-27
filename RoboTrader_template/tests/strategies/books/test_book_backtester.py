@@ -52,6 +52,10 @@ def test_backtester_single_stock_single_rule_books_a_trade():
     assert result.n_trades >= 1
     # 가격이 상승만 했으니 최소 1개 매수 발생
     assert any(t["side"] == "buy" for t in result.trades)
+    # 단조 상승 데이터 → 수수료·세금 차감 후에도 양의 PnL 이어야 함
+    assert result.pnl_pct > 0, "Monotonically rising data should yield positive PnL"
+    # 모든 매도가 수익이어야 hit_rate=1.0
+    assert result.hit_rate == pytest.approx(1.0)
 
 
 def test_backtester_no_signal_returns_zero_trades():
