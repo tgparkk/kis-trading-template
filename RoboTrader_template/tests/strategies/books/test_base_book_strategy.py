@@ -60,3 +60,38 @@ def test_book_strategy_or_mode_triggers_on_any():
 def test_book_strategy_unknown_mode_raises():
     with pytest.raises(ValueError):
         BookStrategy(rules=[_AlwaysBuyRule()], mode="bogus")
+
+
+def test_book_strategy_and_mode_empty_rules_returns_none():
+    """HIGH bug regression: all_AND with empty rules must return None, not raise IndexError."""
+    strat = BookStrategy(rules=[], mode="all_AND")
+    sig = strat.generate_signal("005930", _dummy_df(), timeframe="intraday")
+    assert sig is None
+
+
+def test_book_strategy_duplicate_rule_names_raises():
+    """Duplicate rule names should be rejected at construction."""
+    class _Dup1(Rule):
+        name = "dup"
+        def evaluate(self, df, ctx):
+            return RuleResult(triggered=False)
+
+    class _Dup2(Rule):
+        name = "dup"
+        def evaluate(self, df, ctx):
+            return RuleResult(triggered=False)
+
+    with pytest.raises(ValueError, match="Duplicate rule names"):
+        BookStrategy(rules=[_Dup1(), _Dup2()], mode="single", target_rule="dup")
+
+
+def test_book_strategy_invalid_side_raises():
+    """RuleResult.side must be 'buy' or 'sell' — anything else triggers ValueError on signal generation."""
+    class _BadSideRule(Rule):
+        name = "bad_side"
+        def evaluate(self, df, ctx):
+            return RuleResult(triggered=True, side="short")  # type: ignore[arg-type]
+
+    strat = BookStrategy(rules=[_BadSideRule()], mode="single", target_rule="bad_side")
+    with pytest.raises(ValueError, match="side must be"):
+        strat.generate_signal("005930", _dummy_df(), timeframe="intraday")

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import pandas as pd
 
@@ -20,7 +20,7 @@ VALID_MODES = ("single", "all_AND", "top_K_OR")
 class RuleResult:
     """규칙 평가 결과."""
     triggered: bool
-    side: str = "buy"  # "buy" | "sell"
+    side: Literal["buy", "sell"] = "buy"
     confidence: float = 70.0
     reasons: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -65,9 +65,18 @@ class BookStrategy(BaseStrategy):
         self.target_rule = target_rule
         self.or_members = or_members or []
         self._rule_map = {r.name: r for r in rules}
+        if len(self._rule_map) != len(rules):
+            seen: list = []
+            dups: list = []
+            for r in rules:
+                if r.name in seen:
+                    dups.append(r.name)
+                else:
+                    seen.append(r.name)
+            raise ValueError(f"Duplicate rule names detected: {sorted(set(dups))}")
 
     def generate_signal(
-        self, stock_code: str, data: pd.DataFrame, timeframe: str = "intraday"
+        self, stock_code: str, data: pd.DataFrame, timeframe: str = "daily"
     ) -> Optional[Signal]:
         if data is None or len(data) == 0:
             return None
@@ -81,9 +90,11 @@ class BookStrategy(BaseStrategy):
             return self._to_signal(stock_code, res, res.reasons if res.triggered else [])
 
         if self.mode == "all_AND":
+            if not self.rules:
+                return None
             results = [(r.name, r.evaluate(data, ctx)) for r in self.rules]
             if all(res.triggered for _, res in results):
-                merged_reasons = [name for name, _ in results]
+                merged_reasons = [r for _, res in results for r in res.reasons]
                 return self._to_signal(stock_code, results[0][1], merged_reasons)
             return None
 
@@ -103,6 +114,8 @@ class BookStrategy(BaseStrategy):
     def _to_signal(stock_code: str, res: RuleResult, reasons: List[str]) -> Optional[Signal]:
         if not res.triggered:
             return None
+        if res.side not in ("buy", "sell"):
+            raise ValueError(f"RuleResult.side must be 'buy' or 'sell', got {res.side!r}")
         sig_type = SignalType.BUY if res.side == "buy" else SignalType.SELL
         return Signal(
             signal_type=sig_type,
