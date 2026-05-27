@@ -69,3 +69,75 @@ def test_backtester_no_signal_returns_zero_trades():
     result = bt.run_single(stock_code="005930", df=_toy_minute_df())
     assert result.n_trades == 0
     assert result.pnl_pct == pytest.approx(0.0, abs=1e-9)
+
+
+def test_run_universe_aggregates_pnl_across_stocks(tmp_path):
+    from strategies.books._base_book_strategy import BookStrategy
+
+    class _AlwaysBuyOnceRule(Rule):
+        name = "always"
+        def evaluate(self, df, ctx):
+            # 8번째 봉부터 항상 매수 신호
+            if len(df) >= 8:
+                return RuleResult(triggered=True, side="buy", reasons=["always"])
+            return RuleResult(triggered=False)
+
+    strat = BookStrategy(rules=[_AlwaysBuyOnceRule()], mode="single", target_rule="always")
+    bt = BookBacktester(strategy=strat, initial_capital=1_000_000, warmup_bars=6)
+
+    data = {
+        "005930": _toy_minute_df(),
+        "000660": _toy_minute_df(),
+    }
+    agg = bt.run_universe(data)
+    assert agg.n_stocks == 2
+    assert agg.n_trades >= 2
+
+
+def test_append_leaderboard_writes_one_row(tmp_path):
+    from backtest.book_backtester import append_leaderboard
+
+    out = tmp_path / "lb.parquet"
+    append_leaderboard(
+        path=out,
+        row={
+            "book_id": "aziz_day_trade",
+            "book_name": "How to Day Trade for a Living",
+            "period": "2026-04",
+            "rule_combo": "abcd",
+            "mode": "single",
+            "n_trades": 12,
+            "pnl_pct": 0.05,
+            "sharpe": 1.2,
+            "calmar": 1.5,
+            "sortino": 1.4,
+            "max_dd_pct": 0.03,
+            "hit_rate": 0.6,
+            "avg_hold_bars": 25.0,
+        },
+    )
+    df = pd.read_parquet(out)
+    assert len(df) == 1
+    assert df["book_id"].iloc[0] == "aziz_day_trade"
+
+    # append once more
+    append_leaderboard(
+        path=out,
+        row={
+            "book_id": "aziz_day_trade",
+            "book_name": "How to Day Trade for a Living",
+            "period": "2026-05",
+            "rule_combo": "abcd",
+            "mode": "single",
+            "n_trades": 8,
+            "pnl_pct": 0.02,
+            "sharpe": 0.7,
+            "calmar": 0.8,
+            "sortino": 0.9,
+            "max_dd_pct": 0.025,
+            "hit_rate": 0.5,
+            "avg_hold_bars": 22.0,
+        },
+    )
+    df2 = pd.read_parquet(out)
+    assert len(df2) == 2

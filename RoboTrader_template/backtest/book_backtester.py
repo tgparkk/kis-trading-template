@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -34,6 +36,20 @@ class BookBacktestResult:
     avg_hold_bars: float
     trades: List[Dict[str, Any]] = field(default_factory=list)
     equity_curve: List[float] = field(default_factory=list)
+
+
+@dataclass
+class UniverseBacktestResult:
+    n_stocks: int
+    n_trades: int
+    pnl_pct: float          # 종목별 PnL의 균등가중 평균
+    sharpe: float
+    calmar: float
+    sortino: float
+    max_dd_pct: float
+    hit_rate: float
+    avg_hold_bars: float
+    per_stock: Dict[str, BookBacktestResult] = field(default_factory=dict)
 
 
 class BookBacktester:
@@ -179,6 +195,40 @@ class BookBacktester:
 
         return _compute_metrics(self.initial_capital, equity_curve, trades)
 
+    def run_universe(self, data: Dict[str, pd.DataFrame]) -> UniverseBacktestResult:
+        per_stock: Dict[str, BookBacktestResult] = {}
+        for code, df in data.items():
+            per_stock[code] = self.run_single(code, df)
+
+        n_stocks = len(per_stock)
+        if n_stocks == 0:
+            return UniverseBacktestResult(
+                n_stocks=0, n_trades=0, pnl_pct=0.0, sharpe=0.0, calmar=0.0,
+                sortino=0.0, max_dd_pct=0.0, hit_rate=0.0, avg_hold_bars=0.0,
+            )
+
+        pnls = np.array([r.pnl_pct for r in per_stock.values()])
+        sharpes = np.array([r.sharpe for r in per_stock.values()])
+        calmars = np.array([r.calmar for r in per_stock.values()])
+        sortinos = np.array([r.sortino for r in per_stock.values()])
+        dds = np.array([r.max_dd_pct for r in per_stock.values()])
+        hits = np.array([r.hit_rate for r in per_stock.values()])
+        holds = np.array([r.avg_hold_bars for r in per_stock.values()])
+        trades_total = int(sum(r.n_trades for r in per_stock.values()))
+
+        return UniverseBacktestResult(
+            n_stocks=n_stocks,
+            n_trades=trades_total,
+            pnl_pct=float(pnls.mean()),
+            sharpe=float(sharpes.mean()),
+            calmar=float(calmars.mean()),
+            sortino=float(sortinos.mean()),
+            max_dd_pct=float(dds.mean()),
+            hit_rate=float(hits.mean()),
+            avg_hold_bars=float(holds.mean()),
+            per_stock=per_stock,
+        )
+
 
 def _empty_result() -> BookBacktestResult:
     return BookBacktestResult(
@@ -238,3 +288,21 @@ def _compute_metrics(initial: float, equity: List[float], trades: List[Dict[str,
         trades=trades,
         equity_curve=list(map(float, eq.tolist())),
     )
+
+
+def append_leaderboard(path, row: Dict[str, Any]) -> None:
+    """리더보드 parquet에 한 행 append.
+
+    파일이 없으면 새로 생성. 있으면 읽어서 concat 후 저장.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = dict(row)
+    row.setdefault("run_at", datetime.utcnow().isoformat())
+    new_df = pd.DataFrame([row])
+    if path.exists():
+        existing = pd.read_parquet(path)
+        combined = pd.concat([existing, new_df], ignore_index=True)
+    else:
+        combined = new_df
+    combined.to_parquet(path, index=False)
