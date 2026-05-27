@@ -42,10 +42,10 @@ def _load_book_module(book_id: str):
 
 def _load_minute_data(stock_codes, start_date: str, end_date: str) -> dict:
     """robotrader.minute_candles 에서 stock_code, datetime, open, high, low, close, volume 로드."""
-    from db.connection import get_db_connection  # 지연 import
+    from db.connection import DatabaseConnection  # 지연 import
 
     out: dict = {}
-    with get_db_connection() as conn:
+    with DatabaseConnection.get_connection() as conn:
         for code in stock_codes:
             q = """
                 SELECT datetime, open, high, low, close, volume
@@ -63,9 +63,9 @@ def _load_minute_data(stock_codes, start_date: str, end_date: str) -> dict:
 
 def _load_universe(period_start: str) -> list:
     """1,347 종목 풀. minute_candles에 해당 기간 데이터가 있는 종목만 반환."""
-    from db.connection import get_db_connection
+    from db.connection import DatabaseConnection
 
-    with get_db_connection() as conn:
+    with DatabaseConnection.get_connection() as conn:
         q = """
             SELECT DISTINCT stock_code
             FROM minute_candles
