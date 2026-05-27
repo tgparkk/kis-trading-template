@@ -8,7 +8,7 @@
 | # | Book | Status | 통합 문서 | 비고 |
 |---|---|---|---|---|
 | 1 | Andrew Aziz — How to Day Trade for a Living | ✅ 완료 | [aziz_day_trade.md](aziz_day_trade.md) | 8셋업 / 책 의도 복원 시 2025-10 abcd +9.49% |
-| 2 | Mike Bellafiore — One Good Trade / The PlayBook | ⏳ 조사 중 | [bellafiore_playbook.md](bellafiore_playbook.md) | 진행 시작 |
+| 2 | Mike Bellafiore — One Good Trade / The PlayBook | ✅ 조사 완료 | [bellafiore_playbook.md](bellafiore_playbook.md) | 10셋업 추출 — RVOL≥2 In Play 핵심, Level2/테이프 의존 셋업 4개·분봉 코드화 가능 셋업 6개 |
 | 3 | Linda Raschke — Street Smarts | ⏳ 대기 | — |  |
 | 4 | William O'Neil — 최고의 주식 최적의 타이밍 | ⏳ 대기 | — |  |
 | 5 | Mark Minervini — 초수익 성장주 투자 | ⏳ 대기 | — |  |
