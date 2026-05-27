@@ -77,6 +77,27 @@ def _load_universe(period_start: str) -> list:
     return df["stock_code"].tolist()
 
 
+def _load_top_volume_universe(period_start: str, period_end: str, top_n: int) -> list:
+    """일별 거래대금(close*volume) 합계 상위 N종목.
+
+    minute_candles에서 (close * volume) 의 기간 합계 기준 내림차순 top N.
+    """
+    from db.connection import DatabaseConnection
+
+    with DatabaseConnection.get_connection() as conn:
+        q = """
+            SELECT stock_code, SUM(close * volume) AS turnover
+            FROM minute_candles
+            WHERE datetime >= %s
+              AND datetime < %s::date + INTERVAL '1 day'
+            GROUP BY stock_code
+            ORDER BY turnover DESC
+            LIMIT %s
+        """
+        df = pd.read_sql(q, conn, params=(period_start, period_end, top_n))
+    return df["stock_code"].tolist()
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--book", required=True, help="책 ID (예: aziz_day_trade)")
@@ -91,6 +112,11 @@ def main():
     p.add_argument("--initial-capital", type=float, default=10_000_000)
     p.add_argument("--reports-dir", default="reports/books_research")
     p.add_argument("--log-level", default="INFO")
+    p.add_argument("--universe", default="all",
+                   help="유니버스 선택: 'all' (기본) | 'top_volume:N' (일별 거래대금 상위 N종목)")
+    p.add_argument("--stop-loss-pct", type=float, default=0.02)
+    p.add_argument("--take-profit-pct", type=float, default=0.03)
+    p.add_argument("--max-hold-bars", type=int, default=60)
     args = p.parse_args()
 
     logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -105,7 +131,12 @@ def main():
 
     book_mod = _load_book_module(args.book)
 
-    universe = _load_universe(start)
+    if args.universe.startswith("top_volume:"):
+        top_n = int(args.universe.split(":", 1)[1])
+        universe = _load_top_volume_universe(start, end, top_n)
+        LOG.info(f"universe mode=top_volume:{top_n} → loaded {len(universe)} stocks")
+    else:
+        universe = _load_universe(start)
     if args.limit:
         universe = universe[: args.limit]
     LOG.info(f"universe size: {len(universe)}")
@@ -129,7 +160,14 @@ def main():
     for mode, rule_name in combos:
         or_members = args.or_members.split(",") if args.or_members else None
         strategy = book_mod.build_strategy(mode=mode, target_rule=rule_name, or_members=or_members)
-        bt = BookBacktester(strategy=strategy, initial_capital=args.initial_capital, warmup_bars=20)
+        bt = BookBacktester(
+            strategy=strategy,
+            initial_capital=args.initial_capital,
+            warmup_bars=20,
+            stop_loss_pct=args.stop_loss_pct,
+            take_profit_pct=args.take_profit_pct,
+            max_hold_bars=args.max_hold_bars,
+        )
         agg = bt.run_universe(data)
 
         rule_label = rule_name if mode == "single" else (
@@ -140,7 +178,9 @@ def main():
             f"pnl={agg.pnl_pct:.4%} sharpe={agg.sharpe:.2f} calmar={agg.calmar:.2f}"
         )
 
-        out_file = reports_dir / f"results_{mode}_{rule_label}_{args.period}.parquet"
+        universe_tag = args.universe.replace(":", "")
+        exit_tag = f"sl{int(args.stop_loss_pct*1000):03d}_tp{int(args.take_profit_pct*1000):03d}_mh{args.max_hold_bars}"
+        out_file = reports_dir / f"results_{mode}_{rule_label}_{args.period}_{universe_tag}_{exit_tag}.parquet"
         trade_rows = []
         for code, res in agg.per_stock.items():
             for t in res.trades:
@@ -167,6 +207,10 @@ def main():
                 "max_dd_pct": agg.max_dd_pct,
                 "hit_rate": agg.hit_rate,
                 "avg_hold_bars": agg.avg_hold_bars,
+                "universe": args.universe,
+                "stop_loss_pct": args.stop_loss_pct,
+                "take_profit_pct": args.take_profit_pct,
+                "max_hold_bars": args.max_hold_bars,
             },
         )
     LOG.info(f"leaderboard updated: {leaderboard_path}")
