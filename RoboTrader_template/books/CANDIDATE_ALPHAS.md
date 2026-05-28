@@ -93,11 +93,14 @@
 - 한국 공매도 제약: long-only
 
 **다음 검증 단계**:
-1. 변동성 필터 적용 후 재실행 — 2026-05 같은 환경 회피 효과 정량화
-2. 국면 필터 적용 (KOSPI 5일 모멘텀 양) — BULL/SIDEWAYS_UP만 진입
+1. ✅ 변동성 필터 + 국면 필터 효과 검증 완료 (2026-05-28)
+   - 가장 효과적인 필터: **BULL only** (KOSPI 5일 모멘텀 ≥ +1%)
+   - 베이스라인 → BULL 필터: Sharpe +0.21 → **+1.02** (+5배), pnl_sum +5.96 → **+12.99**, 거래수 5,581 → 1,254 (22%)
+   - 변동성 필터(<3%) 단독 효과 거의 없음 (HIGHVOL 날 5일뿐, 2%)
+   - SIDEWAYS 거래(4,327건, -7.03 pnl_sum)가 손실 원천 — BULL 필터로 제거
+2. paper trading 1~3개월 — BULL 필터 조합 적용
 3. 파라미터 sweep — k_period/d_period/ema_period/impulse_pct 그리드
 4. fade_vwap과 동시 보유 시 시너지 검증
-5. paper trading 1~3개월
 
 **관련 파일**:
 - 백테스트 결과: `reports/books_research/raschke_street_smarts/results_single_anti_*.parquet`

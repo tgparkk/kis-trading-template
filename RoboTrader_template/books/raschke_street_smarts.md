@@ -101,14 +101,62 @@ Raschke 본인이 "여전히 유효"라고 추천한 Holy Grail이 한국 분봉
 - Holy Grail은 1분봉 부적합 — 5분봉 리샘플 또는 일봉 재테스트 필요
 - 책 권유 파라미터 그대로 — 한국 시장 최적화 sweep 미실시
 
-## 8. Phase 2 계획 (후속)
+## 8. Anti 변동성·국면 필터 검증 (2026-05-28)
+
+### 동기
+Anti가 3기간 평균 +10.24% / 2025-10 +59% (Calmar 7.59) / 다른 기간 -11~-17%. fade_vwap 패턴으로 변동성·국면 필터 효과 정량화.
+
+### 4분면 분포 (regime × volatility)
+
+| quadrant | n_trades | pnl_mean | pnl_sum | hit_rate | sharpe |
+|---|---|---|---|---|---|
+| BULL_LOWVOL | 1,189 | +1.07% | +12.75 | 50.3% | **+1.03** |
+| BULL_HIGHVOL | 65 | +0.37% | +0.24 | 43.1% | +1.90 (소표본) |
+| SIDEWAYS_LOWVOL | 4,327 | **-0.16%** | -7.03 | 39.6% | -0.79 |
+
+> 주: 분석 기간(2025-10 ~ 2026-05) 전체가 BULL or SIDEWAYS — BEAR 거래 0건.  
+> HIGHVOL 날은 5일뿐 (변동성 3% 이상 날이 거의 없음).
+
+### 필터 시뮬레이션
+
+| filter | n_trades | pnl_sum | pnl_mean | hit_rate | sharpe |
+|---|---|---|---|---|---|
+| baseline (모든 거래) | 5,581 | +5.96 | +0.11% | 41.9% | +0.21 |
+| low_vol only (변동성<3%) | 5,516 | +5.72 | +0.10% | 41.9% | +0.20 |
+| **BULL only** | **1,254** | **+12.99** | **+1.04%** | **49.9%** | **+1.02** |
+| BULL + low_vol | 1,189 | +12.75 | +1.07% | 50.3% | **+1.03** |
+| BULL+SIDEWAYS only (BEAR 회피) | 5,581 | +5.96 | +0.11% | 41.9% | +0.21 |
+| BULL+SIDEWAYS + low_vol | 5,516 | +5.72 | +0.10% | 41.9% | +0.20 |
+
+### 핵심 발견
+
+1. **SIDEWAYS가 손실의 원인** — SIDEWAYS_LOWVOL(4,327건, -7.03 pnl_sum)이 BULL 수익을 잠식. 분석 기간에 BEAR가 없어 BULL 필터만으로 손실 원천 제거.
+2. **BULL 필터가 최대 효과** — baseline Sharpe +0.21 → BULL only +1.02 (+5배). pnl_sum +5.96 → +12.99 (거래수는 1/4로 줄어 77% 감소). 집중도·효율성 모두 개선.
+3. **변동성 필터 추가 효과 미미** — HIGHVOL 날이 5일뿐 (2%)이라 low_vol 필터 단독 효과 거의 없음 (-0.01 Sharpe). BULL 필터와 조합해도 marginal 개선에 그침.
+4. **fade_vwap 비교** — fade_vwap은 저변동성 자체가 핵심 필터였으나, anti는 국면(BULL/SIDEWAYS 구분)이 결정적. 같은 필터가 다른 방식으로 작동.
+
+### 결론
+
+**권장 필터: BULL only (KOSPI 5일 모멘텀 ≥ +1%)** — 가장 단순하고 가장 효과적.  
+거래수를 5,581 → 1,254 (22%)로 줄이면서 Sharpe +0.21 → +1.02, pnl_sum +5.96 → +12.99로 개선.  
+변동성 필터는 현재 데이터에서 추가 가치 없음 (필요 시 BEAR 환경에서 재검증).
+
+### 산출물
+
+- `reports/books_research/raschke_street_smarts/anti_regime_quadrant_summary.parquet`
+- `reports/books_research/raschke_street_smarts/anti_filter_simulation.parquet`
+- `reports/books_research/raschke_street_smarts/anti_regime_by_period.parquet`
+- `reports/books_research/raschke_street_smarts/anti_trades_with_regime.parquet`
+- 분석 스크립트: `scripts/analyze_anti_regime.py`
+
+## 9. Phase 2 계획 (후속)
 
 - 일봉 5개 셋업: Turtle Soup / Turtle Soup +1 / 80-20 / ADX Gapper / 2-Period ROC
 - 기존 `backtest/engine.py` 일봉 엔진 활용
 - daily_prices 테이블 사용
 - 별도 dispatch 예정
 
-## 9. 산출물
+## 10. 산출물
 
 | 종류 | 경로 |
 |---|---|
