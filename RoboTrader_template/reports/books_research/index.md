@@ -9,7 +9,7 @@
 | # | Book ID | 책 | Status | Best PnL |
 |---|---|---|---|---|
 | 1 | aziz_day_trade | Andrew Aziz — How to Day Trade for a Living | ✅ 완료 | 복원 시 abcd 2025-10 **+9.49%** (top_volume:50, sl3%/tp5%/mh120) |
-| 2 | bellafiore_playbook | Mike Bellafiore — One Good Trade / PlayBook | ⏳ 대기 | — |
+| 2 | bellafiore_playbook | Mike Bellafiore — One Good Trade / PlayBook | ✅ 완료 | **fade_vwap 평균 +1.74% Sharpe +0.37, 2025-10 +11.71% Sharpe 2.82** ⭐ |
 | 3 | raschke_street_smarts | Linda Raschke — Street Smarts | ⏳ 대기 | — |
 | 4 | oneil_canslim | William O'Neil — 최고의 주식 최적의 타이밍 | ⏳ 대기 | — |
 | 5 | minervini_vcp | Mark Minervini — 초수익 성장주 투자 | ⏳ 대기 | — |
@@ -53,12 +53,57 @@
 | 26 | aziz_day_trade | abcd | single | 2025-10 | 555 | 44,261 | -26.12 | -7.53 | -0.77 | 0.353 | 30.72 |
 | 27 | aziz_day_trade | ma_trend | single | 2025-10 | 555 | 42,955 | -29.58 | -8.76 | -0.88 | 0.312 | 32.16 |
 
+## Bellafiore PlayBook 결과 (top_volume:50 + sl 3% / tp 5% / mh 120)
+
+> 3기간 × 6 single + all_AND = 21행. 동일 universe·청산 룰로 아지즈와 직접 비교 가능.
+
+### 3기간 평균 (PnL 내림차순)
+
+| Rank | Rule | 평균 PnL | 평균 Sharpe | 평균 거래수 |
+|---|---|---|---|---|
+| 1 | fade_vwap ⭐ | **+1.74%** | **+0.37** | 964 |
+| 2 | opening_consolidation_breakout | +1.65% | -0.52 | 701 |
+| 3 | bull_flag_bellafiore | -0.59% | -0.44 | 130 |
+| 4 | second_day_play | -1.62% | -0.32 | 364 |
+| 5 | range_trade | -1.73% | -1.16 | 1,847 |
+| 6 | catalyst_gap | 0% | 0 | 0 (조건 빡빡) |
+| 7 | all_AND | 0% | 0 | 0 (동시 충족 불가) |
+
+### 2025-10 단독 상위 (Bellafiore — 5개 양 PnL)
+
+| Rank | Rule | PnL | Sharpe | Calmar | Hit Rate | 거래수 |
+|---|---|---|---|---|---|---|
+| 1 | range_trade | +11.83% | +0.89 | +2.03 | 52.3% | 1,858 |
+| 2 | **fade_vwap** ⭐ | **+11.71%** | **+2.82** | **+3.22** | **60.3%** | 539 |
+| 3 | opening_consolidation_breakout | +7.31% | -0.88 | +0.05 | 19.3% | 1,329 |
+| 4 | bull_flag_bellafiore | +0.55% | +0.48 | +0.98 | 39.8% | 114 |
+| 5 | second_day_play | +0.35% | +0.01 | +0.02 | 2.2% | 144 |
+
+### 아지즈 vs Bellafiore 직접 비교
+
+| 항목 | 아지즈 best | Bellafiore best |
+|---|---|---|
+| 3기간 평균 PnL | bull_flag -0.04% | **fade_vwap +1.74%** |
+| 3기간 평균 Sharpe | 모두 음 | **fade_vwap +0.37** |
+| 2025-10 PnL | abcd +9.49% | **fade_vwap +11.71%** |
+| 2025-10 Sharpe | abcd -0.27 | **fade_vwap +2.82** |
+| 2025-10 Calmar | abcd +0.38 | **fade_vwap +3.22** |
+| 양 PnL 규칙 (평균) | 0 | 2 (fade_vwap, opening_consolidation) |
+
+**결론**: Bellafiore의 RVOL 정량 기준이 한국 분봉 코드화에 더 적합. fade_vwap이 두 책 통틀어 가장 인상적인 결과.
+
 ## 책별 베스트
 
 ### aziz_day_trade (Andrew Aziz — How to Day Trade for a Living)
 - **베스트 규칙**: `bull_flag` (3기간 평균 PnL -0.04%, 거래수 평균 32회 — 진입조건이 빡빡해 거래가 거의 안 일어남)
 - **결론**: 미국식 인트라데이 모멘텀 셋업 8개 중 7개가 한국 분봉에서 손실(-3.9 ~ -29.6%), 1개만 break-even
 - **자세히**: [aziz_day_trade/report.md](aziz_day_trade/report.md)
+
+### bellafiore_playbook (Mike Bellafiore — One Good Trade / The PlayBook)
+- **베스트 규칙**: `fade_vwap` (3기간 평균 PnL +1.74%, 평균 Sharpe +0.37 — 책 통틀어 유일한 양 Sharpe)
+- **2025-10 단독**: PnL +11.71%, Sharpe 2.82, Calmar 3.22, Hit 60.3% (539 trades)
+- **결론**: VWAP -2% 이격 + RSI(2)<10 평균회귀가 한국 분봉 시장에서 의미 있는 알파 시그널
+- **자세히**: [bellafiore_playbook/](bellafiore_playbook/)
 
 ## 메모 — 시스템 구조
 
