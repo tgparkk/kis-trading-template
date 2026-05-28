@@ -9,7 +9,7 @@
 |---|---|---|---|---|
 | 1 | Andrew Aziz — How to Day Trade for a Living | ✅ 완료 | [aziz_day_trade.md](aziz_day_trade.md) | 8셋업 / 책 의도 복원 시 2025-10 abcd +9.49% |
 | 2 | Mike Bellafiore — One Good Trade / The PlayBook | ✅ 완료 | [bellafiore_playbook.md](bellafiore_playbook.md) | 6셋업 / fade_vwap 평균 +1.74% Sharpe +0.37 / 2025-10 fade_vwap +11.71% Sharpe 2.82 ⭐ |
-| 3 | Linda Raschke — Street Smarts | ⏳ 대기 | — |  |
+| 3 | Linda Raschke — Street Smarts | ⏳ 조사 완료 | [raschke_street_smarts.md](raschke_street_smarts.md) | 10셋업 — 분봉 5 + 일봉 5. Holy Grail (Raschke 직접 추천) 우선 |
 | 4 | William O'Neil — 최고의 주식 최적의 타이밍 | ⏳ 대기 | — |  |
 | 5 | Mark Minervini — 초수익 성장주 투자 | ⏳ 대기 | — |  |
 | 6 | Stan Weinstein — Secrets for Profiting | ⏳ 대기 | — |  |
