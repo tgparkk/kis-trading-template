@@ -206,15 +206,92 @@ fade_vwap이 2025-10(+11.71%, Sharpe 2.82)에서 강하고 2026-05(-9.06%)에서
 - `reports/books_research/bellafiore_playbook/kospi_regime_labels.parquet`
 - 분석 스크립트: `scripts/analyze_fade_vwap_regime.py`
 
-## 10. 다음 단계 후보
+## 10. SIDEWAYS 세분화 — 2026-04 vs 2026-05 차이 규명 (2026-05-28)
+
+### 동기
+
+T24 분석에서 두 기간 모두 100% SIDEWAYS로 분류됐는데 fade_vwap 결과 정반대 (+2.59% vs -9.06%). 세분화로 원인 규명.
+
+### KOSPI 기간 다중 지표
+
+| period | n_days | cum_return_pct | avg_daily_return_pct | vol_daily_pct | avg_range_pct | mom_5d_mean_pct | mom_5d_median_pct | pos_day_ratio |
+|--------|--------|----------------|----------------------|---------------|---------------|-----------------|-------------------|---------------|
+| 2025-10 | 18 | 18.86 | 1.0301 | 1.3688 | 1.7760 | 5.3385 | 5.6114 | 0.7222 |
+| 2026-04 | 20 | 20.41 | 1.0095 | 2.3998 | 2.3164 | 6.9334 | 7.1042 | 0.7500 |
+| 2026-05 | 16 | 19.10 | 1.2406 | 3.8602 | 4.0284 | 2.6268 | 5.1202 | 0.6875 |
+
+> 가장 큰 차이: **vol_daily_pct** 2026-04 2.40% → 2026-05 3.86% (+61%), **avg_range_pct** 2.32% → 4.03% (+74%).
+> 두 기간 모두 누적수익 +19~20%로 드리프트 방향은 동일. 변동성이 핵심 차이.
+
+### 5단계 regime 정의
+
+| regime | 5일 모멘텀 기준 |
+|--------|----------------|
+| BULL | ≥ +1.0% |
+| SIDEWAYS_UP | +0.3% ~ +1.0% |
+| SIDEWAYS_FLAT | -0.3% ~ +0.3% |
+| SIDEWAYS_DOWN | -1.0% ~ -0.3% |
+| BEAR | ≤ -1.0% |
+
+### 기간별 5단계 분포
+
+| period | regime | n_trades | pnl_mean | pnl_sum | hit_rate |
+|--------|--------|----------|----------|---------|----------|
+| 2025-10 | BULL | 434 | +0.011551 | +5.013 | 0.4816 |
+| 2025-10 | SIDEWAYS_DOWN | 6 | -0.000542 | -0.003 | 0.3333 |
+| 2025-10 | UNKNOWN | 99 | +0.022165 | +2.194 | 0.8586 |
+| 2026-04 | BEAR | 141 | -0.009165 | -1.292 | 0.2270 |
+| 2026-04 | BULL | 514 | +0.004431 | +2.277 | 0.4514 |
+| 2026-04 | SIDEWAYS_DOWN | 95 | **+0.019394** | **+1.842** | **0.6842** |
+| 2026-04 | UNKNOWN | 8 | +0.007140 | +0.057 | 0.7500 |
+| 2026-05 | BEAR | 598 | +0.000625 | +0.374 | 0.4515 |
+| 2026-05 | BULL | 863 | -0.000160 | -0.138 | 0.4079 |
+| 2026-05 | SIDEWAYS_DOWN | 118 | **-0.014476** | **-1.708** | **0.2034** |
+| 2026-05 | UNKNOWN | 18 | -0.011887 | -0.214 | 0.1667 |
+
+> UNKNOWN = 2026-05-01 (휴장일 — daily_candles 미수록).
+
+### 세분화 후 fade_vwap PnL (전체 기간)
+
+| regime | n_trades | pnl_mean | pnl_sum | hit_rate | sharpe |
+|--------|----------|----------|---------|----------|--------|
+| BEAR | 739 | -0.001243 | -0.919 | 0.4087 | -0.61 |
+| BULL | 1811 | +0.003949 | +7.152 | 0.4379 | +0.63 |
+| SIDEWAYS_DOWN | 219 | +0.000598 | +0.131 | 0.4155 | +0.28 |
+| UNKNOWN | 125 | +0.016300 | +2.038 | 0.7520 | +10.54 |
+
+### 핵심 발견
+
+1. **T24의 "SIDEWAYS" 분류 오류**: 5일 모멘텀 임계값 ±1% 기준 적용 시 2026-04·05 두 기간 모두 BULL이 대다수 (각 17/20일, 11/16일). T24 원래 SIDEWAYS 레이블은 다른 임계값 체계에서 나온 것.
+
+2. **SIDEWAYS_DOWN 내 극명한 반전**: 2026-04 SIDEWAYS_DOWN 95건 hit_rate **68%**, pnl_sum **+1.84** — fade_vwap이 단기 하락 되돌림을 정확히 포착. 반면 2026-05 SIDEWAYS_DOWN 118건 hit_rate **20%**, pnl_sum **-1.71** — 같은 세분 국면인데 정반대. 변동성(일평균 range 4.03% vs 2.32%)이 커서 되돌림 전에 손절선(-3%)을 먼저 터치하는 패턴.
+
+3. **2026-05 BULL 국면 수익 소멸**: 2026-04 BULL pnl_mean +0.0044 → 2026-05 BULL -0.0002. 일평균 변동성 3.86% 환경에서 VWAP -2% 이격이 충분한 버퍼가 되지 못함. 더 깊은 이격 기준(예: -3% 이상) 또는 ATR 배수 기준으로 진입 조건 강화 필요.
+
+### 실전 적용 권고
+
+- **변동성 필터 추가**: 일평균 range_pct > 3.5% (또는 ATR/close > 3.5%) 구간에서 fade_vwap 진입 보류. 2026-05처럼 변동성 급등기에는 손절 먼저 터치.
+- **SIDEWAYS_DOWN 진입 조건 검토**: 2026-04에는 효과적이었으나 2026-05에는 역효과. 변동성 레짐과 교차 필터링 필수.
+- **동적 이격 기준**: VWAP 이격을 고정 -2%가 아닌 ATR 기반 (예: -1.5×ATR_5d) 으로 변경하면 변동성 환경 변화에 자동 적응 가능.
+
+### 산출물
+
+- `reports/books_research/bellafiore_playbook/sideways_subdivision_kospi_summary.parquet`
+- `reports/books_research/bellafiore_playbook/sideways_subdivision_regime_summary.parquet`
+- `reports/books_research/bellafiore_playbook/sideways_subdivision_by_period.parquet`
+- `reports/books_research/bellafiore_playbook/sideways_subdivision_kospi_labels.parquet`
+- 분석 스크립트: `scripts/analyze_sideways_subdivision.py`
+
+## 11. 다음 단계 후보
 
 1. ✅ **fade_vwap 파라미터 sweep 완료** (부록 8): baseline 0.020/10이 best
 2. ✅ **KOSPI 국면별 분석 완료** (부록 9): BULL 국면 진입 필터 권장
-3. **fade_vwap short side 추가**: 한국 공매도 가능 종목(ETF, KOSPI200) 한정
-4. **catalyst_gap 임계값 완화**: gap +2% / rvol≥1.5 로 거래 발생시키기
-5. **Plan 3 다음 책**: Linda Raschke — Street Smarts (인트라데이 클래식 패턴)
+3. ✅ **SIDEWAYS 세분화 완료** (부록 10): 변동성 필터 + ATR 기반 이격 기준 권장
+4. **fade_vwap short side 추가**: 한국 공매도 가능 종목(ETF, KOSPI200) 한정
+5. **catalyst_gap 임계값 완화**: gap +2% / rvol≥1.5 로 거래 발생시키기
+6. **Plan 3 다음 책**: Linda Raschke — Street Smarts (인트라데이 클래식 패턴)
 
-## 11. 산출물
+## 12. 산출물
 
 | 종류 | 경로 |
 |---|---|
