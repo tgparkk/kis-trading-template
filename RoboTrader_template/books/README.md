@@ -10,7 +10,7 @@
 | 1 | Andrew Aziz — How to Day Trade for a Living | ✅ 완료 | [aziz_day_trade.md](aziz_day_trade.md) | 8셋업 / 책 의도 복원 시 2025-10 abcd +9.49% |
 | 2 | Mike Bellafiore — One Good Trade / The PlayBook | ✅ 완료 | [bellafiore_playbook.md](bellafiore_playbook.md) | 6셋업 / fade_vwap 평균 +1.74% Sharpe +0.37 / 2025-10 fade_vwap +11.71% Sharpe 2.82 ⭐ |
 | 3 | Linda Raschke — Street Smarts | ✅ Phase 1 완료 | [raschke_street_smarts.md](raschke_street_smarts.md) | 분봉 5/10셋업 / **anti 평균 +10.24%, 2025-10 +59% Calmar 7.59** ⭐ / holy_grail 부진 / 일봉 5 Phase 2 후속 |
-| 4 | William O'Neil — How to Make Money in Stocks (CAN SLIM) | ⏳ 조사 완료 | [oneil_canslim.md](oneil_canslim.md) | 10셋업 — 펀더+RS+패턴 / 데이터 요구 복잡 (일봉+재무+시장) / 분봉 책 3권과 성격 매우 다름 |
+| 4 | William O'Neil — How to Make Money in Stocks (CAN SLIM) | ✅ Phase A+B 완료 | [oneil_canslim.md](oneil_canslim.md) | Phase A 18거래 +4.84% / Phase B 7거래 +7.04% 승률 71% / 데이터 기간 38일 한계 — 통계 미흡 |
 | 5 | Mark Minervini — 초수익 성장주 투자 | ⏳ 대기 | — |  |
 | 6 | Stan Weinstein — Secrets for Profiting | ⏳ 대기 | — |  |
 | 7 | Alexander Elder — Trading for a Living | ⏳ 대기 | — |  |

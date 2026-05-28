@@ -11,7 +11,7 @@
 | 1 | aziz_day_trade | Andrew Aziz — How to Day Trade for a Living | ✅ 완료 | 복원 시 abcd 2025-10 **+9.49%** (top_volume:50, sl3%/tp5%/mh120) |
 | 2 | bellafiore_playbook | Mike Bellafiore — One Good Trade / PlayBook | ✅ 완료 | **fade_vwap 평균 +1.74% Sharpe +0.37, 2025-10 +11.71% Sharpe 2.82** ⭐ |
 | 3 | raschke_street_smarts | Linda Raschke — Street Smarts | ✅ Phase 1 | **anti 평균 +10.24%, 2025-10 +59% Calmar 7.59** ⭐ |
-| 4 | oneil_canslim | William O'Neil — 최고의 주식 최적의 타이밍 | ⏳ 대기 | — |
+| 4 | oneil_canslim | William O'Neil — 최고의 주식 최적의 타이밍 | ✅ Phase A+B | Phase B 7거래 +7.04% 승률 71% (표본 작음) |
 | 5 | minervini_vcp | Mark Minervini — 초수익 성장주 투자 | ⏳ 대기 | — |
 | 6 | weinstein_stages | Stan Weinstein — Secrets for Profiting | ⏳ 대기 | — |
 | 7 | elder_triple_screen | Alexander Elder — Trading for a Living | ⏳ 대기 | — |
@@ -133,6 +133,39 @@
 - Calmar 7.59 (2025-10) — 위험 대비 보상 우수
 - 그러나 평균 Sharpe -2.27 / 다른 기간 음 PnL → fade_vwap처럼 변동성·국면 필터 추가 검증 가치
 - **Holy Grail은 부진 (-6.87%)** — Raschke 본인 추천이었지만 1분봉 부적합. 5분봉/일봉 재테스트 필요
+
+---
+
+## O'Neil CANSLIM 결과 — Phase A+B (일봉 + 재무 + RS, 단일 기간)
+
+> 데이터 기간 한계: 2025-12-08 ~ 2026-02-03 (38거래일, quant_factors 가용 기간 제약).  
+> 전 38일 BULL — 약세장 미검증.
+
+### Phase A vs Phase B
+
+| Phase | 거래 | 승률 | 평균 PnL | 수익:손실 | 누적 |
+|---|---|---|---|---|---|
+| A (스크리너만, 완화 버전) | 18 | 50.0% | +4.84% | 2.25 | +87.12% |
+| **B (스크리너 + 패턴)** | **7** | **71.4%** | **+7.04%** | 1.75 | +49.26% |
+
+### Phase B 청산
+- take_profit 2 / stop_loss 2 / end_of_data 3
+- 패턴: cup_handle 5, flat_base 2
+
+### 책 4권 통합 비교
+
+| 책 | 데이터 | 베스트 | 평균 PnL | 평균 Sharpe | 표본 |
+|---|---|---|---|---|---|
+| 아지즈 | 분봉 | bull_flag | -0.04% | -0.11 | 32T |
+| Bellafiore | 분봉 | fade_vwap | +1.74% | **+0.37** | 964T |
+| Raschke | 분봉 | anti | +10.24% | -2.27 | 1,860T |
+| **O'Neil** | **일봉+재무+RS** | **CANSLIM+패턴** | **+7.04%** | (미계산) | **7T** |
+
+### 결론
+- 방향성 양호 (승률 71%, 평균 +7%)
+- 통계 신뢰도 가장 낮음 (표본 7건)
+- 데이터 기간 확장 + 약세장 포함 재검증 필요
+- CANSLIM은 CANDIDATE_ALPHAS 미등록 — 표본 부족으로 후보 자격 미달
 
 ---
 
