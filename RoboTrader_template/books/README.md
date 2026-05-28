@@ -37,6 +37,10 @@
 - No-lookahead: t+1 데이터 접근 금지
 - adj_factor: corp_events 반영
 
+## 검증된 후보 알파
+
+- [CANDIDATE_ALPHAS.md](CANDIDATE_ALPHAS.md) — 책 백테스트에서 발굴된 paper trading / 실거래 후보 신호 목록
+
 ## 다음 단계
 
 - 진행: Linda Raschke — Street Smarts (Plan 3) 조사 → 규칙 추출 → 코드화 → 백테스트 → 통합 문서 작성
