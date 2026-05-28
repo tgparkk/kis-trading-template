@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | 1 | aziz_day_trade | Andrew Aziz — How to Day Trade for a Living | ✅ 완료 | 복원 시 abcd 2025-10 **+9.49%** (top_volume:50, sl3%/tp5%/mh120) |
 | 2 | bellafiore_playbook | Mike Bellafiore — One Good Trade / PlayBook | ✅ 완료 | **fade_vwap 평균 +1.74% Sharpe +0.37, 2025-10 +11.71% Sharpe 2.82** ⭐ |
-| 3 | raschke_street_smarts | Linda Raschke — Street Smarts | ⏳ 대기 | — |
+| 3 | raschke_street_smarts | Linda Raschke — Street Smarts | ✅ Phase 1 | **anti 평균 +10.24%, 2025-10 +59% Calmar 7.59** ⭐ |
 | 4 | oneil_canslim | William O'Neil — 최고의 주식 최적의 타이밍 | ⏳ 대기 | — |
 | 5 | minervini_vcp | Mark Minervini — 초수익 성장주 투자 | ⏳ 대기 | — |
 | 6 | weinstein_stages | Stan Weinstein — Secrets for Profiting | ⏳ 대기 | — |
@@ -92,6 +92,50 @@
 
 **결론**: Bellafiore의 RVOL 정량 기준이 한국 분봉 코드화에 더 적합. fade_vwap이 두 책 통틀어 가장 인상적인 결과.
 
+## Raschke Street Smarts 결과 — Phase 1 분봉 5개 (top_volume:50 + sl 3% / tp 5% / mh 120)
+
+> Phase 1 = 분봉 코드화 가능한 5셋업 (Holy Grail / Anti / Gimmee Bar / NR4 / Momentum Pinball).  
+> 일봉 전용 5셋업(Turtle Soup, 80-20, ADX Gapper, 2-Period ROC, Turtle Soup +1)은 Phase 2 후속.
+
+### 3기간 평균 (PnL 내림차순)
+
+| Rank | Rule | 평균 PnL | 평균 Sharpe | 평균 Calmar | 거래수 평균 |
+|---|---|---|---|---|---|
+| 1 | **anti** ⭐ | **+10.24%** | -2.27 | **+2.21** | 1,860 |
+| 2 | momentum_pinball | +2.60% | -0.24 | +0.04 | 439 |
+| 3 | gimmee_bar | +1.39% | -0.86 | +0.23 | 1,515 |
+| 4 | nr4_breakout | -4.12% | -1.70 | -0.10 | 2,333 |
+| 5 | holy_grail | -6.87% | -1.62 | -0.07 | 2,153 |
+
+### 2025-10 단독 상위 (4/5 양 PnL)
+
+| Rank | Rule | PnL | Sharpe | Calmar | Hit | 거래수 |
+|---|---|---|---|---|---|---|
+| 1 | **anti** ⭐⭐ | **+59.05%** | **+0.48** | **+7.59** | 49.6% | 1,561 |
+| 2 | nr4_breakout | +10.17% | -0.03 | +0.36 | 48.7% | 2,114 |
+| 3 | momentum_pinball | +9.67% | -0.02 | +0.13 | 4.6% | 322 |
+| 4 | gimmee_bar | +5.18% | -1.41 | +0.33 | 45.6% | 1,862 |
+| 5 | holy_grail | -2.98% | -0.44 | +0.21 | 45.5% | 2,263 |
+
+### 책 3권 베스트 비교
+
+| 책 | 베스트 | 3기간 평균 PnL | 2025-10 PnL | 평균 Sharpe |
+|---|---|---|---|---|
+| 아지즈 | bull_flag | -0.04% | -0.07% | -0.11 |
+| Bellafiore | fade_vwap | +1.74% (964T) | +11.71% (S=2.82) | **+0.37** ⭐ |
+| Raschke | **anti** | **+10.24%** (1,860T) | **+59.05%** (C=7.59) | -2.27 |
+
+**fade_vwap (Bellafiore)**: 안정 알파 + 평균 Sharpe 양  
+**anti (Raschke)**: 절대 PnL 압도적 + 변동성 극도
+
+### 핵심 관찰
+- Anti가 3 책 통틀어 최대 절대 PnL (+10.24% 평균, +59.05% 2025-10)
+- Calmar 7.59 (2025-10) — 위험 대비 보상 우수
+- 그러나 평균 Sharpe -2.27 / 다른 기간 음 PnL → fade_vwap처럼 변동성·국면 필터 추가 검증 가치
+- **Holy Grail은 부진 (-6.87%)** — Raschke 본인 추천이었지만 1분봉 부적합. 5분봉/일봉 재테스트 필요
+
+---
+
 ## 책별 베스트
 
 ### aziz_day_trade (Andrew Aziz — How to Day Trade for a Living)
@@ -104,6 +148,14 @@
 - **2025-10 단독**: PnL +11.71%, Sharpe 2.82, Calmar 3.22, Hit 60.3% (539 trades)
 - **결론**: VWAP -2% 이격 + RSI(2)<10 평균회귀가 한국 분봉 시장에서 의미 있는 알파 시그널
 - **자세히**: [bellafiore_playbook/](bellafiore_playbook/)
+
+### raschke_street_smarts (Linda Raschke — Street Smarts)
+- **베스트 규칙**: `anti` (3기간 평균 PnL **+10.24%**, 2025-10 **+59.05%** Calmar **7.59** — 책 3권 통틀어 최대 절대 PnL)
+- **2025-10 단독**: PnL +59.05%, Sharpe +0.48, Calmar 7.59, Hit 49.6% (1,561 trades)
+- **Anti = 임펄스 후 스토캐스틱 훅** — 한국 시장 단기 모멘텀 전환 강력 포착
+- **주의**: 평균 Sharpe -2.27, 다른 기간 -11~-17% — 시장 의존성 큼. **변동성·국면 필터 추가 검증 필요**
+- **Holy Grail 부진** — Raschke 본인 추천이었지만 1분봉 부적합
+- **자세히**: [raschke_street_smarts/](raschke_street_smarts/) (Phase 1 분봉 5개), Phase 2 일봉 5개 후속
 
 ## 메모 — 시스템 구조
 
