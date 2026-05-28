@@ -150,9 +150,11 @@ def main():
     book_meta = getattr(book_mod, "BOOK_META", {})
 
     if args.all_modes:
-        # 8개 single + 1 all_AND
-        from strategies.books.aziz_day_trade.rules import ALL_RULES  # 책별 import
-        rule_names = [cls().name for cls in ALL_RULES]
+        # 책 모듈에서 ALL_RULES 가져오기 (책별 .rules 서브모듈)
+        rules_mod = importlib.import_module(f"strategies.books.{args.book}.rules")
+        if not hasattr(rules_mod, "ALL_RULES"):
+            raise AttributeError(f"strategies.books.{args.book}.rules 에 ALL_RULES 상수가 없습니다")
+        rule_names = [cls().name for cls in rules_mod.ALL_RULES]
         combos = [("single", name) for name in rule_names] + [("all_AND", None)]
     else:
         combos = [(args.mode, args.rule)]
