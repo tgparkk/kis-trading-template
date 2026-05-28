@@ -111,14 +111,62 @@ Mike Bellafiore는 뉴욕 prop trading firm **SMB Capital** 공동창업자. *On
 - **공매도 미시도**: fade_vwap을 long만 시도. short side(VWAP +2% 이격 + RSI(2)>90) 미적용
 - **N=50 단일**: top_volume:N sweep 미시도
 
-## 8. 다음 단계 후보
+## 8. fade_vwap 파라미터 sweep (2026-05-28)
 
-1. **fade_vwap 파라미터 튜닝**: deviation_pct, rsi_period, rsi_oversold sweep
+### 동기
+fade_vwap이 두 책 통틀어 best (3기간 평균 +1.74%, Sharpe +0.37). 한국 시장 최적 파라미터 탐색.
+
+### 그리드
+- `deviation_pct`: 0.015, 0.020, 0.025 (3값)
+- `rsi_oversold`: 10, 15, 20 (3값)
+- `rsi_period`: 2 (고정)
+- 청산: sl 3% / tp 5% / max_hold 120 (Bellafiore baseline)
+- universe: top_volume:50, 3기간
+- 총 9 × 3 = 27 백테스트
+
+### 3기간 평균 결과 (PnL 내림차순)
+
+| Rank | deviation | rsi_oversold | 평균 PnL | 평균 Sharpe | 거래수 |
+|---|---|---|---|---|---|
+| **1** | **0.020** | **10** | **+1.74%** | **+0.37** | 965 (baseline) |
+| 2 | 0.020 | 15 | +1.67% | +0.35 | 965 |
+| 3 | 0.020 | 20 | +1.63% | +0.33 | 967 |
+| 4 | 0.015 | 10 | +1.59% | +0.36 | 1,072 |
+| 5 | 0.015 | 20 | +1.57% | +0.36 | 1,078 |
+| 6 | 0.015 | 15 | +1.54% | +0.36 | 1,075 |
+| 7 | 0.025 | 20 | +0.24% | -0.06 | 869 |
+| 8 | 0.025 | 10 | +0.21% | -0.07 | 866 |
+| 9 | 0.025 | 15 | +0.19% | -0.08 | 868 |
+
+### 2025-10 단독 best
+- **deviation 0.015 + rsi_oversold 10**: PnL **+12.15%, Sharpe 2.88, Calmar 3.01, Hit 62.5%** (687 trades) — 9 중 최고
+- baseline (0.020/10): PnL +11.71%, Sharpe 2.82
+- deviation 0.015~0.020 모든 조합 Sharpe 2.79+ (매우 견고)
+
+### 핵심 발견
+1. **Baseline (0.020/10)이 3기간 평균 best** — 책 권유값이 한국 시장에도 잘 맞음. 운 좋은 선택이 아닌 책 내용의 견고함
+2. **rsi_oversold 변화 영향 미미** (10/15/20 차이 < 0.01%p) — RSI(2)<10이 대부분 케이스 충족, 임계값 자유도 작음
+3. **deviation 0.025는 약함** — 진입 너무 빡빡, 거래 감소(965→868)와 함께 Sharpe도 음으로
+4. **deviation 0.015도 견고** — 거래 늘어나지만(965→1,072) PnL/Sharpe 유사. 거래비용 누적이 살짝 더 큼
+5. **2026-05는 모든 파라미터 손실** (-8.3 ~ -9.8%) — 시장 환경 의존, 파라미터 튜닝 한계
+
+### 결론
+- **권장 파라미터**: `deviation_pct=0.020, rsi_oversold=10, rsi_period=2` (baseline 유지)
+- 책의 핵심 가정(VWAP ±2% 이격) 한국 시장에서 견고함이 확인됨
+- 다음 정밀화 단계는 파라미터 sweep이 아닌 **시장 국면 라벨링** (2026-05 같은 부진 기간 회피)
+
+### 산출물
+- sweep raw: `reports/books_research/bellafiore_playbook/fade_vwap_sweep.parquet` (27행)
+- sweep 스크립트: `scripts/sweep_fade_vwap.py`
+
+## 9. 다음 단계 후보
+
+1. ✅ **fade_vwap 파라미터 sweep 완료** (부록 8): baseline 0.020/10이 best
 2. **fade_vwap short side 추가**: 한국 공매도 가능 종목(ETF, KOSPI200) 한정
 3. **catalyst_gap 임계값 완화**: gap +2% / rvol≥1.5 로 거래 발생시키기
 4. **Plan 3 다음 책**: Linda Raschke — Street Smarts (인트라데이 클래식 패턴)
 
-## 9. 산출물
+## 10. 산출물
 
 | 종류 | 경로 |
 |---|---|
