@@ -98,8 +98,9 @@
    - 베이스라인 → BULL 필터: Sharpe +0.21 → **+1.02** (+5배), pnl_sum +5.96 → **+12.99**, 거래수 5,581 → 1,254 (22%)
    - 변동성 필터(<3%) 단독 효과 거의 없음 (HIGHVOL 날 5일뿐, 2%)
    - SIDEWAYS 거래(4,327건, -7.03 pnl_sum)가 손실 원천 — BULL 필터로 제거
-2. paper trading 1~3개월 — BULL 필터 조합 적용
-3. 파라미터 sweep — k_period/d_period/ema_period/impulse_pct 그리드
+2. ✅ 파라미터 sweep 완료 (2026-05-28): baseline 7/10/0.005가 거의 최적. 7/7/0.005는 2025-10 Calmar 8.88 (alternate)
+   - 핵심 발견: 파라미터 튜닝 효과는 marginal, BULL 필터가 진짜 알파 (Sharpe 5배 개선)
+3. paper trading 1~3개월 — BULL 필터 조합 적용
 4. fade_vwap과 동시 보유 시 시너지 검증
 
 **관련 파일**:
