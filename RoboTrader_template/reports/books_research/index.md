@@ -12,7 +12,7 @@
 | 2 | bellafiore_playbook | Mike Bellafiore — One Good Trade / PlayBook | ✅ 완료 | **fade_vwap 평균 +1.74% Sharpe +0.37, 2025-10 +11.71% Sharpe 2.82** ⭐ |
 | 3 | raschke_street_smarts | Linda Raschke — Street Smarts | ✅ Phase 1 | **anti 평균 +10.24%, 2025-10 +59% Calmar 7.59** ⭐ |
 | 4 | oneil_canslim | William O'Neil — 최고의 주식 최적의 타이밍 | ✅ Phase A+B | Phase B 7거래 +7.04% 승률 71% (표본 작음) |
-| 5 | minervini_vcp | Mark Minervini — 초수익 성장주 투자 | ⏳ 대기 | — |
+| 5 | minervini_vcp | Mark Minervini — 초수익 성장주 투자 | ✅ 완료 | **volume_dryup B Sharpe 1.41 Calmar 2.38** 153T (BULL 편향) |
 | 6 | weinstein_stages | Stan Weinstein — Secrets for Profiting | ⏳ 대기 | — |
 | 7 | elder_triple_screen | Alexander Elder — Trading for a Living | ⏳ 대기 | — |
 | 8 | lynch_one_up | Peter Lynch — 월가의 영웅 | ⏳ 대기 | — |
@@ -169,6 +169,35 @@
 
 ---
 
+## Minervini VCP 결과 — 일봉 (Book 5)
+
+> daily_prices 실측 224일 (2025-07-01 ~ 2026-05-29). universe top_volume:50. RS universe 12주 백분위.
+
+### Variant A vs B 베스트
+- **A**: volume_dryup +18.17% Sharpe 1.12 Calmar 2.30 (444 trades, hit 54.2%, avg hold 4.7일)
+- **B**: volume_dryup +20.27% Sharpe 1.41 Calmar 2.38 (153 trades, hit 62.0%, avg hold 9.0일) ⭐
+- trend_template / all_AND: 표본 0 (220봉 guard + 데이터 224일 한계)
+- vcp_breakout / tight_closes: 표본 2건 (통계 무의미)
+
+### 책 5권 비교
+
+| 책 | 데이터 | 베스트 | 평균 PnL | 평균 Sharpe | 표본 |
+|---|---|---|---|---|---|
+| 아지즈 | 분봉 | bull_flag | -0.04% | -0.11 | 32T |
+| Bellafiore | 분봉 | fade_vwap | +1.74% | +0.37 | 964T |
+| Raschke | 분봉 | anti | +10.24% | -2.27 | 1,860T |
+| O'Neil | 일봉+재무+RS | CANSLIM+패턴 | +7.04% | — | 7T |
+| **Minervini** | **일봉+RS자체** | **volume_dryup B** | **+20.27%** | **+1.41** | **153T** |
+
+### 결론
+- Variant B(sl 8% / tp 12% / mh 20)가 A(sl 8% / tp 20% / mh 35)보다 Sharpe·hit 우세 → 한국 시장 빠른 익절 유리.
+- volume_dryup B는 5권 통틀어 가장 인상적인 일봉 단독 룰 (Sharpe 1.41, hit 62%).
+- 단일 BULL 구간(146/204=71.6%) 편향 위험 + BEAR 22일 표본 부족 → walk-forward 후 CANDIDATE_ALPHAS 등록 권장.
+
+상세: [minervini_vcp/report.md](minervini_vcp/report.md)
+
+---
+
 ## 책별 베스트
 
 ### aziz_day_trade (Andrew Aziz — How to Day Trade for a Living)
@@ -272,7 +301,7 @@
 
 ## 다음 책
 
-- **Plan 2** = `bellafiore_playbook` (Mike Bellafiore — One Good Trade / PlayBook). 동일 워크플로우, 인프라(Plan 1 T1~T4) 재사용.
+- **Book 6** = `weinstein_stages` (Stan Weinstein — Secrets for Profiting). Stage Analysis 주봉 + Stage 2 추세. Minervini 인프라(RS 자체 계산 + simulate_one_stock + 일봉 데이터 로더) 재사용 + 주봉 집계는 신규 인프라 필요.
 
 ---
 
