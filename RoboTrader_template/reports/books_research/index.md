@@ -15,7 +15,7 @@
 | 5 | minervini_vcp | Mark Minervini — 초수익 성장주 투자 | ✅ 완료 | **volume_dryup B Sharpe 1.41 Calmar 2.38** 153T (BULL 편향) |
 | 6 | weinstein_stages | Stan Weinstein — Secrets for Profiting | ✅ 완료 | **ma30w_bounce B PnL +4.18% Sharpe 0.30 Calmar 1.92** 43T (BULL 편향) |
 | 7 | elder_triple_screen | Alexander Elder — Trading for a Living | ✅ 완료 | **ema_pullback A PnL +23.76% Sharpe 1.22 Calmar 2.64** 134T (BULL 편향) |
-| 8 | lynch_one_up | Peter Lynch — 월가의 영웅 | ⏳ 대기 | — |
+| 8 | lynch_one_up | Peter Lynch — 월가의 영웅 | ✅ 완료 | **value_balance_sheet B per-trade +2.84% 승률 52.6%** 114T (데이터 제약 inconclusive) |
 | 9 | greenblatt_magic_formula | Joel Greenblatt — Magic Formula | ⏳ 대기 | — |
 | 10 | osullivan_what_works | James O'Shaughnessy — What Works on Wall Street | ⏳ 대기 | — |
 
@@ -244,6 +244,15 @@
 - **한계**: BULL 편향(평균 ~142봉 단일 상승), 표본 희소, 적응판(일봉 proxy), Screen 3 일봉 근사
 - **자세히**: [elder_triple_screen/report.md](elder_triple_screen/report.md)
 
+### lynch_one_up (Peter Lynch — 월가의 영웅 / One Up on Wall Street)
+- **베스트 규칙**: `value_balance_sheet` (저PBR<1.0 + 저PER<12 + 저부채<50% — 자산주 발상의 가치 스크린)
+- **성과 (per-trade)**: Variant B 114거래 승률 52.6% 평균 +2.84%/거래 (Variant A 34거래 평균 +11.51%)
+- **특성**: 펀더멘털 GARP, point-in-time 재무 조인(105일 lag), universe=fundamentals:131 (top_volume:50 아님)
+- **3회 연속 패턴**: 단순 가치 스크린이 복잡 GARP/고성장(fast_grower 3~6T, garp_combo) 압도 — Minervini·Elder와 동일
+- **한계**: 연간 데이터·극소 N(per 79·≥120봉 46)·psr/dividend_yield 100% NULL·짧은 이력 → **inconclusive**, CANDIDATE 부적격
+- **비교성 주의**: universe 단절(이전 7권 top_volume:50), 집계 PnL은 0거래 종목 희석 → per-trade로만 해석
+- **자세히**: [lynch_one_up/report.md](lynch_one_up/report.md)
+
 ## 메모 — 시스템 구조
 
 데이터 소스:
@@ -396,9 +405,41 @@ Triple Screen의 핵심 사상(긴 추세 방향 짧은 눌림 매수)을 가장
 
 ---
 
+## Lynch One Up on Wall Street 결과 — full-period (Book 8)
+
+> 펀더멘털 GARP: 6카테고리·PEG를 가용 재무 컬럼으로 매핑한 4룰. point-in-time 재무 조인(report_date+105일 lag).
+> ⚠️ **universe = fundamentals:131** (top_volume:50 ∩ 재무 = 10종목이라 사용 불가, 사장님 승인). **이전 7권과 비교성 단절.**
+> ⚠️ psr·dividend_yield 100% NULL → 자산주·PEGY 룰 제외(대체 구현).
+
+### Per-Trade 결과 (집계 PnL은 0거래 종목 희석으로 무의미 → 거래 단위로만 해석)
+
+| Variant | 룰 | 거래 | per-trade 승률 | 평균/거래 | 중앙값 |
+|---|---|------|----------|---------|--------|
+| B | **value_balance_sheet** ⭐ | 114 | 52.6% | +2.84% | +1.28% |
+| B | garp_combo | 32 | 56.2% | +2.06% | +3.79% |
+| A | value_balance_sheet | 34 | 50.0% | +11.51% | +0.84% |
+| B | fast_grower | 6 | 83.3% | +5.84% | — |
+| A/B | fast_grower/stalwart | 1~6 | (N 극소 무의미) | — | — |
+
+### 핵심 발견
+- **표본 견고한 유일 룰 = value_balance_sheet** (저PBR<1.0 + 저PER<12 + 저부채<50%). B 114거래 승률 52.6% 평균 +2.84%/거래.
+- **단순 가치 스크린이 복잡 GARP/고성장(fast_grower/garp_combo) 압도** — Minervini·Elder에 이은 3회 연속 "단순 우위" 패턴.
+- fast_grower/stalwart 1~6거래 통계 무의미. all_AND 0거래.
+
+### 책 8권 통합 평가
+- Lynch는 펀더멘털 단독 책 중 표본 확보(114거래) 성공, 단 per-trade +2.84%로 기술적 베스트(Elder +23.76%·Minervini +20.27%) 대비 약함.
+- **데이터 제약(연간·극소 universe·NULL·짧은 이력)으로 Lynch 방법론 자체는 inconclusive.**
+
+### 결론
+단순 가치 스크린의 약한 양(+) 엣지 확인. 그러나 연간 데이터·극소 N·NULL 다수로 평가 미완. 분기 재무 + 배당/PSR 백필 + 종목 확대 후 재검증 필요. **CANDIDATE_ALPHAS 등록 부적격**(표본·데이터 신뢰도 미달).
+
+상세: [lynch_one_up/report.md](lynch_one_up/report.md)
+
+---
+
 ## 다음 책
 
-- **Book 8** = `lynch_one_up` (Peter Lynch — 월가의 영웅 / One Up on Wall Street). 펀더멘털 스토리 투자 — 6 카테고리 분류(저성장/대형우량/고성장/경기순환/회생/자산주), PEG 비율, 재무 스크리닝. O'Neil/Minervini의 재무 파이프라인(financial_statements) 재사용 가능. 기존 `strategies/lynch/` 운영 전략 존재 — 책 연구판과 구분 필요.
+- **Book 9** = `greenblatt_magic_formula` (Joel Greenblatt — Magic Formula / 주식시장을 이기는 작은 책). 두 지표만: 이익수익률(EBIT/EV) + 자본수익률(ROC). 순위 합산 상위 종목 매수. Lynch와 동일 `financial_statements` 재무 파이프라인 + point-in-time 조인 재사용 가능. EBIT/EV 계산에 필요한 컬럼(operating_profit, 시가총액/부채) 가용성 사전 점검 필요.
 
 ---
 
