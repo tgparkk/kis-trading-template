@@ -173,3 +173,14 @@ def test_build_strategy_all_and_mode():
     strat = build_strategy(mode="all_AND")
     assert strat.mode == "all_AND"
     assert len(strat.rules) == 4
+
+
+def test_generate_signal_with_extra_ctx_passes_rs_value(trend_up_df):
+    from strategies.books.minervini_vcp.strategy import build_strategy
+    strat = build_strategy(mode="single", target_rule="trend_template")
+    # rs_value 미전달 시 None → 실패
+    sig_none = strat.generate_signal("TEST", trend_up_df, "daily")
+    assert sig_none is None
+    # rs_value 85 전달 시 통과
+    sig_ok = strat.generate_signal_with_extra_ctx("TEST", trend_up_df, "daily", {"rs_value": 85})
+    assert sig_ok is not None
