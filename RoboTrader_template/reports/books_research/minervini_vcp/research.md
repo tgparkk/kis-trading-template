@@ -82,4 +82,26 @@ RS_raw = R(12W) → universe 백분위. 1차 구현 채택.
 
 ## 7. 한국 시장 적용 시 주의점
 
+- **상한가 30% 제한**: 미국식 갭 패턴 빈도 낮음. Episodic Pivot 적용 어려움.
+- **공매도 제약**: Stage 4 short 셋업 제외.
+- **IBD RS Rating 부재**: 자체 계산 필수.
+- **거래대금 집중**: top_volume:50 사용으로 유동성 확보 + universe 표준화.
+- **데이터 기간 한계**: daily_prices 약 318거래일. RS 12주 + MA200 워밍업 200일 → 검증 ~118일.
+- **단일 BULL 구간**: 표본 부족 시 국면별 분해(BULL/BEAR/SIDEWAYS, KOSPI 기준)로 통계적 의미 분리.
+
 ## 8. 참고 자료
+
+- *Trade Like a Stock Market Wizard* (McGraw-Hill, 2013) — SEPA·Trend Template 원본
+- *Think & Trade Like a Champion* (2017) — R-multiple·risk management 보강
+- Minervini Private Access blog (minervini.com) — 인터뷰·세미나 발화
+- IBD MarketSmith RS Rating 정의 (investors.com)
+- US Investing Championship 1997 / 2021 성적 보고
+
+## 9. 본 plan 코드화 범위 (확정)
+
+- rule_trend_template: 8조건 스크리너
+- rule_vcp_breakout: VCP 베이스 + 피벗 돌파
+- rule_tight_closes: 3주 변동폭 ≤ 1.5%
+- rule_volume_dryup: 거래량 dry-up + tightness
+
+청산: Variant A(sl 8% / tp 20% / trail 50MA / mh 35) + Variant B(sl 8% / tp 12% / mh 20) 둘 다 산출.
