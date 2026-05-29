@@ -73,3 +73,61 @@ def test_trend_template_fails_when_rs_below_70(trend_up_df):
     ctx = {"stock_code": "TEST", "rs_value": 50}
     res = rule.evaluate(trend_up_df, ctx)
     assert res.triggered is False
+
+
+def _vcp_synthetic_df():
+    """베이스 25일 + 진폭 수축 2단계 + 마지막 봉 피벗 돌파 + 거래량 폭증."""
+    n = 260
+    close_pre = np.linspace(10_000, 12_000, n - 30).tolist()
+    pivot = max(close_pre[-25:])  # 베이스 시작 직전 고점
+    # 베이스 25일: 첫 12일 진폭 5%(high/low 수동), 다음 12일 진폭 2%, 마지막 1봉 피벗 돌파
+    base_close = []
+    base_high = []
+    base_low = []
+    center = pivot * 0.97  # 베이스 중심가격
+    # 전반 12봉: ±2.5% 진폭
+    for i in range(12):
+        c = center
+        base_close.append(c)
+        base_high.append(c * 1.025)
+        base_low.append(c * 0.975)
+    # 후반 12봉: ±0.75% 진폭 (contraction ratio = 1.5%/5% = 0.30 < 0.6)
+    for i in range(12):
+        c = center
+        base_close.append(c)
+        base_high.append(c * 1.0075)
+        base_low.append(c * 0.9925)
+    # 마지막 1봉: 피벗 돌파
+    base_close.append(pivot * 1.03)
+    base_high.append(pivot * 1.04)
+    base_low.append(pivot * 1.02)
+
+    closes = close_pre + base_close
+    highs  = [c * 1.01 for c in close_pre] + base_high
+    lows   = [c * 0.99 for c in close_pre] + base_low
+    total = len(closes)
+    dates = pd.date_range("2025-01-01", periods=total, freq="B")
+    # 거래량: pre-base 평균 1M, 베이스 25봉 dry-up 0.4M, 마지막 봉 폭증 2M
+    base_avg_vol = 1_000_000
+    volume = [base_avg_vol] * (total - 26) + [base_avg_vol * 0.4] * 25 + [base_avg_vol * 2.0]
+    return pd.DataFrame({
+        "datetime": dates, "open": closes, "high": highs, "low": lows,
+        "close": closes, "volume": volume,
+    })
+
+
+def test_vcp_breakout_triggers_on_synthetic_pattern():
+    from strategies.books.minervini_vcp.rules import rule_vcp_breakout
+    rule = rule_vcp_breakout()
+    df = _vcp_synthetic_df()
+    res = rule.evaluate(df, {"stock_code": "TEST"})
+    assert res.triggered is True
+    assert res.side == "buy"
+
+
+def test_vcp_breakout_fails_on_flat_volume(trend_up_df):
+    from strategies.books.minervini_vcp.rules import rule_vcp_breakout
+    rule = rule_vcp_breakout()
+    res = rule.evaluate(trend_up_df, {"stock_code": "TEST"})
+    # 단조 상승은 베이스/수축 없음 → 실패
+    assert res.triggered is False

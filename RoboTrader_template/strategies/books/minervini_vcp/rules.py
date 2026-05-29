@@ -75,3 +75,62 @@ class rule_trend_template(Rule):
                 metadata={"rs": float(rs_value)},
             )
         return RuleResult(triggered=False)
+
+
+@dataclass
+class rule_vcp_breakout(Rule):
+    """VCP 베이스(≥25일) + 진폭 수축 + 거래량 dry-up + 피벗 돌파 + RVOL."""
+    name: str = "vcp_breakout"
+    base_min_bars: int = 25
+    rvol_threshold: float = 1.5
+    dryup_ratio_max: float = 0.7  # 베이스 평균 거래량 / 직전 20일 평균 ≤ 0.7
+    contraction_ratio_max: float = 0.6  # 후반 진폭 / 전반 진폭 ≤ 0.6
+
+    def evaluate(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> RuleResult:
+        if len(df) < self.base_min_bars + 21:
+            return RuleResult(triggered=False)
+        high = df["high"].astype(float)
+        low = df["low"].astype(float)
+        close = df["close"].astype(float)
+        volume = df["volume"].astype(float)
+
+        base = df.iloc[-(self.base_min_bars + 1):-1]
+        pre_base = df.iloc[-(self.base_min_bars + 21):-(self.base_min_bars + 1)]
+        last = df.iloc[-1]
+
+        pivot = float(pre_base["high"].max())
+        last_close = float(last["close"])
+        last_vol = float(last["volume"])
+
+        # 1. 피벗 돌파
+        if last_close <= pivot:
+            return RuleResult(triggered=False)
+
+        # 2. RVOL (최근 봉 거래량 / 베이스 평균 거래량)
+        base_avg_vol = float(base["volume"].mean())
+        if base_avg_vol <= 0:
+            return RuleResult(triggered=False)
+        rvol = last_vol / base_avg_vol
+        if rvol < self.rvol_threshold:
+            return RuleResult(triggered=False)
+
+        # 3. 거래량 dry-up: 베이스 평균 < pre_base 평균 × dryup_ratio_max
+        pre_base_avg_vol = float(pre_base["volume"].mean())
+        if pre_base_avg_vol <= 0 or base_avg_vol / pre_base_avg_vol > self.dryup_ratio_max:
+            return RuleResult(triggered=False)
+
+        # 4. 진폭 수축: 베이스 전반 12봉 진폭 vs 후반 12봉 진폭
+        mid = len(base) // 2
+        early_range = float((base["high"].iloc[:mid] - base["low"].iloc[:mid]).mean())
+        late_range = float((base["high"].iloc[mid:] - base["low"].iloc[mid:]).mean())
+        if early_range <= 0 or late_range / early_range > self.contraction_ratio_max:
+            return RuleResult(triggered=False)
+
+        return RuleResult(
+            triggered=True, side="buy", confidence=75.0,
+            reasons=[
+                f"vcp_breakout pivot={pivot:.0f} close={last_close:.0f} rvol={rvol:.2f} "
+                f"dryup={base_avg_vol/pre_base_avg_vol:.2f} contract={late_range/early_range:.2f}"
+            ],
+            metadata={"pivot": pivot, "rvol": rvol},
+        )
