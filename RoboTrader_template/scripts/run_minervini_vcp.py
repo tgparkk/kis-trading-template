@@ -161,14 +161,7 @@ def simulate_one_stock(
             window = df.iloc[: i + 1]
             rs_value = float(rs_series.loc[cur_date]) if rs_series is not None and cur_date in rs_series.index else np.nan
             ctx_extra = {"rs_value": rs_value}
-            # ctx_extra를 BookStrategy에 전달하려면 rule이 ctx에서 읽어야 함.
-            # BookStrategy.generate_signal은 ctx={"stock_code", "timeframe"}만 넘기므로,
-            # rule_trend_template은 ctx['rs_value']가 필요. ctx를 패치하기 위해
-            # 임시로 strategy._rs_value를 monkey-patch 후 rule.evaluate 호출 패턴 사용.
-            # 이를 위해 BookStrategy.generate_signal을 우회하지 않고
-            # 각 rule에 ctx['rs_value']를 전달할 방법: strategy.generate_signal 호출 전
-            # 전역 dict 대신 strategy 측 ctx를 직접 사용한다 → 다음 task에서 BookStrategy
-            # 인터페이스 확장으로 처리.
+            # rs_value를 ctx_extra로 BookStrategy에 전달; rule은 ctx['rs_value']로 읽는다.
             signal = strategy.generate_signal_with_extra_ctx(code, window, "daily", ctx_extra)
             if signal is not None and signal.signal_type in (SignalType.BUY, SignalType.STRONG_BUY):
                 fill = float(bar_next["open"]) * (1 + slippage_rate)
