@@ -530,9 +530,9 @@ Magic Formula 횡단면 순위는 한국 데이터에서 작동(펀더멘털 책
 4. **펀더멘털 3책(Lynch/Greenblatt/O'Shaughnessy)은 데이터 제약으로 inconclusive**: 연간 데이터·market_cap 6개월 창·NULL 다수·생존편향. 그래도 저PSR·Magic 순위는 양(+) 엣지 시사.
 5. **전 책 공통 BULL 편향**: 데이터 기간이 단일 상승 구간 → 하락장 방어 미검증. walk-forward·약세장 검증이 CANDIDATE 등록 전제.
 
-## CANDIDATE_ALPHAS 등록 우선순위 (walk-forward 후)
-1. **Elder ema_pullback** (PnL 최고, 일봉 완결)
-2. **Minervini volume_dryup** (Sharpe 최고, 표본 충분)
+## CANDIDATE_ALPHAS 등록 우선순위
+1. ✅ **Elder ema_pullback (variant A) — 등록 확정** (2026-05-30): 다년(2021~2026)·국면(BULL/BEAR/SIDEWAYS) 검증 통과. BEAR per-trade **+3.01%** ≈ BULL +3.15%, 약세장 무너짐 전무. 조건: **variant A 고정** + (선택) SIDEWAYS 회피 게이트. ⚠️ 약점은 SIDEWAYS(−0.71%).
+2. (관찰) **Elder stochastic A** (BEAR 특화 +3.68%/hit57%, 표본 70) · **Minervini volume_dryup B** (분산 보조, 표본 424 but per-trade 약함, variant B 고정 필수 — A는 −19.6% 과매매)
 3. (보류) Greenblatt/O'Shaughnessy 순위 — market_cap 전기간 백필 후
 
 ## 데이터 백필 + 다년 재검증 (2026-05-29 완료)
@@ -542,13 +542,40 @@ Magic Formula 횡단면 순위는 한국 데이터에서 작동(펀더멘털 책
 - 상세: [changelog 2026-05-29 backfill-revalidation](../../memory/changelog-2026-05-29-fundamental-backfill-revalidation.md)
 - 추가 백필 후보: 일별 시총 정밀화(상장주수×close)·분기재무·배당(DART)
 
-## 🎯 강건성 교훈 (백필이 입증)
-- **단일 BULL 구간 백테스트는 Sharpe를 ~4배 부풀린다**: 다년·다국면 검증 없이는 어떤 알파도 신뢰 불가. 기술적 베스트(Elder +23.76%·Minervini +20.27%)도 **동일 다년 walk-forward 필수** — 현재 수치 역시 단일 상승장 산물일 수 있음.
+## 🎯 강건성 교훈 (백필 + 다년 재검증이 입증)
+- **단일 BULL 구간 백테스트는 Sharpe를 부풀린다**: 다년·다국면 검증 없이는 어떤 알파도 신뢰 불가.
+- **검증 완료 (2026-05-30)**: 기술적 베스트 2책도 5년 재검증 시 Sharpe 붕괴 — Elder ema_pullback 1.22→0.68(**−44%**), Minervini volume_dryup 1.41→0.64(**−55%**). 단 펀더멘털(−75%)보다 견고하고 5년에도 양 PnL·Sharpe 0.6대 유지.
+- **그러나 국면 분해는 다른 결론**: 추세추종의 약점은 하락장이 아니라 **횡보장(SIDEWAYS)**. Elder ema_pullback A는 BEAR(+3.01%)에서 BULL(+3.15%)과 동급 → "약세장에 약하다"는 통념이 데이터로 반박됨. 0.68은 상승장 운빨이 아니라 추세장 적응력의 산물.
 
 ## 인프라 (재사용 자산)
 - BookStrategy/Rule/RuleResult 베이스 + 횡단면 순위 주입(Minervini RS→Greenblatt magic_rank→O'Shaughnessy vc/tv/psr) + PIT 재무조인(Lynch, 105일 lag) + 주봉 resample(Weinstein)
 - 책별 run 스크립트 10개, leaderboard.parquet 140행, 결과 parquet 다수
 - 품질 게이트: no-lookahead, 거래비용 왕복 0.41%, adj_factor, 단위 정합(market_cap 1e8)
+
+---
+
+## Elder·Minervini 다년 + 국면 재검증 (2026-05-30)
+> 펀더멘털 백필이 daily_prices를 2021~2026(1,653일)으로 채워둔 덕에 기술적 베스트 2책도 추가 데이터 없이 5년 재검증 가능. 로더에서 OHLC≤0 결손행(671행/18종목, 백필 잔존)을 close로 보정(원본 불변). 상세: [changelog 2026-05-30](../../memory/changelog-2026-05-30-elder-minervini-multiyear-revalidation.md)
+
+### 224일 BULL vs 5년 보정후
+| 책 / 베스트룰 | PnL | Sharpe | 거래 | Hit | MaxDD | 붕괴율 |
+|---|---|---|---|---|---|---|
+| Elder ema_pullback A | +23.76%→+37.90% | 1.22→**0.68** | 134→925 | 56→50% | 13.8→33.1% | −44% |
+| Minervini volume_dryup B | +20.27%→+17.70% | 1.41→**0.64** | 153→1190 | 62→56% | —→38.8% | −55% |
+| (참고) 펀더멘털 3책 | — | ~0.4→~0.1 | — | — | — | −75% |
+
+### 국면별 분해 (KOSPI 20일 ±2%; BULL 39%/BEAR 29%/SIDEWAYS 31%, 2022 약세장 검출)
+| 룰 | BULL | BEAR | SIDEWAYS |
+|---|---|---|---|
+| Elder ema_pullback A | +3.15% (447T) | **+3.01% (169T)** | **−0.71%** (309T) |
+| Elder stochastic A | +4.91% | **+3.68% (hit57%)** | −0.21% |
+| Minervini volume_dryup B | +1.50% | +1.38% (424T) | −1.03% |
+*(per-trade 평균. headline Sharpe 0.68은 종목별 equity 평균 정의 — 척도 다름, 정식 국면 Sharpe는 미산출)*
+
+### 결론
+- **추세추종 > 펀더멘털**(붕괴율 −44/−55% < −75%), 5년에도 양 PnL·Sharpe 0.6대 유지.
+- **약세장 검증 통과**: 6개 룰 전부 BEAR per-trade 양수. Elder A는 BEAR≈BULL. 약점은 SIDEWAYS(휩쏘).
+- **Elder ema_pullback A = CANDIDATE 등록 확정**(variant A 고정 + 선택 SIDEWAYS 게이트). Minervini는 variant B 고정 필수(A 과매매 −19.6%).
 
 ---
 

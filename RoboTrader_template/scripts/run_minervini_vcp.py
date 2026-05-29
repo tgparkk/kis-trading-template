@@ -78,6 +78,19 @@ def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, p
             df["adj_factor"] = df["adj_factor"].fillna(1.0)
             for col in ["open", "high", "low", "close"]:
                 df[col] = df[col] * df["adj_factor"]
+            # 거래정지일 등 OHLC 결손 보정: close 유효한 행은 open/high/low(<=0 or NaN)를 close로 채움.
+            # close 자체가 0 이하/NaN인 완전 결손 행은 체결 불가 → 드롭.
+            n_before = len(df)
+            drop_mask = df["close"].isna() | (df["close"] <= 0)
+            n_dropped = int(drop_mask.sum())
+            df = df[~drop_mask].copy()
+            n_filled = 0
+            for col in ["open", "high", "low"]:
+                fill_mask = df[col].isna() | (df[col] <= 0)
+                n_filled += int(fill_mask.sum())
+                df.loc[fill_mask, col] = df.loc[fill_mask, "close"]
+            if n_dropped or n_filled:
+                LOG.info(f"[{code}] OHLC 보정: {n_filled}행 채움 / {n_dropped}행 드롭 (총 {n_before}행)")
             df = df.dropna(subset=["open", "high", "low", "close"])
             df["datetime"] = df["date"]
             out[code] = df[["datetime", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
