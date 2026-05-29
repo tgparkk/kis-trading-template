@@ -1,0 +1,56 @@
+# =============================================================================
+# Elder EMA Pullback Strategy Configuration
+# Triple Screen (Variant A) 실전판 — 백테스트 검증값 1:1 반영
+#
+# 진입 (백테스트 rule=triple_screen_ema_pullback, Variant A):
+#   Screen 1: EMA65 상승 (5바 전 대비 기울기 > 0)
+#   Screen 2: 일봉 EMA13 눌림 후 회복 (low[-1] <= EMA13*touch_band AND close[-1] > EMA13)
+#   Screen 3: 전일 고가 + 1틱 매수스톱 — 실전에선 target_price/메타데이터로 표현(아래 주석 참고)
+# 청산 (Variant A): sl 8% / tp 30% / EMA13 trailing(수익 중) / EMA65 추세반전 / max_hold 100일
+# =============================================================================
+
+strategy:
+  name: "ElderEmaPullbackStrategy"
+  version: "1.0.0"
+
+# 안전장치: true면 실제 주문 없이 로깅만 (페이퍼 트레이딩 검증 단계)
+paper_trading: true
+
+# -----------------------------------------------------------------------------
+# 전략 파라미터 (진입 — 백테스트 rules.py와 동일)
+# -----------------------------------------------------------------------------
+parameters:
+  # EMA 기간 (Elder Triple Screen 표준)
+  ema_short: 13          # Screen 2 눌림 기준선 + 청산 trailing 기준선
+  ema_long: 65           # Screen 1 추세 기준선
+
+  # Screen 2 눌림 터치 밴드 (rules.py rule_triple_screen_ema_pullback.touch_band)
+  # low[-1] <= EMA13 * touch_band 이면 "눌림 터치"로 판정
+  touch_band: 1.01
+
+  # 신호 평가 최소 일봉 수 (rules.py: len(df) < 70 가드 + 여유)
+  # screen1_uptrend는 EMA65 + 5바 lookback을 쓰므로 70바 이상 필요
+  min_daily_bars: 70
+
+  # 최대 보유일 제한 (백테스트 max_hold_bars=100, 프레임워크 표준 키)
+  max_holding_days: 100
+
+# -----------------------------------------------------------------------------
+# 리스크 관리 (청산 — 백테스트 Variant A VARIANT_PARAMS["A"]와 동일)
+# -----------------------------------------------------------------------------
+risk_management:
+  take_profit_pct: 0.30       # 익절 +30%  (백테스트 take_profit_pct=0.30)
+  stop_loss_pct: 0.08         # 손절 -8%   (백테스트 stop_loss_pct=0.08)
+  max_hold_days: 100          # 최대 보유일 (백테스트 max_hold_bars=100)
+  trail_ema: 13               # 수익 중 EMA13 하향 이탈 시 청산 (백테스트 trail_ema=13)
+  trend_flip_exit: true       # EMA65 추세반전(5바 전 대비 하락) 청산 (백테스트 trend_flip_exit)
+  max_positions: 5
+  max_daily_trades: 5
+  max_per_stock_amount: 3000000  # 종목당 최대 투자금액 (원)
+
+# -----------------------------------------------------------------------------
+# 대상 종목
+# 비워두면 framework의 종목 선정 로직(거래량 상위 등)을 따름.
+# accepts_volume_fallback=True (추세추종 전략 — 거래량 상위 풀과 정합)
+# -----------------------------------------------------------------------------
+target_stocks: []
