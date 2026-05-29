@@ -361,6 +361,10 @@ def simulate_one_stock(
                 if cur_close < ma:
                     exit_reason = "trail_ma"
             if exit_reason is not None:
+                raw_next_open = float(bar_next["open"])
+                if raw_next_open <= 0:  # 다음 봉 시가 무효(거래정지/데이터공백) → 이번 봉 청산 보류
+                    exit_reason = None
+            if exit_reason is not None:
                 fill = float(bar_next["open"]) * (1 - slippage_rate)
                 proceeds = position["qty"] * fill
                 fee = proceeds * (commission_rate + tax_rate)
@@ -383,8 +387,9 @@ def simulate_one_stock(
             ctx_extra = {"fund": fund, "magic_rank": mr, "n_eligible": ne}
             signal = strategy.generate_signal_with_extra_ctx(code, window, "daily", ctx_extra)
             if signal is not None and signal.signal_type in (SignalType.BUY, SignalType.STRONG_BUY):
-                fill = float(bar_next["open"]) * (1 + slippage_rate)
-                qty = int((cash * 0.99) // fill)
+                raw_next_open = float(bar_next["open"])
+                fill = raw_next_open * (1 + slippage_rate)
+                qty = int((cash * 0.99) // fill) if fill > 0 else 0  # 다음 봉 시가 무효 → 매수 스킵
                 if qty > 0:
                     cost = qty * fill
                     fee = cost * commission_rate
@@ -403,7 +408,7 @@ def simulate_one_stock(
         equity.append(mtm)
 
     # 강제 청산
-    if position is not None:
+    if position is not None and float(df.iloc[-1]["close"]) > 0:  # 마지막 종가 무효면 청산 미기록
         last = df.iloc[-1]
         fill = float(last["close"]) * (1 - slippage_rate)
         proceeds = position["qty"] * fill

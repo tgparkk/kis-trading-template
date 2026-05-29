@@ -535,9 +535,15 @@ Magic Formula 횡단면 순위는 한국 데이터에서 작동(펀더멘털 책
 2. **Minervini volume_dryup** (Sharpe 최고, 표본 충분)
 3. (보류) Greenblatt/O'Shaughnessy 순위 — market_cap 전기간 백필 후
 
-## 데이터 백필 권장 (펀더멘털 재검증 전제)
-- market_cap 전기간 (현재 6개월만) · 분기 재무(현재 연간) · dividend_yield·psr·현금·섹터 컬럼
-- 이후 Greenblatt Magic·O'Shaughnessy VC2/Trending Value 재검증 가치
+## 데이터 백필 + 다년 재검증 (2026-05-29 완료)
+- 펀더멘털 일봉을 `strategy_analysis.daily_candles`로 **2021~2026 백필**(+142,467행, market_cap=yearly_fundamentals 연도매칭). 6개월 창 → 5년 다국면.
+- **재검증 결과 — Sharpe 붕괴**: Greenblatt magic_formula_top A Sharpe 0.41→**0.12**, O'Shaughnessy low_psr A 0.36→**0.11**. per-trade 승률 84%→**~48%(동전)**. **6개월 숫자는 단일 BULL 거품이었음이 입증.**
+- low_psr·magic_formula_top은 다년에서도 각 책 1위 유지(저PSR "왕" 재확인)이나 risk-adjusted 엣지 미미 → **펀더멘털 3책 CANDIDATE 부적격 재확인.**
+- 상세: [changelog 2026-05-29 backfill-revalidation](../../memory/changelog-2026-05-29-fundamental-backfill-revalidation.md)
+- 추가 백필 후보: 일별 시총 정밀화(상장주수×close)·분기재무·배당(DART)
+
+## 🎯 강건성 교훈 (백필이 입증)
+- **단일 BULL 구간 백테스트는 Sharpe를 ~4배 부풀린다**: 다년·다국면 검증 없이는 어떤 알파도 신뢰 불가. 기술적 베스트(Elder +23.76%·Minervini +20.27%)도 **동일 다년 walk-forward 필수** — 현재 수치 역시 단일 상승장 산물일 수 있음.
 
 ## 인프라 (재사용 자산)
 - BookStrategy/Rule/RuleResult 베이스 + 횡단면 순위 주입(Minervini RS→Greenblatt magic_rank→O'Shaughnessy vc/tv/psr) + PIT 재무조인(Lynch, 105일 lag) + 주봉 resample(Weinstein)
