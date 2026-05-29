@@ -48,3 +48,28 @@ def test_compute_rs_percentile_returns_0_to_99():
     assert (last.min() >= 0) and (last.max() <= 99)
     # 가장 강한 종목(i=19) RS == 99
     assert last["A019"] == pytest.approx(99, abs=1)
+
+
+def test_trend_template_passes_on_uptrend(trend_up_df):
+    from strategies.books.minervini_vcp.rules import rule_trend_template
+    rule = rule_trend_template()
+    ctx = {"stock_code": "TEST", "rs_value": 85}
+    res = rule.evaluate(trend_up_df, ctx)
+    assert res.triggered is True
+    assert res.side == "buy"
+
+
+def test_trend_template_fails_on_downtrend(trend_down_df):
+    from strategies.books.minervini_vcp.rules import rule_trend_template
+    rule = rule_trend_template()
+    ctx = {"stock_code": "TEST", "rs_value": 85}
+    res = rule.evaluate(trend_down_df, ctx)
+    assert res.triggered is False
+
+
+def test_trend_template_fails_when_rs_below_70(trend_up_df):
+    from strategies.books.minervini_vcp.rules import rule_trend_template
+    rule = rule_trend_template()
+    ctx = {"stock_code": "TEST", "rs_value": 50}
+    res = rule.evaluate(trend_up_df, ctx)
+    assert res.triggered is False
