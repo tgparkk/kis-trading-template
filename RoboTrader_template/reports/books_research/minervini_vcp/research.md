@@ -5,7 +5,15 @@
 > 설계: [docs/superpowers/specs/2026-05-29-minervini-vcp-design.md](../../../docs/superpowers/specs/2026-05-29-minervini-vcp-design.md)
 
 ## 1. 핵심 개념
-(SEPA = Specific Entry Point Analysis. Fundamental + Technical + RS + Pattern 4축.)
+
+**SEPA** = Specific Entry Point Analysis. Minervini가 정의한 종목 선별·진입 프레임워크로 다음 4축 결합:
+
+- **Fundamental**: EPS·매출 성장, ROE, 마진 확대 등 펀더 필터. (본 plan 코드화 범위 밖 — quant_factors 가용 기간 한계로 후속 Phase에서 보완.)
+- **Technical**: 추세 정렬 (Trend Template 8조건). 본 plan section 2 + Phase 2 `rule_trend_template` 코드화 대상.
+- **RS (Relative Strength)**: 시장 대비 상대 강도. 본 plan section 4 + Phase 2 `compute_rs_percentile_12w` 헬퍼.
+- **Pattern**: VCP (Volatility Contraction Pattern) 등 베이스 형성 후 돌파. 본 plan section 3 + Phase 2 `rule_vcp_breakout` 코드화 대상.
+
+본 plan은 Technical + RS + Pattern 3축 코드화. Fundamental 축은 명시적 제외.
 
 ## 2. SEPA Trend Template (8조건)
 
