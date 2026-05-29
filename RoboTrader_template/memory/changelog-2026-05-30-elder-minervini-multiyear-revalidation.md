@@ -66,6 +66,43 @@
 ## 추가 생성 파일 (국면 분해)
 - `scripts/regime_split_elder_minervini.py`(신규 ~230줄), `reports/books_research/regime_label_5y.parquet`, `reports/books_research/regime_split_elder_minervini.parquet`
 
+---
+
+## 통합 포트폴리오 시뮬 + KOSPI 알파 + 데이터 검증 (2026-05-30 추가)
+> 동기: 사장님 "5년 +37.9%면 별로" 지적. 코드 확인 결과 `book_backtester.run_single`은 **종목당 100만원 독립계좌**(신호 없으면 현금)이고 `run_universe`는 종목별 수익률 **단순평균** → +37.9%는 자본효율(투자시간 ~17%) 미반영 "룰 엣지" 측정치이지 계좌수익률이 아님. → 단일계좌 통합 포트폴리오 시뮬 신규 작성(`scripts/portfolio_sim_elder.py`).
+
+### 통합 포트폴리오 (Elder ema_pullback A, 단일계좌 1천만원, 최대 동시보유 K, 균등비중)
+| K | 총수익 | CAGR | Sharpe | MaxDD | Calmar | 자본가동률 | 평균보유 |
+|---|---|---|---|---|---|---|---|
+| 5 | −7.5% | −1.44% | 0.07 | 68.4% | −0.02 | 84% | 4.3 |
+| 10 | +47.3% | 7.48% | 0.47 | 46.0% | 0.16 | 70% | 7.1 |
+| **20** | **+93.3%** | **13.06%** | **1.08** | **22.9%** | **0.57** | 43% | 8.9 |
+
+- **핵심 동인은 분산도(K)**: K 작을수록 집중 → 한 종목 폭락이 계좌 강타 → MaxDD 68%·수익 악화. K 클수록 분산 → Sharpe 0.07→1.08, MaxDD 68%→23%. "+37.9%"는 통합운용에서 K에 따라 −7.5%~+93.3%로 환원 불가.
+- Minervini volume_dryup B(K=10): +10.0%/CAGR1.8%/Sharpe0.19/MaxDD52% — Elder 전 지표 열위(trail 없어 상방 못 잡고 잦은 손절).
+
+### vs KOSPI buy&hold (동기간)
+| | Elder A K=20 | KOSPI b&h |
+|---|---|---|
+| CAGR | 13.06% | **20.39%** |
+| Sharpe | **1.08** | 0.95 |
+| MaxDD | **22.9%** | 34.8% |
+| Beta | **0.15** | 1.0 |
+
+회귀: K=20 beta 0.15, 연환산 회귀알파 **+10.19%**, info_ratio −0.36(총 초과CAGR은 −7.34%로 음수).
+
+### ⚠️ 데이터 검증 (중요)
+- KOSPI 2944→8476(+187%)·삼성전자 305,000원이 비현실로 의심됨 → DB 실측: **2021~2025.5는 현실과 정확 일치(KOSPI 2977/2236/2655/2399), 2025.6부터 급등**. raw 테이블 `daily_candles`에도 동일 폭등 → 백필 버그 아님, 수집 원본 자체.
+- **사장님 확인: "실제 대폭등장 맞음"** (2025 하반기~2026 AI 반도체 슈퍼사이클 등). 데이터 **유효, 오염 아님**. (Claude 지식 컷오프 2026.1이 랠리 후반 미반영해 의심했던 것 — 정정.)
+
+### 재해석 / 결론
+- **KOSPI가 5년 +171%(CAGR 20%) 폭등하는 장에서 8%/30% 손익절 + 현금 30~57% 보유 전략이 인덱스를 못 따라가는 건 당연** — Elder 결함 아님. 폭등장은 풀투자 인덱스가 최강.
+- **Elder의 정체성 = beta 0.15 시장중립형 방어 알파**: 위험조정(Sharpe 1.08>0.95)·낙폭(23%<35%)·하락장(BEAR +3.01%) 우위. "KOSPI 대체재"가 아니라 "**KOSPI와 섞어 낙폭을 줄이는 분산자산**".
+- 절대수익 극대화 목적이면 ✗(인덱스가 셈), 저낙폭·시장중립 분산 목적이면 ✓. 용도가 다른 자산.
+
+### 추가 생성 파일
+- `scripts/portfolio_sim_elder.py`(신규), `reports/10pct_strategy/portfolio_sim_summary.parquet`, `portfolio_equity_elder_A_K{5,10,20}.parquet`, `portfolio_equity_minervini_B_K10.parquet`, `portfolio_*_trades.parquet`
+
 ## 변경 파일
 - 코드(각 +13줄, 로더 보정만): `scripts/run_elder_triple_screen.py`, `scripts/run_minervini_vcp.py`
 - 데이터: `reports/books_research/leaderboard.parquet`(오염 daily_full 50행 제거 후 신규 20행, 백업 .bak), 룰별 results parquet 갱신

@@ -577,6 +577,20 @@ Magic Formula 횡단면 순위는 한국 데이터에서 작동(펀더멘털 책
 - **약세장 검증 통과**: 6개 룰 전부 BEAR per-trade 양수. Elder A는 BEAR≈BULL. 약점은 SIDEWAYS(휩쏘).
 - **Elder ema_pullback A = CANDIDATE 등록 확정**(variant A 고정 + 선택 SIDEWAYS 게이트). Minervini는 variant B 고정 필수(A 과매매 −19.6%).
 
+### 통합 포트폴리오 + KOSPI 알파 (2026-05-30 추가, `scripts/portfolio_sim_elder.py`)
+> book_backtester는 종목당 독립계좌(자본효율 미반영)라 "+37.9%"는 룰 엣지 측정치일 뿐. 단일계좌 통합 시뮬로 실제 계좌수익률 측정.
+
+| | Elder A K=20 | KOSPI b&h |
+|---|---|---|
+| CAGR | 13.06% | **20.39%** |
+| Sharpe | **1.08** | 0.95 |
+| MaxDD | **22.9%** | 34.8% |
+| Beta | **0.15** | 1.0 |
+
+- 통합운용은 **분산도 K에 극도로 민감**(K=5 −7.5% → K=20 +93.3%, MaxDD 68%→23%).
+- **데이터 검증**: KOSPI 8476·삼성 305K는 오염 아님 — 2025.6~2026 **실제 대폭등장**(사장님 확인, raw도 동일). 2021~2025.5는 현실 일치.
+- **재해석**: KOSPI +171%(연20%) 폭등장에서 손익절+현금보유 전략이 인덱스에 지는 건 당연. Elder = **beta 0.15 시장중립 방어형**(Sharpe·MaxDD·하락장 우위). 인덱스 대체재 ✗, **분산/방어 자산 ✓**.
+
 ---
 
 *이 문서는 [leaderboard.parquet](leaderboard.parquet) 데이터를 기반으로 작성됨. 향후 자동 재생성 도구는 Plan 2 이후 검토.*
