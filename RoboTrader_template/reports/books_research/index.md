@@ -13,8 +13,8 @@
 | 3 | raschke_street_smarts | Linda Raschke — Street Smarts | ✅ Phase 1 | **anti 평균 +10.24%, 2025-10 +59% Calmar 7.59** ⭐ |
 | 4 | oneil_canslim | William O'Neil — 최고의 주식 최적의 타이밍 | ✅ Phase A+B | Phase B 7거래 +7.04% 승률 71% (표본 작음) |
 | 5 | minervini_vcp | Mark Minervini — 초수익 성장주 투자 | ✅ 완료 | **volume_dryup B Sharpe 1.41 Calmar 2.38** 153T (BULL 편향) |
-| 6 | weinstein_stages | Stan Weinstein — Secrets for Profiting | ⏳ 대기 | — |
-| 7 | elder_triple_screen | Alexander Elder — Trading for a Living | ⏳ 대기 | — |
+| 6 | weinstein_stages | Stan Weinstein — Secrets for Profiting | ✅ 완료 | **ma30w_bounce B PnL +4.18% Sharpe 0.30 Calmar 1.92** 43T (BULL 편향) |
+| 7 | elder_triple_screen | Alexander Elder — Trading for a Living | ✅ 완료 | **ema_pullback A PnL +23.76% Sharpe 1.22 Calmar 2.64** 134T (BULL 편향) |
 | 8 | lynch_one_up | Peter Lynch — 월가의 영웅 | ⏳ 대기 | — |
 | 9 | greenblatt_magic_formula | Joel Greenblatt — Magic Formula | ⏳ 대기 | — |
 | 10 | osullivan_what_works | James O'Shaughnessy — What Works on Wall Street | ⏳ 대기 | — |
@@ -219,6 +219,31 @@
 - **Holy Grail 부진** — Raschke 본인 추천이었지만 1분봉 부적합
 - **자세히**: [raschke_street_smarts/](raschke_street_smarts/) (Phase 1 분봉 5개), Phase 2 일봉 5개 후속
 
+### minervini_vcp (Mark Minervini — 초수익 성장주 투자)
+- **베스트 규칙**: `volume_dryup B` (sl 8% / tp 12% / mh 20일)
+- **성과**: 153거래 +20.27% PnL, 62.0% hit, Sharpe 1.41, Calmar 2.38
+- **결론**: 일봉 단독 룰 중 가장 인상적인 Sharpe (1.41) + 충분한 표본 (153거래)
+- **한계**: BULL 편향 (71.6%), BEAR 22일 표본 부족
+- **자세히**: [minervini_vcp/report.md](minervini_vcp/report.md)
+
+### weinstein_stages (Stan Weinstein — Secrets for Profiting in Bull and Bear Markets)
+- **베스트 규칙**: `ma30w_bounce B` (Stage 2 중 30W MA bounce, 주봉 기반)
+- **성과**: 43거래 +4.18% PnL, 60.5% per-trade 승률, Sharpe 0.30, Calmar 1.92
+  - Per-trade 통계: 평균 +5.08%, 중앙값 +9.09%
+- **특성**: 주봉 추세 추종 (Minervini 일봉 단기 vs Weinstein 주봉 중기)
+- **한계**: 주봉 32주 warmup 제약, Variant A 표본 0, BULL 편향 (73.5%), 약세장 미검증 (BEAR 19일)
+- **결론**: 주봉 기반 단순 패턴의 양호한 per-trade 승률이지만, 표본 43건 + BULL 편향으로 인한 신뢰도 제약
+- **자세히**: [weinstein_stages/report.md](weinstein_stages/report.md)
+
+### elder_triple_screen (Alexander Elder — Trading for a Living)
+- **베스트 규칙**: `triple_screen_ema_pullback` (Variant A: sl 8% / tp 30% / EMA13 trail + ema65 반전 / mh 100)
+- **성과**: 134거래 **+23.76% PnL**, 56.4% hit, **Sharpe 1.22**, Calmar 2.64 — 7권 통틀어 일봉 최고 PnL
+- **셋업**: EMA65(주봉 proxy) 상승 + 일봉 EMA13 터치 후 회복 → 전일 고가 돌파 진입
+- **특성**: Screen 1 일봉 65일 EMA proxy(주봉 26주 대체), 지수 불필요(종목 자기완결), 롱 전용
+- **역설적 발견**: 가장 단순한 셋업이 정통 다지표 Triple Screen(Force Index PnL +6%, Elder-Ray +8.7%, Sharpe 0.2~0.5)을 크게 압도
+- **한계**: BULL 편향(평균 ~142봉 단일 상승), 표본 희소, 적응판(일봉 proxy), Screen 3 일봉 근사
+- **자세히**: [elder_triple_screen/report.md](elder_triple_screen/report.md)
+
 ## 메모 — 시스템 구조
 
 데이터 소스:
@@ -299,9 +324,81 @@
 
 ---
 
+## Weinstein Stage Analysis 결과 — full-period (Book 6)
+
+> 주봉 기반 Stage Analysis: 30W MA + Mansfield RS + 거래량 돌파  
+> 데이터: 224 거래일 / ~32주 (warmup 제약으로 Variant A 표본 0)  
+> 국면: BULL 150일(73.5%) / SIDEWAYS 35일(17.2%) / BEAR 19일(9.3%)
+
+### Variant B 룰별 결과 (full-period)
+
+| 룰 | 거래수 | PnL % | Per-Trade 승률 | Avg Trade PnL | Sharpe | Calmar |
+|---|--------|---------|----------|---------|--------|--------|
+| **ma30w_bounce** ⭐ | **43** | **+4.18%** | **60.5%** | **+5.08%** | **0.30** | **1.92** |
+| stage2_continuation_pullback | 17 | +1.29% | 41.2% | +3.99% | -0.11 | 0.62 |
+| stage2_initial_breakout | 7 | +0.38% | 57.1% | +2.91% | 0.03 | 0.16 |
+
+### 핵심 발견
+- **최고 룰**: ma30w_bounce (43거래, +4.18% PnL, Sharpe 0.30)
+  - Stage 2 진행 중 30W MA 3% 이내 터치 후 양봉 회복
+  - 60.5% per-trade 승률, +5.08% 평균 수익, 중앙값 +9.09%
+- **Variant A**: 표본 0 (warmup 56주 > 데이터 32주) — 인프라 검증용
+- **Variant Light**: 표본 1 (인프라 동작 검증용, 책 평가 제외)
+
+### 국면 분석
+- BULL 편향 심각 (73.5%) → BEAR 19일 표본 극소 (거래 2건) → 약세장 미검증
+- **한계**: Weinstein 추세 추종 특성상 상승장에만 강함 확인
+
+### 책 6권 통합 평가 (leaderboard 등록된 책)
+- **PnL (일봉 기준)**: Minervini volume_dryup B (+20.27%) > Weinstein ma30w_bounce B (+4.18%)
+- **Sharpe 비율**: Minervini (+1.41) > Weinstein (+0.30)
+- **표본 신뢰도**: Minervini (153거래) > Weinstein (43거래)
+
+### 결론
+ma30w_bounce는 주봉 기반 단순 패턴이 한국 시장에서 양호한 per-trade 승률(60.5%) 시사. 다만 PnL은 Minervini 대비 4.8배 낮고, BULL 편향(73.5%) + 표본 부족(43거래) + BEAR 미검증으로 인한 신뢰도 제약 있음.
+
+상세: [weinstein_stages/report.md](weinstein_stages/report.md)
+
+---
+
+## Elder Triple Screen 결과 — full-period (Book 7)
+
+> 3중 시간프레임 필터: Screen 1(주봉 추세)=일봉 65일 EMA proxy, Screen 2(일봉 오실레이터)=4변형, Screen 3(진입)=전일 고가+1틱 매수스톱.
+> **지수 불필요**(종목 자기완결) — Weinstein Mansfield RS 의존성 제거. universe top_volume:50(49종목). 롱 전용.
+
+### Variant A 룰별 결과 (sl 8% / tp 30% / EMA13 trail + ema65 반전 / mh 100)
+
+| 룰 | 거래 | PnL % | Sharpe | Calmar | MaxDD % | Hit | AvgHold |
+|---|------|-------|--------|--------|---------|-----|---------|
+| **triple_screen_ema_pullback** ⭐ | 134 | **+23.76** | **1.22** | 2.64 | 13.76 | 56.4% | 8.6 |
+| triple_screen_stochastic | 43 | +9.32 | 0.91 | 6.95 | 5.21 | 41.7% | 5.0 |
+| triple_screen_elder_ray | 73 | +8.66 | 0.25 | 1.01 | 10.00 | 34.5% | 6.5 |
+| triple_screen_force_index | 48 | +6.05 | 0.54 | 1.26 | 7.86 | 35.3% | 5.7 |
+| all_AND | 0 | — | — | — | — | — | — |
+
+### Variant B (sl 8% / tp 12% / trail 없음 / mh 20) — ema_pullback 149T +17.72% Sharpe 1.20
+
+### 핵심 발견
+- **최고 룰**: ema_pullback A (134T, +23.76%, Sharpe 1.22, hit 56.4%) — 7권 통틀어 일봉 최고 PnL.
+- **단순 셋업이 정통 다지표를 압도**: EMA65 상승 + EMA13 터치 반등이 Force Index·Elder-Ray confluence(PnL 3~9%, Sharpe 0.2~0.5)를 크게 앞섬. Minervini 단순 volume_dryup > trend_template와 동일 패턴.
+- stochastic A는 Calmar 6.95(최고)·MaxDD 5%대로 가장 방어적이나 표본 적음(43T).
+- all_AND = 0거래 (4셋업 상호 배타).
+
+### 책 7권 통합 평가 (일봉 베스트)
+- **PnL**: Elder ema_pullback A (+23.76%) > Minervini volume_dryup B (+20.27%) > Weinstein ma30w_bounce B (+4.18%)
+- **Sharpe**: Minervini (+1.41) > Elder (+1.22) > Weinstein (+0.30)
+- Elder는 지수 불필요·종목 자기완결로 구현 부담 최소이면서 PnL 최상위.
+
+### 결론
+Triple Screen의 핵심 사상(긴 추세 방향 짧은 눌림 매수)을 가장 단순히 구현한 ema_pullback이 일봉 최고 PnL 달성. 정통 다지표 셋업 부진 → "복잡할수록 좋지 않다"는 역설. BULL 편향(평균 ~142봉 단일 상승 구간)·표본 희소·적응판(일봉 proxy) 한계로 walk-forward·하락장 검증 후 CANDIDATE_ALPHAS 등록 검토.
+
+상세: [elder_triple_screen/report.md](elder_triple_screen/report.md)
+
+---
+
 ## 다음 책
 
-- **Book 6** = `weinstein_stages` (Stan Weinstein — Secrets for Profiting). Stage Analysis 주봉 + Stage 2 추세. Minervini 인프라(RS 자체 계산 + simulate_one_stock + 일봉 데이터 로더) 재사용 + 주봉 집계는 신규 인프라 필요.
+- **Book 8** = `lynch_one_up` (Peter Lynch — 월가의 영웅 / One Up on Wall Street). 펀더멘털 스토리 투자 — 6 카테고리 분류(저성장/대형우량/고성장/경기순환/회생/자산주), PEG 비율, 재무 스크리닝. O'Neil/Minervini의 재무 파이프라인(financial_statements) 재사용 가능. 기존 `strategies/lynch/` 운영 전략 존재 — 책 연구판과 구분 필요.
 
 ---
 
