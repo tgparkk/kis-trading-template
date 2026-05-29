@@ -22,7 +22,7 @@
 | 0 조사 | (workspace) | 책 원본 + 웹·세미나·인터뷰 + Trend Template 교차검증 |
 | 1 기록 | `reports/books_research/minervini_vcp/research.md` | 셋업 카탈로그·SEPA·VCP·RS·청산·발화차이 |
 | 2 코드화 | `strategies/books/minervini_vcp/rules.py`, `strategy.py`, `screener.py(필요시)` | `_base_book_strategy` 재사용 |
-| 3 백테스트 | `reports/books_research/minervini_vcp/backtest_*.parquet` | daily_prices ~318일 + RS 자체 계산. universe `top_volume:50`. 청산 Variant A/B 이중 |
+| 3 백테스트 | `reports/books_research/minervini_vcp/backtest_*.parquet` | daily_prices 실측 224일 + RS 자체 계산. universe `top_volume:50`. 청산 Variant A/B 이중 |
 | 4 리포트 | `reports/books_research/minervini_vcp/report.md` + `index.md` 갱신 | 5번 행 갱신, 5권 비교 섹션, CANDIDATE_ALPHAS 자격 검토 |
 | 5 changelog | `memory/changelog-2026-05-29-minervini.md` + 단계별 커밋 | 종료 후 Weinstein 탐색 시작 |
 
@@ -81,7 +81,7 @@
 ## 5. 백테스트 명세 (Phase 3)
 
 ### 5.1 데이터
-- 테이블: `daily_prices` (전 ~318일)
+- 테이블: `daily_prices` (실측 224거래일, 2025-07-01 ~ 2026-05-29)
 - universe: `top_volume:50` (일평균 거래대금 상위 50) — 분봉 책들과 동일 정책
 - 워밍업:
   - 1차(엄격): 200 MA + RS 52주(=260일) → 워밍업 260거래일, 데이터 224일 < 260 → 검증 불가
@@ -170,7 +170,7 @@ strategies/books/minervini_vcp/
 |---|---|
 | 다음 그룹 | 추세 3권 (Minervini → Weinstein → Elder) |
 | 진행 방식 | 순차 (1권씩 완료 후 다음) |
-| 백테스트 기간 | daily_prices 전체 단일 긴 구간 + RS 자체 계산 (~318일) |
+| 백테스트 기간 | daily_prices 전체 단일 긴 구간 + RS 자체 계산 (실측 224일) |
 | 작업 흐름 | 한 권 깊이 + 기록 후 다음 책 (병렬 금지) |
 | 조사 깊이 | 책 + 웹 + 세미나/인터뷰 + Trend Template 정량 교차검증 |
 | 청산룰 | Variant A(Minervini 본인) + Variant B(책간 획일) 이중 비교 |
