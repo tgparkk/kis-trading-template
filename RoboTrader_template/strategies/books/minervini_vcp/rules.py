@@ -14,7 +14,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict
 
-import numpy as np
 import pandas as pd
 
 from strategies.books._base_book_strategy import Rule, RuleResult
@@ -28,6 +27,10 @@ def compute_rs_percentile_12w(universe_close: pd.DataFrame) -> pd.DataFrame:
     Returns:
         같은 shape의 DataFrame. 각 행은 해당 날짜의 RS 백분위 (0~99).
     """
+    if universe_close.shape[1] < 2:
+        raise ValueError(
+            f"universe_close must have ≥ 2 stocks, got {universe_close.shape[1]}"
+        )
     ret_12w = universe_close.pct_change(60)
     rank = ret_12w.rank(axis=1, pct=True, na_option="keep")
     return (rank * 99).round().astype("Int64")
@@ -42,7 +45,7 @@ class rule_trend_template(Rule):
     low_52w_advance_min: float = 0.30
 
     def evaluate(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> RuleResult:
-        if len(df) < 220:
+        if len(df) < 252:
             return RuleResult(triggered=False)
         close = df["close"].astype(float)
         ma50 = close.rolling(50).mean()
@@ -89,16 +92,12 @@ class rule_vcp_breakout(Rule):
     def evaluate(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> RuleResult:
         if len(df) < self.base_min_bars + 21:
             return RuleResult(triggered=False)
-        high = df["high"].astype(float)
-        low = df["low"].astype(float)
-        close = df["close"].astype(float)
-        volume = df["volume"].astype(float)
 
         base = df.iloc[-(self.base_min_bars + 1):-1]
         pre_base = df.iloc[-(self.base_min_bars + 21):-(self.base_min_bars + 1)]
         last = df.iloc[-1]
 
-        pivot = float(pre_base["high"].max())
+        pivot = float(base["high"].max())
         last_close = float(last["close"])
         last_vol = float(last["volume"])
 
@@ -147,7 +146,10 @@ class rule_tight_closes(Rule):
         if len(df) < self.window:
             return RuleResult(triggered=False)
         recent_close = df["close"].astype(float).iloc[-self.window:]
-        range_pct = (recent_close.max() - recent_close.min()) / recent_close.mean()
+        mean_close = recent_close.mean()
+        if mean_close <= 0:
+            return RuleResult(triggered=False)
+        range_pct = (recent_close.max() - recent_close.min()) / mean_close
         if range_pct <= self.range_pct_max:
             return RuleResult(
                 triggered=True, side="buy", confidence=60.0,
