@@ -158,3 +158,18 @@ def test_all_rules_export_has_4_classes():
     assert len(rules_mod.ALL_RULES) == 4
     names = [cls().name for cls in rules_mod.ALL_RULES]
     assert set(names) == {"trend_template", "vcp_breakout", "tight_closes", "volume_dryup"}
+
+
+def test_build_strategy_single_mode_returns_book_strategy():
+    from strategies.books.minervini_vcp.strategy import build_strategy
+    strat = build_strategy(mode="single", target_rule="trend_template")
+    assert strat.name == "MinerviniVCPStrategy"
+    assert strat.holding_period == "swing"
+    assert strat.target_rule == "trend_template"
+
+
+def test_build_strategy_all_and_mode():
+    from strategies.books.minervini_vcp.strategy import build_strategy
+    strat = build_strategy(mode="all_AND")
+    assert strat.mode == "all_AND"
+    assert len(strat.rules) == 4
