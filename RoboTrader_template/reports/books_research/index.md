@@ -17,7 +17,7 @@
 | 7 | elder_triple_screen | Alexander Elder — Trading for a Living | ✅ 완료 | **ema_pullback A PnL +23.76% Sharpe 1.22 Calmar 2.64** 134T (BULL 편향) |
 | 8 | lynch_one_up | Peter Lynch — 월가의 영웅 | ✅ 완료 | **value_balance_sheet B per-trade +2.84% 승률 52.6%** 114T (데이터 제약 inconclusive) |
 | 9 | greenblatt_magic_formula | Joel Greenblatt — Magic Formula | ✅ 완료 | **magic_formula_top B per-trade +4.88% 승률 61.4%** 197T (6개월 단일국면) |
-| 10 | osullivan_what_works | James O'Shaughnessy — What Works on Wall Street | ⏳ 대기 | — |
+| 10 | osullivan_what_works | James O'Shaughnessy — What Works on Wall Street | ✅ 완료 | **low_psr B per-trade +4.63% 승률 54.5%** 200T (6개월 단일국면) |
 
 ## 전체 백테스트 메트릭 (PnL 내림차순, 정렬)
 
@@ -262,6 +262,14 @@
 - **한계**: 6개월 단일국면, EV 상향편향(현금無), 영업권 ROC 하향, 금융/유틸 제외불가, BULL. CANDIDATE 보류
 - **자세히**: [greenblatt_magic_formula/report.md](greenblatt_magic_formula/report.md)
 
+### osullivan_what_works (James O'Shaughnessy — What Works on Wall Street)
+- **베스트 규칙**: `low_psr` (저PSR 단일 팩터, PSR=market_cap/1e8/revenue 재구성)
+- **성과 (per-trade)**: Variant B 200거래 승률 54.5% 평균 +4.63%/거래 (집계 +6.67%, A +8.26%)
+- **특성**: 다팩터 횡단면 순위(VC1식 4팩터 복합 + Trending Value + 단일 PSR). Greenblatt 인프라 확장. universe=factor:79(6개월 창)
+- **핵심 발견**: 단일 저PSR이 4팩터 복합·Trending Value 압도 → O'Shaughnessy "PSR=가치 팩터의 왕" 한국 확인
+- **한계**: 6개월 단일국면, 진짜 VC2/VC3 불가(주주수익률·P/CF·EBITDA 부재), 6개월 모멘텀 불가(3개월 대체), BULL. CANDIDATE 보류
+- **자세히**: [osullivan_what_works/report.md](osullivan_what_works/report.md)
+
 ## 메모 — 시스템 구조
 
 데이터 소스:
@@ -470,9 +478,71 @@ Magic Formula 횡단면 순위는 한국 데이터에서 작동(펀더멘털 책
 
 ---
 
-## 다음 책
+## O'Shaughnessy What Works on Wall Street 결과 — full-period (Book 10, 최종)
 
-- **Book 10 (최종)** = `osullivan_what_works` (James O'Shaughnessy — What Works on Wall Street). 대규모 팩터 백테스트 — 단일/복합 팩터(PSR, PER, PBR, 배당, 모멘텀, Value Composite, Trending Value) 순위 전략. Greenblatt 횡단면 순위 인프라 재사용. ⚠️ psr 100% NULL·dividend_yield 100% NULL 확인됨 → 가용 팩터(per/pbr/momentum) 한정. 데이터 가용성 사전 점검 필수.
+> 다팩터 횡단면 순위. PSR 재구성(market_cap/1e8/revenue) + VC1식 4팩터 복합 + Trending Value. Greenblatt 인프라 확장.
+> ⚠️ universe=factor:79 (market_cap 6개월 창). 진짜 VC2/VC3 불가(주주수익률·P/CF·EBITDA 부재).
+
+### Per-Trade 결과 (Variant B)
+| 룰 | 거래 | per-trade 승률 | 평균/거래 | 집계 PnL |
+|---|------|----------|---------|--------|
+| **low_psr** ⭐ | 200 | 54.5% | +4.63% | +6.67% |
+| value_composite | 182 | 55.5% | +3.85% | +4.72% |
+| trending_value | 138 | 53.6% | +3.89% | +3.54% |
+| all_AND | 74 | — | — | +1.63% |
+
+### 핵심 발견
+- **단일 저PSR이 4팩터 복합·Trending Value 압도** → O'Shaughnessy "PSR=가치 팩터의 왕" 한국 데이터 확인.
+- Trending Value(플래그십)는 부진 — 6개월 모멘텀 불가(16종목)로 3개월 사용 + 단일 BULL 국면이라 모멘텀 틸트 무력.
+- **진짜 VC2/VC3 불가**(주주수익률·P/CF·EBITDA 부재) — 4판 헤드라인 손실.
+
+### 결론
+저PSR이 한국에서도 최강 단일 가치 팩터 확인. 6개월 단일 국면·VC2 불가 한계로 **CANDIDATE 보류**(market_cap 전기간 백필 후 재검증).
+
+상세: [osullivan_what_works/report.md](osullivan_what_works/report.md)
+
+---
+
+# 🏁 트레이딩 책 10권 시리즈 — 통합 요약 (2026-05-29 완료)
+
+10권 전부 조사→코드화→백테스트→리포트 완주. 한국 시장(분봉/일봉/주봉/재무) 백테스트.
+
+## 책별 베스트 한눈에
+
+| # | 책 | 데이터 | 베스트 룰 | 성과 | 표본 |
+|---|---|---|---|---|---|
+| 1 | 아지즈 | 분봉 | bull_flag | -0.04% | 32T |
+| 2 | Bellafiore | 분봉 | fade_vwap | +1.74% Sharpe +0.37 | 964T |
+| 3 | Raschke | 분봉 | anti | +10.24% (2025-10 +59%) | 1,860T |
+| 4 | O'Neil | 일봉+재무 | CANSLIM+패턴 | +7.04% 승률 71% | 7T |
+| 5 | **Minervini** | 일봉 | volume_dryup B | **+20.27% Sharpe 1.41** | 153T |
+| 6 | Weinstein | 주봉 | ma30w_bounce B | +4.18% | 43T |
+| 7 | **Elder** | 일봉(주봉proxy) | ema_pullback A | **+23.76% Sharpe 1.22** | 134T |
+| 8 | Lynch | 일봉+재무 | value_balance_sheet B | per-trade +2.84% | 114T |
+| 9 | Greenblatt | 일봉+재무+순위 | magic_formula_top B | per-trade +4.88% 승률 61% | 197T |
+| 10 | O'Shaughnessy | 일봉+다팩터순위 | low_psr B | per-trade +4.63% 승률 55% | 200T |
+
+## 🔑 5대 교훈
+
+1. **"단순/단일/상대가 복잡/다지표/절대를 이긴다" (5책 연속)**: Minervini(단순 volume_dryup>8조건 trend_template), Elder(단순 ema_pullback>다지표 Triple Screen), Lynch(단순 value>GARP), Greenblatt(상대 순위>절대 임계값), O'Shaughnessy(단일 PSR>복합 VC).
+2. **일봉 추세/가치가 분봉 인트라데이보다 한국 시장에 적합**: 분봉 4책(아지즈/Bellafiore/Raschke 일부/) 대부분 부진·고변동. 미국식 인트라데이 모멘텀 셋업이 한국 분봉에서 약함.
+3. **최고 성과 = Elder(+23.76%)·Minervini(+20.27%)** — 둘 다 일봉 추세 추종, Sharpe 1.2~1.4, 충분한 표본.
+4. **펀더멘털 3책(Lynch/Greenblatt/O'Shaughnessy)은 데이터 제약으로 inconclusive**: 연간 데이터·market_cap 6개월 창·NULL 다수·생존편향. 그래도 저PSR·Magic 순위는 양(+) 엣지 시사.
+5. **전 책 공통 BULL 편향**: 데이터 기간이 단일 상승 구간 → 하락장 방어 미검증. walk-forward·약세장 검증이 CANDIDATE 등록 전제.
+
+## CANDIDATE_ALPHAS 등록 우선순위 (walk-forward 후)
+1. **Elder ema_pullback** (PnL 최고, 일봉 완결)
+2. **Minervini volume_dryup** (Sharpe 최고, 표본 충분)
+3. (보류) Greenblatt/O'Shaughnessy 순위 — market_cap 전기간 백필 후
+
+## 데이터 백필 권장 (펀더멘털 재검증 전제)
+- market_cap 전기간 (현재 6개월만) · 분기 재무(현재 연간) · dividend_yield·psr·현금·섹터 컬럼
+- 이후 Greenblatt Magic·O'Shaughnessy VC2/Trending Value 재검증 가치
+
+## 인프라 (재사용 자산)
+- BookStrategy/Rule/RuleResult 베이스 + 횡단면 순위 주입(Minervini RS→Greenblatt magic_rank→O'Shaughnessy vc/tv/psr) + PIT 재무조인(Lynch, 105일 lag) + 주봉 resample(Weinstein)
+- 책별 run 스크립트 10개, leaderboard.parquet 140행, 결과 parquet 다수
+- 품질 게이트: no-lookahead, 거래비용 왕복 0.41%, adj_factor, 단위 정합(market_cap 1e8)
 
 ---
 
