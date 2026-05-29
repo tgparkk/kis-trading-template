@@ -78,37 +78,7 @@ class BookStrategy(BaseStrategy):
     def generate_signal(
         self, stock_code: str, data: pd.DataFrame, timeframe: str = "daily"
     ) -> Optional[Signal]:
-        if data is None or len(data) == 0:
-            return None
-        ctx = {"stock_code": stock_code, "timeframe": timeframe}
-
-        if self.mode == "single":
-            rule = self._rule_map.get(self.target_rule)
-            if rule is None:
-                return None
-            res = rule.evaluate(data, ctx)
-            return self._to_signal(stock_code, res, res.reasons if res.triggered else [])
-
-        if self.mode == "all_AND":
-            if not self.rules:
-                return None
-            results = [(r.name, r.evaluate(data, ctx)) for r in self.rules]
-            if all(res.triggered for _, res in results):
-                merged_reasons = [r for _, res in results for r in res.reasons]
-                return self._to_signal(stock_code, results[0][1], merged_reasons)
-            return None
-
-        if self.mode == "top_K_OR":
-            for name in self.or_members:
-                rule = self._rule_map.get(name)
-                if rule is None:
-                    continue
-                res = rule.evaluate(data, ctx)
-                if res.triggered:
-                    return self._to_signal(stock_code, res, [name])
-            return None
-
-        return None
+        return self.generate_signal_with_extra_ctx(stock_code, data, timeframe, {})
 
     def generate_signal_with_extra_ctx(
         self, stock_code: str, data: pd.DataFrame, timeframe: str, extra: Dict[str, Any]

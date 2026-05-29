@@ -102,9 +102,10 @@ def simulate_one_stock(
     max_hold_bars: int,
     trail_ma: Optional[int],
     warmup_bars: int = 60,
-    commission_rate: float = 0.00015,
-    tax_rate: float = 0.0018,
-    slippage_rate: float = 0.001,
+    commission_rate: float = 0.00015,  # 수수료 매매 각각 (양방향)
+    tax_rate: float = 0.0018,           # 거래세 매도 시
+    slippage_rate: float = 0.001,       # 슬리피지 단방향
+    # → 왕복 ≈ commission×2 + tax + slippage×2 = 0.41%
     initial_capital: float = 10_000_000,
 ) -> dict:
     """단일 종목 일봉 시뮬레이션. 신호 → 다음 봉 시가 매수 → sl/tp/mh/trail 청산."""
@@ -168,10 +169,7 @@ def simulate_one_stock(
             # 각 rule에 ctx['rs_value']를 전달할 방법: strategy.generate_signal 호출 전
             # 전역 dict 대신 strategy 측 ctx를 직접 사용한다 → 다음 task에서 BookStrategy
             # 인터페이스 확장으로 처리.
-            try:
-                signal = strategy.generate_signal_with_extra_ctx(code, window, "daily", ctx_extra)  # type: ignore[attr-defined]
-            except AttributeError:
-                signal = strategy.generate_signal(code, window, "daily")
+            signal = strategy.generate_signal_with_extra_ctx(code, window, "daily", ctx_extra)
             if signal is not None and signal.signal_type in (SignalType.BUY, SignalType.STRONG_BUY):
                 fill = float(bar_next["open"]) * (1 + slippage_rate)
                 qty = int((cash * 0.99) // fill)

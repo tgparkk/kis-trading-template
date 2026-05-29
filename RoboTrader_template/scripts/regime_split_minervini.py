@@ -89,9 +89,9 @@ def _try_load_ks11(start: str, end: str) -> pd.Series | None:
 
 def _classify_regime(ret_20d: float) -> str:
     """20일 수익률 기반 국면 분류."""
-    if ret_20d > 0.03:
+    if ret_20d > 0.02:
         return "BULL"
-    elif ret_20d < -0.03:
+    elif ret_20d < -0.02:
         return "BEAR"
     else:
         return "SIDEWAYS"
