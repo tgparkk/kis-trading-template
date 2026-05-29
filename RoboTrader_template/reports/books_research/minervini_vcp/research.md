@@ -94,7 +94,7 @@ RS_raw = R(12W) → universe 백분위. 1차 구현 채택.
 - **공매도 제약**: Stage 4 short 셋업 제외.
 - **IBD RS Rating 부재**: 자체 계산 필수.
 - **거래대금 집중**: top_volume:50 사용으로 유동성 확보 + universe 표준화.
-- **데이터 기간 한계**: daily_prices 약 318거래일. RS 12주 + MA200 워밍업 200일 → 검증 ~118일.
+- **데이터 기간 한계 (실측)**: daily_prices 2025-07-01 ~ 2026-05-29 = **224 거래일**. simulate warmup 60 + RS 12주 + MA200 (220봉 가드) → trend_template 검증 가능 ~4일 (한정적), 그 외 rule (vcp/tight/volume) 은 검증 가능 ~164일.
 - **단일 BULL 구간**: 표본 부족 시 국면별 분해(BULL/BEAR/SIDEWAYS, KOSPI 기준)로 통계적 의미 분리.
 
 ## 8. 참고 자료

@@ -101,7 +101,7 @@ def simulate_one_stock(
     take_profit_pct: float,
     max_hold_bars: int,
     trail_ma: Optional[int],
-    warmup_bars: int = 220,
+    warmup_bars: int = 60,
     commission_rate: float = 0.00015,
     tax_rate: float = 0.0018,
     slippage_rate: float = 0.001,

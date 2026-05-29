@@ -45,7 +45,7 @@ class rule_trend_template(Rule):
     low_52w_advance_min: float = 0.30
 
     def evaluate(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> RuleResult:
-        if len(df) < 252:
+        if len(df) < 220:
             return RuleResult(triggered=False)
         close = df["close"].astype(float)
         ma50 = close.rolling(50).mean()

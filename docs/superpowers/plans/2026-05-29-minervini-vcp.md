@@ -217,7 +217,7 @@ git commit -m "research(minervini): VCP·RS·청산·셋업 카탈로그 정량 
 - **공매도 제약**: Stage 4 short 셋업 제외.
 - **IBD RS Rating 부재**: 자체 계산 필수.
 - **거래대금 집중**: top_volume:50 사용으로 유동성 확보 + universe 표준화.
-- **데이터 기간 한계**: daily_prices 약 318거래일. RS 12주 + MA200 워밍업 200일 → 검증 ~118일.
+- **데이터 기간 한계 (실측)**: daily_prices 2025-07-01 ~ 2026-05-29 = **224 거래일**. simulate warmup 60 + RS 12주 + MA200 (220봉 가드) → trend_template 검증 가능 ~4일 (한정적), 그 외 rule (vcp/tight/volume) 은 검증 가능 ~164일.
 - **단일 BULL 구간**: 표본 부족 시 국면별 분해(BULL/BEAR/SIDEWAYS, KOSPI 기준)로 통계적 의미 분리.
 ```
 
@@ -969,7 +969,7 @@ def simulate_one_stock(
     take_profit_pct: float,
     max_hold_bars: int,
     trail_ma: Optional[int],
-    warmup_bars: int = 220,
+    warmup_bars: int = 60,
     commission_rate: float = 0.00015,
     tax_rate: float = 0.0018,
     slippage_rate: float = 0.001,
@@ -1534,7 +1534,7 @@ Expected: 10행 마크다운 표 출력 (Variant A 5행 + B 5행). 출력을 복
 # Minervini VCP — 백테스트 결과 (Book 5/10)
 
 > 데이터: daily_prices (adj_factor 적용 수정주가)
-> 기간: daily_prices 전체 단일 긴 구간 (~318거래일)
+> 기간: daily_prices 전체 단일 긴 구간 (~224거래일 실측)
 > universe: top_volume:50 (일평균 거래대금 상위 50)
 > RS: universe 내부 12주 수익률 백분위
 > 청산 Variant: A(sl 8% / tp 20% / mh 35 / 50MA trail) + B(sl 8% / tp 12% / mh 20)
@@ -1623,7 +1623,7 @@ git commit -m "docs(minervini): 백테스트 결과 리포트 (Variant A/B + 국
 ```markdown
 ## Minervini VCP 결과 — 일봉 (Book 5)
 
-> daily_prices 전체 ~318일 + RS 자체 계산 (12주 universe 백분위). universe top_volume:50.
+> daily_prices 전체 ~224일 실측 + RS 자체 계산 (12주 universe 백분위). universe top_volume:50.
 
 ### Variant A/B 베스트
 (report.md section 1 베스트 룰 요약 — 2~3행)
