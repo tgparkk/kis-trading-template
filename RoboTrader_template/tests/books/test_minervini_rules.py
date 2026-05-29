@@ -131,3 +131,30 @@ def test_vcp_breakout_fails_on_flat_volume(trend_up_df):
     res = rule.evaluate(trend_up_df, {"stock_code": "TEST"})
     # 단조 상승은 베이스/수축 없음 → 실패
     assert res.triggered is False
+
+
+def test_tight_closes_triggers_on_narrow_3w_range(trend_up_df):
+    from strategies.books.minervini_vcp.rules import rule_tight_closes
+    rule = rule_tight_closes()
+    # 마지막 15봉 종가 변동폭을 강제로 1% 이하로
+    df = trend_up_df.copy()
+    last_15_close = df["close"].iloc[-15].copy()
+    df.loc[df.index[-15:], "close"] = last_15_close * (1 + np.linspace(-0.005, 0.005, 15))
+    res = rule.evaluate(df, {"stock_code": "TEST"})
+    assert res.triggered is True
+
+
+def test_volume_dryup_triggers_on_low_recent_volume(trend_up_df):
+    from strategies.books.minervini_vcp.rules import rule_volume_dryup
+    df = trend_up_df.copy()
+    df.loc[df.index[-10:], "volume"] = 400_000  # 직전 평균 1M의 40%
+    rule = rule_volume_dryup()
+    res = rule.evaluate(df, {"stock_code": "TEST"})
+    assert res.triggered is True
+
+
+def test_all_rules_export_has_4_classes():
+    from strategies.books.minervini_vcp import rules as rules_mod
+    assert len(rules_mod.ALL_RULES) == 4
+    names = [cls().name for cls in rules_mod.ALL_RULES]
+    assert set(names) == {"trend_template", "vcp_breakout", "tight_closes", "volume_dryup"}

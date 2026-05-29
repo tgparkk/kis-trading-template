@@ -134,3 +134,56 @@ class rule_vcp_breakout(Rule):
             ],
             metadata={"pivot": pivot, "rvol": rvol},
         )
+
+
+@dataclass
+class rule_tight_closes(Rule):
+    """3주(15봉) 종가 변동폭 ≤ 1.5%."""
+    name: str = "tight_closes"
+    window: int = 15
+    range_pct_max: float = 0.015
+
+    def evaluate(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> RuleResult:
+        if len(df) < self.window:
+            return RuleResult(triggered=False)
+        recent_close = df["close"].astype(float).iloc[-self.window:]
+        range_pct = (recent_close.max() - recent_close.min()) / recent_close.mean()
+        if range_pct <= self.range_pct_max:
+            return RuleResult(
+                triggered=True, side="buy", confidence=60.0,
+                reasons=[f"tight_closes range={range_pct:.3%} ≤ {self.range_pct_max:.1%}"],
+            )
+        return RuleResult(triggered=False)
+
+
+@dataclass
+class rule_volume_dryup(Rule):
+    """최근 10봉 평균 거래량 ≤ 직전 30봉 평균의 70%."""
+    name: str = "volume_dryup"
+    recent_window: int = 10
+    base_window: int = 30
+    ratio_max: float = 0.7
+
+    def evaluate(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> RuleResult:
+        if len(df) < self.recent_window + self.base_window:
+            return RuleResult(triggered=False)
+        vol = df["volume"].astype(float)
+        recent_avg = float(vol.iloc[-self.recent_window:].mean())
+        base_avg = float(vol.iloc[-(self.recent_window + self.base_window):-self.recent_window].mean())
+        if base_avg <= 0:
+            return RuleResult(triggered=False)
+        ratio = recent_avg / base_avg
+        if ratio <= self.ratio_max:
+            return RuleResult(
+                triggered=True, side="buy", confidence=58.0,
+                reasons=[f"volume_dryup recent/base={ratio:.2f} ≤ {self.ratio_max:.2f}"],
+            )
+        return RuleResult(triggered=False)
+
+
+ALL_RULES = [
+    rule_trend_template,
+    rule_vcp_breakout,
+    rule_tight_closes,
+    rule_volume_dryup,
+]
