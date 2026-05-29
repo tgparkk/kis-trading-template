@@ -16,7 +16,7 @@
 | 6 | weinstein_stages | Stan Weinstein — Secrets for Profiting | ✅ 완료 | **ma30w_bounce B PnL +4.18% Sharpe 0.30 Calmar 1.92** 43T (BULL 편향) |
 | 7 | elder_triple_screen | Alexander Elder — Trading for a Living | ✅ 완료 | **ema_pullback A PnL +23.76% Sharpe 1.22 Calmar 2.64** 134T (BULL 편향) |
 | 8 | lynch_one_up | Peter Lynch — 월가의 영웅 | ✅ 완료 | **value_balance_sheet B per-trade +2.84% 승률 52.6%** 114T (데이터 제약 inconclusive) |
-| 9 | greenblatt_magic_formula | Joel Greenblatt — Magic Formula | ⏳ 대기 | — |
+| 9 | greenblatt_magic_formula | Joel Greenblatt — Magic Formula | ✅ 완료 | **magic_formula_top B per-trade +4.88% 승률 61.4%** 197T (6개월 단일국면) |
 | 10 | osullivan_what_works | James O'Shaughnessy — What Works on Wall Street | ⏳ 대기 | — |
 
 ## 전체 백테스트 메트릭 (PnL 내림차순, 정렬)
@@ -253,6 +253,15 @@
 - **비교성 주의**: universe 단절(이전 7권 top_volume:50), 집계 PnL은 0거래 종목 희석 → per-trade로만 해석
 - **자세히**: [lynch_one_up/report.md](lynch_one_up/report.md)
 
+### greenblatt_magic_formula (Joel Greenblatt — Magic Formula)
+- **베스트 규칙**: `magic_formula_top` (EBIT/EV + ROC 순위 합산 상위 20, Variant B)
+- **성과 (per-trade)**: 197거래 승률 61.4% 평균 +4.88%/거래 — **펀더멘털 책 최고 표본·성과**
+- **특성**: 횡단면 순위(Minervini RS식 주입) + PIT 재무조인(105일 lag). universe=magic:79(market_cap 6개월 창)
+- **핵심 발견**: 순위(상대) 룰 작동 vs 절대 임계값 룰 전멸(ROC>25% 한국 대형주 도달불가 max 24.7%) → "Magic Formula 본질 = 상대 순위"
+- **단위 버그**: market_cap(원) vs 재무(억원) 1e8배 불일치 발견·수정
+- **한계**: 6개월 단일국면, EV 상향편향(현금無), 영업권 ROC 하향, 금융/유틸 제외불가, BULL. CANDIDATE 보류
+- **자세히**: [greenblatt_magic_formula/report.md](greenblatt_magic_formula/report.md)
+
 ## 메모 — 시스템 구조
 
 데이터 소스:
@@ -437,9 +446,33 @@ Triple Screen의 핵심 사상(긴 추세 방향 짧은 눌림 매수)을 가장
 
 ---
 
+## Greenblatt Magic Formula 결과 — full-period (Book 9)
+
+> EBIT/EV(이익수익률) + ROC(자본수익률) 횡단면 순위 합산. PIT 재무조인(105일 lag) + Minervini RS식 순위 주입.
+> ⚠️ **universe = magic:79** (market_cap 보유 종목, **6개월 창** 2025-07-31~2026-02-02). 이전 8권과 기간·비교성 단절.
+
+### Per-Trade 결과
+| Variant | 룰 | 거래 | per-trade 승률 | 평균/거래 | 청산 |
+|---|---|------|----------|---------|------|
+| **B** | **magic_formula_top** ⭐ | 197 | 61.4% | +4.88% | TP79·SL47·mh43·forced28 |
+| A | magic_formula_top | 38 | 84.2% | +32.29% | forced 31/38 (BULL buy&hold 과대) |
+| A/B | threshold / high_roc_value / all_AND | 0 | (ROC max 0.247<0.25 — 절대임계값 사망) | — | — |
+
+### 핵심 발견
+- **순위(상대) 룰 작동, 절대 임계값 룰 사망**: magic_formula_top(순위) 197거래 양호. threshold(ROC>25%)·high_roc_value(ROC>40%)는 0거래 — Greenblatt 미국 기준이 한국 대형주(ROC max 24.7%)에 과도. **"Magic Formula 본질은 절대 기준이 아닌 상대 순위"** 입증.
+- **펀더멘털 2책 비교**: Greenblatt magic_formula_top B(+4.88% 승률 61.4% 197T) > Lynch value_balance_sheet B(+2.84% 52.6% 114T). 횡단면 순위 우월.
+- **단위 버그 수정**: market_cap(원) vs 재무(억원) 1e8배 불일치 발견·수정. 수정 전 EY≈0으로 순위가 ROC 단독이었음.
+
+### 결론
+Magic Formula 횡단면 순위는 한국 데이터에서 작동(펀더멘털 책 최고 표본·per-trade). 단 6개월 단일 국면(market_cap 창)·EV 상향편향·연간 데이터로 신뢰도 제약. **CANDIDATE 보류**(기간 부족). market_cap 전기간 백필 + 현금/섹터 컬럼 확보 후 재검증.
+
+상세: [greenblatt_magic_formula/report.md](greenblatt_magic_formula/report.md)
+
+---
+
 ## 다음 책
 
-- **Book 9** = `greenblatt_magic_formula` (Joel Greenblatt — Magic Formula / 주식시장을 이기는 작은 책). 두 지표만: 이익수익률(EBIT/EV) + 자본수익률(ROC). 순위 합산 상위 종목 매수. Lynch와 동일 `financial_statements` 재무 파이프라인 + point-in-time 조인 재사용 가능. EBIT/EV 계산에 필요한 컬럼(operating_profit, 시가총액/부채) 가용성 사전 점검 필요.
+- **Book 10 (최종)** = `osullivan_what_works` (James O'Shaughnessy — What Works on Wall Street). 대규모 팩터 백테스트 — 단일/복합 팩터(PSR, PER, PBR, 배당, 모멘텀, Value Composite, Trending Value) 순위 전략. Greenblatt 횡단면 순위 인프라 재사용. ⚠️ psr 100% NULL·dividend_yield 100% NULL 확인됨 → 가용 팩터(per/pbr/momentum) 한정. 데이터 가용성 사전 점검 필수.
 
 ---
 
