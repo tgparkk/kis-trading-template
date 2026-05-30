@@ -21,6 +21,7 @@
 | 11 | moonbyungro_metric | 문병로 — 메트릭 스튜디오 (한국 저자 1호) | ✅ 완료 | **value_composite_kr K +13.68% Sharpe 0.09** 218T (다년 2021~2026, Sharpe 붕괴) |
 | 12 | hongyongchan | 홍용찬 — 실전 퀀트투자 (한국 저자 2호) | ✅ 완료 | **value4_low K +12.87% Sharpe 0.11** 213T (게이트 무용·소형주20%>40% 발견) |
 | 13 | systrader79 | systrader79 — 주식투자 ETF로 시작하라 (자산배분) | ✅ MVP | **평균모멘텀스코어 MDD 19.08%<KOSPI 21.84%** CAGR24.8% (MDD방어✓ Sharpe개선✗, 폭등장 노출제한) |
+| 14 | haru_silijeon | 강창권 — 주식투자 단기 트레이딩의 정석 (한국 단타·전자책 실물판독) | ✅ 완료 | **일봉 ma20_pullback B +16.00% Sharpe 0.44** hit51.8% (ma5_10 +46.15%) / 분봉 단타 전멸 |
 
 ## 전체 백테스트 메트릭 (PnL 내림차순, 정렬)
 
@@ -637,6 +638,40 @@ Magic Formula 횡단면 순위는 한국 데이터에서 작동(펀더멘털 책
 - 통합운용은 **분산도 K에 극도로 민감**(K=5 −7.5% → K=20 +93.3%, MaxDD 68%→23%).
 - **데이터 검증**: KOSPI 8476·삼성 305K는 오염 아님 — 2025.6~2026 **실제 대폭등장**(사장님 확인, raw도 동일). 2021~2025.5는 현실 일치.
 - **재해석**: KOSPI +171%(연20%) 폭등장에서 손익절+현금보유 전략이 인덱스에 지는 건 당연. Elder = **beta 0.15 시장중립 방어형**(Sharpe·MaxDD·하락장 우위). 인덱스 대체재 ✗, **분산/방어 자산 ✓**.
+
+---
+
+## 강창권 단기 트레이딩의 정석 결과 — 분봉+일봉 (Book 14, 한국 단타·전자책 실물판독 · 2026-05-30)
+
+> 한국 토착 단타/스윙 전문서. 종이책 아닌 **Google Play 전자책 실물 판독**(PowerShell 화면캡처+직원 분담)으로 추정 아닌 원문 기준 코드화 → A등급 14전략 카탈로그. 분봉 6룰 + 일봉 7룰 코드화, pytest 139 통과.
+> book_id: `haru_silijeon`(분봉) / `haru_silijeon_daily`(일봉). universe top_volume:50.
+
+### 분봉 6룰 (3기간 2025-10/2026-04/2026-05 — 전부 음수)
+| 룰 | 거래 | PnL 범위 | 판정 |
+|---|---|---|---|
+| ck480 (시그니처 ★) | 7~44 | −0.12~−0.57% | 표본 부족(조건 빡빡) |
+| open_two_red_then_green | 89~222 | +0.10~−1.55% | 그나마 중립 |
+| prev_high_break | 468~559 | −2~−3% | 손실 |
+| ma_5_10_pullback | 1.6~3천 | −6.75~−26.55% | 과매매 |
+| ma_240_480_support | 3~5천 | −18~−30% | 무력 |
+| ma20_pullback | 1~1.2만 | **−50%대** | 과매매 참사 |
+
+### 일봉 7룰 (daily_full 2021~2026) Variant B 베스트
+| 룰 | 거래 | PnL | Sharpe | Hit |
+|---|---|---|---|---|
+| **daily_ma5_10_follow** ⭐ | 1,000 | **+46.15%** | 0.34 | 48.5% |
+| **daily_ma20_pullback** | 695 | +16.00% | **0.44** | 51.8% |
+| daily_new_high_breakout | 285 | +19.99% | 0.32 | 38.1% |
+| daily_swing_pullback | 482 | +11.55% | 0.35 | 48.5% |
+*(Variant A: new_high_breakout +22.29% / trend_filter_240_480 +22.40% / ma5_10_follow +13.06%)*
+
+### 핵심 결론
+- **분봉 단타 전멸 = 미국 분봉 3책과 동일 운명**: 강창권 베스트 분봉(open_two_red_then_green ±0%)도 Bellafiore fade_vwap(+1.74%)·Raschke anti(+10.24%)에 못 미침. ck480 표본부족, ma20_pullback −50% 과매매. **"분봉 단타는 한국 시장에서 어렵다"는 결론 14권째 재확인.**
+- **강창권의 가치는 분봉 단타가 아니라 일봉 이평/돌파 매매**: 같은 룰셋을 일봉으로 옮기면 6/7이 양 PnL. ma5_10 +46%, ma20눌림 Sharpe 0.44/hit51.8%, 신고가 +20%대.
+- **Sharpe 0.44 = 중간**: 기술적 베스트(Elder 0.68)보다 낮고 펀더멘털(~0.1)보다 높음. **CANDIDATE 부적격**(단 일봉 룰은 국면 분해·walk-forward 추가 검증 가치).
+- **한계**: ck480 표본부족(3기간 91T), 분봉 데이터 1년3개월(전부 폭등장), VI·수급 데이터 부재로 일부 룰 근사.
+
+상세: [haru_silijeon/report.md](haru_silijeon/report.md) · changelog: [../../memory/changelog-2026-05-30-book14-kang-changgwon.md](../../memory/changelog-2026-05-30-book14-kang-changgwon.md)
 
 ---
 
