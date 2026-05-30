@@ -20,6 +20,7 @@
 | 10 | osullivan_what_works | James O'Shaughnessy — What Works on Wall Street | ✅ 완료 | **low_psr B per-trade +4.63% 승률 54.5%** 200T (6개월 단일국면) |
 | 11 | moonbyungro_metric | 문병로 — 메트릭 스튜디오 (한국 저자 1호) | ✅ 완료 | **value_composite_kr K +13.68% Sharpe 0.09** 218T (다년 2021~2026, Sharpe 붕괴) |
 | 12 | hongyongchan | 홍용찬 — 실전 퀀트투자 (한국 저자 2호) | ✅ 완료 | **value4_low K +12.87% Sharpe 0.11** 213T (게이트 무용·소형주20%>40% 발견) |
+| 13 | systrader79 | systrader79 — 주식투자 ETF로 시작하라 (자산배분) | ✅ MVP | **평균모멘텀스코어 MDD 19.08%<KOSPI 21.84%** CAGR24.8% (MDD방어✓ Sharpe개선✗, 폭등장 노출제한) |
 
 ## 전체 백테스트 메트릭 (PnL 내림차순, 정렬)
 
