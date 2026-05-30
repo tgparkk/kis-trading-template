@@ -1,0 +1,43 @@
+# =============================================================================
+# Minervini Volume Dry-up Strategy Configuration (Variant B) — 페이퍼 전략
+#
+# 진입 (백테스트 rule=volume_dryup, strategies/books/minervini_vcp/rules.py):
+#   최근 10봉 평균 거래량 <= 직전 30봉 평균의 70%  (거래량 dry-up)
+#   → 변동성 수축 후 매집 신호. confidence=58 (룰 반환값).
+# 청산 (Variant B): sl 8% / tp 12% / max_hold 20거래일.  trail 없음, trend_flip 없음.
+#
+# ⚠️ 경고: 백테스트 Sharpe variant B 0.64 vs variant A 0.03 — variant 선택에 극도로
+#   민감하며 BULL 편향 리스크가 큼. 페이퍼 검증 전제(paper_trading: true) 필수.
+# =============================================================================
+
+strategy:
+  name: "MinerviniVolumeDryupStrategy"
+  version: "1.0.0"
+
+# 안전장치: true면 실제 주문 없이 로깅만 (페이퍼 트레이딩 검증 단계)
+paper_trading: true
+
+# -----------------------------------------------------------------------------
+# 전략 파라미터 (진입 — 백테스트 rule_volume_dryup와 동일)
+# -----------------------------------------------------------------------------
+parameters:
+  # 신호 평가 최소 일봉 수 (rule_volume_dryup: recent_window 10 + base_window 30)
+  min_daily_bars: 40
+
+# -----------------------------------------------------------------------------
+# 리스크 관리 (청산 — Variant B)
+# -----------------------------------------------------------------------------
+risk_management:
+  take_profit_pct: 0.12       # 익절 +12% (Variant B)
+  stop_loss_pct: 0.08         # 손절 -8%  (Variant B)
+  max_hold_days: 20           # 최대 보유 20거래일 (Variant B)
+  max_positions: 5
+  max_daily_trades: 5
+  max_per_stock_amount: 3000000  # 종목당 최대 투자금액 (원)
+
+# -----------------------------------------------------------------------------
+# 대상 종목
+# 비워두면 framework의 종목 선정 로직(거래량 상위 등)을 따름.
+# accepts_volume_fallback=True
+# -----------------------------------------------------------------------------
+target_stocks: []

@@ -31,19 +31,24 @@
   },
   "strategies": [
     {
-      "name": "sample",
+      "name": "elder_ema_pullback",
       "enabled": true,
-      "max_capital_pct": 0.33
+      "max_capital_pct": 0.30
     },
     {
-      "name": "lynch",
+      "name": "minervini_volume_dryup",
       "enabled": true,
-      "max_capital_pct": 0.33
+      "max_capital_pct": 0.20
     },
     {
-      "name": "bb_reversion",
+      "name": "book_pullback_ma20",
       "enabled": true,
-      "max_capital_pct": 0.33
+      "max_capital_pct": 0.25
+    },
+    {
+      "name": "book_pullback_ma5",
+      "enabled": true,
+      "max_capital_pct": 0.25
     }
   ],
   "duplicate_signal_prevention": {
