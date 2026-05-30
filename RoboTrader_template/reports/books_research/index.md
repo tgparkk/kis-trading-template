@@ -19,6 +19,7 @@
 | 9 | greenblatt_magic_formula | Joel Greenblatt — Magic Formula | ✅ 완료 | **magic_formula_top B per-trade +4.88% 승률 61.4%** 197T (6개월 단일국면) |
 | 10 | osullivan_what_works | James O'Shaughnessy — What Works on Wall Street | ✅ 완료 | **low_psr B per-trade +4.63% 승률 54.5%** 200T (6개월 단일국면) |
 | 11 | moonbyungro_metric | 문병로 — 메트릭 스튜디오 (한국 저자 1호) | ✅ 완료 | **value_composite_kr K +13.68% Sharpe 0.09** 218T (다년 2021~2026, Sharpe 붕괴) |
+| 12 | hongyongchan | 홍용찬 — 실전 퀀트투자 (한국 저자 2호) | ✅ 완료 | **value4_low K +12.87% Sharpe 0.11** 213T (게이트 무용·소형주20%>40% 발견) |
 
 ## 전체 백테스트 메트릭 (PnL 내림차순, 정렬)
 
@@ -524,6 +525,27 @@ Magic Formula 횡단면 순위는 한국 데이터에서 작동(펀더멘털 책
 - **CANDIDATE 부적격**(Sharpe 0.09) — 펀더멘털 4책째 동일 결론.
 
 상세: [moonbyungro_metric/report.md](moonbyungro_metric/report.md) · Phase0: [moonbyungro_metric/phase0_ocf_backfill.md](moonbyungro_metric/phase0_ocf_backfill.md)
+
+---
+
+## 홍용찬 실전 퀀트투자 결과 — 다년 (Book 12, 한국 저자 2호 · 2026-05-30)
+
+> 4선 저밸류(PER+PBR+PCR+PSR) + 소형주 하위 20% + 성장/마진/부채 게이트. 문병로 인프라 85% 재활용, universe 131 동일(직접 A/B). 배당 제외(사장님 방침).
+
+### 룰별 (variant K: sl17.5%/mh250)
+| 룰 | 거래 | 집계 PnL | Sharpe | 승률 |
+|---|---|---|---|---|
+| **value4_low**(4선) ⭐ | 213 | **+12.87%** | **0.11** | 42.7% |
+| small_value4(소형주20%) | 129 | +12.53% | 0.06 | 41.1% |
+| hong_combo(게이트) | 88 | +8.93% | 0.05 | 39.8% |
+
+### 핵심 발견 (문병로와 직접 A/B)
+- **4선 ≈ 5팩터**: 홍 value4_low(+12.87%/0.11) ≈ 문 value_composite_kr(+13.68%/0.09). 밸류 4개나 5개나 동급.
+- **성장/마진 게이트가 알파 못 더함**: hong_combo(+8.93%)<순수 4선(+12.87%). 홍용찬 핵심 주장(게이트 결합) **부분 반박** → "단순>복잡" 재확인.
+- **소형주 20% > 40%**: 홍 small_value4(+12.53%) > 문 small_value 40%(+6.99%). 강한 소형주 틸트 유효.
+- **Sharpe 0.11 붕괴** — 펀더멘털 5책째 동일 결론. CANDIDATE 부적격.
+
+상세: [hongyongchan/report.md](hongyongchan/report.md)
 
 ---
 
