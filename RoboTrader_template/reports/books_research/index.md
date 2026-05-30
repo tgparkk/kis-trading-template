@@ -18,6 +18,7 @@
 | 8 | lynch_one_up | Peter Lynch — 월가의 영웅 | ✅ 완료 | **value_balance_sheet B per-trade +2.84% 승률 52.6%** 114T (데이터 제약 inconclusive) |
 | 9 | greenblatt_magic_formula | Joel Greenblatt — Magic Formula | ✅ 완료 | **magic_formula_top B per-trade +4.88% 승률 61.4%** 197T (6개월 단일국면) |
 | 10 | osullivan_what_works | James O'Shaughnessy — What Works on Wall Street | ✅ 완료 | **low_psr B per-trade +4.63% 승률 54.5%** 200T (6개월 단일국면) |
+| 11 | moonbyungro_metric | 문병로 — 메트릭 스튜디오 (한국 저자 1호) | ✅ 완료 | **value_composite_kr K +13.68% Sharpe 0.09** 218T (다년 2021~2026, Sharpe 붕괴) |
 
 ## 전체 백테스트 메트릭 (PnL 내림차순, 정렬)
 
@@ -500,6 +501,29 @@ Magic Formula 횡단면 순위는 한국 데이터에서 작동(펀더멘털 책
 저PSR이 한국에서도 최강 단일 가치 팩터 확인. 6개월 단일 국면·VC2 불가 한계로 **CANDIDATE 보류**(market_cap 전기간 백필 후 재검증).
 
 상세: [osullivan_what_works/report.md](osullivan_what_works/report.md)
+
+---
+
+## 문병로 메트릭 스튜디오 결과 — 다년 다국면 (Book 11, 한국 저자 1호 · 2026-05-30)
+
+> 5팩터(PBR·PER·PSR·POR·**PCR**) 횡단면 순위 + 소형주 틸트. O'Shaughnessy 인프라 확장.
+> **펀더멘털 책 최초 다년(2021~2026, 1,241일) 검증** — market_cap 5년 백필 + PCR(영업현금흐름) Phase 0 DART 백필 덕. n_eligible median 52.
+
+### 룰별 베스트 (variant K: sl17.5%/mh250)
+| 룰 | 거래 | 집계 PnL | Sharpe | per-trade 승률 |
+|---|---|---|---|---|
+| **value_composite_kr** ⭐ | 218 | **+13.68%** | **0.09** | 40.4% |
+| small_value | 213 | +6.99% | 0.06 | 39.0% |
+| low_pbr (시그니처) | 166 | +3.29% | 0.04 | 36.7% |
+
+### 핵심 발견
+- **5팩터 복합이 베스트**(+13.68%), 저PBR 단독·소형주를 압도.
+- **문병로 시그니처 "한국=저PBR 민감"은 다년 검증 시 약함(부분 반박)** — low_pbr 단독이 3룰 중 최하(+3.29%, 승률 36.7%). 가치는 복합으로만 의미.
+- **Sharpe 0.01~0.09 붕괴** — Elder(0.68)·Minervini(0.64)에 크게 미달. per-trade 승률 40~47%(다년)로 6개월 펀더멘털 책(54~61%)보다 낮음 → 단일 BULL 거품 재확인.
+- 장기보유(K/A) > 단기청산(B). 4월 게이트는 PnL 유지하며 회전율 절감.
+- **CANDIDATE 부적격**(Sharpe 0.09) — 펀더멘털 4책째 동일 결론.
+
+상세: [moonbyungro_metric/report.md](moonbyungro_metric/report.md) · Phase0: [moonbyungro_metric/phase0_ocf_backfill.md](moonbyungro_metric/phase0_ocf_backfill.md)
 
 ---
 

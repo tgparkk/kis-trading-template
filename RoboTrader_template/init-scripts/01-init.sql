@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS financial_statements (
     revenue NUMERIC(20, 2),
     operating_profit NUMERIC(20, 2),
     net_income NUMERIC(20, 2),
+    operating_cash_flow NUMERIC(20, 2),
     total_assets NUMERIC(20, 2),
     current_assets NUMERIC(20, 2),
     current_liabilities NUMERIC(20, 2),
