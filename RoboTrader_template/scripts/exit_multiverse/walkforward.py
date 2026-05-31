@@ -1,6 +1,6 @@
 """워크포워드: 롤링 폴드 생성 + 폴드 평가."""
 from __future__ import annotations
-from typing import Callable, Dict, List
+from typing import Dict, List
 import pandas as pd
 
 from scripts.exit_multiverse import portfolio_sim, objective
@@ -73,6 +73,8 @@ def evaluate_fold(fold, data, signal_cache_full, adapter, grid, turnover,
         results.append({"params": params, "worst_sharpe": rs["worst"],
                         "regime": rs, "dsr": dsr, "n_trades": res["n_trades"]})
     results.sort(key=lambda r: r["worst_sharpe"], reverse=True)
+    if not results:
+        raise ValueError("grid must be non-empty")
     best = results[0]
     test_data = _slice_data(data, fold["test_start"], fold["test_end"])
     test_sig = _reindex_signals(signal_cache_full, data, test_data)
