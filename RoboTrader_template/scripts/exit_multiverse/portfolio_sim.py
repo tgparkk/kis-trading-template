@@ -4,11 +4,8 @@
 no-lookahead: 판정은 bar i, 체결은 bar i+1 시가. 비용 상수는 기존 run_*.py 와 동일.
 """
 from __future__ import annotations
-from typing import Dict, List, Optional
-import numpy as np
+from typing import Dict, List
 import pandas as pd
-
-from strategies.books.elder_triple_screen.rules import krx_tick, screen1_uptrend
 
 COMMISSION_RATE = 0.00015
 TAX_RATE = 0.0018
@@ -23,13 +20,24 @@ def _build_master_dates(data: Dict[str, pd.DataFrame]) -> List[pd.Timestamp]:
     return sorted(s)
 
 
-def run_portfolio(data, signal_cache, adapter, params, turnover,
-                  initial_capital=10_000_000, max_positions=5,
-                  max_per_stock=3_000_000, unconstrained=False) -> dict:
+def run_portfolio(
+    data: Dict[str, pd.DataFrame],
+    signal_cache: Dict[str, List[int]],
+    adapter,
+    params: dict,
+    turnover: Dict[str, float],
+    initial_capital: float = 10_000_000,
+    max_positions: int = 5,
+    max_per_stock: float = 3_000_000,
+    unconstrained: bool = False,
+) -> dict:
     """날짜축 포트폴리오 시뮬레이션.
 
     반환: {equity_curve, daily_returns(pd.Series, index=date), trades,
            max_concurrent_positions, n_trades, n_skipped}
+
+    청산 reason 이 났으나 다음봉 시가<=0(거래정지 등)이면 청산 보류 후 다음 거래일 재판정(레거시 정합).
+    시리즈 종료 시 잔여 포지션은 마지막 bar close 로 강제청산.
     """
     idx_by_date: Dict[str, Dict[pd.Timestamp, int]] = {}
     for code, df in data.items():
@@ -94,15 +102,19 @@ def run_portfolio(data, signal_cache, adapter, params, turnover,
                     pending[code] = {"trigger_high_idx": i, "days_left": N_TRAIL}
 
         if adapter.entry_mechanism == "stop":
+            from strategies.books.elder_triple_screen.rules import krx_tick, screen1_uptrend
             for code in list(pending.keys()):
                 if code in positions:
-                    pending.pop(code, None); continue
-                df = data[code]; i = idx_by_date[code].get(d)
+                    pending.pop(code, None)
+                    continue
+                df = data[code]
+                i = idx_by_date[code].get(d)
                 if i is None or i + 1 >= len(df):
                     continue
                 prior_high = float(df.iloc[pending[code]["trigger_high_idx"]]["high"])
                 trigger = prior_high + krx_tick(prior_high)
-                nxt_open = float(df.iloc[i + 1]["open"]); nxt_high = float(df.iloc[i + 1]["high"])
+                nxt_open = float(df.iloc[i + 1]["open"])
+                nxt_high = float(df.iloc[i + 1]["high"])
                 fill = None
                 if nxt_open >= trigger:
                     fill = nxt_open * (1 + SLIPPAGE_RATE)
@@ -123,7 +135,8 @@ def run_portfolio(data, signal_cache, adapter, params, turnover,
             code, i = cand[0], cand[1]
             df = data[code]
             if not unconstrained and len(positions) >= max_positions:
-                n_skipped += 1; continue
+                n_skipped += 1
+                continue
             if adapter.entry_mechanism == "stop":
                 fill = cand[2]
             else:
@@ -134,8 +147,10 @@ def run_portfolio(data, signal_cache, adapter, params, turnover,
             avail = cash_by_code[code] if unconstrained else min(cash, max_per_stock)
             qty = int((avail * 0.99) // fill) if fill > 0 else 0
             if qty <= 0:
-                n_skipped += 1; continue
-            cost = qty * fill; fee = cost * COMMISSION_RATE
+                n_skipped += 1
+                continue
+            cost = qty * fill
+            fee = cost * COMMISSION_RATE
             if unconstrained:
                 cash_by_code[code] -= cost + fee
             else:
@@ -164,6 +179,28 @@ def run_portfolio(data, signal_cache, adapter, params, turnover,
             if i is not None:
                 mtm += pos["qty"] * float(data[code].iloc[i]["close"])
         equity_dates.append(d); equity_vals.append(mtm)
+
+    # 시리즈 종료 시 잔여 포지션 강제 청산 (레거시 runner 의 forced_close 와 정합).
+    # 종목 마지막 가용 bar 의 close 로 청산 trade 를 기록(성과 분해 완결성). equity_curve 는 그대로 둔다.
+    for code in list(positions.keys()):
+        df = data[code]
+        last = df.iloc[-1]
+        last_close = float(last["close"])
+        if last_close <= 0:
+            continue
+        fill = last_close * (1 - SLIPPAGE_RATE)
+        pos = positions.pop(code)
+        proceeds = pos["qty"] * fill
+        fee = proceeds * (COMMISSION_RATE + TAX_RATE)
+        if unconstrained:
+            cash_by_code[code] += proceeds - fee
+        else:
+            cash += proceeds - fee
+        trades.append({"stock_code": code, "side": "sell",
+                       "datetime": str(last["datetime"]), "entry_price": pos["entry_price"],
+                       "price": fill, "qty": pos["qty"], "reason": "forced_close",
+                       "pnl_pct": (fill - pos["entry_price"]) / pos["entry_price"],
+                       "entry_date": pos["entry_date"]})
 
     eq = pd.Series(equity_vals, index=pd.to_datetime(equity_dates))
     daily_returns = eq.pct_change().dropna()

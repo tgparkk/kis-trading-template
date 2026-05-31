@@ -41,3 +41,25 @@ def test_equity_curve_nonempty():
     assert len(res["equity_curve"]) > 0
     assert "daily_returns" in res
     assert isinstance(res["daily_returns"], pd.Series)
+
+
+def test_force_close_at_series_end():
+    # 청산 조건이 끝까지 안 걸리는 종목은 시리즈 종료 시 forced_close 되어야 한다.
+    n = 80
+    closes = [100.0] * n  # 평탄 → sl/tp/mh(999)/trail(None) 미발동
+    df = pd.DataFrame({
+        "datetime": pd.date_range("2021-01-01", periods=n),
+        "open": closes, "high": closes, "low": closes, "close": closes,
+        "volume": [1000] * n,
+    })
+    data = {"000777": df}
+    signal_cache = {"000777": [72]}
+    ad = adapters.ADAPTERS["book_pullback_ma5"]
+    params = {"stop_loss_pct": 0.99, "take_profit_pct": 0.99, "max_hold_bars": 999, "trail_ma": None}
+    res = portfolio_sim.run_portfolio(
+        data=data, signal_cache=signal_cache, adapter=ad, params=params,
+        turnover={"000777": 1.0}, initial_capital=10_000_000,
+        max_positions=5, max_per_stock=3_000_000, unconstrained=False)
+    sells = [t for t in res["trades"] if t["side"] == "sell"]
+    assert len(sells) == 1
+    assert sells[0]["reason"] == "forced_close"
