@@ -8,6 +8,7 @@ LOG = logging.getLogger("exit_multiverse.data_loader")
 
 
 def load_top_volume_universe(start: str, end: str, top_n: int = 50) -> List[str]:
+    """daily_prices 거래대금(close*volume) 합계 상위 N종목 코드."""
     # run_elder_triple_screen.py:44-58 그대로 복제
     from db.connection import DatabaseConnection
     with DatabaseConnection.get_connection() as conn:
@@ -25,6 +26,7 @@ def load_top_volume_universe(start: str, end: str, top_n: int = 50) -> List[str]
 
 
 def load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, pd.DataFrame]:
+    """종목별 daily_prices 로드 (adj_factor 수정주가 적용 + OHLC 결손 보정). 30봉 미만 종목 제외."""
     # run_elder_triple_screen.py:61-101 그대로 복제 (adj_factor 적용 + OHLC 결손 보정)
     from db.connection import DatabaseConnection
     out: Dict[str, pd.DataFrame] = {}
@@ -70,6 +72,8 @@ def load_turnover_rank(start: str, end: str) -> Dict[str, float]:
             GROUP BY stock_code
         """, (start, end))
         rows = cur.fetchall()
+    if not rows:
+        raise RuntimeError("daily_prices에 거래대금 데이터가 없음")
     return {r[0]: float(r[1]) for r in rows}
 
 
