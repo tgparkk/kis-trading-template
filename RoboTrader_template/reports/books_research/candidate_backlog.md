@@ -8,8 +8,11 @@
 > - [해외 트레이딩 번역서](candidate_backlog_foreign_classic.md) (14권)
 > - [2024~2026 신간 종합](candidate_backlog_recent.md) (13권)
 
-## 이미 조사 완료 (15권, 중복 제외 기준)
-아지즈 · Bellafiore · Raschke · 오닐(CANSLIM) · 미너비니(VCP) · 와인스타인 · 엘더 · 린치 · 그린블라트 · 오쇼너시 · 문병로 · 홍용찬 · systrader79 · 강창권 · 트레이딩의 전설(Book 15)
+## 이미 조사 완료 (16권, 중복 제외 기준)
+아지즈 · Bellafiore · Raschke · 오닐(CANSLIM) · 미너비니(VCP) · 와인스타인 · 엘더 · 린치 · 그린블라트 · 오쇼너시 · 문병로 · 홍용찬 · systrader79 · 강창권 · 트레이딩의 전설(Book 15) · **디노 급등주투자법(Book 16)**
+
+### ♻️ 재활용 후보 component (전략 아님, 향후 복합/포트폴리오용)
+- **눌림 약세장 진입 신호**(Book 16 dino_surge에서 유일하게 건진 부품): "고점대비 −20~−40% 눌림 + RSI 저점반등" → entry-BEAR per-trade **+3.59%(n=39)** 로 Elder(+3.01%) 상회. 단 ①디노 고유 아닌 눌림 일반효과 ②신호 희소(5년 55거래)로 단독 전략 불가 → **Elder/Minervini 포트폴리오의 약세장 진입 필터로만** 재활용 검토. 추세청산 결합은 역추세 진입과 구조적 양립불가로 실패 확인(variant C Sharpe −0.02). 상세: [dino_surge/report.md §9](dino_surge/report.md).
 
 ---
 

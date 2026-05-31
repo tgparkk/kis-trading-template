@@ -23,6 +23,7 @@
 | 13 | systrader79 | systrader79 — 주식투자 ETF로 시작하라 (자산배분) | ✅ MVP | **평균모멘텀스코어 MDD 19.08%<KOSPI 21.84%** CAGR24.8% (MDD방어✓ Sharpe개선✗, 폭등장 노출제한) |
 | 14 | haru_silijeon | 강창권 — 주식투자 단기 트레이딩의 정석 (한국 단타·전자책 실물판독) | ✅ 완료 | **일봉 ma20_pullback B +16.00% Sharpe 0.44** hit51.8% (ma5_10 +46.15%) / 분봉 단타 전멸 |
 | 15 | trading_legends | 트레이딩의 전설 — 키움영웅전 9인 인터뷰집 (전자책 실물판독) | ✅ 완료 | **ma5_pullback B +33.66% Sharpe 0.63** 2520T (단 Book14 눌림목 재확인·BULL의존) / 종가매매 −3.95% 실패·상따 MaxDD7.46%니치 / CANDIDATE 부적격 |
+| 16 | dino_surge | 디노(백새봄) — 돈이 된다! 급등주 투자법 (전자책 교보 실물판독) | ✅ 완료 | **pullback_rebound B +3.12% Sharpe 0.078** 55T (펀더멘털 붕괴군) / **entry-BEAR +3.59%(n39) Elder급 약세장 방어** / 디노재무테스트·+10%회전 시그니처 2개 부분반박 / CANDIDATE 부적격 |
 
 ## 전체 백테스트 메트릭 (PnL 내림차순, 정렬)
 
@@ -673,6 +674,30 @@ Magic Formula 횡단면 순위는 한국 데이터에서 작동(펀더멘털 책
 - **한계**: ck480 표본부족(3기간 91T), 분봉 데이터 1년3개월(전부 폭등장), VI·수급 데이터 부재로 일부 룰 근사.
 
 상세: [haru_silijeon/report.md](haru_silijeon/report.md) · changelog: [../../memory/changelog-2026-05-30-book14-kang-changgwon.md](../../memory/changelog-2026-05-30-book14-kang-changgwon.md)
+
+---
+
+## 디노 돈이 된다! 급등주 투자법 결과 — 다년·국면 (Book 16, 전자책 교보 실물판독 · 2026-05-31)
+
+> 네이버 월재연 카페 베스트셀러. **교보 이북 실물 판독**(PowerShell 화면캡처 117스프레드 + 직원 6인 분담판독, 원문 기준). 낚싯대 매매법 = 급등 후 눌린 우량주 디노테스트 선별 → 10~20종목 분산 → **+10% 무조건 익절**(수익률보다 회전율).
+> book_id: `dino_surge`. 일봉 스윙, universe top_volume:50, 2021~2026 전체기간. 러너 `scripts/run_dino_surge.py`.
+
+### variant 베스트 (전체기간 top50)
+| variant | rule | 거래 | PnL | Sharpe | Hit |
+|---|---|---|---|---|---|
+| **B** (회전 단순 sl5/tp10/mh15) | **pullback_rebound** ⭐ | 55 | **+3.12%** | **0.078** | 27.8% |
+| A_nofin (sl7/tp10/mh20/MA5트레일) | dino_test_pullback | 135 | +0.58% | 0.025 | 31.4% |
+| A (재무게이트 ON) | dino_test_pullback | 8 | +0.10% | −0.00 | 2.3% (작동불능) |
+
+### 핵심 발견
+- **CANDIDATE 부적격** — 헤드라인 Sharpe 0.078~0.092(top100도 유지)로 **펀더멘털 붕괴군**(문병로/홍용찬 ~0.1)에 속함. 추세추종 생존군(Elder 0.68/Minervini 0.64)과 0.6 vs 0.08 격차. **16권째 "한국 일봉은 추세추종만 생존" 재확인.**
+- **약세장 진입 방어는 의외로 Elder급**: variant B **entry-BEAR per-trade +3.59%(n=39) > Elder +3.01%**. "고점대비 −20~−40% 눌림 + RSI 저점반등" **가격축 진입**이 약세장 저가매수로 유효(재무게이트 끄면 더 좋음 = 디노 재무점수 무관). 단 exit-BEAR +0.65%로 자기완결 방어는 아님, SIDEWAYS는 약함.
+- **책 시그니처 2개 모두 부분 반박**: ① **디노 테스트(재무 4축)가 알파 무첨가** — no-fin이 더 나음, 컷오프 풀어도 Sharpe 0.01~0.03 정체(펀더멘털 6책째 "재무스코어≈노이즈"). ② **"+10% 무조건 익절" 회전이 미작동** — 전체 청산의 31%만 +10% 도달, 손절(−7.2%)이 상쇄. variant A의 MA5 trail은 90%가 트레일 청산(−0.5%)으로 회전 철학을 죽임.
+- **표본 부족**: 베스트도 55거래(연 1~17), 50종목 중 23종목만 거래 = 자본활용률 극저 → 헤드라인 Sharpe 저하 직접 원인. 회전형(상시 10~20종목 회전)을 신호 빈도가 못 받침.
+- **부분 가치**: 가격눌림 진입의 약세장 방어(+3.59%)는 단독으로 가치 있으나 **디노 책 고유 기여가 아니라 가격눌림 일반 효과**. Elder/Minervini 추세청산과 결합 시 약세장 방어 진입군 보강 여지(후속 메모).
+- **데이터 근사**: 이자보상배율(이자비용 컬럼 부재→부채/적자 근사), 유보율(ROE 근사), 재료·관리종목 생략, 봉패턴은 바닥반전군만.
+
+상세: [dino_surge/report.md](dino_surge/report.md) · 카탈로그 [dino_surge/strategy_catalog.md](dino_surge/strategy_catalog.md) · changelog: [../../memory/changelog-2026-05-31-book16-dino-surge.md](../../memory/changelog-2026-05-31-book16-dino-surge.md)
 
 ---
 
