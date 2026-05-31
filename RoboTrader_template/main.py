@@ -36,7 +36,8 @@ from utils.price_utils import check_duplicate_process, load_config
 from config.market_hours import MarketHours
 from config.constants import (
     OHLCV_LOOKBACK_DAYS,
-    TASK_SUPERVISOR_MAX_RETRIES, TASK_SUPERVISOR_BASE_DELAY, TASK_SUPERVISOR_MAX_DELAY
+    TASK_SUPERVISOR_MAX_RETRIES, TASK_SUPERVISOR_BASE_DELAY, TASK_SUPERVISOR_MAX_DELAY,
+    VIRTUAL_CAPITAL_PER_STRATEGY
 )
 
 # 리팩토링된 모듈 import
@@ -108,6 +109,7 @@ class DayTradingBot:
         self.strategy: Optional[BaseStrategy] = None
         self.strategies: Dict[str, BaseStrategy] = {}
         self._load_strategies()
+        self._allocate_strategy_capital()
 
         # 상태 복원 헬퍼 초기화 (strategies 로드 후 생성해야 참조 전달 가능)
         self.state_restoration_helper = StateRestorer(
@@ -177,6 +179,33 @@ class DayTradingBot:
             self.logger.warning(f"전략 로드 실패 (기본 동작 사용): {e}")
             self.strategy = None
             self.strategies = {}
+
+    def _allocate_strategy_capital(self):
+        """가상매매 모드에서 각 전략 폴더키에 독립 초기자본을 할당.
+
+        VirtualTradingManager 전략별 자금 격리 원장을 활성화한다.
+        - 키는 self.strategies의 폴더키 — TradingContext._strategy_key와 동일하게 매칭됨.
+        - 할당이 1건이라도 있으면 집계 virtual_balance = 전략 잔고 합계로 동기화됨.
+        - 실전 모드이거나 전략이 없으면 아무것도 하지 않음(레거시 단일 잔고 보존).
+        """
+        try:
+            if not self.strategies:
+                return
+            vtm = getattr(self.decision_engine, 'virtual_trading', None)
+            is_virtual = getattr(self.decision_engine, 'is_virtual_mode', False)
+            if not is_virtual or vtm is None:
+                return
+            if not hasattr(vtm, 'allocate_strategy_capital'):
+                return
+            for key in self.strategies.keys():
+                vtm.allocate_strategy_capital(key, VIRTUAL_CAPITAL_PER_STRATEGY)
+            self.logger.info(
+                f"전략별 가상 자금 할당 완료: {list(self.strategies.keys())} "
+                f"(전략당 {VIRTUAL_CAPITAL_PER_STRATEGY:,.0f}원, "
+                f"총 {vtm.get_virtual_balance():,.0f}원)"
+            )
+        except Exception as e:
+            self.logger.warning(f"전략별 가상 자금 할당 실패 (단일 잔고 사용): {e}")
 
     async def _initialize_strategy(self) -> bool:
         """전략 초기화 (on_init 호출) — 다중 전략 모드 지원"""

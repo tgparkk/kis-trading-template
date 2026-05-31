@@ -26,13 +26,15 @@ class TradingAnalyzer:
             bot.decision_engine.set_fund_manager(bot.fund_manager)
 
     async def analyze_buy_decision(self, trading_stock, available_funds: float = None,
-                                   signal=None) -> None:
+                                   signal=None, strategy_name: str = "") -> None:
         """매수 판단 분석 (일봉 데이터 사용)
 
         Args:
             trading_stock: 거래 대상 주식
             available_funds: 사용 가능한 자금 (미리 계산된 값)
             signal: Signal 객체 (TradingContext.buy()에서 전달, target_price/stop_loss 활용)
+            strategy_name: 전략 폴더키 (TradingContext.buy()에서 전달).
+                           VirtualTradingManager 전략별 자금 격리 원장 조회 키로 사용.
         """
         try:
             stock_code = trading_stock.stock_code
@@ -134,7 +136,8 @@ class TradingAnalyzer:
                             trading_stock, None, buy_reason,
                             buy_price=buy_info['buy_price'],
                             quantity=buy_info['quantity'],
-                            signal=effective_signal
+                            signal=effective_signal,
+                            strategy_name=strategy_name
                         )
                         # 자금 확정 (가상매매는 즉시 체결로 간주)
                         self.bot.fund_manager.confirm_order(_reserve_id, required_amount)

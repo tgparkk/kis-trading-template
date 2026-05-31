@@ -41,6 +41,15 @@ class VirtualTradingManager:
         # DB의 virtual_trading_records.timestamp(BUY 행)과 동기화됨
         self._buy_times: Dict[str, datetime] = {}
 
+        # ── 전략별 자금 격리 원장 (할당 시에만 활성) ────────────────────────
+        # 키는 전략 폴더키(StrategyLoader self.strategies dict 키)와 동일해야 함.
+        # 원장이 비어 있으면(레거시/단일전략) 기존 단일 virtual_balance 경로로 동작.
+        self._strategy_balances: Dict[str, float] = {}   # 폴더키 → 잔여 현금
+        self._strategy_invested: Dict[str, float] = {}   # 폴더키 → 투자중 금액
+        self._strategy_positions: Dict[str, List[str]] = {}  # 폴더키 → 보유 종목코드 목록
+        self._strategy_initial: Dict[str, float] = {}    # 폴더키 → 초기 할당 자본
+        self._position_owner: Dict[str, str] = {}        # 종목코드 → 소유 전략 폴더키
+
         # Emergency Sell Path: DB 저장 실패 시 재시도 큐
         self._pending_sell_records: List[Dict] = []
         self._max_retries = 10
@@ -177,6 +186,161 @@ class VirtualTradingManager:
     def get_virtual_balance(self) -> float:
         """현재 가상 잔고 반환"""
         return self.virtual_balance
+
+    # =========================================================================
+    # 전략별 자금 격리 원장
+    # =========================================================================
+
+    def allocate_strategy_capital(self, strategy_name: str, amount: float) -> None:
+        """전략별 가상 초기자본을 명시 할당하고 집계 잔고를 동기화.
+
+        이번 세션 시작 시점에 전략 폴더키별 초기자본을 지정하는 용도.
+        carryover로 이월된 집계 잔고가 있어도 할당이 우선한다(설계 단순화).
+        전략별 영속화는 미구현이므로 carryover와 충돌 시 WARNING.
+
+        Args:
+            strategy_name: 전략 폴더키 (StrategyLoader self.strategies dict 키와 동일)
+            amount: 초기 할당 자본 (원)
+        """
+        if not strategy_name:
+            self.logger.warning("allocate_strategy_capital: 빈 전략명 무시")
+            return
+        # carryover된 집계 잔고와 충돌 경고 (할당이 우선)
+        carried = self.initial_balance if self.initial_balance > 0 else 0
+        if carried and not self._strategy_balances:
+            self.logger.warning(
+                f"전략 자금 할당이 carryover 집계({carried:,.0f}원)를 덮어씀 "
+                f"(전략별 영속화 미구현 — 할당 우선): {strategy_name} {amount:,.0f}원"
+            )
+        amount = float(amount)
+        self._strategy_balances[strategy_name] = amount
+        self._strategy_invested[strategy_name] = 0.0
+        self._strategy_positions.setdefault(strategy_name, [])
+        self._strategy_initial[strategy_name] = amount
+        self._sync_aggregate_from_strategies()
+        self.logger.info(
+            f"전략 자금 할당: {strategy_name} {amount:,.0f}원 "
+            f"(집계 {self.virtual_balance:,.0f}원)"
+        )
+
+    def restore_strategy_ledger_from_records(
+        self,
+        initial_per_strategy: float,
+        trade_sums: Dict[str, Dict[str, float]],
+        open_positions: List[dict],
+    ) -> None:
+        """재시작 시 전략 원장을 매매기록에서 재구성.
+
+        전략별 현금은 매매기록의 순수 함수이므로 별도 영속화 없이 재구성한다:
+            cash[전략] = initial
+                         − buy_gross*(1+COMMISSION_RATE)
+                         + sell_gross*(1−COMMISSION_RATE−SECURITIES_TAX_RATE)
+        매수비용은 cash 식에서만 차감하고(이중차감 방지), open_positions 루프는
+        invested/positions/_position_owner만 복원한다.
+
+        Args:
+            initial_per_strategy: 전략별 초기 할당 자본 (보통 VIRTUAL_CAPITAL_PER_STRATEGY)
+            trade_sums: {strategy: {'buy_gross':.., 'sell_gross':..}} (get_strategy_trade_sums)
+            open_positions: [{stock_code, strategy(폴더키), quantity, buy_price}, ...]
+        """
+        # 하위호환: 원장 미사용(레거시/단일전략/실전)이면 no-op.
+        if not self._strategy_balances and not trade_sums and not open_positions:
+            return
+
+        from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
+
+        trade_sums = trade_sums or {}
+        open_positions = open_positions or []
+        initial = float(initial_per_strategy)
+
+        # 활성 전략 키 집합: 기존 할당 ∪ 매매기록 ∪ 보유 포지션
+        keys = set(self._strategy_balances) | set(trade_sums)
+        for pos in open_positions:
+            owner = pos.get('strategy')
+            if owner:
+                keys.add(owner)
+
+        # 1) 현금 재구성 (매수비용은 여기서만 차감)
+        for key in keys:
+            sums = trade_sums.get(key, {})
+            buy_gross = float(sums.get('buy_gross', 0.0))
+            sell_gross = float(sums.get('sell_gross', 0.0))
+            cash = (
+                initial
+                - buy_gross * (1.0 + COMMISSION_RATE)
+                + sell_gross * (1.0 - COMMISSION_RATE - SECURITIES_TAX_RATE)
+            )
+            self._strategy_balances[key] = cash
+            self._strategy_initial.setdefault(key, initial)
+            self._strategy_invested[key] = 0.0
+            self._strategy_positions[key] = []
+
+            # self.strategies(활성 전략)에 없는 키 = 삭제된 전략 (고아자금 회수)
+            if key not in trade_sums and not any(
+                p.get('strategy') == key for p in open_positions
+            ):
+                # 기존 할당만 있고 기록/포지션 없음 → 첫 실행 또는 신규 전략
+                pass
+
+        # 2) 미청산 포지션 복원 (현금은 추가 차감 안 함 — 이중차감 방지)
+        for pos in open_positions:
+            owner = pos.get('strategy')
+            if not owner:
+                continue
+            code = pos.get('stock_code')
+            try:
+                qty = int(pos.get('quantity', 0))
+                buy_price = float(pos.get('buy_price', 0.0))
+            except (TypeError, ValueError):
+                continue
+            # owner 키가 cash 루프에서 누락됐다면(예: trade_sums에만 없던 경우) 보강
+            if owner not in self._strategy_balances:
+                self._strategy_balances[owner] = initial
+                self._strategy_initial.setdefault(owner, initial)
+                self._strategy_invested[owner] = 0.0
+                self._strategy_positions[owner] = []
+            if code:
+                self._position_owner[code] = owner
+                self._strategy_positions.setdefault(owner, []).append(code)
+            self._strategy_invested[owner] = (
+                self._strategy_invested.get(owner, 0.0)
+                + qty * buy_price * (1.0 + COMMISSION_RATE)
+            )
+
+        # 3) 집계 잔고 = Σ 전략 현금
+        self._sync_aggregate_from_strategies()
+        self.logger.info(
+            f"전략 원장 재구성 완료: {len(self._strategy_balances)}개 전략 "
+            f"(집계 {self.virtual_balance:,.0f}원)"
+        )
+
+    def _has_strategy_ledger(self, strategy_name: str = "") -> bool:
+        """전략 원장 활성 여부. strategy_name이 주어지면 해당 전략 할당 여부.
+
+        strategy_name이 비어 있으면 원장이 1건이라도 있으면 True.
+        """
+        if not self._strategy_balances:
+            return False
+        if strategy_name:
+            return strategy_name in self._strategy_balances
+        return True
+
+    def _sync_aggregate_from_strategies(self) -> None:
+        """전략 잔고 합계로 집계 virtual_balance를 동기화.
+
+        전략 할당이 1건이라도 있으면 virtual_balance = sum(_strategy_balances).
+        (레거시 경로에서는 호출되지 않으므로 단일 잔고가 보존됨.)
+        """
+        if self._strategy_balances:
+            self.virtual_balance = sum(self._strategy_balances.values())
+
+    def get_strategy_balance(self, strategy_name: str) -> Optional[float]:
+        """전략 잔여 현금 반환. 미할당이면 None."""
+        return self._strategy_balances.get(strategy_name)
+
+    def get_strategy_positions(self, strategy_name: str) -> List[str]:
+        """전략 보유 종목코드 목록 반환 (미할당이면 빈 리스트)."""
+        return list(self._strategy_positions.get(strategy_name, []))
     
     def get_virtual_profit_rate(self) -> float:
         """가상매매 수익률 계산
@@ -197,12 +361,22 @@ class VirtualTradingManager:
         """매수 가능 여부 확인"""
         return self.virtual_balance >= required_amount
     
-    def get_max_quantity(self, price: float) -> int:
-        """주어진 가격에서 최대 매수 가능 수량"""
+    def get_max_quantity(self, price: float, strategy_name: str = "") -> int:
+        """주어진 가격에서 최대 매수 가능 수량.
+
+        Args:
+            price: 매수 단가
+            strategy_name: 전략 폴더키. 원장에 할당돼 있으면 해당 전략 잔여 한도 기준,
+                           없으면(레거시) 기존 단일 virtual_balance 기준.
+        """
         try:
             if price <= 0:
                 return 0
-            max_amount = min(self.virtual_investment_amount, self.virtual_balance)
+            if self._has_strategy_ledger(strategy_name):
+                budget = self._strategy_balances[strategy_name]
+            else:
+                budget = self.virtual_balance
+            max_amount = min(self.virtual_investment_amount, budget)
             qty = int(max_amount / price)
             return qty if qty > 0 else 0
         except Exception:
@@ -236,8 +410,19 @@ class VirtualTradingManager:
             commission = total_cost * COMMISSION_RATE
             total_cost_with_fee = total_cost + commission
 
+            # 전략 원장 활성 여부 (strategy 인자가 폴더키로 할당돼 있을 때만)
+            use_ledger = self._has_strategy_ledger(strategy)
+
             # 잔고 확인 (수수료 포함)
-            if not self.can_buy(total_cost_with_fee):
+            if use_ledger:
+                strat_balance = self._strategy_balances[strategy]
+                if strat_balance < total_cost_with_fee:
+                    self.logger.warning(
+                        f"⚠️ 전략 가상 잔고 부족 [{strategy}]: "
+                        f"{strat_balance:,.0f}원 < {total_cost_with_fee:,.0f}원"
+                    )
+                    return None
+            elif not self.can_buy(total_cost_with_fee):
                 self.logger.warning(f"⚠️ 가상 잔고 부족: {self.virtual_balance:,.0f}원 < {total_cost:,.0f}원")
                 return None
 
@@ -255,8 +440,18 @@ class VirtualTradingManager:
                 )
                 
                 if buy_record_id:
-                    # 가상 잔고에서 매수 금액 + 수수료 차감
-                    self.update_virtual_balance(total_cost_with_fee, "매수")
+                    if use_ledger:
+                        # 전략 원장 차감 + 집계 동기화
+                        self._strategy_balances[strategy] -= total_cost_with_fee
+                        self._strategy_invested[strategy] = (
+                            self._strategy_invested.get(strategy, 0.0) + total_cost_with_fee
+                        )
+                        self._strategy_positions.setdefault(strategy, []).append(stock_code)
+                        self._position_owner[stock_code] = strategy
+                        self._sync_aggregate_from_strategies()
+                    else:
+                        # 가상 잔고에서 매수 금액 + 수수료 차감 (레거시 단일 잔고)
+                        self.update_virtual_balance(total_cost_with_fee, "매수")
 
                     # buy_time 메모리에 기록 (DB timestamp와 동기화)
                     self._buy_times[stock_code] = now_kst()
@@ -299,7 +494,25 @@ class VirtualTradingManager:
             sell_commission = total_received * COMMISSION_RATE
             sell_tax = total_received * SECURITIES_TAX_RATE
             net_received = total_received - sell_commission - sell_tax
-            self.update_virtual_balance(net_received, "매도")
+
+            # 소유 전략 원장으로 복구 (할당된 종목일 때만), 아니면 단일 잔고
+            owner = self._position_owner.get(stock_code)
+            # 폴백: _position_owner 미기록이나 전달된 strategy가 폴더키로 직매칭되면 귀속
+            if owner is None and self._strategy_balances and strategy in self._strategy_balances:
+                owner = strategy
+            if owner is not None and owner in self._strategy_balances:
+                self._strategy_balances[owner] += net_received
+                # invested 감소 (매수 시 적립한 cost 추적치). 음수 방지.
+                self._strategy_invested[owner] = max(
+                    0.0, self._strategy_invested.get(owner, 0.0) - net_received
+                )
+                positions = self._strategy_positions.get(owner)
+                if positions and stock_code in positions:
+                    positions.remove(stock_code)
+                self._position_owner.pop(stock_code, None)
+                self._sync_aggregate_from_strategies()
+            else:
+                self.update_virtual_balance(net_received, "매도")
 
             profit_rate = self.get_virtual_profit_rate()
             self.logger.info(f"💰 가상 매도 완료 (메모리): {stock_code}({stock_name}) "

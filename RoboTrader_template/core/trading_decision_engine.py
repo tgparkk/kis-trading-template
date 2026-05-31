@@ -326,7 +326,8 @@ class TradingDecisionEngine:
                                   quantity: int = None,
                                   target_profit_rate: float = None,
                                   stop_loss_rate: float = None,
-                                  signal=None) -> None:
+                                  signal=None,
+                                  strategy_name: str = "") -> None:
         """가상 매수
 
         Args:
@@ -442,20 +443,26 @@ class TradingDecisionEngine:
                     f"(하한 {STOP_LOSS_FLOOR*100:.1f}%)"
                 )
 
+            # 원장 키(전략 폴더키): TradingContext가 전달한 strategy_name 우선,
+            # 없으면(레거시 직접 호출) self.strategy.name fallback.
+            # VirtualTradingManager의 전략별 자금 격리 원장은 이 폴더키로 조회된다.
+            ledger_key = strategy_name or (self.strategy.name if self.strategy else "unknown")
+
             # 수량 결정: 전달값 우선, 없으면 VirtualTradingManager 재계산
+            # (전략 원장이 할당돼 있으면 해당 전략 잔여 한도를 기준으로 산정)
             if quantity is not None and quantity > 0:
                 qty = quantity
             else:
-                qty = self.virtual_trading.get_max_quantity(buy_price)
+                qty = self.virtual_trading.get_max_quantity(buy_price, strategy_name=ledger_key)
             if qty <= 0: return
 
-            strategy_name = self.strategy.name if self.strategy else "unknown"
-            # trading_stock에 소유 전략 기록 (DB용 이름 + 메모리용 인스턴스)
-            trading_stock.owner_strategy_name = strategy_name
+            display_name = self.strategy.name if self.strategy else "unknown"
+            # trading_stock에 소유 전략 기록 (DB용 표기명 + 메모리용 인스턴스)
+            trading_stock.owner_strategy_name = display_name
             trading_stock.owner_strategy = self.strategy
             rid = self.virtual_trading.execute_virtual_buy(
                 stock_code=trading_stock.stock_code, stock_name=trading_stock.stock_name,
-                price=buy_price, quantity=qty, strategy=strategy_name, reason=buy_reason,
+                price=buy_price, quantity=qty, strategy=ledger_key, reason=buy_reason,
                 target_profit_rate=target_profit_rate, stop_loss_rate=stop_loss_rate)
             if rid:
                 trading_stock.set_virtual_buy_info(rid, buy_price, qty)

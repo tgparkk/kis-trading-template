@@ -33,12 +33,12 @@
     {
       "name": "elder_ema_pullback",
       "enabled": true,
-      "max_capital_pct": 0.30
+      "max_capital_pct": 0.25
     },
     {
       "name": "minervini_volume_dryup",
       "enabled": true,
-      "max_capital_pct": 0.20
+      "max_capital_pct": 0.25
     },
     {
       "name": "book_pullback_ma20",

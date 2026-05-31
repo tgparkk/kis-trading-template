@@ -346,7 +346,11 @@ class TradingContext:
             # ─────────────────────────────────────────────────────────────────
 
             # TradingAnalyzer를 통한 매수 판단 + 실행
-            await self._trading_analyzer.analyze_buy_decision(trading_stock, signal=signal)
+            # _strategy_key(폴더키)를 전달 — VirtualTradingManager 전략별 자금
+            # 격리 원장이 main.py 할당 시 사용한 폴더키와 일관되게 매칭되도록 함.
+            await self._trading_analyzer.analyze_buy_decision(
+                trading_stock, signal=signal, strategy_name=self._strategy_key
+            )
 
             # 신규 진입 성공 — 쿨다운/사이클 카운터 갱신
             self._last_new_entry_time = now_kst()
