@@ -20,6 +20,15 @@ def _build_master_dates(data: Dict[str, pd.DataFrame]) -> List[pd.Timestamp]:
     return sorted(s)
 
 
+def _prior_high_at(df: pd.DataFrame, trigger_idx: int):
+    """stop 매수의 직전봉 고가 조회. trigger_idx 가 df 범위를 벗어나면(stale pending —
+    유니버스 비결정성 등으로 부모/자식 df 길이 불일치) None 을 반환해
+    'single positional indexer is out-of-bounds' IndexError 를 차단한다."""
+    if trigger_idx is None or trigger_idx < 0 or trigger_idx >= len(df):
+        return None
+    return float(df.iloc[trigger_idx]["high"])
+
+
 def run_portfolio(
     data: Dict[str, pd.DataFrame],
     signal_cache: Dict[str, List[int]],
@@ -112,7 +121,12 @@ def run_portfolio(
                 i = idx_by_date[code].get(d)
                 if i is None or i + 1 >= len(df):
                     continue
-                prior_high = float(df.iloc[pending[code]["trigger_high_idx"]]["high"])
+                prior_high = _prior_high_at(df, pending[code]["trigger_high_idx"])
+                # trigger_high_idx 가 이 종목 df 범위를 벗어나면(stale pending) 제거 —
+                # IndexError 방지 (i+1>=len 가드와 동일 철학).
+                if prior_high is None:
+                    pending.pop(code, None)
+                    continue
                 trigger = prior_high + krx_tick(prior_high)
                 nxt_open = float(df.iloc[i + 1]["open"])
                 nxt_high = float(df.iloc[i + 1]["high"])

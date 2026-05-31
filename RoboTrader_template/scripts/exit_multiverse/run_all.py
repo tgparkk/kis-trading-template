@@ -5,7 +5,7 @@ usage:
       --top-n 50 --max-workers 4 --dsr-threshold 0.95
 """
 from __future__ import annotations
-import argparse, logging, sys
+import argparse, logging, sys, traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 import pandas as pd
@@ -30,7 +30,12 @@ LIVE_PARAMS = {
 
 
 def _worker(kwargs):
-    return run_mod.run_one(**kwargs)
+    """자식 프로세스에서 실행. ProcessPoolExecutor 는 자식 traceback 을
+    부모에 그대로 전달하지 못하므로, 실패 시 full traceback 문자열을 함께 반환한다."""
+    try:
+        return ("ok", run_mod.run_one(**kwargs))
+    except Exception:  # noqa: BLE001 - 진단용으로 child traceback 보존이 목적
+        return ("error", traceback.format_exc())
 
 
 def main():
@@ -61,9 +66,16 @@ def main():
         for fut in as_completed(futs):
             s = futs[fut]
             try:
-                LOG.info(f"[{s}] 완료: {fut.result()}")
-            except Exception as e:
-                LOG.error(f"[{s}] 실패: {e!r}")
+                tag, payload = fut.result()
+            except Exception:
+                # 워커 자체가 죽은 경우(피클 실패·프로세스 강제종료 등) — 부모측 traceback.
+                LOG.error(f"[{s}] 워커 비정상 종료:\n{traceback.format_exc()}")
+                continue
+            if tag == "ok":
+                LOG.info(f"[{s}] 완료: {payload}")
+            else:
+                # 자식 프로세스의 FULL traceback (file:line 포함) 을 그대로 출력.
+                LOG.error(f"[{s}] 실패 (child traceback):\n{payload}")
 
     _write_summary(Path(args.reports_dir), args.dsr_threshold)
 

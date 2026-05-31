@@ -18,7 +18,7 @@ def load_top_volume_universe(start: str, end: str, top_n: int = 50) -> List[str]
             FROM daily_prices
             WHERE date >= %s AND date <= %s
             GROUP BY stock_code
-            ORDER BY turnover DESC
+            ORDER BY turnover DESC, stock_code ASC
             LIMIT %s
         """, (start, end, top_n))
         rows = cur.fetchall()
