@@ -75,6 +75,7 @@ def run_portfolio(
                 fee = proceeds * (COMMISSION_RATE + TAX_RATE)
                 if unconstrained:
                     cash_by_code[code] += proceeds - fee
+                    entered_codes.discard(code)  # 매도 후 재진입 허용
                 else:
                     cash += proceeds - fee
                 trades.append({"stock_code": code, "side": "sell",
