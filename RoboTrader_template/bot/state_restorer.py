@@ -161,6 +161,11 @@ class StateRestorer:
         if not self.virtual_trading_manager:
             return
 
+        # 전략 원장 활성 시: 집계 차감은 restore_strategy_ledger_from_records가
+        # 매매기록에서 재구성하므로 여기서 차감하면 이중차감이 된다 → 스킵.
+        if getattr(self.virtual_trading_manager, '_strategy_balances', None):
+            return
+
         try:
             quantity = int(quantity)
             buy_price = float(buy_price)
@@ -367,6 +372,7 @@ class StateRestorer:
             holding_restored = 0
             total_invested = 0.0
             stale_info = []  # 장기보유 종목 정보 수집
+            restored_positions = []  # 전략 원장 재구성용 {stock_code, strategy, quantity, buy_price}
 
             for _, holding in holdings.iterrows():
                 stock_code = holding['stock_code']
@@ -415,6 +421,20 @@ class StateRestorer:
                                     f"복원된 종목 {trading_stock.stock_code}의 owner 전략 "
                                     f"{name}이 비활성. 기본 정책 적용."
                                 )
+
+                        # 전략 원장 재구성용 포지션 수집 (폴더키=db_strategy)
+                        db_strategy = holding.get('strategy', '')
+                        pos_strategy = (
+                            db_strategy.strip()
+                            if (db_strategy and isinstance(db_strategy, str))
+                            else ''
+                        )
+                        restored_positions.append({
+                            'stock_code': stock_code,
+                            'strategy': pos_strategy,
+                            'quantity': quantity,
+                            'buy_price': buy_price,
+                        })
 
                         # 가상매수 기록 ID 복원
                         buy_record_id = int(holding.get('id', 0)) if holding.get('id') else None
@@ -469,6 +489,18 @@ class StateRestorer:
                             f"손절가 {buy_price*(1-stop_loss_rate):,.0f}원"
                             f"{f', 보유 {ts_days_held}일' if ts_days_held > 0 else ''}"
                         )
+
+            # 전략 원장 활성 시: 매매기록에서 전략별 현금/포지션 재구성 (재시작 영속화)
+            vtm = self.virtual_trading_manager
+            if vtm and getattr(vtm, '_strategy_balances', None):
+                try:
+                    from config.constants import VIRTUAL_CAPITAL_PER_STRATEGY
+                    sums = self.db_manager.get_strategy_trade_sums()
+                    vtm.restore_strategy_ledger_from_records(
+                        VIRTUAL_CAPITAL_PER_STRATEGY, sums, restored_positions
+                    )
+                except Exception as e:
+                    logger.error(f"[가상매매] 전략 원장 재구성 실패: {e}")
 
             logger.info(f"[가상매매] 보유 종목 {holding_restored}/{len(holdings)}개 복원 완료")
             self._log_fund_sync_summary(holding_restored, total_invested, "가상매매")

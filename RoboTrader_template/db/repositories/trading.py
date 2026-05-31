@@ -627,3 +627,45 @@ class TradingRepository(BaseRepository):
         except Exception as e:
             self.logger.error(f"paper_trading_state 조회 실패: {e}")
             return None
+
+    def get_strategy_trade_sums(self) -> Dict[str, Dict[str, float]]:
+        """전략(폴더키)별 BUY/SELL gross 합계 조회 (재시작 시 원장 재구성용).
+
+        전략별 현금은 매매기록의 순수 함수이므로, 별도 영속화 테이블 없이
+        virtual_trading_records에서 전략별 매수/매도 gross(=Σqty*price)를 합산한다.
+        수수료/세금은 호출측(VirtualTradingManager)이 상수로 재계산한다.
+
+        Returns:
+            {strategy: {'buy_gross': Σqty*price(BUY), 'sell_gross': Σqty*price(SELL)}}
+            예외/무결과 시 {} (graceful).
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT strategy, action,
+                           COALESCE(SUM(quantity * price), 0) AS gross
+                    FROM virtual_trading_records
+                    WHERE is_test = true
+                      AND source = %s
+                      AND strategy IS NOT NULL
+                    GROUP BY strategy, action
+                ''', (self.SOURCE_KIS_TEMPLATE,))
+                rows = cursor.fetchall()
+
+            result: Dict[str, Dict[str, float]] = {}
+            for strategy, action, gross in rows:
+                if not strategy:
+                    continue
+                entry = result.setdefault(
+                    strategy, {'buy_gross': 0.0, 'sell_gross': 0.0}
+                )
+                act = str(action).upper() if action is not None else ''
+                if act == 'BUY':
+                    entry['buy_gross'] += float(gross or 0.0)
+                elif act == 'SELL':
+                    entry['sell_gross'] += float(gross or 0.0)
+            return result
+        except Exception as e:
+            self.logger.error(f"전략별 매매 합계 조회 실패: {e}")
+            return {}

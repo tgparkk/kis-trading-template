@@ -534,10 +534,13 @@ class TestFundManagerSync:
         return fm
 
     def _make_vtm(self, balance=10_000_000):
-        """테스트용 VirtualTradingManager mock 생성"""
+        """테스트용 VirtualTradingManager mock 생성 (레거시: 전략 원장 미활성)"""
         vtm = MagicMock()
         vtm.virtual_balance = balance
         vtm.update_virtual_balance = MagicMock()
+        # 레거시 경로(원장 비활성)를 정확히 모델링 — 빈 dict면 단일 잔고 동기화가 동작.
+        # (원장 활성 시에는 _sync_virtual_balance_for_position이 이중차감 방지로 스킵)
+        vtm._strategy_balances = {}
         return vtm
 
     @pytest.mark.asyncio

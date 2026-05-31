@@ -23,6 +23,7 @@ _mock_pg.OperationalError = _OperationalError
 sys.modules['psycopg2'] = _mock_pg
 sys.modules['psycopg2.pool'] = _mock_pg.pool
 sys.modules['psycopg2.extras'] = _mock_pg.extras
+sys.modules['psycopg2.extensions'] = _mock_pg.extensions
 
 import pytest
 import pandas as pd
@@ -1274,3 +1275,103 @@ class TestCandidateRecord:
             status="completed"
         )
         assert record.status == "completed"
+
+
+# ============================================================================
+# get_strategy_trade_sums — 전략별 매매 합계 (재시작 원장 재구성용)
+# ============================================================================
+
+class TestGetStrategyTradeSums:
+    """전략(폴더키)별 BUY/SELL gross 합계 조회 테스트"""
+
+    @patch('db.repositories.base.DatabaseConnection')
+    def test_group_by_mapping(self, mock_db_conn):
+        """GROUP BY (strategy, action) 결과를 전략별 buy/sell gross로 매핑"""
+        from db.repositories.trading import TradingRepository
+
+        mock_cursor = Mock()
+        # (strategy, action, gross)
+        mock_cursor.fetchall.return_value = [
+            ('stratA', 'BUY', 1_000_000.0),
+            ('stratA', 'SELL', 1_100_000.0),
+            ('stratB', 'BUY', 500_000.0),
+        ]
+        mock_conn = Mock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        @contextmanager
+        def fake_get_conn():
+            yield mock_conn
+
+        mock_db_conn.get_connection = fake_get_conn
+
+        repo = TradingRepository()
+        result = repo.get_strategy_trade_sums()
+
+        assert result == {
+            'stratA': {'buy_gross': 1_000_000.0, 'sell_gross': 1_100_000.0},
+            'stratB': {'buy_gross': 500_000.0, 'sell_gross': 0.0},
+        }
+        # source 필터가 적용되었는지 (SOURCE_KIS_TEMPLATE)
+        params = mock_cursor.execute.call_args[0][1]
+        assert params[0] == repo.SOURCE_KIS_TEMPLATE
+
+    @patch('db.repositories.base.DatabaseConnection')
+    def test_empty_result_returns_empty_dict(self, mock_db_conn):
+        """무결과 시 빈 dict"""
+        from db.repositories.trading import TradingRepository
+
+        mock_cursor = Mock()
+        mock_cursor.fetchall.return_value = []
+        mock_conn = Mock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        @contextmanager
+        def fake_get_conn():
+            yield mock_conn
+
+        mock_db_conn.get_connection = fake_get_conn
+
+        repo = TradingRepository()
+        assert repo.get_strategy_trade_sums() == {}
+
+    @patch('db.repositories.base.DatabaseConnection')
+    def test_exception_returns_empty_dict(self, mock_db_conn):
+        """예외 시 graceful {} 반환"""
+        from db.repositories.trading import TradingRepository
+
+        @contextmanager
+        def fake_get_conn():
+            raise RuntimeError("DB down")
+            yield  # pragma: no cover
+
+        mock_db_conn.get_connection = fake_get_conn
+
+        repo = TradingRepository()
+        repo.logger = Mock()
+        assert repo.get_strategy_trade_sums() == {}
+
+    @patch('db.repositories.base.DatabaseConnection')
+    def test_lowercase_action_handled(self, mock_db_conn):
+        """action 값이 소문자라도 정상 매핑 (대소문자 무관)"""
+        from db.repositories.trading import TradingRepository
+
+        mock_cursor = Mock()
+        mock_cursor.fetchall.return_value = [
+            ('stratA', 'buy', 1_000_000.0),
+            ('stratA', 'sell', 1_100_000.0),
+        ]
+        mock_conn = Mock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        @contextmanager
+        def fake_get_conn():
+            yield mock_conn
+
+        mock_db_conn.get_connection = fake_get_conn
+
+        repo = TradingRepository()
+        result = repo.get_strategy_trade_sums()
+        assert result == {
+            'stratA': {'buy_gross': 1_000_000.0, 'sell_gross': 1_100_000.0},
+        }

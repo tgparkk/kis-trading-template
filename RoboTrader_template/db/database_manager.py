@@ -185,6 +185,9 @@ class DatabaseManager:
     def get_latest_paper_eod_balance(self) -> 'Optional[float]':
         return self.trading_repo.get_latest_paper_eod_balance()
 
+    def get_strategy_trade_sums(self) -> Dict[str, Dict[str, float]]:
+        return self.trading_repo.get_strategy_trade_sums()
+
     # ============================
     # 퀀트 관련 (QuantRepository 위임)
     # ============================
