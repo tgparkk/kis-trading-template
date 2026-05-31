@@ -474,3 +474,6 @@ ALL_DAILY_RULES = [
     rule_daily_new_high_breakout,    # A-03
     rule_daily_vol300_longma_break,  # A-06
 ]
+
+# book_param_multiverse.py 가 ALL_RULES 로 조회하므로 alias 제공
+ALL_RULES = ALL_DAILY_RULES

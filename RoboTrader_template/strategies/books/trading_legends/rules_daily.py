@@ -358,3 +358,6 @@ ALL_DAILY_RULES = [
     rule_ma5_pullback,              # 눌림목 (방배동선수+신정재)
     rule_bottom_first_bull,         # 바닥권 첫 양봉 (불개미)
 ]
+
+# book_param_multiverse.py 가 ALL_RULES 로 조회하므로 alias 제공
+ALL_RULES = ALL_DAILY_RULES
