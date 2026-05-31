@@ -24,6 +24,7 @@
 | 14 | haru_silijeon | 강창권 — 주식투자 단기 트레이딩의 정석 (한국 단타·전자책 실물판독) | ✅ 완료 | **일봉 ma20_pullback B +16.00% Sharpe 0.44** hit51.8% (ma5_10 +46.15%) / 분봉 단타 전멸 |
 | 15 | trading_legends | 트레이딩의 전설 — 키움영웅전 9인 인터뷰집 (전자책 실물판독) | ✅ 완료 | **ma5_pullback B +33.66% Sharpe 0.63** 2520T (단 Book14 눌림목 재확인·BULL의존) / 종가매매 −3.95% 실패·상따 MaxDD7.46%니치 / CANDIDATE 부적격 |
 | 16 | dino_surge | 디노(백새봄) — 돈이 된다! 급등주 투자법 (전자책 교보 실물판독) | ✅ 완료 | **pullback_rebound B +3.12% Sharpe 0.078** 55T (펀더멘털 붕괴군) / **entry-BEAR +3.59%(n39) Elder급 약세장 방어** / 디노재무테스트·+10%회전 시그니처 2개 부분반박 / CANDIDATE 부적격 |
+| 17 | daytrading_3methods | 유지윤 — 하루 만에 수익 내는 데이트레이딩 3대 타법 (전자책 교보 실물판독) | ✅ 완료 | **breakout_prev_high B +5.90% Sharpe 0.17** 706T / 3대 타법(바닥·지지·돌파) 일봉 코드화 / 기존 new_high_breakout·ma_pullback 변형=신규알파 아님 / CANDIDATE 부적격 / **가상매매 5번째 전략 등록(관찰용)** |
 
 ## 전체 백테스트 메트릭 (PnL 내림차순, 정렬)
 

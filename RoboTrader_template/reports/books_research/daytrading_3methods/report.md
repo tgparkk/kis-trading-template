@@ -1,4 +1,6 @@
-# Book 16 — 유지윤 『하루 만에 수익 내는 데이트레이딩 3대 타법』 리포트
+# Book 17 — 유지윤 『하루 만에 수익 내는 데이트레이딩 3대 타법』 리포트
+
+> ※ 번호 정리(2026-05-31): 병렬 세션의 dino_surge(급등주 투자법)가 Book 16으로 확정되어, 본서는 **Book 17**로 재번호. 두 책은 같은 날 병렬 진행됨.
 
 > 2026-05-31 · 캡처(HQ 314p)→OCR→전략분석→코드화(TDD)→백테스트→페이퍼 전략화 완주.
 > book_id `daytrading_3methods` · 저자 유지윤 · 북오션 2021 · ISBN 978-89-6799-583-6.
@@ -44,7 +46,7 @@
 - **빠른 익절(variant B, tp10/mh10) > 느린(A, tp15/mh20)** — 전 룰 공통. 한국 단타 빠른 회전 유리(강창권·trading_legends와 동일 경향).
 - **floor_2support 대형주풀 미발화(3T)**: 책의 상한가 후 2지지는 **마이크로캡 급등주 패턴**이라 top_volume:50(대형주)에선 거의 안 잡힘 → 유니버스 불일치.
 - **all_AND 0거래**: 4룰 상호 배타(바닥/지지/돌파는 동시 성립 불가).
-- **결론: CANDIDATE 부적격**(Sharpe < 0.2). 16권째 동일 패턴 — **기술적 추세추종(Elder 1.22·Minervini 1.41)만 생존**, 급등주 분봉 단타 계열은 일봉 환원해도 Sharpe 0.1대.
+- **결론: CANDIDATE 부적격**(Sharpe < 0.2). 17권째 동일 패턴 — **기술적 추세추종(Elder 1.22·Minervini 1.41)만 생존**, 급등주 분봉 단타 계열은 일봉 환원해도 Sharpe 0.1대.
 - **신규 알파 아님 확인**: breakout_prev_high ≈ 기존 trading_legends new_high_breakout, support_10candle ≈ ma_pullback 계열의 변형. 책의 "10캔들 지지+거래량 점감" 추가 필터가 단순 돌파 대비 **엣지를 주지 못함**(support B Sharpe 0.08 < breakout B 0.17).
 
 ## 5. 가상매매(페이퍼) 환경
