@@ -11,7 +11,7 @@ Elder EMA Pullback Strategy — Triple Screen (Variant A) 실전판
 
 진입 (Variant A, rule=triple_screen_ema_pullback):
   1. Screen 1 — EMA65 상승 (5바 전 대비 기울기 > 0)
-  2. Screen 2 — low[-1] <= EMA13*touch_band(1.01) AND close[-1] > EMA13
+  2. Screen 2 — low[-1] <= EMA13*touch_band(1.02) AND close[-1] > EMA13
   3. Screen 3 — 전일 고가 + 1틱 매수스톱: 실전에선 metadata["buy_stop_price"]로 전달.
      (실전 체결 경로는 시장가/현재가 기준이므로 백테스트의 stop-fill과 차이 — 보고 D 참고)
 
@@ -84,7 +84,7 @@ class ElderEmaPullbackStrategy(BaseStrategy):
         params = self.config.get("parameters", {})
         self._ema_short = int(params.get("ema_short", 13))
         self._ema_long = int(params.get("ema_long", 65))
-        self._touch_band = float(params.get("touch_band", 1.01))
+        self._touch_band = float(params.get("touch_band", 1.02))
         self._min_daily_bars = int(params.get("min_daily_bars", 70))
 
         risk = self.config.get("risk_management", {})
@@ -190,7 +190,7 @@ class ElderEmaPullbackStrategy(BaseStrategy):
     @staticmethod
     def evaluate_entry(
         df: pd.DataFrame,
-        touch_band: float = 1.01,
+        touch_band: float = 1.02,
         min_daily_bars: int = 70,
     ) -> Tuple[bool, List[str], Dict[str, Any]]:
         """진입 조건 평가 — 백테스트 rule_triple_screen_ema_pullback을 그대로 호출.

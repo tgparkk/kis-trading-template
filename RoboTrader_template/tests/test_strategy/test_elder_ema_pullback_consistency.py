@@ -102,11 +102,11 @@ class TestEntrySignalConsistency:
     def test_entry_matches_backtest_rule(self, df_factory):
         """실전 evaluate_entry의 triggered가 백테스트 rule.evaluate와 동일."""
         df = df_factory()
-        rule = rule_triple_screen_ema_pullback(touch_band=1.01)
+        rule = rule_triple_screen_ema_pullback(touch_band=1.02)
         backtest_res = rule.evaluate(df, {})
 
         live_triggered, live_reasons, live_meta = ElderEmaPullbackStrategy.evaluate_entry(
-            df, touch_band=1.01, min_daily_bars=70
+            df, touch_band=1.02, min_daily_bars=70
         )
 
         assert live_triggered == backtest_res.triggered, (

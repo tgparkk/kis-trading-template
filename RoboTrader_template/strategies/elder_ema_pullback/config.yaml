@@ -26,7 +26,7 @@ parameters:
 
   # Screen 2 눌림 터치 밴드 (rules.py rule_triple_screen_ema_pullback.touch_band)
   # low[-1] <= EMA13 * touch_band 이면 "눌림 터치"로 판정
-  touch_band: 1.01
+  touch_band: 1.02  # 1.01→1.02: 멀티버스 OOS+3국면+@200 검증, EMA13 터치폭 확대가 전 국면 우세 (2026-06-02)
 
   # 신호 평가 최소 일봉 수 (rules.py: len(df) < 70 가드 + 여유)
   # screen1_uptrend는 EMA65 + 5바 lookback을 쓰므로 70바 이상 필요
