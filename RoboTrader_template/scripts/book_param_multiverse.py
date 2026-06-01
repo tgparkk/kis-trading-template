@@ -48,6 +48,7 @@ import itertools
 import json
 import logging
 import math
+import os
 import sys
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
@@ -363,6 +364,89 @@ def _eval_daily_combo(strategy, sl, tp, mh, data: Dict[str, pd.DataFrame]) -> di
 
 
 # ===========================================================================
+# 병렬 워커 (Windows spawn 호환 — 최상위 picklable 함수 + Pool initializer)
+# ===========================================================================
+#
+# combo 끼리는 완전히 독립이므로 multiprocessing Pool 로 분산한다.
+# 큰 가격 데이터는 Pool(initializer=...) 로 워커당 1회 전역에 세팅하여
+# 태스크마다 재pickle 하지 않는다 (spawn 방식에서도 1회만 직렬화/전송).
+# 워커는 combo 인덱스 idx 와 함께 row 를 돌려주고, 부모가 idx 로 재정렬하여
+# 순차 실행과 정확히 동일한 순서·값을 복원한다.
+
+# 워커 프로세스 전역 (initializer 가 채움)
+_W_RULE_CLS = None          # 진입 룰 dataclass
+_W_RULE_NAME = None         # 룰 .name
+_W_PERIODS: Optional[List[str]] = None              # minute: 기간 목록
+_W_PERIOD_DATA: Optional[Dict[str, Dict[str, pd.DataFrame]]] = None  # minute: 기간별 데이터
+_W_DAILY_DATA: Optional[Dict[str, pd.DataFrame]] = None             # daily: 단일 데이터
+
+
+def _worker_init_minute(rule_cls, rule_name, periods, period_data):
+    global _W_RULE_CLS, _W_RULE_NAME, _W_PERIODS, _W_PERIOD_DATA
+    _W_RULE_CLS = rule_cls
+    _W_RULE_NAME = rule_name
+    _W_PERIODS = periods
+    _W_PERIOD_DATA = period_data
+
+
+def _worker_init_daily(rule_cls, rule_name, daily_data):
+    global _W_RULE_CLS, _W_RULE_NAME, _W_DAILY_DATA
+    _W_RULE_CLS = rule_cls
+    _W_RULE_NAME = rule_name
+    _W_DAILY_DATA = daily_data
+
+
+def _minute_combo_row(ro: Dict[str, Any], sl, tp, mh, rule_cls, rule_name,
+                      periods, period_data) -> dict:
+    """한 minute combo 평가 → row dict (순차/병렬 공용 — 부모 프로세스에서도 호출)."""
+    strat = _build_strategy(rule_cls, rule_name, ro)
+    per_period = {}
+    for pr in periods:
+        per_period[pr] = _eval_minute_combo(strat, sl, tp, mh, period_data[pr])
+    pnls = [per_period[pr]["pnl"] for pr in periods]
+    shs = [per_period[pr]["sharpe"] for pr in periods]
+    ntr = sum(per_period[pr]["n_trades"] for pr in periods)
+    pos_periods = sum(1 for x in pnls if x > 0)
+    mean_sharpe = float(np.mean(shs)) if shs else 0.0
+    mean_pnl = float(np.mean(pnls)) if pnls else 0.0
+    overfit = (pos_periods == 1 and len(periods) > 1)
+    row = {**{f"r_{k}": v for k, v in ro.items()}, "sl": sl, "tp": tp, "mh": mh,
+           "n_trades": ntr, "pos_periods": pos_periods, "n_periods": len(periods),
+           "mean_sharpe": mean_sharpe, "mean_pnl": mean_pnl, "overfit": overfit,
+           "_rule_over": ro}
+    for pr in periods:
+        row[f"pnl_{pr}"] = per_period[pr]["pnl"]
+    return row
+
+
+def _daily_combo_row(ro: Dict[str, Any], sl, tp, mh, rule_cls, rule_name,
+                     daily_data) -> dict:
+    """한 daily combo 평가 → row dict (순차/병렬 공용 — 부모 프로세스에서도 호출)."""
+    strat = _build_strategy(rule_cls, rule_name, ro)
+    m = _eval_daily_combo(strat, sl, tp, mh, daily_data)
+    row = {**{f"r_{k}": v for k, v in ro.items()}, "sl": sl, "tp": tp, "mh": mh,
+           "n_trades": m["n_trades"], "pnl": m["pnl"], "sharpe": m["sharpe"],
+           "calmar": m["calmar"], "hit": m["hit"], "max_dd": m["max_dd"],
+           "_rule_over": ro}
+    return row
+
+
+def _worker_minute(task: Tuple[int, Dict[str, Any], Any, Any, Any]) -> Tuple[int, dict]:
+    """병렬 워커 (minute): (idx, ro, sl, tp, mh) → (idx, row). 전역 데이터 사용."""
+    idx, ro, sl, tp, mh = task
+    row = _minute_combo_row(ro, sl, tp, mh, _W_RULE_CLS, _W_RULE_NAME,
+                            _W_PERIODS, _W_PERIOD_DATA)
+    return idx, row
+
+
+def _worker_daily(task: Tuple[int, Dict[str, Any], Any, Any, Any]) -> Tuple[int, dict]:
+    """병렬 워커 (daily): (idx, ro, sl, tp, mh) → (idx, row). 전역 데이터 사용."""
+    idx, ro, sl, tp, mh = task
+    row = _daily_combo_row(ro, sl, tp, mh, _W_RULE_CLS, _W_RULE_NAME, _W_DAILY_DATA)
+    return idx, row
+
+
+# ===========================================================================
 # 포맷 헬퍼
 # ===========================================================================
 
@@ -375,6 +459,36 @@ def _combo_label(rule_over: Dict[str, Any], sl, tp, mh) -> str:
 def _rule_defaults(rule_cls) -> Dict[str, Any]:
     inst = rule_cls()
     return {f.name: getattr(inst, f.name) for f in dataclass_fields(rule_cls) if f.name != "name"}
+
+
+# ===========================================================================
+# combo 디스패처 (순차/병렬 공용 — 결과는 항상 combo idx 순으로 결정적)
+# ===========================================================================
+
+def _run_combos(tasks, workers, worker_fn, init_fn, init_args, seq_fn) -> List[dict]:
+    """combo 태스크들을 평가해 idx 오름차순(=순차 실행 순서) row 리스트를 반환.
+
+    - workers <= 1: 부모 프로세스에서 순차 평가 (기존 경로와 동일, 회귀 안전).
+    - workers >= 2: multiprocessing.Pool 로 분산 후 idx 로 재정렬.
+      Windows spawn 호환: 워커 함수/initializer 는 최상위 picklable 함수,
+      큰 가격 데이터는 initializer 로 워커당 1회만 전역에 세팅.
+    """
+    n = len(tasks)
+    if workers <= 1 or n <= 1:
+        return [seq_fn(t) for t in tasks]
+
+    import multiprocessing as mp
+
+    procs = min(workers, n)
+    LOG.info(f"parallel eval: {n} combos across {procs} workers")
+    indexed: List[Tuple[int, dict]] = []
+    with mp.Pool(processes=procs, initializer=init_fn, initargs=init_args) as pool:
+        chunk = max(1, n // (procs * 4))
+        for idx, row in pool.imap_unordered(worker_fn, tasks, chunksize=chunk):
+            indexed.append((idx, row))
+    # idx 오름차순 = 순차 실행 순서로 복원 (결정성 보장)
+    indexed.sort(key=lambda x: x[0])
+    return [row for _, row in indexed]
 
 
 # ===========================================================================
@@ -397,6 +511,8 @@ def main():
     p.add_argument("--out", default=None)
     p.add_argument("--limit", type=int, default=None, help="유니버스 N개 제한 (속도)")
     p.add_argument("--top-k", type=int, default=15)
+    p.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 1) - 1),
+                   help="combo 평가 병렬 워커 수 (기본 cpu-1). 1이면 순차(회귀 안전).")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args()
     logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -442,27 +558,19 @@ def main():
             period_data[pr] = data
             LOG.info(f"period={pr} universe={len(uni)} loaded_data={len(data)}")
 
+        # combo 태스크 = (idx, ro, sl, tp, mh) — idx 는 순차 실행 순서(rule x exit)
+        tasks: List[Tuple[int, Dict[str, Any], Any, Any, Any]] = []
+        idx = 0
         for ro in rule_combos:
             for eo in exit_combos:
-                sl, tp, mh = eo["sl"], eo["tp"], eo["mh"]
-                strat = _build_strategy(rule_cls, rule_name, ro)
-                per_period = {}
-                for pr in periods:
-                    per_period[pr] = _eval_minute_combo(strat, sl, tp, mh, period_data[pr])
-                pnls = [per_period[pr]["pnl"] for pr in periods]
-                shs = [per_period[pr]["sharpe"] for pr in periods]
-                ntr = sum(per_period[pr]["n_trades"] for pr in periods)
-                pos_periods = sum(1 for x in pnls if x > 0)
-                mean_sharpe = float(np.mean(shs)) if shs else 0.0
-                mean_pnl = float(np.mean(pnls)) if pnls else 0.0
-                overfit = (pos_periods == 1 and len(periods) > 1)
-                row = {**{f"r_{k}": v for k, v in ro.items()}, "sl": sl, "tp": tp, "mh": mh,
-                       "n_trades": ntr, "pos_periods": pos_periods, "n_periods": len(periods),
-                       "mean_sharpe": mean_sharpe, "mean_pnl": mean_pnl, "overfit": overfit,
-                       "_rule_over": ro}
-                for pr in periods:
-                    row[f"pnl_{pr}"] = per_period[pr]["pnl"]
-                rows.append(row)
+                tasks.append((idx, ro, eo["sl"], eo["tp"], eo["mh"]))
+                idx += 1
+        rows = _run_combos(
+            tasks, args.workers, _worker_minute,
+            _worker_init_minute, (rule_cls, rule_name, periods, period_data),
+            lambda t: _minute_combo_row(t[1], t[2], t[3], t[4], rule_cls, rule_name,
+                                        periods, period_data),
+        )
         rows.sort(key=lambda r: (-r["pos_periods"], -r["mean_sharpe"], -r["mean_pnl"]))
         sort_desc = "pos_periods desc, mean_sharpe desc, mean_pnl desc"
         regimes = None
@@ -481,16 +589,17 @@ def main():
         LOG.info(f"universe={len(uni)} loaded_data={len(data)}")
         regimes = (args.start is not None and args.end is not None)
 
+        tasks: List[Tuple[int, Dict[str, Any], Any, Any, Any]] = []
+        idx = 0
         for ro in rule_combos:
             for eo in exit_combos:
-                sl, tp, mh = eo["sl"], eo["tp"], eo["mh"]
-                strat = _build_strategy(rule_cls, rule_name, ro)
-                m = _eval_daily_combo(strat, sl, tp, mh, data)
-                row = {**{f"r_{k}": v for k, v in ro.items()}, "sl": sl, "tp": tp, "mh": mh,
-                       "n_trades": m["n_trades"], "pnl": m["pnl"], "sharpe": m["sharpe"],
-                       "calmar": m["calmar"], "hit": m["hit"], "max_dd": m["max_dd"],
-                       "_rule_over": ro}
-                rows.append(row)
+                tasks.append((idx, ro, eo["sl"], eo["tp"], eo["mh"]))
+                idx += 1
+        rows = _run_combos(
+            tasks, args.workers, _worker_daily,
+            _worker_init_daily, (rule_cls, rule_name, data),
+            lambda t: _daily_combo_row(t[1], t[2], t[3], t[4], rule_cls, rule_name, data),
+        )
         rows.sort(key=lambda r: (-r["sharpe"], -r["pnl"]))
         sort_desc = "sharpe desc, pnl desc"
 
