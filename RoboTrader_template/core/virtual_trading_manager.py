@@ -501,6 +501,11 @@ class VirtualTradingManager:
             if owner is None and self._strategy_balances and strategy in self._strategy_balances:
                 owner = strategy
             if owner is not None and owner in self._strategy_balances:
+                # DB 기록 strategy 정규화: 원장 owner(폴더키)를 single source of
+                # truth로 사용. 호출자가 클래스명을 넘겨도(상위 경로 버그) BUY(폴더키)와
+                # SELL이 동일 폴더키로 기록되어, 재시작 재구성(get_strategy_trade_sums의
+                # strategy 컬럼 그룹핑)이 라운드트립을 한 버킷으로 정확히 합산한다.
+                strategy = owner
                 self._strategy_balances[owner] += net_received
                 # invested 감소 (매수 시 적립한 cost 추적치). 음수 방지.
                 self._strategy_invested[owner] = max(

@@ -433,3 +433,147 @@ class TestSellOwnerFallback:
         assert vtm.get_strategy_balance("stratA") == pytest.approx(a_before)
         # 단일 잔고(update_virtual_balance)로 증가
         assert vtm.virtual_balance > agg_before
+
+
+# ---------------------------------------------------------------------------
+# DB 기록 strategy 컬럼 일관성: BUY/SELL이 동일 폴더키로 기록되어야 함
+# (2026-06-01 버그: SELL이 클래스명으로 기록되어 재시작 재구성이 버킷 분리)
+# ---------------------------------------------------------------------------
+
+def _make_vtm_capturing_db():
+    """save_virtual_buy/sell에 전달된 strategy 인자를 캡처하는 mock DB를 가진 VTM."""
+    vtm = _make_vtm()
+    db = Mock()
+    captured = {'buy': [], 'sell': []}
+    _counter = {'n': 0}
+
+    def _save_buy(**kwargs):
+        _counter['n'] += 1
+        captured['buy'].append(kwargs.get('strategy'))
+        return _counter['n']
+
+    def _save_sell(**kwargs):
+        captured['sell'].append(kwargs.get('strategy'))
+        return True
+
+    db.save_virtual_buy.side_effect = _save_buy
+    db.save_virtual_sell.side_effect = _save_sell
+    vtm.db_manager = db
+    return vtm, captured
+
+
+class TestDbStrategyColumnConsistency:
+    def test_sell_persists_owner_folder_key_not_class_name(self):
+        """BUY가 폴더키로 기록되면, SELL도 동일 폴더키로 기록되어야 한다.
+
+        호출자가 strategy 인자로 클래스명을 넘겨도(상위 버그),
+        _position_owner(폴더키)가 있으면 그것으로 정규화하여 DB에 기록.
+        """
+        vtm, captured = _make_vtm_capturing_db()
+        vtm.allocate_strategy_capital("minervini_volume_dryup", 10_000_000)
+
+        rid = vtm.execute_virtual_buy(
+            stock_code='332570', stock_name='ABC',
+            price=12_250, quantity=367,
+            strategy='minervini_volume_dryup', reason='매수',
+        )
+        assert rid is not None
+        assert captured['buy'][-1] == 'minervini_volume_dryup'
+
+        # 호출자가 SELL에 클래스명을 넘기는 버그 상황 재현
+        ok = vtm.execute_virtual_sell(
+            stock_code='332570', stock_name='ABC',
+            price=12_440, quantity=367,
+            strategy='MinerviniVolumeDryupStrategy',  # 클래스명 (잘못된 입력)
+            reason='매도', buy_record_id=rid,
+        )
+        assert ok is True
+        # DB에 기록된 SELL strategy는 폴더키로 정규화돼야 함
+        assert captured['sell'][-1] == 'minervini_volume_dryup'
+
+    def test_roundtrip_reconstructs_single_bucket(self):
+        """라운드트립 후 get_strategy_trade_sums 동등 그룹핑 → 현금 재구성 정확.
+
+        DB 기록(폴더키 통일)을 trade_sums로 환원해 재시작 재구성하면
+        cash = initial − buy + sell 로 한 버킷에서 복원되어야 한다.
+        """
+        vtm, captured = _make_vtm_capturing_db()
+        vtm.allocate_strategy_capital("minervini_volume_dryup", INITIAL)
+
+        rid = vtm.execute_virtual_buy(
+            stock_code='332570', stock_name='ABC',
+            price=12_250, quantity=367,
+            strategy='minervini_volume_dryup', reason='매수',
+        )
+        vtm.execute_virtual_sell(
+            stock_code='332570', stock_name='ABC',
+            price=12_440, quantity=367,
+            strategy='MinerviniVolumeDryupStrategy',  # 클래스명 (잘못된 입력)
+            reason='매도', buy_record_id=rid,
+        )
+        live_balance = vtm.get_strategy_balance("minervini_volume_dryup")
+
+        # DB에 기록된 strategy 키로 trade_sums를 구성(실DB get_strategy_trade_sums 모사)
+        buy_key = captured['buy'][-1]
+        sell_key = captured['sell'][-1]
+        # 두 키가 같아야 한 버킷으로 합산됨 (버그면 다른 키 → 버킷 분리)
+        assert buy_key == sell_key == 'minervini_volume_dryup'
+
+        trade_sums = {
+            'minervini_volume_dryup': {
+                'buy_gross': 12_250 * 367,
+                'sell_gross': 12_440 * 367,
+            }
+        }
+        restored = _make_vtm()
+        restored.allocate_strategy_capital("minervini_volume_dryup", INITIAL)
+        restored.restore_strategy_ledger_from_records(INITIAL, trade_sums, [])
+
+        # 재구성 현금 == 런타임 현금 (한 버킷으로 정확 복원)
+        assert restored.get_strategy_balance("minervini_volume_dryup") == pytest.approx(
+            live_balance
+        )
+        # cash = initial − buy*(1+c) + sell*(1−c−t)
+        assert restored.get_strategy_balance("minervini_volume_dryup") == pytest.approx(
+            _expected_cash(INITIAL, 12_250 * 367, 12_440 * 367)
+        )
+
+    def test_pending_queue_record_uses_owner_folder_key(self):
+        """DB 저장 실패 시 pending 큐 레코드의 strategy도 폴더키로 정규화."""
+        vtm = _make_vtm()
+        vtm.allocate_strategy_capital("minervini_volume_dryup", 10_000_000)
+        db = Mock()
+        _counter = {'n': 0}
+
+        def _save_buy(**kwargs):
+            _counter['n'] += 1
+            return _counter['n']
+
+        db.save_virtual_buy.side_effect = _save_buy
+        db.save_virtual_sell.return_value = False  # 매도 DB 저장 실패 → pending 큐
+        vtm.db_manager = db
+
+        rid = vtm.execute_virtual_buy(
+            stock_code='332570', stock_name='ABC',
+            price=12_250, quantity=367,
+            strategy='minervini_volume_dryup', reason='매수',
+        )
+        vtm.execute_virtual_sell(
+            stock_code='332570', stock_name='ABC',
+            price=12_440, quantity=367,
+            strategy='MinerviniVolumeDryupStrategy',  # 클래스명 (잘못된 입력)
+            reason='매도', buy_record_id=rid,
+        )
+        assert vtm.get_pending_sells_count() == 1
+        assert vtm._pending_sell_records[0]['strategy'] == 'minervini_volume_dryup'
+
+    def test_legacy_no_ledger_keeps_passed_strategy(self):
+        """원장 미할당(레거시): _position_owner 없으면 전달된 strategy 그대로 기록."""
+        vtm, captured = _make_vtm_capturing_db()
+        # 할당 없음 → 단일 잔고 경로, 정규화 없음
+        vtm.execute_virtual_sell(
+            stock_code='005930', stock_name='삼성전자',
+            price=110_000, quantity=10,
+            strategy='SampleStrategy', reason='매도', buy_record_id=1,
+        )
+        assert captured['sell'][-1] == 'SampleStrategy'
