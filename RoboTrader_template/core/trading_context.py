@@ -17,6 +17,7 @@ from config.constants import (
     ENTRY_COOLDOWN_SECONDS,
     MAX_NEW_ENTRIES_PER_CYCLE,
     ENTRY_CYCLE_WINDOW_SECONDS,
+    OHLCV_LOOKBACK_DAYS,
 )
 
 if TYPE_CHECKING:
@@ -105,19 +106,55 @@ class TradingContext:
     # b) 데이터 조회
     # =========================================================================
 
-    async def get_daily_data(self, stock_code: str, days: int = 60) -> Optional[pd.DataFrame]:
+    @staticmethod
+    def _drop_unconfirmed_today_bar(data: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+        """당일(장중 형성 중) 미완성 일봉을 마지막 봉에서 제외한다.
+
+        daily_prices 에는 장중 부분 거래량으로 당일 row 가 존재할 수 있다(일봉 수집기가
+        end_date=오늘로 KIS API 를 조회해 ON CONFLICT 로 upsert). 이 미완성 봉을
+        그대로 두면 일봉 전략(거래량 게이트·Minervini dryup·양봉/눌림 판정)이
+        df.iloc[-1] 을 '확정 일봉'으로 오인해 게이트가 망가진다. 모든 책 일봉 룰은
+        '마지막 행 = 확정 봉(no-lookahead)' 을 전제(rules.py 주석)하므로, 단일 소스인
+        이 로더에서 date == 오늘(KST) 인 trailing row 를 배제해 백테스트와 정합시킨다.
+
+        - date 컬럼이 없으면(합성/테스트 데이터) 변형 없이 그대로 반환한다.
+        - 분봉/장중 데이터는 이 경로(get_daily_data)를 타지 않으므로 영향 없음.
+        - EOD 에 확정 봉으로 재저장되면 다음 거래일 정상 마지막 봉이 된다.
+        """
+        if data is None or getattr(data, "empty", True):
+            return data
+        if "date" not in data.columns or len(data) == 0:
+            return data
+        try:
+            last_date = pd.to_datetime(data["date"].iloc[-1]).date()
+        except (ValueError, TypeError):
+            return data
+        if last_date == now_kst().date():
+            return data.iloc[:-1].reset_index(drop=True)
+        return data
+
+    async def get_daily_data(self, stock_code: str, days: Optional[int] = None) -> Optional[pd.DataFrame]:
         """일봉 데이터 조회 (DB에서)
 
         Args:
             stock_code: 종목코드
-            days: 조회 일수 (기본 60일)
+            days: 조회 일수(달력일). 미지정 시 OHLCV_LOOKBACK_DAYS(=120)를 사용한다.
+                  과거 기본값 60(달력일)은 영업일 ~40봉만 반환해 Elder(min_len=70)를
+                  무력화시켰으므로, 설정 상수를 단일 소스로 따른다.
+
+        반환 DataFrame 의 마지막 봉은 항상 '확정(전일까지) 일봉' 이다. daily_prices 에
+        장중 부분 거래량으로 존재하는 당일 미완성 봉은 _drop_unconfirmed_today_bar 로
+        제외해, 일봉 룰이 미확정 거래량/종가로 오동작하지 않도록 한다(no-lookahead).
 
         Returns:
             DataFrame or None
         """
+        if days is None:
+            days = OHLCV_LOOKBACK_DAYS
         try:
             if self._db_manager and hasattr(self._db_manager, 'price_repo'):
                 data = self._db_manager.price_repo.get_daily_prices(stock_code, days=days)
+                data = self._drop_unconfirmed_today_bar(data)
                 if data is not None and not data.empty:
                     return data
                 # 데이터가 비어 있거나 None인 경우 10분에 1회 INFO 로그

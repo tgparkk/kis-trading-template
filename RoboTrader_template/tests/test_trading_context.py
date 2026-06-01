@@ -99,6 +99,33 @@ class TestGetDailyData:
         db.price_repo.get_daily_prices.assert_called_once_with("005930", days=30)
 
     @pytest.mark.asyncio
+    async def test_default_days_uses_ohlcv_lookback_for_elder_70_bars(self):
+        """days 미지정 시 OHLCV_LOOKBACK_DAYS(=120 달력일)로 조회해야 한다.
+
+        회귀: 기존 기본값 60(달력일)은 영업일 ~40봉만 반환 → Elder(min_len=70)가
+        매 틱 'insufficient_data'로 스킵되어 무력화됐다. 기본값이 설정 상수
+        OHLCV_LOOKBACK_DAYS를 따라 70봉 이상 커버하는지 검증.
+        """
+        from config.constants import OHLCV_LOOKBACK_DAYS
+
+        df = pd.DataFrame({'close': list(range(80))})
+        db = Mock()
+        db.price_repo = Mock()
+        db.price_repo.get_daily_prices.return_value = df
+        ctx = _make_context(db_manager=db)
+
+        await ctx.get_daily_data("005930")  # days 미지정 (base.on_tick 호출 형태)
+
+        # 영업일 환산(달력일 * 5/7)이 Elder 70봉을 충족해야 함
+        called_days = db.price_repo.get_daily_prices.call_args.kwargs["days"]
+        assert called_days == OHLCV_LOOKBACK_DAYS, (
+            f"기본 days={called_days}, OHLCV_LOOKBACK_DAYS={OHLCV_LOOKBACK_DAYS} 불일치"
+        )
+        assert called_days * 5 / 7 >= 70, (
+            f"기본 days={called_days} → 영업일 ~{int(called_days*5/7)}봉 < 70 (Elder 무력화)"
+        )
+
+    @pytest.mark.asyncio
     async def test_returns_none_when_db_manager_is_none(self):
         ctx = _make_context(db_manager=None)
         result = await ctx.get_daily_data("005930")
@@ -123,6 +150,104 @@ class TestGetDailyData:
 
         result = await ctx.get_daily_data("005930")
         assert result is None
+
+
+class TestGetDailyDataDropsUnconfirmedBar:
+    """당일(장중 형성 중) 미완성 일봉을 마지막 봉에서 제외하는지 검증.
+
+    버그: daily_prices 에 장중 부분 거래량으로 당일 row 가 존재 → strategy 의
+    generate_signal 이 df.iloc[-1] 을 '확정 일봉'으로 오인. 거래량 게이트·
+    Minervini dryup·양봉 판정이 미완성 봉에 오염되어 영구 무발사/스퓨리어스 신호 발생.
+    수정: get_daily_data 가 date == 오늘(KST) 인 trailing row 를 단일 소스에서 배제.
+    """
+
+    @staticmethod
+    def _df_with_today_partial():
+        """확정 봉 3개 + 당일(KST) 미완성 봉 1개 (거래량 1%) DataFrame."""
+        today = now_kst().date()
+        d1 = today - timedelta(days=3)
+        d2 = today - timedelta(days=2)
+        d3 = today - timedelta(days=1)
+        return pd.DataFrame({
+            'date': pd.to_datetime([d1, d2, d3, today]),
+            'open': [100.0, 101.0, 102.0, 103.0],
+            'high': [105.0, 106.0, 107.0, 103.5],
+            'low': [99.0, 100.0, 101.0, 102.5],
+            'close': [104.0, 105.0, 106.0, 103.0],
+            'volume': [10000, 11000, 12000, 120],  # 마지막=직전 1% 부분 거래량
+        })
+
+    @pytest.mark.asyncio
+    async def test_drops_today_partial_bar(self):
+        df = self._df_with_today_partial()
+        db = Mock()
+        db.price_repo = Mock()
+        db.price_repo.get_daily_prices.return_value = df
+        ctx = _make_context(db_manager=db)
+
+        result = await ctx.get_daily_data("005930", days=120)
+
+        assert result is not None
+        # 당일 미완성 봉이 제외되어 마지막 봉 = 전일 확정봉이어야 한다.
+        assert len(result) == 3
+        last = result.iloc[-1]
+        assert last['volume'] == 12000  # 부분봉(120) 이 아니라 전일 확정봉
+        assert pd.Timestamp(last['date']).date() == (now_kst().date() - timedelta(days=1))
+
+    @pytest.mark.asyncio
+    async def test_keeps_all_bars_when_last_is_confirmed_prior_day(self):
+        """마지막 봉이 전일(확정)이면 어떤 행도 제외하지 않는다."""
+        today = now_kst().date()
+        df = pd.DataFrame({
+            'date': pd.to_datetime([today - timedelta(days=3),
+                                    today - timedelta(days=2),
+                                    today - timedelta(days=1)]),
+            'open': [100.0, 101.0, 102.0],
+            'high': [105.0, 106.0, 107.0],
+            'low': [99.0, 100.0, 101.0],
+            'close': [104.0, 105.0, 106.0],
+            'volume': [10000, 11000, 12000],
+        })
+        db = Mock()
+        db.price_repo = Mock()
+        db.price_repo.get_daily_prices.return_value = df
+        ctx = _make_context(db_manager=db)
+
+        result = await ctx.get_daily_data("005930", days=120)
+
+        assert result is not None
+        assert len(result) == 3
+        assert result.iloc[-1]['volume'] == 12000
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_only_today_partial_bar(self):
+        """확정봉이 하나도 없고 당일 미완성 봉만 있으면 None (신호 평가 불가)."""
+        today = now_kst().date()
+        df = pd.DataFrame({
+            'date': pd.to_datetime([today]),
+            'open': [103.0], 'high': [103.5], 'low': [102.5],
+            'close': [103.0], 'volume': [120],
+        })
+        db = Mock()
+        db.price_repo = Mock()
+        db.price_repo.get_daily_prices.return_value = df
+        ctx = _make_context(db_manager=db)
+
+        result = await ctx.get_daily_data("005930", days=120)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_no_date_column_returns_unchanged(self):
+        """date 컬럼이 없으면(합성/테스트 데이터) 행 제외 없이 그대로 반환."""
+        df = pd.DataFrame({'close': [70000, 71000]})
+        db = Mock()
+        db.price_repo = Mock()
+        db.price_repo.get_daily_prices.return_value = df
+        ctx = _make_context(db_manager=db)
+
+        result = await ctx.get_daily_data("005930", days=30)
+        assert result is not None
+        assert len(result) == 2
 
 
 class TestGetIntradayData:
