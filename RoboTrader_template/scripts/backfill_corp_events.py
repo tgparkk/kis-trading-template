@@ -96,12 +96,24 @@ _DB_DEFAULTS = dict(
     database=os.getenv("TIMESCALE_DB", "robotrader"),
 )
 
+_QUANT_DB_DEFAULTS = dict(
+    host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
+    port=int(os.getenv("TIMESCALE_PORT", "5433")),
+    user=os.getenv("TIMESCALE_USER", "robotrader"),
+    password=os.getenv("TIMESCALE_PASSWORD", "1234"),
+    database="robotrader_quant",
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DB 헬퍼
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_conn():
     return psycopg2.connect(**_DB_DEFAULTS)
+
+
+def _get_quant_conn():
+    return psycopg2.connect(**_QUANT_DB_DEFAULTS)
 
 
 def _insert_event(
@@ -124,12 +136,18 @@ def _insert_event(
     return cur.rowcount > 0
 
 
-def _get_stock_codes_from_db(target_codes: Optional[list[str]] = None) -> list[str]:
-    """daily_prices에서 DISTINCT stock_code 추출. target_codes가 있으면 교집합."""
-    conn = _get_conn()
+def _get_stock_codes_from_db(target_codes: Optional[list[str]] = None, use_quant: bool = False) -> list[str]:
+    """daily_prices에서 DISTINCT stock_code 추출. target_codes가 있으면 교집합.
+
+    use_quant=True이면 robotrader_quant DB의 2,600+ 종목 전체 universe 사용.
+    """
+    conn = _get_quant_conn() if use_quant else _get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT stock_code FROM daily_prices ORDER BY stock_code")
+            cur.execute(
+                "SELECT DISTINCT stock_code FROM daily_prices WHERE stock_code ~ %s ORDER BY stock_code",
+                ("^[0-9]{6}$",),
+            )
             db_codes = [r[0] for r in cur.fetchall()]
     finally:
         conn.close()
@@ -140,23 +158,57 @@ def _get_stock_codes_from_db(target_codes: Optional[list[str]] = None) -> list[s
     return db_codes
 
 
-def _get_stock_date_range(stock_code: str) -> tuple[str, str]:
-    """종목별 daily_prices의 최소/최대 date 반환 (YYYYMMDD 형식)."""
-    conn = _get_conn()
+# 전역 날짜범위 캐시 (robotrader_quant 한 번만 쿼리)
+_DATE_RANGE_CACHE: dict[str, tuple[str, str]] = {}
+_DATE_RANGE_LOADED = False
+
+
+def _load_date_range_cache() -> None:
+    """robotrader_quant daily_prices에서 전 종목 날짜범위를 한 번에 로드."""
+    global _DATE_RANGE_LOADED
+    if _DATE_RANGE_LOADED:
+        return
+    logger.info("[Cache] robotrader_quant daily_prices 날짜범위 일괄 로드 중...")
+    conn = _get_quant_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT MIN(date), MAX(date) FROM daily_prices WHERE stock_code = %s",
-                (stock_code,),
+                "SELECT stock_code, MIN(date)::date, MAX(date)::date FROM daily_prices "
+                "WHERE stock_code ~ %s AND date ~ %s GROUP BY stock_code",
+                ("^[0-9]{6}$", r"^\d{4}-\d{2}-\d{2}$"),
             )
-            row = cur.fetchone()
-            if row and row[0]:
-                min_dt = row[0].strftime("%Y%m%d")
-                max_dt = row[1].strftime("%Y%m%d")
-                return min_dt, max_dt
+            for code, min_dt, max_dt in cur.fetchall():
+                _DATE_RANGE_CACHE[code] = (min_dt.strftime("%Y%m%d"), max_dt.strftime("%Y%m%d"))
     finally:
         conn.close()
-    return "20150101", TODAY_STR
+    _DATE_RANGE_LOADED = True
+    logger.info("[Cache] 날짜범위 캐시 완료: %d종목", len(_DATE_RANGE_CACHE))
+
+
+def _get_stock_date_range(stock_code: str) -> tuple[str, str]:
+    """종목별 daily_prices의 최소/최대 date 반환 (YYYYMMDD 형식).
+
+    캐시가 로드된 경우 캐시에서 반환, 없으면 robotrader_quant 직접 쿼리.
+    """
+    if _DATE_RANGE_LOADED and stock_code in _DATE_RANGE_CACHE:
+        return _DATE_RANGE_CACHE[stock_code]
+
+    # 캐시 미사용 시 직접 쿼리 (robotrader_quant 우선, fallback robotrader)
+    for get_conn in [_get_quant_conn, _get_conn]:
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT MIN(date)::date, MAX(date)::date FROM daily_prices "
+                    "WHERE stock_code = %s AND date ~ %s",
+                    (stock_code, r"^\d{4}-\d{2}-\d{2}$"),
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    return row[0].strftime("%Y%m%d"), row[1].strftime("%Y%m%d")
+        finally:
+            conn.close()
+    return "20210101", TODAY_STR
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -596,7 +648,16 @@ def main():
     parser = argparse.ArgumentParser(description="corp_events 백필 스크립트")
     parser.add_argument("--pilot", action="store_true", help="파일럿 5종목만 실행")
     parser.add_argument("--stocks", type=str, default="", help="쉼표로 구분된 종목코드")
+    parser.add_argument(
+        "--universe",
+        choices=["default", "full"],
+        default="default",
+        help="full: robotrader_quant의 2,600+ 전체 universe 사용 (default: robotrader 294종목)",
+    )
+    parser.add_argument("--yes", action="store_true", help="전 종목 본 적재 확인 대화 건너뜀")
     args = parser.parse_args()
+
+    use_quant = args.universe == "full"
 
     if args.stocks:
         target_stocks_raw = [s.strip().zfill(6) for s in args.stocks.split(",") if s.strip()]
@@ -604,15 +665,16 @@ def main():
         target_stocks_raw = PILOT_STOCKS
     else:
         # 전 종목 본 적재 — 사장님 결재 후 진행 확인
-        print("=" * 60)
-        print("경고: 전 종목 본 적재를 시도합니다.")
-        print("사장님 결재 완료 후 진행하세요.")
-        print("파일럿만 실행하려면 --pilot 옵션을 사용하세요.")
-        print("=" * 60)
-        confirm = input("계속하시겠습니까? (yes 입력): ").strip().lower()
-        if confirm != "yes":
-            print("취소됨.")
-            return
+        if not args.yes:
+            print("=" * 60)
+            print("경고: 전 종목 본 적재를 시도합니다.")
+            print("사장님 결재 완료 후 진행하세요.")
+            print("파일럿만 실행하려면 --pilot 옵션을 사용하세요.")
+            print("=" * 60)
+            confirm = input("계속하시겠습니까? (yes 입력): ").strip().lower()
+            if confirm != "yes":
+                print("취소됨.")
+                return
         target_stocks_raw = None  # DB에서 전체 조회
 
     logger.info("=" * 60)
@@ -623,12 +685,15 @@ def main():
     elif args.stocks:
         logger.info("모드: 지정 종목 (%s)", target_stocks_raw)
     else:
-        logger.info("모드: 전 종목 본 적재")
+        logger.info("모드: 전 종목 본 적재 (universe=%s)", args.universe)
     logger.info("=" * 60)
 
     # 1) daily_prices에서 종목 추출 (target과 교집합)
-    logger.info("[1/4] daily_prices에서 종목 목록 추출...")
-    stock_codes = _get_stock_codes_from_db(target_stocks_raw)
+    logger.info("[1/4] daily_prices에서 종목 목록 추출... (use_quant=%s)", use_quant)
+    # full universe 모드: 날짜범위 캐시를 한 번에 로드
+    if use_quant and not args.stocks and not args.pilot:
+        _load_date_range_cache()
+    stock_codes = _get_stock_codes_from_db(target_stocks_raw, use_quant=use_quant)
     logger.info("  처리 대상: %d종목", len(stock_codes))
 
     if not stock_codes:
