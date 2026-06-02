@@ -440,6 +440,7 @@ class TestBuy:
 
         decision_engine = Mock()
         decision_engine.check_market_direction.return_value = (is_crashing, "폭락" if is_crashing else "")
+        decision_engine.check_regime_gate.return_value = (False, "")
 
         fund_manager = Mock()
         fund_manager.is_daily_loss_limit_hit.return_value = daily_loss_hit
@@ -644,6 +645,7 @@ class TestBuyEntryThrottle:
 
         decision_engine = Mock()
         decision_engine.check_market_direction.return_value = (False, "")
+        decision_engine.check_regime_gate.return_value = (False, "")
 
         fund_manager = Mock()
         fund_manager.is_daily_loss_limit_hit.return_value = False

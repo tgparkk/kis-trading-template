@@ -289,6 +289,15 @@ class BaseStrategy(ABC):
     # E2 FundManager가 이 값을 참조해 reserve 거부.
     max_capital_pct: float = 1.0
 
+    # 전략별 시장 국면 지수 + PIT 일봉 국면 게이트 (라이브 급락필터/국면 차단).
+    # StrategyLoader.load_strategies()가 spec의 regime_index/regime_gate 값으로 덮어씀.
+    # - regime_index: 급락필터·국면게이트가 검사할 지수.
+    #     "both"(기본=현 동작, KOSPI+KOSDAQ 둘 다 검사) / "KOSPI" / "KOSDAQ" / "none"(면제)
+    # - regime_gate: PIT 일봉 국면 게이트(매수 차단 정책).
+    #     "none"(기본=게이트 없음) / "exclude_bear"(BEAR 차단) / "bull_only"(BULL만 허용)
+    regime_index: str = "both"
+    regime_gate: str = "none"
+
     # 최대 보유일 제한.
     # None이면 무제한 (기본). 정수로 설정하면 PositionMonitor가 해당 일수 초과 시
     # 자동으로 시간 기반 매도를 트리거한다.

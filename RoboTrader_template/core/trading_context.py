@@ -85,6 +85,16 @@ class TradingContext:
         self._cycle_start_time: Optional[datetime] = None     # 현재 사이클 시작 시각
         self._new_entries_this_cycle: int = 0                  # 현재 사이클 신규 진입 수
 
+    def _get_strategy_regime_settings(self) -> Tuple[str, str]:
+        """현재 전략의 (regime_index, regime_gate) 반환.
+
+        전략 인스턴스에 설정이 없으면 기본값(both/none) — 미설정 전략은 기존 동작 불변.
+        """
+        strat = self._strategies_dict.get(self._strategy_key)
+        regime_index = getattr(strat, "regime_index", "both") if strat else "both"
+        regime_gate = getattr(strat, "regime_gate", "none") if strat else "none"
+        return regime_index or "both", regime_gate or "none"
+
     # =========================================================================
     # a) 시장 상태
     # =========================================================================
@@ -276,10 +286,23 @@ class TradingContext:
                 self.logger.info("매수 판단 스킵: 시장 전체 서킷브레이커 발동 중")
                 return None
 
-            # 시장 방향성 필터: 폭락장 매수 스킵
-            is_crashing, crash_reason = self._decision_engine.check_market_direction()
+            # 전략별 국면 설정 조회 (regime_index/regime_gate). 미설정 전략은 기본값(both/none).
+            regime_index, regime_gate = self._get_strategy_regime_settings()
+
+            # 시장 방향성 필터: 전략별 지수 급락 시 매수 스킵
+            is_crashing, crash_reason = self._decision_engine.check_market_direction(
+                regime_index=regime_index
+            )
             if is_crashing:
                 self.logger.info(f"매수 판단 스킵: 시장급락 ({crash_reason})")
+                return None
+
+            # PIT 일봉 국면 게이트: 허용집합 밖 국면이면 매수 차단
+            is_gated, gate_reason = self._decision_engine.check_regime_gate(
+                regime_index=regime_index, regime_gate=regime_gate
+            )
+            if is_gated:
+                self.logger.info(f"매수 판단 스킵: 국면게이트 ({gate_reason})")
                 return None
 
             trading_stock = self._trading_manager.get_trading_stock(stock_code)

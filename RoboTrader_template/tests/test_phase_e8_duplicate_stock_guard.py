@@ -177,6 +177,7 @@ class TestBuyRejectedForOtherStrategyOwnedStock:
         # decision_engine mock — 시장급락 아님
         decision_engine = MagicMock()
         decision_engine.check_market_direction = MagicMock(return_value=(False, ""))
+        decision_engine.check_regime_gate = MagicMock(return_value=(False, ""))
 
         # fund_manager mock — 손실한도 미초과
         fund_manager = MagicMock()
@@ -247,6 +248,7 @@ class TestBuyRejectedForOtherStrategyOwnedStock:
 
         decision_engine = MagicMock()
         decision_engine.check_market_direction = MagicMock(return_value=(False, ""))
+        decision_engine.check_regime_gate = MagicMock(return_value=(False, ""))
 
         fund_manager = MagicMock()
         fund_manager.is_daily_loss_limit_hit = MagicMock(return_value=False)

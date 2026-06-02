@@ -445,6 +445,11 @@ class StrategyLoader:
             name = spec["name"]
             instance = StrategyLoader.load_strategy(name)
             instance.max_capital_pct = float(spec.get("max_capital_pct", 1.0))
+            # 전략별 국면 설정 (라이브 급락필터/PIT 게이트). 미지정 시 클래스 기본값 유지(하위호환).
+            if "regime_index" in spec:
+                instance.regime_index = str(spec["regime_index"])
+            if "regime_gate" in spec:
+                instance.regime_gate = str(spec["regime_gate"])
             instances[name] = instance
             total_pct += instance.max_capital_pct
 

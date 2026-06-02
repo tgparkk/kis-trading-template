@@ -60,10 +60,13 @@ class TradingDecisionEngine:
         # FundManager 연결 (나중에 set_fund_manager로 설정)
         self.fund_manager: Optional['FundManager'] = None
 
-        # 시장 방향성 필터 캐시 (60초)
-        self._market_direction_cache: Optional[Tuple[bool, str]] = None
-        self._market_direction_cache_time: float = 0.0
+        # 시장 방향성 필터 캐시 (60초) — 지수별로 분리(KOSPI/KOSDAQ 캐시 비오염).
+        self._market_direction_cache: dict = {}
+        self._market_direction_cache_time: dict = {}
         self._MARKET_DIRECTION_CACHE_TTL = 60  # 초
+
+        # PIT 일봉 국면 게이트 (지연 생성 — db_manager 필요). 일 1회 캐시.
+        self._regime_gate = None
 
         self.logger.info("매매 판단 엔진 초기화")
 
@@ -115,9 +118,13 @@ class TradingDecisionEngine:
     # =========================================================================
     # 시장 방향성 필터 (폭락장 매수 차단)
     # =========================================================================
-    def check_market_direction(self) -> Tuple[bool, str]:
+    def check_market_direction(self, regime_index: str = "both") -> Tuple[bool, str]:
         """
-        시장 방향성 확인 - KOSPI/KOSDAQ 급락 시 매수 차단
+        시장 방향성 확인 - 전략별 지수(KOSPI/KOSDAQ) 급락 시 매수 차단.
+
+        Args:
+            regime_index: 검사 대상 지수.
+                "both"(기본=현 동작, KOSPI+KOSDAQ 둘 다) / "KOSPI" / "KOSDAQ" / "none"(면제)
 
         Returns:
             Tuple[is_crashing, reason]:
@@ -127,68 +134,111 @@ class TradingDecisionEngine:
         if not MARKET_DIRECTION_FILTER_ENABLED:
             return False, ""
 
-        # 캐시 확인 (60초 이내면 캐시 결과 반환)
-        now = time.monotonic()
-        if (self._market_direction_cache is not None
-                and (now - self._market_direction_cache_time) < self._MARKET_DIRECTION_CACHE_TTL):
-            return self._market_direction_cache
+        idx = (regime_index or "both")
+        if idx == "none":
+            return False, ""
 
-        # API 호출
+        # 캐시 확인 (지수별 60초). 캐시 키 = 정규화된 regime_index.
+        now = time.monotonic()
+        cached = self._market_direction_cache.get(idx)
+        cached_t = self._market_direction_cache_time.get(idx, 0.0)
+        if cached is not None and (now - cached_t) < self._MARKET_DIRECTION_CACHE_TTL:
+            return cached
+
+        # 검사할 (지수표시명, 코드, 임계값) 목록 구성.
+        checks = []
+        if idx in ("both", "KOSPI"):
+            checks.append(("KOSPI", "0001", KOSPI_DECLINE_THRESHOLD))
+        if idx in ("both", "KOSDAQ"):
+            checks.append(("KOSDAQ", "1001", KOSDAQ_DECLINE_THRESHOLD))
+
+        def _store(result: Tuple[bool, str]) -> Tuple[bool, str]:
+            self._market_direction_cache[idx] = result
+            self._market_direction_cache_time[idx] = now
+            return result
+
         try:
             from api.kis_market_api import get_index_data
 
-            # KOSPI 지수 조회
-            kospi_data = get_index_data("0001")
-            if kospi_data:
+            for name, code, threshold in checks:
+                data = get_index_data(code)
+                if not data:
+                    continue
                 try:
-                    kospi_change = float(kospi_data.get('bstp_nmix_prdy_ctrt', '0'))
-                    if kospi_change <= KOSPI_DECLINE_THRESHOLD:
-                        result = (True, f"KOSPI {kospi_change:+.2f}% (임계값: {KOSPI_DECLINE_THRESHOLD}%)")
-                        self._market_direction_cache = result
-                        self._market_direction_cache_time = now
-                        self.logger.info(
-                            f"[시장방향성필터] 매수 차단: {result[1]}"
-                        )
-                        return result
+                    change = float(data.get('bstp_nmix_prdy_ctrt', '0'))
                 except (ValueError, TypeError):
-                    pass
-
-            # KOSDAQ 지수 조회
-            kosdaq_data = get_index_data("1001")
-            if kosdaq_data:
-                try:
-                    kosdaq_change = float(kosdaq_data.get('bstp_nmix_prdy_ctrt', '0'))
-                    if kosdaq_change <= KOSDAQ_DECLINE_THRESHOLD:
-                        result = (True, f"KOSDAQ {kosdaq_change:+.2f}% (임계값: {KOSDAQ_DECLINE_THRESHOLD}%)")
-                        self._market_direction_cache = result
-                        self._market_direction_cache_time = now
-                        self.logger.info(
-                            f"[시장방향성필터] 매수 차단: {result[1]}"
-                        )
-                        return result
-                except (ValueError, TypeError):
-                    pass
+                    continue
+                if change <= threshold:
+                    result = (True, f"{name} {change:+.2f}% (임계값: {threshold}%)")
+                    self.logger.info(f"[시장방향성필터] 매수 차단: {result[1]}")
+                    return _store(result)
 
             # 시장 정상 → 매수 허용
-            result = (False, "")
-            self._market_direction_cache = result
-            self._market_direction_cache_time = now
-            return result
+            return _store((False, ""))
 
         except Exception as e:
             # API 실패 시 fail-safe: 매수 허용
             self.logger.warning(f"[시장방향성필터] API 조회 실패 (매수 허용): {e}")
-            result = (False, "")
-            self._market_direction_cache = result
-            self._market_direction_cache_time = now
-            return result
+            return _store((False, ""))
+
+    # =========================================================================
+    # PIT 일봉 국면 게이트 (전략별 regime_gate)
+    # =========================================================================
+    def _get_regime_gate(self):
+        """RegimeGate 지연 생성(db_manager 필요). 일 1회 캐시는 게이트 내부."""
+        if self._regime_gate is None:
+            from core.regime.regime_gate import RegimeGate
+            self._regime_gate = RegimeGate(db_manager=self.db_manager)
+        return self._regime_gate
+
+    def check_regime_gate(self, regime_index: str = "both",
+                          regime_gate: str = "none") -> Tuple[bool, str]:
+        """전략별 PIT 일봉 국면 게이트 — 허용집합 밖 국면이면 매수 차단.
+
+        Args:
+            regime_index: 국면 판정에 사용할 지수("KOSPI"/"KOSDAQ"/"both"). "both"는 KOSPI 사용.
+            regime_gate: "none"(게이트 없음) / "exclude_bear"(BEAR 차단) / "bull_only"(BULL만 허용)
+
+        Returns:
+            Tuple[is_blocked, reason]. is_blocked=True이면 매수 차단.
+            국면 불명(데이터 부족)이면 차단하지 않음(fail-open).
+        """
+        gate = (regime_gate or "none")
+        if gate == "none":
+            return False, ""
+
+        # "both"/"none" 은 일봉 게이트에선 KOSPI 로 판정(KOSDAQ 지수 일봉 SSOT 없을 수 있음).
+        index_name = regime_index if regime_index in ("KOSPI", "KOSDAQ") else "KOSPI"
+
+        try:
+            regime = self._get_regime_gate().current_regime(index_name)
+        except Exception as e:
+            self.logger.warning(f"[국면게이트] 판정 실패(매수 허용): {e}")
+            return False, ""
+
+        if regime is None:
+            # 데이터 부족/불명 → 안전 디폴트(차단 안 함)
+            return False, ""
+
+        regime = regime.lower()
+        if gate == "exclude_bear" and regime == "bear":
+            return True, f"{index_name} 국면 BEAR (exclude_bear 게이트)"
+        if gate == "bull_only" and regime != "bull":
+            return True, f"{index_name} 국면 {regime.upper()} (bull_only 게이트)"
+        return False, ""
 
     # =========================================================================
     # 매수 판단
     # =========================================================================
-    async def analyze_buy_decision(self, trading_stock, daily_data) -> Tuple[bool, str, dict]:
+    async def analyze_buy_decision(self, trading_stock, daily_data,
+                                   regime_index: str = "both") -> Tuple[bool, str, dict]:
         """
         매수 판단 분석
+
+        Args:
+            regime_index: 시장 방향성 필터가 검사할 지수
+                ("both"=기본/현 동작, "KOSPI", "KOSDAQ", "none"=면제).
+                전략별 regime_index 를 호출측(TradingAnalyzer)이 전달한다.
 
         Returns: Tuple[매수여부, 사유, {buy_price, quantity, max_buy_amount}]
 
@@ -199,8 +249,8 @@ class TradingDecisionEngine:
             code = trading_stock.stock_code
             empty = {'buy_price': 0, 'quantity': 0, 'max_buy_amount': 0}
 
-            # 시장 방향성 필터: 폭락장 매수 차단
-            is_crashing, crash_reason = self.check_market_direction()
+            # 시장 방향성 필터: 전략별 지수 급락 시 매수 차단
+            is_crashing, crash_reason = self.check_market_direction(regime_index=regime_index)
             if is_crashing:
                 return False, f"{code} 시장급락 매수차단 ({crash_reason})", empty
 

@@ -66,9 +66,18 @@ class TradingAnalyzer:
 
             self.logger.debug(f"{stock_code} 일봉 데이터 조회 완료: {len(daily_data)}건")
 
+            # 전략별 regime_index 조회 (급락필터 분리). 폴더키로 인스턴스 조회, 미설정시 both.
+            regime_index = "both"
+            try:
+                strat = (self.bot.strategies or {}).get(strategy_name) if strategy_name else None
+                if strat is not None:
+                    regime_index = getattr(strat, "regime_index", "both") or "both"
+            except Exception:
+                pass
+
             # 매매 판단 엔진으로 매수 신호 확인 (일봉 데이터 사용)
             buy_signal, buy_reason, buy_info = await self.bot.decision_engine.analyze_buy_decision(
-                trading_stock, daily_data
+                trading_stock, daily_data, regime_index=regime_index
             )
 
             self.logger.debug(f"{stock_code} 매수 판단 결과: signal={buy_signal}, reason='{buy_reason}'")
