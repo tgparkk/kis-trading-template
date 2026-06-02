@@ -281,6 +281,151 @@ def _precompute_signals(
 
 
 # ===========================================================================
+# 국면 진입 게이트 (PIT) — core.regime.regime_classifier 그대로 호출(재구현 금지).
+#
+#   regime 시계열은 전 종목 공통(시장 레벨)이므로 1회 사전계산 후 진입봉에 매핑한다.
+#   classify_daily/classify_intraday 는 각 봉 라벨이 그 봉(≤T/≤t)까지의 데이터로만
+#   산출됨이 tests/regime/test_regime_no_lookahead.py 의 절단·미래 불변성으로 증명되어
+#   있으므로, 전체 시계열을 1회 분류한 뒤 진입일 라벨을 조회해도 PIT-safe 다(절단값과 동일).
+#
+#   게이트 종류:
+#     none         : 필터 없음(baseline)
+#     exclude_bear : regime != bear 인 진입봉만 허용 (약세장 무방비 구제 검증 핵심)
+#     bull_only    : regime == bull 인 진입봉만 허용 (가장 보수적)
+#     trend_only   : (분봉) trendiness == trend 인 진입봉만 (추세전략용)
+#     dir_match    : (분봉) trendiness==trend & direction==up (롱 방향 일치)
+#
+#   진입봉 i 의 라벨은 그 봉의 datetime 으로 조회. 라벨이 없으면(워밍업 등) 안전하게
+#   '허용'(=신호 유지) 처리 — 게이트는 약세장 배제만 목적, 미지 구간 과잉배제 방지.
+# ===========================================================================
+
+GATE_CHOICES = ("none", "exclude_bear", "bull_only", "trend_only", "dir_match")
+DAILY_GATES = ("none", "exclude_bear", "bull_only")
+MINUTE_GATES = ("none", "trend_only", "dir_match")
+
+
+def _build_daily_regime_map(start: str, end: str) -> Dict[pd.Timestamp, str]:
+    """KOSPI 일봉(SSOT) + 전종목 %above MA120 breadth 로 일자→regime 라벨 1회 산출.
+
+    classify_daily 그대로 호출. breadth panel 은 [start,end] 전 종목 close wide 패널.
+    워밍업(MA120) 확보 위해 start 이전 룩백을 포함해 로드(라벨은 PIT 라 안전).
+    """
+    from core.regime.regime_classifier import classify_daily, DailyRegimeParams
+    from db.connection import DatabaseConnection
+    import datetime as _dt
+
+    # MA120 + breadth120 워밍업을 위해 시작 이전 달력 ~400일(≈260 거래일) 룩백 로드.
+    look_start = (_dt.date.fromisoformat(str(start)) - _dt.timedelta(days=400)).isoformat()
+    with DatabaseConnection.get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT date, close FROM daily_prices "
+            "WHERE stock_code = 'KOSPI' AND date >= %s AND date <= %s ORDER BY date ASC",
+            (look_start, end),
+        )
+        krows = cur.fetchall()
+        if not krows:
+            raise RuntimeError("daily_prices 에 KOSPI 지수 행이 없음 (국면 게이트 불가)")
+        kospi = pd.Series({pd.Timestamp(r[0]): float(r[1]) for r in krows}, name="close").sort_index()
+        # 전종목 breadth 패널 (KOSPI 지수 제외) — long→wide
+        panel_df = pd.read_sql(
+            """
+            SELECT date, stock_code, close FROM daily_prices
+            WHERE date >= %s AND date <= %s AND stock_code <> 'KOSPI' AND close > 0
+            """,
+            conn, params=(look_start, end),
+        )
+    panel = (panel_df.assign(date=pd.to_datetime(panel_df["date"]))
+             .pivot_table(index="date", columns="stock_code", values="close", aggfunc="last")
+             .sort_index())
+    res = classify_daily(kospi, panel, DailyRegimeParams())
+    return {pd.Timestamp(d): str(v) for d, v in res["regime"].items()}
+
+
+def _build_minute_regime_maps(
+    period_data: Dict[str, Dict[str, pd.DataFrame]],
+    period_minute_prev_close: Dict[str, Dict[str, float]],
+) -> Dict[str, Dict[pd.Timestamp, dict]]:
+    """구간별 datetime→{direction,trendiness,...} 라벨 맵. classify_intraday 그대로 호출.
+
+    리샘플된 period_data(15분봉)를 일자별로 모아 long 패널을 만들고 당일 단위로 분류.
+    각 분봉 라벨은 그 봉(≤t)까지 누적으로 산출됨(PIT, 장중 절단 불변성 증명).
+    """
+    from core.regime.regime_classifier import classify_intraday, IntradayRegimeParams
+    out: Dict[str, Dict[pd.Timestamp, dict]] = {}
+    params = IntradayRegimeParams()
+    for pr, data in period_data.items():
+        prev_close = period_minute_prev_close.get(pr, {})
+        # long 패널 구성 (code 컬럼 포함)
+        frames = []
+        for code, df in data.items():
+            g = df[["datetime", "open", "high", "low", "close", "volume"]].copy()
+            g["stock_code"] = code
+            frames.append(g)
+        label_map: Dict[pd.Timestamp, dict] = {}
+        if frames:
+            longp = pd.concat(frames, ignore_index=True)
+            longp["datetime"] = pd.to_datetime(longp["datetime"])
+            longp["d"] = longp["datetime"].dt.date
+            for _day, day_df in longp.groupby("d"):
+                res = classify_intraday(day_df.drop(columns=["d"]), prev_close, params)
+                for t, row in res.iterrows():
+                    label_map[pd.Timestamp(t)] = {
+                        "direction": str(row["direction"]),
+                        "trendiness": str(row["trendiness"]),
+                        "vol_class": str(row["vol_class"]),
+                    }
+        out[pr] = label_map
+    return out
+
+
+def _gate_allows_daily(label: Optional[str], gate: str) -> bool:
+    if gate == "none" or label is None:
+        return True
+    if gate == "exclude_bear":
+        return label != "bear"
+    if gate == "bull_only":
+        return label == "bull"
+    return True  # 분봉 게이트는 일봉에 미적용 → 통과
+
+
+def _gate_allows_minute(lab: Optional[dict], gate: str) -> bool:
+    if gate == "none" or lab is None:
+        return True
+    if gate == "trend_only":
+        return lab["trendiness"] == "trend"
+    if gate == "dir_match":
+        return lab["trendiness"] == "trend" and lab["direction"] == "up"
+    return True  # 일봉 게이트는 분봉에 미적용 → 통과
+
+
+def _filter_cache_daily(cache: Dict[str, List[int]], data: Dict[str, pd.DataFrame],
+                        regime_map: Dict[pd.Timestamp, str], gate: str) -> Dict[str, List[int]]:
+    if gate == "none":
+        return cache
+    out: Dict[str, List[int]] = {}
+    for code, bars in cache.items():
+        df = data[code]
+        dts = df["datetime"]
+        out[code] = [i for i in bars
+                     if _gate_allows_daily(regime_map.get(pd.Timestamp(dts.iloc[i])), gate)]
+    return out
+
+
+def _filter_cache_minute(cache: Dict[str, List[int]], data: Dict[str, pd.DataFrame],
+                         label_map: Dict[pd.Timestamp, dict], gate: str) -> Dict[str, List[int]]:
+    if gate == "none":
+        return cache
+    out: Dict[str, List[int]] = {}
+    for code, bars in cache.items():
+        df = data[code]
+        dts = df["datetime"]
+        out[code] = [i for i in bars
+                     if _gate_allows_minute(label_map.get(pd.Timestamp(dts.iloc[i])), gate)]
+    return out
+
+
+# ===========================================================================
 # 포트폴리오 메트릭 (run_portfolio 반환 → Sharpe/PnL/MaxDD/Calmar/hit).
 #   portfolio_sim_elder.compute_portfolio_metrics 는 equity_dates/invested_ratio/
 #   n_holdings 키를 요구하나 run_portfolio 는 미반환 → 동일 수식의 경량 메트릭 사용.
@@ -370,94 +515,109 @@ _W_EXIT_COMBOS: Optional[List[Dict[str, Any]]] = None
 _W_K_LIST: Optional[List[int]] = None
 _W_MAX_PER_STOCK: float = 3_000_000.0
 _W_INITIAL: float = 10_000_000.0
+# 국면 게이트 (게이트 차원). 라벨 맵은 1회 사전계산 후 워커에 전파.
+_W_GATES: List[str] = ["none"]
+_W_REGIME_MAP: Optional[Dict[pd.Timestamp, str]] = None              # daily: date→regime
+_W_MINUTE_LABELS: Optional[Dict[str, Dict[pd.Timestamp, dict]]] = None  # minute: pr→{dt→label}
 
 
 def _eval_entry_minute(ro: Dict[str, Any]) -> List[dict]:
-    """한 entry 조합 (minute): 캐시 1회/구간 → 모든 exit×K 조합 row 리스트."""
+    """한 entry 조합 (minute): 캐시 1회/구간 → 게이트×exit×K 조합 row 리스트."""
     strat = _build_strategy(_W_RULE_CLS, _W_RULE_NAME, ro)
-    # entry 조합당 구간별 캐시 1회 생성 (exit×K 재사용)
+    # entry 조합당 구간별 캐시 1회 생성 (게이트·exit×K 재사용)
     caches: Dict[str, Dict[str, List[int]]] = {}
     for pr in _W_PERIODS:
         caches[pr] = _precompute_signals(_W_PERIOD_DATA[pr], strat, _W_WARMUP, "minute")
 
     rows: List[dict] = []
-    for eo in _W_EXIT_COMBOS:
-        params = dict(stop_loss_pct=eo["sl"], take_profit_pct=eo["tp"], max_hold_bars=eo["mh"])
-        for K in _W_K_LIST:
-            per_period = {}
-            for pr in _W_PERIODS:
-                res = run_portfolio(
-                    data=_W_PERIOD_DATA[pr], signal_cache=caches[pr], adapter=_ADAPTER,
-                    params=params, turnover=_W_PERIOD_TURNOVER[pr],
-                    initial_capital=_W_INITIAL, max_positions=K,
-                    max_per_stock=_W_MAX_PER_STOCK,
-                )
-                per_period[pr] = _portfolio_metrics(res, _W_INITIAL)
-            pnls = [per_period[pr]["pnl"] for pr in _W_PERIODS]
-            shs = [per_period[pr]["sharpe"] for pr in _W_PERIODS]
-            ntr = sum(per_period[pr]["n_trades"] for pr in _W_PERIODS)
-            nskip = sum(per_period[pr]["n_skipped"] for pr in _W_PERIODS)
-            mxc = max((per_period[pr]["max_concurrent"] for pr in _W_PERIODS), default=0)
-            pos_periods = sum(1 for x in pnls if x > 0)
-            mean_sharpe = float(np.mean(shs)) if shs else 0.0
-            mean_pnl = float(np.mean(pnls)) if pnls else 0.0
-            overfit = (pos_periods == 1 and len(_W_PERIODS) > 1)
-            row = {**{f"e_{k}": v for k, v in ro.items()},
-                   "sl": eo["sl"], "tp": eo["tp"], "mh": eo["mh"], "K": K,
-                   "n_trades": ntr, "pos_periods": pos_periods, "n_periods": len(_W_PERIODS),
-                   "sharpe": mean_sharpe, "pnl": mean_pnl, "overfit": overfit,
-                   "max_concurrent": mxc, "n_skipped": nskip, "_entry_over": ro}
-            for pr in _W_PERIODS:
-                row[f"pnl_{pr}"] = per_period[pr]["pnl"]
-            rows.append(row)
+    for gate in _W_GATES:
+        # 게이트별 캐시 필터 (entry 신호는 동일, 진입봉 국면만 추가 게이팅)
+        gcaches = {pr: _filter_cache_minute(caches[pr], _W_PERIOD_DATA[pr],
+                                            (_W_MINUTE_LABELS or {}).get(pr, {}), gate)
+                   for pr in _W_PERIODS}
+        for eo in _W_EXIT_COMBOS:
+            params = dict(stop_loss_pct=eo["sl"], take_profit_pct=eo["tp"], max_hold_bars=eo["mh"])
+            for K in _W_K_LIST:
+                per_period = {}
+                for pr in _W_PERIODS:
+                    res = run_portfolio(
+                        data=_W_PERIOD_DATA[pr], signal_cache=gcaches[pr], adapter=_ADAPTER,
+                        params=params, turnover=_W_PERIOD_TURNOVER[pr],
+                        initial_capital=_W_INITIAL, max_positions=K,
+                        max_per_stock=_W_MAX_PER_STOCK,
+                    )
+                    per_period[pr] = _portfolio_metrics(res, _W_INITIAL)
+                pnls = [per_period[pr]["pnl"] for pr in _W_PERIODS]
+                shs = [per_period[pr]["sharpe"] for pr in _W_PERIODS]
+                ntr = sum(per_period[pr]["n_trades"] for pr in _W_PERIODS)
+                nskip = sum(per_period[pr]["n_skipped"] for pr in _W_PERIODS)
+                mxc = max((per_period[pr]["max_concurrent"] for pr in _W_PERIODS), default=0)
+                pos_periods = sum(1 for x in pnls if x > 0)
+                mean_sharpe = float(np.mean(shs)) if shs else 0.0
+                mean_pnl = float(np.mean(pnls)) if pnls else 0.0
+                overfit = (pos_periods == 1 and len(_W_PERIODS) > 1)
+                row = {**{f"e_{k}": v for k, v in ro.items()}, "gate": gate,
+                       "sl": eo["sl"], "tp": eo["tp"], "mh": eo["mh"], "K": K,
+                       "n_trades": ntr, "pos_periods": pos_periods, "n_periods": len(_W_PERIODS),
+                       "sharpe": mean_sharpe, "pnl": mean_pnl, "overfit": overfit,
+                       "max_concurrent": mxc, "n_skipped": nskip, "_entry_over": ro}
+                for pr in _W_PERIODS:
+                    row[f"pnl_{pr}"] = per_period[pr]["pnl"]
+                rows.append(row)
     return rows
 
 
 def _eval_entry_daily(ro: Dict[str, Any]) -> List[dict]:
-    """한 entry 조합 (daily): 캐시 1회 → 모든 exit×K 조합 row 리스트."""
+    """한 entry 조합 (daily): 캐시 1회 → 게이트×exit×K 조합 row 리스트."""
     strat = _build_strategy(_W_RULE_CLS, _W_RULE_NAME, ro)
     cache = _precompute_signals(_W_DATA, strat, _W_WARMUP, "daily")
 
     rows: List[dict] = []
-    for eo in _W_EXIT_COMBOS:
-        params = dict(stop_loss_pct=eo["sl"], take_profit_pct=eo["tp"], max_hold_bars=eo["mh"])
-        for K in _W_K_LIST:
-            res = run_portfolio(
-                data=_W_DATA, signal_cache=cache, adapter=_ADAPTER, params=params,
-                turnover=_W_TURNOVER, initial_capital=_W_INITIAL, max_positions=K,
-                max_per_stock=_W_MAX_PER_STOCK,
-            )
-            m = _portfolio_metrics(res, _W_INITIAL)
-            row = {**{f"e_{k}": v for k, v in ro.items()},
-                   "sl": eo["sl"], "tp": eo["tp"], "mh": eo["mh"], "K": K,
-                   "n_trades": m["n_trades"], "sharpe": m["sharpe"], "pnl": m["pnl"],
-                   "calmar": m["calmar"], "hit": m["hit"], "max_dd": m["max_dd"],
-                   "max_concurrent": m["max_concurrent"], "n_skipped": m["n_skipped"],
-                   "_entry_over": ro}
-            rows.append(row)
+    for gate in _W_GATES:
+        gcache = _filter_cache_daily(cache, _W_DATA, _W_REGIME_MAP or {}, gate)
+        for eo in _W_EXIT_COMBOS:
+            params = dict(stop_loss_pct=eo["sl"], take_profit_pct=eo["tp"], max_hold_bars=eo["mh"])
+            for K in _W_K_LIST:
+                res = run_portfolio(
+                    data=_W_DATA, signal_cache=gcache, adapter=_ADAPTER, params=params,
+                    turnover=_W_TURNOVER, initial_capital=_W_INITIAL, max_positions=K,
+                    max_per_stock=_W_MAX_PER_STOCK,
+                )
+                m = _portfolio_metrics(res, _W_INITIAL)
+                row = {**{f"e_{k}": v for k, v in ro.items()}, "gate": gate,
+                       "sl": eo["sl"], "tp": eo["tp"], "mh": eo["mh"], "K": K,
+                       "n_trades": m["n_trades"], "sharpe": m["sharpe"], "pnl": m["pnl"],
+                       "calmar": m["calmar"], "hit": m["hit"], "max_dd": m["max_dd"],
+                       "max_concurrent": m["max_concurrent"], "n_skipped": m["n_skipped"],
+                       "_entry_over": ro}
+                rows.append(row)
     return rows
 
 
 # --- 병렬 워커 initializer / wrapper ---
 
 def _winit_minute(rule_cls, rule_name, warmup, periods, period_data, period_turnover,
-                  exit_combos, k_list, max_per_stock, initial):
+                  exit_combos, k_list, max_per_stock, initial, gates, minute_labels):
     global _W_RULE_CLS, _W_RULE_NAME, _W_WARMUP, _W_PERIODS, _W_PERIOD_DATA
     global _W_PERIOD_TURNOVER, _W_EXIT_COMBOS, _W_K_LIST, _W_MAX_PER_STOCK, _W_INITIAL
+    global _W_GATES, _W_MINUTE_LABELS
     _W_RULE_CLS = rule_cls; _W_RULE_NAME = rule_name; _W_WARMUP = warmup
     _W_PERIODS = periods; _W_PERIOD_DATA = period_data; _W_PERIOD_TURNOVER = period_turnover
     _W_EXIT_COMBOS = exit_combos; _W_K_LIST = k_list
     _W_MAX_PER_STOCK = max_per_stock; _W_INITIAL = initial
+    _W_GATES = gates; _W_MINUTE_LABELS = minute_labels
 
 
 def _winit_daily(rule_cls, rule_name, warmup, data, turnover, exit_combos, k_list,
-                 max_per_stock, initial):
+                 max_per_stock, initial, gates, regime_map):
     global _W_RULE_CLS, _W_RULE_NAME, _W_WARMUP, _W_DATA, _W_TURNOVER
     global _W_EXIT_COMBOS, _W_K_LIST, _W_MAX_PER_STOCK, _W_INITIAL
+    global _W_GATES, _W_REGIME_MAP
     _W_RULE_CLS = rule_cls; _W_RULE_NAME = rule_name; _W_WARMUP = warmup
     _W_DATA = data; _W_TURNOVER = turnover
     _W_EXIT_COMBOS = exit_combos; _W_K_LIST = k_list
     _W_MAX_PER_STOCK = max_per_stock; _W_INITIAL = initial
+    _W_GATES = gates; _W_REGIME_MAP = regime_map
 
 
 def _worker_minute(task: Tuple[int, Dict[str, Any]]) -> Tuple[int, List[dict]]:
@@ -497,9 +657,9 @@ def _run_entry_combos(tasks, workers, worker_fn, init_fn, init_args, seq_fn) -> 
 # 포맷 헬퍼
 # ===========================================================================
 
-def _combo_label(entry_over: Dict[str, Any], sl, tp, mh, K) -> str:
+def _combo_label(entry_over: Dict[str, Any], sl, tp, mh, K, gate: str = "none") -> str:
     parts = [f"{k}={v}" for k, v in sorted(entry_over.items())]
-    parts += [f"sl={sl}", f"tp={tp}", f"mh={mh}", f"K={K}"]
+    parts += [f"sl={sl}", f"tp={tp}", f"mh={mh}", f"K={K}", f"gate={gate}"]
     return " ".join(parts)
 
 
@@ -535,6 +695,10 @@ def main():
     p.add_argument("--surge-require-mc", action="store_true", dest="surge_require_mc",
                    help="surge 유니버스에서 시총 미상 종목 배제(엄격 중소형). "
                         "기본 off=mc 미상 통과(대형주 누수 가능, 책 1차 사양).")
+    p.add_argument("--regime-gate", nargs="+", default=["none"], dest="regime_gate",
+                   choices=list(GATE_CHOICES),
+                   help="PIT 국면 진입게이트(차원). 일봉: none/exclude_bear/bull_only, "
+                        "분봉: none/trend_only/dir_match. 여러 값=게이트 차원 스윕.")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args()
     logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -572,6 +736,14 @@ def main():
     # warmup: 룰 평가에 필요한 최소 봉 (분봉은 min_bars/ma 게이트, 일봉은 lookback 충당)
     warmup = 70 if granularity == "minute" else 42
 
+    # 게이트 차원: 입력 보존 순서, 중복 제거, granularity 적합성 검증.
+    gates: List[str] = list(dict.fromkeys(args.regime_gate))
+    allowed_gates = MINUTE_GATES if granularity == "minute" else DAILY_GATES
+    bad = [g for g in gates if g not in allowed_gates]
+    if bad:
+        p.error(f"--regime-gate {bad} 는 {granularity} 트랙에 부적합. 가능: {list(allowed_gates)}")
+    LOG.info(f"regime gates (dim): {gates}")
+
     rows: List[dict] = []
 
     if granularity == "minute":
@@ -606,15 +778,27 @@ def main():
             LOG.info(f"period={pr} universe={len(uni)} resampled_data={len(data)} "
                      f"(freq={args.resample_freq}m)")
 
+        # 분봉 국면 라벨 1회 사전계산(게이트≠none 일 때만). bias(갭)는 게이트에 불필요 →
+        # prev_close 미전달(flat). trend_only/dir_match 는 trendiness/direction 만 사용.
+        minute_labels: Dict[str, Dict[pd.Timestamp, dict]] = {}
+        if any(g != "none" for g in gates):
+            minute_labels = _build_minute_regime_maps(period_data, {pr: {} for pr in periods})
+            for pr in periods:
+                n_trend = sum(1 for v in minute_labels.get(pr, {}).values()
+                              if v["trendiness"] == "trend")
+                LOG.info(f"period={pr} intraday-regime bars={len(minute_labels.get(pr, {}))} "
+                         f"trend_bars={n_trend}")
+
         tasks = [(i, ro) for i, ro in enumerate(entry_combos)]
         rows = _run_entry_combos(
             tasks, args.workers, _worker_minute,
             _winit_minute, (rule_cls, rule_name, warmup, periods, period_data,
                             period_turnover, exit_combos, args.k_list,
-                            args.max_per_stock, args.initial_capital),
+                            args.max_per_stock, args.initial_capital, gates, minute_labels),
             lambda t: _eval_entry_minute_seq(t[1], rule_cls, rule_name, warmup, periods,
                                              period_data, period_turnover, exit_combos,
-                                             args.k_list, args.max_per_stock, args.initial_capital),
+                                             args.k_list, args.max_per_stock, args.initial_capital,
+                                             gates, minute_labels),
         )
         rows.sort(key=lambda r: (-r["pos_periods"], -r["sharpe"], -r["pnl"]))
         sort_desc = "pos_periods desc, mean_sharpe desc, mean_pnl desc"
@@ -645,14 +829,24 @@ def main():
         LOG.info(f"universe={len(uni)} loaded_data={len(data)}")
         regimes = (args.start is not None and args.end is not None)
 
+        # 일봉 국면 라벨 1회 사전계산(게이트≠none 일 때만). KOSPI SSOT + 전종목 breadth.
+        regime_map: Dict[pd.Timestamp, str] = {}
+        if any(g != "none" for g in gates):
+            regime_map = _build_daily_regime_map(start, end)
+            from collections import Counter
+            cnt = Counter(v for k, v in regime_map.items()
+                          if pd.Timestamp(start) <= k <= pd.Timestamp(end))
+            LOG.info(f"daily-regime label dist in window: {dict(cnt)}")
+
         tasks = [(i, ro) for i, ro in enumerate(entry_combos)]
         rows = _run_entry_combos(
             tasks, args.workers, _worker_daily,
             _winit_daily, (rule_cls, rule_name, warmup, data, turnover, exit_combos,
-                           args.k_list, args.max_per_stock, args.initial_capital),
+                           args.k_list, args.max_per_stock, args.initial_capital,
+                           gates, regime_map),
             lambda t: _eval_entry_daily_seq(t[1], rule_cls, rule_name, warmup, data, turnover,
                                             exit_combos, args.k_list, args.max_per_stock,
-                                            args.initial_capital),
+                                            args.initial_capital, gates, regime_map),
         )
         rows.sort(key=lambda r: (-r["sharpe"], -r["pnl"]))
         sort_desc = "sharpe desc, pnl desc"
@@ -669,20 +863,20 @@ def main():
           f"max_per_stock={args.max_per_stock:,.0f}  |  tsv: {tsv_path}")
     topk = rows[: args.top_k]
     if granularity == "minute":
-        print(f"{'rank':>4} {'combo':<52} {'ntr':>5} {'pos/N':>6} {'mSharpe':>8} "
+        print(f"{'rank':>4} {'combo':<64} {'ntr':>5} {'pos/N':>6} {'mSharpe':>8} "
               f"{'mPnl':>8} {'mxc':>4} {'skip':>6}  flag")
         for i, r in enumerate(topk, 1):
-            label = _combo_label(r["_entry_over"], r["sl"], r["tp"], r["mh"], r["K"])
+            label = _combo_label(r["_entry_over"], r["sl"], r["tp"], r["mh"], r["K"], r["gate"])
             flag = "[OVERFIT]" if r["overfit"] else ""
-            print(f"{i:>4} {label:<52} {r['n_trades']:>5} "
+            print(f"{i:>4} {label:<64} {r['n_trades']:>5} "
                   f"{r['pos_periods']}/{r['n_periods']:>3} {r['sharpe']:>8.3f} "
                   f"{r['pnl']:>8.4f} {r['max_concurrent']:>4} {r['n_skipped']:>6}  {flag}")
     else:
-        print(f"{'rank':>4} {'combo':<52} {'ntr':>5} {'sharpe':>8} {'pnl':>9} "
+        print(f"{'rank':>4} {'combo':<64} {'ntr':>5} {'sharpe':>8} {'pnl':>9} "
               f"{'calmar':>7} {'hit':>6} {'maxdd':>7} {'mxc':>4} {'skip':>6}")
         for i, r in enumerate(topk, 1):
-            label = _combo_label(r["_entry_over"], r["sl"], r["tp"], r["mh"], r["K"])
-            print(f"{i:>4} {label:<52} {r['n_trades']:>5} {r['sharpe']:>8.3f} "
+            label = _combo_label(r["_entry_over"], r["sl"], r["tp"], r["mh"], r["K"], r["gate"])
+            print(f"{i:>4} {label:<64} {r['n_trades']:>5} {r['sharpe']:>8.3f} "
                   f"{r['pnl']:>9.4f} {r['calmar']:>7.2f} {r['hit']:>6.2%} "
                   f"{r['max_dd']:>7.2%} {r['max_concurrent']:>4} {r['n_skipped']:>6}")
 
@@ -691,16 +885,18 @@ def main():
     baseline_entry_over = {k: defaults[k] for k in entry_grid.keys()}
     bl_sl = exit_grid["sl"][0]; bl_tp = exit_grid["tp"][0]; bl_mh = exit_grid["mh"][0]
     bl_K = args.k_list[0]
+    bl_gate = gates[0]
 
     def _match(r):
         return (r["_entry_over"] == baseline_entry_over and r["sl"] == bl_sl
-                and r["tp"] == bl_tp and r["mh"] == bl_mh and r["K"] == bl_K)
+                and r["tp"] == bl_tp and r["mh"] == bl_mh and r["K"] == bl_K
+                and r["gate"] == bl_gate)
 
     baseline = next((r for r in rows if _match(r)), None)
     best = rows[0] if rows else None
     print("\n--- BEST vs BASELINE ---")
     if best is not None:
-        print(f"BEST    : {_combo_label(best['_entry_over'], best['sl'], best['tp'], best['mh'], best['K'])}")
+        print(f"BEST    : {_combo_label(best['_entry_over'], best['sl'], best['tp'], best['mh'], best['K'], best['gate'])}")
         if granularity == "minute":
             print(f"          pos={best['pos_periods']}/{best['n_periods']} "
                   f"mSharpe={best['sharpe']:.3f} mPnl={best['pnl']:.4f} "
@@ -712,7 +908,7 @@ def main():
                   f"mxc={best['max_concurrent']} skip={best['n_skipped']}")
     if baseline is not None:
         bl_label = _combo_label(baseline["_entry_over"], baseline["sl"], baseline["tp"],
-                                baseline["mh"], baseline["K"])
+                                baseline["mh"], baseline["K"], baseline["gate"])
         print(f"BASELINE: {bl_label}")
         if granularity == "minute":
             print(f"          pos={baseline['pos_periods']}/{baseline['n_periods']} "
@@ -730,24 +926,29 @@ def main():
 # 순차 경로용 wrapper (병렬 init 인자를 클로저로 받아 전역 의존 없이 평가) ---------
 
 def _eval_entry_minute_seq(ro, rule_cls, rule_name, warmup, periods, period_data,
-                           period_turnover, exit_combos, k_list, max_per_stock, initial):
+                           period_turnover, exit_combos, k_list, max_per_stock, initial,
+                           gates, minute_labels):
     global _W_RULE_CLS, _W_RULE_NAME, _W_WARMUP, _W_PERIODS, _W_PERIOD_DATA
     global _W_PERIOD_TURNOVER, _W_EXIT_COMBOS, _W_K_LIST, _W_MAX_PER_STOCK, _W_INITIAL
+    global _W_GATES, _W_MINUTE_LABELS
     _W_RULE_CLS = rule_cls; _W_RULE_NAME = rule_name; _W_WARMUP = warmup
     _W_PERIODS = periods; _W_PERIOD_DATA = period_data; _W_PERIOD_TURNOVER = period_turnover
     _W_EXIT_COMBOS = exit_combos; _W_K_LIST = k_list
     _W_MAX_PER_STOCK = max_per_stock; _W_INITIAL = initial
+    _W_GATES = gates; _W_MINUTE_LABELS = minute_labels
     return _eval_entry_minute(ro)
 
 
 def _eval_entry_daily_seq(ro, rule_cls, rule_name, warmup, data, turnover, exit_combos,
-                          k_list, max_per_stock, initial):
+                          k_list, max_per_stock, initial, gates, regime_map):
     global _W_RULE_CLS, _W_RULE_NAME, _W_WARMUP, _W_DATA, _W_TURNOVER
     global _W_EXIT_COMBOS, _W_K_LIST, _W_MAX_PER_STOCK, _W_INITIAL
+    global _W_GATES, _W_REGIME_MAP
     _W_RULE_CLS = rule_cls; _W_RULE_NAME = rule_name; _W_WARMUP = warmup
     _W_DATA = data; _W_TURNOVER = turnover
     _W_EXIT_COMBOS = exit_combos; _W_K_LIST = k_list
     _W_MAX_PER_STOCK = max_per_stock; _W_INITIAL = initial
+    _W_GATES = gates; _W_REGIME_MAP = regime_map
     return _eval_entry_daily(ro)
 
 
