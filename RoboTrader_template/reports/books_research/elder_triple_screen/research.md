@@ -139,7 +139,7 @@ BLUE  = 그 외(혼재)             # 양방향 허가
 | 화면 | 조건 |
 |------|------|
 | Screen 1 | 주봉/proxy **EMA13 상승** |
-| Screen 2 | 일봉 **EMA13 터치** (`low[t] <= EMA13_d[t]*1.01` AND `close[t] > EMA13_d[t]`) |
+| Screen 2 | 일봉 **EMA13 터치** (`low[t] <= EMA13_d[t]*1.02` AND `close[t] > EMA13_d[t]`) — touch_band 1.02 라이브 적용(2026-06-02 멀티버스) |
 | Screen 3 | `open[t+1]` 무조건 진입 (최단순·표본 최대) |
 
 ---

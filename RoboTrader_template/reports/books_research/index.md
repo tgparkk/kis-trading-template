@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | 1 | aziz_day_trade | Andrew Aziz — How to Day Trade for a Living | ✅ 완료 | 복원 시 abcd 2025-10 **+9.49%** (top_volume:50, sl3%/tp5%/mh120) |
 | 2 | bellafiore_playbook | Mike Bellafiore — One Good Trade / PlayBook | ✅ 완료 | **fade_vwap 평균 +1.74% Sharpe +0.37, 2025-10 +11.71% Sharpe 2.82** ⭐ |
-| 3 | raschke_street_smarts | Linda Raschke — Street Smarts | ✅ Phase 1 | **anti 평균 +10.24%, 2025-10 +59% Calmar 7.59** ⭐ |
+| 3 | raschke_street_smarts | Linda Raschke — Street Smarts | ✅ Phase 1 | ~~anti 평균 +10.24%, 2025-10 +59% Calmar 7.59 ⭐~~ → **철회**(정본 top_volume:50 전조합 OVERFIT, mSharpe −1.27, 2026-06-02 멀티버스) |
 | 4 | oneil_canslim | William O'Neil — 최고의 주식 최적의 타이밍 | ✅ Phase A+B | Phase B 7거래 +7.04% 승률 71% (표본 작음) |
 | 5 | minervini_vcp | Mark Minervini — 초수익 성장주 투자 | ✅ 완료 | **volume_dryup B Sharpe 1.41 Calmar 2.38** 153T (BULL 편향) |
 | 6 | weinstein_stages | Stan Weinstein — Secrets for Profiting | ✅ 완료 | **ma30w_bounce B PnL +4.18% Sharpe 0.30 Calmar 1.92** 43T (BULL 편향) |
@@ -108,7 +108,7 @@
 
 | Rank | Rule | 평균 PnL | 평균 Sharpe | 평균 Calmar | 거래수 평균 |
 |---|---|---|---|---|---|
-| 1 | **anti** ⭐ | **+10.24%** | -2.27 | **+2.21** | 1,860 |
+| 1 | anti (철회) | +10.24% | -2.27 | +2.21 | 1,860 |
 | 2 | momentum_pinball | +2.60% | -0.24 | +0.04 | 439 |
 | 3 | gimmee_bar | +1.39% | -0.86 | +0.23 | 1,515 |
 | 4 | nr4_breakout | -4.12% | -1.70 | -0.10 | 2,333 |
@@ -118,7 +118,7 @@
 
 | Rank | Rule | PnL | Sharpe | Calmar | Hit | 거래수 |
 |---|---|---|---|---|---|---|
-| 1 | **anti** ⭐⭐ | **+59.05%** | **+0.48** | **+7.59** | 49.6% | 1,561 |
+| 1 | anti (철회) | +59.05% | +0.48 | +7.59 | 49.6% | 1,561 |
 | 2 | nr4_breakout | +10.17% | -0.03 | +0.36 | 48.7% | 2,114 |
 | 3 | momentum_pinball | +9.67% | -0.02 | +0.13 | 4.6% | 322 |
 | 4 | gimmee_bar | +5.18% | -1.41 | +0.33 | 45.6% | 1,862 |
@@ -219,7 +219,8 @@
 - **자세히**: [bellafiore_playbook/](bellafiore_playbook/)
 
 ### raschke_street_smarts (Linda Raschke — Street Smarts)
-- **베스트 규칙**: `anti` (3기간 평균 PnL **+10.24%**, 2025-10 **+59.05%** Calmar **7.59** — 책 3권 통틀어 최대 절대 PnL)
+- **⭐ 철회 (2026-06-02)**: 정본 top_volume:50 전조합 OVERFIT (mSharpe −1.27 → index) — 소유니버스 in-sample 착시였고 추천 자격 철회.
+- **베스트 규칙(철회됨)**: `anti` (3기간 평균 PnL +10.24%, 2025-10 +59.05% Calmar 7.59 — limit15 소유니버스 한정 착시)
 - **2025-10 단독**: PnL +59.05%, Sharpe +0.48, Calmar 7.59, Hit 49.6% (1,561 trades)
 - **Anti = 임펄스 후 스토캐스틱 훅** — 한국 시장 단기 모멘텀 전환 강력 포착
 - **주의**: 평균 Sharpe -2.27, 다른 기간 -11~-17% — 시장 의존성 큼. **변동성·국면 필터 추가 검증 필요**

@@ -105,6 +105,8 @@ def krx_tick(price: float) -> int:
 def screen1_uptrend(close: pd.Series) -> bool:
     """Screen 1 추세 proxy: 일봉 65일 EMA 기울기 > 0 (5일=1주 전 대비)."""
     ema65 = ema(close, 65)
+    if len(ema65) < 6:
+        return False  # 워밍업 부족 → 추세 미확인 = False (legacy 동작과 동일)
     return bool(ema65.iloc[-1] > ema65.iloc[-6])
 
 
