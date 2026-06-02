@@ -31,7 +31,7 @@ risk_management:
   take_profit_pct: 0.12       # 익절 +12% (Variant B)
   stop_loss_pct: 0.08         # 손절 -8%  (Variant B)
   max_hold_days: 20           # 최대 보유 20거래일 (Variant B)
-  max_positions: 5
+  max_positions: 3              # K=3 (재검증 _REtest_minervini_Ksweep: volume_dryup capacity 작아 K=3만 생존, K=5는 BULL서도 PnL 음전)
   max_daily_trades: 5
   max_per_stock_amount: 3000000  # 종목당 최대 투자금액 (원)
 
