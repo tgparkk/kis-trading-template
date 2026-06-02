@@ -38,3 +38,6 @@ test_output*.txt
 # Backtest artifacts & agent metadata
 output/
 .omc/
+
+# Large research data artifacts (>100MB, not for git)
+RoboTrader_template/reports/10pct_strategy/*.parquet
