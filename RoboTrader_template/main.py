@@ -840,6 +840,13 @@ async def main() -> None:
     if not await bot.initialize():
         sys.exit(1)
 
+    # KIS chk-holiday 휴장일 동기화 (auth 완료 후 1회, 캐시 가드로 하루 1회만 API 호출)
+    try:
+        from utils.holiday_kis_sync import sync_today as _sync_holidays
+        _sync_holidays()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"휴장일 동기화 스킵: {e}")
+
     # 일일 거래 사이클 실행
     await bot.run_daily_cycle()
 

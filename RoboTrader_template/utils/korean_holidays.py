@@ -155,9 +155,16 @@ def is_special_holiday(date: datetime) -> bool:
 
     holidays 백엔드 사용 시: 라이브러리가 반영하는 것은 is_fixed_holiday에서 처리됨.
     _SPECIAL_HOLIDAYS 수동 목록도 추가로 체크 (라이브러리가 누락할 수 있는 경우 대비).
+    KIS chk-holiday API로 동기화된 런타임 휴장일셋(KRX 연말휴장·임시공휴일 등)도 OR한다.
     """
     date_str = date.strftime("%Y-%m-%d")
-    return date_str in _SPECIAL_HOLIDAYS
+    if date_str in _SPECIAL_HOLIDAYS:
+        return True
+    try:
+        from utils.holiday_kis_sync import is_kis_closed_day
+        return is_kis_closed_day(date)
+    except Exception:
+        return False
 
 
 def is_holiday(date: datetime) -> bool:
