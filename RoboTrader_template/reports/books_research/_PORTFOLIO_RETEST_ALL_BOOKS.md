@@ -7,7 +7,7 @@
 |---|---|---|---|---|---|---|
 | **Elder ema_pullback** | max-K(시그널) | **K↑좋음(20)** | 0.68 / +93%(K20) | **23%** | BEAR **+3%** 방어 | ✅ **채택(유일 강건)** |
 | **systrader79 배분** | 연속비중 | (배분) | 0.93(월) | 19% | MDD방어 | ✅ 채택(방어형) |
-| haru daily ma20_pullback | max-K | K=3 | 0.58 / +133% | 45% | (BULL추정) | ❌ 고MaxDD·K3한정 |
+| haru daily ma20_pullback | max-K | K=5 | 0.58 / +133% | 45% | **1.37/0.22/0.05**(BEAR PnL−3.3%) | ❌ BULL전용·BEAR방어실패 |
 | 유지윤 daytrading | max-K | K=3 | 0.50 / +100% | 46% | 0.80/0.08/**−0.32** | ❌ BULL전용 |
 | close_betting(taesso) | max-K | K=3 | 0.49 / +15% | 9% | BULL단독(0.93/−0.03/−0.04) | ❌ 비강건 |
 | trading_legends | max-K | K=3 | 0.41 / +63% | 73% | 1.13/**−0.43**/0.51 | ❌ SIDE붕괴 |
@@ -17,7 +17,7 @@
 | Minervini dryup | max-K | **K=3만** | 0.39(K5)~ | K↑전소 | BEAR음수 | ⚠️ K=3 권고(라이브 5→3) |
 | lynch | 리밸 N | K=20 | 0.15 | — | 0.32/1.45/−1.65 | ❌ |
 | hongyongchan | 리밸 N | K=10 | 0.10 | — | (신호희소) | ❌ |
-| dino | max-K | K비결속 | 0.09 | — | (신호희소) | ❌ |
+| dino | max-K | K비결속 | 0.09 | — | **0.97/0.22/0.13**(n=1/16/7 표본부족) | ❌ 신호희소·국면판정불가 |
 | **분봉군 (전멸)** | | | | | | |
 | bellafiore fade_vwap | max-K(분) | K=5 | mSharpe1.70 / **mPnl+1.8%** | — | pos2/3, 2026-05 **−45%** | ❌ 비강건 |
 | surge_fade(taesso) | max-K(분) | — | mPnl **−24~−32%** | — | pos1~2/3 OVERFIT | ❌ |
