@@ -31,6 +31,9 @@ CLI:
   --entry-grid(JSON 룰필드) --exit-grid(JSON sl/tp/mh) --K-list(공백구분 정수)
   --max-per-stock --initial-capital --universe(top_volume:N) --minute-resample-freq
   --workers --limit --out
+  --regime-gate(PIT 국면 게이트 차원) --entry-filter(PIT 진입필터 차원, scripts.entry_filters)
+  --filter-threshold(rs_rank 백분위/adx 컷) --filter-n(rs_rank/mkt_rs 룩백봉수)
+  ★게이트·필터=none 이면 기존 동작 바이트동일(회귀 안전). 라이브 전략 무수정.
 
 출력:
   <out>/book_portfolio_<book>_<rule>.tsv (전 조합 정렬) + 콘솔 top-K + best vs baseline.
@@ -91,6 +94,7 @@ from scripts.book_param_multiverse import (  # noqa: E402
     _resolve_rule_cls,
 )
 from scripts.exit_multiverse.portfolio_sim import run_portfolio  # noqa: E402
+from scripts.entry_filters import FILTER_CHOICES, apply_entry_filter  # noqa: E402
 
 LOG = logging.getLogger("book_portfolio_multiverse")
 
@@ -342,6 +346,28 @@ def _build_daily_regime_map(start: str, end: str) -> Dict[pd.Timestamp, str]:
     return {pd.Timestamp(d): str(v) for d, v in res["regime"].items()}
 
 
+def _load_kospi_close(start: str, end: str, lookback_days: int = 400) -> pd.Series:
+    """KOSPI 일봉 종가(SSOT, daily_prices) Series(index=Timestamp). mkt_rs 필터용.
+
+    N일 수익률 워밍업 위해 start 이전 lookback_days 룩백 포함(라이브 PIT 와 동일 — 진입봉
+    날짜 ≤t 슬라이스로만 사용). 행 없으면 빈 Series 반환(필터 호출자에서 drop 처리).
+    """
+    from db.connection import DatabaseConnection
+    import datetime as _dt
+    look_start = (_dt.date.fromisoformat(str(start)) - _dt.timedelta(days=lookback_days)).isoformat()
+    with DatabaseConnection.get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT date, close FROM daily_prices "
+            "WHERE stock_code = 'KOSPI' AND date >= %s AND date <= %s ORDER BY date ASC",
+            (look_start, end),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        return pd.Series(dtype=float)
+    return pd.Series({pd.Timestamp(r[0]): float(r[1]) for r in rows}, name="close").sort_index()
+
+
 def _build_minute_regime_maps(
     period_data: Dict[str, Dict[str, pd.DataFrame]],
     period_minute_prev_close: Dict[str, Dict[str, float]],
@@ -519,6 +545,11 @@ _W_INITIAL: float = 10_000_000.0
 _W_GATES: List[str] = ["none"]
 _W_REGIME_MAP: Optional[Dict[pd.Timestamp, str]] = None              # daily: date→regime
 _W_MINUTE_LABELS: Optional[Dict[str, Dict[pd.Timestamp, dict]]] = None  # minute: pr→{dt→label}
+# 진입 필터 (필터 차원, scripts.entry_filters). 필터=none 일 때 기존 동작 바이트동일.
+_W_FILTERS: List[str] = ["none"]
+_W_FILTER_THRESHOLD: float = 0.5
+_W_FILTER_N: int = 60
+_W_KOSPI_CLOSE: Optional[pd.Series] = None  # mkt_rs 용 KOSPI 종가(date index)
 
 
 def _eval_entry_minute(ro: Dict[str, Any]) -> List[dict]:
@@ -535,35 +566,41 @@ def _eval_entry_minute(ro: Dict[str, Any]) -> List[dict]:
         gcaches = {pr: _filter_cache_minute(caches[pr], _W_PERIOD_DATA[pr],
                                             (_W_MINUTE_LABELS or {}).get(pr, {}), gate)
                    for pr in _W_PERIODS}
-        for eo in _W_EXIT_COMBOS:
-            params = dict(stop_loss_pct=eo["sl"], take_profit_pct=eo["tp"], max_hold_bars=eo["mh"])
-            for K in _W_K_LIST:
-                per_period = {}
-                for pr in _W_PERIODS:
-                    res = run_portfolio(
-                        data=_W_PERIOD_DATA[pr], signal_cache=gcaches[pr], adapter=_ADAPTER,
-                        params=params, turnover=_W_PERIOD_TURNOVER[pr],
-                        initial_capital=_W_INITIAL, max_positions=K,
-                        max_per_stock=_W_MAX_PER_STOCK,
-                    )
-                    per_period[pr] = _portfolio_metrics(res, _W_INITIAL)
-                pnls = [per_period[pr]["pnl"] for pr in _W_PERIODS]
-                shs = [per_period[pr]["sharpe"] for pr in _W_PERIODS]
-                ntr = sum(per_period[pr]["n_trades"] for pr in _W_PERIODS)
-                nskip = sum(per_period[pr]["n_skipped"] for pr in _W_PERIODS)
-                mxc = max((per_period[pr]["max_concurrent"] for pr in _W_PERIODS), default=0)
-                pos_periods = sum(1 for x in pnls if x > 0)
-                mean_sharpe = float(np.mean(shs)) if shs else 0.0
-                mean_pnl = float(np.mean(pnls)) if pnls else 0.0
-                overfit = (pos_periods == 1 and len(_W_PERIODS) > 1)
-                row = {**{f"e_{k}": v for k, v in ro.items()}, "gate": gate,
-                       "sl": eo["sl"], "tp": eo["tp"], "mh": eo["mh"], "K": K,
-                       "n_trades": ntr, "pos_periods": pos_periods, "n_periods": len(_W_PERIODS),
-                       "sharpe": mean_sharpe, "pnl": mean_pnl, "overfit": overfit,
-                       "max_concurrent": mxc, "n_skipped": nskip, "_entry_over": ro}
-                for pr in _W_PERIODS:
-                    row[f"pnl_{pr}"] = per_period[pr]["pnl"]
-                rows.append(row)
+        for filt in _W_FILTERS:
+            # 진입 필터(no-lookahead). filt='none' 이면 gcaches 그대로.
+            fcaches = {pr: apply_entry_filter(_W_PERIOD_DATA[pr], gcaches[pr], filt=filt,
+                                              threshold=_W_FILTER_THRESHOLD, n=_W_FILTER_N,
+                                              kospi_close=_W_KOSPI_CLOSE)
+                       for pr in _W_PERIODS}
+            for eo in _W_EXIT_COMBOS:
+                params = dict(stop_loss_pct=eo["sl"], take_profit_pct=eo["tp"], max_hold_bars=eo["mh"])
+                for K in _W_K_LIST:
+                    per_period = {}
+                    for pr in _W_PERIODS:
+                        res = run_portfolio(
+                            data=_W_PERIOD_DATA[pr], signal_cache=fcaches[pr], adapter=_ADAPTER,
+                            params=params, turnover=_W_PERIOD_TURNOVER[pr],
+                            initial_capital=_W_INITIAL, max_positions=K,
+                            max_per_stock=_W_MAX_PER_STOCK,
+                        )
+                        per_period[pr] = _portfolio_metrics(res, _W_INITIAL)
+                    pnls = [per_period[pr]["pnl"] for pr in _W_PERIODS]
+                    shs = [per_period[pr]["sharpe"] for pr in _W_PERIODS]
+                    ntr = sum(per_period[pr]["n_trades"] for pr in _W_PERIODS)
+                    nskip = sum(per_period[pr]["n_skipped"] for pr in _W_PERIODS)
+                    mxc = max((per_period[pr]["max_concurrent"] for pr in _W_PERIODS), default=0)
+                    pos_periods = sum(1 for x in pnls if x > 0)
+                    mean_sharpe = float(np.mean(shs)) if shs else 0.0
+                    mean_pnl = float(np.mean(pnls)) if pnls else 0.0
+                    overfit = (pos_periods == 1 and len(_W_PERIODS) > 1)
+                    row = {**{f"e_{k}": v for k, v in ro.items()}, "gate": gate, "filter": filt,
+                           "sl": eo["sl"], "tp": eo["tp"], "mh": eo["mh"], "K": K,
+                           "n_trades": ntr, "pos_periods": pos_periods, "n_periods": len(_W_PERIODS),
+                           "sharpe": mean_sharpe, "pnl": mean_pnl, "overfit": overfit,
+                           "max_concurrent": mxc, "n_skipped": nskip, "_entry_over": ro}
+                    for pr in _W_PERIODS:
+                        row[f"pnl_{pr}"] = per_period[pr]["pnl"]
+                    rows.append(row)
     return rows
 
 
@@ -575,49 +612,62 @@ def _eval_entry_daily(ro: Dict[str, Any]) -> List[dict]:
     rows: List[dict] = []
     for gate in _W_GATES:
         gcache = _filter_cache_daily(cache, _W_DATA, _W_REGIME_MAP or {}, gate)
-        for eo in _W_EXIT_COMBOS:
-            params = dict(stop_loss_pct=eo["sl"], take_profit_pct=eo["tp"], max_hold_bars=eo["mh"])
-            for K in _W_K_LIST:
-                res = run_portfolio(
-                    data=_W_DATA, signal_cache=gcache, adapter=_ADAPTER, params=params,
-                    turnover=_W_TURNOVER, initial_capital=_W_INITIAL, max_positions=K,
-                    max_per_stock=_W_MAX_PER_STOCK,
-                )
-                m = _portfolio_metrics(res, _W_INITIAL)
-                row = {**{f"e_{k}": v for k, v in ro.items()}, "gate": gate,
-                       "sl": eo["sl"], "tp": eo["tp"], "mh": eo["mh"], "K": K,
-                       "n_trades": m["n_trades"], "sharpe": m["sharpe"], "pnl": m["pnl"],
-                       "calmar": m["calmar"], "hit": m["hit"], "max_dd": m["max_dd"],
-                       "max_concurrent": m["max_concurrent"], "n_skipped": m["n_skipped"],
-                       "_entry_over": ro}
-                rows.append(row)
+        for filt in _W_FILTERS:
+            # 진입 필터 적용(no-lookahead). filt='none' 이면 gcache 그대로(동일 객체).
+            fcache = apply_entry_filter(_W_DATA, gcache, filt=filt,
+                                        threshold=_W_FILTER_THRESHOLD, n=_W_FILTER_N,
+                                        kospi_close=_W_KOSPI_CLOSE)
+            for eo in _W_EXIT_COMBOS:
+                params = dict(stop_loss_pct=eo["sl"], take_profit_pct=eo["tp"], max_hold_bars=eo["mh"])
+                for K in _W_K_LIST:
+                    res = run_portfolio(
+                        data=_W_DATA, signal_cache=fcache, adapter=_ADAPTER, params=params,
+                        turnover=_W_TURNOVER, initial_capital=_W_INITIAL, max_positions=K,
+                        max_per_stock=_W_MAX_PER_STOCK,
+                    )
+                    m = _portfolio_metrics(res, _W_INITIAL)
+                    row = {**{f"e_{k}": v for k, v in ro.items()}, "gate": gate, "filter": filt,
+                           "sl": eo["sl"], "tp": eo["tp"], "mh": eo["mh"], "K": K,
+                           "n_trades": m["n_trades"], "sharpe": m["sharpe"], "pnl": m["pnl"],
+                           "calmar": m["calmar"], "hit": m["hit"], "max_dd": m["max_dd"],
+                           "max_concurrent": m["max_concurrent"], "n_skipped": m["n_skipped"],
+                           "_entry_over": ro}
+                    rows.append(row)
     return rows
 
 
 # --- 병렬 워커 initializer / wrapper ---
 
 def _winit_minute(rule_cls, rule_name, warmup, periods, period_data, period_turnover,
-                  exit_combos, k_list, max_per_stock, initial, gates, minute_labels):
+                  exit_combos, k_list, max_per_stock, initial, gates, minute_labels,
+                  filters, filter_threshold, filter_n, kospi_close):
     global _W_RULE_CLS, _W_RULE_NAME, _W_WARMUP, _W_PERIODS, _W_PERIOD_DATA
     global _W_PERIOD_TURNOVER, _W_EXIT_COMBOS, _W_K_LIST, _W_MAX_PER_STOCK, _W_INITIAL
     global _W_GATES, _W_MINUTE_LABELS
+    global _W_FILTERS, _W_FILTER_THRESHOLD, _W_FILTER_N, _W_KOSPI_CLOSE
     _W_RULE_CLS = rule_cls; _W_RULE_NAME = rule_name; _W_WARMUP = warmup
     _W_PERIODS = periods; _W_PERIOD_DATA = period_data; _W_PERIOD_TURNOVER = period_turnover
     _W_EXIT_COMBOS = exit_combos; _W_K_LIST = k_list
     _W_MAX_PER_STOCK = max_per_stock; _W_INITIAL = initial
     _W_GATES = gates; _W_MINUTE_LABELS = minute_labels
+    _W_FILTERS = filters; _W_FILTER_THRESHOLD = filter_threshold
+    _W_FILTER_N = filter_n; _W_KOSPI_CLOSE = kospi_close
 
 
 def _winit_daily(rule_cls, rule_name, warmup, data, turnover, exit_combos, k_list,
-                 max_per_stock, initial, gates, regime_map):
+                 max_per_stock, initial, gates, regime_map,
+                 filters, filter_threshold, filter_n, kospi_close):
     global _W_RULE_CLS, _W_RULE_NAME, _W_WARMUP, _W_DATA, _W_TURNOVER
     global _W_EXIT_COMBOS, _W_K_LIST, _W_MAX_PER_STOCK, _W_INITIAL
     global _W_GATES, _W_REGIME_MAP
+    global _W_FILTERS, _W_FILTER_THRESHOLD, _W_FILTER_N, _W_KOSPI_CLOSE
     _W_RULE_CLS = rule_cls; _W_RULE_NAME = rule_name; _W_WARMUP = warmup
     _W_DATA = data; _W_TURNOVER = turnover
     _W_EXIT_COMBOS = exit_combos; _W_K_LIST = k_list
     _W_MAX_PER_STOCK = max_per_stock; _W_INITIAL = initial
     _W_GATES = gates; _W_REGIME_MAP = regime_map
+    _W_FILTERS = filters; _W_FILTER_THRESHOLD = filter_threshold
+    _W_FILTER_N = filter_n; _W_KOSPI_CLOSE = kospi_close
 
 
 def _worker_minute(task: Tuple[int, Dict[str, Any]]) -> Tuple[int, List[dict]]:
@@ -657,9 +707,10 @@ def _run_entry_combos(tasks, workers, worker_fn, init_fn, init_args, seq_fn) -> 
 # 포맷 헬퍼
 # ===========================================================================
 
-def _combo_label(entry_over: Dict[str, Any], sl, tp, mh, K, gate: str = "none") -> str:
+def _combo_label(entry_over: Dict[str, Any], sl, tp, mh, K, gate: str = "none",
+                 filt: str = "none") -> str:
     parts = [f"{k}={v}" for k, v in sorted(entry_over.items())]
-    parts += [f"sl={sl}", f"tp={tp}", f"mh={mh}", f"K={K}", f"gate={gate}"]
+    parts += [f"sl={sl}", f"tp={tp}", f"mh={mh}", f"K={K}", f"gate={gate}", f"filter={filt}"]
     return " ".join(parts)
 
 
@@ -699,6 +750,15 @@ def main():
                    choices=list(GATE_CHOICES),
                    help="PIT 국면 진입게이트(차원). 일봉: none/exclude_bear/bull_only, "
                         "분봉: none/trend_only/dir_match. 여러 값=게이트 차원 스윕.")
+    p.add_argument("--entry-filter", nargs="+", default=["none"], dest="entry_filter",
+                   choices=list(FILTER_CHOICES),
+                   help="PIT 진입 필터(차원, scripts.entry_filters). none=baseline(바이트동일). "
+                        "rs_rank=N봉수익률 횡단면 백분위>=임계, mkt_rs=KOSPI 대비 아웃퍼폼, "
+                        "adx=ADX(14)>=임계, ma_slope=종가>MA50 & MA50기울기>0. 여러 값=필터 차원 스윕.")
+    p.add_argument("--filter-threshold", type=float, default=0.5, dest="filter_threshold",
+                   help="rs_rank 백분위 컷(0~1) 또는 adx 컷(예 20/25). mkt_rs/ma_slope 는 무시.")
+    p.add_argument("--filter-n", type=int, default=60, dest="filter_n",
+                   help="rs_rank/mkt_rs 의 수익률 룩백 봉수 N (기본 60).")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args()
     logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -743,6 +803,10 @@ def main():
     if bad:
         p.error(f"--regime-gate {bad} 는 {granularity} 트랙에 부적합. 가능: {list(allowed_gates)}")
     LOG.info(f"regime gates (dim): {gates}")
+
+    # 필터 차원: 입력 보존 순서, 중복 제거.
+    filters: List[str] = list(dict.fromkeys(args.entry_filter))
+    LOG.info(f"entry filters (dim): {filters} (threshold={args.filter_threshold} n={args.filter_n})")
 
     rows: List[dict] = []
 
@@ -789,16 +853,26 @@ def main():
                 LOG.info(f"period={pr} intraday-regime bars={len(minute_labels.get(pr, {}))} "
                          f"trend_bars={n_trend}")
 
+        # mkt_rs 필터용 KOSPI 종가(분봉 트랙은 진입봉 날짜로 일봉수익률 매핑).
+        kospi_close_m: Optional[pd.Series] = None
+        if "mkt_rs" in filters:
+            mn_dates = [MINUTE_PERIODS[pr][0] for pr in periods]
+            mx_dates = [MINUTE_PERIODS[pr][1] for pr in periods]
+            kospi_close_m = _load_kospi_close(min(mn_dates), max(mx_dates))
+            LOG.info(f"mkt_rs filter (minute): loaded KOSPI close rows={len(kospi_close_m)}")
+
         tasks = [(i, ro) for i, ro in enumerate(entry_combos)]
         rows = _run_entry_combos(
             tasks, args.workers, _worker_minute,
             _winit_minute, (rule_cls, rule_name, warmup, periods, period_data,
                             period_turnover, exit_combos, args.k_list,
-                            args.max_per_stock, args.initial_capital, gates, minute_labels),
+                            args.max_per_stock, args.initial_capital, gates, minute_labels,
+                            filters, args.filter_threshold, args.filter_n, kospi_close_m),
             lambda t: _eval_entry_minute_seq(t[1], rule_cls, rule_name, warmup, periods,
                                              period_data, period_turnover, exit_combos,
                                              args.k_list, args.max_per_stock, args.initial_capital,
-                                             gates, minute_labels),
+                                             gates, minute_labels, filters, args.filter_threshold,
+                                             args.filter_n, kospi_close_m),
         )
         rows.sort(key=lambda r: (-r["pos_periods"], -r["sharpe"], -r["pnl"]))
         sort_desc = "pos_periods desc, mean_sharpe desc, mean_pnl desc"
@@ -838,15 +912,24 @@ def main():
                           if pd.Timestamp(start) <= k <= pd.Timestamp(end))
             LOG.info(f"daily-regime label dist in window: {dict(cnt)}")
 
+        # mkt_rs 필터용 KOSPI 종가 1회 로드(요청 시에만).
+        kospi_close: Optional[pd.Series] = None
+        if "mkt_rs" in filters:
+            kospi_close = _load_kospi_close(start, end)
+            LOG.info(f"mkt_rs filter: loaded KOSPI close rows={len(kospi_close)}")
+
         tasks = [(i, ro) for i, ro in enumerate(entry_combos)]
         rows = _run_entry_combos(
             tasks, args.workers, _worker_daily,
             _winit_daily, (rule_cls, rule_name, warmup, data, turnover, exit_combos,
                            args.k_list, args.max_per_stock, args.initial_capital,
-                           gates, regime_map),
+                           gates, regime_map, filters, args.filter_threshold,
+                           args.filter_n, kospi_close),
             lambda t: _eval_entry_daily_seq(t[1], rule_cls, rule_name, warmup, data, turnover,
                                             exit_combos, args.k_list, args.max_per_stock,
-                                            args.initial_capital, gates, regime_map),
+                                            args.initial_capital, gates, regime_map,
+                                            filters, args.filter_threshold, args.filter_n,
+                                            kospi_close),
         )
         rows.sort(key=lambda r: (-r["sharpe"], -r["pnl"]))
         sort_desc = "sharpe desc, pnl desc"
@@ -866,7 +949,7 @@ def main():
         print(f"{'rank':>4} {'combo':<64} {'ntr':>5} {'pos/N':>6} {'mSharpe':>8} "
               f"{'mPnl':>8} {'mxc':>4} {'skip':>6}  flag")
         for i, r in enumerate(topk, 1):
-            label = _combo_label(r["_entry_over"], r["sl"], r["tp"], r["mh"], r["K"], r["gate"])
+            label = _combo_label(r["_entry_over"], r["sl"], r["tp"], r["mh"], r["K"], r["gate"], r["filter"])
             flag = "[OVERFIT]" if r["overfit"] else ""
             print(f"{i:>4} {label:<64} {r['n_trades']:>5} "
                   f"{r['pos_periods']}/{r['n_periods']:>3} {r['sharpe']:>8.3f} "
@@ -875,7 +958,7 @@ def main():
         print(f"{'rank':>4} {'combo':<64} {'ntr':>5} {'sharpe':>8} {'pnl':>9} "
               f"{'calmar':>7} {'hit':>6} {'maxdd':>7} {'mxc':>4} {'skip':>6}")
         for i, r in enumerate(topk, 1):
-            label = _combo_label(r["_entry_over"], r["sl"], r["tp"], r["mh"], r["K"], r["gate"])
+            label = _combo_label(r["_entry_over"], r["sl"], r["tp"], r["mh"], r["K"], r["gate"], r["filter"])
             print(f"{i:>4} {label:<64} {r['n_trades']:>5} {r['sharpe']:>8.3f} "
                   f"{r['pnl']:>9.4f} {r['calmar']:>7.2f} {r['hit']:>6.2%} "
                   f"{r['max_dd']:>7.2%} {r['max_concurrent']:>4} {r['n_skipped']:>6}")
@@ -886,17 +969,18 @@ def main():
     bl_sl = exit_grid["sl"][0]; bl_tp = exit_grid["tp"][0]; bl_mh = exit_grid["mh"][0]
     bl_K = args.k_list[0]
     bl_gate = gates[0]
+    bl_filter = filters[0]
 
     def _match(r):
         return (r["_entry_over"] == baseline_entry_over and r["sl"] == bl_sl
                 and r["tp"] == bl_tp and r["mh"] == bl_mh and r["K"] == bl_K
-                and r["gate"] == bl_gate)
+                and r["gate"] == bl_gate and r["filter"] == bl_filter)
 
     baseline = next((r for r in rows if _match(r)), None)
     best = rows[0] if rows else None
     print("\n--- BEST vs BASELINE ---")
     if best is not None:
-        print(f"BEST    : {_combo_label(best['_entry_over'], best['sl'], best['tp'], best['mh'], best['K'], best['gate'])}")
+        print(f"BEST    : {_combo_label(best['_entry_over'], best['sl'], best['tp'], best['mh'], best['K'], best['gate'], best['filter'])}")
         if granularity == "minute":
             print(f"          pos={best['pos_periods']}/{best['n_periods']} "
                   f"mSharpe={best['sharpe']:.3f} mPnl={best['pnl']:.4f} "
@@ -908,7 +992,7 @@ def main():
                   f"mxc={best['max_concurrent']} skip={best['n_skipped']}")
     if baseline is not None:
         bl_label = _combo_label(baseline["_entry_over"], baseline["sl"], baseline["tp"],
-                                baseline["mh"], baseline["K"], baseline["gate"])
+                                baseline["mh"], baseline["K"], baseline["gate"], baseline["filter"])
         print(f"BASELINE: {bl_label}")
         if granularity == "minute":
             print(f"          pos={baseline['pos_periods']}/{baseline['n_periods']} "
@@ -927,28 +1011,36 @@ def main():
 
 def _eval_entry_minute_seq(ro, rule_cls, rule_name, warmup, periods, period_data,
                            period_turnover, exit_combos, k_list, max_per_stock, initial,
-                           gates, minute_labels):
+                           gates, minute_labels, filters, filter_threshold, filter_n,
+                           kospi_close):
     global _W_RULE_CLS, _W_RULE_NAME, _W_WARMUP, _W_PERIODS, _W_PERIOD_DATA
     global _W_PERIOD_TURNOVER, _W_EXIT_COMBOS, _W_K_LIST, _W_MAX_PER_STOCK, _W_INITIAL
     global _W_GATES, _W_MINUTE_LABELS
+    global _W_FILTERS, _W_FILTER_THRESHOLD, _W_FILTER_N, _W_KOSPI_CLOSE
     _W_RULE_CLS = rule_cls; _W_RULE_NAME = rule_name; _W_WARMUP = warmup
     _W_PERIODS = periods; _W_PERIOD_DATA = period_data; _W_PERIOD_TURNOVER = period_turnover
     _W_EXIT_COMBOS = exit_combos; _W_K_LIST = k_list
     _W_MAX_PER_STOCK = max_per_stock; _W_INITIAL = initial
     _W_GATES = gates; _W_MINUTE_LABELS = minute_labels
+    _W_FILTERS = filters; _W_FILTER_THRESHOLD = filter_threshold
+    _W_FILTER_N = filter_n; _W_KOSPI_CLOSE = kospi_close
     return _eval_entry_minute(ro)
 
 
 def _eval_entry_daily_seq(ro, rule_cls, rule_name, warmup, data, turnover, exit_combos,
-                          k_list, max_per_stock, initial, gates, regime_map):
+                          k_list, max_per_stock, initial, gates, regime_map,
+                          filters, filter_threshold, filter_n, kospi_close):
     global _W_RULE_CLS, _W_RULE_NAME, _W_WARMUP, _W_DATA, _W_TURNOVER
     global _W_EXIT_COMBOS, _W_K_LIST, _W_MAX_PER_STOCK, _W_INITIAL
     global _W_GATES, _W_REGIME_MAP
+    global _W_FILTERS, _W_FILTER_THRESHOLD, _W_FILTER_N, _W_KOSPI_CLOSE
     _W_RULE_CLS = rule_cls; _W_RULE_NAME = rule_name; _W_WARMUP = warmup
     _W_DATA = data; _W_TURNOVER = turnover
     _W_EXIT_COMBOS = exit_combos; _W_K_LIST = k_list
     _W_MAX_PER_STOCK = max_per_stock; _W_INITIAL = initial
     _W_GATES = gates; _W_REGIME_MAP = regime_map
+    _W_FILTERS = filters; _W_FILTER_THRESHOLD = filter_threshold
+    _W_FILTER_N = filter_n; _W_KOSPI_CLOSE = kospi_close
     return _eval_entry_daily(ro)
 
 
