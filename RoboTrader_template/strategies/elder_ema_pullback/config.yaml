@@ -44,7 +44,7 @@ risk_management:
   max_hold_days: 100          # 최대 보유일 (백테스트 max_hold_bars=100)
   trail_ema: 13               # 수익 중 EMA13 하향 이탈 시 청산 (백테스트 trail_ema=13)
   trend_flip_exit: true       # EMA65 추세반전(5바 전 대비 하락) 청산 (백테스트 trend_flip_exit)
-  max_positions: 5
+  max_positions: 20  # K=20 (2차 멀티버스 Phase1 portfolio_sim_elder: Elder는 K↑가 Sharpe/MaxDD 단조개선 — K=3 Sharpe-0.19/MaxDD86% → K=20 Sharpe1.02/+87%/MaxDD23%, 전 지표 지배. cap이라 실보유는 신호수 따름)
   max_daily_trades: 5
   max_per_stock_amount: 3000000  # 종목당 최대 투자금액 (원)
 
