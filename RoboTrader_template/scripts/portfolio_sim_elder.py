@@ -39,6 +39,8 @@ from strategies.base import SignalType
 from strategies.books.elder_triple_screen.rules import ema, krx_tick, screen1_uptrend
 from strategies.books.elder_triple_screen.strategy import build_strategy as build_elder
 from strategies.books.minervini_vcp.strategy import build_strategy as build_minervini
+# 진입필터(PIT/no-lookahead) 재사용 — 재구현 금지. mkt_rs = 종목 N봉수익률 − KOSPI N일수익률 > 0.
+from scripts.entry_filters import _nday_return, build_kospi_nday_return
 
 LOG = logging.getLogger("portfolio_sim")
 
@@ -108,6 +110,28 @@ def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, p
             df["datetime"] = df["date"]
             out[code] = df[["datetime", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
     return out
+
+
+def _load_kospi_close_lookback(start: str, end: str, lookback_days: int = 400) -> pd.Series:
+    """KOSPI 일봉 종가(SSOT, daily_prices) Series(index=Timestamp). mkt_rs 게이트용.
+
+    N일 수익률 워밍업 위해 start 이전 lookback_days 룩백 포함(진입봉 날짜 ≤t 슬라이스로만
+    사용 → No-Look-Ahead). book_portfolio_multiverse._load_kospi_close 와 동일 로직.
+    """
+    from db.connection import DatabaseConnection
+    import datetime as _dt
+    look_start = (_dt.date.fromisoformat(str(start)) - _dt.timedelta(days=lookback_days)).isoformat()
+    with DatabaseConnection.get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT date, close FROM daily_prices "
+            "WHERE stock_code = 'KOSPI' AND date >= %s AND date <= %s ORDER BY date ASC",
+            (look_start, end),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        return pd.Series(dtype=float)
+    return pd.Series({pd.Timestamp(r[0]): float(r[1]) for r in rows}, name="close").sort_index()
 
 
 def _load_kospi(start: str, end: str) -> pd.DataFrame:
@@ -180,6 +204,38 @@ def _minervini_exit_reason(df_local: pd.DataFrame, i: int, entry_price: float, e
 
 
 # --------------------------------------------------------------------------- #
+# 진입필터 mkt_rs (PIT/no-lookahead) — scripts.entry_filters 로직 재사용
+#   진입봉 t 에서 (종목 N봉수익률 − KOSPI N일수익률) > 0 인 신호만 통과(시장 아웃퍼폼).
+#   build_mkt_rs_gate 는 종목별 N봉수익률 시계열·KOSPI N일수익률(≤t asof)을 1회 캐싱한
+#   gate(code, i) -> bool 를 반환한다. gate 호출은 entry_filters.filter_cache_mkt_rs 의
+#   per-bar 판정과 1:1 동일(stock_ret NaN→drop, KOSPI ≤t 최신값 없으면 drop = 보수적).
+# --------------------------------------------------------------------------- #
+def build_mkt_rs_gate(data: Dict[str, pd.DataFrame], kospi_close: pd.Series, n: int):
+    """mkt_rs 진입 게이트 클로저. data·KOSPI 주입. trailing 통계만 사용(No-Look-Ahead)."""
+    kospi_ret = build_kospi_nday_return(kospi_close, n).sort_index()  # index=Timestamp(date)
+    stock_ret: Dict[str, pd.Series] = {}
+    stock_dts: Dict[str, pd.Series] = {}
+    for code, df in data.items():
+        stock_ret[code] = _nday_return(df["close"].astype(float), n)
+        stock_dts[code] = pd.to_datetime(df["datetime"])
+
+    def gate(code: str, i: int) -> bool:
+        s = stock_ret.get(code)
+        if s is None:
+            return False
+        sr = s.iloc[i]
+        if pd.isna(sr):
+            return False
+        t_date = pd.Timestamp(stock_dts[code].iloc[i]).normalize()
+        sub = kospi_ret[kospi_ret.index <= t_date]
+        if sub.empty or pd.isna(sub.iloc[-1]):
+            return False
+        return (float(sr) - float(sub.iloc[-1])) > 0
+
+    return gate
+
+
+# --------------------------------------------------------------------------- #
 # 통합 포트폴리오 시뮬레이션
 # --------------------------------------------------------------------------- #
 def simulate_portfolio(
@@ -192,6 +248,7 @@ def simulate_portfolio(
     use_buy_stop: bool,
     rs_wide: Optional[pd.DataFrame] = None,
     initial_capital: float = INITIAL_CAPITAL,
+    entry_gate=None,
 ) -> dict:
     """단일 계좌 포트폴리오 시뮬.
 
@@ -313,6 +370,9 @@ def simulate_portfolio(
             else:
                 signal = strategy.generate_signal_with_extra_ctx(code, window, "daily", {})
             if signal is None or signal.signal_type not in (SignalType.BUY, SignalType.STRONG_BUY):
+                continue
+            # 진입필터 게이트(PIT). entry_gate=None 이면 미평가 → baseline 바이트동일.
+            if entry_gate is not None and not entry_gate(code, i):
                 continue
             if use_buy_stop:
                 pending_buy[code] = {"trigger_high_idx": i, "days_left": N_TRAIL,
@@ -500,6 +560,12 @@ def main():
     p.add_argument("--ks", type=int, nargs="+", default=[5, 10, 20])
     p.add_argument("--with-minervini", action="store_true")
     p.add_argument("--reports-dir", default="reports/10pct_strategy")
+    p.add_argument("--entry-filter", default="none", choices=["none", "mkt_rs"],
+                   dest="entry_filter",
+                   help="진입 게이트(PIT, scripts.entry_filters 재사용). none=baseline(바이트동일), "
+                        "mkt_rs=종목 N봉수익률 − KOSPI N일수익률 > 0(시장 아웃퍼폼)만 진입.")
+    p.add_argument("--filter-n", type=int, default=60, dest="filter_n",
+                   help="mkt_rs 의 수익률 룩백 봉수 N (기본 60).")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args()
     logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -528,6 +594,13 @@ def main():
     LOG.info(f"KOSPI days: {len(kospi)}")
     kospi_m = compute_kospi_metrics(kospi)
 
+    # 진입 게이트(PIT). entry_filter=none 이면 None → simulate_portfolio 동작 바이트동일.
+    entry_gate = None
+    if args.entry_filter == "mkt_rs":
+        kospi_close = _load_kospi_close_lookback(args.start, args.end)
+        LOG.info(f"mkt_rs gate: KOSPI close rows={len(kospi_close)} (lookback incl.), N={args.filter_n}")
+        entry_gate = build_mkt_rs_gate(data, kospi_close, n=args.filter_n)
+
     reports_dir = Path(args.reports_dir)
     reports_dir.mkdir(parents=True, exist_ok=True)
 
@@ -541,7 +614,7 @@ def main():
         res = simulate_portfolio(
             data=data, calendar=calendar, strategy=elder_strategy,
             exit_reason_fn=_elder_exit_reason, exit_params=ELDER_A_PARAMS,
-            max_positions=K, use_buy_stop=True,
+            max_positions=K, use_buy_stop=True, entry_gate=entry_gate,
         )
         m = compute_portfolio_metrics(res, INITIAL_CAPITAL)
         ab = compute_alpha_beta(np.array(res["equity_curve"]), res["equity_dates"], kospi)
