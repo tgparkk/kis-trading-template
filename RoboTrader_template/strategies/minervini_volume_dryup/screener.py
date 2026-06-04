@@ -27,8 +27,6 @@ class MinerviniVolumeDryupScreenerAdapter(RuleScreenerBase):
         p = self.default_params()
         out = []
         for u in universe:
-            if u.get("market") != "KOSPI":
-                continue
             mcap = u.get("market_cap", 0)
             if mcap > 0 and mcap < p["min_market_cap"]:
                 continue

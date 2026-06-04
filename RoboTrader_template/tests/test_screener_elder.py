@@ -38,14 +38,20 @@ def _uptrend_pullback_df(n=90):
     return pd.DataFrame(rows)
 
 
-def test_base_filter_keeps_only_kospi():
+def test_base_filter_market_cap_tier():
     a = ElderEmaPullbackScreenerAdapter()
+    p = a.default_params()
     universe = [
-        {"code": "A", "name": "x", "market": "KOSPI", "market_cap": 1e12, "trading_value": 1e10},
-        {"code": "B", "name": "y", "market": "KOSDAQ", "market_cap": 1e12, "trading_value": 1e10},
+        {"code": "A", "name": "large",   "market_cap": p["min_market_cap"] * 2, "trading_value": p["min_trading_value"] * 2},
+        {"code": "B", "name": "small",   "market_cap": p["min_market_cap"] / 2, "trading_value": p["min_trading_value"] * 2},
+        {"code": "C", "name": "unknown", "market_cap": 0,                       "trading_value": p["min_trading_value"] * 2},
+        {"code": "D", "name": "low_tv",  "market_cap": p["min_market_cap"] * 2, "trading_value": p["min_trading_value"] / 2},
     ]
-    kept = a.base_filter(universe)
-    assert [u["code"] for u in kept] == ["A"]
+    kept = [u["code"] for u in a.base_filter(universe)]
+    assert "A" in kept       # 대형 통과
+    assert "B" not in kept   # 소형 제외
+    assert "C" in kept       # market_cap=0(미상) soft 통과
+    assert "D" not in kept   # trading_value 미달 제외
 
 
 def test_match_triggers_on_uptrend_pullback():
@@ -58,17 +64,15 @@ def test_match_triggers_on_uptrend_pullback():
 
 
 def test_base_filter_passes_when_market_cap_unknown():
-    """market_cap=0(미상)이어도 KOSPI + trading_value 충족 시 통과해야 한다."""
+    """market_cap=0(미상)이어도 trading_value 충족 시 통과해야 한다 (시장 라벨 무관)."""
     a = ElderEmaPullbackScreenerAdapter()
     universe = [
-        {"code": "X", "name": "unknown", "market": "KOSPI", "market_cap": 0, "trading_value": 1e10},
-        {"code": "Y", "name": "low_tv",  "market": "KOSPI", "market_cap": 0, "trading_value": 1e6},   # trading_value 미달
-        {"code": "Z", "name": "kosdaq",  "market": "KOSDAQ", "market_cap": 0, "trading_value": 1e10},  # 시장 불일치
+        {"code": "X", "name": "unknown", "market_cap": 0, "trading_value": 1e10},
+        {"code": "Y", "name": "low_tv",  "market_cap": 0, "trading_value": 1e6},   # trading_value 미달
     ]
     kept = [u["code"] for u in a.base_filter(universe)]
     assert "X" in kept       # market_cap=0 이어도 통과
     assert "Y" not in kept   # trading_value 미달
-    assert "Z" not in kept   # KOSDAQ 배제
 
 
 def test_match_none_on_downtrend():

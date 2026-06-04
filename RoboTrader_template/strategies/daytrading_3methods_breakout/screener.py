@@ -24,12 +24,10 @@ class Daytrading3MethodsBreakoutScreenerAdapter(RuleScreenerBase):
         }
 
     def base_filter(self, universe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        # market_cap=0(미상)이면 상한 컷 건너뜀
+        # market_cap=0(미상)이면 상한 컷 건너뜀. 시장 라벨 게이트 없음.
         p = self.default_params()
         out = []
         for u in universe:
-            if u.get("market") != "KOSDAQ":
-                continue
             mcap = u.get("market_cap", 0)
             if mcap > 0 and mcap >= p["max_market_cap"]:
                 continue
