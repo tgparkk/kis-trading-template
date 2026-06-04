@@ -614,12 +614,10 @@ class DayTradingBot:
                     accepts_fallback = getattr(strategy_instance, "accepts_volume_fallback", True)
                     if accepts_fallback:
                         pool_by_strategy[strategy_name] = fallback
-                        break
-                    else:
-                        self.logger.warning(
-                            f"[E6] {strategy_name}: 거래량 fallback은 역추세 전략과 부적합 "
-                            f"— 후보 미공급, 매매 스킵 (전용 스크리너 필요)"
+                        self.logger.info(
+                            f"[E6] 거래량 폴백 배정 → {strategy_name} ({len(fallback)}종목)"
                         )
+                        break
             except Exception as e:
                 self.logger.warning(f"[E6] 거래량 순위 폴백 실패: {e}")
 

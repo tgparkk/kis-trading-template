@@ -240,7 +240,7 @@ class TradingContext:
     # c) 종목 관리
     # =========================================================================
 
-    def get_selected_stocks(self, owner: 'Optional[str]' = None) -> List:
+    def get_selected_stocks(self, owner: Optional[str] = None) -> List:
         """SELECTED 상태 종목 목록 반환 (owner 격리).
 
         owner 미지정 시 현재 전략(_strategy_key) 소유 + 소유자 미지정(공용) 종목만 반환.
@@ -259,6 +259,7 @@ class TradingContext:
         for s in stocks:
             so = getattr(s, "strategy_name", None)
             if owner is not None:
+                # owner 명시 호출은 정확히 그 전략 소유만 (공용 미포함) — 의도적
                 if so == owner:
                     result.append(s)
             else:
