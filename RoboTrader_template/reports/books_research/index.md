@@ -25,6 +25,7 @@
 | 15 | trading_legends | 트레이딩의 전설 — 키움영웅전 9인 인터뷰집 (전자책 실물판독) | ✅ 완료 | **ma5_pullback B +33.66% Sharpe 0.63** 2520T (단 Book14 눌림목 재확인·BULL의존) / 종가매매 −3.95% 실패·상따 MaxDD7.46%니치 / CANDIDATE 부적격 |
 | 16 | dino_surge | 디노(백새봄) — 돈이 된다! 급등주 투자법 (전자책 교보 실물판독) | ✅ 완료 | **pullback_rebound B +3.12% Sharpe 0.078** 55T (펀더멘털 붕괴군) / **entry-BEAR +3.59%(n39) Elder급 약세장 방어** / 디노재무테스트·+10%회전 시그니처 2개 부분반박 / CANDIDATE 부적격 |
 | 17 | daytrading_3methods | 유지윤 — 하루 만에 수익 내는 데이트레이딩 3대 타법 (전자책 교보 실물판독) | ✅ 완료 | **breakout_prev_high B +5.90% Sharpe 0.17** 706T / 3대 타법(바닥·지지·돌파) 일봉 코드화 / 기존 new_high_breakout·ma_pullback 변형=신규알파 아님 / CANDIDATE 부적격 / **가상매매 5번째 전략 등록(관찰용)** |
+| 19 | trading_strategy_book | 트레이딩 전략서 (이북부재·사장님 노트) — 일봉 조건식 A~I 스크리너 | ✅ 완료 | **envelope_200d_high best Sharpe 0.435 / PnL −6.1% / MaxDD 99.8%** 227T (전구간 2021~2026, top_volume:50) / 200일신고가+Envelope 확장돌파 추격 → 국소고점 매수 붕괴 / **BEAR(2022) 거래 0 = 약세장 자동 무거래(방어 아닌 부재)** / **분봉 실행층 3전략(가격박스1분·볼린저5분·눌림목4단계5분) 추가 코드화→전부 부적격**(mPnl −98.5%·−75.4%·−21.9%, 양수기간 0/3) / CANDIDATE 부적격 (※Book18 taesso 통합대기로 18 공백) |
 
 ## 전체 백테스트 메트릭 (PnL 내림차순, 정렬)
 
