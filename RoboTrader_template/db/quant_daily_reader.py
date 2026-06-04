@@ -92,7 +92,8 @@ class QuantDailyReader:
             if not rows:
                 return pd.DataFrame()
             df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
-            df["date"] = pd.to_datetime(df["date"])
+            df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
+            df = df.dropna(subset=["date"])
             return df.sort_values("date").reset_index(drop=True)
         except Exception as e:
             logger.warning("quant get_daily_prices 실패 (%s): %s", stock_code, e)
