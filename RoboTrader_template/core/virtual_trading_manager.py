@@ -253,12 +253,20 @@ class VirtualTradingManager:
         open_positions = open_positions or []
         initial = float(initial_per_strategy)
 
-        # 활성 전략 키 집합: 기존 할당 ∪ 매매기록 ∪ 보유 포지션
-        keys = set(self._strategy_balances) | set(trade_sums)
-        for pos in open_positions:
-            owner = pos.get('strategy')
-            if owner:
-                keys.add(owner)
+        # 활성 전략 = 이번 세션에 allocate_strategy_capital 로 사전 할당된 폴더키(config 기반).
+        # 격리 원장 모드(활성 집합 비어있지 않음)에서는 활성 전략만 재구성하고,
+        # 매매기록·포지션에 섞인 비활성(과거/형제프로젝트/테스트) 전략은 무시한다.
+        # → 유령 전략마다 initial(=10M)이 더해져 집계가 폭증하던 버그(174.8M) 차단.
+        active_keys = set(self._strategy_balances)
+        if active_keys:
+            keys = active_keys
+        else:
+            # 레거시(할당 없음): 기존 동작 — 매매기록/포지션에서 키 구성.
+            keys = set(trade_sums)
+            for pos in open_positions:
+                owner = pos.get('strategy')
+                if owner:
+                    keys.add(owner)
 
         # 1) 현금 재구성 (매수비용은 여기서만 차감)
         for key in keys:
@@ -286,6 +294,9 @@ class VirtualTradingManager:
         for pos in open_positions:
             owner = pos.get('strategy')
             if not owner:
+                continue
+            # 격리 원장 모드: 비활성 전략이 소유한 포지션은 무시(오염 차단).
+            if active_keys and owner not in active_keys:
                 continue
             code = pos.get('stock_code')
             try:
@@ -822,7 +833,7 @@ class VirtualTradingManager:
         base = info['initial_balance']
         net_rate = (net / base * 100) if base > 0 else 0.0
         self.logger.info(
-            f"[누적손익] {count}건 실현 | 순손익(추정) {net:+,.0f}원 ({net_rate:+.2f}%, 세션누적) "
+            f"[누적손익] {count}건 실현 | 순손익(추정) {net:+,.0f}원 ({net_rate:+.2f}%, 페이퍼 전체누적) "
             f"| 총손익(수수료전) {gross:+,.0f}원 | 현재잔고 {self.virtual_balance:,.0f}원"
         )
 

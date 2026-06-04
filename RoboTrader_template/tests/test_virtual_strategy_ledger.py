@@ -306,10 +306,15 @@ class TestRestoreLedgerFromRecords:
         vtm.restore_strategy_ledger_from_records(INITIAL, {}, [])
         assert vtm.get_strategy_balance("stratA") == pytest.approx(INITIAL)
 
-    def test_deleted_strategy_key_created(self):
-        """삭제된 전략(할당 없으나 trade_sums에 존재): 원장에 키 생성(고아자금 회수)."""
+    def test_unallocated_strategy_in_trade_sums_excluded(self):
+        """[정책변경 2026-06-04] 격리 원장 모드에서 미할당(비활성) 전략은 제외.
+
+        과거엔 trade_sums의 미할당 전략에 키를 생성(고아자금 회수)했으나,
+        이 동작이 형제프로젝트/테스트 오염 전략까지 끌어들여 집계가 폭증(174.8M)했다.
+        이제 allocate된 활성 전략만 재구성하고 나머지는 무시한다.
+        """
         vtm = _make_vtm()
-        # stratA만 할당, stratGhost는 매매기록에만 존재
+        # stratA만 할당, stratGhost는 매매기록에만 존재(비활성)
         vtm.allocate_strategy_capital("stratA", INITIAL)
         sums = {
             'stratA': {'buy_gross': 0.0, 'sell_gross': 0.0},
@@ -317,23 +322,19 @@ class TestRestoreLedgerFromRecords:
         }
         vtm.restore_strategy_ledger_from_records(INITIAL, sums, [])
 
-        assert vtm.get_strategy_balance("stratGhost") is not None
-        assert vtm.get_strategy_balance("stratGhost") == pytest.approx(
-            _expected_cash(INITIAL, 2_000_000.0, 2_100_000.0)
-        )
+        assert vtm.get_strategy_balance("stratGhost") is None
+        assert vtm.get_strategy_balance("stratA") == pytest.approx(INITIAL)
 
-    def test_position_for_unallocated_strategy_creates_key(self):
-        """미할당 전략의 미청산 포지션도 원장 키 생성 + owner 복원."""
+    def test_position_for_unallocated_strategy_excluded(self):
+        """[정책변경 2026-06-04] 미할당 전략의 미청산 포지션은 원장에 복원하지 않는다."""
         vtm = _make_vtm()
-        # 아무 할당 없음, trade_sums에도 없음 → positions만으로 원장 활성화 불가하므로
-        # 하나라도 활성 상태로 만들기 위해 기존 할당 하나 둠
         vtm.allocate_strategy_capital("stratA", INITIAL)
         positions = [{'stock_code': '000660', 'strategy': 'stratNew',
                       'quantity': 6, 'buy_price': 110_000.0}]
         vtm.restore_strategy_ledger_from_records(INITIAL, {}, positions)
 
-        assert vtm.get_strategy_balance("stratNew") == pytest.approx(INITIAL)
-        assert vtm._position_owner['000660'] == 'stratNew'
+        assert vtm.get_strategy_balance("stratNew") is None
+        assert '000660' not in vtm._position_owner
 
     def test_legacy_noop_when_inactive(self):
         """하위호환: 원장 미활성 + 빈 입력 → no-op (단일 잔고 불변)."""
@@ -577,3 +578,91 @@ class TestDbStrategyColumnConsistency:
             strategy='SampleStrategy', reason='매도', buy_record_id=1,
         )
         assert captured['sell'][-1] == 'SampleStrategy'
+
+
+class TestRestoreLedgerExcludesInactiveStrategies:
+    """재구성 시 활성 전략(allocate된 폴더키)만 반영하고,
+    매매기록·포지션에 섞인 비활성(과거/형제/테스트) 전략은 무시한다.
+
+    2026-06-04 회귀: trade_sums 가 DB 전체 전략을 반환해 유령 전략마다
+    initial(=10M)이 더해져 집계 잔고가 폭증한 버그(174.8M)에 대한 가드.
+    """
+
+    def test_inactive_strategy_in_trade_sums_ignored(self):
+        """trade_sums 에 비활성 전략이 있어도 원장/집계에 포함되지 않는다."""
+        vtm = _make_vtm()
+        vtm.allocate_strategy_capital("elder_ema_pullback", INITIAL)
+        sums = {
+            "elder_ema_pullback": {'buy_gross': 1_000_000.0, 'sell_gross': 0.0},
+            # 비활성(과거/오염) 전략들 — 무시되어야 함
+            "SampleStrategy": {'buy_gross': 0.0, 'sell_gross': 50_000_000.0},
+            "gate_shadow": {'buy_gross': 0.0, 'sell_gross': 30_000_000.0},
+        }
+        vtm.restore_strategy_ledger_from_records(INITIAL, sums, [])
+
+        assert vtm.get_strategy_balance("SampleStrategy") is None
+        assert vtm.get_strategy_balance("gate_shadow") is None
+        # 집계 = 활성 1개 전략만 (initial − buy*(1+comm))
+        assert vtm.virtual_balance == pytest.approx(
+            _expected_cash(INITIAL, 1_000_000.0, 0.0)
+        )
+
+    def test_inactive_open_position_owner_ignored(self):
+        """비활성 전략이 소유한 미청산 포지션은 원장에 복원하지 않는다."""
+        vtm = _make_vtm()
+        vtm.allocate_strategy_capital("elder_ema_pullback", INITIAL)
+        positions = [
+            # 옛 SampleStrategy 잔재(152550 류) — 무시되어야 함
+            {'stock_code': '152550', 'strategy': 'SampleStrategy',
+             'quantity': 13851, 'buy_price': 58.0},
+        ]
+        vtm.restore_strategy_ledger_from_records(INITIAL, {}, positions)
+
+        assert vtm.get_strategy_balance("SampleStrategy") is None
+        assert '152550' not in vtm._position_owner
+        assert vtm.virtual_balance == pytest.approx(INITIAL)  # 활성 전략 그대로
+
+    def test_active_strategy_records_still_applied(self):
+        """활성 전략의 기록·포지션은 정상 반영(회귀 방지)."""
+        vtm = _make_vtm()
+        vtm.allocate_strategy_capital("minervini_volume_dryup", INITIAL)
+        sums = {"minervini_volume_dryup":
+                {'buy_gross': 2_000_000.0, 'sell_gross': 2_100_000.0}}
+        vtm.restore_strategy_ledger_from_records(INITIAL, sums, [])
+
+        assert vtm.get_strategy_balance("minervini_volume_dryup") == pytest.approx(
+            _expected_cash(INITIAL, 2_000_000.0, 2_100_000.0)
+        )
+
+    def test_five_active_strategies_aggregate_is_bounded(self):
+        """활성 5전략 + 오염 trade_sums → 집계가 5×initial 근방(폭증 없음)."""
+        vtm = _make_vtm()
+        active = ["elder_ema_pullback", "minervini_volume_dryup",
+                  "book_pullback_ma20", "book_pullback_ma5",
+                  "daytrading_3methods_breakout"]
+        for k in active:
+            vtm.allocate_strategy_capital(k, INITIAL)
+        sums = {
+            "minervini_volume_dryup": {'buy_gross': 2_000_000.0, 'sell_gross': 2_100_000.0},
+            "SampleStrategy": {'buy_gross': 0.0, 'sell_gross': 326_000_000.0},
+            "리밸런싱": {'buy_gross': 0.0, 'sell_gross': 40_000_000.0},
+        }
+        vtm.restore_strategy_ledger_from_records(INITIAL, sums, [])
+
+        # 폭증(174.8M)이 아니라 5×10M 근방이어야 한다
+        assert vtm.virtual_balance < 5 * INITIAL + 1_000_000
+        assert vtm.virtual_balance > 5 * INITIAL - 1_000_000
+        assert set(vtm._strategy_balances) == set(active)
+
+    def test_legacy_no_allocation_keeps_trade_sums_behavior(self):
+        """하위호환: allocate 없음(레거시) → 기존 동작(trade_sums로 키 구성) 유지."""
+        vtm = _make_vtm()
+        # 할당 없이 곧장 재구성 (레거시 단일/비격리 경로)
+        sums = {"legacy_strat": {'buy_gross': 1_000_000.0, 'sell_gross': 0.0}}
+        positions = [{'stock_code': '005930', 'strategy': 'legacy_strat',
+                      'quantity': 10, 'buy_price': 100_000.0}]
+        vtm.restore_strategy_ledger_from_records(INITIAL, sums, positions)
+
+        assert vtm.get_strategy_balance("legacy_strat") == pytest.approx(
+            _expected_cash(INITIAL, 1_000_000.0, 0.0)
+        )
