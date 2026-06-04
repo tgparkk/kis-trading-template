@@ -599,30 +599,29 @@ class DayTradingBot:
             self.strategies, max_per_strategy=max_per_strategy
         )
 
-        # 빈 풀 전략은 거래량 순위 fallback
-        for strategy_name, candidates in pool_by_strategy.items():
-            if not candidates:
-                strategy_instance = self.strategies.get(strategy_name)
-                accepts_fallback = getattr(strategy_instance, "accepts_volume_fallback", True)
-                if not accepts_fallback:
-                    self.logger.warning(
-                        f"[E6] {strategy_name}: 거래량 fallback은 역추세 전략과 부적합 "
-                        f"— 후보 미공급, 매매 스킵 (전용 스크리너 필요)"
-                    )
-                    continue
-                self.logger.info(
-                    f"[E6] {strategy_name}: 후보 없음 → 거래량 순위 fallback 시작"
+        # 전 전략 후보 0건일 때만 거래량 순위 안전망 폴백(전략별 무조건 폴백 제거)
+        if should_use_volume_fallback(pool_by_strategy):
+            self.logger.info("[E6] 전 전략 후보 0건 → 거래량 순위 폴백(안전망)")
+            try:
+                fallback = await self.candidate_selector.select_daily_candidates(
+                    max_candidates=max_per_strategy
                 )
-                try:
-                    fallback = await self.candidate_selector.select_daily_candidates(
-                        max_candidates=max_per_strategy
-                    )
-                    # 이미 등록된 코드는 제외
-                    registered_codes = set(self.trading_manager.trading_stocks.keys())
-                    fallback = [c for c in fallback if c.code not in registered_codes]
-                    pool_by_strategy[strategy_name] = fallback
-                except Exception as e:
-                    self.logger.warning(f"[E6] {strategy_name} fallback 실패: {e}")
+                registered_codes = set(self.trading_manager.trading_stocks.keys())
+                fallback = [c for c in fallback if c.code not in registered_codes]
+                # 첫 번째 전략(fallback 수용 전략)에 배정
+                for strategy_name in pool_by_strategy:
+                    strategy_instance = self.strategies.get(strategy_name)
+                    accepts_fallback = getattr(strategy_instance, "accepts_volume_fallback", True)
+                    if accepts_fallback:
+                        pool_by_strategy[strategy_name] = fallback
+                        break
+                    else:
+                        self.logger.warning(
+                            f"[E6] {strategy_name}: 거래량 fallback은 역추세 전략과 부적합 "
+                            f"— 후보 미공급, 매매 스킵 (전용 스크리너 필요)"
+                        )
+            except Exception as e:
+                self.logger.warning(f"[E6] 거래량 순위 폴백 실패: {e}")
 
         total_registered = 0
         for strategy_name, candidates in pool_by_strategy.items():
@@ -830,6 +829,16 @@ class DayTradingBot:
     async def shutdown(self) -> None:
         """시스템 종료 (위임)"""
         await self.bot_initializer.shutdown()
+
+
+def should_use_volume_fallback(per_strategy_candidates: dict) -> bool:
+    """전략별 후보 dict 기준 거래량순위 폴백 사용 여부.
+
+    하나라도 후보가 있으면 폴백 안 함(전략별 격리 유지). 전부 비었을 때만 안전망 폴백.
+    """
+    if not per_strategy_candidates:
+        return True
+    return all(not v for v in per_strategy_candidates.values())
 
 
 async def main() -> None:
