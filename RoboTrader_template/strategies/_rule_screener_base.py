@@ -28,6 +28,9 @@ class RuleScreenerBase(ScreenerBase):
     def match(self, df: pd.DataFrame, params: Dict[str, Any]) -> Optional[Tuple[float, str]]:
         """진입룰 적용. 통과 시 (score, reason), 탈락 시 None."""
 
+    def default_params(self) -> Dict[str, Any]:
+        return {"max_candidates": 10}
+
     def scan(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
         merged = {**self.default_params(), **(params or {})}
         max_candidates = int(merged.get("max_candidates", 10))
@@ -45,16 +48,26 @@ class RuleScreenerBase(ScreenerBase):
             if verdict is None:
                 continue
             score, reason = verdict
+            prev_close = float(df["close"].iloc[-1])
+            if not (prev_close > 0):
+                continue
             scored.append((score, CandidateStock(
                 code=code, name=u.get("name", code), market=u.get("market", "KRX"),
-                score=float(score), reason=reason,
-                prev_close=float(df["close"].iloc[-1]),
+                score=float(score), reason=reason, prev_close=prev_close,
             )))
         scored.sort(key=lambda t: t[0], reverse=True)
         return [c for _, c in scored[:max_candidates]]
 
+    def _window_days(self, scan_date: date) -> int:
+        """scan_date - lookback_days 까지 포함하도록 get_daily_prices days 계산."""
+        from utils.korean_time import now_kst
+        gap = (now_kst().date() - scan_date).days
+        return max(self.lookback_days, gap + self.lookback_days)
+
     def _load_universe(self, scan_date: date) -> List[Dict[str, Any]]:
         from strategies.historical_data import get_sectors
+        import logging
+        _log = logging.getLogger(__name__)
         market_map: Dict[str, Dict[str, str]] = {}
         try:
             sdf = get_sectors()
@@ -63,35 +76,31 @@ class RuleScreenerBase(ScreenerBase):
                     "name": str(r.get("stock_name", "") or ""),
                     "market": str(r.get("market", "") or ""),
                 }
-        except Exception:
+        except Exception as e:
+            _log.warning("_load_universe get_sectors 실패: %s", e, exc_info=True)
             market_map = {}
-        rows: List[Dict[str, Any]] = []
         if self._db_manager is None:
-            return rows
-        try:
-            with self._db_manager.price_repo._get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT stock_code, market_cap, trading_value FROM daily_prices WHERE date = %s",
-                    (scan_date.strftime("%Y-%m-%d"),),
-                )
-                for code, mcap, tval in cur.fetchall():
-                    meta = market_map.get(str(code), {})
-                    rows.append({
-                        "code": str(code),
-                        "name": meta.get("name", str(code)),
-                        "market": meta.get("market", "KRX"),
-                        "market_cap": float(mcap or 0),
-                        "trading_value": float(tval or 0),
-                    })
-        except Exception:
-            return rows
+            return []
+        snapshot = self._db_manager.price_repo.get_universe_snapshot(scan_date)
+        rows: List[Dict[str, Any]] = []
+        for item in snapshot:
+            code = item["stock_code"]
+            meta = market_map.get(code, {})
+            rows.append({
+                "code": code,
+                "name": meta.get("name", code),
+                "market": meta.get("market", "KRX"),
+                "market_cap": item["market_cap"],
+                "trading_value": item["trading_value"],
+            })
         return rows
 
     def _load_daily(self, code: str, scan_date: date) -> Optional[pd.DataFrame]:
         if self._db_manager is None:
             return None
         try:
-            return self._db_manager.price_repo.get_daily_prices(code, days=self.lookback_days)
-        except Exception:
+            return self._db_manager.price_repo.get_daily_prices(code, days=self._window_days(scan_date))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug("_load_daily 실패 (%s): %s", code, e)
             return None

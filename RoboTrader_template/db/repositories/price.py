@@ -245,6 +245,25 @@ class PriceRepository(BaseRepository):
             self.logger.error(f"분봉 일괄 조회 실패 ({trade_date}): {e}")
             return {code: pd.DataFrame() for code in stock_codes}
 
+    def get_universe_snapshot(self, scan_date) -> list:
+        """특정 일자의 (stock_code, market_cap, trading_value) 목록 — 스크리너 유니버스용."""
+        try:
+            with self._get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT stock_code, market_cap, trading_value FROM daily_prices WHERE date = %s",
+                    (scan_date.strftime("%Y-%m-%d"),),
+                )
+                rows = cur.fetchall()
+                cur.close()
+                return [
+                    {"stock_code": str(c), "market_cap": float(m or 0), "trading_value": float(t or 0)}
+                    for c, m, t in rows
+                ]
+        except Exception as e:
+            self.logger.warning(f"유니버스 스냅샷 조회 실패 ({scan_date}): {e}")
+            return []
+
     def get_latest_daily_price(self, stock_code: str) -> Optional[dict]:
         """최신 일봉 데이터 1건 조회"""
         try:
