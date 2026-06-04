@@ -240,14 +240,31 @@ class TradingContext:
     # c) 종목 관리
     # =========================================================================
 
-    def get_selected_stocks(self) -> List:
-        """SELECTED 상태 종목 목록 반환"""
+    def get_selected_stocks(self, owner: 'Optional[str]' = None) -> List:
+        """SELECTED 상태 종목 목록 반환 (owner 격리).
+
+        owner 미지정 시 현재 전략(_strategy_key) 소유 + 소유자 미지정(공용) 종목만 반환.
+        owner 지정 시 해당 전략 소유 종목만 반환. _strategy_key 없으면(레거시) 전체 반환.
+        """
         from core.models import StockState
         try:
-            return self._trading_manager.get_stocks_by_state(StockState.SELECTED)
+            stocks = self._trading_manager.get_stocks_by_state(StockState.SELECTED)
         except Exception as e:
             self.logger.debug(f"SELECTED 종목 조회 실패: {e}")
             return []
+        target = owner if owner is not None else getattr(self, "_strategy_key", None)
+        if not target:
+            return stocks
+        result = []
+        for s in stocks:
+            so = getattr(s, "strategy_name", None)
+            if owner is not None:
+                if so == owner:
+                    result.append(s)
+            else:
+                if so == target or not so:
+                    result.append(s)
+        return result
 
     def get_positions(self) -> List:
         """POSITIONED 상태 종목 목록 반환 (보유 중)"""
