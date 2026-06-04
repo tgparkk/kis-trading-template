@@ -8,6 +8,8 @@ class _FakeCur:
     def execute(self, q, params=None): self.queries.append((q, params))
     def fetchall(self): return self._rows
     def close(self): pass
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
 
 
 class _FakeConn:

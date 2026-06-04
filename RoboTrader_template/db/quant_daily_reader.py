@@ -2,13 +2,17 @@
 
 kis-template 기본 DB(robotrader)와 별개로, 전 종목·매일 갱신되는
 robotrader_quant 에서 일봉/유니버스를 읽는다. 같은 5433 서버, dbname만 다름.
-date 컬럼은 text('YYYY-MM-DD')라 ISO 문자열 비교로 필터/정렬한다.
+DB의 date 컬럼은 text('YYYY-MM-DD')라 ISO 문자열 비교로 필터/정렬하지만,
+반환 DataFrame의 date는 datetime64로 변환된다.
+유니버스에 종목명 소스가 없어 CandidateStock.name=종목코드로 채움
+(기존 _fetch_candidates_for_strategy 와 동일).
 """
 import os
 import threading
 from contextlib import contextmanager
 
 import pandas as pd
+import psycopg2
 from psycopg2 import pool
 
 from utils.logger import setup_logger
@@ -50,51 +54,59 @@ class QuantDailyReader:
         d = scan_date if isinstance(scan_date, str) else scan_date.strftime("%Y-%m-%d")
         try:
             with self._conn() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT stock_code, COALESCE(market_cap,0), "
-                    "COALESCE(NULLIF(trading_value,0), (close*volume)::bigint, 0) "
-                    "FROM daily_prices WHERE date = %s",
-                    (d,),
-                )
-                rows = cur.fetchall()
-                cur.close()
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT stock_code, COALESCE(market_cap,0), "
+                        "COALESCE(NULLIF(trading_value,0), (close*volume)::numeric, 0) "
+                        "FROM daily_prices WHERE date = %s",
+                        (d,),
+                    )
+                    rows = cur.fetchall()
             return [
                 {"stock_code": str(c), "market_cap": float(m or 0), "trading_value": float(t or 0)}
                 for c, m, t in rows
             ]
-        except Exception as e:
+        except (psycopg2.OperationalError, psycopg2.ProgrammingError) as e:
+            logger.error("quant 연결/스키마 오류 (%s): %s", d, e)
+            raise
+        except psycopg2.Error as e:
             logger.warning("quant get_universe_snapshot 실패 (%s): %s", d, e)
             return []
 
     def get_daily_prices(self, stock_code: str, end_date=None, days: int = 120) -> pd.DataFrame:
-        """stock_code 의 일봉 최근 days행(end_date 이하). 오름차순 DataFrame."""
+        """stock_code 의 일봉 최근 days행(end_date 이하). 오름차순 DataFrame.
+
+        DB의 date 컬럼은 text('YYYY-MM-DD')이지만,
+        반환 DataFrame의 date는 datetime64로 변환된다.
+        """
         end = None
         if end_date is not None:
             end = end_date if isinstance(end_date, str) else end_date.strftime("%Y-%m-%d")
         try:
             with self._conn() as conn:
-                cur = conn.cursor()
-                if end:
-                    cur.execute(
-                        "SELECT date, open, high, low, close, volume FROM daily_prices "
-                        "WHERE stock_code = %s AND date <= %s ORDER BY date DESC LIMIT %s",
-                        (stock_code, end, int(days)),
-                    )
-                else:
-                    cur.execute(
-                        "SELECT date, open, high, low, close, volume FROM daily_prices "
-                        "WHERE stock_code = %s ORDER BY date DESC LIMIT %s",
-                        (stock_code, int(days)),
-                    )
-                rows = cur.fetchall()
-                cur.close()
-            if not rows:
-                return pd.DataFrame()
-            df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
-            df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
-            df = df.dropna(subset=["date"])
-            return df.sort_values("date").reset_index(drop=True)
-        except Exception as e:
+                with conn.cursor() as cur:
+                    if end:
+                        cur.execute(
+                            "SELECT date, open, high, low, close, volume FROM daily_prices "
+                            "WHERE stock_code = %s AND date <= %s ORDER BY date DESC LIMIT %s",
+                            (stock_code, end, int(days)),
+                        )
+                    else:
+                        cur.execute(
+                            "SELECT date, open, high, low, close, volume FROM daily_prices "
+                            "WHERE stock_code = %s ORDER BY date DESC LIMIT %s",
+                            (stock_code, int(days)),
+                        )
+                    rows = cur.fetchall()
+        except (psycopg2.OperationalError, psycopg2.ProgrammingError) as e:
+            logger.error("quant 연결/스키마 오류 (%s): %s", stock_code, e)
+            raise
+        except psycopg2.Error as e:
             logger.warning("quant get_daily_prices 실패 (%s): %s", stock_code, e)
             return pd.DataFrame()
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
+        df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
+        df = df.dropna(subset=["date"])
+        return df.sort_values("date").reset_index(drop=True)
