@@ -22,12 +22,17 @@ class BookPullbackMa20ScreenerAdapter(RuleScreenerBase):
 
     def base_filter(self, universe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         # KOSPI+KOSDAQ 모두 허용 — 중소형 시총만 필터(눌림목은 시장 무관)
+        # market_cap=0(미상)이면 상한 컷 건너뜀
         p = self.default_params()
-        return [
-            u for u in universe
-            if 0 < u.get("market_cap", 0) <= p["max_market_cap"]
-            and u.get("trading_value", 0) >= p["min_trading_value"]
-        ]
+        out = []
+        for u in universe:
+            mcap = u.get("market_cap", 0)
+            if mcap > 0 and mcap > p["max_market_cap"]:
+                continue
+            if u.get("trading_value", 0) < p["min_trading_value"]:
+                continue
+            out.append(u)
+        return out
 
     def match(self, df: pd.DataFrame, params: Dict[str, Any]) -> Optional[Tuple[float, str]]:
         res = rule_daily_ma20_pullback().evaluate(df, {})

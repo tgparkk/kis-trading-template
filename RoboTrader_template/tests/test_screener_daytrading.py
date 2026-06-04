@@ -26,6 +26,20 @@ def test_match_triggers_on_breakout():
     assert "breakout" in verdict[1].lower()
 
 
+def test_base_filter_passes_when_market_cap_unknown():
+    """market_cap=0(미상)이어도 KOSDAQ + trading_value 충족 시 통과해야 한다."""
+    a = Daytrading3MethodsBreakoutScreenerAdapter()
+    universe = [
+        {"code": "X", "name": "unknown", "market": "KOSDAQ", "market_cap": 0, "trading_value": 1e9},
+        {"code": "Y", "name": "low_tv",  "market": "KOSDAQ", "market_cap": 0, "trading_value": 1e5},  # trading_value 미달
+        {"code": "Z", "name": "kospi",   "market": "KOSPI",  "market_cap": 0, "trading_value": 1e9},  # 시장 불일치
+    ]
+    kept = [u["code"] for u in a.base_filter(universe)]
+    assert "X" in kept
+    assert "Y" not in kept
+    assert "Z" not in kept
+
+
 def test_base_filter_kosdaq_smallcap_only():
     a = Daytrading3MethodsBreakoutScreenerAdapter()
     universe = [

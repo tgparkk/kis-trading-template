@@ -24,13 +24,19 @@ class Daytrading3MethodsBreakoutScreenerAdapter(RuleScreenerBase):
         }
 
     def base_filter(self, universe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # market_cap=0(미상)이면 상한 컷 건너뜀
         p = self.default_params()
-        return [
-            u for u in universe
-            if u.get("market") == "KOSDAQ"
-            and 0 < u.get("market_cap", 0) < p["max_market_cap"]
-            and u.get("trading_value", 0) >= p["min_trading_value"]
-        ]
+        out = []
+        for u in universe:
+            if u.get("market") != "KOSDAQ":
+                continue
+            mcap = u.get("market_cap", 0)
+            if mcap > 0 and mcap >= p["max_market_cap"]:
+                continue
+            if u.get("trading_value", 0) < p["min_trading_value"]:
+                continue
+            out.append(u)
+        return out
 
     def match(self, df: pd.DataFrame, params: Dict[str, Any]) -> Optional[Tuple[float, str]]:
         rule = rule_breakout_prev_high(

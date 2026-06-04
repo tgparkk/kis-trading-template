@@ -246,12 +246,17 @@ class PriceRepository(BaseRepository):
             return {code: pd.DataFrame() for code in stock_codes}
 
     def get_universe_snapshot(self, scan_date) -> list:
-        """특정 일자의 (stock_code, market_cap, trading_value) 목록 — 스크리너 유니버스용."""
+        """특정 일자의 (stock_code, market_cap, trading_value) 목록 — 스크리너 유니버스용.
+
+        trading_value 가 비어있으면(0/NULL) close*volume 로 근사한다(일봉 거래대금 표준 근사).
+        """
         try:
             with self._get_connection() as conn:
                 cur = conn.cursor()
                 cur.execute(
-                    "SELECT stock_code, market_cap, trading_value FROM daily_prices WHERE date = %s",
+                    "SELECT stock_code, COALESCE(market_cap,0), "
+                    "COALESCE(NULLIF(trading_value,0), close*volume, 0) "
+                    "FROM daily_prices WHERE date = %s",
                     (scan_date.strftime("%Y-%m-%d"),),
                 )
                 rows = cur.fetchall()

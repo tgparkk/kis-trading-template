@@ -46,6 +46,18 @@ def test_match_triggers_on_pullback():
     assert "ma20" in reason.lower()
 
 
+def test_base_filter_passes_when_market_cap_unknown():
+    """market_cap=0(미상)이어도 trading_value 충족 시 통과해야 한다."""
+    a = BookPullbackMa20ScreenerAdapter()
+    universe = [
+        {"code": "X", "name": "unknown", "market": "KOSPI",  "market_cap": 0, "trading_value": 1e9},
+        {"code": "Y", "name": "low_tv",  "market": "KOSPI",  "market_cap": 0, "trading_value": 1e5},  # trading_value 미달
+    ]
+    kept = [u["code"] for u in a.base_filter(universe)]
+    assert "X" in kept
+    assert "Y" not in kept
+
+
 def test_base_filter_excludes_megacap():
     a = BookPullbackMa20ScreenerAdapter()
     universe = [

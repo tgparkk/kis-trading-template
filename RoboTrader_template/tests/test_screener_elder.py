@@ -57,6 +57,20 @@ def test_match_triggers_on_uptrend_pullback():
     assert "ema" in reason.lower() or "triple" in reason.lower()
 
 
+def test_base_filter_passes_when_market_cap_unknown():
+    """market_cap=0(미상)이어도 KOSPI + trading_value 충족 시 통과해야 한다."""
+    a = ElderEmaPullbackScreenerAdapter()
+    universe = [
+        {"code": "X", "name": "unknown", "market": "KOSPI", "market_cap": 0, "trading_value": 1e10},
+        {"code": "Y", "name": "low_tv",  "market": "KOSPI", "market_cap": 0, "trading_value": 1e6},   # trading_value 미달
+        {"code": "Z", "name": "kosdaq",  "market": "KOSDAQ", "market_cap": 0, "trading_value": 1e10},  # 시장 불일치
+    ]
+    kept = [u["code"] for u in a.base_filter(universe)]
+    assert "X" in kept       # market_cap=0 이어도 통과
+    assert "Y" not in kept   # trading_value 미달
+    assert "Z" not in kept   # KOSDAQ 배제
+
+
 def test_match_none_on_downtrend():
     a = ElderEmaPullbackScreenerAdapter()
     n = 90

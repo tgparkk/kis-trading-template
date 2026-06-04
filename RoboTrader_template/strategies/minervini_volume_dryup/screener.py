@@ -25,12 +25,17 @@ class MinerviniVolumeDryupScreenerAdapter(RuleScreenerBase):
 
     def base_filter(self, universe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         p = self.default_params()
-        return [
-            u for u in universe
-            if u.get("market") == "KOSPI"
-            and u.get("market_cap", 0) >= p["min_market_cap"]
-            and u.get("trading_value", 0) >= p["min_trading_value"]
-        ]
+        out = []
+        for u in universe:
+            if u.get("market") != "KOSPI":
+                continue
+            mcap = u.get("market_cap", 0)
+            if mcap > 0 and mcap < p["min_market_cap"]:
+                continue
+            if u.get("trading_value", 0) < p["min_trading_value"]:
+                continue
+            out.append(u)
+        return out
 
     def match(self, df: pd.DataFrame, params: Dict[str, Any]) -> Optional[Tuple[float, str]]:
         rule = rule_volume_dryup(
