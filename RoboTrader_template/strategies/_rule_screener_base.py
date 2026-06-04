@@ -19,6 +19,13 @@ class RuleScreenerBase(ScreenerBase):
         self._config = config
         self._broker = broker
         self._db_manager = db_manager
+        self._quant = None
+
+    def _quant_reader(self):
+        if self._quant is None:
+            from db.quant_daily_reader import QuantDailyReader
+            self._quant = QuantDailyReader()
+        return self._quant
 
     @abstractmethod
     def base_filter(self, universe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -58,49 +65,13 @@ class RuleScreenerBase(ScreenerBase):
         scored.sort(key=lambda t: t[0], reverse=True)
         return [c for _, c in scored[:max_candidates]]
 
-    def _window_days(self, scan_date: date) -> int:
-        """scan_date - lookback_days 까지 포함하도록 get_daily_prices days 계산."""
-        from utils.korean_time import now_kst
-        gap = (now_kst().date() - scan_date).days
-        return max(self.lookback_days, gap + self.lookback_days)
-
     def _load_universe(self, scan_date: date) -> List[Dict[str, Any]]:
-        from strategies.historical_data import get_sectors
-        import logging
-        _log = logging.getLogger(__name__)
-        market_map: Dict[str, Dict[str, str]] = {}
-        try:
-            sdf = get_sectors()
-            for _, r in sdf.iterrows():
-                market_map[str(r["stock_code"])] = {
-                    "name": str(r.get("stock_name", "") or ""),
-                    "market": str(r.get("market", "") or ""),
-                }
-        except Exception as e:
-            _log.warning("_load_universe get_sectors 실패: %s", e, exc_info=True)
-            market_map = {}
-        if self._db_manager is None:
-            return []
-        snapshot = self._db_manager.price_repo.get_universe_snapshot(scan_date)
-        rows: List[Dict[str, Any]] = []
-        for item in snapshot:
-            code = item["stock_code"]
-            meta = market_map.get(code, {})
-            rows.append({
-                "code": code,
-                "name": meta.get("name", code),
-                "market": meta.get("market", "KRX"),
-                "market_cap": item["market_cap"],
-                "trading_value": item["trading_value"],
-            })
-        return rows
+        snapshot = self._quant_reader().get_universe_snapshot(scan_date)
+        return [
+            {"code": it["stock_code"], "name": it["stock_code"],
+             "market_cap": it["market_cap"], "trading_value": it["trading_value"]}
+            for it in snapshot
+        ]
 
     def _load_daily(self, code: str, scan_date: date) -> Optional[pd.DataFrame]:
-        if self._db_manager is None:
-            return None
-        try:
-            return self._db_manager.price_repo.get_daily_prices(code, days=self._window_days(scan_date))
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).debug("_load_daily 실패 (%s): %s", code, e)
-            return None
+        return self._quant_reader().get_daily_prices(code, end_date=scan_date, days=self.lookback_days)

@@ -59,27 +59,3 @@ def test_no_lookahead_truncates_future_bars():
     assert out[0].score == 1500.0
 
 
-from datetime import date as _date
-
-
-def test_window_days_covers_past_scan_date():
-    from strategies._rule_screener_base import RuleScreenerBase
-
-    class _S(RuleScreenerBase):
-        strategy_name = "s"
-        lookback_days = 100
-
-        def base_filter(self, u):
-            return u
-
-        def match(self, df, p):
-            return None
-
-    s = _S()
-    from utils.korean_time import now_kst
-    today = now_kst().date()
-    # 오늘 기준: gap=0, max(100, 0+100)=100
-    assert s._window_days(today) == 100
-    # 과거 30일: gap=30, max(100, 30+100)=130
-    past = today.fromordinal(today.toordinal() - 30)
-    assert s._window_days(past) == 130
