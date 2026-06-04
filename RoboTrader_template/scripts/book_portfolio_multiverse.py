@@ -452,6 +452,60 @@ def _filter_cache_minute(cache: Dict[str, List[int]], data: Dict[str, pd.DataFra
 
 
 # ===========================================================================
+# 1층 후보 스크린 게이트 (분봉 전용). 책의 2층 시스템: 일봉 후보 스크린 통과 종목·날짜에서만
+#   분봉 진입 시그널을 인정. PIT: 일봉 D 신호 → D+1..D+window 거래일만 장중매매 유효.
+# ===========================================================================
+
+def _eligible_dates_from_signals(signal_idx: List[int], dates: list, window: int) -> set:
+    """후보 신호 bar 인덱스 → 장중 매매 유효일 set. PIT: 신호일 D(인덱스 i) → D+1..D+window 거래일.
+    dates = 해당 종목 일봉의 거래일(date) 리스트(인덱스 정렬). window>=1."""
+    eligible: set = set()
+    n = len(dates)
+    for i in signal_idx:
+        for w in range(1, window + 1):
+            j = i + w
+            if j < n:
+                eligible.add(dates[j])
+    return eligible
+
+
+def _build_candidate_eligibility(uni, period_start, period_end, screen, window, rules_mod):
+    """후보 스크린(일봉 룰) 통과 종목의 장중 매매 유효일 맵 {code: set(date)}.
+    screen='none'이면 {}. 일봉을 룩백 포함 로드 → 룰 PIT 평가 → D+1..D+window 유효일."""
+    if screen == "none":
+        return {}
+    import datetime as _dt
+    cand_rule = _resolve_rule_cls(rules_mod, screen)()
+    ps = _dt.date.fromisoformat(period_start)
+    lb_start = (ps - _dt.timedelta(days=420)).isoformat()  # ≳200 거래일 룩백(A~I high_window=200)
+    daily = _load_daily_adj(uni, lb_start, period_end)
+    elig: Dict[str, set] = {}
+    for code, df in daily.items():
+        if df is None or len(df) == 0:
+            continue
+        dcol = "datetime" if "datetime" in df.columns else "date"
+        dates = pd.to_datetime(df[dcol]).dt.date.tolist()
+        sig_idx = [i for i in range(len(df)) if cand_rule.evaluate(df.iloc[:i + 1], {}).triggered]
+        e = _eligible_dates_from_signals(sig_idx, dates, window)
+        if e:
+            elig[code] = e
+    return elig
+
+
+def _filter_cache_candidate(cache, data, elig_map):
+    """분봉 신호 캐시를 후보 유효일(eligible date) 종목·날짜로만 게이팅. PIT(진입봉 날짜 기준)."""
+    out: Dict[str, List[int]] = {}
+    for code, bars in cache.items():
+        elig = elig_map.get(code)
+        if not elig:
+            out[code] = []
+            continue
+        dts = pd.to_datetime(data[code]["datetime"])
+        out[code] = [i for i in bars if dts.iloc[i].date() in elig]
+    return out
+
+
+# ===========================================================================
 # 포트폴리오 메트릭 (run_portfolio 반환 → Sharpe/PnL/MaxDD/Calmar/hit).
 #   portfolio_sim_elder.compute_portfolio_metrics 는 equity_dates/invested_ratio/
 #   n_holdings 키를 요구하나 run_portfolio 는 미반환 → 동일 수식의 경량 메트릭 사용.
@@ -545,6 +599,9 @@ _W_INITIAL: float = 10_000_000.0
 _W_GATES: List[str] = ["none"]
 _W_REGIME_MAP: Optional[Dict[pd.Timestamp, str]] = None              # daily: date→regime
 _W_MINUTE_LABELS: Optional[Dict[str, Dict[pd.Timestamp, dict]]] = None  # minute: pr→{dt→label}
+# 1층 후보 스크린 게이트 (분봉 전용). screen='none' 이면 기존 동작 바이트동일.
+_W_CANDIDATE_MAPS: Optional[Dict[str, Dict[str, set]]] = None  # pr → {code: eligible date set}
+_W_CANDIDATE_SCREEN: str = "none"
 # 진입 필터 (필터 차원, scripts.entry_filters). 필터=none 일 때 기존 동작 바이트동일.
 _W_FILTERS: List[str] = ["none"]
 _W_FILTER_THRESHOLD: float = 0.5
@@ -559,6 +616,9 @@ def _eval_entry_minute(ro: Dict[str, Any]) -> List[dict]:
     caches: Dict[str, Dict[str, List[int]]] = {}
     for pr in _W_PERIODS:
         caches[pr] = _precompute_signals(_W_PERIOD_DATA[pr], strat, _W_WARMUP, "minute")
+        if _W_CANDIDATE_SCREEN != "none":
+            caches[pr] = _filter_cache_candidate(
+                caches[pr], _W_PERIOD_DATA[pr], (_W_CANDIDATE_MAPS or {}).get(pr, {}))
 
     rows: List[dict] = []
     for gate in _W_GATES:
@@ -640,11 +700,13 @@ def _eval_entry_daily(ro: Dict[str, Any]) -> List[dict]:
 
 def _winit_minute(rule_cls, rule_name, warmup, periods, period_data, period_turnover,
                   exit_combos, k_list, max_per_stock, initial, gates, minute_labels,
-                  filters, filter_threshold, filter_n, kospi_close):
+                  filters, filter_threshold, filter_n, kospi_close,
+                  candidate_maps, candidate_screen):
     global _W_RULE_CLS, _W_RULE_NAME, _W_WARMUP, _W_PERIODS, _W_PERIOD_DATA
     global _W_PERIOD_TURNOVER, _W_EXIT_COMBOS, _W_K_LIST, _W_MAX_PER_STOCK, _W_INITIAL
     global _W_GATES, _W_MINUTE_LABELS
     global _W_FILTERS, _W_FILTER_THRESHOLD, _W_FILTER_N, _W_KOSPI_CLOSE
+    global _W_CANDIDATE_MAPS, _W_CANDIDATE_SCREEN
     _W_RULE_CLS = rule_cls; _W_RULE_NAME = rule_name; _W_WARMUP = warmup
     _W_PERIODS = periods; _W_PERIOD_DATA = period_data; _W_PERIOD_TURNOVER = period_turnover
     _W_EXIT_COMBOS = exit_combos; _W_K_LIST = k_list
@@ -652,6 +714,7 @@ def _winit_minute(rule_cls, rule_name, warmup, periods, period_data, period_turn
     _W_GATES = gates; _W_MINUTE_LABELS = minute_labels
     _W_FILTERS = filters; _W_FILTER_THRESHOLD = filter_threshold
     _W_FILTER_N = filter_n; _W_KOSPI_CLOSE = kospi_close
+    _W_CANDIDATE_MAPS = candidate_maps; _W_CANDIDATE_SCREEN = candidate_screen
 
 
 def _winit_daily(rule_cls, rule_name, warmup, data, turnover, exit_combos, k_list,
@@ -759,6 +822,11 @@ def main():
                    help="rs_rank 백분위 컷(0~1) 또는 adx 컷(예 20/25). mkt_rs/ma_slope 는 무시.")
     p.add_argument("--filter-n", type=int, default=60, dest="filter_n",
                    help="rs_rank/mkt_rs 의 수익률 룩백 봉수 N (기본 60).")
+    p.add_argument("--candidate-screen", default="none",
+                   help="분봉 진입을 1층 일봉 후보 스크린 통과 종목·날짜로만 게이팅 "
+                        "(none 또는 일봉 룰 .name 예: envelope_200d_high). 분봉 전용.")
+    p.add_argument("--candidate-window", type=int, default=3,
+                   help="후보 신호일 D 이후 장중 매매 유효 거래일수(D+1..D+window). 기본 3.")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args()
     logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -842,6 +910,21 @@ def main():
             LOG.info(f"period={pr} universe={len(uni)} resampled_data={len(data)} "
                      f"(freq={args.resample_freq}m)")
 
+        # 1층 후보 스크린(일봉 룰) 유효일 맵 1회 사전계산(screen≠none 일 때만). PIT.
+        candidate_screen = args.candidate_screen
+        candidate_maps: Dict[str, Dict[str, set]] = {}
+        if candidate_screen != "none":
+            for pr in periods:
+                cstart, cend = MINUTE_PERIODS[pr]
+                uni_pr = list(period_data[pr].keys())
+                cmap = _build_candidate_eligibility(uni_pr, cstart, cend, candidate_screen,
+                                                    args.candidate_window, rules_mod)
+                candidate_maps[pr] = cmap
+                n_days = sum(len(v) for v in cmap.values())
+                LOG.info(f"period={pr} candidate-screen={candidate_screen} "
+                         f"window={args.candidate_window}: eligible_stocks={len(cmap)} "
+                         f"stock_days={n_days}")
+
         # 분봉 국면 라벨 1회 사전계산(게이트≠none 일 때만). bias(갭)는 게이트에 불필요 →
         # prev_close 미전달(flat). trend_only/dir_match 는 trendiness/direction 만 사용.
         minute_labels: Dict[str, Dict[pd.Timestamp, dict]] = {}
@@ -867,12 +950,14 @@ def main():
             _winit_minute, (rule_cls, rule_name, warmup, periods, period_data,
                             period_turnover, exit_combos, args.k_list,
                             args.max_per_stock, args.initial_capital, gates, minute_labels,
-                            filters, args.filter_threshold, args.filter_n, kospi_close_m),
+                            filters, args.filter_threshold, args.filter_n, kospi_close_m,
+                            candidate_maps, candidate_screen),
             lambda t: _eval_entry_minute_seq(t[1], rule_cls, rule_name, warmup, periods,
                                              period_data, period_turnover, exit_combos,
                                              args.k_list, args.max_per_stock, args.initial_capital,
                                              gates, minute_labels, filters, args.filter_threshold,
-                                             args.filter_n, kospi_close_m),
+                                             args.filter_n, kospi_close_m,
+                                             candidate_maps, candidate_screen),
         )
         rows.sort(key=lambda r: (-r["pos_periods"], -r["sharpe"], -r["pnl"]))
         sort_desc = "pos_periods desc, mean_sharpe desc, mean_pnl desc"
@@ -1012,11 +1097,12 @@ def main():
 def _eval_entry_minute_seq(ro, rule_cls, rule_name, warmup, periods, period_data,
                            period_turnover, exit_combos, k_list, max_per_stock, initial,
                            gates, minute_labels, filters, filter_threshold, filter_n,
-                           kospi_close):
+                           kospi_close, candidate_maps, candidate_screen):
     global _W_RULE_CLS, _W_RULE_NAME, _W_WARMUP, _W_PERIODS, _W_PERIOD_DATA
     global _W_PERIOD_TURNOVER, _W_EXIT_COMBOS, _W_K_LIST, _W_MAX_PER_STOCK, _W_INITIAL
     global _W_GATES, _W_MINUTE_LABELS
     global _W_FILTERS, _W_FILTER_THRESHOLD, _W_FILTER_N, _W_KOSPI_CLOSE
+    global _W_CANDIDATE_MAPS, _W_CANDIDATE_SCREEN
     _W_RULE_CLS = rule_cls; _W_RULE_NAME = rule_name; _W_WARMUP = warmup
     _W_PERIODS = periods; _W_PERIOD_DATA = period_data; _W_PERIOD_TURNOVER = period_turnover
     _W_EXIT_COMBOS = exit_combos; _W_K_LIST = k_list
@@ -1024,6 +1110,7 @@ def _eval_entry_minute_seq(ro, rule_cls, rule_name, warmup, periods, period_data
     _W_GATES = gates; _W_MINUTE_LABELS = minute_labels
     _W_FILTERS = filters; _W_FILTER_THRESHOLD = filter_threshold
     _W_FILTER_N = filter_n; _W_KOSPI_CLOSE = kospi_close
+    _W_CANDIDATE_MAPS = candidate_maps; _W_CANDIDATE_SCREEN = candidate_screen
     return _eval_entry_minute(ro)
 
 
