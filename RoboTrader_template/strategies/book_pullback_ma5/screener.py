@@ -21,6 +21,7 @@ class BookPullbackMa5ScreenerAdapter(RuleScreenerBase):
         }
 
     def base_filter(self, universe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # KOSPI+KOSDAQ 모두 허용 — 중소형 시총만 필터(눌림목은 시장 무관)
         p = self.default_params()
         return [
             u for u in universe

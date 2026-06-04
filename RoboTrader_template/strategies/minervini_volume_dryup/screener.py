@@ -42,5 +42,6 @@ class MinerviniVolumeDryupScreenerAdapter(RuleScreenerBase):
         if not getattr(res, "triggered", False):
             return None
         reason = "; ".join(getattr(res, "reasons", []) or ["volume_dryup"])
-        score = float(df["volume"].iloc[-30:].mean())  # 유동성 큰 쪽 우선(동률 깨기)
+        base_window = int(params.get("base_window", 30))
+        score = float(df["volume"].iloc[-base_window:].mean())  # 유동성 큰 쪽 우선(동률 깨기)
         return (score, reason)

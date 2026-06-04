@@ -42,5 +42,7 @@ class Daytrading3MethodsBreakoutScreenerAdapter(RuleScreenerBase):
         if not getattr(res, "triggered", False):
             return None
         reason = "; ".join(getattr(res, "reasons", []) or ["breakout_prev_high"])
-        score = float(df["volume"].iloc[-1])
+        last_vol = float(df["volume"].iloc[-1])
+        avg_vol = float(df["volume"].iloc[-21:-1].mean()) or 1.0
+        score = last_vol / avg_vol
         return (score, reason)

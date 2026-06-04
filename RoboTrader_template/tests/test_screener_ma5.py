@@ -3,7 +3,7 @@ import pandas as pd
 from strategies.book_pullback_ma5.screener import BookPullbackMa5ScreenerAdapter
 
 
-def test_match_returns_tuple_or_none():
+def test_match_triggers_on_pullback():
     a = BookPullbackMa5ScreenerAdapter()
     closes = [1000.0] * 5 + [1000.0 + i * 60.0 for i in range(15)] + [1900.0, 1870.0, 1890.0]
     n = len(closes)
@@ -24,7 +24,10 @@ def test_match_returns_tuple_or_none():
         "low": lows, "close": closes, "volume": [1000] * n,
     })
     verdict = a.match(df, a.default_params())
-    assert verdict is None or (isinstance(verdict, tuple) and len(verdict) == 2)
+    assert verdict is not None
+    score, reason = verdict
+    assert isinstance(score, float)
+    assert "ma5" in reason.lower()
 
 
 def test_base_filter_excludes_megacap():

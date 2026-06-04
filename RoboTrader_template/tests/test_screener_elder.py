@@ -55,3 +55,15 @@ def test_match_triggers_on_uptrend_pullback():
     assert verdict is not None
     score, reason = verdict
     assert "ema" in reason.lower() or "triple" in reason.lower()
+
+
+def test_match_none_on_downtrend():
+    a = ElderEmaPullbackScreenerAdapter()
+    n = 90
+    closes = [2000 - i * 5 for i in range(n)]  # 단조 하락 → screen1_uptrend 실패
+    df = pd.DataFrame({
+        "date": pd.date_range("2026-01-01", periods=n),
+        "open": closes, "high": [c + 3 for c in closes],
+        "low": [c - 3 for c in closes], "close": closes, "volume": [1000] * n,
+    })
+    assert a.match(df, a.default_params()) is None
