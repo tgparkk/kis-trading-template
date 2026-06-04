@@ -427,7 +427,7 @@ class LiquidationHandler:
         self._snapshot_done_date = today
 
         try:
-            from runners.screener_snapshot_collector import run_once, ALL_STRATEGIES
+            from runners.screener_snapshot_collector import run_once, resolve_active_strategies
             scan_date = now_kst().date()
 
             broker = getattr(self.bot, 'broker', None)
@@ -435,7 +435,7 @@ class LiquidationHandler:
             config = getattr(self.bot, 'config', None)
 
             summaries = run_once(
-                strategies=ALL_STRATEGIES,
+                strategies=resolve_active_strategies(config),
                 scan_date=scan_date,
                 max_candidates=10,
                 dry_run=False,

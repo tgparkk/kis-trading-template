@@ -44,6 +44,24 @@ _LOGGER = logging.getLogger("runners.screener_snapshot_collector")
 ALL_STRATEGIES = ["lynch", "sawkami", "bb_reversion", "sample"]
 
 
+def resolve_active_strategies(config) -> List[str]:
+    """config 의 활성(enabled) 전략 폴더키 목록. config 없으면 ALL_STRATEGIES 폴백."""
+    if config is None:
+        return list(ALL_STRATEGIES)
+    strategies = getattr(config, "strategies", None)
+    if not strategies:
+        return list(ALL_STRATEGIES)
+    out: List[str] = []
+    for s in strategies:
+        if isinstance(s, dict):
+            name, enabled = s.get("name"), s.get("enabled", True)
+        else:
+            name, enabled = getattr(s, "name", None), getattr(s, "enabled", True)
+        if name and enabled:
+            out.append(name)
+    return out or list(ALL_STRATEGIES)
+
+
 # ---------------------------------------------------------------------------
 # 어댑터 팩토리 (하위 호환 래퍼 — 공통 구현은 _adapter_factory.py 참조)
 # ---------------------------------------------------------------------------
