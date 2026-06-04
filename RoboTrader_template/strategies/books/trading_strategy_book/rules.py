@@ -369,10 +369,71 @@ class rule_pullback_volume_dry(Rule):
         )
 
 
-# 책 전체 규칙 (일봉 A~I + 분봉 실행층 3전략)
+@dataclass
+class rule_volume_surge_candle(Rule):
+    """§0.1 느슨한 1층 매수후보 스크리너 (일봉): 거래량 3배 급증 + 장대양봉.
+
+    드라이버 --candidate-screen volume_surge_candle 로 분봉 실행층 게이팅에 사용.
+    A~I 조건식(rule_envelope_200d_high)보다 느슨한 선행 후보 필터.
+    """
+    name: str = "volume_surge_candle"
+    vol_window: int = 20      # 평소 거래량 기준 기간(금일 제외)
+    vol_mult: float = 3.0     # 거래량 급증 배수
+    body_pct: float = 0.03    # 장대양봉 몸통 하한(시가 대비 %)
+
+    def evaluate(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> RuleResult:
+        # 데이터 충분 여부: vol_window 봉(금일 제외) + 금일 + 경계 여유
+        need = self.vol_window + 2
+        if df is None or len(df) < need:
+            return RuleResult(triggered=False)
+
+        o = df["open"].astype(float)
+        c = df["close"].astype(float)
+        v = df["volume"].astype(float)
+
+        # t = 마지막 봉 스칼라 추출
+        open_t = float(o.iloc[-1])
+        close_t = float(c.iloc[-1])
+        vol_t = float(v.iloc[-1])
+
+        # NaN/inf 가드 + 시가 양수 가드
+        if not (np.isfinite(open_t) and np.isfinite(close_t) and np.isfinite(vol_t)):
+            return RuleResult(triggered=False)
+        if not (open_t > 0):
+            return RuleResult(triggered=False)
+
+        # 평소 거래량: 금일 제외 직전 vol_window 봉의 평균
+        avg_vol = float(v.iloc[-(self.vol_window + 1):-1].mean())
+        if not (np.isfinite(avg_vol) and avg_vol > 0):
+            return RuleResult(triggered=False)
+
+        # 거래량 급증 조건
+        if not (vol_t >= avg_vol * self.vol_mult):
+            return RuleResult(triggered=False)
+
+        # 장대양봉 조건: 양봉 + 몸통 body_pct 이상
+        if not (close_t > open_t):
+            return RuleResult(triggered=False)
+        body_ratio = (close_t - open_t) / open_t
+        if not (body_ratio >= self.body_pct):
+            return RuleResult(triggered=False)
+
+        surge_x = vol_t / avg_vol
+        return RuleResult(
+            triggered=True, side="buy", confidence=70.0,
+            reasons=[
+                f"volume_surge_candle vol={vol_t:.0f} avg={avg_vol:.0f} "
+                f"surge={surge_x:.1f}x body={body_ratio:.1%}"
+            ],
+            metadata={"avg_vol": avg_vol, "surge_x": surge_x},
+        )
+
+
+# 책 전체 규칙 (일봉 A~I + 분봉 실행층 3전략 + §0.1 느슨한 후보)
 ALL_RULES = [
     rule_envelope_200d_high,
     rule_price_box_tma,
     rule_bollinger_squeeze,
     rule_pullback_volume_dry,
+    rule_volume_surge_candle,
 ]

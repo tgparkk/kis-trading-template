@@ -293,4 +293,61 @@ def test_all_rules_registered():
     from strategies.books.trading_strategy_book.rules import ALL_RULES
     names = {r().name for r in ALL_RULES}
     assert names == {"envelope_200d_high", "price_box_tma",
-                     "bollinger_squeeze", "pullback_volume_dry"}
+                     "bollinger_squeeze", "pullback_volume_dry", "volume_surge_candle"}
+
+
+# ---------- 느슨한 후보 규칙 (volume_surge_candle, 일봉) ----------
+
+def _vsc():
+    from strategies.books.trading_strategy_book.rules import rule_volume_surge_candle
+    return rule_volume_surge_candle()
+
+
+def _vsc_df(open_, close, volume):
+    import numpy as _np
+    n = len(close)
+    high = _np.maximum(open_, close) + 1.0
+    low = _np.minimum(open_, close) - 1.0
+    return pd.DataFrame({"open": open_, "high": high, "low": low,
+                         "close": close, "volume": volume})
+
+
+def _vsc_arrays(n=25):
+    import numpy as _np
+    open_ = _np.full(n, 1000.0)
+    close = _np.full(n, 1000.0)          # 평소 평탄
+    volume = _np.full(n, 10000.0)        # 평소 거래량 1만
+    # 마지막봉: 거래량 4배(>=3x) + 장대양봉(+5%)
+    open_[-1] = 1000.0
+    close[-1] = 1050.0                    # (1050-1000)/1000=5% >= 3%
+    volume[-1] = 40000.0                  # 4x avg(1만)
+    return open_, close, volume
+
+
+def test_vsc_all_pass_triggers():
+    o, c, v = _vsc_arrays()
+    res = _vsc().evaluate(_vsc_df(o, c, v), {})
+    assert res.triggered is True and res.side == "buy"
+
+
+def test_vsc_volume_not_surged_blocks():
+    o, c, v = _vsc_arrays()
+    v[-1] = 20000.0  # 2x < 3x
+    assert _vsc().evaluate(_vsc_df(o, c, v), {}).triggered is False
+
+
+def test_vsc_small_body_blocks():
+    o, c, v = _vsc_arrays()
+    c[-1] = 1020.0  # +2% body < 3%
+    assert _vsc().evaluate(_vsc_df(o, c, v), {}).triggered is False
+
+
+def test_vsc_bearish_blocks():
+    o, c, v = _vsc_arrays()
+    o[-1] = 1060.0; c[-1] = 1050.0  # 음봉(close<open)
+    assert _vsc().evaluate(_vsc_df(o, c, v), {}).triggered is False
+
+
+def test_vsc_insufficient_bars_blocks():
+    o, c, v = _vsc_arrays(n=10)  # need=22 미만
+    assert _vsc().evaluate(_vsc_df(o, c, v), {}).triggered is False
