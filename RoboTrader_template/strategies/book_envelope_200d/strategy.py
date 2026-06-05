@@ -51,8 +51,12 @@ class BookEnvelope200dStrategy(BaseStrategy):
     # ========================================================================
 
     def get_min_data_length(self) -> int:
+        # ★ on_tick 게이트(`len(ctx.get_daily_data) < min_len → skip`)는 프레임워크가 전달하는
+        # robotrader 일봉(~85봉)에 적용된다. 진입 평가는 quant 230봉을 내부 조회
+        # (_fetch_entry_history)하므로 여기서 200봉을 요구하면 게이트에서 항상 스킵된다.
+        # 따라서 게이트는 작게 두고(매도=현재가만 필요), 200봉 요구는 evaluate_entry 내부에서 강제.
         params = self.config.get("parameters", {})
-        return int(params.get("min_daily_bars", _MIN_ENTRY_BARS))
+        return int(params.get("min_gate_bars", 5))
 
     def on_init(self, broker, data_provider, executor) -> bool:
         self._broker = broker

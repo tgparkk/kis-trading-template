@@ -73,3 +73,20 @@ def test_build_adapter_envelope_registered():
 def test_strategy_class_importable_and_swing():
     from strategies.book_envelope_200d.strategy import BookEnvelope200dStrategy
     assert BookEnvelope200dStrategy.holding_period == "swing"
+
+
+def test_min_gate_small_so_ontick_not_skipped():
+    """on_tick 게이트는 전달 일봉(robotrader ~85봉)에 적용 → 작아야 함.
+
+    get_min_data_length 가 200+ 이면 on_tick(`len(ctx data) < min_len → skip`)이
+    envelope 을 항상 스킵해 영영 미발사한다. 진입 200봉 요구는 evaluate_entry 내부에서 강제.
+    """
+    from strategies.config import StrategyLoader
+    from strategies.book_envelope_200d.strategy import BookEnvelope200dStrategy
+
+    s = StrategyLoader.load_strategy("book_envelope_200d")
+    assert s.get_min_data_length() <= 85, "게이트가 ctx 일봉(~85봉)보다 크면 on_tick 항상 스킵"
+    # 짧은 df 는 진입 평가에서 거부(200봉 내부 검증 유지)
+    short = pd.DataFrame({c: [1.0] * 50 for c in ["open", "high", "low", "close", "volume"]})
+    trig, _, _ = BookEnvelope200dStrategy.evaluate_entry(short)
+    assert trig is False

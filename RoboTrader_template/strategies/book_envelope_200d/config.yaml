@@ -26,8 +26,11 @@ paper_trading: true
 # 전략 파라미터 (진입 — 백테스트 rules.py rule_envelope_200d_high 기본값 사용)
 # -----------------------------------------------------------------------------
 parameters:
-  # 진입 룰 평가 최소 일봉 수 (rule: max(high_window=200, env, value)+2 = 202)
+  # 진입 룰 평가 최소 일봉 수 (quant df 내부 검증; rule: max(high_window=200,env,value)+2=202)
   min_daily_bars: 202
+  # on_tick 게이트(전달 robotrader 일봉~85봉에 적용)는 작게 — 진입 평가는 quant 230봉 내부조회.
+  # (이 값이 크면 on_tick 이 envelope 을 항상 스킵해 영영 미발사한다.)
+  min_gate_bars: 5
   # 진입 평가용 quant 일봉 조회 봉 수 (200봉 + 여유)
   entry_lookback_bars: 230
   max_holding_days: 10
