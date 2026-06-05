@@ -63,26 +63,29 @@ MINERVINI_B_PARAMS = dict(stop_loss_pct=0.08, take_profit_pct=0.12, max_hold_bar
 # 데이터 로딩 (run_elder_triple_screen._load_daily_adj 와 동일 로직)
 # --------------------------------------------------------------------------- #
 def _load_top_volume_universe(start: str, end: str, top_n: int = 50) -> List[str]:
-    from db.connection import DatabaseConnection
-    with DatabaseConnection.get_connection() as conn:
+    # 일봉 SSOT=robotrader_quant. 6자리 숫자 보통주만(지수·변형코드 제외).
+    from scripts.book_param_multiverse import _quant_daily_connection, _DAILY_CODE_RE
+    with _quant_daily_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
             SELECT stock_code, SUM(close * volume) AS turnover
             FROM daily_prices
             WHERE date >= %s AND date <= %s
-              AND stock_code != 'KOSPI'
+              AND stock_code ~ %s
             GROUP BY stock_code
-            ORDER BY turnover DESC
+            ORDER BY turnover DESC, stock_code ASC
             LIMIT %s
-        """, (start, end, top_n))
+        """, (start, end, _DAILY_CODE_RE, top_n))
         rows = cur.fetchall()
     return [r[0] for r in rows]
 
 
 def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, pd.DataFrame]:
-    from db.connection import DatabaseConnection
+    # 일봉 SSOT=robotrader_quant. quant close 는 이미 조정가 → adj_factor 곱하지 않음
+    # (곱하면 분할일 가짜 절벽). quant date(text) 불량 문자열 coerce.
+    from scripts.book_param_multiverse import _quant_daily_connection
     out: Dict[str, pd.DataFrame] = {}
-    with DatabaseConnection.get_connection() as conn:
+    with _quant_daily_connection() as conn:
         cur = conn.cursor()
         for code in stock_codes:
             cur.execute("""
@@ -95,12 +98,12 @@ def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, p
             if not rows or len(rows) < 30:
                 continue
             df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume", "adj_factor"])
-            df["date"] = pd.to_datetime(df["date"])
-            for col in ["open", "high", "low", "close", "volume", "adj_factor"]:
+            df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
+            df = df.dropna(subset=["date"])
+            if len(df) < 30:
+                continue
+            for col in ["open", "high", "low", "close", "volume"]:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-            df["adj_factor"] = df["adj_factor"].fillna(1.0)
-            for col in ["open", "high", "low", "close"]:
-                df[col] = df[col] * df["adj_factor"]
             drop_mask = df["close"].isna() | (df["close"] <= 0)
             df = df[~drop_mask].copy()
             for col in ["open", "high", "low"]:
