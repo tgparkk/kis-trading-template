@@ -33,28 +33,28 @@
     {
       "name": "elder_ema_pullback",
       "enabled": true,
-      "max_capital_pct": 0.40,
+      "max_capital_pct": 0.25,
       "regime_index": "KOSPI",
       "regime_gate": "none"
     },
     {
       "name": "book_envelope_200d",
       "enabled": true,
-      "max_capital_pct": 0.20,
+      "max_capital_pct": 0.25,
       "regime_index": "KOSPI",
       "regime_gate": "none"
     },
     {
       "name": "daytrading_3methods_breakout",
       "enabled": true,
-      "max_capital_pct": 0.20,
+      "max_capital_pct": 0.25,
       "regime_index": "KOSDAQ",
       "regime_gate": "none"
     },
     {
       "name": "minervini_volume_dryup",
       "enabled": true,
-      "max_capital_pct": 0.20,
+      "max_capital_pct": 0.25,
       "regime_index": "KOSPI",
       "regime_gate": "none"
     },
