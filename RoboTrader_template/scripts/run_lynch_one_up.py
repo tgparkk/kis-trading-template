@@ -63,9 +63,10 @@ def _load_fundamentals_universe() -> List[str]:
 
 def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, pd.DataFrame]:
     """종목별 daily_prices (adj_factor 적용 수정주가) 로드."""
-    from db.connection import DatabaseConnection
+    # 일봉 SSOT=robotrader_quant. 펀더멘털/유니버스(financial_statements)는 robotrader 유지.
+    from scripts.book_param_multiverse import _quant_daily_connection
     out: Dict[str, pd.DataFrame] = {}
-    with DatabaseConnection.get_connection() as conn:
+    with _quant_daily_connection() as conn:
         cur = conn.cursor()
         for code in stock_codes:
             cur.execute("""
@@ -79,12 +80,13 @@ def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, p
             if not rows or len(rows) < 30:
                 continue
             df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume", "adj_factor"])
-            df["date"] = pd.to_datetime(df["date"])
-            for col in ["open", "high", "low", "close", "volume", "adj_factor"]:
+            df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
+            df = df.dropna(subset=["date"])
+            if len(df) < 30:
+                continue
+            for col in ["open", "high", "low", "close", "volume"]:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-            df["adj_factor"] = df["adj_factor"].fillna(1.0)
-            for col in ["open", "high", "low", "close"]:
-                df[col] = df[col] * df["adj_factor"]
+            # quant close 는 이미 분할조정된 연속 시세 → adj_factor 곱하지 않음(곱하면 분할일 가짜 절벽).
             df = df.dropna(subset=["open", "high", "low", "close"])
             df["datetime"] = df["date"]
             out[code] = df[["datetime", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
