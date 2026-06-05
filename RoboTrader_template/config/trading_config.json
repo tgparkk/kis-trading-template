@@ -33,37 +33,37 @@
     {
       "name": "elder_ema_pullback",
       "enabled": true,
-      "max_capital_pct": 0.20,
+      "max_capital_pct": 0.45,
       "regime_index": "KOSPI",
+      "regime_gate": "none"
+    },
+    {
+      "name": "daytrading_3methods_breakout",
+      "enabled": true,
+      "max_capital_pct": 0.30,
+      "regime_index": "KOSDAQ",
       "regime_gate": "none"
     },
     {
       "name": "minervini_volume_dryup",
       "enabled": true,
-      "max_capital_pct": 0.20,
+      "max_capital_pct": 0.25,
       "regime_index": "KOSPI",
       "regime_gate": "none"
     },
     {
       "name": "book_pullback_ma20",
-      "enabled": true,
-      "max_capital_pct": 0.20,
+      "enabled": false,
+      "max_capital_pct": 0.0,
       "regime_index": "KOSPI",
       "regime_gate": "exclude_bear"
     },
     {
       "name": "book_pullback_ma5",
-      "enabled": true,
-      "max_capital_pct": 0.20,
+      "enabled": false,
+      "max_capital_pct": 0.0,
       "regime_index": "KOSPI",
       "regime_gate": "exclude_bear"
-    },
-    {
-      "name": "daytrading_3methods_breakout",
-      "enabled": true,
-      "max_capital_pct": 0.20,
-      "regime_index": "KOSDAQ",
-      "regime_gate": "none"
     }
   ],
   "duplicate_signal_prevention": {
