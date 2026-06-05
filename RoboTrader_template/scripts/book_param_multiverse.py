@@ -111,6 +111,30 @@ def _resolve_rule_cls(rules_mod, rule_name: str):
     raise ValueError(f"rule {rule_name!r} 없음. 사용가능: {valid}")
 
 
+# --- 일봉 SSOT 연결 (robotrader_quant) ---------------------------------------
+# 데이터 소스 SSOT: 일봉=robotrader_quant.daily_prices(2601종목/2487행일),
+# 분봉=robotrader.minute_candles, KOSPI 지수 라인=robotrader(전구간).
+# 기본 DatabaseConnection(robotrader)는 하루 ~125종목 sparse·stale 워치리스트라
+# top_volume:50 이 "정본 상위 50"이 아닌 "워치리스트 중 상위 50"이 되는 버그가 있었음.
+
+from contextlib import contextmanager  # noqa: E402
+
+# 정본 일봉 종목코드: 6자리 숫자 보통주만 (KS11/KQ11 지수·K접미 변형 제외)
+_DAILY_CODE_RE = r"^[0-9]{6}$"
+
+
+@contextmanager
+def _quant_daily_connection():
+    """robotrader_quant 일봉 연결(QuantDailyReader 풀 재사용). 읽기 전용."""
+    from db.quant_daily_reader import QuantDailyReader
+    p = QuantDailyReader._get_pool()
+    conn = p.getconn()
+    try:
+        yield conn
+    finally:
+        p.putconn(conn)
+
+
 # --- minute 로더 (run_books_research.py 복제) ---
 
 def _load_top_volume_minute(period_start: str, period_end: str, top_n: int) -> List[str]:
@@ -150,25 +174,25 @@ def _load_minute_data(stock_codes: List[str], start_date: str, end_date: str) ->
 # --- daily 로더 (run_daytrading_3methods.py 복제) ---
 
 def _load_top_volume_daily(start: str, end: str, top_n: int) -> List[str]:
-    from db.connection import DatabaseConnection
-    with DatabaseConnection.get_connection() as conn:
+    # 일봉 SSOT=robotrader_quant. 6자리 숫자 보통주만(지수·변형코드 제외).
+    with _quant_daily_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
             SELECT stock_code, SUM(close * volume) AS turnover
             FROM daily_prices
-            WHERE date >= %s AND date <= %s
+            WHERE date >= %s AND date <= %s AND stock_code ~ %s
             GROUP BY stock_code
             ORDER BY turnover DESC, stock_code ASC
             LIMIT %s
-        """, (start, end, top_n))
+        """, (start, end, _DAILY_CODE_RE, top_n))
         rows = cur.fetchall()
     return [r[0] for r in rows]
 
 
 def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, pd.DataFrame]:
-    from db.connection import DatabaseConnection
+    # 일봉 SSOT=robotrader_quant. quant date 는 text 라 불량 문자열 coerce 필요.
     out: Dict[str, pd.DataFrame] = {}
-    with DatabaseConnection.get_connection() as conn:
+    with _quant_daily_connection() as conn:
         cur = conn.cursor()
         for code in stock_codes:
             cur.execute("""
@@ -181,12 +205,16 @@ def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, p
             if not rows or len(rows) < 30:
                 continue
             df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume", "adj_factor"])
-            df["date"] = pd.to_datetime(df["date"])
-            for col in ["open", "high", "low", "close", "volume", "adj_factor"]:
+            df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
+            df = df.dropna(subset=["date"])
+            if len(df) < 30:
+                continue
+            for col in ["open", "high", "low", "close", "volume"]:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-            df["adj_factor"] = df["adj_factor"].fillna(1.0)
-            for col in ["open", "high", "low", "close"]:
-                df[col] = df[col] * df["adj_factor"]
+            # quant close 는 이미 분할조정된 연속 시세다(스크리너 QuantDailyReader 와 동일 basis).
+            # adj_factor(계단형 역조정 메타, 1~50)를 또 곱하면 분할일에 가짜 절벽이 생겨
+            # (예: 카카오 5:1분할일 -78%) 포트폴리오 MaxDD 가 거짓으로 ~99% 까지 붕괴한다.
+            # → 곱하지 않는다(robotrader 시절 adj_factor 는 전부 1.0 라 곱셈이 no-op 였음).
             drop_mask = df["close"].isna() | (df["close"] <= 0)
             df = df[~drop_mask].copy()
             for col in ["open", "high", "low"]:
@@ -199,10 +227,13 @@ def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, p
 
 
 def _daily_minmax_dates() -> Tuple[str, str]:
-    from db.connection import DatabaseConnection
-    with DatabaseConnection.get_connection() as conn:
+    # 일봉 SSOT=robotrader_quant. 불량 date 문자열은 MIN/MAX 왜곡하므로 ISO 형식만.
+    with _quant_daily_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT MIN(date), MAX(date) FROM daily_prices")
+        cur.execute(
+            "SELECT MIN(date), MAX(date) FROM daily_prices "
+            "WHERE date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'"
+        )
         mn, mx = cur.fetchone()
     return str(mn), str(mx)
 

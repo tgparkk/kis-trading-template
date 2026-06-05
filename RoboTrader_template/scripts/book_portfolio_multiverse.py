@@ -82,6 +82,7 @@ except Exception:
 # 부품 재사용 (book_param_multiverse 의 로더·헬퍼). 다른 파일 수정 없음.
 from scripts.book_param_multiverse import (  # noqa: E402
     MINUTE_PERIODS,
+    _DAILY_CODE_RE,
     _build_strategy,
     _cartesian,
     _load_book,
@@ -90,6 +91,7 @@ from scripts.book_param_multiverse import (  # noqa: E402
     _load_top_volume_daily,
     _load_top_volume_minute,
     _daily_minmax_dates,
+    _quant_daily_connection,
     _rule_defaults,
     _resolve_rule_cls,
 )
@@ -158,8 +160,9 @@ def _surge_smallcap_codes(start: str, end: str,
         단 mc 커버리지가 낮으면(현 98/256) mc미상 대형주가 거래대금 상위로 누수됨.
       - require_mc=True: mc 가 알려져 있고 mc<cap_max 인 종목만 (엄격 중소형, 누수 차단).
     """
-    from db.connection import DatabaseConnection
-    with DatabaseConnection.get_connection() as conn:
+    # 일봉 SSOT=robotrader_quant. 6자리 숫자 보통주만(지수·변형코드 제외).
+    # quant 는 market_cap 이 사실상 전 종목 완비(robotrader 는 sparse ~98/256 였음).
+    with _quant_daily_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             """
@@ -167,12 +170,12 @@ def _surge_smallcap_codes(start: str, end: str,
                 SELECT stock_code, date, close,
                        LAG(close) OVER (PARTITION BY stock_code ORDER BY date) AS pc
                 FROM daily_prices
-                WHERE date >= %s AND date <= %s AND close > 0
+                WHERE date >= %s AND date <= %s AND close > 0 AND stock_code ~ %s
             )
             SELECT DISTINCT stock_code FROM px
             WHERE pc > 0 AND (close - pc) / pc >= %s
             """,
-            (start, end, surge_threshold),
+            (start, end, _DAILY_CODE_RE, surge_threshold),
         )
         surged = {r[0] for r in cur.fetchall()}
         # 종목별 최신 market_cap (양수)
@@ -180,10 +183,10 @@ def _surge_smallcap_codes(start: str, end: str,
             """
             SELECT DISTINCT ON (stock_code) stock_code, market_cap
             FROM daily_prices
-            WHERE market_cap > 0 AND date <= %s
+            WHERE market_cap > 0 AND date <= %s AND stock_code ~ %s
             ORDER BY stock_code, date DESC
             """,
-            (end,),
+            (end, _DAILY_CODE_RE),
         )
         last_mc = {r[0]: float(r[1]) for r in cur.fetchall()}
     n_surged = len(surged)
@@ -204,8 +207,8 @@ def _load_surge_daily(start: str, end: str, top_n: int,
     pool, diag = _surge_smallcap_codes(start, end, require_mc=require_mc)
     if not pool:
         return [], diag
-    from db.connection import DatabaseConnection
-    with DatabaseConnection.get_connection() as conn:
+    # 일봉 SSOT=robotrader_quant.
+    with _quant_daily_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             """
@@ -320,6 +323,7 @@ def _build_daily_regime_map(start: str, end: str) -> Dict[pd.Timestamp, str]:
 
     # MA120 + breadth120 워밍업을 위해 시작 이전 달력 ~400일(≈260 거래일) 룩백 로드.
     look_start = (_dt.date.fromisoformat(str(start)) - _dt.timedelta(days=400)).isoformat()
+    # KOSPI 지수 라인은 robotrader 유지(전구간 보유, quant 엔 'KOSPI' 코드 없음).
     with DatabaseConnection.get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -328,22 +332,33 @@ def _build_daily_regime_map(start: str, end: str) -> Dict[pd.Timestamp, str]:
             (look_start, end),
         )
         krows = cur.fetchall()
-        if not krows:
-            raise RuntimeError("daily_prices 에 KOSPI 지수 행이 없음 (국면 게이트 불가)")
-        kospi = pd.Series({pd.Timestamp(r[0]): float(r[1]) for r in krows}, name="close").sort_index()
-        # 전종목 breadth 패널 (KOSPI 지수 제외) — long→wide
+    if not krows:
+        raise RuntimeError("daily_prices(robotrader) 에 KOSPI 지수 행이 없음 (국면 게이트 불가)")
+    kospi = pd.Series({pd.Timestamp(r[0]): float(r[1]) for r in krows}, name="close").sort_index()
+    # 전종목 breadth 패널은 정본 유니버스(robotrader_quant).
+    panel = _load_breadth_panel(look_start, end)
+    res = classify_daily(kospi, panel, DailyRegimeParams())
+    return {pd.Timestamp(d): str(v) for d, v in res["regime"].items()}
+
+
+def _load_breadth_panel(look_start: str, end: str) -> pd.DataFrame:
+    """전종목 close wide 패널(index=date, columns=stock_code) — 정본 유니버스(quant).
+
+    %above-MA120 breadth 산출용. 6자리 숫자 보통주만(지수·변형코드 제외),
+    quant date(text) 불량 문자열은 coerce→dropna.
+    """
+    with _quant_daily_connection() as conn:
         panel_df = pd.read_sql(
             """
             SELECT date, stock_code, close FROM daily_prices
-            WHERE date >= %s AND date <= %s AND stock_code <> 'KOSPI' AND close > 0
+            WHERE date >= %s AND date <= %s AND close > 0 AND stock_code ~ %s
             """,
-            conn, params=(look_start, end),
+            conn, params=(look_start, end, _DAILY_CODE_RE),
         )
-    panel = (panel_df.assign(date=pd.to_datetime(panel_df["date"]))
-             .pivot_table(index="date", columns="stock_code", values="close", aggfunc="last")
-             .sort_index())
-    res = classify_daily(kospi, panel, DailyRegimeParams())
-    return {pd.Timestamp(d): str(v) for d, v in res["regime"].items()}
+    panel_df = panel_df.assign(date=pd.to_datetime(panel_df["date"], format="mixed", errors="coerce"))
+    panel_df = panel_df.dropna(subset=["date"])
+    return (panel_df.pivot_table(index="date", columns="stock_code", values="close", aggfunc="last")
+            .sort_index())
 
 
 def _load_kospi_close(start: str, end: str, lookback_days: int = 400) -> pd.Series:
