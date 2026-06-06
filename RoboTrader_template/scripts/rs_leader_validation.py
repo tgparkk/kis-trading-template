@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.rs_leader.rule import RSLeaderRule  # noqa: E402
+from scripts.rs_leader.exit_adapter import MA20TrailExitAdapter  # noqa: E402
 from scripts.book_portfolio_multiverse import (  # noqa: E402
     _SLTPMHAdapter, _precompute_signals, _build_daily_regime_map,
 )
@@ -92,15 +93,19 @@ def load_universe_data(start: str, end: str, top_n: int, min_tv: float = 1e9):
 
 
 def run_backtest(data, turnover, *, rs_threshold, rs_n, k, sl, mh,
-                 initial=10_000_000, max_per_stock=3_000_000):
-    """RSLeaderRule 신호 → rs_rank 필터 → 한정자본 포트폴리오 체결."""
+                 exit_mode="sltp", initial=10_000_000, max_per_stock=3_000_000):
+    """RSLeaderRule 신호 → rs_rank 필터 → 한정자본 포트폴리오 체결.
+
+    exit_mode: "sltp"(sl+max_hold 근사) 또는 "ma20"(MA20 트레일링 + sl + max_hold).
+    """
     rule = RSLeaderRule()
     cache = _precompute_signals(data, rule, warmup_bars=65, granularity="daily")
     filtered = apply_entry_filter(data, cache, filt="rs_rank",
                                   threshold=rs_threshold, n=rs_n)
-    # tp 는 추세추종이라 사실상 무효(99.0). 청산 = sl + max_hold (MA20 이탈은 1차 미모델).
+    # tp 는 추세추종이라 사실상 무효(99.0).
     params = dict(stop_loss_pct=sl, take_profit_pct=99.0, max_hold_bars=mh)
-    res = run_portfolio(data=data, signal_cache=filtered, adapter=_SLTPMHAdapter(),
+    adapter = MA20TrailExitAdapter() if exit_mode == "ma20" else _SLTPMHAdapter()
+    res = run_portfolio(data=data, signal_cache=filtered, adapter=adapter,
                         params=params, turnover=turnover, initial_capital=initial,
                         max_positions=k, max_per_stock=max_per_stock)
     return res
@@ -145,7 +150,7 @@ def write_report(path, args, ev, verdict):
     lines = ["# RS 리더 검증 — GO/NO-GO 리포트", "",
              f"- 기간: {args.start} ~ {args.end} / 유니버스 top {args.universe_top}",
              f"- 파라미터: K={args.k} rs_n={args.rs_n} rs_threshold={args.rs_threshold} "
-             f"sl={args.sl} mh={args.mh}",
+             f"sl={args.sl} mh={args.mh} exit={args.exit_mode}",
              f"- 총 거래(sell): {ev['n_trades']}  거래Sharpe(per-trade): "
              f"{ev['trade_sharpe']:.3f}  PSR: {ev['psr']:.3f}",
              "", "## 국면별 절대수익 (per-trade pnl)", "",
@@ -183,6 +188,8 @@ def main():
     p.add_argument("--rs-n", type=int, default=120, dest="rs_n")
     p.add_argument("--sl", type=float, default=0.08)
     p.add_argument("--mh", type=int, default=30)
+    p.add_argument("--exit-mode", default="sltp", choices=["sltp", "ma20"], dest="exit_mode",
+                   help="청산: sltp(sl+max_hold) 또는 ma20(MA20 트레일링+sl+max_hold)")
     p.add_argument("--smoke", action="store_true", help="작은 유니버스로 파이프라인만 확인")
     args = p.parse_args()
 
@@ -191,15 +198,17 @@ def main():
     data, turnover = load_universe_data(args.start, args.end, top)
     print(f"[load] {len(data)} stocks")
     res = run_backtest(data, turnover, rs_threshold=args.rs_threshold, rs_n=args.rs_n,
-                       k=args.k, sl=args.sl, mh=args.mh)
-    print(f"[bt] n_trades={res['n_trades']} max_concurrent={res['max_concurrent_positions']}")
+                       k=args.k, sl=args.sl, mh=args.mh, exit_mode=args.exit_mode)
+    print(f"[bt] exit={args.exit_mode} n_trades={res['n_trades']} "
+          f"max_concurrent={res['max_concurrent_positions']}")
 
     if not args.smoke:
         print("[regime] building daily regime map (real KOSPI)...")
         regime_map = _build_daily_regime_map(args.start, args.end)
         ev = evaluate(res, regime_map)
         verdict = go_verdict(ev)
-        out = ROOT / "reports" / "regime_spike" / "rs_leader_validation.md"
+        suffix = "" if args.exit_mode == "sltp" else f"_{args.exit_mode}"
+        out = ROOT / "reports" / "regime_spike" / f"rs_leader_validation{suffix}.md"
         write_report(out, args, ev, verdict)
         print(f"[report] {out}  ->  {'GO' if verdict['GO'] else 'NO-GO'}")
 
