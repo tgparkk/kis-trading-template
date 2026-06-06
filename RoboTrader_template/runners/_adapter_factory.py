@@ -50,6 +50,9 @@ def build_adapter(
         elif strategy_name == "book_envelope_200d":
             from strategies.book_envelope_200d.screener import BookEnvelope200dScreenerAdapter
             return BookEnvelope200dScreenerAdapter(config=config, broker=broker, db_manager=db_manager)
+        elif strategy_name == "rs_leader":
+            from strategies.rs_leader.screener import RSLeaderScreenerAdapter
+            return RSLeaderScreenerAdapter(config=config, broker=broker, db_manager=db_manager)
         else:
             _LOGGER.warning("알 수 없는 전략: %s", strategy_name)
             return None
