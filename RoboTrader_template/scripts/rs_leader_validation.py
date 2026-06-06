@@ -69,7 +69,12 @@ def load_universe_data(start: str, end: str, top_n: int, min_tv: float = 1e9):
         )
     finally:
         conn.close()
-    df["date"] = pd.to_datetime(df["date"])
+    # ★daily_prices.date 는 text형이라 손상값("2026--0-4-" 등)이 존재 → coerce 후 제거.
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    n_bad = int(df["date"].isna().sum())
+    if n_bad:
+        print(f"[load] 손상 날짜 {n_bad}행 제거 (daily_prices text date 아티팩트)")
+        df = df.dropna(subset=["date"])
     # 유니버스 선정: 기간(start~end) 평균 거래대금 상위 N
     in_win = df[df["date"] >= pd.Timestamp(start)]
     tv = in_win.groupby("stock_code")["trading_value"].mean()
