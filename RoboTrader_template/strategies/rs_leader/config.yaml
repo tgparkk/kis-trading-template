@@ -1,0 +1,27 @@
+# =============================================================================
+# RS Leader Strategy — 횡보장 RS 리더 (페이퍼 관찰 전용)
+# 검증: docs/superpowers/specs/2026-06-06-rs-leader-bad-market-design.md (PARTIAL)
+#   횡보장 절대수익 강건, 깊은약세 미입증·저Sharpe → 격리 페이퍼 관찰.
+# 진입: 절대상승추세(종가>MA60·MA20>MA60·60일수익>0) + 스크리너 횡단면 RS 상위.
+# 청산: MA20 하향이탈(무조건) / sl -8% / max_hold 30거래일.
+# =============================================================================
+strategy:
+  name: "RSLeaderStrategy"
+  version: "1.0.0"
+paper_trading: true
+parameters:
+  ma_short: 20
+  ma_long: 60
+  abs_lb: 60
+  rs_lb: 120
+  min_daily_bars: 130
+  max_holding_days: 30
+risk_management:
+  take_profit_pct: 0.15       # 추세추종 — 고정익절 거의 무효(트레일이 주 청산)
+  stop_loss_pct: 0.08
+  trail_ma: 20                # 종가 < MA20 하향이탈 시 청산 (무조건)
+  max_hold_days: 30
+  max_positions: 10
+  max_daily_trades: 5
+  max_per_stock_amount: 3000000
+target_stocks: []
