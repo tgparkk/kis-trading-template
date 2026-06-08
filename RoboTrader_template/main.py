@@ -512,6 +512,15 @@ class DayTradingBot:
         if self._candidates_loaded:
             return
 
+        # 후보 소비 전에 당일 스크리너 스냅샷을 직전 거래일 기준으로 생성(없으면).
+        # 직전 거래일 일봉은 야간 적재 완료라 항상 채워지며, 소비자(이 메서드)와 같은 날 정렬된다.
+        # run_screener_snapshot_hook 내부 _snapshot_done_date 가드로 하루 1회만 실제 실행.
+        try:
+            if getattr(self, 'liquidation_handler', None) is not None:
+                await self.liquidation_handler.run_screener_snapshot_hook()
+        except Exception as e:
+            self.logger.warning(f"스크리너 스냅샷 생성 스킵(무시): {e}")
+
         try:
             max_candidates = 10
             strategy_config = getattr(self.config, 'strategy', None)

@@ -283,7 +283,7 @@ CREATE TABLE IF NOT EXISTS screener_snapshots (
     stock_code VARCHAR(20) NOT NULL,
     stock_name VARCHAR(100),
     rank_in_snapshot INT,                   -- 스냅샷 내 순위 (1부터)
-    score NUMERIC(10,4),                    -- 스크리너 점수 (없으면 NULL)
+    score DOUBLE PRECISION,                 -- 스크리너 점수 (없으면 NULL). 거래대금 스케일(수십억) 허용
     metadata JSONB,                          -- 섹터/시총/거래량 등 부가 정보
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (strategy, scan_date, params_hash, stock_code)

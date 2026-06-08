@@ -177,6 +177,28 @@ class TestMainTradingLoop:
             assert 2 not in buy_called_iterations
 
 
+class TestPremarketSnapshotGeneration:
+    """후보 로드 직전(장전/최초 1회) 스크리너 스냅샷 생성 검증"""
+
+    @pytest.mark.asyncio
+    async def test_후보로드_전_스냅샷_생성_훅_호출(self, mock_bot):
+        """_load_screener_candidates 가 후보 소비 전에 스냅샷 생성 훅을 호출한다.
+
+        스냅샷은 직전 거래일 기준으로 생성되며(소비자와 같은 날 정렬),
+        run_screener_snapshot_hook 내부 _snapshot_done_date 가드로 하루 1회만 실제 실행된다.
+        """
+        mock_bot._candidates_loaded = False
+        mock_bot.strategies = {}  # 단일/없음 경로 (multi 분기 회피)
+        mock_bot.liquidation_handler = MagicMock()
+        mock_bot.liquidation_handler.run_screener_snapshot_hook = AsyncMock()
+        mock_bot.candidate_selector.load_from_screener = MagicMock(return_value=[])
+        mock_bot.candidate_selector.select_daily_candidates = AsyncMock(return_value=[])
+
+        await mock_bot._load_screener_candidates()
+
+        mock_bot.liquidation_handler.run_screener_snapshot_hook.assert_called_once()
+
+
 class TestCheckBuySignals:
     """_check_buy_signals 검증"""
 

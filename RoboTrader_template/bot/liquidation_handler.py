@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Set
 
 from core.models import StockState
 from utils.logger import setup_logger
-from utils.korean_time import now_kst
+from utils.korean_time import now_kst, get_previous_trading_day
 from utils.price_utils import round_to_tick
 from config.market_hours import MarketHours
 from config.constants import SCREENER_SNAPSHOT_ENABLED
@@ -213,8 +213,9 @@ class LiquidationHandler:
                 else:
                     self.logger.info(f"{time_label} 시장가 일괄매도 요청 완료")
 
-            # 포지션 유무에 무관하게 EOD 완료 후 스크리너 스냅샷 수집 (비차단, 하루 1회)
-            await self.run_screener_snapshot_hook()
+            # (스크리너 스냅샷 생성은 EOD 가 아니라 장전 최초 후보 로드 시점으로 이전됨:
+            #  당일 일봉이 quant 에 ~15:35 적재되므로 15:00 EOD 시점엔 빈 유니버스가 된다.
+            #  main._load_screener_candidates 가 run_screener_snapshot_hook 을 호출한다.)
 
             # EOD 잔고 이월: 가상매매 모드일 때 오늘 잔고를 DB에 저장
             self._save_paper_eod_balance_if_virtual()
@@ -428,7 +429,9 @@ class LiquidationHandler:
 
         try:
             from runners.screener_snapshot_collector import run_once, resolve_active_strategies
-            scan_date = now_kst().date()
+            # scan_date = 직전 거래일. 당일 일봉은 quant 에 ~15:35 적재되므로 당일을 쓰면
+            # 빈 유니버스가 된다. 직전 거래일은 야간 적재 완료라 항상 채워진다(장전 생성 정합).
+            scan_date = get_previous_trading_day(now_kst()).date()
 
             broker = getattr(self.bot, 'broker', None)
             db_manager = getattr(self.bot, 'db_manager', None)

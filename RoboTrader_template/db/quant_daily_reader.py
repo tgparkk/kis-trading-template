@@ -50,7 +50,12 @@ class QuantDailyReader:
             p.putconn(c)
 
     def get_universe_snapshot(self, scan_date) -> list:
-        """scan_date(date 또는 'YYYY-MM-DD') 의 (stock_code, market_cap, trading_value)."""
+        """scan_date(date 또는 'YYYY-MM-DD') 이하 '최신 거래일'의 (stock_code, market_cap, trading_value).
+
+        정확매칭(date = scan_date) 대신 ``date <= scan_date`` 중 최대일을 사용하는 방어적 조회.
+        EOD 스크리너가 quant 적재(~15:35) 전에 돌거나, scan_date 가 휴장/미적재일이어도
+        직전 거래일 유니버스로 폴백해 빈 유니버스가 되지 않게 한다(타이밍 무관).
+        """
         d = scan_date if isinstance(scan_date, str) else scan_date.strftime("%Y-%m-%d")
         try:
             with self._conn() as conn:
@@ -58,7 +63,8 @@ class QuantDailyReader:
                     cur.execute(
                         "SELECT stock_code, COALESCE(market_cap,0), "
                         "COALESCE(NULLIF(trading_value,0), (close*volume)::numeric, 0) "
-                        "FROM daily_prices WHERE date = %s",
+                        "FROM daily_prices "
+                        "WHERE date = (SELECT max(date) FROM daily_prices WHERE date <= %s)",
                         (d,),
                     )
                     rows = cur.fetchall()

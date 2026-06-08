@@ -460,25 +460,11 @@ class TestScreenerSnapshotHook:
         })
 
     @pytest.mark.asyncio
-    async def test_hook_called_even_when_no_positions(self):
-        """보유 포지션이 0개일 때도 스크리너 스냅샷 훅이 호출된다 (핵심 버그 수정 검증)"""
-        bot = _make_bot(positioned_stocks=[])
-        handler = _make_handler(bot)
+    async def test_hook_NOT_called_from_eod_liquidation(self):
+        """스냅샷 생성은 EOD 청산에서 호출되지 않는다 (장전 후보 로드 시점으로 이전됨).
 
-        with patch('bot.liquidation_handler.MarketHours') as mock_mh, \
-             patch('bot.liquidation_handler.SCREENER_SNAPSHOT_ENABLED', True), \
-             patch.object(handler, 'run_screener_snapshot_hook', new=AsyncMock()) as mock_hook:
-            mock_mh.get_market_hours.return_value = {
-                'eod_liquidation_hour': 15,
-                'eod_liquidation_minute': 20,
-            }
-            await handler.execute_end_of_day_liquidation()
-
-        mock_hook.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_hook_called_when_positions_exist_and_sell_succeeds(self):
-        """포지션이 있고 매도 성공 시에도 스크리너 스냅샷 훅이 호출된다"""
+        당일 일봉은 quant 에 ~15:35 적재되므로 15:00 EOD 시점엔 빈 유니버스가 된다.
+        생성 시점이 main._load_screener_candidates(장전 최초 로드)로 옮겨졌음을 회귀 고정한다."""
         stock = _make_trading_stock("005930")
         bot = _make_bot(positioned_stocks=[stock], is_virtual=True, virtual_sell_result=True)
         handler = _make_handler(bot)
@@ -492,7 +478,7 @@ class TestScreenerSnapshotHook:
             }
             await handler.execute_end_of_day_liquidation()
 
-        mock_hook.assert_called_once()
+        mock_hook.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_hook_not_called_twice_on_same_day(self):
@@ -514,6 +500,38 @@ class TestScreenerSnapshotHook:
                 await handler.run_screener_snapshot_hook()
 
         mock_run.assert_not_called()  # 당일 이미 실행됐으므로 스킵
+
+    @pytest.mark.asyncio
+    async def test_hook_uses_previous_trading_day_as_scan_date(self):
+        """스냅샷 생성 scan_date 는 '직전 거래일'이어야 한다.
+
+        당일 일봉은 quant 에 ~15:35 적재되므로 당일을 scan_date 로 쓰면 빈 유니버스가 된다.
+        직전 거래일은 야간 적재 완료 상태라 항상 채워진다.
+        2026-06-08(월) 기준 → scan_date == 2026-06-05(금, 주말 건너뜀)."""
+        from datetime import datetime, date
+        bot = _make_bot(positioned_stocks=[])
+        bot.config = None  # resolve_active_strategies → ALL_STRATEGIES 폴백
+        handler = _make_handler(bot)
+        handler._snapshot_done_date = None
+
+        captured = {}
+
+        def _fake_run_once(strategies, scan_date, max_candidates, dry_run,
+                           broker=None, db_manager=None, config=None):
+            captured['scan_date'] = scan_date
+            return []
+
+        with patch('bot.liquidation_handler.SCREENER_SNAPSHOT_ENABLED', True), \
+             patch('bot.liquidation_handler.now_kst',
+                   return_value=datetime(2026, 6, 8, 8, 0)), \
+             patch('runners.screener_snapshot_collector.run_once',
+                   side_effect=_fake_run_once):
+            await handler.run_screener_snapshot_hook()
+
+        assert captured.get('scan_date') == date(2026, 6, 5), (
+            f"scan_date 는 직전 거래일(2026-06-05)이어야 하는데 "
+            f"{captured.get('scan_date')} 반환"
+        )
 
     @pytest.mark.asyncio
     async def test_hook_disabled_when_screener_snapshot_not_enabled(self):
