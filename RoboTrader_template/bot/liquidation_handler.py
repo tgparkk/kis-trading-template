@@ -15,7 +15,7 @@ from utils.logger import setup_logger
 from utils.korean_time import now_kst, get_previous_trading_day
 from utils.price_utils import round_to_tick
 from config.market_hours import MarketHours
-from config.constants import SCREENER_SNAPSHOT_ENABLED
+from config.constants import SCREENER_SNAPSHOT_ENABLED, MAX_CANDIDATES_PER_STRATEGY
 
 if TYPE_CHECKING:
     from main import DayTradingBot
@@ -440,7 +440,7 @@ class LiquidationHandler:
             summaries = run_once(
                 strategies=resolve_active_strategies(config),
                 scan_date=scan_date,
-                max_candidates=10,
+                max_candidates=MAX_CANDIDATES_PER_STRATEGY,
                 dry_run=False,
                 broker=broker,
                 db_manager=db_manager,

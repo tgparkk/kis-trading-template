@@ -37,7 +37,7 @@ from config.market_hours import MarketHours
 from config.constants import (
     OHLCV_LOOKBACK_DAYS,
     TASK_SUPERVISOR_MAX_RETRIES, TASK_SUPERVISOR_BASE_DELAY, TASK_SUPERVISOR_MAX_DELAY,
-    VIRTUAL_CAPITAL_PER_STRATEGY
+    VIRTUAL_CAPITAL_PER_STRATEGY, MAX_CANDIDATES_PER_STRATEGY
 )
 
 # 리팩토링된 모듈 import
@@ -522,12 +522,12 @@ class DayTradingBot:
             self.logger.warning(f"스크리너 스냅샷 생성 스킵(무시): {e}")
 
         try:
-            max_candidates = 10
+            max_candidates = MAX_CANDIDATES_PER_STRATEGY
             strategy_config = getattr(self.config, 'strategy', None)
             if isinstance(strategy_config, dict):
-                max_candidates = strategy_config.get('parameters', {}).get('max_candidates', 10)
+                max_candidates = strategy_config.get('parameters', {}).get('max_candidates', MAX_CANDIDATES_PER_STRATEGY)
             elif hasattr(strategy_config, 'parameters'):
-                max_candidates = strategy_config.parameters.get('max_candidates', 10)
+                max_candidates = strategy_config.parameters.get('max_candidates', MAX_CANDIDATES_PER_STRATEGY)
 
             # ── 다중 전략 모드 ────────────────────────────────────────────────
             if len(self.strategies) > 1:

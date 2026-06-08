@@ -137,6 +137,7 @@ CANDIDATE_MIN_PRICE = 5000           # 후보 종목 최소 가격 (원) — 저
 CANDIDATE_MAX_PRICE = 500000         # 후보 종목 최대 가격 (원)
 CANDIDATE_MIN_DAILY_DATA = 22        # 전략에 필요한 최소 일봉 수
 CANDIDATE_DAILY_FETCH_DAYS = 120     # 일봉 API 조회 기간 (일, 달력 120 ≈ 영업 85 — Elder 70봉 충족)
+MAX_CANDIDATES_PER_STRATEGY = 20     # 전략별 매수후보 상한 (EOD 스냅샷 생성·라이브 소비 공통 SSOT)
 
 # =============================================================================
 # 트레일링 스톱 설정

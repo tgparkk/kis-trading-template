@@ -534,6 +534,36 @@ class TestScreenerSnapshotHook:
         )
 
     @pytest.mark.asyncio
+    async def test_hook_uses_max_candidates_per_strategy_constant(self):
+        """스냅샷 생성 시 전략당 후보 상한은 MAX_CANDIDATES_PER_STRATEGY(=20)를 사용한다."""
+        from datetime import datetime
+        from config.constants import MAX_CANDIDATES_PER_STRATEGY
+        bot = _make_bot(positioned_stocks=[])
+        bot.config = None
+        handler = _make_handler(bot)
+        handler._snapshot_done_date = None
+
+        captured = {}
+
+        def _fake_run_once(strategies, scan_date, max_candidates, dry_run,
+                           broker=None, db_manager=None, config=None):
+            captured['max_candidates'] = max_candidates
+            return []
+
+        with patch('bot.liquidation_handler.SCREENER_SNAPSHOT_ENABLED', True), \
+             patch('bot.liquidation_handler.now_kst',
+                   return_value=datetime(2026, 6, 8, 8, 0)), \
+             patch('runners.screener_snapshot_collector.run_once',
+                   side_effect=_fake_run_once):
+            await handler.run_screener_snapshot_hook()
+
+        assert MAX_CANDIDATES_PER_STRATEGY == 20
+        assert captured.get('max_candidates') == MAX_CANDIDATES_PER_STRATEGY, (
+            f"스냅샷 생성 상한은 {MAX_CANDIDATES_PER_STRATEGY}여야 하는데 "
+            f"{captured.get('max_candidates')} 사용"
+        )
+
+    @pytest.mark.asyncio
     async def test_hook_disabled_when_screener_snapshot_not_enabled(self):
         """SCREENER_SNAPSHOT_ENABLED=False 이면 훅이 실행되지 않는다"""
         bot = _make_bot(positioned_stocks=[])
