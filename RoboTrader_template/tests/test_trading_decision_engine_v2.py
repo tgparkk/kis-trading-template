@@ -109,6 +109,37 @@ class TestAnalyzeBuyDecision:
         )
         assert result[0] is False
 
+    def test_owner_signal_used_over_engine_strategy(self, engine, sample_daily_data):
+        """다중전략: 호출 전략이 넘긴 owner_signal을 신뢰해 매수 판단해야 한다.
+
+        2026-06-09 ④ 버그: decision_engine.self.strategy(첫 전략=Elder 고정)로 모든
+        전략의 후보를 재판정 → 6/7 전략이 '조건미충족' 거부. owner_signal을 받으면
+        엔진 고정전략 대신 그 신호를 신뢰해야 한다.
+        """
+        from unittest.mock import MagicMock
+        from strategies.base import SignalType
+        engine.check_market_direction = Mock(return_value=(False, ""))
+        # 엔진 고정전략은 이 종목을 거부(None) — Elder가 Minervini 후보를 거부하는 상황
+        engine_strategy = MagicMock()
+        engine_strategy.name = "elder"
+        engine_strategy.generate_signal.return_value = None
+        engine.strategy = engine_strategy
+        engine.fund_manager = Mock()
+        engine.fund_manager.get_max_buy_amount.return_value = 500000
+
+        owner_signal = MagicMock()
+        owner_signal.signal_type = SignalType.BUY
+        owner_signal.confidence = 58
+        owner_signal.reasons = ["volume_dryup recent/base=0.17"]
+
+        stock = TradingStock(stock_code="005880", stock_name="부산산업",
+                             state=StockState.SELECTED, selected_time=datetime.now())
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.analyze_buy_decision(stock, sample_daily_data, owner_signal=owner_signal)
+        )
+        assert result[0] is True, "owner_signal(BUY)을 신뢰해 매수 판단해야 함"
+        engine_strategy.generate_signal.assert_not_called()
+
     def test_strategy_buy_signal(self, engine, sample_daily_data):
         from unittest.mock import MagicMock
         # 시장 방향성 필터 비활성화 (테스트 환경)

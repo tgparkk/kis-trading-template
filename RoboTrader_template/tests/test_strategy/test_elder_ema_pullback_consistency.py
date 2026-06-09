@@ -219,6 +219,61 @@ class TestSellConditionConsistency:
 
 
 # ----------------------------------------------------------------------------- #
+# 2-bis. 보유종목 매도판단은 일봉에서만 — 분봉 whipsaw 방지 (2026-06-09 버그 회귀)
+# ----------------------------------------------------------------------------- #
+class TestIntradaySellWhipsawGuard:
+    """진입은 일봉 EMA65 상승으로 통과했는데, 보유 직후 분봉 EMA65로 trend_flip이
+    오발동해 3초 만에 청산된 버그(2026-06-09 192080) 회귀 방지.
+
+    Elder 설계의도: '매도는 일봉 재조회, trailing/trend_flip은 일봉 EOD 해상도'.
+    분봉(intraday) 경로로 들어온 보유종목 매도판단은 None이어야 하고(장중 실시간
+    손익절은 position_monitor가 현재가로 독립 처리), 일봉 경로는 그대로 동작해야 한다.
+    """
+
+    def _downtrend_df(self):
+        # EMA65 하락 추세 → trend_flip(EMA65[-1] < EMA65[-6]) 발동 형태
+        base = np.linspace(16000, 10000, 90)
+        return _make_df(list(base))
+
+    def _make_strat(self):
+        strat = ElderEmaPullbackStrategy({
+            "parameters": {"min_daily_bars": 70},
+            "risk_management": {
+                "take_profit_pct": 0.30, "stop_loss_pct": 0.08,
+                "max_hold_days": 100, "trail_ema": 13, "trend_flip_exit": True,
+            },
+            "paper_trading": True,
+        })
+        strat.on_init(broker=None, data_provider=None, executor=None)
+        return strat
+
+    def test_daily_held_position_emits_trend_flip(self):
+        """일봉 경로: 보유종목 + EMA65 하락 → trend_flip 매도 (정상 동작 보존)."""
+        from strategies.base import SignalType
+        strat = self._make_strat()
+        df = self._downtrend_df()
+        cur = float(df["close"].iloc[-1])
+        strat.positions["005930"] = {
+            "quantity": 10, "entry_price": cur * 1.03, "entry_time": None,
+        }  # ret≈-2.9% (sl 미충족, ret<0이라 trail 미발동) → trend_flip만 남음
+        sig = strat.generate_signal("005930", df, timeframe="daily")
+        assert sig is not None
+        assert sig.signal_type == SignalType.SELL
+        assert sig.metadata.get("exit_reason") == "trend_flip"
+
+    def test_intraday_held_position_no_sell(self):
+        """분봉 경로: 동일 보유종목·동일 df라도 매도신호를 내면 안 된다 (whipsaw 방지)."""
+        strat = self._make_strat()
+        df = self._downtrend_df()
+        cur = float(df["close"].iloc[-1])
+        strat.positions["005930"] = {
+            "quantity": 10, "entry_price": cur * 1.03, "entry_time": None,
+        }
+        sig = strat.generate_signal("005930", df, timeframe="intraday")
+        assert sig is None
+
+
+# ----------------------------------------------------------------------------- #
 # 3. StrategyLoader 로드 검증
 # ----------------------------------------------------------------------------- #
 class TestStrategyLoaderIntegration:

@@ -231,3 +231,88 @@ class TestOnTickEmitsSignalGeneratedOnBuy:
         assert ev["stock_code"] == "005930"
         assert ev["signal_type"] == "BUY", f"signal_type 불일치: {ev}"
         assert "confidence" in ev, f"confidence 필드 없음: {ev}"
+
+
+# ============================================================================
+# Test 5: exit_timeframe — 보유종목 매도판단 데이터 소스 (2026-06-09 whipsaw 수정)
+# ============================================================================
+
+class _SellTimeframeRecordingStrategy(BaseStrategy):
+    """매도판단에 전달된 timeframe을 기록하는 최소 전략."""
+
+    name = "SellTfRec"
+    version = "1.0.0"
+
+    def __init__(self, exit_timeframe=None):
+        super().__init__({})
+        if exit_timeframe is not None:
+            self.exit_timeframe = exit_timeframe
+        self.sell_timeframes = []
+
+    def get_min_data_length(self):
+        return 1
+
+    def generate_signal(self, stock_code, data, timeframe="daily"):
+        # 보유종목 매도 평가에서만 호출됨(이 테스트는 selected=[]). timeframe 기록.
+        self.sell_timeframes.append(timeframe)
+        return None
+
+
+def _make_sell_ctx():
+    """매도 루프용 ctx: 보유종목 1개 + 일봉/분봉 조회 호출 추적."""
+    import logging
+
+    pos = MagicMock()
+    pos.stock_code = "005930"
+
+    ctx = MagicMock()
+    ctx.tracer = None
+    ctx.get_selected_stocks.return_value = []
+    ctx.get_positions.return_value = [pos]
+
+    daily_calls, intraday_calls = [], []
+
+    async def _get_daily(code, days=60):
+        daily_calls.append(code)
+        return _make_daily_data(80)
+
+    async def _get_intraday(code):
+        intraday_calls.append(code)
+        return _make_daily_data(80)
+
+    ctx.get_daily_data = _get_daily
+    ctx.get_intraday_data = _get_intraday
+    ctx.sell = AsyncMock()
+    ctx.logger = logging.getLogger("test_sell_ctx")
+    return ctx, daily_calls, intraday_calls
+
+
+class TestOnTickExitTimeframe:
+    """exit_timeframe에 따라 보유종목 매도판단의 데이터 소스가 달라진다."""
+
+    @pytest.mark.asyncio
+    async def test_daily_exit_strategy_uses_daily_data(self):
+        """exit_timeframe='daily' → 매도판단에 일봉 조회 + timeframe='daily' 전달."""
+        strat = _SellTimeframeRecordingStrategy(exit_timeframe="daily")
+        ctx, daily_calls, intraday_calls = _make_sell_ctx()
+
+        await strat.on_tick(ctx)
+
+        assert daily_calls == ["005930"], "보유종목 매도판단에 일봉을 조회해야 함"
+        assert intraday_calls == [], "exit_timeframe='daily'면 분봉을 조회하면 안 됨"
+        assert strat.sell_timeframes == ["daily"], (
+            f"generate_signal에 timeframe='daily' 전달돼야 함: {strat.sell_timeframes}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_default_strategy_uses_intraday_data(self):
+        """기본(exit_timeframe 미설정) → 기존대로 분봉 조회 (하위호환)."""
+        strat = _SellTimeframeRecordingStrategy()  # 기본값
+        assert strat.exit_timeframe == "intraday"
+        ctx, daily_calls, intraday_calls = _make_sell_ctx()
+
+        await strat.on_tick(ctx)
+
+        assert intraday_calls == ["005930"], "기본 전략은 분봉을 조회해야 함"
+        assert daily_calls == [], "기본 전략은 매도판단에 일봉을 조회하면 안 됨"
+        assert strat.sell_timeframes == ["intraday"]

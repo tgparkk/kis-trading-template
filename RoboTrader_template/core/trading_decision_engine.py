@@ -231,7 +231,8 @@ class TradingDecisionEngine:
     # 매수 판단
     # =========================================================================
     async def analyze_buy_decision(self, trading_stock, daily_data,
-                                   regime_index: str = "both") -> Tuple[bool, str, dict]:
+                                   regime_index: str = "both",
+                                   owner_signal=None) -> Tuple[bool, str, dict]:
         """
         매수 판단 분석
 
@@ -260,11 +261,24 @@ class TradingDecisionEngine:
             should_buy = False
             buy_reason = ""
             signal = None
+            from strategies.base import SignalType
 
-            # Strategy가 설정된 경우 신호 생성
-            if self.strategy:
+            if owner_signal is not None and getattr(owner_signal, "signal_type", None) in [
+                SignalType.BUY, SignalType.STRONG_BUY
+            ]:
+                # 다중전략: 호출 전략(on_tick)이 '올바른 전략'으로 이미 생성·검증한 신호를
+                # 신뢰한다. 여기서 self.strategy(첫 전략=Elder 단일 고정)로 재판정하면
+                # Elder 외 6개 전략의 후보가 전부 거부돼 매수 불가가 된다(2026-06-09 ④ 버그).
+                signal = owner_signal
+                should_buy = True
+                buy_reason = (", ".join(signal.reasons) if signal.reasons
+                              else f"{getattr(signal, 'strategy_name', '') or '전략'} 매수신호")
+                self.logger.info(
+                    f"{code} 전달 매수신호 사용: {buy_reason} (신뢰도: {getattr(signal, 'confidence', '?')}%)"
+                )
+            elif self.strategy:
+                # 레거시/단일전략 경로: 호출자가 신호를 안 넘긴 경우에만 자체 생성.
                 try:
-                    from strategies.base import SignalType
                     signal = self.strategy.generate_signal(code, daily_data)
 
                     if signal and signal.signal_type in [SignalType.BUY, SignalType.STRONG_BUY]:

@@ -26,7 +26,7 @@ class TradingAnalyzer:
             bot.decision_engine.set_fund_manager(bot.fund_manager)
 
     async def analyze_buy_decision(self, trading_stock, available_funds: float = None,
-                                   signal=None, strategy_name: str = "") -> None:
+                                   signal=None, strategy_name: str = "") -> bool:
         """매수 판단 분석 (일봉 데이터 사용)
 
         Args:
@@ -35,7 +35,13 @@ class TradingAnalyzer:
             signal: Signal 객체 (TradingContext.buy()에서 전달, target_price/stop_loss 활용)
             strategy_name: 전략 폴더키 (TradingContext.buy()에서 전달).
                            VirtualTradingManager 전략별 자금 격리 원장 조회 키로 사용.
+
+        Returns:
+            bool: 실제 매수가 체결(가상/실전)되면 True, 거부·실패·미체결이면 falsy.
+                  호출자(TradingContext.buy)가 진입 쿨다운 무장 여부 판단에 사용한다 —
+                  거부된 시도까지 쿨다운을 무장시키면 후속 진입을 굶긴다(2026-06-09 수정).
         """
+        executed = False
         try:
             stock_code = trading_stock.stock_code
             stock_name = trading_stock.stock_name
@@ -76,8 +82,10 @@ class TradingAnalyzer:
                 pass
 
             # 매매 판단 엔진으로 매수 신호 확인 (일봉 데이터 사용)
+            # owner_signal: on_tick에서 '올바른 전략'이 생성·검증한 신호를 그대로 전달해야
+            # decision_engine이 단일 고정전략(Elder)으로 재판정하지 않는다(2026-06-09 ④ 수정).
             buy_signal, buy_reason, buy_info = await self.bot.decision_engine.analyze_buy_decision(
-                trading_stock, daily_data, regime_index=regime_index
+                trading_stock, daily_data, regime_index=regime_index, owner_signal=signal
             )
 
             self.logger.debug(f"{stock_code} 매수 판단 결과: signal={buy_signal}, reason='{buy_reason}'")
@@ -165,6 +173,7 @@ class TradingAnalyzer:
                         except Exception as e:
                             self.logger.debug(f"가상 매수 상태 변경 실패: {stock_code} - {e}")
                         self.logger.info(f"가상 매수 완료 처리: {stock_code}({stock_name}) - {buy_reason}")
+                        executed = True
                     except Exception as e:
                         # 매수 실패 시 자금 예약 취소
                         self.bot.fund_manager.cancel_order(_reserve_id)
@@ -180,6 +189,7 @@ class TradingAnalyzer:
                         if success:
                             # 자금 확정은 체결 확인 시 OrderMonitor에서 처리 (이중 확정 방지)
                             self.logger.info(f"실전 매수 주문 접수: {stock_code}({stock_name}) - {buy_reason}")
+                            executed = True
                         else:
                             # 매수 실패 시 자금 예약 취소
                             self.bot.fund_manager.cancel_order(_reserve_id)
@@ -188,10 +198,13 @@ class TradingAnalyzer:
                         self.bot.fund_manager.cancel_order(_reserve_id)
                         self.logger.error(f"실전 매수 처리 오류: {e}")
 
+            return executed
+
         except Exception as e:
             self.logger.error(f"{trading_stock.stock_code} 매수 판단 오류: {e}")
             import traceback
             self.logger.error(f"상세 오류 정보: {traceback.format_exc()}")
+            return False
 
     async def analyze_sell_decision(self, trading_stock) -> None:
         """매도 판단 분석 (1분봉 고가/저가 기준 익절/손절 + 3분봉 기술적 분석)"""

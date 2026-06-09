@@ -64,6 +64,9 @@ class ElderEmaPullbackStrategy(BaseStrategy):
     description: str = "Elder Triple Screen A — EMA65 상승 + EMA13 눌림 회복 (sl8/tp30/trail/flip)"
     author: str = "Template"
     holding_period: str = "swing"
+    # 매도(trailing/trend_flip)는 '확정 일봉' 해상도로 평가 — 분봉 평가 시 EMA13/EMA65가
+    # 분봉봉 기준으로 오작동해 진입 직후 청산되는 whipsaw 발생(2026-06-09 192080).
+    exit_timeframe: str = "daily"
     # 추세추종 진입 — 거래량 상위 fallback 풀과 정합 (기본 True 유지)
     accepts_volume_fallback: bool = True
 
@@ -141,6 +144,15 @@ class ElderEmaPullbackStrategy(BaseStrategy):
         if data is None or len(data) < self.get_min_data_length():
             return None
 
+        # 진입·청산 모두 '확정 일봉' 기준으로만 평가 (백테스트 정합 + 본 전략 설계의도:
+        # "매도는 일봉 재조회, trailing/trend_flip은 일봉 EOD 종가 해상도" — 파일 상단 docstring).
+        # 분봉(intraday)으로 들어오면 EMA13/EMA65 청산이 분봉봉 기준으로 오작동해
+        # 진입 직후 trend_flip이 오발동(whipsaw)한다(2026-06-09 192080). 장중 실시간
+        # 손익절·트레일링·최대보유일은 position_monitor가 현재가 기준으로 독립 처리하므로,
+        # 분봉 경로에서는 매도·매수 모두 평가하지 않고 None을 반환한다.
+        if timeframe != "daily":
+            return None
+
         # 보유 종목 → 매도(청산) 판단 우선
         if stock_code in self.positions:
             return self._check_sell(stock_code, data)
@@ -148,10 +160,6 @@ class ElderEmaPullbackStrategy(BaseStrategy):
         if self.daily_trades >= self._max_daily_trades:
             return None
         if len(self.positions) >= self._max_positions:
-            return None
-
-        # 진입은 확정 일봉 기준 (백테스트와 동일). 매도 경로(intraday)에서는 신규 진입 안 함.
-        if timeframe != "daily":
             return None
 
         return self._check_buy(stock_code, data)

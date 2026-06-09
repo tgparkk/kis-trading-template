@@ -284,6 +284,17 @@ class BaseStrategy(ABC):
     author: str = ""
     holding_period: str = "intraday"
 
+    # 보유종목 매도판단(structural exit)에 사용할 데이터 해상도.
+    # 기본 on_tick()의 매도 루프가 이 값에 따라 일봉/분봉을 선택해 generate_signal에
+    # 전달한다.
+    #   - "intraday"(기본): 분봉으로 매도 평가 (분봉 단타 전략). 기존 동작 = 하위호환.
+    #   - "daily": 보유종목도 '확정 일봉'으로 재조회해 매도 평가. EMA/MA 기반 청산
+    #     (trailing·trend_flip 등)을 쓰는 스윙/일봉 전략은 반드시 "daily"여야 한다.
+    #     분봉으로 평가하면 일봉 지표가 분봉봉 기준으로 오작동해 진입 직후 청산되는
+    #     whipsaw가 발생한다(2026-06-09 Elder 192080). 장중 실시간 손익절·트레일링·
+    #     최대보유일은 PositionMonitor가 현재가 기준으로 독립 처리하므로 손실되지 않는다.
+    exit_timeframe: str = "intraday"
+
     # 전략별 자금 상한 비율 (1.0 = 전체 사용 가능).
     # StrategyLoader.load_strategies()가 spec의 max_capital_pct 값으로 덮어씀.
     # E2 FundManager가 이 값을 참조해 reserve 거부.
@@ -599,9 +610,15 @@ class BaseStrategy(ABC):
         sell_signals = 0
         for stock in ctx.get_positions():
             sell_checked += 1
-            data = await ctx.get_intraday_data(stock.stock_code)
+            # 매도판단 데이터 해상도는 exit_timeframe로 결정 (스윙/일봉 전략은 'daily').
+            if self.exit_timeframe == 'daily':
+                data = await ctx.get_daily_data(stock.stock_code)
+                sell_timeframe = 'daily'
+            else:
+                data = await ctx.get_intraday_data(stock.stock_code)
+                sell_timeframe = 'intraday'
             if data is not None and len(data) > 0:
-                signal = self.generate_signal(stock.stock_code, data, timeframe='intraday')
+                signal = self.generate_signal(stock.stock_code, data, timeframe=sell_timeframe)
                 if signal and signal.signal_type in (SignalType.SELL, SignalType.STRONG_SELL):
                     sell_signals += 1
                     reasons_str = ', '.join(signal.reasons) if signal.reasons else '-'

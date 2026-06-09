@@ -229,6 +229,64 @@ class TestAnalyzeBuyDecision:
         bot.decision_engine.execute_virtual_buy.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_forwards_owner_signal_to_decision_engine(self):
+        """on_tick이 넘긴 전략 신호를 decision_engine 매수판단에 owner_signal로 전달한다.
+
+        2026-06-09 ④ 수정: 미전달 시 decision_engine이 단일 고정전략(Elder)으로
+        재판정 → 6/7 전략 매수 불가. 호출 전략의 signal을 반드시 전달해야 한다.
+        """
+        from unittest.mock import MagicMock
+        stock = _make_trading_stock("005930")
+        stock.is_buy_cooldown_active = Mock(return_value=False)
+        bot = _make_bot(buy_signal=False)  # 결과 무관, 전달 인자만 검증
+        analyzer = _make_analyzer(bot)
+        sig = MagicMock()
+
+        await analyzer.analyze_buy_decision(stock, available_funds=1_000_000, signal=sig)
+
+        _, kwargs = bot.decision_engine.analyze_buy_decision.call_args
+        assert kwargs.get("owner_signal") is sig, "owner_signal로 전략 신호를 전달해야 함"
+
+    # ── 반환값: 실제 체결 여부 (2026-06-09 쿨다운 무조건 갱신 버그 수정) ──────────
+    @pytest.mark.asyncio
+    async def test_returns_true_on_successful_virtual_buy(self):
+        """가상 매수가 실제 체결되면 True를 반환한다 (호출자 쿨다운 무장 판단용)."""
+        stock = _make_trading_stock("005930")
+        stock.is_buy_cooldown_active = Mock(return_value=False)
+        stock.set_buy_time = Mock()
+
+        bot = _make_bot(is_virtual=True, buy_signal=True, reserve_ok=True)
+        analyzer = _make_analyzer(bot)
+
+        result = await analyzer.analyze_buy_decision(stock, available_funds=1_000_000)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_already_positioned(self):
+        """이미 보유 중이라 매수를 스킵하면 False(거부)를 반환한다."""
+        stock = _make_trading_stock("005930")
+        positioned = _make_positioned_stock("005930")
+        bot = _make_bot(positioned_stocks=[positioned])
+        analyzer = _make_analyzer(bot)
+
+        result = await analyzer.analyze_buy_decision(stock, available_funds=1_000_000)
+
+        assert not result
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_fund_reservation_fails(self):
+        """자금 예약 실패로 체결 못하면 False를 반환한다 (쿨다운 무장 금지)."""
+        stock = _make_trading_stock("005930")
+        stock.is_buy_cooldown_active = Mock(return_value=False)
+        bot = _make_bot(reserve_ok=False)
+        analyzer = _make_analyzer(bot)
+
+        result = await analyzer.analyze_buy_decision(stock, available_funds=1_000_000)
+
+        assert not result
+
+    @pytest.mark.asyncio
     async def test_adjusts_quantity_when_required_amount_exceeds_max_buy(self):
         """필요 금액이 max_buy_amount 초과 시 수량을 줄여 매수 시도한다"""
         stock = _make_trading_stock("005930")

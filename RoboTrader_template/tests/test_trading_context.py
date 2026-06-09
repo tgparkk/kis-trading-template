@@ -764,6 +764,31 @@ class TestBuyEntryThrottle:
         assert ctx._last_new_entry_time is not None
         assert ctx._new_entries_this_cycle == 1
 
+    @pytest.mark.asyncio
+    async def test_rejected_buy_does_not_arm_cooldown(self):
+        """체결되지 않은 매수 시도(analyze_buy_decision=False)는 쿨다운을 무장시키지 않는다.
+
+        2026-06-09 버그: 거부/실패한 매수 시도도 _last_new_entry_time을 갱신해
+        60초 쿨다운이 영구 재무장되며 후속 진입을 굶겼다.
+        """
+        ctx, cb_state, analyzer = self._make_throttle_ctx(cooldown=60)
+        analyzer.analyze_buy_decision.return_value = False  # 체결 실패/거부
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            result = await ctx.buy("005930")
+        assert result is None, "체결 안 됐으면 None 반환"
+        assert ctx._last_new_entry_time is None, "거부된 시도는 쿨다운 미무장"
+        assert ctx._new_entries_this_cycle == 0
+
+    @pytest.mark.asyncio
+    async def test_rejected_buy_does_not_block_next_entry(self):
+        """거부된 시도 후에도 다음 진입은 쿨다운에 막히지 않는다 (체결된 경우만 무장)."""
+        ctx, cb_state, analyzer = self._make_throttle_ctx(cooldown=60)
+        analyzer.analyze_buy_decision.return_value = False
+        with patch('config.market_hours.get_circuit_breaker_state', return_value=cb_state):
+            await ctx.buy("005930")           # 거부 — 무장 안 함
+            result = await ctx.buy("000660")  # 다음 진입 — 통과해야 함
+        assert analyzer.analyze_buy_decision.await_count == 2
+
 
 # ============================================================================
 # d) 주문 — sell()

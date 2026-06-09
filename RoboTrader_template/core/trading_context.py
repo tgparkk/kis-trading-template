@@ -426,11 +426,16 @@ class TradingContext:
             # TradingAnalyzer를 통한 매수 판단 + 실행
             # _strategy_key(폴더키)를 전달 — VirtualTradingManager 전략별 자금
             # 격리 원장이 main.py 할당 시 사용한 폴더키와 일관되게 매칭되도록 함.
-            await self._trading_analyzer.analyze_buy_decision(
+            executed = await self._trading_analyzer.analyze_buy_decision(
                 trading_stock, signal=signal, strategy_name=self._strategy_key
             )
 
-            # 신규 진입 성공 — 쿨다운/사이클 카운터 갱신
+            # 실제 체결된 경우에만 쿨다운/사이클 카운터 갱신.
+            # 거부·실패(이미 보유·자금부족·예약실패 등)한 시도가 쿨다운을 무장시키면
+            # 60초마다 재무장돼 후속 진입을 영구히 굶긴다(2026-06-09 버그 수정).
+            if not executed:
+                return None
+
             self._last_new_entry_time = now_kst()
             self._new_entries_this_cycle += 1
 
