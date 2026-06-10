@@ -14,7 +14,7 @@ parameters:
   ma_long: 60
   abs_lb: 60
   rs_lb: 120
-  min_daily_bars: 130
+  min_daily_bars: 65            # 라이브 진입 게이트 — 룰 요구 61봉(MA60+60일수익)+버퍼. 라이브 일봉 ~78봉 < 130이라 130은 영구 미발사(2026-06-10 수정). 횡단면 RS는 스크리너(rs_lb=120)가 quant 풀히스토리로 담당.
   max_holding_days: 30
 risk_management:
   take_profit_pct: 0.15       # 추세추종 — 고정익절 거의 무효(트레일이 주 청산)

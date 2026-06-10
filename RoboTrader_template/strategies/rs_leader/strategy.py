@@ -26,7 +26,7 @@ class RSLeaderStrategy(BaseStrategy):
 
     def get_min_data_length(self) -> int:
         params = self.config.get("parameters", {})
-        return int(params.get("min_daily_bars", 130))
+        return int(params.get("min_daily_bars", 65))
 
     def on_init(self, broker, data_provider, executor) -> bool:
         self._broker = broker
@@ -34,7 +34,7 @@ class RSLeaderStrategy(BaseStrategy):
         self._executor = executor
 
         params = self.config.get("parameters", {})
-        self._min_daily_bars = int(params.get("min_daily_bars", 130))
+        self._min_daily_bars = int(params.get("min_daily_bars", 65))
         self._ma_short = int(params.get("ma_short", 20))
         self._ma_long = int(params.get("ma_long", 60))
         self._abs_lb = int(params.get("abs_lb", 60))
@@ -106,7 +106,7 @@ class RSLeaderStrategy(BaseStrategy):
 
     # --- 순수 판단 함수 ---
     @staticmethod
-    def evaluate_entry(df: pd.DataFrame, min_daily_bars: int = 130,
+    def evaluate_entry(df: pd.DataFrame, min_daily_bars: int = 65,
                        ma_short: int = 20, ma_long: int = 60, abs_lb: int = 60
                        ) -> Tuple[bool, List[str]]:
         """절대상승추세 진입 — RSLeaderRule 단일 소스 재사용."""

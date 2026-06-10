@@ -1,7 +1,20 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import yaml
 
 from strategies.rs_leader.strategy import RSLeaderStrategy
+
+
+def _load_config():
+    cfg_path = Path(__file__).resolve().parents[3] / "strategies" / "rs_leader" / "config.yaml"
+    return yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+
+
+# 라이브 ctx.get_daily_data 가 공급하는 확정 일봉 수의 보수적 하한.
+# robotrader ~78~85봉(OHLCV_LOOKBACK_DAYS 120 기반, 주말/휴장/당일 제외) — 2026-06-10 실측 78.
+LIVE_DAILY_BAR_SUPPLY = 78
 
 
 def _df(closes):
@@ -11,6 +24,24 @@ def _df(closes):
         "open": closes, "high": closes, "low": closes,
         "close": closes, "volume": [1000] * n,
     })
+
+
+def test_entry_gate_accepts_live_bar_supply():
+    """진입 게이트(min_daily_bars)는 라이브 일봉 공급(~78봉) 이하여야 한다.
+
+    실제 진입 룰(RSLeaderRule)은 MA60+60일수익 = 61봉이면 충분한데,
+    config 의 min_daily_bars 가 스크리너 RS워밍업(130)을 차용하면
+    라이브 일봉(<130)이 영구히 게이트를 못 넘어 매수 0건이 된다(2026-06-10 버그).
+    """
+    strat = RSLeaderStrategy(config=_load_config())
+    gate = strat.get_min_data_length()
+    assert gate <= LIVE_DAILY_BAR_SUPPLY, (
+        f"게이트 {gate}봉 > 라이브 공급 {LIVE_DAILY_BAR_SUPPLY}봉 → 영구 미발사"
+    )
+    # 그 게이트로 통과한 라이브 폭(78봉) 상승추세는 실제 진입 시그널을 내야 한다.
+    closes = list(np.linspace(10000, 20000, LIVE_DAILY_BAR_SUPPLY))
+    ok, reasons = RSLeaderStrategy.evaluate_entry(_df(closes), min_daily_bars=gate)
+    assert ok is True and reasons
 
 
 def test_evaluate_entry_uptrend_true():
