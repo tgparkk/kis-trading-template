@@ -53,6 +53,9 @@ class VirtualTradingManager:
         # Emergency Sell Path: DB 저장 실패 시 재시도 큐
         self._pending_sell_records: List[Dict] = []
         self._max_retries = 10
+        # 전략별 종목당 투자금액 오버라이드 (yaml risk_management.paper_investment_per_stock).
+        # 미설정 전략은 기존 virtual_investment_amount(가상 100만) 기본값 — 기존 전략 무영향.
+        self._strategy_investment_amounts: Dict[str, float] = {}
         self._fallback_path = os.path.join("logs", "pending_sells_fallback.json")
         self._last_retry_time: Optional[datetime] = None
         self._last_pending_log_time: Optional[datetime] = None
@@ -191,7 +194,8 @@ class VirtualTradingManager:
     # 전략별 자금 격리 원장
     # =========================================================================
 
-    def allocate_strategy_capital(self, strategy_name: str, amount: float) -> None:
+    def allocate_strategy_capital(self, strategy_name: str, amount: float,
+                                  max_positions: int = None) -> None:
         """전략별 가상 초기자본을 명시 할당하고 집계 잔고를 동기화.
 
         이번 세션 시작 시점에 전략 폴더키별 초기자본을 지정하는 용도.
@@ -201,6 +205,10 @@ class VirtualTradingManager:
         Args:
             strategy_name: 전략 폴더키 (StrategyLoader self.strategies dict 키와 동일)
             amount: 초기 할당 자본 (원)
+            max_positions: 전략 최대 동시 보유 종목수(K). 지정 시 종목당 기본
+                예산 = amount/K (균등 K분할 — 백테스트 균등복리 K분할과 정합,
+                2026-06-11 사장님 결재 A안). yaml paper_investment_per_stock이
+                있으면 이후 set_strategy_investment_amount가 덮어쓴다.
         """
         if not strategy_name:
             self.logger.warning("allocate_strategy_capital: 빈 전략명 무시")
@@ -217,10 +225,26 @@ class VirtualTradingManager:
         self._strategy_invested[strategy_name] = 0.0
         self._strategy_positions.setdefault(strategy_name, [])
         self._strategy_initial[strategy_name] = amount
+        if max_positions and int(max_positions) > 0:
+            self._strategy_investment_amounts[strategy_name] = amount / int(max_positions)
         self._sync_aggregate_from_strategies()
         self.logger.info(
             f"전략 자금 할당: {strategy_name} {amount:,.0f}원 "
             f"(집계 {self.virtual_balance:,.0f}원)"
+        )
+
+    def set_strategy_investment_amount(self, strategy_name: str, amount: float) -> None:
+        """전략별 종목당 투자금액 설정 (yaml risk_management.paper_investment_per_stock).
+
+        get_max_quantity 가 min(이 값, 전략 잔여 budget) 으로 수량을 산정한다.
+        미설정 전략은 기존 virtual_investment_amount(100만) — 기존 전략 거동 불변.
+        (배경: 사이징 시나리오 검증 dev20_sizing_scenarios.tsv — S2=자본/K 가 스위트스팟)
+        """
+        if not strategy_name or amount is None or float(amount) <= 0:
+            return
+        self._strategy_investment_amounts[strategy_name] = float(amount)
+        self.logger.info(
+            f"전략 종목당 투자금액 설정: {strategy_name} {float(amount):,.0f}원"
         )
 
     def restore_strategy_ledger_from_records(
@@ -387,7 +411,9 @@ class VirtualTradingManager:
                 budget = self._strategy_balances[strategy_name]
             else:
                 budget = self.virtual_balance
-            max_amount = min(self.virtual_investment_amount, budget)
+            per_stock = self._strategy_investment_amounts.get(
+                strategy_name, self.virtual_investment_amount)
+            max_amount = min(per_stock, budget)
             qty = int(max_amount / price)
             return qty if qty > 0 else 0
         except Exception:

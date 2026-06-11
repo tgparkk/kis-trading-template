@@ -56,6 +56,10 @@ class TradingDecisionEngine:
 
         # Strategy 연결 (나중에 set_strategy로 설정)
         self.strategy: Optional['BaseStrategy'] = None
+        # 다중전략: 폴더키 → 전략 인스턴스 맵 (set_strategies로 설정).
+        # 체결 콜백·소유 표기를 '소유 전략'으로 라우팅하는 데 사용한다.
+        # 비어 있으면(레거시 단일전략) self.strategy로 fallback.
+        self.strategies_by_key: dict = {}
 
         # FundManager 연결 (나중에 set_fund_manager로 설정)
         self.fund_manager: Optional['FundManager'] = None
@@ -74,6 +78,17 @@ class TradingDecisionEngine:
         """전략 설정"""
         self.strategy = strategy
         self.logger.info(f"전략 연결됨: {strategy.name if strategy else 'None'}")
+
+    def set_strategies(self, strategies: dict) -> None:
+        """다중전략 맵 설정 (폴더키 → 전략 인스턴스).
+
+        체결 콜백(on_order_filled)과 trading_stock 소유 표기를 self.strategy
+        고정이 아닌 '소유 전략'으로 라우팅한다. 미설정 시 단일전략 fallback —
+        고정 라우팅은 Elder daily_trades/positions 오염으로 매수 마비를
+        일으켰다(2026-06-11 진단).
+        """
+        self.strategies_by_key = dict(strategies or {})
+        self.logger.info(f"다중전략 맵 연결됨: {list(self.strategies_by_key.keys())}")
 
     def set_fund_manager(self, fund_manager: 'FundManager') -> None:
         """자금 관리자 설정"""
@@ -232,7 +247,8 @@ class TradingDecisionEngine:
     # =========================================================================
     async def analyze_buy_decision(self, trading_stock, daily_data,
                                    regime_index: str = "both",
-                                   owner_signal=None) -> Tuple[bool, str, dict]:
+                                   owner_signal=None,
+                                   strategy_name: str = "") -> Tuple[bool, str, dict]:
         """
         매수 판단 분석
 
@@ -240,6 +256,10 @@ class TradingDecisionEngine:
             regime_index: 시장 방향성 필터가 검사할 지수
                 ("both"=기본/현 동작, "KOSPI", "KOSDAQ", "none"=면제).
                 전략별 regime_index 를 호출측(TradingAnalyzer)이 전달한다.
+            strategy_name: 전략 폴더키. 가상모드 수량 산정의 원장 조회 키 —
+                전략별 격리 자본(VirtualTradingManager)이 사이징 SSOT다.
+                FundManager 집계로 재계산하면 유령 invested 누적 시 1~10주
+                잔편 매수가 발생한다(2026-06-11 진단).
 
         Returns: Tuple[매수여부, 사유, {buy_price, quantity, max_buy_amount}]
 
@@ -315,8 +335,17 @@ class TradingDecisionEngine:
 
             from utils.price_utils import round_to_tick
             price = round_to_tick(current_price)
-            max_amt = self._get_max_buy_amount(code)
-            qty = int(max_amt / price) if price > 0 else 0
+            if self.is_virtual_mode and self.virtual_trading is not None:
+                # 가상모드: 전략 원장(종목당 예산 = 초기자본/K 기본) 기준 산정.
+                ledger_key = strategy_name or (
+                    self.strategy.name if self.strategy else "")
+                qty = self.virtual_trading.get_max_quantity(
+                    price, strategy_name=ledger_key)
+                max_amt = qty * price
+            else:
+                # 실전: FundManager 집계(종목당/총투자/가용 한도) 기준.
+                max_amt = self._get_max_buy_amount(code)
+                qty = int(max_amt / price) if price > 0 else 0
 
             if qty <= 0:
                 return False, f"{code} 수량부족", empty
@@ -391,8 +420,14 @@ class TradingDecisionEngine:
                                   target_profit_rate: float = None,
                                   stop_loss_rate: float = None,
                                   signal=None,
-                                  strategy_name: str = "") -> None:
+                                  strategy_name: str = "") -> bool:
         """가상 매수
+
+        Returns:
+            bool: 실제 체결(VTM 기록 생성) 시 True. 거부·실패 시 False —
+                  호출자(TradingAnalyzer)는 False면 자금 예약을 취소해야 한다.
+                  반환값 무시+무조건 confirm은 '유령 체결'(VTM 거부분이 FM
+                  invested로 확정)을 만들었다(2026-06-11 진단, 일 ~43M 오염).
 
         Args:
             trading_stock: 거래 대상 주식
@@ -448,7 +483,7 @@ class TradingDecisionEngine:
 
             if not buy_price or buy_price <= 0:
                 self.logger.warning(f"가상매수 취소: {code} 매수 가격 조회 실패")
-                return
+                return False
 
             # ----------------------------------------------------------------
             # 익절/손절률 결정 — 4단계 우선순위
@@ -518,49 +553,67 @@ class TradingDecisionEngine:
                 qty = quantity
             else:
                 qty = self.virtual_trading.get_max_quantity(buy_price, strategy_name=ledger_key)
-            if qty <= 0: return
+            if qty <= 0: return False
 
-            display_name = self.strategy.name if self.strategy else "unknown"
+            # 소유 전략 해소: 다중전략 맵 우선, 없으면 단일전략 fallback.
+            # self.strategy 고정 표기·통보는 Elder 오염(매수 마비)을 일으켰다.
+            owner = self.strategies_by_key.get(ledger_key) or self.strategy
+            display_name = owner.name if owner else "unknown"
             # trading_stock에 소유 전략 기록 (DB용 표기명 + 메모리용 인스턴스)
             trading_stock.owner_strategy_name = display_name
-            trading_stock.owner_strategy = self.strategy
+            trading_stock.owner_strategy = owner
             rid = self.virtual_trading.execute_virtual_buy(
                 stock_code=trading_stock.stock_code, stock_name=trading_stock.stock_name,
                 price=buy_price, quantity=qty, strategy=ledger_key, reason=buy_reason,
                 target_profit_rate=target_profit_rate, stop_loss_rate=stop_loss_rate)
-            if rid:
-                trading_stock.set_virtual_buy_info(rid, buy_price, qty)
-                trading_stock.set_position(qty, buy_price)
-                trading_stock.target_profit_rate = target_profit_rate
-                trading_stock.stop_loss_rate = stop_loss_rate
-                self.logger.info(
-                    f"가상매수: {trading_stock.stock_code} {qty}주 @{buy_price:,.0f} "
-                    f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%)"
-                )
-                # 전략 콜백: daily_trades / daily_profit 갱신 (실매매 경로와 동등성 보장)
-                self._notify_strategy_order_filled(
-                    side="buy",
-                    stock_code=trading_stock.stock_code,
-                    price=buy_price,
-                    quantity=qty,
-                    order_id=f"VIRT-BUY-{rid}",
-                )
+            if not rid:
+                # VTM 거부(전략 원장 부족·DB 실패 등) — 미체결을 호출자에 알려
+                # 자금 예약 환원·상태 비전이가 이뤄지게 한다(유령 체결 차단).
+                return False
+
+            trading_stock.set_virtual_buy_info(rid, buy_price, qty)
+            trading_stock.set_position(qty, buy_price)
+            trading_stock.target_profit_rate = target_profit_rate
+            trading_stock.stop_loss_rate = stop_loss_rate
+            self.logger.info(
+                f"가상매수: {trading_stock.stock_code} {qty}주 @{buy_price:,.0f} "
+                f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%)"
+            )
+            # 전략 콜백: daily_trades / daily_profit 갱신 (실매매 경로와 동등성 보장)
+            self._notify_strategy_order_filled(
+                side="buy",
+                stock_code=trading_stock.stock_code,
+                price=buy_price,
+                quantity=qty,
+                order_id=f"VIRT-BUY-{rid}",
+                strategy=owner,
+            )
+            return True
         except Exception as e:
             self.logger.error(f"가상매수오류: {e}")
+            return False
 
     def _notify_strategy_order_filled(self, side: str, stock_code: str,
                                        price: float, quantity: int,
-                                       order_id: str = "") -> None:
+                                       order_id: str = "",
+                                       strategy=None) -> None:
         """전략의 on_order_filled 콜백을 가상매매 경로에서도 호출.
 
         실매매 경로는 OrderCompletionHandler._notify_strategy_order_filled가 담당.
         가상매매는 VirtualTradingManager가 strategy를 알지 못하므로
         decision_engine에서 일원화하여 통보한다.
 
+        Args:
+            strategy: 체결 소유 전략 인스턴스. 반드시 소유 전략에게만 통보 —
+                self.strategy 고정 통보는 전 전략 체결이 Elder의
+                daily_trades/positions를 오염시켜 매수 마비를 일으켰다
+                (2026-06-11 진단). None이면 레거시 단일전략 fallback.
+
         호출 실패는 매매 결과를 무효화하지 않으므로 WARNING으로 격리한다.
         """
         try:
-            if not self.strategy or not hasattr(self.strategy, 'on_order_filled'):
+            target = strategy if strategy is not None else self.strategy
+            if not target or not hasattr(target, 'on_order_filled'):
                 return
             from strategies.base import OrderInfo
             from utils.korean_time import now_kst
@@ -572,7 +625,7 @@ class TradingDecisionEngine:
                 price=float(price),
                 filled_at=now_kst(),
             )
-            self.strategy.on_order_filled(order_info)
+            target.on_order_filled(order_info)
         except Exception as e:
             self.logger.warning(
                 f"가상매매 전략 on_order_filled 콜백 오류: {stock_code} {side} - {e}"
@@ -704,6 +757,11 @@ class TradingDecisionEngine:
                 strategy_name = trading_stock.strategy_name or (
                     self.strategy.name if self.strategy else "unknown"
                 )
+                # 매도 콜백 수신자 = 소유 전략 (폴더키 맵 → 매수 시 기록된 인스턴스
+                # → 단일전략 fallback 순). Elder 고정 통보 오염 차단.
+                owner = (self.strategies_by_key.get(strategy_name)
+                         or getattr(trading_stock, 'owner_strategy', None)
+                         or self.strategy)
                 ok = self.virtual_trading.execute_virtual_sell(
                     stock_code=code, stock_name=trading_stock.stock_name,
                     price=sell_price, quantity=qty, strategy=strategy_name,
@@ -750,6 +808,7 @@ class TradingDecisionEngine:
                         price=sell_price,
                         quantity=int(qty) if qty else 0,
                         order_id=f"VIRT-SELL-{rid}",
+                        strategy=owner,
                     )
                 return ok
             return False

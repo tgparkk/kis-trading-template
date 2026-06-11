@@ -197,8 +197,22 @@ class DayTradingBot:
                 return
             if not hasattr(vtm, 'allocate_strategy_capital'):
                 return
-            for key in self.strategies.keys():
-                vtm.allocate_strategy_capital(key, VIRTUAL_CAPITAL_PER_STRATEGY)
+            for key, strat in self.strategies.items():
+                # 종목당 기본 예산 = 초기자본/K 균등분할 (A안, 2026-06-11 결재 —
+                # 백테스트 균등복리 K분할 정합. Elder K20→50만/종목 등).
+                vtm.allocate_strategy_capital(
+                    key, VIRTUAL_CAPITAL_PER_STRATEGY,
+                    max_positions=getattr(strat, '_max_positions', None))
+                # 전략별 종목당 투자금액 (yaml risk_management.paper_investment_per_stock).
+                # 명시 시 K분할 기본값을 덮어씀 — 사이징 시나리오 검증값(예: deep_mr_dev20).
+                try:
+                    per_stock = ((getattr(strat, "config", None) or {})
+                                 .get("risk_management", {})
+                                 .get("paper_investment_per_stock"))
+                    if per_stock and hasattr(vtm, "set_strategy_investment_amount"):
+                        vtm.set_strategy_investment_amount(key, float(per_stock))
+                except Exception as e:
+                    self.logger.warning(f"전략 종목당 투자금액 설정 실패({key}): {e}")
             self.logger.info(
                 f"전략별 가상 자금 할당 완료: {list(self.strategies.keys())} "
                 f"(전략당 {VIRTUAL_CAPITAL_PER_STRATEGY:,.0f}원, "
@@ -274,6 +288,11 @@ class DayTradingBot:
         if self.strategy:
             self.decision_engine.set_strategy(self.strategy)
             self.trading_manager.set_strategy(self.strategy)
+        # 다중전략 맵 연결 — 체결 콜백·소유 표기를 소유 전략으로 라우팅.
+        # (단일 set_strategy만 연결하면 전 전략 체결이 첫 전략(Elder)에 오귀속되어
+        #  daily_trades 오염 → 매수 마비. 2026-06-11 진단)
+        if getattr(self, 'strategies', None):
+            self.decision_engine.set_strategies(self.strategies)
 
         # FundManager + paper_trading 모드 전달
         self.trading_manager.set_fund_manager(self.fund_manager)

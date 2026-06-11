@@ -85,7 +85,8 @@ class TradingAnalyzer:
             # owner_signal: on_tick에서 '올바른 전략'이 생성·검증한 신호를 그대로 전달해야
             # decision_engine이 단일 고정전략(Elder)으로 재판정하지 않는다(2026-06-09 ④ 수정).
             buy_signal, buy_reason, buy_info = await self.bot.decision_engine.analyze_buy_decision(
-                trading_stock, daily_data, regime_index=regime_index, owner_signal=signal
+                trading_stock, daily_data, regime_index=regime_index, owner_signal=signal,
+                strategy_name=strategy_name
             )
 
             self.logger.debug(f"{stock_code} 매수 판단 결과: signal={buy_signal}, reason='{buy_reason}'")
@@ -98,37 +99,42 @@ class TradingAnalyzer:
             if buy_signal and buy_info.get('quantity', 0) > 0:
                 self.logger.info(f"{stock_code}({stock_name}) 매수 신호 발생: {buy_reason}")
 
-                # 매수 전 자금 확인 (전달받은 available_funds 활용)
-                if available_funds is not None:
-                    # 전달받은 가용 자금 기준으로 종목당 최대 투자 금액 계산 (10%)
-                    fund_status = self.bot.fund_manager.get_status()
-                    max_buy_amount = min(available_funds, fund_status['total_funds'] * 0.1)
-                else:
-                    # FundManager 기반 최대 매수 가능 금액 계산
-                    max_buy_amount = self.bot.fund_manager.get_max_buy_amount(stock_code)
-
                 required_amount = buy_info['buy_price'] * buy_info['quantity']
 
-                if required_amount > max_buy_amount:
-                    self.logger.warning(
-                        f"{stock_code} 자금 부족: 필요={required_amount:,.0f}원, 가용={max_buy_amount:,.0f}원"
-                    )
-                    # 가용 자금에 맞게 수량 조정
-                    if max_buy_amount > 0:
-                        adjusted_quantity = int(max_buy_amount / buy_info['buy_price'])
-                        if adjusted_quantity > 0:
-                            buy_info['quantity'] = adjusted_quantity
-                            required_amount = buy_info['buy_price'] * adjusted_quantity
-                            self.logger.info(
-                                f"{stock_code} 수량 조정: {adjusted_quantity}주 "
-                                f"(투자금: {required_amount:,.0f}원)"
-                            )
-                        else:
-                            self.logger.warning(f"{stock_code} 매수 포기: 최소 1주도 매수 불가")
-                            return
+                # 가상모드는 수량 재조정 금지: 수량은 decision_engine이 전략 원장
+                # (VirtualTradingManager 격리 자본) 기준으로 이미 산정한 SSOT다.
+                # FM 집계 가용으로 줄이면 유령 invested 누적 시 1~10주 잔편 매수가
+                # 발생한다(2026-06-11 진단). FM 검증은 아래 reserve_funds가 담당.
+                if not self.bot.decision_engine.is_virtual_mode:
+                    # 실전: 매수 전 자금 확인 (전달받은 available_funds 활용)
+                    if available_funds is not None:
+                        # 전달받은 가용 자금 기준으로 종목당 최대 투자 금액 계산 (10%)
+                        fund_status = self.bot.fund_manager.get_status()
+                        max_buy_amount = min(available_funds, fund_status['total_funds'] * 0.1)
                     else:
-                        self.logger.warning(f"{stock_code} 매수 포기: 가용 자금 없음")
-                        return
+                        # FundManager 기반 최대 매수 가능 금액 계산
+                        max_buy_amount = self.bot.fund_manager.get_max_buy_amount(stock_code)
+
+                    if required_amount > max_buy_amount:
+                        self.logger.warning(
+                            f"{stock_code} 자금 부족: 필요={required_amount:,.0f}원, 가용={max_buy_amount:,.0f}원"
+                        )
+                        # 가용 자금에 맞게 수량 조정
+                        if max_buy_amount > 0:
+                            adjusted_quantity = int(max_buy_amount / buy_info['buy_price'])
+                            if adjusted_quantity > 0:
+                                buy_info['quantity'] = adjusted_quantity
+                                required_amount = buy_info['buy_price'] * adjusted_quantity
+                                self.logger.info(
+                                    f"{stock_code} 수량 조정: {adjusted_quantity}주 "
+                                    f"(투자금: {required_amount:,.0f}원)"
+                                )
+                            else:
+                                self.logger.warning(f"{stock_code} 매수 포기: 최소 1주도 매수 불가")
+                                return
+                        else:
+                            self.logger.warning(f"{stock_code} 매수 포기: 가용 자금 없음")
+                            return
 
                 # FundManager 자금 예약 (유니크 ID 사용)
                 from utils.korean_time import now_kst as _now_kst
@@ -149,13 +155,23 @@ class TradingAnalyzer:
                 if self.bot.decision_engine.is_virtual_mode:
                     # 가상 매수
                     try:
-                        await self.bot.decision_engine.execute_virtual_buy(
+                        buy_ok = await self.bot.decision_engine.execute_virtual_buy(
                             trading_stock, None, buy_reason,
                             buy_price=buy_info['buy_price'],
                             quantity=buy_info['quantity'],
                             signal=effective_signal,
                             strategy_name=strategy_name
                         )
+                        if not buy_ok:
+                            # 유령 체결 차단: VTM 거부(전략 원장 부족 등) 시 자금
+                            # 확정·상태 전이·쿨다운 없이 예약만 환원한다. 무조건
+                            # confirm은 FM invested를 미체결분으로 오염시켜 잔편
+                            # 매수·정합성 CRITICAL을 유발했다(2026-06-11 진단).
+                            self.bot.fund_manager.cancel_order(_reserve_id)
+                            self.logger.warning(
+                                f"{stock_code} 가상 매수 미체결 — 예약 취소 (유령 체결 방지)"
+                            )
+                            return False
                         # 자금 확정 (가상매매는 즉시 체결로 간주)
                         self.bot.fund_manager.confirm_order(_reserve_id, required_amount)
                         # 보유 종목 추가 (FundManager current_position_codes 추적)
