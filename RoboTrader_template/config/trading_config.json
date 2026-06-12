@@ -78,6 +78,13 @@
       "max_capital_pct": 0.14,
       "regime_index": "KOSPI",
       "regime_gate": "exclude_bear"
+    },
+    {
+      "name": "deep_mr_dev20",
+      "enabled": true,
+      "max_capital_pct": 0.12,
+      "regime_index": "KOSPI",
+      "regime_gate": "none"
     }
   ],
   "duplicate_signal_prevention": {

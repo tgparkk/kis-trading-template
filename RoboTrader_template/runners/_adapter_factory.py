@@ -53,6 +53,9 @@ def build_adapter(
         elif strategy_name == "rs_leader":
             from strategies.rs_leader.screener import RSLeaderScreenerAdapter
             return RSLeaderScreenerAdapter(config=config, broker=broker, db_manager=db_manager)
+        elif strategy_name == "deep_mr_dev20":
+            from strategies.deep_mr_dev20.screener import DeepMrDev20ScreenerAdapter
+            return DeepMrDev20ScreenerAdapter(config=config, broker=broker, db_manager=db_manager)
         else:
             _LOGGER.warning("알 수 없는 전략: %s", strategy_name)
             return None
