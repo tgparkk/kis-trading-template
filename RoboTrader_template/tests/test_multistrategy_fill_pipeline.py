@@ -285,3 +285,50 @@ class TestEqualSlotBudget:
         vtm.allocate_strategy_capital("deep_mr_dev20", 10_000_000, max_positions=20)
         vtm.set_strategy_investment_amount("deep_mr_dev20", 2_000_000)
         assert vtm.get_max_quantity(10_000, strategy_name="deep_mr_dev20") == 200
+
+
+# ---------------------------------------------------------------------------
+# 5. K분할 라이프사이클 (2026-06-12 진단) — 할당은 DayTradingBot.__init__,
+#    _max_positions는 각 전략 on_init()에서 설정 → getattr가 항상 None
+#    → 균등 K분할 전면 미적용(06-12 라이브: 전 전략 기본 1M/종목 체결 역산).
+#    yaml config의 risk_management.max_positions를 직접 읽어야 한다.
+# ---------------------------------------------------------------------------
+
+class TestAllocationLifecycle:
+    def _run_allocation(self, strategies):
+        import tests._mock_modules  # noqa: F401 — telegram 등 외부모듈 스텁 (main import 전)
+        import main
+        from types import SimpleNamespace
+        from core.virtual_trading_manager import VirtualTradingManager
+        vtm = VirtualTradingManager(db_manager=None, broker=None, paper_trading=True)
+        bot = SimpleNamespace(
+            decision_engine=SimpleNamespace(virtual_trading=vtm, is_virtual_mode=True),
+            strategies=strategies,
+            logger=Mock(),
+        )
+        main.DayTradingBot._allocate_strategy_capital(bot)
+        return vtm
+
+    def test_k_split_from_config_before_on_init(self):
+        """on_init 이전(_max_positions 속성 부재)에도 yaml K로 균등분할 적용."""
+        from types import SimpleNamespace
+        strat = SimpleNamespace(config={"risk_management": {"max_positions": 20}})
+        assert not hasattr(strat, "_max_positions")  # on_init 이전 상태 재현
+        vtm = self._run_allocation({"elder_ema_pullback": strat})
+        # 10M / K20 = 50만 → 1만원 종목 50주 (버그 시 기본 1M → 100주)
+        assert vtm.get_max_quantity(10_000, strategy_name="elder_ema_pullback") == 50
+
+    def test_yaml_per_stock_still_overrides_k_split(self):
+        """paper_investment_per_stock 명시 전략(deep_mr_dev20)은 K분할보다 우선 유지."""
+        from types import SimpleNamespace
+        strat = SimpleNamespace(config={"risk_management": {
+            "max_positions": 5, "paper_investment_per_stock": 2_000_000}})
+        vtm = self._run_allocation({"deep_mr_dev20": strat})
+        assert vtm.get_max_quantity(10_000, strategy_name="deep_mr_dev20") == 200
+
+    def test_missing_max_positions_no_k_split(self):
+        """yaml에 max_positions 없으면 K분할 미적용(기본 종목당 투자금 유지·무예외)."""
+        from types import SimpleNamespace
+        strat = SimpleNamespace(config={"risk_management": {}})
+        vtm = self._run_allocation({"legacy": strat})
+        assert vtm._strategy_investment_amounts.get("legacy") is None

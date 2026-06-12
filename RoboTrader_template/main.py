@@ -200,9 +200,14 @@ class DayTradingBot:
             for key, strat in self.strategies.items():
                 # 종목당 기본 예산 = 초기자본/K 균등분할 (A안, 2026-06-11 결재 —
                 # 백테스트 균등복리 K분할 정합. Elder K20→50만/종목 등).
+                # K는 yaml config에서 직접 읽는다 — _max_positions 속성은 각 전략
+                # on_init()(bot.initialize 시점)에서야 설정되므로 여기(__init__)서는
+                # 항상 부재 → K분할 전면 미적용이었음 (2026-06-12 라이브 확인).
+                risk = ((getattr(strat, "config", None) or {})
+                        .get("risk_management", {}) or {})
+                k = risk.get("max_positions") or getattr(strat, '_max_positions', None)
                 vtm.allocate_strategy_capital(
-                    key, VIRTUAL_CAPITAL_PER_STRATEGY,
-                    max_positions=getattr(strat, '_max_positions', None))
+                    key, VIRTUAL_CAPITAL_PER_STRATEGY, max_positions=k)
                 # 전략별 종목당 투자금액 (yaml risk_management.paper_investment_per_stock).
                 # 명시 시 K분할 기본값을 덮어씀 — 사이징 시나리오 검증값(예: deep_mr_dev20).
                 try:
