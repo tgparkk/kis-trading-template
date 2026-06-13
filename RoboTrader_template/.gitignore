@@ -163,3 +163,7 @@ council/sessions/*
 
 # TickTracer JSONL 로그 (on_tick 진단용)
 logs/tick_trace/*.jsonl
+
+# Feature Edge / Timing Lab 대용량 생성 산출물 (재생성 가능, GitHub 100MB 초과)
+reports/discovery/feature_edge/*.parquet
+reports/discovery/timing_lab/*.parquet
