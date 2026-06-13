@@ -8,12 +8,14 @@ import pandas as pd
 def label_forward_returns(df: pd.DataFrame, horizons=(5, 10, 20)) -> pd.DataFrame:
     o = df["open"].astype(float)
     c = df["close"].astype(float)
-    entry = o.shift(-1)
+    entry = o.shift(-1).where(lambda s: s > 0)   # 0/음수 시가 → NaN (inf 수익률 방지)
     out = pd.DataFrame(index=df.index)
     out["date"] = df["date"].values
     for h in horizons:
         exit_c = c.shift(-(1 + h))
         out[f"fwd_{h}d"] = exit_c / entry - 1.0
+    lab_cols = [col for col in out.columns if col != "date"]
+    out[lab_cols] = out[lab_cols].replace([np.inf, -np.inf], np.nan)
     return out
 
 

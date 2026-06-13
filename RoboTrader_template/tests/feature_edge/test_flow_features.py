@@ -20,9 +20,11 @@ def test_streak_counts_consecutive_net_buy():
     assert out["flow_streak"].iloc[-1] == 2.0
 
 
-def test_missing_flow_yields_zero_not_nan():
+def test_uncovered_stock_yields_nan_for_coverage():
+    # foreign_flow 행이 없는(미커버) 종목은 NaN 이어야 coverage 지표가 정직해진다.
     dates = pd.date_range("2023-03-01", periods=10, freq="D")
     daily = pd.DataFrame({"date": dates, "volume": [100.0] * 10})
     flow = pd.DataFrame({"date": [], "foreign_net_vol": []})
     out = compute_flow_features(daily, flow)
-    assert (out["flow_norm"] == 0.0).all()
+    for col in ["flow_norm", "flow_cum5", "flow_cum20", "flow_streak"]:
+        assert out[col].isna().all()

@@ -28,6 +28,15 @@ def test_volume_surge_ratio():
     assert np.isclose(out["vol_surge"].iloc[-1], 5.0, atol=1e-6)
 
 
+def test_no_inf_values_when_zero_denominators():
+    # 거래량 0 구간 뒤 거래량 발생 → vol_surge 분모 0 → inf 가 NaN 으로 정리돼야 함.
+    closes = [100.0] * 25
+    vols = [0] * 22 + [100, 100, 100]
+    out = compute_price_features(_df(closes, vols))
+    feat_cols = [c for c in out.columns if c != "date"]
+    assert not np.isinf(out[feat_cols].to_numpy(dtype=float)).any()
+
+
 def test_no_lookahead_last_row_independent_of_future():
     closes = [100 + i for i in range(30)]
     full = compute_price_features(_df(closes))

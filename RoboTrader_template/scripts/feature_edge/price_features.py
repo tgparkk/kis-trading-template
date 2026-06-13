@@ -28,4 +28,7 @@ def compute_price_features(df: pd.DataFrame) -> pd.DataFrame:
     tv = c * v
     out["amihud"] = daily_ret.abs() / tv.replace(0, np.nan)
     out["tv_trend"] = tv.rolling(5).mean() / tv.rolling(20).mean()
+    # 0 분모(거래량 0 구간 등)에서 생긴 inf 를 NaN 으로 정리 — parquet 오염·spread 왜곡 방지.
+    feat_cols = [c for c in out.columns if c != "date"]
+    out[feat_cols] = out[feat_cols].replace([np.inf, -np.inf], np.nan)
     return out
