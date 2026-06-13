@@ -13,6 +13,11 @@ _UNFILLED = Trade(False, float("nan"), float("nan"), float("nan"), float("nan"),
                   0, float("nan"), float("nan"), "skip")
 
 
+def _dkey(date) -> str:
+    """일봉 date(Timestamp 또는 str)를 intraday_by_date 키(ISO 'YYYY-MM-DD')로 정규화."""
+    return pd.Timestamp(date).strftime("%Y-%m-%d")
+
+
 _EPS = 1e-9  # floating-point tolerance for threshold comparisons
 
 
@@ -39,7 +44,7 @@ def simulate_trade(signal_idx: int, daily: pd.DataFrame, intraday_by_date: dict,
         return _UNFILLED
     d1 = daily.iloc[e]
     baseline_open = float(d1["open"])
-    intra_d1 = intraday_by_date.get(d1["date"])
+    intra_d1 = intraday_by_date.get(_dkey(d1["date"]))
 
     if buy_rule is not None:
         bp = dict(buy_params)
@@ -51,6 +56,10 @@ def simulate_trade(signal_idx: int, daily: pd.DataFrame, intraday_by_date: dict,
     else:
         entry_price = baseline_open
 
+    # 불량가(0/음수/NaN: 데이터 결함·NaN VWAP 체결) → 체결 불가 처리(ZeroDivision 방지).
+    if not (entry_price > 0):
+        return _UNFILLED
+
     position = {"entry_price": entry_price, "entry_idx": e}
     exit_price, reason, hold = None, None, 0
     last = min(e + exit_params["max_hold_bars"], len(daily) - 1)
@@ -59,7 +68,7 @@ def simulate_trade(signal_idx: int, daily: pd.DataFrame, intraday_by_date: dict,
         day = daily.iloc[i]
         mfe = max(mfe, float(day["high"]) / entry_price - 1.0)
         mae = min(mae, float(day["low"]) / entry_price - 1.0)
-        intra = intraday_by_date.get(day["date"])
+        intra = intraday_by_date.get(_dkey(day["date"]))
         if sell_rule is not None and intra is not None:
             xi = sell_rule(intra, entry_price, sell_params)
             if xi is not None:

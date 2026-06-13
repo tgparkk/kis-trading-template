@@ -39,6 +39,37 @@ def test_net_applies_slippage_both_sides():
     assert tr.ret_net < tr.ret_gross
 
 
+def test_zero_entry_price_yields_unfilled_not_zerodiv():
+    # D+1 시가 0(불량가) → ZeroDivision 대신 미체결 처리 (통합경로 회귀).
+    daily = pd.DataFrame({"date": ["2025-03-01", "2025-03-02", "2025-03-03"],
+                          "open": [100, 0, 110], "high": [100, 0, 110],
+                          "low": [100, 0, 110], "close": [100, 0, 110]})
+    params = {"stop_loss_pct": 0.10, "take_profit_pct": 0.10, "max_hold_bars": 10}
+    tr = simulate_trade(0, daily, {}, FixedExitAdapter(), params,
+                        None, None, {}, {}, slippage=0.0)
+    assert tr.filled is False
+
+
+def test_intraday_lookup_matches_timestamp_daily_dates():
+    # 일봉 date 가 Timestamp 여도 ISO-키 intraday_by_date 와 매칭돼 sell_rule 이 발화해야 함
+    # (통합경로 날짜키 불일치 회귀 — 이게 깨지면 분봉룰이 전부 no-op).
+    from collections import namedtuple
+    IX = namedtuple("IX", ["price", "bar_idx", "reason"])
+    daily = pd.DataFrame({"date": pd.to_datetime(["2025-03-01", "2025-03-02", "2025-03-03"]),
+                          "open": [100, 100, 100], "high": [100, 100, 100],
+                          "low": [100, 100, 100], "close": [100, 100, 100]})
+    intra = {"2025-03-02": pd.DataFrame({"time": ["0900"], "open": [100], "high": [100],
+                                         "low": [100], "close": [100], "volume": [1], "amount": [100]})}
+
+    def sell_at_95(intraday, entry, p):
+        return IX(price=95.0, bar_idx=0, reason="forced")
+    params = {"stop_loss_pct": 0.10, "take_profit_pct": 0.10, "max_hold_bars": 10}
+    tr = simulate_trade(0, daily, intra, FixedExitAdapter(), params,
+                        None, sell_at_95, {}, {}, slippage=0.0)
+    assert tr.filled is True
+    assert tr.exit_reason == "forced"   # 분봉 sell 이 실제로 발화
+
+
 def test_buy_skip_yields_unfilled():
     daily = _daily([100, 100, 110])
     params = {"stop_loss_pct": 0.10, "take_profit_pct": 0.10, "max_hold_bars": 10}

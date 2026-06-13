@@ -1,7 +1,17 @@
 import numpy as np
 import pandas as pd
 from scripts.feature_edge.timing.timing_metrics import (
-    summarize_trades, delta_vs_baseline, bootstrap_delta_p05)
+    summarize_trades, delta_vs_baseline, bootstrap_delta_p05, oos_delta_signs)
+
+
+def test_empty_trades_no_keyerror():
+    # 체결 0건 → 컬럼 없는 빈 프레임이어도 KeyError 없이 n=0 처리(통합경로 버그 회귀).
+    empty = pd.DataFrame()
+    assert summarize_trades(empty, "ret_net")["n"] == 0
+    d = delta_vs_baseline(empty, empty, "ret_net")
+    assert d["alt_n"] == 0 and np.isnan(d["delta_mean"])
+    assert np.isnan(bootstrap_delta_p05(empty, empty, "ret_net"))
+    assert oos_delta_signs(empty, empty, "2026-01-01", "ret_net")["consistent"] is False
 
 
 def _trades(rets, dates=None):

@@ -8,6 +8,8 @@ import pandas as pd
 
 
 def summarize_trades(trades: pd.DataFrame, col: str = "ret_net") -> Dict[str, float]:
+    if col not in trades.columns:   # 체결 0건 → 컬럼 없는 빈 프레임 방어
+        return {"n": 0, "mean": float("nan"), "hit_rate": float("nan"), "sharpe": float("nan")}
     r = trades[col].dropna()
     if len(r) == 0:
         return {"n": 0, "mean": float("nan"), "hit_rate": float("nan"), "sharpe": float("nan")}
@@ -26,6 +28,8 @@ def delta_vs_baseline(alt: pd.DataFrame, base: pd.DataFrame, col: str = "ret_net
 def bootstrap_delta_p05(alt: pd.DataFrame, base: pd.DataFrame, col: str = "ret_net",
                         n_iter: int = 1000) -> float:
     """alt 평균 − base 평균 의 부트스트랩 분포 p05 (>0이면 개선 견고)."""
+    if col not in alt.columns or col not in base.columns:
+        return float("nan")
     a = alt[col].dropna().to_numpy()
     b = base[col].dropna().to_numpy()
     if len(a) < 10 or len(b) < 10:
@@ -41,6 +45,8 @@ def bootstrap_delta_p05(alt: pd.DataFrame, base: pd.DataFrame, col: str = "ret_n
 
 def oos_delta_signs(alt: pd.DataFrame, base: pd.DataFrame, split: str, col: str = "ret_net") -> Dict[str, float]:
     """기간내 OOS: split 기준 train/test 각 델타 평균 부호."""
+    if "date" not in alt.columns or "date" not in base.columns:
+        return {"train_delta": float("nan"), "test_delta": float("nan"), "consistent": False}
     da = pd.to_datetime(alt["date"]); db = pd.to_datetime(base["date"])
     tr = delta_vs_baseline(alt[da < split], base[db < split], col)["delta_mean"]
     te = delta_vs_baseline(alt[da >= split], base[db >= split], col)["delta_mean"]

@@ -67,7 +67,7 @@ def _run_rule(sigs, daily_sup, intr_cache, exit_params, brule, srule, buy_params
                             brule, srule, buy_params, sell_params, config.SLIPPAGE_PER_SIDE)
         if tr.filled:
             rows.append({"date": s["date"], "ret_net": tr.ret_net, "ret_gross": tr.ret_gross})
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["date", "ret_net", "ret_gross"])
 
 
 def main():  # pragma: no cover (통합 실행 경로)
