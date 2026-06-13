@@ -18,6 +18,15 @@ def test_vwap_cumulative_pit():
     assert np.isclose(w.iloc[2], (10+20+30)/3)
 
 
+def test_vwap_leading_zero_volume_no_typeerror():
+    # 선행 거래량 0봉 → cum_vol 0 → np.nan(이 아니라 pd.NA면 astype(float) TypeError) 회귀.
+    df = _intra([10]*3, [10]*3, [10]*3, [10]*3, v=[0, 1, 1], a=[0, 20, 30])
+    w = vwap(df)                       # 예외 없이 float Series
+    assert str(w.dtype) == "float64"
+    assert np.isnan(w.iloc[0])         # 첫 봉 cum_vol=0 → nan
+    assert np.isclose(w.iloc[1], 20.0)
+
+
 def test_opening_range_first_n_bars():
     df = _intra(o=[5]*5, h=[5,7,6,9,4], l=[5,3,2,5,1], c=[5]*5, v=[1]*5, a=[5]*5)
     hi, lo = opening_range(df, n=3)
