@@ -4,6 +4,7 @@ import pandas as pd
 from scripts.feature_edge.portfolio_backtest import (
     top_quantile_codes, illiquidity_pct, tiered_cost,
     build_periods, period_stats,
+    benchmark_period_returns, alpha_beta,
 )
 
 
@@ -84,3 +85,29 @@ def test_period_stats_sharpe_and_annualization():
     assert np.isclose(st["sharpe"], expected_sharpe)
     assert np.isclose(st["ann_return"], net.mean() * 12.0)
     assert st["n_periods"] == 5
+
+
+def test_benchmark_period_returns_aligns_entry_exit():
+    # 지수 일봉 6일: close 100,101,102,103,104,105. horizon=2.
+    idx = pd.DataFrame({
+        "date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03",
+                                "2024-01-04", "2024-01-05", "2024-01-08"]),
+        "close": [100.0, 101.0, 102.0, 103.0, 104.0, 105.0]})
+    # 리밸 날짜 d=0 → 진입 close[1]=101, 청산 close[1+2]=103 → 103/101-1
+    r = benchmark_period_returns(idx, [pd.Timestamp("2024-01-01")], horizon=2)
+    assert np.isclose(r[0], 103.0 / 101.0 - 1.0)
+    # 끝부분(미래봉 부족) → NaN
+    r2 = benchmark_period_returns(idx, [pd.Timestamp("2024-01-05")], horizon=2)
+    assert np.isnan(r2[0])
+
+
+def test_alpha_beta_recovers_known_coeffs():
+    rng = np.random.RandomState(0)
+    mkt = pd.Series(rng.normal(0.01, 0.02, 400))
+    port = 0.6 * mkt + 0.005          # beta 0.6, alpha 0.005, 무잡음
+    ab = alpha_beta(port, mkt, periods_per_year=12.0)
+    assert np.isclose(ab["beta"], 0.6, atol=1e-6)
+    assert np.isclose(ab["alpha"], 0.005, atol=1e-6)
+    assert np.isclose(ab["alpha_ann"], 0.005 * 12.0, atol=1e-5)
+    # port = 0.6*mkt+0.005, mkt 평균>0 → 초과수익 부호는 데이터 의존, win_rate∈[0,1]
+    assert 0.0 <= ab["win_rate"] <= 1.0
