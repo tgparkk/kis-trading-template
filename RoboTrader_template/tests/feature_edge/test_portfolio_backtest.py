@@ -5,6 +5,7 @@ from scripts.feature_edge.portfolio_backtest import (
     top_quantile_codes, illiquidity_pct, tiered_cost,
     build_periods, period_stats,
     benchmark_period_returns, alpha_beta,
+    sqrt_impact, decile_stats,
 )
 
 
@@ -99,6 +100,51 @@ def test_benchmark_period_returns_aligns_entry_exit():
     # 끝부분(미래봉 부족) → NaN
     r2 = benchmark_period_returns(idx, [pd.Timestamp("2024-01-05")], horizon=2)
     assert np.isnan(r2[0])
+
+
+def test_sqrt_impact_roundtrip_law():
+    # 왕복충격 = 2·coef·√참여율. 참여율 0 → 0, 단조 증가.
+    assert np.isclose(sqrt_impact(0.0, 0.1), 0.0)
+    assert np.isclose(sqrt_impact(0.04, 0.1), 2 * 0.1 * 0.2)  # √0.04=0.2
+    assert sqrt_impact(0.09, 0.1) > sqrt_impact(0.04, 0.1)
+
+
+def test_build_periods_capacity_adds_impact():
+    dates = pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"])
+    rows = []
+    for d in dates:
+        # HI 보유종목: 거래대금 1e8(=1억). fwd 0.05.
+        rows.append({"date": d, "stock_code": "HI", "amihud": 9.0,
+                     "fwd_2d": 0.05, "trading_value": 1e8})
+        rows.append({"date": d, "stock_code": "LO", "amihud": 1.0,
+                     "fwd_2d": 0.00, "trading_value": 1e8})
+    merged = pd.DataFrame(rows)
+    # 자본 1e7(=1천만) → 보유 1종목 → 종목당 1e7, 참여율 = 1e7/1e8 = 0.1
+    per = build_periods(merged, feat="amihud", label="fwd_2d", top_pct=0.5,
+                        horizon=2, fee_tax=0.0, slip_low=0.0, slip_high=0.0,
+                        capital=1e7, impact_coef=0.2)
+    expected_impact = 2 * 0.2 * np.sqrt(0.1)
+    assert np.allclose(per["impact"].values, expected_impact)
+    assert np.allclose(per["net"].values, 0.05 - expected_impact)
+    # 자본 0(미지정) → 충격 0, 기존과 동일
+    per0 = build_periods(merged, feat="amihud", label="fwd_2d", top_pct=0.5,
+                         horizon=2, fee_tax=0.0, slip_low=0.0, slip_high=0.0)
+    assert np.allclose(per0["net"].values, 0.05)
+
+
+def test_decile_stats_monotone_signal():
+    # amihud 1..100, fwd = amihud·0.001 (단조). 10분위 평균이 단조 증가해야.
+    n = 1000
+    merged = pd.DataFrame({
+        "date": pd.to_datetime(["2024-01-01"] * n),
+        "stock_code": [f"s{i}" for i in range(n)],
+        "amihud": np.linspace(1, 100, n),
+        "fwd_20d": np.linspace(1, 100, n) * 0.001,
+    })
+    ds = decile_stats(merged, "amihud", "fwd_20d", n_bins=10)
+    assert len(ds) == 10
+    assert ds["mean_label"].is_monotonic_increasing
+    assert ds.iloc[-1]["mean_label"] > ds.iloc[0]["mean_label"]
 
 
 def test_alpha_beta_recovers_known_coeffs():
