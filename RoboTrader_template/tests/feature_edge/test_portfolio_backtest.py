@@ -5,7 +5,7 @@ from scripts.feature_edge.portfolio_backtest import (
     top_quantile_codes, illiquidity_pct, tiered_cost,
     build_periods, period_stats,
     benchmark_period_returns, alpha_beta,
-    sqrt_impact, decile_stats,
+    sqrt_impact, decile_stats, evenly_spaced,
 )
 
 
@@ -130,6 +130,33 @@ def test_build_periods_capacity_adds_impact():
     per0 = build_periods(merged, feat="amihud", label="fwd_2d", top_pct=0.5,
                          horizon=2, fee_tax=0.0, slip_low=0.0, slip_high=0.0)
     assert np.allclose(per0["net"].values, 0.05)
+
+
+def test_evenly_spaced_keeps_endpoints_and_count():
+    items = list(range(10))            # 0..9
+    out = evenly_spaced(items, 3)
+    assert len(out) == 3
+    assert out[0] == 0 and out[-1] == 9   # 양 끝 포함(대표성)
+    # n >= 길이면 전체 반환
+    assert evenly_spaced(items, 20) == items
+    # 중복 인덱스 없이 정렬 유지
+    out4 = evenly_spaced(items, 4)
+    assert out4 == sorted(set(out4))
+
+
+def test_build_periods_hold_n_subsamples_pool():
+    # 한 날 6종목, 모두 fwd=0.10. top_pct=1.0 → 풀 6, hold_n=3 → 3종목만 보유.
+    dates = pd.to_datetime(["2024-01-01", "2024-01-02"])
+    rows = []
+    for d in dates:
+        for i in range(6):
+            rows.append({"date": d, "stock_code": f"s{i}", "amihud": float(i),
+                         "fwd_2d": 0.10})
+    merged = pd.DataFrame(rows)
+    per = build_periods(merged, feat="amihud", label="fwd_2d", top_pct=1.0,
+                        horizon=2, fee_tax=0.0, slip_low=0.0, slip_high=0.0, hold_n=3)
+    assert (per["n_held"] == 3).all()
+    assert np.allclose(per["gross"].values, 0.10)
 
 
 def test_decile_stats_monotone_signal():

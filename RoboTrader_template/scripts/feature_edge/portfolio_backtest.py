@@ -48,6 +48,21 @@ def tiered_cost(illiq_pct, fee_tax: float, slip_low: float, slip_high: float):
     return fee_tax + slip_low + (slip_high - slip_low) * illiq_pct
 
 
+def evenly_spaced(items: List, n: int) -> List:
+    """정렬 리스트에서 양 끝 포함·균등 간격으로 n개 선택(대표성 유지 축소).
+
+    풀의 분포(여기선 amihud 비유동 분포)를 보존한 채 개수만 줄인다.
+    n>=길이면 전체 반환.
+    """
+    m = len(items)
+    if n >= m:
+        return list(items)
+    if n <= 1:
+        return [items[0]] if m else []
+    idx = sorted(set(int(round(i)) for i in np.linspace(0, m - 1, n)))
+    return [items[i] for i in idx]
+
+
 def sqrt_impact(participation, coef: float):
     """제곱근충격법칙 왕복 시장충격 = 2·coef·√참여율(participation=주문/일거래대금).
 
@@ -59,7 +74,7 @@ def sqrt_impact(participation, coef: float):
 def build_periods(merged: pd.DataFrame, feat: str, label: str, top_pct: float,
                   horizon: int, fee_tax: float, slip_low: float, slip_high: float,
                   illiq_feat: str = "amihud", capital=None, impact_coef: float = 0.0,
-                  tv_col: str = "trading_value") -> pd.DataFrame:
+                  tv_col: str = "trading_value", hold_n=None) -> pd.DataFrame:
     """비중첩 리밸런스별 상위분위 롱 포트폴리오의 gross/cost/impact/net.
 
     merged: date, stock_code, feat, illiq_feat, label(fwd_{h}d) 보유 long DataFrame.
@@ -77,7 +92,9 @@ def build_periods(merged: pd.DataFrame, feat: str, label: str, top_pct: float,
     rows = []
     for d in rebal_dates:
         day = df[df["date"] == d]
-        codes = top_quantile_codes(day, feat, top_pct)
+        codes = top_quantile_codes(day, feat, top_pct)  # nlargest 순(비유동↓ 정렬)
+        if hold_n is not None and len(codes) > hold_n:
+            codes = evenly_spaced(codes, hold_n)         # 분포 보존·개수만 축소
         held = day[day["stock_code"].isin(codes)].dropna(subset=[label])
         if len(held) == 0:
             continue
@@ -344,6 +361,30 @@ def yearly_alpha_rows(merged: pd.DataFrame, index_df: pd.DataFrame) -> List[dict
     return rows
 
 
+HOLD_NS = (10, 15, 20, 30, 40, 50, None)   # None=top10% 전체(~83)
+PAPER_CAPITAL = 10_000_000                  # 가상매매 전략당 1천만 가정
+
+
+def holdn_rows(merged: pd.DataFrame, index_df: pd.DataFrame) -> List[dict]:  # pragma: no cover
+    """보유 종목수(N) 축소가 엣지를 유지하는지 — 분포보존 균등추출 스윕."""
+    ft, sl, sh = HEAD_COST
+    label = f"fwd_{HEAD_H}d"
+    ppy = TRADING_DAYS_YR / HEAD_H
+    rows = []
+    for hn in HOLD_NS:
+        per = build_periods(merged, "amihud", label, HEAD_TP, HEAD_H, ft, sl, sh, hold_n=hn)
+        st = period_stats(per["net"], ppy)
+        mkt = benchmark_period_returns(index_df, per["date"].tolist(), HEAD_H)
+        ab = alpha_beta(per["net"], pd.Series(mkt), ppy)
+        avg_n = float(per["n_held"].mean())
+        rows.append({"hold_n": "top10%(~83)" if hn is None else str(hn),
+                     "avg_n_held": avg_n, "net_sharpe": st["sharpe"],
+                     "net_cagr": st["cagr"], "alpha_ann": ab["alpha_ann"],
+                     "win_rate": ab["win_rate"],
+                     "krw_per_name": PAPER_CAPITAL / max(avg_n, 1)})
+    return rows
+
+
 def build_robustness_report(merged: pd.DataFrame, index_df: pd.DataFrame) -> str:  # pragma: no cover
     # (2) 데실 단조성 — gross fwd_20d
     dec = decile_stats(merged, "amihud", "fwd_20d", n_bins=10)
@@ -367,6 +408,17 @@ def build_robustness_report(merged: pd.DataFrame, index_df: pd.DataFrame) -> str
 
     tv_med = float(merged.loc[merged["amihud"].notna(), "trading_value"].median()) / 1e8
 
+    # (보너스) 보유 종목수 N 축소 스윕 — 분산 하한
+    hn = pd.DataFrame(holdn_rows(merged, index_df))
+    hn_show = hn.assign(
+        avg_n_held=hn["avg_n_held"].round(0).astype(int),
+        net_sharpe=hn["net_sharpe"].round(2),
+        net_cagr=(hn["net_cagr"] * 100).round(2),
+        alpha_ann=(hn["alpha_ann"] * 100).round(2),
+        win_rate=(hn["win_rate"] * 100).round(0).astype(int),
+        krw_per_name=(hn["krw_per_name"] / 1e4).round(0).astype(int).astype(str) + "만",
+    )[["hold_n", "avg_n_held", "net_sharpe", "net_cagr", "alpha_ann", "win_rate", "krw_per_name"]]
+
     lines = [
         "# amihud 강건성 · 수용량 분석 (Phase 0+ — 측정 전용)", "",
         f"헤드라인 구성: h={HEAD_H}일 · top{int(HEAD_TP*100)}% · 동일가중 · base 비용.", "",
@@ -380,6 +432,10 @@ def build_robustness_report(merged: pd.DataFrame, index_df: pd.DataFrame) -> str
         f"보유 바스켓 거래대금 중앙값 ≈ {tv_med:.1f}억/일. 종목당 자본=총자본/보유수,",
         "참여율=종목당자본/거래대금, 왕복충격=2·coef·√참여율. coef 불확실 → low/mid/high 스윕.", "",
         cap_show.to_markdown(index=False), "",
+        "## (보너스) 보유 종목수 N 축소 — 분산 하한 (h=20·base 비용)",
+        f"top10% 풀에서 분포보존 균등추출로 개수만 축소. krw_per_name=가상자본 "
+        f"{PAPER_CAPITAL/1e4:.0f}만 ÷ 보유수(사이징 현실성).", "",
+        hn_show.to_markdown(index=False), "",
         "## 판독",
         "- 데실 단조 = 신호 견고(꼬리버킷만의 우연 아님).",
         "- 2022 alpha_ann>0 = 약세장에서도 비유동 알파 = 강세장 베타 아님 확정.",
