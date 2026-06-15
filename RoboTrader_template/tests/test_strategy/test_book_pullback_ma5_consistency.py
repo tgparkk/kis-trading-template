@@ -296,3 +296,38 @@ class TestStrategyLoaderIntegration:
         assert sig is not None
         assert sig.signal_type == SignalType.SELL
         assert sig.metadata["exit_reason"] == "stop_loss"
+
+
+# ----------------------------------------------------------------------------- #
+# 4. 진입 밴드 (2026-06-15) — 눌림형: up=0%, down=stop_loss_pct(0.03)
+# ----------------------------------------------------------------------------- #
+class TestEntryBand:
+
+    def _build(self, monkeypatch):
+        monkeypatch.setattr(
+            "strategies.book_pullback_ma5.strategy.MarketHours.is_market_open",
+            staticmethod(lambda market="KRX": True),
+        )
+        strat = BookPullbackMa5Strategy({
+            "parameters": {"min_daily_bars": 25},
+            "risk_management": {
+                "take_profit_pct": 0.15, "stop_loss_pct": 0.03,
+                "max_hold_days": 30, "trail_ma": 5,
+            },
+            "paper_trading": False,
+        })
+        strat.on_init(broker=None, data_provider=None, executor=None)
+        return strat
+
+    def test_buy_signal_has_pullback_band(self, monkeypatch):
+        """BUY 신호에 눌림형 밴드(max=cur, min=cur*(1-0.03))가 담긴다."""
+        strat = self._build(monkeypatch)
+        df = _ma5_pullback_df()
+        sig = strat.generate_signal("005930", df, timeframe="daily")
+        assert sig is not None
+        from strategies.base import SignalType
+        assert sig.signal_type == SignalType.BUY
+        cur = float(df["close"].iloc[-1])
+        sl = 0.03
+        assert sig.entry_max_price == pytest.approx(cur * 1.01)  # 눌림형 +1% 여유
+        assert sig.entry_min_price == pytest.approx(cur * (1 - sl))

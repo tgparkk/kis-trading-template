@@ -135,3 +135,31 @@ def test_daily_timeframe_still_sells_on_ma_recovery():
     assert sig is not None
     assert sig.signal_type == SignalType.SELL
     assert sig.metadata.get("exit_reason") == "ma_recovery"
+
+
+# --- 진입 밴드 (2026-06-15) — 눌림형: up=0%, down=stop_loss_pct(0.07) ---
+
+def test_buy_signal_has_pullback_band(monkeypatch):
+    """BUY 신호에 눌림형 밴드(max=cur, min=cur*(1-0.07))가 담긴다."""
+    import pytest
+    from strategies.base import SignalType
+
+    monkeypatch.setattr(
+        "strategies.deep_mr_dev20.strategy.MarketHours.is_market_open",
+        staticmethod(lambda market="KRX": True),
+    )
+    s = DeepMrDev20Strategy(config={
+        "parameters": {"min_daily_bars": 35},
+        "risk_management": {"stop_loss_pct": 0.07, "take_profit_pct": 0.12,
+                            "max_hold_days": 7},
+        "paper_trading": False,
+    })
+    s.on_init(None, None, None)
+
+    df = _crash_df(77.0)
+    sig = s.generate_signal("000001", df, timeframe="daily")
+    assert sig is not None and sig.signal_type == SignalType.BUY
+    cur = float(df["close"].iloc[-1])
+    sl = 0.07
+    assert sig.entry_max_price == pytest.approx(cur * 1.01)  # 눌림형 +1% 여유
+    assert sig.entry_min_price == pytest.approx(cur * (1 - sl))

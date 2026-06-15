@@ -176,6 +176,9 @@ class TestLedgerBasedSizing:
         fm = Mock()
         fm.get_max_buy_amount = Mock(return_value=6_300_000)
         engine.set_fund_manager(fm)
+        # 실시간가만 신뢰(2026-06-15): 체결하려면 실시간가가 있어야 한다.
+        engine.intraday_manager = Mock()
+        engine.intraday_manager.get_current_price_for_sell.return_value = {'current_price': 6810}
 
         stock = _make_trading_stock()
         sig = _make_buy_signal()

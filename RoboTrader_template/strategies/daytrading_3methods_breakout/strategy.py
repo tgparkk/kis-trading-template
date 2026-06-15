@@ -78,6 +78,11 @@ class DayTrading3MethodsBreakoutStrategy(BaseStrategy):
         self._max_positions = int(risk.get("max_positions", 5))
         self._max_daily_trades = int(risk.get("max_daily_trades", 5))
         self._max_per_stock_amount = float(risk.get("max_per_stock_amount", 3_000_000))
+        # 진입 지정가 밴드 (돌파형): 기준가(직전 확정 종가) 위로 추격 한도만 둔다.
+        # 갭업/상한가 종목을 스테일 종가로 체결하던 허수 진입 차단(2026-06-15).
+        self._entry_band_up_pct = float(risk.get("entry_band_up_pct", 0.03))
+        _band_down = risk.get("entry_band_down_pct", None)
+        self._entry_band_down_pct = float(_band_down) if _band_down is not None else None
 
         # 프레임워크 max_holding_days 표준 키 (parameters 우선, fallback risk.max_hold_days)
         self.max_holding_days = int(
@@ -261,6 +266,8 @@ class DayTrading3MethodsBreakoutStrategy(BaseStrategy):
 
         target = current_price * (1 + self._take_profit_pct)
         stop = current_price * (1 - self._stop_loss_pct)
+        entry_min, entry_max = self._entry_band(
+            current_price, down_pct=self._entry_band_down_pct, up_pct=self._entry_band_up_pct)
         recommended_qty = max(1, int(self._max_per_stock_amount // current_price))
 
         metadata = {
@@ -282,6 +289,8 @@ class DayTrading3MethodsBreakoutStrategy(BaseStrategy):
             confidence=68.0,  # 백테스트 rule confidence와 동일
             target_price=target,
             stop_loss=stop,
+            entry_min_price=entry_min,
+            entry_max_price=entry_max,
             reasons=reasons,
             metadata=metadata,
         )

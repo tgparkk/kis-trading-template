@@ -109,6 +109,12 @@ class ElderEmaPullbackStrategy(BaseStrategy):
         # 진입 룰 인스턴스 (백테스트와 동일 touch_band)
         self._entry_rule = rule_triple_screen_ema_pullback(touch_band=self._touch_band)
 
+        # 진입 지정가 밴드 (눌림형): 기준가 위로 추격 금지, 하한은 손절폭까지 허용.
+        # 갭업/상한가 종목을 스테일 종가로 체결하던 허수 진입 차단(2026-06-15).
+        self._entry_band_up_pct = float(risk.get("entry_band_up_pct", 0.01))
+        _band_down = risk.get("entry_band_down_pct", self._stop_loss_pct)
+        self._entry_band_down_pct = float(_band_down) if _band_down is not None else None
+
         self._paper_trading = self.config.get("paper_trading", True)
 
         # 상태
@@ -330,6 +336,8 @@ class ElderEmaPullbackStrategy(BaseStrategy):
 
         target = current_price * (1 + self._take_profit_pct)
         stop = current_price * (1 - self._stop_loss_pct)
+        entry_min, entry_max = self._entry_band(
+            current_price, down_pct=self._entry_band_down_pct, up_pct=self._entry_band_up_pct)
         recommended_qty = max(1, int(self._max_per_stock_amount // current_price))
 
         metadata = {
@@ -352,6 +360,8 @@ class ElderEmaPullbackStrategy(BaseStrategy):
             confidence=60.0,  # 백테스트 rule confidence와 동일
             target_price=target,
             stop_loss=stop,
+            entry_min_price=entry_min,
+            entry_max_price=entry_max,
             reasons=reasons,
             metadata=metadata,
         )

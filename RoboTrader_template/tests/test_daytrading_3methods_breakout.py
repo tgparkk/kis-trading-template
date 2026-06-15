@@ -276,6 +276,19 @@ class TestStrategyLoaderIntegration:
         cur = float(df["close"].iloc[-1])
         assert abs(sig.target_price - cur * 1.10) < 1.0
         assert abs(sig.stop_loss - cur * 0.90) < 1.0
+        # 진입 지정가 밴드(돌파형): 기준가 위로 +3% 추격 한도, 하한 없음.
+        # 갭업/상한가를 스테일 종가로 체결하던 허수 진입 차단(2026-06-15).
+        assert sig.entry_max_price == pytest.approx(cur * 1.03)
+        assert sig.entry_min_price is None
+
+    def test_generate_signal_breakout_band_blocks_gap_up(self, monkeypatch):
+        """돌파 신호라도 +3% 추격 한도를 넘는 갭업이면 밴드 상한이 그 아래에 있어야 한다."""
+        strat = self._build(monkeypatch)
+        df = _breakout_df()
+        sig = strat.generate_signal("005930", df, timeframe="daily")
+        cur = float(df["close"].iloc[-1])
+        # 상한가(+30%) 수준의 실시간가는 밴드 상한을 초과 → 엔진이 스킵
+        assert sig.entry_max_price < cur * 1.30
 
     def test_generate_signal_intraday_no_buy(self, monkeypatch):
         """미보유 종목은 intraframe(분봉)에서 신규 진입 안 함."""

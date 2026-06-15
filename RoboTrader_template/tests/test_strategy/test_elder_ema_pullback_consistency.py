@@ -321,3 +321,37 @@ class TestStrategyLoaderIntegration:
         cur = float(df["close"].iloc[-1])
         assert abs(sig.target_price - cur * 1.30) < 1.0
         assert abs(sig.stop_loss - cur * 0.92) < 1.0
+
+
+# ----------------------------------------------------------------------------- #
+# 4. 진입 밴드 (2026-06-15) — 눌림형: up=0%, down=stop_loss_pct(0.08)
+# ----------------------------------------------------------------------------- #
+class TestEntryBand:
+
+    def _build(self, monkeypatch):
+        monkeypatch.setattr(
+            "strategies.elder_ema_pullback.strategy.MarketHours.is_market_open",
+            staticmethod(lambda market="KRX": True),
+        )
+        strat = ElderEmaPullbackStrategy({
+            "parameters": {"min_daily_bars": 70},
+            "risk_management": {
+                "take_profit_pct": 0.30, "stop_loss_pct": 0.08,
+                "max_hold_days": 100, "trail_ema": 13, "trend_flip_exit": True,
+            },
+            "paper_trading": False,
+        })
+        strat.on_init(broker=None, data_provider=None, executor=None)
+        return strat
+
+    def test_buy_signal_has_pullback_band(self, monkeypatch):
+        """BUY 신호에 눌림형 밴드(max=cur, min=cur*(1-0.08))가 담긴다."""
+        from strategies.base import SignalType
+        strat = self._build(monkeypatch)
+        df = _uptrend_pullback_df()
+        sig = strat.generate_signal("005930", df, timeframe="daily")
+        assert sig is not None and sig.signal_type == SignalType.BUY
+        cur = float(df["close"].iloc[-1])
+        sl = 0.08
+        assert sig.entry_max_price == pytest.approx(cur * 1.01)  # 눌림형 +1% 여유
+        assert sig.entry_min_price == pytest.approx(cur * (1 - sl))

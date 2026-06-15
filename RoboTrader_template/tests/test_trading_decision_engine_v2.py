@@ -126,6 +126,10 @@ class TestAnalyzeBuyDecision:
         engine.strategy = engine_strategy
         engine.fund_manager = Mock()
         engine.fund_manager.get_max_buy_amount.return_value = 500000
+        # 실시간가만 신뢰(2026-06-15): 체결하려면 실시간가가 있어야 한다.
+        engine.intraday_manager = Mock()
+        engine.intraday_manager.get_current_price_for_sell.return_value = {'current_price': 50000}
+        engine.virtual_trading = None
 
         owner_signal = MagicMock()
         owner_signal.signal_type = SignalType.BUY
@@ -157,6 +161,10 @@ class TestAnalyzeBuyDecision:
         engine.strategy = strategy
         engine.fund_manager = Mock()
         engine.fund_manager.get_max_buy_amount.return_value = 500000
+        # 실시간가만 신뢰(2026-06-15): 체결하려면 실시간가가 있어야 한다.
+        engine.intraday_manager = Mock()
+        engine.intraday_manager.get_current_price_for_sell.return_value = {'current_price': 50000}
+        engine.virtual_trading = None
 
         stock = TradingStock(stock_code="005930", stock_name="삼성전자",
                              state=StockState.SELECTED, selected_time=datetime.now())

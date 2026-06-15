@@ -242,6 +242,52 @@ class TradingDecisionEngine:
             return True, f"{index_name} 국면 {regime.upper()} (bull_only 게이트)"
         return False, ""
 
+    @staticmethod
+    def _coerce_price(value) -> Optional[float]:
+        """진입 밴드 값을 양의 float로 정규화. 숫자가 아니거나 0이하면 None(=무제한).
+
+        Signal에 밴드가 없거나(구 신호) Mock인 경우에도 안전하게 무시한다.
+        """
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)) and value > 0:
+            return float(value)
+        return None
+
+    def _get_live_price(self, code: str) -> Optional[float]:
+        """실시간 현재가 조회 (일봉 종가 fallback 없음).
+
+        매도 경로(position_monitor._get_current_price)와 동일한 우선순위:
+        온디맨드 API → 캐시 → 브로커. 어느 것도 못 받으면 None(=진입 보류).
+        """
+        im = self.intraday_manager
+        if im is not None:
+            # 1순위: 온디맨드 실시간 API (가장 신선)
+            if hasattr(im, 'get_current_price_for_sell'):
+                try:
+                    info = im.get_current_price_for_sell(code)
+                    if info and info.get('current_price', 0) > 0:
+                        return float(info['current_price'])
+                except Exception:
+                    pass
+            # 2순위: 캐시 현재가
+            if hasattr(im, 'get_cached_current_price'):
+                try:
+                    info = im.get_cached_current_price(code)
+                    if info and info.get('current_price', 0) > 0:
+                        return float(info['current_price'])
+                except Exception:
+                    pass
+        # 3순위: 브로커 현재가
+        if self.broker:
+            try:
+                price_obj = self.broker.get_current_price(code)
+                if isinstance(price_obj, (int, float)) and not isinstance(price_obj, bool) and price_obj > 0:
+                    return float(price_obj)
+            except Exception:
+                pass
+        return None
+
     # =========================================================================
     # 매수 판단
     # =========================================================================
@@ -311,30 +357,27 @@ class TradingDecisionEngine:
             if not should_buy:
                 return False, f"{code} 조건미충족", empty
 
-            # 현재가 조회 (일봉 종가 대신 장중 실시간 가격 사용)
-            current_price = None
-            # 1순위: intraday_manager 캐시 (빠름)
-            if self.intraday_manager and hasattr(self.intraday_manager, 'get_cached_current_price'):
-                try:
-                    price_info = self.intraday_manager.get_cached_current_price(code)
-                    if price_info and price_info.get('current_price', 0) > 0:
-                        current_price = price_info['current_price']
-                except Exception:
-                    pass
-            # 2순위: broker API (정확)
-            if current_price is None and self.broker:
-                try:
-                    price_obj = self.broker.get_current_price(code)
-                    if price_obj is not None and isinstance(price_obj, (int, float)) and price_obj > 0:
-                        current_price = float(price_obj)
-                except Exception:
-                    pass
-            # 3순위: 일봉 종가 fallback
+            # 실시간 현재가 조회. 매도(position_monitor)와 동일하게 '실시간가만' 신뢰한다.
+            # 일봉 종가 fallback은 금지 — 갭/상한가 종목에서 직전 확정 종가로 체결을
+            # 날조해 허수 손익을 만든다(079650 +597K, 2026-06-15). 실시간가 미확보 시
+            # 체결하지 않고 보류해 다음 틱에 재시도한다(실거래: 시세 없이는 주문 불가).
+            current_price = self._get_live_price(code)
             if current_price is None:
-                current_price = float(daily_data['close'].iloc[-1])
+                return False, f"{code} 현재가 미확보 — 진입 보류", empty
 
             from utils.price_utils import round_to_tick
             price = round_to_tick(current_price)
+
+            # 진입 지정가 밴드 검증: 신호 생성가와 체결가가 벌어지면(갭/추격) 스킵한다.
+            # 지정가 주문 의미론 — 눌림목=기준가 이하, 돌파=트리거~+N% 상한.
+            band_min = self._coerce_price(getattr(signal, 'entry_min_price', None))
+            band_max = self._coerce_price(getattr(signal, 'entry_max_price', None))
+            if band_min is not None and price < band_min:
+                return False, (f"{code} 진입가 밴드 하회 — 스킵 "
+                               f"(현재가 {price:,.0f} < 하한 {band_min:,.0f})"), empty
+            if band_max is not None and price > band_max:
+                return False, (f"{code} 진입가 밴드 이탈 — 스킵 "
+                               f"(현재가 {price:,.0f} > 상한 {band_max:,.0f})"), empty
             if self.is_virtual_mode and self.virtual_trading is not None:
                 # 가상모드: 전략 원장(종목당 예산 = 초기자본/K 기본) 기준 산정.
                 ledger_key = strategy_name or (

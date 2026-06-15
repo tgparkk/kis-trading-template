@@ -287,3 +287,35 @@ class TestStrategyLoaderIntegration:
         assert risk["take_profit_pct"] == 0.12
         assert risk["stop_loss_pct"] == 0.08
         assert risk["max_hold_days"] == 20
+
+
+# ----------------------------------------------------------------------------- #
+# 4. 진입 밴드 (2026-06-15) — 돌파형: up=3%, down=None
+# ----------------------------------------------------------------------------- #
+class TestEntryBand:
+
+    def _strat(self, monkeypatch):
+        monkeypatch.setattr(
+            "strategies.minervini_volume_dryup.strategy.MarketHours.is_market_open",
+            staticmethod(lambda market="KRX": True),
+        )
+        strat = MinerviniVolumeDryupStrategy({
+            "parameters": {"min_daily_bars": 40},
+            "risk_management": {
+                "take_profit_pct": 0.12, "stop_loss_pct": 0.08, "max_hold_days": 20,
+            },
+            "paper_trading": False,
+        })
+        strat.on_init(broker=None, data_provider=None, executor=None)
+        return strat
+
+    def test_buy_signal_has_breakout_band(self, monkeypatch):
+        """BUY 신호에 돌파형 밴드(max=cur*1.03, min=None)가 담긴다."""
+        from strategies.base import SignalType
+        strat = self._strat(monkeypatch)
+        df = _dryup_df()
+        sig = strat.generate_signal("005930", df, timeframe="daily")
+        assert sig is not None and sig.signal_type == SignalType.BUY
+        cur = float(df["close"].iloc[-1])
+        assert sig.entry_max_price == pytest.approx(cur * 1.03)
+        assert sig.entry_min_price is None

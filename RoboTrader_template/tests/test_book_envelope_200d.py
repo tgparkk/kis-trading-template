@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -90,3 +91,49 @@ def test_min_gate_small_so_ontick_not_skipped():
     short = pd.DataFrame({c: [1.0] * 50 for c in ["open", "high", "low", "close", "volume"]})
     trig, _, _ = BookEnvelope200dStrategy.evaluate_entry(short)
     assert trig is False
+
+
+def test_entry_band_wired_breakout(monkeypatch):
+    """_check_buy 가 돌파형 밴드(up=3%, down=None)를 Signal 에 담는다."""
+    from strategies.book_envelope_200d.strategy import BookEnvelope200dStrategy
+    from strategies.base import SignalType
+
+    monkeypatch.setattr(
+        "strategies.book_envelope_200d.strategy.MarketHours.is_market_open",
+        staticmethod(lambda market="KRX": True),
+    )
+
+    REF = 10000.0
+    # 최소 봉 수(202)를 충족하는 fake_df — close 전부 REF
+    n = 210
+    fake_df = pd.DataFrame({
+        "date": pd.date_range("2024-01-01", periods=n),
+        "open": [REF] * n, "high": [REF] * n, "low": [REF] * n,
+        "close": [REF] * n, "volume": [1000] * n,
+    })
+
+    # _fetch_entry_history 가 fake_df 를 반환하도록 패치
+    monkeypatch.setattr(
+        BookEnvelope200dStrategy, "_fetch_entry_history",
+        lambda self, code: fake_df,
+    )
+    # evaluate_entry 를 항상 True 로 패치 (룰 계산 불필요)
+    monkeypatch.setattr(
+        BookEnvelope200dStrategy, "evaluate_entry",
+        staticmethod(lambda df, **kw: (True, ["test_rule"], {})),
+    )
+
+    strat = BookEnvelope200dStrategy({
+        "parameters": {"min_gate_bars": 5, "min_daily_bars": 202, "entry_lookback_bars": 210},
+        "risk_management": {"take_profit_pct": 0.10, "stop_loss_pct": 0.08,
+                            "max_hold_days": 10},
+        "paper_trading": False,
+    })
+    strat.on_init(None, None, None)
+
+    sig = strat._check_buy("005930", fake_df)
+    assert sig is not None
+    assert sig.signal_type == SignalType.BUY
+    # breakout: max = ref * 1.03, min = None
+    assert sig.entry_max_price == pytest.approx(REF * 1.03)
+    assert sig.entry_min_price is None

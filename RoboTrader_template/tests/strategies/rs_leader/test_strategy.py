@@ -79,3 +79,26 @@ def test_sell_hold_when_above_ma():
         _df(closes), entry_price=10030.0, hold_days=1,
         stop_loss_pct=0.08, max_hold_days=30, trail_ma=20)
     assert should is False
+
+
+# --- 진입 밴드 (2026-06-15) — 돌파형: up=3%, down=None ---
+
+def test_buy_signal_has_breakout_band(monkeypatch):
+    """BUY 신호에 돌파형 밴드(max=cur*1.03, min=None)가 담긴다."""
+    import pytest
+    from strategies.base import SignalType
+
+    monkeypatch.setattr(
+        "strategies.rs_leader.strategy.MarketHours.is_market_open",
+        staticmethod(lambda market="KRX": True),
+    )
+    strat = RSLeaderStrategy(config=_load_config())
+    strat.on_init(None, None, None)
+
+    closes = list(np.linspace(10000, 20000, LIVE_DAILY_BAR_SUPPLY))
+    df = _df(closes)
+    sig = strat.generate_signal("005930", df, timeframe="daily")
+    assert sig is not None and sig.signal_type == SignalType.BUY
+    cur = float(df["close"].iloc[-1])
+    assert sig.entry_max_price == pytest.approx(cur * 1.03)
+    assert sig.entry_min_price is None

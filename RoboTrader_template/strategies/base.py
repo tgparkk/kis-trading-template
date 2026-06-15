@@ -85,6 +85,10 @@ class Signal:
         confidence: Confidence level (0-100)
         target_price: Target price for take-profit
         stop_loss: Stop-loss price
+        entry_min_price: Lowest live price at which entry is valid (None = unbounded).
+            Live fill price below this → entry skipped (지정가 하한).
+        entry_max_price: Highest live price at which entry is valid (None = unbounded).
+            Live fill price above this → entry skipped (갭/추격 차단, 지정가 상한).
         reasons: List of reasons for the signal
         metadata: Additional strategy-specific data
 
@@ -103,6 +107,8 @@ class Signal:
     confidence: float = 0.0
     target_price: Optional[float] = None
     stop_loss: Optional[float] = None
+    entry_min_price: Optional[float] = None
+    entry_max_price: Optional[float] = None
     reasons: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -141,6 +147,8 @@ class Signal:
             'confidence': self.confidence,
             'target_price': self.target_price,
             'stop_loss': self.stop_loss,
+            'entry_min_price': self.entry_min_price,
+            'entry_max_price': self.entry_max_price,
             'reasons': self.reasons,
             'metadata': self.metadata
         }
@@ -517,6 +525,28 @@ class BaseStrategy(ABC):
             self._ontick_skip_log[key] = now
             return True
         return False
+
+    def _entry_band(self, ref_price, down_pct=None, up_pct=None):
+        """진입 지정가 밴드 (entry_min_price, entry_max_price)를 산출한다.
+
+        실시간 체결가가 신호 기준가(ref_price)에서 벌어지면(갭/추격) 진입을
+        스킵하기 위한 한도. 체결 검증은 TradingDecisionEngine이 수행한다.
+
+        Args:
+            ref_price: 신호 생성 기준가 (보통 직전 확정 일봉 종가).
+            down_pct: 기준가 아래 허용폭 비율. None이면 하한 없음.
+            up_pct:   기준가 위 허용폭 비율. None이면 상한 없음.
+
+        의미: 눌림형은 up_pct를 작게(추격 금지), 돌파형은 up_pct로 추격 한도를 둔다.
+
+        Returns:
+            (entry_min_price, entry_max_price). ref_price가 유효하지 않으면 (None, None).
+        """
+        if not isinstance(ref_price, (int, float)) or isinstance(ref_price, bool) or ref_price <= 0:
+            return None, None
+        lo = ref_price * (1.0 - down_pct) if down_pct is not None else None
+        hi = ref_price * (1.0 + up_pct) if up_pct is not None else None
+        return lo, hi
 
     def get_min_data_length(self) -> int:
         """
