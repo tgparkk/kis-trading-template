@@ -59,7 +59,8 @@ class OrderExecution:
         self.logger.debug("OrderExecution에 FundManager 연결 완료")
 
     async def add_selected_stock(self, stock_code: str, stock_name: str,
-                                 selection_reason: str = "", prev_close: float = 0.0) -> bool:
+                                 selection_reason: str = "", prev_close: float = 0.0,
+                                 owner_strategy: str = "") -> bool:
         """
         조건검색으로 선정된 종목 추가 (비동기)
 
@@ -68,6 +69,9 @@ class OrderExecution:
             stock_name: 종목명
             selection_reason: 선정 사유
             prev_close: 전날 종가 (일봉 기준)
+            owner_strategy: 소유 전략명. 지정 시 해당 전략 소유 인스턴스만 조회/등록
+                            (전략별 자본 독립 → 같은 종목을 여러 전략이 각자 보유 가능).
+                            미지정("") 시 종목코드 단독 매칭(레거시/단일전략).
 
         Returns:
             bool: 추가 성공 여부
@@ -76,12 +80,13 @@ class OrderExecution:
             # Lock 안에서는 동기 상태 변경만 수행하고, await는 Lock 밖에서 호출
             is_reentry = False
             is_already_managed = False
+            owner = owner_strategy or None
 
             with self.state_manager.lock:
                 current_time = now_kst()
 
-                # 이미 존재하는 종목인지 확인
-                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                # 이미 존재하는 종목인지 확인 (owner 지정 시 해당 전략 소유분만)
+                trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=owner)
                 if trading_stock is not None:
                     # 재진입 허용: COMPLETED/FAILED -> SELECTED로 재등록
                     if trading_stock.state in (StockState.COMPLETED, StockState.FAILED):
@@ -103,14 +108,15 @@ class OrderExecution:
                         # 그 외 상태에서는 기존 관리 유지
                         is_already_managed = True
                 else:
-                    # 신규 등록
+                    # 신규 등록 (owner 전략을 생성 시점에 바인딩 → 슬롯 등록부터 소유자 확정)
                     trading_stock = TradingStock(
                         stock_code=stock_code,
                         stock_name=stock_name,
                         state=StockState.SELECTED,
                         selected_time=current_time,
                         selection_reason=selection_reason,
-                        prev_close=prev_close
+                        prev_close=prev_close,
+                        owner_strategy_name=owner_strategy or "",
                     )
 
                     # 등록
@@ -138,9 +144,9 @@ class OrderExecution:
                 if is_reentry:
                     self.logger.warning(f"{stock_code} 재선정 실패 - Intraday 등록 실패")
                 else:
-                    # 신규 등록 실패 시 제거
+                    # 신규 등록 실패 시 제거 (해당 owner 소유분만)
                     with self.state_manager.lock:
-                        self.state_manager.unregister_stock(stock_code)
+                        self.state_manager.unregister_stock(stock_code, strategy=owner)
                 return False
 
         except Exception as e:

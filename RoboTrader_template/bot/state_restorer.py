@@ -395,15 +395,23 @@ class StateRestorer:
 
                 prev_close = self.get_previous_close(stock_code)
 
+                # owner 전략을 등록 시점에 바인딩 → 같은 종목을 보유한 여러 전략이
+                # 각자 독립 인스턴스로 복원되도록 한다(슬롯 저장소).
+                raw_owner = holding.get('strategy', '')
+                owner_name = raw_owner.strip() if (raw_owner and isinstance(raw_owner, str)) else ""
+
                 success = await self.trading_manager.add_selected_stock(
                     stock_code=stock_code,
                     stock_name=stock_name,
                     selection_reason=f"보유 종목 복원 ({quantity}주 @{buy_price:,.0f}원)",
                     prev_close=prev_close,
+                    owner_strategy=owner_name,
                 )
 
                 if success:
-                    trading_stock = self.trading_manager.get_trading_stock(stock_code)
+                    trading_stock = self.trading_manager.get_trading_stock(
+                        stock_code, strategy=(owner_name or None)
+                    )
                     if trading_stock:
                         trading_stock.set_position(quantity, buy_price)
 
@@ -610,23 +618,29 @@ class StateRestorer:
 
                 prev_close = self.get_previous_close(stock_code)
 
+                # owner 전략을 등록 시점에 바인딩 (DB strategy 컬럼 기준)
+                _raw_owner = db_holdings_dict.get(stock_code, {}).get('strategy', '') \
+                    if stock_code in db_holdings_dict else ''
+                owner_name = _raw_owner.strip() if (_raw_owner and isinstance(_raw_owner, str)) else ""
+
                 success = await self.trading_manager.add_selected_stock(
                     stock_code=stock_code,
                     stock_name=stock_name,
                     selection_reason=f"[실전] 보유 종목 복원 ({quantity}주 @{avg_price:,.0f}원)",
                     prev_close=prev_close,
+                    owner_strategy=owner_name,
                 )
 
                 if success:
-                    trading_stock = self.trading_manager.get_trading_stock(stock_code)
+                    trading_stock = self.trading_manager.get_trading_stock(
+                        stock_code, strategy=(owner_name or None)
+                    )
                     if trading_stock:
                         trading_stock.set_position(quantity, avg_price)
 
-                        # DB에서 전략 이름 복원
-                        if stock_code in db_holdings_dict:
-                            db_strategy = db_holdings_dict[stock_code].get('strategy', '')
-                            if db_strategy and isinstance(db_strategy, str) and db_strategy.strip():
-                                trading_stock.strategy_name = db_strategy.strip()
+                        # DB에서 전략 이름 복원 (이미 add_selected_stock에서 바인딩됨, 멱등 재확인)
+                        if owner_name:
+                            trading_stock.strategy_name = owner_name
 
                         # 장기보유 체크: DB에 buy_time이 있으면 사용
                         buy_time = db_holdings_dict.get(stock_code, {}).get('buy_time') if stock_code in db_holdings_dict else None

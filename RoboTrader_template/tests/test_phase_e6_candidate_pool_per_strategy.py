@@ -271,41 +271,42 @@ class TestLoadScreenerCandidatesMultiStrategy:
         # 두 종목 모두 add_selected_stock 호출
         assert bot.trading_manager.add_selected_stock.call_count == 2
 
-    def test_multi_strategy_duplicate_second_registration_skipped(self):
-        """같은 코드가 두 전략에 배정될 때 두 번째는 등록 안 됨."""
+    def test_multi_strategy_same_stock_registered_per_owner(self):
+        """같은 코드가 두 전략에 배정되면 각 전략 owner로 각각 등록된다.
+
+        전략별 자본 독립 → 동일 종목을 여러 전략이 각자 보유 가능. 과거의
+        '두 번째 등록 거부' 가드는 제거되었고, 동일 전략 중복만 add_selected_stock
+        내부에서 막힌다.
+        """
         from main import DayTradingBot
 
         bot = self._make_bot(num_strategies=2)
 
         shared = _make_candidate("999999")
-        # 두 전략 모두 동일 종목 배정 (select_candidates_per_strategy가 이미 dedup했어야 하지만
-        # _load_candidates_multi_strategy 내부 가드도 검증)
         bot.candidate_selector.select_candidates_per_strategy = MagicMock(
             return_value={
                 "Strategy0": [shared],
-                "Strategy1": [shared],  # 의도적 중복
+                "Strategy1": [shared],  # 의도적 중복 — 이제 둘 다 등록되어야 함
             }
         )
-        # 첫 등록 후 trading_stocks에 추가
-        registered = {}
 
-        async def fake_add(stock_code, stock_name, selection_reason, prev_close):
-            if stock_code in registered:
-                return False
-            registered[stock_code] = True
+        calls = []
+
+        async def fake_add(stock_code, stock_name, selection_reason, prev_close, owner_strategy=""):
+            calls.append((stock_code, owner_strategy))
             return True
 
         bot.trading_manager.add_selected_stock = fake_add
-        bot.trading_manager.trading_stocks = registered
 
         async def run():
             await DayTradingBot._load_candidates_multi_strategy(bot, max_per_strategy=10)
 
         asyncio.get_event_loop().run_until_complete(run())
 
-        # 등록은 1번만
-        assert len(registered) == 1
-        assert "999999" in registered
+        # 두 전략 모두 동일 종목을 각자 owner로 등록
+        assert len(calls) == 2
+        assert all(code == "999999" for code, _ in calls)
+        assert {owner for _, owner in calls} == {"Strategy0", "Strategy1"}
 
 
 # ============================================================================

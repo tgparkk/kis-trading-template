@@ -593,10 +593,11 @@ class DayTradingBot:
                     stock_name=c.name,
                     selection_reason=c.reason,
                     prev_close=c.prev_close,
+                    owner_strategy=strategy_name,
                 )
                 if success:
                     # 순수 전략 이름 설정 (DB strategy 컬럼용)
-                    ts = self.trading_manager.get_trading_stock(c.code)
+                    ts = self.trading_manager.get_trading_stock(c.code, strategy=strategy_name)
                     if ts:
                         ts.strategy_name = strategy_name
                     registered += 1
@@ -639,7 +640,9 @@ class DayTradingBot:
                 fallback = await self.candidate_selector.select_daily_candidates(
                     max_candidates=max_per_strategy
                 )
-                registered_codes = set(self.trading_manager.trading_stocks.keys())
+                registered_codes = {
+                    ts.stock_code for ts in self.trading_manager.trading_stocks.values()
+                }
                 fallback = [c for c in fallback if c.code not in registered_codes]
                 # 첫 번째 전략(fallback 수용 전략)에 배정
                 for strategy_name in pool_by_strategy:
@@ -657,22 +660,17 @@ class DayTradingBot:
         total_registered = 0
         for strategy_name, candidates in pool_by_strategy.items():
             for c in candidates:
-                # 이미 등록된 종목 중복 가드 (stock_state_manager 수준 방어선 추가)
-                if c.code in self.trading_manager.trading_stocks:
-                    self.logger.info(
-                        f"[E6] {c.code}({c.name}) 이미 등록됨 — "
-                        f"{strategy_name} 두 번째 등록 거부"
-                    )
-                    continue
-
+                # 전략별 자본 독립: 같은 종목을 여러 전략이 각자 보유 가능.
+                # 동일 전략(owner)의 중복 등록만 add_selected_stock 내부에서 거부된다.
                 success = await self.trading_manager.add_selected_stock(
                     stock_code=c.code,
                     stock_name=c.name,
                     selection_reason=c.reason,
                     prev_close=c.prev_close,
+                    owner_strategy=strategy_name,
                 )
                 if success:
-                    ts = self.trading_manager.get_trading_stock(c.code)
+                    ts = self.trading_manager.get_trading_stock(c.code, strategy=strategy_name)
                     if ts:
                         ts.strategy_name = strategy_name
                     total_registered += 1

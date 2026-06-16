@@ -178,7 +178,8 @@ class TradingStockManager:
     # =========================================================================
 
     async def add_selected_stock(self, stock_code: str, stock_name: str,
-                                 selection_reason: str = "", prev_close: float = 0.0) -> bool:
+                                 selection_reason: str = "", prev_close: float = 0.0,
+                                 owner_strategy: str = "") -> bool:
         """
         조건검색으로 선정된 종목 추가 (비동기)
 
@@ -187,12 +188,14 @@ class TradingStockManager:
             stock_name: 종목명
             selection_reason: 선정 사유
             prev_close: 전날 종가 (일봉 기준)
+            owner_strategy: 소유 전략명(전략별 독립 보유용, 미지정 시 단일 매칭)
 
         Returns:
             bool: 추가 성공 여부
         """
         return await self._order_execution.add_selected_stock(
-            stock_code, stock_name, selection_reason, prev_close
+            stock_code, stock_name, selection_reason, prev_close,
+            owner_strategy=owner_strategy,
         )
 
     async def execute_buy_order(self, stock_code: str, quantity: int,

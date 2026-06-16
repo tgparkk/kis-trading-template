@@ -91,7 +91,7 @@ def _wire_trading_manager(restorer):
 
     stocks = {}
 
-    def _get(code):
+    def _get(code, strategy=None):
         ts = stocks.setdefault(code, Mock())
         return ts
     restorer.trading_manager.get_trading_stock.side_effect = _get
