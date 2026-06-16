@@ -23,8 +23,8 @@ from core.trading.stock_state_manager import StockStateManager
 
 
 def _codes_in_state(state_mgr, state):
-    """복합키 stocks_by_state[state]에 존재하는 종목코드 집합."""
-    return {code for (_owner, code) in state_mgr.stocks_by_state[state]}
+    """특정 상태에 존재하는 종목코드 집합 (슬롯 저장소 무관, 공개 API 기반)."""
+    return {ts.stock_code for ts in state_mgr.get_stocks_by_state(state)}
 
 
 # ============================================================================
@@ -577,8 +577,8 @@ class TestStateTransitionSafety:
         mgr.register_stock(stock)
         mgr.unregister_stock("005930")
         
-        assert "005930" not in mgr.trading_stocks
-        assert "005930" not in mgr.stocks_by_state[StockState.POSITIONED]
+        assert mgr.get_trading_stock("005930") is None
+        assert "005930" not in _codes_in_state(mgr, StockState.POSITIONED)
 
     def test_change_nonexistent_stock_noop(self):
         """존재하지 않는 종목 상태 변경 시 에러 없음"""

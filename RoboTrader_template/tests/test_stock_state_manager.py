@@ -9,12 +9,12 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch
 from core.models import TradingStock, StockState, Position
-from core.trading.stock_state_manager import StockStateManager, _key
+from core.trading.stock_state_manager import StockStateManager
 
 
 def _codes_in_state(manager, state):
-    """복합키 stocks_by_state[state]에 존재하는 종목코드 집합."""
-    return {code for (_owner, code) in manager.stocks_by_state[state]}
+    """특정 상태에 존재하는 종목코드 집합 (슬롯 저장소 무관, 공개 API 기반)."""
+    return {ts.stock_code for ts in manager.get_stocks_by_state(state)}
 
 
 @pytest.fixture
@@ -51,8 +51,8 @@ class TestRegisterUnregister:
     def test_unregister_stock(self, manager, sample_stock):
         manager.register_stock(sample_stock)
         manager.unregister_stock("005930")
-        assert "005930" not in manager.trading_stocks
-        assert "005930" not in manager.stocks_by_state[StockState.SELECTED]
+        assert manager.get_trading_stock("005930") is None
+        assert "005930" not in _codes_in_state(manager, StockState.SELECTED)
 
     def test_unregister_nonexistent(self, manager):
         # Should not raise

@@ -10,12 +10,6 @@ from ..models import TradingStock, StockState
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
 
-_LEGACY_OWNER = "__legacy__"
-
-
-def _key(owner: Optional[str], stock_code: str) -> Tuple[str, str]:
-    return ((owner or _LEGACY_OWNER), stock_code)
-
 # 유효한 상태 전이 맵: {현재 상태: [허용되는 다음 상태들]}
 _VALID_TRANSITIONS: Dict[StockState, List[StockState]] = {
     StockState.SELECTED: [StockState.BUY_PENDING, StockState.COMPLETED, StockState.FAILED],
@@ -42,9 +36,13 @@ class StockStateManager:
         """초기화"""
         self.logger = setup_logger(__name__)
 
-        # 종목 상태 관리 (복합키: (owner_strategy_name, stock_code))
-        self.trading_stocks: Dict[Tuple[str, str], TradingStock] = {}
-        self.stocks_by_state: Dict[StockState, Dict[Tuple[str, str], TradingStock]] = {
+        # 종목 상태 관리 (안정 슬롯 키: owner 가변성에 견고 + 다owner 동일종목 지원)
+        # 슬롯은 등록 시 1회 부여되어 owner 변경·상태 전이에도 불변. owner는 항상
+        # 객체에서 직접(live) 읽어 비교하므로 키가 stale해지지 않는다.
+        self._next_slot: int = 0
+        self.trading_stocks: Dict[int, TradingStock] = {}            # slot -> ts
+        self._slots_by_code: Dict[str, List[int]] = {}              # code -> [slot,...]
+        self.stocks_by_state: Dict[StockState, Dict[int, TradingStock]] = {
             state: {} for state in StockState
         }
 
@@ -56,53 +54,74 @@ class StockStateManager:
         """Lock 객체 반환"""
         return self._lock
 
+    def _slot_for(self, trading_stock: TradingStock) -> Optional[int]:
+        """객체의 현재 슬롯을 identity로 조회 (lock 보유 가정)."""
+        for slot in self._slots_by_code.get(trading_stock.stock_code, []):
+            if self.trading_stocks.get(slot) is trading_stock:
+                return slot
+        return None
+
+    def _remove(self, trading_stock: TradingStock) -> None:
+        """슬롯 기준으로 모든 인덱스에서 객체 제거 (lock 보유 가정)."""
+        slot = self._slot_for(trading_stock)
+        if slot is None:
+            return
+        self.trading_stocks.pop(slot, None)
+        self.stocks_by_state[trading_stock.state].pop(slot, None)
+        slots = self._slots_by_code.get(trading_stock.stock_code)
+        if slots and slot in slots:
+            slots.remove(slot)
+            if not slots:
+                self._slots_by_code.pop(trading_stock.stock_code, None)
+
     def _find_by_code(self, stock_code: str, strategy: Optional[str] = None) -> List[TradingStock]:
         """종목 코드(+선택적 전략)로 TradingStock 목록 조회.
 
-        strategy 지정 시 복합키 정확 매칭, 미지정 시 종목 코드만으로 전체 소유자 매칭.
-        호출자가 lock을 보유한 상태에서 호출되어야 한다.
+        owner_strategy_name을 객체에서 직접(live) 비교하므로 등록 후 owner가
+        바뀌어도 안전하다. 호출자가 lock을 보유한 상태에서 호출되어야 한다.
         """
+        slots = self._slots_by_code.get(stock_code, [])
+        out = [self.trading_stocks[s] for s in slots if s in self.trading_stocks]
         if strategy is not None:
-            ts = self.trading_stocks.get(_key(strategy, stock_code))
-            return [ts] if ts is not None else []
-        return [ts for (own, code), ts in self.trading_stocks.items() if code == stock_code]
+            out = [ts for ts in out if ts.owner_strategy_name == strategy]
+        return out
 
     def register_stock(self, trading_stock: TradingStock) -> bool:
         """
         종목 등록
 
-        POSITIONED 또는 BUY_PENDING 상태인 기존 종목이 있으면 두 번째 등록을 거부합니다.
-        실매매 중인 종목(BUY_PENDING 포함)을 다른 전략이 가로채지 못하도록 차단합니다.
-        그 외 상태(SELECTED, COMPLETED, FAILED 등)는 덮어쓰기 허용합니다.
+        동일 전략(owner)이 POSITIONED/BUY_PENDING 상태로 이미 보유 중이면 거부합니다.
+        다른 전략이 같은 종목을 보유하는 것은 허용합니다(전략별 자본 독립).
+        동일 owner의 그 외 상태(SELECTED, COMPLETED, FAILED 등)는 덮어쓰기 허용합니다.
 
         Args:
             trading_stock: 등록할 TradingStock 객체
 
         Returns:
-            True: 등록 성공, False: POSITIONED/BUY_PENDING 중복으로 거부
+            True: 등록 성공, False: 동일 전략 POSITIONED/BUY_PENDING 중복으로 거부
         """
         with self._lock:
             owner = trading_stock.owner_strategy_name
-            k = _key(owner, trading_stock.stock_code)
-            existing = self.trading_stocks.get(k)
+            same_owner = [
+                ts for ts in self._find_by_code(trading_stock.stock_code)
+                if ts.owner_strategy_name == owner
+            ]
+            for existing in same_owner:
+                if existing.state in (StockState.POSITIONED, StockState.BUY_PENDING):
+                    self.logger.info(
+                        f"[중복등록거부] {trading_stock.stock_code} owner={owner} "
+                        f"state={existing.state.name} — 동일 전략 중복"
+                    )
+                    return False
+            # 동일 owner의 비활성 상태 엔트리는 덮어쓰기(제거 후 신규 슬롯 등록)
+            for existing in same_owner:
+                self._remove(existing)
 
-            if existing is not None and existing.state in (
-                StockState.POSITIONED, StockState.BUY_PENDING
-            ):
-                self.logger.info(
-                    f"[중복등록거부] {trading_stock.stock_code} owner={owner} "
-                    f"state={existing.state.name} — 동일 전략 중복"
-                )
-                return False
-
-            if existing is not None:
-                # 그 외 상태(SELECTED 등)는 덮어쓰기 허용
-                old_state = existing.state
-                self.stocks_by_state[old_state].pop(k, None)
-
-            state = trading_stock.state
-            self.trading_stocks[k] = trading_stock
-            self.stocks_by_state[state][k] = trading_stock
+            slot = self._next_slot
+            self._next_slot += 1
+            self.trading_stocks[slot] = trading_stock
+            self._slots_by_code.setdefault(trading_stock.stock_code, []).append(slot)
+            self.stocks_by_state[trading_stock.state][slot] = trading_stock
             return True
 
     def unregister_stock(self, stock_code: str, strategy: Optional[str] = None) -> None:
@@ -121,12 +140,7 @@ class StockStateManager:
                 self.logger.warning(
                     f"[모호해제] {stock_code} 다중 소유 — strategy 미지정, 첫 소유자 적용"
                 )
-            trading_stock = matches[0]
-            state = trading_stock.state
-            k = _key(trading_stock.owner_strategy_name, stock_code)
-
-            self.trading_stocks.pop(k, None)
-            self.stocks_by_state[state].pop(k, None)
+            self._remove(matches[0])
 
     def change_stock_state(self, stock_code: str, new_state: StockState,
                            reason: str = "", strategy: Optional[str] = None) -> None:
@@ -148,7 +162,9 @@ class StockStateManager:
                     f"[모호상태변경] {stock_code} 다중 소유 — strategy 미지정, 첫 소유자 적용"
                 )
             trading_stock = matches[0]
-            k = _key(trading_stock.owner_strategy_name, stock_code)
+            slot = self._slot_for(trading_stock)
+            if slot is None:
+                return
             old_state = trading_stock.state
 
             # 상태 전이 규칙 검증 (비정상 전이는 경고만, 차단하지 않음)
@@ -159,12 +175,12 @@ class StockStateManager:
                     f"(허용: {[s.value for s in valid_next_states]}) | 사유: {reason}"
                 )
 
-            # 기존 상태에서 제거
-            self.stocks_by_state[old_state].pop(k, None)
+            # 기존 상태에서 제거 (슬롯 기준 — owner 변경에 무관하게 안정)
+            self.stocks_by_state[old_state].pop(slot, None)
 
             # 새 상태로 변경
             trading_stock.change_state(new_state, reason)
-            self.stocks_by_state[new_state][k] = trading_stock
+            self.stocks_by_state[new_state][slot] = trading_stock
 
             # 상세 상태 변화 로깅
             self._log_detailed_state_change(trading_stock, old_state, new_state, reason)
