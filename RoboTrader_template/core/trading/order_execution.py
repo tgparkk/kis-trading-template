@@ -81,8 +81,8 @@ class OrderExecution:
                 current_time = now_kst()
 
                 # 이미 존재하는 종목인지 확인
-                if stock_code in self.state_manager.trading_stocks:
-                    trading_stock = self.state_manager.trading_stocks[stock_code]
+                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                if trading_stock is not None:
                     # 재진입 허용: COMPLETED/FAILED -> SELECTED로 재등록
                     if trading_stock.state in (StockState.COMPLETED, StockState.FAILED):
                         # 상태 변경 및 메타 업데이트
@@ -95,7 +95,8 @@ class OrderExecution:
                         trading_stock.is_buying = False   # 이전 사이클 잔존 플래그 초기화
                         trading_stock.is_selling = False   # 이전 사이클 잔존 플래그 초기화
                         self.state_manager.change_stock_state(
-                            stock_code, StockState.SELECTED, f"재선정: {selection_reason}"
+                            stock_code, StockState.SELECTED, f"재선정: {selection_reason}",
+                            strategy=trading_stock.owner_strategy_name
                         )
                         is_reentry = True
                     else:
@@ -162,11 +163,10 @@ class OrderExecution:
         """
         try:
             with self.state_manager.lock:
-                if stock_code not in self.state_manager.trading_stocks:
+                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                if trading_stock is None:
                     self.logger.warning(f"{stock_code}: 관리 중이지 않은 종목")
                     return False
-
-                trading_stock = self.state_manager.trading_stocks[stock_code]
 
                 # 중복 매수 방지: 이미 매수 진행 중인지 확인
                 if trading_stock.is_buying:
@@ -208,7 +208,8 @@ class OrderExecution:
 
                 # 매수 주문 중 상태로 변경
                 self.state_manager.change_stock_state(
-                    stock_code, StockState.BUY_PENDING, f"매수 주문: {reason}"
+                    stock_code, StockState.BUY_PENDING, f"매수 주문: {reason}",
+                    strategy=trading_stock.owner_strategy_name
                 )
 
                 # 데이터 수집기에 후보 종목으로 추가 (실시간 모니터링)
@@ -219,38 +220,43 @@ class OrderExecution:
 
             if order_id:
                 with self.state_manager.lock:
-                    trading_stock = self.state_manager.trading_stocks[stock_code]
-                    trading_stock.add_order(order_id)
+                    trading_stock = self.state_manager.get_trading_stock(stock_code)
+                    if trading_stock is not None:
+                        trading_stock.add_order(order_id)
 
                 self.logger.debug(f"{stock_code} 매수 주문 성공: {order_id}")
                 return True
             else:
                 # 주문 실패 시 원래 상태로 되돌림 (SELECTED 또는 COMPLETED)
                 with self.state_manager.lock:
-                    trading_stock = self.state_manager.trading_stocks[stock_code]
-                    # 매수 진행 플래그 리셋
-                    trading_stock.is_buying = False
+                    trading_stock = self.state_manager.get_trading_stock(stock_code)
+                    if trading_stock is not None:
+                        # 매수 진행 플래그 리셋
+                        trading_stock.is_buying = False
 
-                    # 원래 상태 추정: 재거래면 COMPLETED, 신규면 SELECTED
-                    original_state = (
-                        StockState.COMPLETED if "재거래" in reason else StockState.SELECTED
-                    )
-                    self.state_manager.change_stock_state(
-                        stock_code, original_state, "매수 주문 실패"
-                    )
+                        # 원래 상태 추정: 재거래면 COMPLETED, 신규면 SELECTED
+                        original_state = (
+                            StockState.COMPLETED if "재거래" in reason else StockState.SELECTED
+                        )
+                        self.state_manager.change_stock_state(
+                            stock_code, original_state, "매수 주문 실패",
+                            strategy=trading_stock.owner_strategy_name
+                        )
                 return False
 
         except Exception as e:
             self.logger.error(f"{stock_code} 매수 주문 오류: {e}")
             # 오류 시 원래 상태로 되돌림
             with self.state_manager.lock:
-                if stock_code in self.state_manager.trading_stocks:
-                    self.state_manager.trading_stocks[stock_code].is_buying = False
+                _ts = self.state_manager.get_trading_stock(stock_code)
+                if _ts is not None:
+                    _ts.is_buying = False
                     original_state = (
                         StockState.COMPLETED if "재거래" in reason else StockState.SELECTED
                     )
                     self.state_manager.change_stock_state(
-                        stock_code, original_state, f"매수 주문 오류: {e}"
+                        stock_code, original_state, f"매수 주문 오류: {e}",
+                        strategy=_ts.owner_strategy_name
                     )
             return False
 
@@ -267,11 +273,10 @@ class OrderExecution:
         """
         try:
             with self.state_manager.lock:
-                if stock_code not in self.state_manager.trading_stocks:
+                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                if trading_stock is None:
                     self.logger.warning(f"{stock_code}: 관리 중이지 않은 종목")
                     return False
-
-                trading_stock = self.state_manager.trading_stocks[stock_code]
 
                 # 상태 검증 (POSITIONED 또는 SELL_CANDIDATE에서 매도 시도 가능)
                 if trading_stock.state not in [StockState.POSITIONED, StockState.SELL_CANDIDATE]:
@@ -287,7 +292,8 @@ class OrderExecution:
 
                 # 상태 변경
                 self.state_manager.change_stock_state(
-                    stock_code, StockState.SELL_CANDIDATE, reason
+                    stock_code, StockState.SELL_CANDIDATE, reason,
+                    strategy=trading_stock.owner_strategy_name
                 )
 
                 self.logger.info(f"{stock_code} 매도 후보로 변경: {reason}")
@@ -316,11 +322,10 @@ class OrderExecution:
         """
         try:
             with self.state_manager.lock:
-                if stock_code not in self.state_manager.trading_stocks:
+                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                if trading_stock is None:
                     self.logger.warning(f"{stock_code}: 관리 중이지 않은 종목")
                     return False
-
-                trading_stock = self.state_manager.trading_stocks[stock_code]
 
                 # 상태 검증
                 if trading_stock.state != StockState.SELL_CANDIDATE:
@@ -337,7 +342,8 @@ class OrderExecution:
 
                 # 매도 주문 중 상태로 변경
                 self.state_manager.change_stock_state(
-                    stock_code, StockState.SELL_PENDING, f"매도 주문: {reason}"
+                    stock_code, StockState.SELL_PENDING, f"매도 주문: {reason}",
+                    strategy=trading_stock.owner_strategy_name
                 )
 
             # 매도 주문 실행
@@ -347,18 +353,21 @@ class OrderExecution:
 
             if order_id:
                 with self.state_manager.lock:
-                    trading_stock = self.state_manager.trading_stocks[stock_code]
-                    trading_stock.add_order(order_id)
+                    trading_stock = self.state_manager.get_trading_stock(stock_code)
+                    if trading_stock is not None:
+                        trading_stock.add_order(order_id)
 
                 self.logger.info(f"{stock_code} 매도 주문 성공: {order_id}")
                 return True
             else:
                 # 주문 실패 시 매도 후보로 되돌림 + is_selling 즉시 해제
                 with self.state_manager.lock:
-                    if stock_code in self.state_manager.trading_stocks:
-                        self.state_manager.trading_stocks[stock_code].is_selling = False
+                    _ts = self.state_manager.get_trading_stock(stock_code)
+                    if _ts is not None:
+                        _ts.is_selling = False
                     self.state_manager.change_stock_state(
-                        stock_code, StockState.SELL_CANDIDATE, "매도 주문 실패"
+                        stock_code, StockState.SELL_CANDIDATE, "매도 주문 실패",
+                        strategy=_ts.owner_strategy_name if _ts is not None else None
                     )
                 return False
 
@@ -366,10 +375,12 @@ class OrderExecution:
             self.logger.error(f"{stock_code} 매도 주문 오류: {e}")
             # 오류 시 매도 후보로 되돌림 + is_selling 즉시 해제
             with self.state_manager.lock:
-                if stock_code in self.state_manager.trading_stocks:
-                    self.state_manager.trading_stocks[stock_code].is_selling = False
+                _ts = self.state_manager.get_trading_stock(stock_code)
+                if _ts is not None:
+                    _ts.is_selling = False
                     self.state_manager.change_stock_state(
-                        stock_code, StockState.SELL_CANDIDATE, f"매도 주문 오류: {e}"
+                        stock_code, StockState.SELL_CANDIDATE, f"매도 주문 오류: {e}",
+                        strategy=_ts.owner_strategy_name
                     )
             return False
 
@@ -386,12 +397,14 @@ class OrderExecution:
         """
         try:
             with self.state_manager.lock:
-                if stock_code not in self.state_manager.trading_stocks:
+                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                if trading_stock is None:
                     return False
 
                 # 상태 변경 후 제거
                 self.state_manager.change_stock_state(
-                    stock_code, StockState.COMPLETED, f"제거: {reason}"
+                    stock_code, StockState.COMPLETED, f"제거: {reason}",
+                    strategy=trading_stock.owner_strategy_name
                 )
 
                 # 관련 관리자에서도 제거
@@ -418,11 +431,10 @@ class OrderExecution:
             stock_code = order.stock_code
 
             with self.state_manager.lock:
-                if stock_code not in self.state_manager.trading_stocks:
+                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                if trading_stock is None:
                     self.logger.warning(f"타임아웃 처리할 종목 없음: {stock_code}")
                     return
-
-                trading_stock = self.state_manager.trading_stocks[stock_code]
 
                 # BUY_PENDING 상태인 경우 처리
                 if trading_stock.state == StockState.BUY_PENDING:
@@ -435,7 +447,8 @@ class OrderExecution:
                     if self.enable_re_trading:
                         self.state_manager.change_stock_state(
                             stock_code, StockState.COMPLETED,
-                            "주문 타임아웃 복구 (재거래 가능)"
+                            "주문 타임아웃 복구 (재거래 가능)",
+                            strategy=trading_stock.owner_strategy_name
                         )
                         self.logger.info(
                             f"{stock_code} 타임아웃 복구 완료: BUY_PENDING -> COMPLETED (재거래 가능)"
@@ -443,7 +456,8 @@ class OrderExecution:
                     else:
                         self.state_manager.change_stock_state(
                             stock_code, StockState.SELECTED,
-                            "주문 타임아웃 복구"
+                            "주문 타임아웃 복구",
+                            strategy=trading_stock.owner_strategy_name
                         )
                         self.logger.info(
                             f"{stock_code} 타임아웃 복구 완료: BUY_PENDING -> SELECTED (매수 재시도 가능)"
@@ -461,7 +475,8 @@ class OrderExecution:
 
                     self.state_manager.change_stock_state(
                         stock_code, StockState.POSITIONED,
-                        "매도 주문 타임아웃 복구 (10초 후 재매도 가능)"
+                        "매도 주문 타임아웃 복구 (10초 후 재매도 가능)",
+                        strategy=trading_stock.owner_strategy_name
                     )
                     self.logger.info(
                         f"{stock_code} 타임아웃 복구 완료: SELL_PENDING -> POSITIONED (재매도 가능)"
@@ -492,11 +507,11 @@ class OrderExecution:
         stock_code = order.stock_code
 
         with self.state_manager.lock:
-            if stock_code not in self.state_manager.trading_stocks:
+            trading_stock = self.state_manager.get_trading_stock(stock_code)
+            if trading_stock is None:
                 self.logger.warning(f"부분 체결 포지션 등록 실패: {stock_code} 종목 없음")
                 return
 
-            trading_stock = self.state_manager.trading_stocks[stock_code]
             trading_stock.is_buying = False
             trading_stock.set_position(filled_qty, filled_price)
             trading_stock.clear_current_order()
@@ -504,7 +519,8 @@ class OrderExecution:
 
             self.state_manager.change_stock_state(
                 stock_code, StockState.POSITIONED,
-                f"부분 체결 타임아웃: {filled_qty}주 @{filled_price:,.0f}원"
+                f"부분 체결 타임아웃: {filled_qty}주 @{filled_price:,.0f}원",
+                strategy=trading_stock.owner_strategy_name
             )
 
         self.logger.info(f"부분 체결 포지션 등록 완료: {stock_code} {filled_qty}주 @{filled_price:,.0f}원")
@@ -521,11 +537,11 @@ class OrderExecution:
         stock_code = order.stock_code
 
         with self.state_manager.lock:
-            if stock_code not in self.state_manager.trading_stocks:
+            trading_stock = self.state_manager.get_trading_stock(stock_code)
+            if trading_stock is None:
                 self.logger.warning(f"매도 부분 체결 처리 실패: {stock_code} 종목 없음")
                 return
 
-            trading_stock = self.state_manager.trading_stocks[stock_code]
             # is_selling 해제 (매도 부분 체결 타임아웃 경로)
             trading_stock.is_selling = False
             trading_stock.clear_current_order()
@@ -538,7 +554,8 @@ class OrderExecution:
                     trading_stock.position.quantity = remaining_qty
                     self.state_manager.change_stock_state(
                         stock_code, StockState.POSITIONED,
-                        f"매도 부분 체결 타임아웃: {filled_qty}주 매도, {remaining_qty}주 잔량"
+                        f"매도 부분 체결 타임아웃: {filled_qty}주 매도, {remaining_qty}주 잔량",
+                        strategy=trading_stock.owner_strategy_name
                     )
                     self.logger.info(
                         f"{stock_code} 매도 부분 체결: {filled_qty}주 @{filled_price:,.0f}원, "
@@ -549,7 +566,8 @@ class OrderExecution:
                     trading_stock.clear_position()
                     self.state_manager.change_stock_state(
                         stock_code, StockState.COMPLETED,
-                        f"매도 부분 체결 완료: {filled_qty}주 @{filled_price:,.0f}원"
+                        f"매도 부분 체결 완료: {filled_qty}주 @{filled_price:,.0f}원",
+                        strategy=trading_stock.owner_strategy_name
                     )
                     self.logger.info(
                         f"{stock_code} 매도 부분 체결 전량 완료: {filled_qty}주 @{filled_price:,.0f}원"
@@ -558,7 +576,8 @@ class OrderExecution:
                 # 포지션 정보 없으면 COMPLETED로
                 self.state_manager.change_stock_state(
                     stock_code, StockState.COMPLETED,
-                    f"매도 부분 체결 완료 (포지션 없음): {filled_qty}주"
+                    f"매도 부분 체결 완료 (포지션 없음): {filled_qty}주",
+                    strategy=trading_stock.owner_strategy_name
                 )
                 self.logger.warning(
                     f"{stock_code} 매도 부분 체결: 포지션 정보 없음 ({filled_qty}주 체결)"

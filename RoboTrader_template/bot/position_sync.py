@@ -46,8 +46,8 @@ class PositionSyncManager:
             missing_positions = []
             unmanaged_stocks = []
             for code, balance_stock in held_stocks.items():
-                if code in self.bot.trading_manager.trading_stocks:
-                    ts = self.bot.trading_manager.trading_stocks[code]
+                ts = self.bot.trading_manager.get_trading_stock(code)
+                if ts is not None:
                     if ts.state != StockState.POSITIONED:
                         missing_positions.append((code, balance_stock, ts))
                         self.logger.info(f"{code}: 보유중이지만 상태가 {ts.state.value} (복구 필요)")

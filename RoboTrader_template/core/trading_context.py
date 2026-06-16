@@ -333,7 +333,7 @@ class TradingContext:
             from core.trading.stock_state_manager import StockStateManager
             stock_state_mgr = getattr(self._trading_manager, 'stock_state_manager', None)
             if stock_state_mgr is not None:
-                existing = stock_state_mgr.trading_stocks.get(stock_code)
+                existing = stock_state_mgr.get_trading_stock(stock_code, strategy=self._current_strategy_name)
                 if existing is not None and existing.state in (
                     StockState.POSITIONED, StockState.BUY_PENDING
                 ):
