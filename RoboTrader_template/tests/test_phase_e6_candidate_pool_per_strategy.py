@@ -84,9 +84,9 @@ class TestCandidatesPerStrategySeparatePools:
 # ============================================================================
 
 class TestCandidatesOverlapFirstStrategyWins:
-    """같은 종목이 두 전략에 등장 시 첫 전략만 배정, 두 번째는 제거."""
+    """전략별 자본이 독립이므로 같은 종목이 여러 전략 후보에 중복 허용된다."""
 
-    def test_overlap_first_strategy_wins(self):
+    def test_overlap_allowed_for_independent_capital(self):
         selector = _make_selector()
 
         shared_code = "999999"
@@ -105,9 +105,9 @@ class TestCandidatesOverlapFirstStrategyWins:
 
         # 첫 전략은 공유 종목 포함
         assert shared_code in first_codes
-        # 두 번째 전략에서 공유 종목 제거
-        assert shared_code not in second_codes
-        # 두 번째 전략의 고유 종목은 유지
+        # 두 번째 전략도 공유 종목 포함 (독립 자본이므로 제거하지 않음)
+        assert shared_code in second_codes
+        # 두 번째 전략의 고유 종목도 유지
         assert "unique_Second" in second_codes
 
     def test_no_overlap_both_strategies_full(self):

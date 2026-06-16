@@ -842,8 +842,8 @@ class CandidateSelector:
         각 전략에 대해 screener_snapshots DB 스냅샷(오늘 날짜 기준)에서 후보를
         조회하고, 없으면 공통 스크리너 JSON → 거래량 순위 순서로 fallback합니다.
 
-        종목 중복 처리: strategies dict 순서상 **첫 번째 전략이 우선**합니다.
-        이미 앞선 전략에 배정된 종목 코드는 이후 전략의 풀에서 제거됩니다.
+        종목 중복 처리: 전략별 자본이 독립이므로 동일 종목이 여러 전략의 후보에
+        중복 포함되는 것을 허용합니다.
 
         Args:
             strategies: {strategy_name: BaseStrategy} 딕셔너리 (E1 에서 구축)
@@ -853,26 +853,15 @@ class CandidateSelector:
             {strategy_name: List[CandidateStock]}
         """
         result: Dict[str, List[CandidateStock]] = {}
-        assigned_codes: set = set()  # 중복 방지용
 
+        # 전략별 자본이 독립이므로 종목 중복을 허용한다.
+        # (과거 cross-strategy dedup은 공유 자본풀 시절의 잔재 — 독립 자본에선
+        #  뒤 순서 전략의 신호를 부당하게 굶겨 성과 측정을 오염시켰다.)
         for strategy_name in strategies:
             raw = self._fetch_candidates_for_strategy(strategy_name, max_per_strategy)
-
-            # 이미 다른 전략에 배정된 종목 제거
-            deduped: List[CandidateStock] = []
-            for c in raw:
-                if c.code in assigned_codes:
-                    self.logger.info(
-                        f"[E6] {c.code}({c.name}) — {strategy_name} 후보 제외 "
-                        f"(선행 전략이 이미 배정)"
-                    )
-                else:
-                    deduped.append(c)
-                    assigned_codes.add(c.code)
-
-            result[strategy_name] = deduped
+            result[strategy_name] = raw
             self.logger.info(
-                f"[E6] {strategy_name}: 후보 {len(deduped)}종목"
+                f"[E6] {strategy_name}: 후보 {len(raw)}종목"
             )
 
         return result
