@@ -4,11 +4,17 @@
 종목의 등록/해제 및 상태 변경 관리
 """
 import threading
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 
 from ..models import TradingStock, StockState
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
+
+_LEGACY_OWNER = "__legacy__"
+
+
+def _key(owner: Optional[str], stock_code: str) -> Tuple[str, str]:
+    return ((owner or _LEGACY_OWNER), stock_code)
 
 # 유효한 상태 전이 맵: {현재 상태: [허용되는 다음 상태들]}
 _VALID_TRANSITIONS: Dict[StockState, List[StockState]] = {
@@ -36,9 +42,9 @@ class StockStateManager:
         """초기화"""
         self.logger = setup_logger(__name__)
 
-        # 종목 상태 관리
-        self.trading_stocks: Dict[str, TradingStock] = {}
-        self.stocks_by_state: Dict[StockState, Dict[str, TradingStock]] = {
+        # 종목 상태 관리 (복합키: (owner_strategy_name, stock_code))
+        self.trading_stocks: Dict[Tuple[str, str], TradingStock] = {}
+        self.stocks_by_state: Dict[StockState, Dict[Tuple[str, str], TradingStock]] = {
             state: {} for state in StockState
         }
 
@@ -49,6 +55,17 @@ class StockStateManager:
     def lock(self) -> threading.RLock:
         """Lock 객체 반환"""
         return self._lock
+
+    def _find_by_code(self, stock_code: str, strategy: Optional[str] = None) -> List[TradingStock]:
+        """종목 코드(+선택적 전략)로 TradingStock 목록 조회.
+
+        strategy 지정 시 복합키 정확 매칭, 미지정 시 종목 코드만으로 전체 소유자 매칭.
+        호출자가 lock을 보유한 상태에서 호출되어야 한다.
+        """
+        if strategy is not None:
+            ts = self.trading_stocks.get(_key(strategy, stock_code))
+            return [ts] if ts is not None else []
+        return [ts for (own, code), ts in self.trading_stocks.items() if code == stock_code]
 
     def register_stock(self, trading_stock: TradingStock) -> bool:
         """
@@ -65,44 +82,54 @@ class StockStateManager:
             True: 등록 성공, False: POSITIONED/BUY_PENDING 중복으로 거부
         """
         with self._lock:
-            stock_code = trading_stock.stock_code
-            existing = self.trading_stocks.get(stock_code)
+            owner = trading_stock.owner_strategy_name
+            k = _key(owner, trading_stock.stock_code)
+            existing = self.trading_stocks.get(k)
+
+            if existing is not None and existing.state in (
+                StockState.POSITIONED, StockState.BUY_PENDING
+            ):
+                self.logger.info(
+                    f"[중복등록거부] {trading_stock.stock_code} owner={owner} "
+                    f"state={existing.state.name} — 동일 전략 중복"
+                )
+                return False
 
             if existing is not None:
-                if existing.state in (StockState.POSITIONED, StockState.BUY_PENDING):
-                    self.logger.info(
-                        f"[중복등록거부] {stock_code} — "
-                        f"기존 owner={existing.owner_strategy_name} state={existing.state.name}, "
-                        f"신규 owner={trading_stock.owner_strategy_name}"
-                    )
-                    return False
                 # 그 외 상태(SELECTED 등)는 덮어쓰기 허용
                 old_state = existing.state
-                if stock_code in self.stocks_by_state[old_state]:
-                    del self.stocks_by_state[old_state][stock_code]
+                self.stocks_by_state[old_state].pop(k, None)
 
             state = trading_stock.state
-            self.trading_stocks[stock_code] = trading_stock
-            self.stocks_by_state[state][stock_code] = trading_stock
+            self.trading_stocks[k] = trading_stock
+            self.stocks_by_state[state][k] = trading_stock
             return True
 
-    def unregister_stock(self, stock_code: str) -> None:
+    def unregister_stock(self, stock_code: str, strategy: Optional[str] = None) -> None:
         """
         종목 등록 해제
 
         Args:
             stock_code: 해제할 종목 코드
+            strategy: 소유 전략(미지정 시 종목 코드만으로 매칭)
         """
         with self._lock:
-            if stock_code in self.trading_stocks:
-                trading_stock = self.trading_stocks[stock_code]
-                state = trading_stock.state
+            matches = self._find_by_code(stock_code, strategy)
+            if not matches:
+                return
+            if len(matches) > 1:
+                self.logger.warning(
+                    f"[모호해제] {stock_code} 다중 소유 — strategy 미지정, 첫 소유자 적용"
+                )
+            trading_stock = matches[0]
+            state = trading_stock.state
+            k = _key(trading_stock.owner_strategy_name, stock_code)
 
-                del self.trading_stocks[stock_code]
-                if stock_code in self.stocks_by_state[state]:
-                    del self.stocks_by_state[state][stock_code]
+            self.trading_stocks.pop(k, None)
+            self.stocks_by_state[state].pop(k, None)
 
-    def change_stock_state(self, stock_code: str, new_state: StockState, reason: str = "") -> None:
+    def change_stock_state(self, stock_code: str, new_state: StockState,
+                           reason: str = "", strategy: Optional[str] = None) -> None:
         """
         종목 상태 변경
 
@@ -110,12 +137,18 @@ class StockStateManager:
             stock_code: 종목 코드
             new_state: 새로운 상태
             reason: 변경 사유
+            strategy: 소유 전략(미지정 시 종목 코드만으로 매칭)
         """
         with self._lock:
-            if stock_code not in self.trading_stocks:
+            matches = self._find_by_code(stock_code, strategy)
+            if not matches:
                 return
-
-            trading_stock = self.trading_stocks[stock_code]
+            if len(matches) > 1:
+                self.logger.warning(
+                    f"[모호상태변경] {stock_code} 다중 소유 — strategy 미지정, 첫 소유자 적용"
+                )
+            trading_stock = matches[0]
+            k = _key(trading_stock.owner_strategy_name, stock_code)
             old_state = trading_stock.state
 
             # 상태 전이 규칙 검증 (비정상 전이는 경고만, 차단하지 않음)
@@ -127,12 +160,11 @@ class StockStateManager:
                 )
 
             # 기존 상태에서 제거
-            if stock_code in self.stocks_by_state[old_state]:
-                del self.stocks_by_state[old_state][stock_code]
+            self.stocks_by_state[old_state].pop(k, None)
 
             # 새 상태로 변경
             trading_stock.change_state(new_state, reason)
-            self.stocks_by_state[new_state][stock_code] = trading_stock
+            self.stocks_by_state[new_state][k] = trading_stock
 
             # 상세 상태 변화 로깅
             self._log_detailed_state_change(trading_stock, old_state, new_state, reason)
@@ -234,7 +266,7 @@ class StockStateManager:
         with self._lock:
             return list(self.stocks_by_state[state].values())
 
-    def get_trading_stock(self, stock_code: str) -> Optional[TradingStock]:
+    def get_trading_stock(self, stock_code: str, strategy: Optional[str] = None) -> Optional[TradingStock]:
         """
         종목 정보 조회
 
@@ -245,27 +277,45 @@ class StockStateManager:
 
         Args:
             stock_code: 종목 코드
+            strategy: 소유 전략(미지정 시 종목 코드만으로 매칭)
 
         Returns:
             TradingStock 객체 또는 None
         """
-        return self.trading_stocks.get(stock_code)
+        with self._lock:
+            matches = self._find_by_code(stock_code, strategy)
+            if not matches:
+                return None
+            if len(matches) > 1:
+                self.logger.warning(
+                    f"[모호조회] {stock_code} 다중 소유({len(matches)}) — strategy 인자 필요. "
+                    f"첫 소유자 반환: {matches[0].owner_strategy_name}"
+                )
+            return matches[0]
 
-    def update_current_order(self, stock_code: str, new_order_id: str) -> None:
+    def update_current_order(self, stock_code: str, new_order_id: str,
+                             strategy: Optional[str] = None) -> None:
         """
         정정 등으로 새 주문이 생성되었을 때 현재 주문ID를 최신값으로 동기화
 
         Args:
             stock_code: 종목 코드
             new_order_id: 새 주문 ID
+            strategy: 소유 전략(미지정 시 종목 코드만으로 매칭)
         """
         try:
             with self._lock:
-                if stock_code in self.trading_stocks:
-                    trading_stock = self.trading_stocks[stock_code]
-                    trading_stock.current_order_id = new_order_id
-                    trading_stock.order_history.append(new_order_id)
-                    self.logger.debug(f"{stock_code} 현재 주문ID 업데이트: {new_order_id}")
+                matches = self._find_by_code(stock_code, strategy)
+                if not matches:
+                    return
+                if len(matches) > 1:
+                    self.logger.warning(
+                        f"[모호주문갱신] {stock_code} 다중 소유 — strategy 미지정, 첫 소유자 적용"
+                    )
+                trading_stock = matches[0]
+                trading_stock.current_order_id = new_order_id
+                trading_stock.order_history.append(new_order_id)
+                self.logger.debug(f"{stock_code} 현재 주문ID 업데이트: {new_order_id}")
         except Exception as e:
             self.logger.warning(f"현재 주문ID 업데이트 실패({stock_code}): {e}")
 

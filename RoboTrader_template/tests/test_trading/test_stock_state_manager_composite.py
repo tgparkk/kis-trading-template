@@ -15,12 +15,31 @@ def _mk(stock_code: str, owner: str, state: StockState = StockState.POSITIONED) 
     return ts
 
 
-def test_characterization_single_key_blocks_second_owner():
-    """[특성화] 현재 구현: 동일 종목 2번째 POSITIONED 등록은 거부된다.
-
-    이 테스트는 Phase 2에서 의도적으로 반대로 바뀐다(독립 허용).
-    지금은 현재 동작을 못박아 회귀 기준점을 만든다.
-    """
+def test_two_strategies_hold_same_stock_independently():
     mgr = StockStateManager()
     assert mgr.register_stock(_mk("010170", "minervini")) is True
-    assert mgr.register_stock(_mk("010170", "rs_leader")) is False
+    assert mgr.register_stock(_mk("010170", "rs_leader")) is True
+    positioned = mgr.get_stocks_by_state(StockState.POSITIONED)
+    owners = sorted(ts.owner_strategy_name for ts in positioned if ts.stock_code == "010170")
+    assert owners == ["minervini", "rs_leader"]
+
+
+def test_same_strategy_same_stock_still_blocked():
+    mgr = StockStateManager()
+    assert mgr.register_stock(_mk("010170", "minervini")) is True
+    assert mgr.register_stock(_mk("010170", "minervini")) is False
+
+
+def test_get_trading_stock_legacy_fallback_unique():
+    mgr = StockStateManager()
+    mgr.register_stock(_mk("010170", "minervini"))
+    ts = mgr.get_trading_stock("010170")
+    assert ts is not None and ts.owner_strategy_name == "minervini"
+
+
+def test_get_trading_stock_explicit_strategy():
+    mgr = StockStateManager()
+    mgr.register_stock(_mk("010170", "minervini"))
+    mgr.register_stock(_mk("010170", "rs_leader"))
+    ts = mgr.get_trading_stock("010170", strategy="rs_leader")
+    assert ts is not None and ts.owner_strategy_name == "rs_leader"
