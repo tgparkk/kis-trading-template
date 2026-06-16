@@ -54,12 +54,15 @@ class TestRegisterRejectedWhenPositioned:
         mgr.change_stock_state("000001", StockState.BUY_PENDING)
         mgr.change_stock_state("000001", StockState.POSITIONED)
 
-        ts2 = _make_ts("000001", StockState.SELECTED, owner="StrategyB")
+        # 복합키 전환(df32514): 중복 가드는 '동일 전략' 기준. 같은 전략이
+        # 활성(POSITIONED) 종목을 재등록하면 거부된다.
+        ts2 = _make_ts("000001", StockState.SELECTED, owner="StrategyA")
         result = mgr.register_stock(ts2)
 
         assert result is False
         # 원본 객체(StrategyA 소유) 유지
-        assert mgr.trading_stocks["000001"].owner_strategy_name == "StrategyA"
+        assert mgr.get_trading_stock("000001", "StrategyA").owner_strategy_name == "StrategyA"
+        assert mgr.get_trading_stock("000001", "StrategyA").state == StockState.POSITIONED
 
     def test_register_rejected_when_positioned_direct_state(self):
         """TradingStock을 처음부터 POSITIONED로 만들어 등록 후 두 번째 거부."""
@@ -67,11 +70,12 @@ class TestRegisterRejectedWhenPositioned:
         ts1 = _make_ts("000002", StockState.POSITIONED, owner="StrategyA")
         mgr.register_stock(ts1)
 
-        ts2 = _make_ts("000002", StockState.SELECTED, owner="StrategyB")
+        # 동일 전략의 활성 종목 재등록은 거부 (복합키: 동일 전략 기준)
+        ts2 = _make_ts("000002", StockState.SELECTED, owner="StrategyA")
         result = mgr.register_stock(ts2)
 
         assert result is False
-        assert mgr.trading_stocks["000002"] is ts1
+        assert mgr.get_trading_stock("000002", "StrategyA") is ts1
 
 
 # ============================================================================
@@ -87,11 +91,13 @@ class TestRegisterRejectedWhenBuyPending:
         mgr.register_stock(ts1)
         mgr.change_stock_state("000003", StockState.BUY_PENDING)
 
-        ts2 = _make_ts("000003", StockState.SELECTED, owner="StrategyB")
+        # 동일 전략의 BUY_PENDING 종목 재등록은 거부
+        ts2 = _make_ts("000003", StockState.SELECTED, owner="StrategyA")
         result = mgr.register_stock(ts2)
 
         assert result is False
-        assert mgr.trading_stocks["000003"].owner_strategy_name == "StrategyA"
+        assert mgr.get_trading_stock("000003", "StrategyA").owner_strategy_name == "StrategyA"
+        assert mgr.get_trading_stock("000003", "StrategyA").state == StockState.BUY_PENDING
 
     def test_register_rejected_when_buy_pending_direct(self):
         """BUY_PENDING 상태로 직접 등록 후 두 번째 거부."""
@@ -99,11 +105,11 @@ class TestRegisterRejectedWhenBuyPending:
         ts1 = _make_ts("000004", StockState.BUY_PENDING, owner="StrategyA")
         mgr.register_stock(ts1)
 
-        ts2 = _make_ts("000004", StockState.SELECTED, owner="StrategyB")
+        ts2 = _make_ts("000004", StockState.SELECTED, owner="StrategyA")
         result = mgr.register_stock(ts2)
 
         assert result is False
-        assert mgr.trading_stocks["000004"] is ts1
+        assert mgr.get_trading_stock("000004", "StrategyA") is ts1
 
 
 # ============================================================================
@@ -124,8 +130,8 @@ class TestRegisterAllowedWhenCompleted:
         result = mgr.register_stock(ts2)
 
         assert result is True
-        # 새 객체로 교체됨
-        assert mgr.trading_stocks["000005"].owner_strategy_name == "StrategyB"
+        # 복합키 전환: 다른 전략은 동일 종목을 독립적으로 등록 가능
+        assert mgr.get_trading_stock("000005", "StrategyB").owner_strategy_name == "StrategyB"
 
     def test_register_allowed_when_failed(self):
         """FAILED 상태도 덮어쓰기 허용."""
@@ -137,7 +143,7 @@ class TestRegisterAllowedWhenCompleted:
         result = mgr.register_stock(ts2)
 
         assert result is True
-        assert mgr.trading_stocks["000006"].owner_strategy_name == "StrategyB"
+        assert mgr.get_trading_stock("000006", "StrategyB").owner_strategy_name == "StrategyB"
 
     def test_register_allowed_when_selected(self):
         """SELECTED 상태도 덮어쓰기 허용 (아직 매수 전)."""
@@ -149,7 +155,7 @@ class TestRegisterAllowedWhenCompleted:
         result = mgr.register_stock(ts2)
 
         assert result is True
-        assert mgr.trading_stocks["000007"].owner_strategy_name == "StrategyB"
+        assert mgr.get_trading_stock("000007", "StrategyB").owner_strategy_name == "StrategyB"
 
 
 # ============================================================================
@@ -310,7 +316,8 @@ class TestLogMessageIncludesOwnerName:
         logger.addHandler(handler)
         logger.setLevel(logging.DEBUG)
 
-        ts2 = _make_ts("111111", StockState.SELECTED, owner="StrategyB")
+        # 복합키: 거부는 동일 전략 기준 → 같은 owner로 재등록해 거부 로그 유발
+        ts2 = _make_ts("111111", StockState.SELECTED, owner="StrategyA")
         result = mgr.register_stock(ts2)
 
         logger.removeHandler(handler)
@@ -340,7 +347,8 @@ class TestLogMessageIncludesOwnerName:
         logger.addHandler(handler)
         logger.setLevel(_logging.DEBUG)
 
-        ts2 = _make_ts("222222", StockState.SELECTED, owner="StrategyY")
+        # 복합키: 거부는 동일 전략 기준 → 같은 owner로 재등록해 거부 로그 유발
+        ts2 = _make_ts("222222", StockState.SELECTED, owner="StrategyX")
         mgr.register_stock(ts2)
 
         logger.removeHandler(handler)

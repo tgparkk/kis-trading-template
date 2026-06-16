@@ -121,7 +121,8 @@ class OrderCompletionHandler:
                             self.state_manager.change_stock_state(
                                 trading_stock.stock_code,
                                 StockState.POSITIONED,
-                                f"매수 완료: {order.quantity}주 @{order.get_filled_price():,.0f}원"
+                                f"매수 완료: {order.quantity}주 @{order.get_filled_price():,.0f}원",
+                                strategy=trading_stock.owner_strategy_name,
                             )
 
                         # 실거래 매수 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
@@ -145,7 +146,8 @@ class OrderCompletionHandler:
                             self.state_manager.change_stock_state(
                                 trading_stock.stock_code,
                                 original_state,
-                                f"매수 실패: {order.status.value}"
+                                f"매수 실패: {order.status.value}",
+                                strategy=trading_stock.owner_strategy_name,
                             )
 
                     break
@@ -177,7 +179,8 @@ class OrderCompletionHandler:
                             self.state_manager.change_stock_state(
                                 trading_stock.stock_code,
                                 StockState.COMPLETED,
-                                f"매도 완료: {order.quantity}주 @{order.get_filled_price():,.0f}원"
+                                f"매도 완료: {order.quantity}주 @{order.get_filled_price():,.0f}원",
+                                strategy=trading_stock.owner_strategy_name,
                             )
 
                         # 실거래 매도 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
@@ -209,7 +212,8 @@ class OrderCompletionHandler:
                             self.state_manager.change_stock_state(
                                 trading_stock.stock_code,
                                 StockState.POSITIONED,
-                                f"매도 실패: {order.status.value}"
+                                f"매도 실패: {order.status.value}",
+                                strategy=trading_stock.owner_strategy_name,
                             )
 
                     break
@@ -221,11 +225,12 @@ class OrderCompletionHandler:
         """주문 체결 시 즉시 호출되는 콜백 메서드"""
         try:
             with self.state_manager.lock:
-                if order.stock_code not in self.state_manager.trading_stocks:
+                # 복합키 전환(df32514): trading_stocks 키가 (owner, code)이므로
+                # 종목 코드 단독 조회는 get_trading_stock 폴백 경로를 사용한다.
+                trading_stock = self.state_manager.get_trading_stock(order.stock_code)
+                if trading_stock is None:
                     self.logger.warning(f"체결 콜백: 관리되지 않는 종목 {order.stock_code}")
                     return
-
-                trading_stock = self.state_manager.trading_stocks[order.stock_code]
 
                 # 추가: 이미 POSITIONED 상태라면 중복 처리 방지
                 if (order.order_type == OrderType.BUY and
@@ -276,7 +281,8 @@ class OrderCompletionHandler:
             self.state_manager.change_stock_state(
                 trading_stock.stock_code,
                 StockState.POSITIONED,
-                f"매수 체결 (콜백): {order.quantity}주 @{order.get_filled_price():,.0f}원"
+                f"매수 체결 (콜백): {order.quantity}주 @{order.get_filled_price():,.0f}원",
+                strategy=trading_stock.owner_strategy_name,
             )
 
             # 실거래 매수 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
@@ -305,7 +311,8 @@ class OrderCompletionHandler:
             self.state_manager.change_stock_state(
                 trading_stock.stock_code,
                 StockState.COMPLETED,
-                f"매도 체결 (콜백): {order.quantity}주 @{order.get_filled_price():,.0f}원"
+                f"매도 체결 (콜백): {order.quantity}주 @{order.get_filled_price():,.0f}원",
+                strategy=trading_stock.owner_strategy_name,
             )
 
             # 실거래 매도 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)

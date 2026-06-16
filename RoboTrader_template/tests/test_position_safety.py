@@ -22,6 +22,11 @@ from core.models import (
 from core.trading.stock_state_manager import StockStateManager
 
 
+def _codes_in_state(state_mgr, state):
+    """복합키 stocks_by_state[state]에 존재하는 종목코드 집합."""
+    return {code for (_owner, code) in state_mgr.stocks_by_state[state]}
+
+
 # ============================================================================
 # 1. 손절가 도달 → 매도 실패 → 재시도
 # ============================================================================
@@ -74,7 +79,7 @@ class TestStopLossSellRetry:
         # 매도 실패 시뮬레이션: 상태가 그대로 유지되는지 확인
         assert stock.state == StockState.POSITIONED
         # 매도 실패 후에도 상태 유지 (SELL_PENDING으로 변경되지 않아야)
-        assert stock.stock_code in state_mgr.stocks_by_state[StockState.POSITIONED]
+        assert stock.stock_code in _codes_in_state(state_mgr, StockState.POSITIONED)
 
     def test_sell_retry_flag_available(self):
         """is_selling 플래그로 중복 매도 방지 가능 확인"""
@@ -558,9 +563,9 @@ class TestStateTransitionSafety:
         mgr.register_stock(stock)
         
         mgr.change_stock_state("005930", StockState.BUY_PENDING, "매수 주문")
-        assert "005930" not in mgr.stocks_by_state[StockState.SELECTED]
-        assert "005930" in mgr.stocks_by_state[StockState.BUY_PENDING]
-        assert mgr.trading_stocks["005930"].state == StockState.BUY_PENDING
+        assert "005930" not in _codes_in_state(mgr, StockState.SELECTED)
+        assert "005930" in _codes_in_state(mgr, StockState.BUY_PENDING)
+        assert mgr.get_trading_stock("005930").state == StockState.BUY_PENDING
 
     def test_unregister_cleans_up(self):
         """종목 해제 시 완전 정리"""

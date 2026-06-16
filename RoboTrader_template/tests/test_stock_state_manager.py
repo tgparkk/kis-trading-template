@@ -9,7 +9,12 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch
 from core.models import TradingStock, StockState, Position
-from core.trading.stock_state_manager import StockStateManager
+from core.trading.stock_state_manager import StockStateManager, _key
+
+
+def _codes_in_state(manager, state):
+    """복합키 stocks_by_state[state]에 존재하는 종목코드 집합."""
+    return {code for (_owner, code) in manager.stocks_by_state[state]}
 
 
 @pytest.fixture
@@ -33,8 +38,8 @@ def sample_stock():
 class TestRegisterUnregister:
     def test_register_stock(self, manager, sample_stock):
         manager.register_stock(sample_stock)
-        assert "005930" in manager.trading_stocks
-        assert "005930" in manager.stocks_by_state[StockState.SELECTED]
+        assert manager.get_trading_stock("005930") is sample_stock
+        assert "005930" in _codes_in_state(manager, StockState.SELECTED)
 
     def test_register_multiple(self, manager):
         for code in ["005930", "000660", "035720"]:
@@ -63,16 +68,16 @@ class TestRegisterUnregister:
                                   state=StockState.SELECTED, selected_time=datetime.now())
         result = manager.register_stock(new_stock)
         assert result is False
-        assert manager.trading_stocks["005930"].stock_name == "삼성전자"
+        assert manager.get_trading_stock("005930").stock_name == "삼성전자"
 
 
 class TestChangeState:
     def test_change_state(self, manager, sample_stock):
         manager.register_stock(sample_stock)
         manager.change_stock_state("005930", StockState.BUY_PENDING, "매수 주문")
-        assert manager.trading_stocks["005930"].state == StockState.BUY_PENDING
-        assert "005930" not in manager.stocks_by_state[StockState.SELECTED]
-        assert "005930" in manager.stocks_by_state[StockState.BUY_PENDING]
+        assert manager.get_trading_stock("005930").state == StockState.BUY_PENDING
+        assert "005930" not in _codes_in_state(manager, StockState.SELECTED)
+        assert "005930" in _codes_in_state(manager, StockState.BUY_PENDING)
 
     def test_change_state_nonexistent(self, manager):
         # Should not raise
@@ -84,7 +89,7 @@ class TestChangeState:
                   StockState.SELL_CANDIDATE, StockState.SELL_PENDING, StockState.COMPLETED]
         for s in states:
             manager.change_stock_state("005930", s)
-        assert manager.trading_stocks["005930"].state == StockState.COMPLETED
+        assert manager.get_trading_stock("005930").state == StockState.COMPLETED
 
 
 class TestQueryMethods:
@@ -105,8 +110,8 @@ class TestQueryMethods:
     def test_update_current_order(self, manager, sample_stock):
         manager.register_stock(sample_stock)
         manager.update_current_order("005930", "ORD001")
-        assert manager.trading_stocks["005930"].current_order_id == "ORD001"
-        assert "ORD001" in manager.trading_stocks["005930"].order_history
+        assert manager.get_trading_stock("005930").current_order_id == "ORD001"
+        assert "ORD001" in manager.get_trading_stock("005930").order_history
 
 
 class TestPortfolioSummary:

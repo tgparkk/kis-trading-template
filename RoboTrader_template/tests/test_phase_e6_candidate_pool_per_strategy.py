@@ -151,7 +151,7 @@ class TestStockStateManagerDuplicateRejection:
         ts = self._make_ts("000001")
         result = mgr.register_stock(ts)
         assert result is True
-        assert "000001" in mgr.trading_stocks
+        assert mgr.get_trading_stock("000001") is ts
 
     def test_duplicate_registration_rejected(self):
         """POSITIONED 상태 종목의 두 번째 등록은 거부되고 원본 유지 (E8 정책)."""
@@ -166,8 +166,8 @@ class TestStockStateManagerDuplicateRejection:
         result = mgr.register_stock(ts2)
 
         assert result is False
-        # 원본 객체 유지
-        assert mgr.trading_stocks["000001"] is ts1
+        # 원본 객체 유지 (복합키: 동일 전략 기준 거부)
+        assert mgr.get_trading_stock("000001") is ts1
 
     def test_different_codes_both_registered(self):
         mgr = StockStateManager()
