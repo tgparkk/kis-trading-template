@@ -718,7 +718,8 @@ class TradingDecisionEngine:
                 trading_stock = self.trading_manager.get_trading_stock(stock_code)
                 if trading_stock and trading_stock.state in [StockState.SELL_CANDIDATE, StockState.SELL_PENDING]:
                     self.trading_manager._change_stock_state(
-                        stock_code, StockState.POSITIONED, f"복원: {reason}"
+                        stock_code, StockState.POSITIONED, f"복원: {reason}",
+                        strategy=trading_stock.owner_strategy_name
                     )
                     self.logger.info(f"{stock_code} POSITIONED로 복원 완료: {reason}")
         except Exception as e:
@@ -819,7 +820,8 @@ class TradingDecisionEngine:
                         if self.trading_manager:
                             from core.models import StockState
                             self.trading_manager._change_stock_state(
-                                code, StockState.COMPLETED, "가상 매도 완료"
+                                code, StockState.COMPLETED, "가상 매도 완료",
+                                strategy=trading_stock.owner_strategy_name
                             )
                     except Exception as state_err:
                         self.logger.warning(f"가상매도 상태 변경 실패: {code} - {state_err}")

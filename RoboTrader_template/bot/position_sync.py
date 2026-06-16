@@ -116,7 +116,8 @@ class PositionSyncManager:
 
                         self.bot.trading_manager._change_stock_state(
                             code, StockState.POSITIONED,
-                            f"미관리종목 복구: {quantity}주 @{avg_price:,.0f}원"
+                            f"미관리종목 복구: {quantity}주 @{avg_price:,.0f}원",
+                            strategy=ts.owner_strategy_name
                         )
 
                         self.logger.info(f"{code} 미관리 종목 복구 완료")
@@ -149,7 +150,8 @@ class PositionSyncManager:
             self.bot.trading_manager._change_stock_state(
                 code, StockState.POSITIONED,
                 f"잔고복구: {quantity}주 @{buy_price:,.0f}원, "
-                f"목표: +{take_profit_ratio*100:.1f}%/-{stop_loss_ratio*100:.1f}%"
+                f"목표: +{take_profit_ratio*100:.1f}%/-{stop_loss_ratio*100:.1f}%",
+                strategy=ts.owner_strategy_name
             )
 
             self.logger.info(

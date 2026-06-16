@@ -181,10 +181,12 @@ class TradingAnalyzer:
                         # 상태를 BUY_PENDING → POSITIONED 2단계로 전이 (실전 경로와 일관성)
                         try:
                             self.bot.trading_manager._change_stock_state(
-                                stock_code, StockState.BUY_PENDING, "가상 매수 주문"
+                                stock_code, StockState.BUY_PENDING, "가상 매수 주문",
+                                strategy=strategy_name
                             )
                             self.bot.trading_manager._change_stock_state(
-                                stock_code, StockState.POSITIONED, "가상 매수 체결"
+                                stock_code, StockState.POSITIONED, "가상 매수 체결",
+                                strategy=strategy_name
                             )
                         except Exception as e:
                             self.logger.debug(f"가상 매수 상태 변경 실패: {stock_code} - {e}")
@@ -271,7 +273,8 @@ class TradingAnalyzer:
                             trading_stock.is_selling = False
                             # 매도 실패 시 POSITIONED로 복원
                             self.bot.trading_manager._change_stock_state(
-                                stock_code, StockState.POSITIONED, "가상 매도 실패 복원"
+                                stock_code, StockState.POSITIONED, "가상 매도 실패 복원",
+                                strategy=trading_stock.owner_strategy_name
                             )
                             self.logger.warning(f"{stock_code} 가상 매도 실패 - POSITIONED로 복원")
                         self.logger.info(f"가상 매도 완료 처리: {stock_code}({stock_name}) - {sell_reason}")

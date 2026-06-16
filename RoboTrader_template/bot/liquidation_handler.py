@@ -341,7 +341,8 @@ class LiquidationHandler:
                 # 2. 상태 강제 전환 → COMPLETED
                 self.bot.trading_manager._change_stock_state(
                     stock_code, StockState.COMPLETED,
-                    f"EOD 청산 {EOD_LIQUIDATION_MAX_RETRIES}회 실패 - 강제 완료"
+                    f"EOD 청산 {EOD_LIQUIDATION_MAX_RETRIES}회 실패 - 강제 완료",
+                    strategy=trading_stock.owner_strategy_name
                 )
 
                 # 3. 포지션 및 플래그 클리어

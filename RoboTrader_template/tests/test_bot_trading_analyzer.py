@@ -406,9 +406,9 @@ class TestAnalyzeSellDecision:
 
         await analyzer.analyze_sell_decision(stock)
 
-        # POSITIONED로 복원 호출 확인
+        # POSITIONED로 복원 호출 확인 (owner 전략 배선: strategy 키워드 전달)
         bot.trading_manager._change_stock_state.assert_called_once_with(
-            "005930", StockState.POSITIONED, "가상 매도 실패 복원"
+            "005930", StockState.POSITIONED, "가상 매도 실패 복원", strategy=""
         )
 
     @pytest.mark.asyncio

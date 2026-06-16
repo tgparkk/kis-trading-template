@@ -457,6 +457,7 @@ class StateRestorer:
                             f"DB 복원: {quantity}주 @{buy_price:,.0f}원 "
                             f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%)"
                             f"{' [장기보유]' if getattr(trading_stock, 'is_stale', False) is True else ''}",
+                            strategy=trading_stock.owner_strategy_name,
                         )
                         holding_restored += 1
 
@@ -657,6 +658,7 @@ class StateRestorer:
                             f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%) "
                             f"[{state_label}]"
                             f"{' [장기보유]' if ts_is_stale else ''}",
+                            strategy=trading_stock.owner_strategy_name,
                         )
                         holding_restored += 1
 

@@ -326,9 +326,9 @@ class TradingStockManager:
         """특정 상태의 종목들 조회"""
         return self._state_manager.get_stocks_by_state(state)
 
-    def get_trading_stock(self, stock_code: str) -> Optional[TradingStock]:
+    def get_trading_stock(self, stock_code: str, strategy: Optional[str] = None) -> Optional[TradingStock]:
         """종목 정보 조회"""
-        return self._state_manager.get_trading_stock(stock_code)
+        return self._state_manager.get_trading_stock(stock_code, strategy=strategy)
 
     def update_current_order(self, stock_code: str, new_order_id: str) -> None:
         """정정 등으로 새 주문이 생성되었을 때 현재 주문ID를 최신값으로 동기화"""
@@ -346,10 +346,10 @@ class TradingStockManager:
         """종목 등록 (하위 호환성)"""
         self._state_manager.register_stock(trading_stock)
 
-    def _unregister_stock(self, stock_code: str) -> None:
+    def _unregister_stock(self, stock_code: str, strategy: Optional[str] = None) -> None:
         """종목 등록 해제 (하위 호환성)"""
-        self._state_manager.unregister_stock(stock_code)
+        self._state_manager.unregister_stock(stock_code, strategy=strategy)
 
-    def _change_stock_state(self, stock_code: str, new_state: StockState, reason: str = "") -> None:
+    def _change_stock_state(self, stock_code: str, new_state: StockState, reason: str = "", strategy: Optional[str] = None) -> None:
         """종목 상태 변경 (하위 호환성)"""
-        self._state_manager.change_stock_state(stock_code, new_state, reason)
+        self._state_manager.change_stock_state(stock_code, new_state, reason, strategy=strategy)
