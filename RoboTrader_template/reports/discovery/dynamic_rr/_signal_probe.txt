@@ -1,0 +1,27 @@
+라이브 8전략 신호 빈도 probe (quant 유니버스 top_n=20, 2021-01-01~2026-06-16)
+============================================================
+NOTE: top_n=100 전체 실행은 백그라운드에서 진행 중 (완료 시 이 파일 덮어씌워짐)
+NOTE: top_n=20 quick-probe 결과 (de-risking 확인용)
+
+elder_ema_pullback                        신호  4713건 /  20종목
+minervini_volume_dryup                    신호  5020건 /  20종목
+deep_mr_dev20                             신호    77건 /  10종목
+daytrading_3methods_breakout              신호   638건 /  20종목
+rs_leader                                 신호  9129건 /  20종목
+book_envelope_200d                        신호   180건 /  20종목
+book_pullback_ma20                        신호   907건 /  20종목
+book_pullback_ma5                         신호  2479건 /  20종목
+
+--- de-risking 결론 ---
+- 8전략 전부 generate_signal 정상 동작 확인 (0신호 없음)
+- deep_mr_dev20: top_n=20 에서 77건/10종목 -> top_n=100 시 ~385건 예상 (>=30 기준 통과)
+- book_envelope_200d: top_n=20 에서 180건/20종목 -> top_n=100 시 ~900건 예상 (>=30 통과)
+- 전략 전부 v1 포함 가능 (단, deep_mr_dev20 은 신호 희소성 주의)
+
+--- 발견된 설계 이슈 (다음 태스크 입력) ---
+1. MarketHours.is_market_open 가드: 8전략 전부 _check_buy 에 장중가드 보유.
+   build_signals_for 가 contextmanager 로 patch -> 라이브 코드 무영향.
+2. book_envelope_200d: _check_buy 가 QuantDailyReader(DB) + MarketHours 내부호출.
+   -> evaluate_entry(window) 순수함수 직접 호출로 우회 (DB 의존 제거, 백테스트 정합).
+3. rs_leader: 신호 수 9129/20종목 = 종목당 ~456건. 전체 5.5년에서 과다 신호일 수 있음.
+   추세추종 전략이므로 _precompute_signals 와 동일 패턴 (run_portfolio 에서 중복진입 방지됨).
