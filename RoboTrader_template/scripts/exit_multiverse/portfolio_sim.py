@@ -4,8 +4,10 @@
 no-lookahead: 판정은 bar i, 체결은 bar i+1 시가. 비용 상수는 기존 run_*.py 와 동일.
 """
 from __future__ import annotations
-from typing import Dict, List
+from typing import Dict, List, Optional
 import pandas as pd
+from scripts.discovery.reference_values import compute_reference
+from scripts.discovery.dynamic_risk import resolve_risk
 
 COMMISSION_RATE = 0.00015
 TAX_RATE = 0.0018
@@ -39,6 +41,7 @@ def run_portfolio(
     max_positions: int = 5,
     max_per_stock: float = 3_000_000,
     unconstrained: bool = False,
+    dyn: Optional[dict] = None,
 ) -> dict:
     """날짜축 포트폴리오 시뮬레이션.
 
@@ -172,6 +175,16 @@ def run_portfolio(
                 cash -= cost + fee
             positions[code] = {"entry_idx": i + 1, "entry_price": fill, "qty": qty,
                                "entry_date": str(df.iloc[i + 1]["datetime"])}
+            if dyn is not None:
+                _ref = compute_reference(df, i, dyn["ref_type"], dyn["n"], dyn.get("bb_k", 2.0))
+                _resolved = resolve_risk(dyn["ref_type"], _ref, fill,
+                                         dyn.get("sl_mult", 1.0), dyn["rr"], dyn.get("buffer", 0.0))
+                if _resolved is not None:
+                    _sl, _tp, _clamped = _resolved
+                    positions[code]["sl_pct"] = _sl
+                    positions[code]["tp_pct"] = _tp
+                    positions[code]["tp_clamped"] = _clamped
+                # _resolved None (degenerate ref) → no sl_pct key → eff_sl falls back to params
             if adapter.entry_mechanism == "stop":
                 pending.pop(code, None)
             if unconstrained:
