@@ -1,9 +1,9 @@
 strategy	status	n_signals	winners	false_positives	best_delta_sharpe	baseline_sharpe
-elder_ema_pullback	OK	9995	0	27	0.419	0.434
-minervini_volume_dryup	OK	11299	0	13	0.177	0.381
-deep_mr_dev20	OK	149	0	3	0.113	0.789
-daytrading_3methods_breakout	OK	1405	0	31	0.438	0.467
-rs_leader	OK	19201	0	26	0.393	0.679
-book_envelope_200d	OK	376	0	0	0.123	1.017
-book_pullback_ma20	OK	1976	0	35	0.414	0.35
-book_pullback_ma5	OK	5282	1	10	0.716	0.074
+elder_ema_pullback	OK	64371	0	0	-0.101	0.907
+minervini_volume_dryup	OK	113574	0	6	0.15	0.431
+deep_mr_dev20	OK	1622	0	0	-0.026	0.887
+daytrading_3methods_breakout	OK	10262	0	26	0.239	0.494
+rs_leader	OK	124772	0	18	0.438	0.596
+book_envelope_200d	OK	2208	0	3	0.201	0.635
+book_pullback_ma20	OK	15999	0	3	0.497	0.134
+book_pullback_ma5	OK	40755	3	2	0.934	-0.055
