@@ -97,6 +97,7 @@ from scripts.book_param_multiverse import (  # noqa: E402
 )
 from scripts.exit_multiverse.portfolio_sim import run_portfolio  # noqa: E402
 from scripts.entry_filters import FILTER_CHOICES, apply_entry_filter  # noqa: E402
+from scripts.discovery.dynamic_risk import eff_sl, eff_tp  # noqa: E402
 
 LOG = logging.getLogger("book_portfolio_multiverse")
 
@@ -119,9 +120,9 @@ class _SLTPMHAdapter:
         cur_close = float(df.iloc[i]["close"])
         ret = (cur_close - entry_price) / entry_price
         hold_bars = i - position["entry_idx"]
-        if ret <= -params["stop_loss_pct"]:
+        if ret <= -eff_sl(position, params):
             return "stop_loss"
-        if ret >= params["take_profit_pct"]:
+        if ret >= eff_tp(position, params):
             return "take_profit"
         if hold_bars >= params["max_hold_bars"]:
             return "max_hold"

@@ -10,6 +10,8 @@ from typing import Optional
 
 import pandas as pd
 
+from scripts.discovery.dynamic_risk import eff_sl, eff_tp
+
 
 def _ret_hold(df: pd.DataFrame, i: int, position: dict):
     entry_price = position["entry_price"]
@@ -29,9 +31,9 @@ class CloseAboveMAExitAdapter:
 
     def exit_reason(self, df: pd.DataFrame, i: int, position: dict, params: dict) -> Optional[str]:
         cur_close, ret, hold_bars = _ret_hold(df, i, position)
-        if ret <= -params["stop_loss_pct"]:
+        if ret <= -eff_sl(position, params):
             return "stop_loss"
-        if ret >= params["take_profit_pct"]:
+        if ret >= eff_tp(position, params):
             return "take_profit"
         if i + 1 >= self.ma:
             sma = float(df["close"].iloc[i - self.ma + 1: i + 1].astype(float).mean())
@@ -52,9 +54,9 @@ class MAReversionExitAdapter:
 
     def exit_reason(self, df: pd.DataFrame, i: int, position: dict, params: dict) -> Optional[str]:
         cur_close, ret, hold_bars = _ret_hold(df, i, position)
-        if ret <= -params["stop_loss_pct"]:
+        if ret <= -eff_sl(position, params):
             return "stop_loss"
-        if ret >= params["take_profit_pct"]:
+        if ret >= eff_tp(position, params):
             return "take_profit"
         if i + 1 >= self.ma:
             ma_val = float(df["close"].iloc[i - self.ma + 1: i + 1].astype(float).mean())
@@ -77,9 +79,9 @@ class BBReversionExitAdapter:
     def exit_reason(self, df: pd.DataFrame, i: int, position: dict, params: dict) -> Optional[str]:
         from strategies.bb_reversion.strategy import BBReversionStrategy
         cur_close, ret, hold_bars = _ret_hold(df, i, position)
-        if ret <= -params["stop_loss_pct"]:
+        if ret <= -eff_sl(position, params):
             return "stop_loss"
-        if ret >= params["take_profit_pct"]:
+        if ret >= eff_tp(position, params):
             return "take_profit"
         if i + 1 >= self.bb_period:
             mid = float(df["close"].iloc[i - self.bb_period + 1: i + 1].astype(float).mean())
