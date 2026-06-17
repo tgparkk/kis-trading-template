@@ -42,7 +42,7 @@ def evaluate_dynamic_gates(cell: dict) -> Tuple[bool, str]:
         return False, "train_window_not_positive"
     if not (cell["delta_sharpe_test"] > 0 and cell["sharpe_test"] > 0):
         return False, "test_window_not_positive"
-    if cell["boot_dsharpe_p05"] <= 0:
+    if not (cell["boot_dsharpe_p05"] > 0):
         return False, "bootstrap_p05<=0"
     if cell["delta_sharpe_cost"] <= 0:
         return False, "cost_stress_negative"

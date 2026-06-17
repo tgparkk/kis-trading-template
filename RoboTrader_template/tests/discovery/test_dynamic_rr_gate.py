@@ -59,6 +59,16 @@ def test_cost_stress_fail():
     assert ok is False and "cost" in reason.lower()
 
 
+def test_nan_bootstrap_fails_gate():
+    import math
+    c = {"delta_sharpe_train": 0.3, "sharpe_train": 0.5,
+         "delta_sharpe_test": 0.2, "sharpe_test": 0.4,
+         "boot_dsharpe_p05": float("nan"), "delta_sharpe_cost": 0.1,
+         "n_trades": 50, "clamp_frac": 0.05}
+    ok, reason = evaluate_dynamic_gates(c)
+    assert ok is False and "boot" in reason.lower()
+
+
 # --- Part B: integration ---------------------------------------------------
 
 def _synthetic_data():
