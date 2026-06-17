@@ -37,3 +37,11 @@ def test_bollinger_width_positive():
 def test_insufficient_warmup_returns_none():
     df = _df()
     assert compute_reference(df, 2, "box", n=5) is None  # i+1 < n
+
+def test_atr_at_lowest_eligible_bar_is_valid_or_none():
+    # i == n-1 is the lowest bar passing the warmup guard (i+1 < n is False at i=n-1).
+    df = _df()  # 10 bars
+    n = 5
+    ref = compute_reference(df, n - 1, "atr", n=n)  # i=4
+    # Must NOT raise; either a positive ATR or None (degenerate), never a malformed value.
+    assert ref is None or (isinstance(ref, dict) and ref["atr"] > 0)

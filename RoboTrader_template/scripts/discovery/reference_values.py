@@ -4,9 +4,9 @@
 
 ATR 정렬 노트:
   윈도우 = df.iloc[i-n+1 : i+1]  (크기 n, 인덱스 i-n+1 ~ i)
-  윈도우의 k번째 봉(k=0..n-1)의 직전 종가 = df["close"].iloc[i-n+k]
-    - k=0: df["close"].iloc[i-n]  → 윈도우 시작 직전봉 (항상 i-n ≤ i, PIT 준수)
-    - k>0: 윈도우 내 직전봉 (PIT 준수)
+  직전 종가는 윈도우 내 shift(1)로 계산 — 음수 인덱스 슬라이스 없음, PIT 준수.
+    - 윈도우 첫 봉(k=0)은 shift(1) NaN → 자기 close로 대체 (TR = H - L).
+    - 윈도우 나머지 봉(k>0)은 윈도우 내 직전 봉 종가 = PIT 준수.
   즉 True Range 계산에 사용하는 모든 가격은 bar i 이하이므로 룩어헤드 없음.
 """
 from __future__ import annotations
@@ -50,16 +50,17 @@ def compute_reference(
         return {"box_low": box_low, "box_height": box_high - box_low}
 
     if ref_type == "atr":
-        # 직전 종가 정렬: 윈도우 k번째 봉의 prev_close = df["close"].iloc[i-n+k]
-        # k=0 → df["close"].iloc[i-n] (윈도우 시작 직전, PIT 준수)
-        h = high.values
-        l = low.values
-        prev_closes = df["close"].astype(float).iloc[i - n : i].values  # 길이 n
-        tr = [
-            max(h[k] - l[k], abs(h[k] - prev_closes[k]), abs(l[k] - prev_closes[k]))
-            for k in range(n)
-        ]
-        atr = float(sum(tr) / n)
+        # True Range with prior close = previous bar's close within the PIT window.
+        # win = df.iloc[i-n+1 : i+1]; prev close is win["close"].shift(1).
+        # First bar's prev-close falls back to its own close (TR = H-L there).
+        # No negative-index slice; all rows are within [i-n+1, i] — no lookahead.
+        prev_close = close.shift(1).fillna(close)
+        tr = (pd.concat([
+            (high - low),
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ], axis=1).max(axis=1))
+        atr = float(tr.mean())
         return {"atr": atr} if atr > 0 else None
 
     if ref_type == "bollinger":
