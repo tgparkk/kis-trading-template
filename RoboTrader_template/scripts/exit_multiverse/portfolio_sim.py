@@ -95,7 +95,8 @@ def run_portfolio(
                                "entry_price": pos["entry_price"], "price": fill,
                                "qty": pos["qty"], "reason": reason,
                                "pnl_pct": (fill - pos["entry_price"]) / pos["entry_price"],
-                               "entry_date": pos["entry_date"]})
+                               "entry_date": pos["entry_date"],
+                               "tp_clamped": pos.get("tp_clamped", False)})
 
         # ---- 2) 진입 후보 수집 ----
         candidates = []
@@ -228,7 +229,8 @@ def run_portfolio(
                        "datetime": str(last["datetime"]), "entry_price": pos["entry_price"],
                        "price": fill, "qty": pos["qty"], "reason": "forced_close",
                        "pnl_pct": (fill - pos["entry_price"]) / pos["entry_price"],
-                       "entry_date": pos["entry_date"]})
+                       "entry_date": pos["entry_date"],
+                       "tp_clamped": pos.get("tp_clamped", False)})
 
     eq = pd.Series(equity_vals, index=pd.to_datetime(equity_dates))
     daily_returns = eq.pct_change().dropna()

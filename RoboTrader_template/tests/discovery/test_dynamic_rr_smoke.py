@@ -60,3 +60,21 @@ def test_fixed_cell_matches_baseline_self_reference():
     rows = run_strategy_grid("test_strat", data, signals, base_params, grid=[{"ref_type": "fixed"}])
     assert len(rows) == 1
     assert abs(rows[0]["delta_sharpe"]) < 1e-9   # fixed cell == baseline → ΔSharpe 0
+
+
+def test_clamp_frac_nonzero_when_tp_clamped():
+    # signal bar=1 → entry fill bar=2 (open ~10200*1.001=10210)
+    # atr ref at i=1, n=2: ATR≈201; sl_pct=6*201/10210≈0.118; tp_pct=3*0.118=0.354 > TP_CAP(0.30) → clamped
+    # With base sl/tp both 99% the position is never stopped by fixed params; forced_close at end
+    # carries tp_clamped=True from position → clamp_frac must be > 0.
+    from scripts.dynamic_rr_multiverse import _metrics_for
+    data = _data()
+    signals = {"AAA": [1]}
+    base_params = {"stop_loss_pct": 0.99, "take_profit_pct": 0.99, "max_hold_bars": 99}
+    # sl_mult=6.0, rr=3.0 → tp_pct≈0.354 > TP_CAP=0.30 → tp_clamped=True deterministically
+    dyn = {"ref_type": "atr", "n": 2, "sl_mult": 6.0, "rr": 3.0, "buffer": 0.0, "bb_k": 2.0}
+    m = _metrics_for(data, signals, base_params, dyn=dyn)
+    assert m["n_trades"] >= 1, f"expected at least one sell trade, got n_trades={m['n_trades']}"
+    assert m["clamp_frac"] > 0.0, (
+        f"clamp_frac should be > 0 when tp_clamped is set on position, got {m['clamp_frac']}"
+    )
