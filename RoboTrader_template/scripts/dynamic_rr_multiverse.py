@@ -246,6 +246,28 @@ def _cost_stress_delta_sharpe(
     return cell_s - base_s
 
 
+def _load_base_params(folder: str) -> dict:
+    """전략 폴더의 config.yaml 에서 라이브 고정 sl/tp/max_hold 를 로드한다.
+
+    이 프로젝트의 config 는 `risk_management:` 키를 쓴다(scaffold 의 `risk:` 아님).
+    안전을 위해 risk_management → risk 순서로 fallback 한다.
+    max_hold 는 max_hold_days → max_holding_days → 20(기본) 순으로 읽는다.
+    """
+    import os
+
+    import yaml
+
+    path = os.path.join("strategies", folder, "config.yaml")
+    with open(path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    r = cfg.get("risk_management") or cfg.get("risk") or {}
+    return {
+        "stop_loss_pct": float(r["stop_loss_pct"]),
+        "take_profit_pct": float(r["take_profit_pct"]),
+        "max_hold_bars": int(r.get("max_hold_days", r.get("max_holding_days", 20))),
+    }
+
+
 def run_strategy_grid(
     name: str,
     data: Dict[str, pd.DataFrame],
@@ -324,3 +346,116 @@ def run_strategy_grid(
         row["gate_reason"] = gate_reason
         rows.append(row)
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Task 8: 8전략 전체 실행 러너 (측정 전용)
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import os
+    import sys
+    import time
+    import traceback
+
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+    # 전략 INFO 로그 억제 (러너 진행 로그만 보이게)
+    import logging
+    logging.disable(logging.INFO)
+
+    from scripts.discovery.live_strategy_signals import (
+        LIVE_STRATEGIES,
+        build_signals_for,
+    )
+    from scripts.book_portfolio_multiverse import (
+        _load_top_volume_daily,
+        _load_daily_adj,
+    )
+
+    OUT = os.path.join("reports", "discovery", "dynamic_rr")
+    os.makedirs(OUT, exist_ok=True)
+
+    # 런 파라미터 (환경변수로 축소 가능 — 코드수정 없이 빠른 재실행).
+    START = "2021-01-01"
+    END = "2026-06-16"
+    TOP_N = int(os.environ.get("DRR_TOP_N", "300"))
+    BOOT_ITERS = int(os.environ.get("DRR_BOOT_ITERS", str(_BOOT_ITERS)))
+
+    print(f"[RUN] top_n={TOP_N} period={START}..{END} boot_iters={BOOT_ITERS} "
+          f"oos_cutoff={_OOS_CUTOFF}")
+
+    t0 = time.time()
+    codes = _load_top_volume_daily(START, END, TOP_N)
+    data = _load_daily_adj(codes, START, END)
+    print(f"[RUN] 유니버스 로드: 요청 {len(codes)}종목 → 일봉 {len(data)}종목 "
+          f"({time.time() - t0:.1f}s)")
+
+    summary: List[dict] = []
+    for folder, warmup in LIVE_STRATEGIES.items():
+        ts = time.time()
+        try:
+            signals = build_signals_for(folder, data, warmup)
+            n_sig = sum(len(v) for v in signals.values())
+            if n_sig < MIN_TRADES:
+                summary.append({
+                    "strategy": folder,
+                    "status": f"SKIP(<{MIN_TRADES} signals)",
+                    "n_signals": n_sig,
+                    "winners": 0,
+                    "false_positives": 0,
+                    "best_delta_sharpe": 0.0,
+                    "baseline_sharpe": 0.0,
+                })
+                print(f"SKIP {folder}: {n_sig} signals (<{MIN_TRADES})")
+                continue
+
+            base_params = _load_base_params(folder)
+            rows = run_strategy_grid(folder, data, signals, base_params,
+                                     boot_iters=BOOT_ITERS)
+            # gate_pass/gate_reason 는 run_strategy_grid 가 이미 채움.
+            pd.DataFrame(rows).to_csv(
+                os.path.join(OUT, f"{folder}_grid.tsv"), sep="\t", index=False)
+
+            dyn_rows = [r for r in rows if r.get("ref_type") != "fixed"]
+            baseline_sharpe = next(
+                (r["sharpe"] for r in rows if r.get("ref_type") == "fixed"), 0.0)
+            winners = [r for r in dyn_rows if r.get("gate_pass")]
+            # in-sample(train) 은 이겼지만 test 에서 진 셀 = false positive
+            false_pos = [
+                r for r in dyn_rows
+                if r.get("delta_sharpe_train", 0.0) > 0 and r.get("sharpe_train", 0.0) > 0
+                and not (r.get("delta_sharpe_test", 0.0) > 0 and r.get("sharpe_test", 0.0) > 0)
+            ]
+            best = max((r["delta_sharpe"] for r in dyn_rows), default=0.0)
+            summary.append({
+                "strategy": folder,
+                "status": "OK",
+                "n_signals": n_sig,
+                "winners": len(winners),
+                "false_positives": len(false_pos),
+                "best_delta_sharpe": round(best, 3),
+                "baseline_sharpe": round(float(baseline_sharpe), 3),
+            })
+            print(f"{folder}: {len(winners)} winners, {len(false_pos)} false-pos, "
+                  f"best ΔSharpe {best:.3f}, baseline {baseline_sharpe:.3f} "
+                  f"({time.time() - ts:.1f}s)")
+        except Exception as exc:  # per-strategy 격리 — 한 전략 실패가 전체를 죽이지 않게
+            summary.append({
+                "strategy": folder,
+                "status": f"ERROR: {type(exc).__name__}: {exc}",
+                "n_signals": 0,
+                "winners": 0,
+                "false_positives": 0,
+                "best_delta_sharpe": 0.0,
+                "baseline_sharpe": 0.0,
+            })
+            print(f"{folder}: [ERROR] {exc}")
+            traceback.print_exc()
+
+    pd.DataFrame(summary).to_csv(
+        os.path.join(OUT, "_summary.tsv"), sep="\t", index=False)
+    print(f"DONE ({time.time() - t0:.1f}s total)")
