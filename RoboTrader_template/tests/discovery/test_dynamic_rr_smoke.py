@@ -48,3 +48,15 @@ def test_dyn_none_is_baseline_no_dynamic_keys():
     assert all(t.get("reason") != "stop_loss" for t in sells), (
         f"baseline should have no stop_loss, got: {sells}"
     )
+
+
+from scripts.dynamic_rr_multiverse import run_strategy_grid
+
+
+def test_fixed_cell_matches_baseline_self_reference():
+    data = _data()
+    signals = {"AAA": [1]}
+    base_params = {"stop_loss_pct": 0.08, "take_profit_pct": 0.12, "max_hold_bars": 20}
+    rows = run_strategy_grid("test_strat", data, signals, base_params, grid=[{"ref_type": "fixed"}])
+    assert len(rows) == 1
+    assert abs(rows[0]["delta_sharpe"]) < 1e-9   # fixed cell == baseline → ΔSharpe 0
