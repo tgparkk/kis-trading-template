@@ -22,3 +22,15 @@ def test_config_dir_override():
 def test_real_table_name():
     assert real_trading_table_name("default") == "real_trading_records"
     assert real_trading_table_name("rs_leader") == "real_trading_rs_leader"
+
+
+def test_instance_id_rejects_reserved_default():
+    import pytest
+    with pytest.raises(ValueError):
+        resolve_instance_id({"KIS_INSTANCE_DIR": "instances/default"})
+
+
+def test_instance_id_rejects_empty_normalization():
+    import pytest
+    with pytest.raises(ValueError):
+        resolve_instance_id({"KIS_INSTANCE_DIR": "instances/!!!"})

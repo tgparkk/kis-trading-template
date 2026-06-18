@@ -52,6 +52,7 @@ class TradingRepository(BaseRepository):
                 conn.commit()
         except Exception as e:
             self.logger.error(f"실거래 테이블 생성 실패({self._real_table}): {e}")
+            raise
 
     def _sanitize_strategy(self, strategy: str) -> str:
         """전략 이름 검증: 매매 사유가 잘못 들어온 경우 'unknown'으로 대체

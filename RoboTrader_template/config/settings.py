@@ -20,7 +20,12 @@ def resolve_instance_id(env: dict) -> str:
         return "default"
     base = Path(raw).name.lower()
     norm = re.sub(r"[^a-z0-9_]", "_", base).strip("_")
-    return norm or "default"
+    if not norm or norm == "default":
+        raise ValueError(
+            f"KIS_INSTANCE_DIR basename이 예약어 'default'로 정규화됨: {raw!r}. "
+            "실전 인스턴스 디렉토리는 'default' 이외의 이름을 쓰세요."
+        )
+    return norm
 
 
 def resolve_config_dir(env: dict) -> Path:

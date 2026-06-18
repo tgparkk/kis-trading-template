@@ -17,3 +17,5 @@
 - 가동 후 `robotrader_<strategy>.pid` 생성 확인
 - KIS 계좌 잔고 = 해당 전략 단독 운용 확인
 - `SELECT * FROM real_trading_<strategy>` 로 기록 격리 확인
+
+전략 폴더명으로 예약어 `default`는 쓸 수 없음(기본 페이퍼 인스턴스와 충돌).

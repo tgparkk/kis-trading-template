@@ -233,8 +233,9 @@ class DatabaseManager:
             with DatabaseConnection.get_connection() as conn:
                 cursor = conn.cursor()
                 stats = {}
+                real_table = self.trading_repo._real_table
                 tables = ['candidate_stocks', 'trading_records',
-                         'virtual_trading_records', 'real_trading_records']
+                         'virtual_trading_records', real_table]
                 for table in tables:
                     try:
                         cursor.execute(f'SELECT COUNT(*) FROM {table}')

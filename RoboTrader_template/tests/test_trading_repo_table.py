@@ -19,6 +19,15 @@ def test_validate_accepts_default_and_prefixed():
     assert TradingRepository._validate_table_name("real_trading_records") == "real_trading_records"
     assert TradingRepository._validate_table_name("real_trading_rs_leader") == "real_trading_rs_leader"
 
+def test_ensure_real_table_failure_raises(monkeypatch):
+    import db.repositories.trading as trmod
+    def boom(self):
+        raise RuntimeError("db down")
+    monkeypatch.setattr(trmod.TradingRepository, "_get_connection", boom)
+    with pytest.raises(RuntimeError):
+        trmod.TradingRepository(real_table_name="real_trading_failtest")
+
+
 def test_queries_use_custom_table(monkeypatch):
     captured = []
     class FakeCursor:
