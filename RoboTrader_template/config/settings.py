@@ -41,12 +41,28 @@ def real_trading_table_name(instance_id: str) -> str:
     return f"real_trading_{instance_id}"
 
 
+def token_file_name(instance_id: str) -> str:
+    """KIS 토큰 캐시 파일명 — 인스턴스별 분리(같은 cwd서 계좌 토큰 충돌 방지)."""
+    if instance_id == "default":
+        return "token_info.json"
+    return f"token_info_{instance_id}.json"
+
+
+def log_dir_name(instance_id: str) -> str:
+    """로그 디렉토리 — 인스턴스별 분리(같은 cwd서 로그 혼선 방지)."""
+    if instance_id == "default":
+        return "logs"
+    return f"logs/{instance_id}"
+
+
 INSTANCE_ID = resolve_instance_id(os.environ)
 _CONFIG_DIR = resolve_config_dir(os.environ)
 # 설정 파일 경로
 CONFIG_FILE = _CONFIG_DIR / "key.ini"
 TRADING_CONFIG_FILE = _CONFIG_DIR / "trading_config.json"
 REAL_TRADING_TABLE = real_trading_table_name(INSTANCE_ID)
+TOKEN_FILE = token_file_name(INSTANCE_ID)
+LOG_DIR = log_dir_name(INSTANCE_ID)
 
 def load_config():
     """설정 파일을 로드하여 환경변수 설정"""

@@ -1,6 +1,7 @@
 from pathlib import Path
 from config.settings import (
     resolve_instance_id, resolve_config_dir, real_trading_table_name,
+    token_file_name, log_dir_name,
 )
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
@@ -34,3 +35,14 @@ def test_instance_id_rejects_empty_normalization():
     import pytest
     with pytest.raises(ValueError):
         resolve_instance_id({"KIS_INSTANCE_DIR": "instances/!!!"})
+
+
+def test_token_file_name():
+    # 기본은 기존과 동일(하위호환), 인스턴스는 분리
+    assert token_file_name("default") == "token_info.json"
+    assert token_file_name("rs_leader") == "token_info_rs_leader.json"
+
+
+def test_log_dir_name():
+    assert log_dir_name("default") == "logs"
+    assert log_dir_name("rs_leader") == "logs/rs_leader"
