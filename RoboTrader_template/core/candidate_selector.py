@@ -443,7 +443,8 @@ class CandidateSelector:
         if repo is None:
             try:
                 from db.repositories.trading import TradingRepository
-                repo = TradingRepository()
+                from config.settings import REAL_TRADING_TABLE
+                repo = TradingRepository(real_table_name=REAL_TRADING_TABLE)
             except Exception as e:
                 self.logger.warning(f"TradingRepository 초기화 실패 → 블랙리스트 스킵: {e}")
                 return candidates

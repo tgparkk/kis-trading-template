@@ -64,9 +64,10 @@ class DatabaseManager:
         self._verify_tables()
 
         # Repository 초기화 (db_path는 무시됨)
+        from config.settings import REAL_TRADING_TABLE
         self.candidate_repo = CandidateRepository()
         self.price_repo = PriceRepository()
-        self.trading_repo = TradingRepository()
+        self.trading_repo = TradingRepository(real_table_name=REAL_TRADING_TABLE)
         self.quant_repo = QuantRepository()
 
     def _verify_tables(self):
@@ -232,8 +233,9 @@ class DatabaseManager:
             with DatabaseConnection.get_connection() as conn:
                 cursor = conn.cursor()
                 stats = {}
+                real_table = self.trading_repo._real_table
                 tables = ['candidate_stocks', 'trading_records',
-                         'virtual_trading_records', 'real_trading_records']
+                         'virtual_trading_records', real_table]
                 for table in tables:
                     try:
                         cursor.execute(f'SELECT COUNT(*) FROM {table}')

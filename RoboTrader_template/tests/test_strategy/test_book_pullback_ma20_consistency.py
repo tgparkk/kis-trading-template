@@ -320,6 +320,11 @@ class TestStrategyLoaderIntegration:
 # ----------------------------------------------------------------------------- #
 # 4. 진입 밴드 (2026-06-15) — 눌림형: up=0%, down=stop_loss_pct(0.08)
 # ----------------------------------------------------------------------------- #
+def test_exit_timeframe_daily():
+    # 일봉 swing 전략 — 분봉 청산 whipsaw 방지 (2026-06-18 점검). intraday 상속 회귀 방지.
+    assert BookPullbackMa20Strategy.exit_timeframe == "daily"
+
+
 class TestEntryBand:
 
     def _build(self, monkeypatch):

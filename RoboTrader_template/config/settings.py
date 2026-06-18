@@ -5,15 +5,64 @@ trading_config.json 파일에서 거래 설정을 로드
 """
 import json
 import logging
+import os
+import re
 import configparser
 from pathlib import Path
 from core.models import TradingConfig
 
 logger = logging.getLogger(__name__)
 
+
+def resolve_instance_id(env: dict) -> str:
+    raw = (env.get("KIS_INSTANCE_DIR") or "").strip()
+    if not raw:
+        return "default"
+    base = Path(raw).name.lower()
+    norm = re.sub(r"[^a-z0-9_]", "_", base).strip("_")
+    if not norm or norm == "default":
+        raise ValueError(
+            f"KIS_INSTANCE_DIR basename이 예약어 'default'로 정규화됨: {raw!r}. "
+            "실전 인스턴스 디렉토리는 'default' 이외의 이름을 쓰세요."
+        )
+    return norm
+
+
+def resolve_config_dir(env: dict) -> Path:
+    raw = (env.get("KIS_INSTANCE_DIR") or "").strip()
+    if raw:
+        return Path(raw)
+    return Path(__file__).parent
+
+
+def real_trading_table_name(instance_id: str) -> str:
+    if instance_id == "default":
+        return "real_trading_records"
+    return f"real_trading_{instance_id}"
+
+
+def token_file_name(instance_id: str) -> str:
+    """KIS 토큰 캐시 파일명 — 인스턴스별 분리(같은 cwd서 계좌 토큰 충돌 방지)."""
+    if instance_id == "default":
+        return "token_info.json"
+    return f"token_info_{instance_id}.json"
+
+
+def log_dir_name(instance_id: str) -> str:
+    """로그 디렉토리 — 인스턴스별 분리(같은 cwd서 로그 혼선 방지)."""
+    if instance_id == "default":
+        return "logs"
+    return f"logs/{instance_id}"
+
+
+INSTANCE_ID = resolve_instance_id(os.environ)
+_CONFIG_DIR = resolve_config_dir(os.environ)
 # 설정 파일 경로
-CONFIG_FILE = Path(__file__).parent / "key.ini"
-TRADING_CONFIG_FILE = Path(__file__).parent / "trading_config.json"
+CONFIG_FILE = _CONFIG_DIR / "key.ini"
+TRADING_CONFIG_FILE = _CONFIG_DIR / "trading_config.json"
+REAL_TRADING_TABLE = real_trading_table_name(INSTANCE_ID)
+TOKEN_FILE = token_file_name(INSTANCE_ID)
+LOG_DIR = log_dir_name(INSTANCE_ID)
 
 def load_config():
     """설정 파일을 로드하여 환경변수 설정"""

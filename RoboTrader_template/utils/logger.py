@@ -54,8 +54,13 @@ def _get_shared_handlers(use_kst: bool = False):
 
     # 파일 핸들러 (싱글톤)
     if _shared_file_handler is None:
-        log_dir = Path("logs")
-        log_dir.mkdir(exist_ok=True)
+        # 인스턴스별 로그 분리 (지연 import로 순환 import 회피)
+        try:
+            from config.settings import LOG_DIR
+        except Exception:
+            LOG_DIR = "logs"
+        log_dir = Path(LOG_DIR)
+        log_dir.mkdir(parents=True, exist_ok=True)
         today = datetime.now().strftime("%Y%m%d")
         log_file = log_dir / f"trading_{today}.log"
 

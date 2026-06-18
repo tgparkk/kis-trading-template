@@ -7,6 +7,12 @@ import yaml
 from strategies.rs_leader.strategy import RSLeaderStrategy
 
 
+def test_exit_timeframe_daily():
+    # Elder/deep_mr whipsaw 교훈(2026-06-09): 일봉 swing 전략이 exit_timeframe='intraday'면
+    # ma_break를 분봉 MA로 평가해 '매수 직후 매도' whipsaw 발생. 실전 진입 전 필수 방어.
+    assert RSLeaderStrategy.exit_timeframe == "daily"
+
+
 def _load_config():
     cfg_path = Path(__file__).resolve().parents[3] / "strategies" / "rs_leader" / "config.yaml"
     return yaml.safe_load(cfg_path.read_text(encoding="utf-8"))

@@ -56,6 +56,7 @@ class MinerviniVolumeDryupStrategy(BaseStrategy):
     description: str = "Minervini volume_dryup B — 거래량 dry-up 진입 (sl8/tp12/max_hold20거래일)"
     author: str = "Template"
     holding_period: str = "swing"
+    exit_timeframe: str = "daily"   # 일봉 청산 — 분봉 ma_break/trailing whipsaw(매수 직후 매도) 방지
     # 거래량 수축 진입 — 거래량 상위 fallback 풀과 정합 (기본 True 유지)
     accepts_volume_fallback: bool = True
 

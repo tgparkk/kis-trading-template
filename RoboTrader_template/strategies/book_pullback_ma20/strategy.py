@@ -50,6 +50,7 @@ class BookPullbackMa20Strategy(BaseStrategy):
     description: str = "강창권 A-07 — 급등 후 20일선 눌림 지지 양봉 (sl8/tp10/trail_ma20/max50)"
     author: str = "Template"
     holding_period: str = "swing"
+    exit_timeframe: str = "daily"   # 일봉 청산 — 분봉 ma_break/trailing whipsaw(매수 직후 매도) 방지
     # 추세추종 진입 — 거래량 상위 fallback 풀과 정합 (기본 True 유지)
     accepts_volume_fallback: bool = True
 

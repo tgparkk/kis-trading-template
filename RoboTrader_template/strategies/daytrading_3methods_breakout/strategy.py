@@ -48,6 +48,7 @@ class DayTrading3MethodsBreakoutStrategy(BaseStrategy):
     description: str = "3대 타법 돌파 — 전고점 거래량 동반 돌파 (sl10/tp10/max10, trailing 없음)"
     author: str = "Template"
     holding_period: str = "swing"
+    exit_timeframe: str = "daily"   # 일봉 청산 — 분봉 ma_break/trailing whipsaw(매수 직후 매도) 방지
     # 추세추종 진입 — 거래량 상위 fallback 풀과 정합 (기본 True 유지)
     accepts_volume_fallback: bool = True
 

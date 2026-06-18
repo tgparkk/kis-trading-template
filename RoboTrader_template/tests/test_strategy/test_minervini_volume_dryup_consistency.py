@@ -292,6 +292,11 @@ class TestStrategyLoaderIntegration:
 # ----------------------------------------------------------------------------- #
 # 4. 진입 밴드 (2026-06-15) — 돌파형: up=3%, down=None
 # ----------------------------------------------------------------------------- #
+def test_exit_timeframe_daily():
+    # 일봉 swing 전략 — 분봉 청산 whipsaw 방지 (2026-06-18 점검). intraday 상속 회귀 방지.
+    assert MinerviniVolumeDryupStrategy.exit_timeframe == "daily"
+
+
 class TestEntryBand:
 
     def _strat(self, monkeypatch):

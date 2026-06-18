@@ -15,7 +15,7 @@ from utils.korean_time import now_kst
 # 설정 import (settings.py에서 .env 파일을 읽어서 제공)
 from config.settings import (
     KIS_BASE_URL, APP_KEY, SECRET_KEY,
-    ACCOUNT_NUMBER, HTS_ID
+    ACCOUNT_NUMBER, HTS_ID, TOKEN_FILE
 )
 from config.constants import API_CALL_INTERVAL, API_MAX_RETRIES, API_RETRY_DELAY_BASE
 
@@ -28,8 +28,8 @@ API_CONNECT_TIMEOUT = 5     # 연결 타임아웃 (초)
 API_READ_TIMEOUT = 30       # 읽기 타임아웃 (초)
 API_REQUEST_TIMEOUT = (API_CONNECT_TIMEOUT, API_READ_TIMEOUT)  # requests용 튜플
 
-# 토큰 파일 경로
-TOKEN_FILE_PATH = os.path.join(os.path.abspath(os.getcwd()), "token_info.json")
+# 토큰 파일 경로 (인스턴스별 분리 — 같은 cwd서 계좌 토큰 충돌 방지)
+TOKEN_FILE_PATH = os.path.join(os.path.abspath(os.getcwd()), TOKEN_FILE)
 
 # KIS 환경 설정 구조체
 class KISEnv(NamedTuple):

@@ -22,6 +22,7 @@ class RSLeaderStrategy(BaseStrategy):
     description: str = "횡보장 RS 리더 — 절대상승추세+횡단면RS (sl8/trail_ma20/max30, paper)"
     author: str = "Template"
     holding_period: str = "swing"
+    exit_timeframe: str = "daily"   # 일봉 청산 — 분봉 ma_break whipsaw(매수 직후 매도) 방지
     accepts_volume_fallback: bool = True
 
     def get_min_data_length(self) -> int:
