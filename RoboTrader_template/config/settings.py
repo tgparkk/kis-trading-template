@@ -5,15 +5,43 @@ trading_config.json 파일에서 거래 설정을 로드
 """
 import json
 import logging
+import os
+import re
 import configparser
 from pathlib import Path
 from core.models import TradingConfig
 
 logger = logging.getLogger(__name__)
 
+
+def resolve_instance_id(env: dict) -> str:
+    raw = (env.get("KIS_INSTANCE_DIR") or "").strip()
+    if not raw:
+        return "default"
+    base = Path(raw).name.lower()
+    norm = re.sub(r"[^a-z0-9_]", "_", base).strip("_")
+    return norm or "default"
+
+
+def resolve_config_dir(env: dict) -> Path:
+    raw = (env.get("KIS_INSTANCE_DIR") or "").strip()
+    if raw:
+        return Path(raw)
+    return Path(__file__).parent
+
+
+def real_trading_table_name(instance_id: str) -> str:
+    if instance_id == "default":
+        return "real_trading_records"
+    return f"real_trading_{instance_id}"
+
+
+INSTANCE_ID = resolve_instance_id(os.environ)
+_CONFIG_DIR = resolve_config_dir(os.environ)
 # 설정 파일 경로
-CONFIG_FILE = Path(__file__).parent / "key.ini"
-TRADING_CONFIG_FILE = Path(__file__).parent / "trading_config.json"
+CONFIG_FILE = _CONFIG_DIR / "key.ini"
+TRADING_CONFIG_FILE = _CONFIG_DIR / "trading_config.json"
+REAL_TRADING_TABLE = real_trading_table_name(INSTANCE_ID)
 
 def load_config():
     """설정 파일을 로드하여 환경변수 설정"""
