@@ -327,6 +327,11 @@ class TestStrategyLoaderIntegration:
 # ----------------------------------------------------------------------------- #
 # 4. no-lookahead 회귀 — 현재봉이 전고점/거래량 평균을 스스로 오염시키지 않음
 # ----------------------------------------------------------------------------- #
+def test_exit_timeframe_daily():
+    # 일봉 swing 전략 — 분봉 청산 whipsaw 방지 (2026-06-18 점검). intraday 상속 회귀 방지.
+    assert DayTrading3MethodsBreakoutStrategy.exit_timeframe == "daily"
+
+
 class TestNoLookahead:
 
     def test_prior_high_excludes_current_bar(self):

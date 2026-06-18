@@ -44,6 +44,7 @@ class BookEnvelope200dStrategy(BaseStrategy):
     description: str = "Book19 envelope_200d_high — 200일 신고가+Envelope 돌파 (sl8/tp10/max10, OOS 강건)"
     author: str = "Template"
     holding_period: str = "swing"
+    exit_timeframe: str = "daily"   # 일봉 청산 — 분봉 ma_break/trailing whipsaw(매수 직후 매도) 방지
     accepts_volume_fallback: bool = True
 
     # ========================================================================

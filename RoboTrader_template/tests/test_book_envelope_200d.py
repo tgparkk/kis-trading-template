@@ -76,6 +76,12 @@ def test_strategy_class_importable_and_swing():
     assert BookEnvelope200dStrategy.holding_period == "swing"
 
 
+def test_exit_timeframe_daily():
+    # 일봉 swing 전략 — 분봉 청산 whipsaw 방지 (2026-06-18 점검). intraday 상속 회귀 방지.
+    from strategies.book_envelope_200d.strategy import BookEnvelope200dStrategy
+    assert BookEnvelope200dStrategy.exit_timeframe == "daily"
+
+
 def test_min_gate_small_so_ontick_not_skipped():
     """on_tick 게이트는 전달 일봉(robotrader ~85봉)에 적용 → 작아야 함.
 
