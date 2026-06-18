@@ -1,6 +1,7 @@
 """
 매매 기록 Repository (TimescaleDB)
 """
+import re
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
@@ -21,9 +22,36 @@ class TradingRepository(BaseRepository):
     # 모든 INSERT/SELECT는 이 출처 태그를 사용한다. (robotrader 형제 프로젝트와 테이블 공유)
     SOURCE_KIS_TEMPLATE = 'kis_template'
 
-    def __init__(self, db_path: str = None):
+    _TABLE_RE = re.compile(r"^real_trading_records$|^real_trading_[a-z0-9_]+$")
+
+    @classmethod
+    def _validate_table_name(cls, name: str) -> str:
+        if not name or not cls._TABLE_RE.match(name):
+            raise ValueError(f"허용되지 않는 실거래 테이블명: {name!r}")
+        return name
+
+    def __init__(self, db_path: str = None, real_table_name: str = None):
         super().__init__(db_path)
         self.logger = RateLimitedLogger(self.logger)
+        if real_table_name is None:
+            from config.settings import REAL_TRADING_TABLE
+            real_table_name = REAL_TRADING_TABLE
+        self._real_table = self._validate_table_name(real_table_name)
+        if self._real_table != "real_trading_records":
+            self.ensure_real_table()
+
+    def ensure_real_table(self) -> None:
+        """비기본 인스턴스 테이블을 real_trading_records 스키마로 생성(멱등)."""
+        try:
+            with self._get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    f"CREATE TABLE IF NOT EXISTS {self._real_table} "
+                    f"(LIKE real_trading_records INCLUDING ALL)"
+                )
+                conn.commit()
+        except Exception as e:
+            self.logger.error(f"실거래 테이블 생성 실패({self._real_table}): {e}")
 
     def _sanitize_strategy(self, strategy: str) -> str:
         """전략 이름 검증: 매매 사유가 잘못 들어온 경우 'unknown'으로 대체
@@ -55,8 +83,8 @@ class TradingRepository(BaseRepository):
             start_str, next_str = self._get_today_range_strings()
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT COUNT(1) FROM real_trading_records
+                cursor.execute(f'''
+                    SELECT COUNT(1) FROM {self._real_table}
                     WHERE stock_code = %s AND action = 'SELL'
                       AND profit_loss < 0
                       AND timestamp >= %s AND timestamp < %s
@@ -77,8 +105,8 @@ class TradingRepository(BaseRepository):
                 timestamp = now_kst()
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO real_trading_records
+                cursor.execute(f'''
+                    INSERT INTO {self._real_table}
                     (stock_code, stock_name, action, quantity, price, timestamp, strategy, reason, created_at)
                     VALUES (%s, %s, 'BUY', %s, %s, %s, %s, %s, %s)
                     RETURNING id
@@ -108,12 +136,12 @@ class TradingRepository(BaseRepository):
                 cursor = conn.cursor()
 
                 # 평균 매수가 계산
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT SUM(b.quantity * b.price) / NULLIF(SUM(b.quantity), 0) as avg_buy_price
-                    FROM real_trading_records b
+                    FROM {self._real_table} b
                     WHERE b.stock_code = %s AND b.action = 'BUY'
                       AND NOT EXISTS (
-                          SELECT 1 FROM real_trading_records s
+                          SELECT 1 FROM {self._real_table} s
                           WHERE s.buy_record_id = b.id AND s.action = 'SELL'
                       )
                 ''', (stock_code,))
@@ -122,15 +150,15 @@ class TradingRepository(BaseRepository):
                 buy_price = float(avg_result[0]) if avg_result and avg_result[0] else None
 
                 if not buy_price and buy_record_id:
-                    cursor.execute('SELECT price FROM real_trading_records WHERE id = %s', (buy_record_id,))
+                    cursor.execute(f'SELECT price FROM {self._real_table} WHERE id = %s', (buy_record_id,))
                     row = cursor.fetchone()
                     buy_price = float(row[0]) if row else None
 
                 profit_loss = (price - buy_price) * quantity if buy_price else 0.0
                 profit_rate = (price - buy_price) / buy_price if buy_price and buy_price > 0 else 0.0
 
-                cursor.execute('''
-                    INSERT INTO real_trading_records
+                cursor.execute(f'''
+                    INSERT INTO {self._real_table}
                     (stock_code, stock_name, action, quantity, price, timestamp, strategy, reason,
                      profit_loss, profit_rate, buy_record_id, created_at)
                     VALUES (%s, %s, 'SELL', %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -151,11 +179,11 @@ class TradingRepository(BaseRepository):
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT b.id FROM real_trading_records b
+                cursor.execute(f'''
+                    SELECT b.id FROM {self._real_table} b
                     WHERE b.stock_code = %s AND b.action = 'BUY'
                       AND NOT EXISTS (
-                        SELECT 1 FROM real_trading_records s
+                        SELECT 1 FROM {self._real_table} s
                         WHERE s.buy_record_id = b.id AND s.action = 'SELL'
                       )
                     ORDER BY b.timestamp DESC LIMIT 1
@@ -451,7 +479,7 @@ class TradingRepository(BaseRepository):
 
         재시작 시 state_restorer가 이 값을 읽어 복원하므로 최신값 유지가 중요합니다.
         """
-        table = 'virtual_trading_records' if is_virtual else 'real_trading_records'
+        table = 'virtual_trading_records' if is_virtual else self._real_table
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()

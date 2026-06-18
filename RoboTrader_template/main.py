@@ -53,13 +53,25 @@ from strategies.base import BaseStrategy
 from strategies.config import StrategyLoader, StrategyConfigError
 
 
+def pid_file_name(instance_id: str) -> str:
+    """Return the PID filename for the given instance_id.
+
+    'default' preserves backward-compatible name 'robotrader.pid'.
+    Any other value produces 'robotrader_{instance_id}.pid'.
+    """
+    if instance_id == "default":
+        return "robotrader.pid"
+    return f"robotrader_{instance_id}.pid"
+
+
 class DayTradingBot:
     """주식 자동매매 봇"""
 
     def __init__(self):
         self.logger = setup_logger(__name__)
         self.is_running = False
-        self.pid_file = Path("robotrader.pid")
+        from config.settings import INSTANCE_ID
+        self.pid_file = Path(pid_file_name(INSTANCE_ID))
 
         # 프로세스 중복 실행 방지
         check_duplicate_process(str(self.pid_file))

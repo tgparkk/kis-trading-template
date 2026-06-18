@@ -1,0 +1,102 @@
+{
+  "data_collection": {
+    "interval_seconds": 30,
+    "candidate_stocks": []
+  },
+  "order_management": {
+    "buy_timeout_seconds": 300,
+    "sell_timeout_seconds": 180,
+    "max_adjustments": 3,
+    "adjustment_threshold_percent": 0.5,
+    "market_order_threshold_percent": 2.0,
+    "buy_budget_ratio": 0.05,
+    "buy_cooldown_minutes": 25
+  },
+  "risk_management": {
+    "max_position_count": 20,
+    "max_position_ratio": 0.3,
+    "stop_loss_ratio": 0.10,
+    "take_profit_ratio": 0.15,
+    "max_daily_loss": 0.1
+  },
+  "strategy": {
+    "name": "sample",
+    "enabled": true,
+    "parameters": {
+      "momentum_period": 5,
+      "volume_threshold": 1.5,
+      "price_change_threshold": 0.01,
+      "max_candidates": 10
+    }
+  },
+  "strategies": [
+    {
+      "name": "elder_ema_pullback",
+      "enabled": false,
+      "max_capital_pct": 0.16,
+      "regime_index": "KOSPI",
+      "regime_gate": "none"
+    },
+    {
+      "name": "book_envelope_200d",
+      "enabled": false,
+      "max_capital_pct": 0.16,
+      "regime_index": "KOSPI",
+      "regime_gate": "none"
+    },
+    {
+      "name": "daytrading_3methods_breakout",
+      "enabled": false,
+      "max_capital_pct": 0.16,
+      "regime_index": "KOSDAQ",
+      "regime_gate": "none"
+    },
+    {
+      "name": "minervini_volume_dryup",
+      "enabled": false,
+      "max_capital_pct": 0.16,
+      "regime_index": "KOSPI",
+      "regime_gate": "none"
+    },
+    {
+      "name": "book_pullback_ma20",
+      "enabled": false,
+      "max_capital_pct": 0.16,
+      "regime_index": "KOSPI",
+      "regime_gate": "exclude_bear"
+    },
+    {
+      "name": "book_pullback_ma5",
+      "enabled": false,
+      "max_capital_pct": 0.16,
+      "regime_index": "KOSPI",
+      "regime_gate": "exclude_bear"
+    },
+    {
+      "name": "rs_leader",
+      "enabled": true,
+      "max_capital_pct": 0.14,
+      "regime_index": "KOSPI",
+      "regime_gate": "exclude_bear"
+    },
+    {
+      "name": "deep_mr_dev20",
+      "enabled": false,
+      "max_capital_pct": 0.12,
+      "regime_index": "KOSPI",
+      "regime_gate": "none"
+    }
+  ],
+  "duplicate_signal_prevention": {
+    "enabled": true,
+    "overlap_threshold": 0.5,
+    "time_filter_hours": 2,
+    "min_loss_threshold": -0.5
+  },
+  "logging": {
+    "level": "INFO",
+    "file_retention_days": 30
+  },
+  "paper_trading": false,
+  "rebalancing_mode": true
+}

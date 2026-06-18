@@ -41,3 +41,8 @@ output/
 
 # Large research data artifacts (>100MB, not for git)
 RoboTrader_template/reports/10pct_strategy/*.parquet
+
+# Live trading instances (contain real API keys — NEVER commit)
+# Block the real credential files; .example and README stay tracked
+RoboTrader_template/instances/*/key.ini
+RoboTrader_template/instances/*/trading_config.json
