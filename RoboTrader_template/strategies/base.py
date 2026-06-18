@@ -301,7 +301,9 @@ class BaseStrategy(ABC):
     #     분봉으로 평가하면 일봉 지표가 분봉봉 기준으로 오작동해 진입 직후 청산되는
     #     whipsaw가 발생한다(2026-06-09 Elder 192080). 장중 실시간 손익절·트레일링·
     #     최대보유일은 PositionMonitor가 현재가 기준으로 독립 처리하므로 손실되지 않는다.
-    exit_timeframe: str = "intraday"
+    #   None(미설정) = __init__에서 holding_period로 유도(swing→"daily", intraday→"intraday").
+    #     swing인데 "intraday"로 명시하면 모순이라 __init__이 거부한다(whipsaw 재발방지).
+    exit_timeframe: Optional[str] = None
 
     # 전략별 자금 상한 비율 (1.0 = 전체 사용 가능).
     # StrategyLoader.load_strategies()가 spec의 max_capital_pct 값으로 덮어씀.
@@ -340,6 +342,19 @@ class BaseStrategy(ABC):
                    If None, an empty dict is used.
         """
         self.config = config or {}
+
+        # exit_timeframe 정합성 가드 (2026-06-18 whipsaw 재발방지):
+        #   미설정(None)이면 holding_period에서 유도, 모순 조합은 생성 시점에 거부.
+        resolved_exit = type(self).exit_timeframe
+        if resolved_exit is None:
+            resolved_exit = "daily" if self.holding_period == "swing" else "intraday"
+        if self.holding_period == "swing" and resolved_exit == "intraday":
+            raise ValueError(
+                f"[{self.name}] 설정 모순: holding_period='swing'인데 "
+                f"exit_timeframe='intraday' — 스윙 전략은 일봉 청산('daily')이어야 "
+                f"분봉 whipsaw가 없습니다. exit_timeframe를 'daily'로 두거나 미설정(자동 daily)하세요."
+            )
+        self.exit_timeframe = resolved_exit
 
         # Components (set in on_init)
         self._broker = None

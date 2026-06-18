@@ -210,6 +210,8 @@ class MyStrategy(BaseStrategy):
 > `on_init`, `on_market_open`, `on_order_filled`, `on_market_close`는 필요 시 오버라이드.
 > `on_tick(ctx: TradingContext)` 오버라이드로 매매 루프 직접 제어 가능 (고급).
 > `holding_period = "swing"` 선언 시 EOD 청산 건너뜀.
+> `exit_timeframe`는 미설정 시 `holding_period`에서 자동 유도(swing→"daily", intraday→"intraday").
+> swing 전략에 `exit_timeframe="intraday"`를 명시하면 모순이라 `BaseStrategy.__init__`이 거부(분봉 whipsaw 방지, 2026-06-18).
 
 ### 4. Signal 반환
 
