@@ -1,0 +1,8 @@
+strategy	top_n	K	n_signals	n_trades	sharpe	pnl	maxdd
+elder_ema_pullback	50	20	12589	1026	0.359	0.4334	0.5761
+book_envelope_200d	50	5	480	311	0.903	1.9924	0.2526
+daytrading_3methods_breakout	50	5	1733	635	0.518	2.291	0.6931
+minervini_volume_dryup	50	3	14678	293	0.402	0.6053	0.7377
+book_pullback_ma20	50	5	2493	720	0.408	-0.862	0.9942
+book_pullback_ma5	50	5	6749	1440	0.197	-0.8826	0.951
+rs_leader	300	10	65128	2739	0.855	4.2607	0.6627

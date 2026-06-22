@@ -1,0 +1,19 @@
+candidate	verdict	fails	pnl	sharpe	maxdd	trades	corr	lift	monthly	edge_gross
+three_down_bounce_h1	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.7535	0.431	0.9976	3905	0.806	3.61		
+three_down_bounce_h2	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.4774	-0.025	0.6273	2417	0.922	4.06		
+rsi2_pure_h1	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.8835	0.336	0.9633	4061	0.84	3.83		
+rsi2_pure_h2	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.2688	0.069	0.5036	2469	0.925	3.91		
+turn_of_month_h1	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.0366	0.074	0.2995	295	0.923	1.01		
+turn_of_month_h2	REJECT	G2;G3;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.0508	0.059	0.3029	295	0.925	1.01		
+deep_down_n4_h1	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.9261	-0.322	0.9274	4673	0.829	2.78	72.1	0.0016
+deep_down_n4_h2	REJECT_ETF_COND	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.2637	-0.037	0.5243	2943	0.744	3.31	45.4	0.0031
+deep_down_n5_h1	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.9506	-0.451	0.956	3545	0.85	3.01	54.7	0.0005
+deep_down_n5_h2	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.9032	-0.234	0.9124	2264	0.886	3.38	34.9	-0.001
+deep_down_n6_h1	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.8943	-0.206	0.9146	2678	0.893	3.46	41.3	0.0006
+deep_down_n6_h2	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.5157	-0.236	0.5555	1710	0.868	3.53	26.4	0.0011
+deep_down_n7_h1	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.631	-0.005	0.7448	1723	0.919	3.16	26.6	0.0003
+deep_down_n7_h2	REJECT	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.4494	-0.031	0.6126	1065	0.92	3.31	16.4	-0.0003
+deep_mr_dev12	REJECT_ETF_COND	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	0.0112	0.208	0.534	1004	0.916	3.83	15.5	0.0043
+deep_mr_dev15	REJECT	G2;G3;G4_bootstrap;G4_cost	0.2399	0.314	0.2807	700	0.66	3.16	10.8	0.0077
+deep_mr_dev20	REJECT	G2	0.5181	0.733	0.162	390	0.452	3.31	6.0	0.0181
+confluence_n4vol2_h2	REJECT_ETF_COND	G2;G3;G4_walkforward;G4_bootstrap;G4_cost;G5_perturb;G5_oos	-0.1183	-0.23	0.1807	651	0.069	2.33	10.0	0.0021

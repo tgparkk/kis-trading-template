@@ -1,0 +1,9 @@
+name	sharpe_p05	sharpe_p50	sharpe_p95	maxdd_p05	maxdd_p50	maxdd_p95
+book_envelope_200d	0.386	0.892	1.534	0.066	0.131	0.202
+book_pullback_ma20	-0.753	0.059	0.581	0.277	0.499	0.738
+book_pullback_ma5	-1.126	0.15	0.553	0.579	0.877	0.981
+daytrading_3methods_breakout	0.252	0.767	1.832	0.08	0.282	0.424
+elder_ema_pullback	0.205	0.724	1.715	0.201	0.51	0.704
+minervini_volume_dryup	-0.322	0.356	1.128	0.124	0.241	0.42
+rs_leader	0.108	0.667	1.519	0.268	0.489	0.711
+combo_live_sum	0.007	0.556	1.514	0.135	0.361	0.56
