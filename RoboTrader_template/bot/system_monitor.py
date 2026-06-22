@@ -187,6 +187,41 @@ class SystemMonitor:
                 except Exception as snap_err:
                     self.logger.error(f"EOD 스크리너 스냅샷 검증 오류: {snap_err}")
 
+                # EOD 전략별 equity 스냅샷 적재 (paper_strategy_equity, 멱등)
+                try:
+                    self._run_equity_snapshot()
+                except Exception as eq_err:
+                    self.logger.error(f"EOD equity 스냅샷 적재 오류: {eq_err}")
+
+    def _run_equity_snapshot(self) -> None:
+        """EOD 전략별 일별 equity 를 paper_strategy_equity 에 적재 (하루 1회).
+
+        현금식은 라이브 누적 재구성(restore_strategy_ledger_from_records)과 동일.
+        멱등(전 구간 UPSERT)이라 실패해도 다음 거래일 재계산되며, 예외는
+        EOD 흐름을 막지 않도록 호출측에서 흡수한다. cash_match=False 면 라이브
+        SSOT(paper_trading_state)와 현금 불일치이므로 WARNING.
+        """
+        from db.connection import DatabaseConnection
+        from scripts.paper_strategy_equity import run_daily_equity_snapshot
+
+        with DatabaseConnection.get_connection() as conn:
+            result = run_daily_equity_snapshot(conn)
+        if not result.get("ok"):
+            self.logger.warning(f"EOD equity 스냅샷 스킵: {result.get('reason')}")
+            return
+        if result.get("cash_match"):
+            self.logger.info(
+                f"EOD equity 스냅샷 적재 완료: {result['trade_date']} "
+                f"{result['n_strategies']}전략, 현금합 {result['total_cash']:,.0f}원 "
+                f"= paper_trading_state ✅"
+            )
+        else:
+            self.logger.warning(
+                f"EOD equity 스냅샷 적재 완료(현금 불일치 ⚠️): {result['trade_date']} "
+                f"리플레이 현금합 {result['total_cash']:,.0f} vs "
+                f"paper_trading_state {result.get('eod_balance')}"
+            )
+
     def _verify_screener_snapshot(self) -> None:
         """EOD 스크리너 스냅샷 실행 여부 검증 (D6)
 

@@ -96,6 +96,80 @@ def test_records_before_epoch_dates_are_ignored():
     assert rows[0]["cash"] == pytest.approx(10_000_000 - 10 * 1000 * (1 + COMM))
 
 
+def test_oversold_sell_credits_full_cash_unconditionally():
+    # 라이브 누적 재구성과 동일: 매도는 추적 포지션 유무·수량과 무관하게
+    # 전량(qty) 현금 반영. 포지션 qty 는 0 으로 clamp(현금 이중반영 없음).
+    rows = replay_strategy_equity(
+        records=[
+            _rec(date(2026, 6, 8), "BUY", "A", 10, 1000),
+            _rec(date(2026, 6, 9), "SELL", "A", 25, 1100),  # 보유 10인데 25 매도
+        ],
+        initial_capital=10_000_000,
+        dates=[date(2026, 6, 8), date(2026, 6, 9)],
+        closes={("A", date(2026, 6, 8)): 1000.0},
+    )
+    d2 = rows[1]
+    expected_cash = (10_000_000
+                     - 10 * 1000 * (1 + COMM)
+                     + 25 * 1100 * (1 - COMM - TAX))  # 전량 25 반영
+    assert d2["cash"] == pytest.approx(expected_cash)
+    assert d2["n_open"] == 0          # 포지션은 0으로 clamp
+    assert d2["position_value"] == 0
+
+
+def test_realized_uses_profit_loss_column_when_present():
+    # 레코드에 봇의 실제 profit_loss 가 있으면 avg_cost 추정 대신 그 값을 누적(권위).
+    sell = _rec(date(2026, 6, 9), "SELL", "A", 10, 1100)
+    sell["profit_loss"] = 888.0
+    rows = replay_strategy_equity(
+        records=[_rec(date(2026, 6, 8), "BUY", "A", 10, 1000), sell],
+        initial_capital=10_000_000,
+        dates=[date(2026, 6, 8), date(2026, 6, 9)],
+        closes={("A", date(2026, 6, 8)): 1000.0},
+    )
+    assert rows[1]["realized_pnl_cum"] == pytest.approx(888.0)
+
+
+def test_final_cash_equals_live_reconstruction_formula():
+    # 라이브 restore_strategy_ledger_from_records 와 바이트 동일한 현금 공식:
+    #   cash = initial - Σbuy_gross*(1+c) + Σsell_gross*(1-c-t)
+    recs = [
+        _rec(date(2026, 6, 8), "BUY", "A", 10, 1000),
+        _rec(date(2026, 6, 9), "BUY", "B", 5, 2000),
+        _rec(date(2026, 6, 10), "SELL", "A", 10, 1050),
+    ]
+    rows = replay_strategy_equity(
+        records=recs, initial_capital=10_000_000,
+        dates=[date(2026, 6, 8), date(2026, 6, 9), date(2026, 6, 10)],
+        closes={},
+    )
+    buy_gross = 10 * 1000 + 5 * 2000
+    sell_gross = 10 * 1050
+    expected_cash = (10_000_000
+                     - buy_gross * (1 + COMM)
+                     + sell_gross * (1 - COMM - TAX))
+    assert rows[-1]["cash"] == pytest.approx(expected_cash)
+
+
+def test_sell_then_rebuy_nets_to_true_inventory_no_phantom():
+    # 매도가 보유보다 먼저/초과로 처리된 뒤 재매수해도 net(Σ매수-Σ매도)로 수렴해야
+    # 한다. 구버전은 매도시 포지션을 조기 pop 해 재매수가 유령 포지션을 남겼다.
+    # 여기선 A 를 10 사고 → 15 팔고(net -5) → 5 다시 사서 net 0(보유 없음)이어야 함.
+    rows = replay_strategy_equity(
+        records=[
+            _rec(date(2026, 6, 8), "BUY", "A", 10, 1000),
+            _rec(date(2026, 6, 9), "SELL", "A", 15, 1100),
+            _rec(date(2026, 6, 10), "BUY", "A", 5, 1050),
+        ],
+        initial_capital=10_000_000,
+        dates=[date(2026, 6, 8), date(2026, 6, 9), date(2026, 6, 10)],
+        closes={("A", date(2026, 6, 10)): 1050.0},
+    )
+    last = rows[-1]
+    assert last["n_open"] == 0           # net 0 → 유령 포지션 없음
+    assert last["position_value"] == 0
+
+
 def test_no_trade_day_carries_state_forward():
     rows = replay_strategy_equity(
         records=[_rec(date(2026, 6, 8), "BUY", "A", 10, 1000)],
