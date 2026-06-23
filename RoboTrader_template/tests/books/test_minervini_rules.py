@@ -153,11 +153,15 @@ def test_volume_dryup_triggers_on_low_recent_volume(trend_up_df):
     assert res.triggered is True
 
 
-def test_all_rules_export_has_4_classes():
+def test_all_rules_export_has_5_classes():
+    # 821fb80 'Minervini K=3 집중 + VCP 룰 추가'로 rule_vcp_contraction_breakout 정식 등록(4→5).
     from strategies.books.minervini_vcp import rules as rules_mod
-    assert len(rules_mod.ALL_RULES) == 4
+    assert len(rules_mod.ALL_RULES) == 5
     names = [cls().name for cls in rules_mod.ALL_RULES]
-    assert set(names) == {"trend_template", "vcp_breakout", "tight_closes", "volume_dryup"}
+    assert set(names) == {
+        "trend_template", "vcp_breakout", "vcp_contraction_breakout",
+        "tight_closes", "volume_dryup",
+    }
 
 
 def test_build_strategy_single_mode_returns_book_strategy():
@@ -172,7 +176,7 @@ def test_build_strategy_all_and_mode():
     from strategies.books.minervini_vcp.strategy import build_strategy
     strat = build_strategy(mode="all_AND")
     assert strat.mode == "all_AND"
-    assert len(strat.rules) == 4
+    assert len(strat.rules) == 5  # ALL_RULES 5개(vcp_contraction_breakout 추가, 821fb80)
 
 
 def test_generate_signal_with_extra_ctx_passes_rs_value(trend_up_df):
