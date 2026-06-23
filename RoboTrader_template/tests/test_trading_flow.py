@@ -456,3 +456,65 @@ class TestSystemMonitorTargetStocks:
         await monitor._register_strategy_target_stocks()
 
         # 에러 없이 정상 종료
+
+
+class TestEquitySnapshotResavesPaperState:
+    """EOD equity 스냅샷 직전 paper_trading_state 재저장 검증.
+
+    버그(2026-06-23): save_paper_trading_state는 15:00 EOD청산 훅에서 1회 저장되나,
+    그 후 15:00~15:30 position_monitor 손절이 virtual_balance를 갱신해도 재저장되지
+    않아 paper_trading_state가 stale → 15:35 equity 리플레이와 현금 불일치(033780
+    손절 +344,726). _run_equity_snapshot이 스냅샷 직전 재저장해야 한다.
+    """
+
+    def _make_bot(self, is_virtual=True):
+        mock_bot = MagicMock()
+        de = MagicMock()
+        de.is_virtual_mode = is_virtual
+        vm = MagicMock()
+        vm.save_paper_trading_state = MagicMock(return_value=True)
+        de.virtual_trading = vm
+        mock_bot.decision_engine = de
+        return mock_bot, vm
+
+    def test_가상모드_스냅샷_직전_재저장_호출(self):
+        """가상모드면 run_daily_equity_snapshot 전에 save_paper_trading_state 호출."""
+        from bot.system_monitor import SystemMonitor
+
+        mock_bot, vm = self._make_bot(is_virtual=True)
+        monitor = SystemMonitor(mock_bot)
+
+        call_order = []
+        vm.save_paper_trading_state.side_effect = lambda: call_order.append('resave') or True
+
+        with patch('db.connection.DatabaseConnection.get_connection') as mock_conn, \
+             patch('scripts.paper_strategy_equity.run_daily_equity_snapshot') as mock_snap:
+            mock_conn.return_value.__enter__ = MagicMock(return_value=MagicMock())
+            mock_conn.return_value.__exit__ = MagicMock(return_value=False)
+            mock_snap.side_effect = lambda conn: call_order.append('snapshot') or {
+                'ok': True, 'trade_date': '2026-06-23', 'n_strategies': 8,
+                'total_cash': 34906674, 'eod_balance': 34906674, 'cash_match': True,
+            }
+            monitor._run_equity_snapshot()
+
+        vm.save_paper_trading_state.assert_called_once()
+        assert call_order == ['resave', 'snapshot'], (
+            f"재저장이 스냅샷보다 먼저여야 함: {call_order}")
+
+    def test_실전모드면_재저장_스킵(self):
+        """실전모드(is_virtual_mode=False)면 paper 재저장 안 함."""
+        from bot.system_monitor import SystemMonitor
+
+        mock_bot, vm = self._make_bot(is_virtual=False)
+        monitor = SystemMonitor(mock_bot)
+
+        with patch('db.connection.DatabaseConnection.get_connection') as mock_conn, \
+             patch('scripts.paper_strategy_equity.run_daily_equity_snapshot') as mock_snap:
+            mock_conn.return_value.__enter__ = MagicMock(return_value=MagicMock())
+            mock_conn.return_value.__exit__ = MagicMock(return_value=False)
+            mock_snap.return_value = {'ok': True, 'trade_date': '2026-06-23',
+                                      'n_strategies': 8, 'total_cash': 0,
+                                      'eod_balance': 0, 'cash_match': True}
+            monitor._run_equity_snapshot()
+
+        vm.save_paper_trading_state.assert_not_called()

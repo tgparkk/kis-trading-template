@@ -204,6 +204,13 @@ class SystemMonitor:
         from db.connection import DatabaseConnection
         from scripts.paper_strategy_equity import run_daily_equity_snapshot
 
+        # 0) post-EOD 체결 반영: paper_trading_state 재저장.
+        #    save_paper_trading_state는 15:00 EOD청산 훅에서 1회 저장되나, 그 후
+        #    15:00~15:30 position_monitor 손절이 virtual_balance를 갱신해도 재저장되지
+        #    않아 stale → equity 리플레이와 현금 불일치(2026-06-23 033780 손절 +344,726).
+        #    스냅샷 직전 재저장으로 paper_trading_state를 최종 잔고에 일치시킨다.
+        self._resave_paper_trading_state()
+
         with DatabaseConnection.get_connection() as conn:
             result = run_daily_equity_snapshot(conn)
         if not result.get("ok"):
@@ -221,6 +228,25 @@ class SystemMonitor:
                 f"리플레이 현금합 {result['total_cash']:,.0f} vs "
                 f"paper_trading_state {result.get('eod_balance')}"
             )
+
+    def _resave_paper_trading_state(self) -> None:
+        """가상모드면 현재 virtual_balance를 paper_trading_state에 재저장.
+
+        15:00 EOD청산 이후(15:00~15:30) position_monitor 손절 등 post-EOD 체결이
+        virtual_balance를 갱신하므로, equity 스냅샷 직전 최종 잔고로 동기화한다.
+        실전모드/참조불가/예외는 EOD 흐름을 막지 않도록 흡수한다.
+        """
+        try:
+            de = getattr(self.bot, 'decision_engine', None)
+            if not getattr(de, 'is_virtual_mode', False):
+                return
+            vm = getattr(de, 'virtual_trading', None)
+            if vm is None:
+                self.logger.warning("paper_trading_state 재저장 생략: virtual_trading 참조 불가")
+                return
+            vm.save_paper_trading_state()
+        except Exception as e:
+            self.logger.warning(f"paper_trading_state 재저장 오류 (무시): {e}")
 
     def _verify_screener_snapshot(self) -> None:
         """EOD 스크리너 스냅샷 실행 여부 검증 (D6)
