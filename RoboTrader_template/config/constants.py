@@ -175,6 +175,24 @@ SCREENER_SNAPSHOT_ENABLED = _os.getenv("SCREENER_SNAPSHOT_ENABLED", "false").low
 del _os
 
 # =============================================================================
+# 데이터 읽기 소스 전환 플래그 (kis_template 전용 DB 이관)
+#   legacy(기본): robotrader_quant / robotrader 에서 읽기 + 교차비교(grace)
+#   new: kis_template 에서 읽기 (전환 완료)
+# =============================================================================
+import os as _os_data
+
+KIS_DATA_SOURCE = _os_data.getenv("KIS_DATA_SOURCE", "legacy")
+del _os_data
+
+
+def resolve_daily_source_db() -> str:
+    """일봉 읽기 대상 DB명. KIS_DATA_SOURCE=new 면 kis_template, 아니면 레거시."""
+    import os as _os
+    if _os.getenv("KIS_DATA_SOURCE", "legacy") == "new":
+        return "kis_template"
+    return _os.getenv("QUANT_DB", "robotrader_quant")
+
+# =============================================================================
 # 장 시작 동시 진입 억제 (Entry Throttle)
 # =============================================================================
 # 마지막 신규 진입 이후 다음 신규 진입까지 최소 대기 시간 (초).
