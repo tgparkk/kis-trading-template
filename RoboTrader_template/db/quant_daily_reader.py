@@ -16,6 +16,7 @@ import psycopg2
 from psycopg2 import pool
 
 from utils.logger import setup_logger
+from config.constants import resolve_daily_source_db
 
 logger = setup_logger(__name__)
 
@@ -32,7 +33,7 @@ class QuantDailyReader:
                     cfg = {
                         "host": os.getenv("TIMESCALE_HOST", "localhost"),
                         "port": int(os.getenv("TIMESCALE_PORT", 5433)),
-                        "database": os.getenv("QUANT_DB", "robotrader_quant"),
+                        "database": resolve_daily_source_db(),
                         "user": os.getenv("TIMESCALE_USER", "robotrader"),
                         "password": os.getenv("TIMESCALE_PASSWORD", "1234"),
                     }

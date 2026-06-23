@@ -9,6 +9,7 @@ from utils.logger import setup_logger
 from utils.korean_time import now_kst, is_market_open
 from config.market_hours import MarketHours
 from scripts.daily_trading_summary import print_today_trading_summary
+from collectors.eod_collection import run_data_collection
 
 if TYPE_CHECKING:
     from main import DayTradingBot
@@ -193,6 +194,12 @@ class SystemMonitor:
                 except Exception as eq_err:
                     self.logger.error(f"EOD equity 스냅샷 적재 오류: {eq_err}")
 
+                # EOD 데이터 수집(일봉·분봉·지수 → kis_template) + grace 교차비교
+                try:
+                    await self._run_data_collection(current_time)
+                except Exception as dc_err:
+                    self.logger.error(f"EOD 데이터 수집 오류: {dc_err}")
+
     def _run_equity_snapshot(self) -> None:
         """EOD 전략별 일별 equity 를 paper_strategy_equity 에 적재 (하루 1회).
 
@@ -203,6 +210,13 @@ class SystemMonitor:
         """
         from db.connection import DatabaseConnection
         from scripts.paper_strategy_equity import run_daily_equity_snapshot
+
+        # 0) post-EOD 체결 반영: paper_trading_state 재저장.
+        #    save_paper_trading_state는 15:00 EOD청산 훅에서 1회 저장되나, 그 후
+        #    15:00~15:30 position_monitor 손절이 virtual_balance를 갱신해도 재저장되지
+        #    않아 stale → equity 리플레이와 현금 불일치(2026-06-23 033780 손절 +344,726).
+        #    스냅샷 직전 재저장으로 paper_trading_state를 최종 잔고에 일치시킨다.
+        self._resave_paper_trading_state()
 
         with DatabaseConnection.get_connection() as conn:
             result = run_daily_equity_snapshot(conn)
@@ -221,6 +235,42 @@ class SystemMonitor:
                 f"리플레이 현금합 {result['total_cash']:,.0f} vs "
                 f"paper_trading_state {result.get('eod_balance')}"
             )
+
+    def _resave_paper_trading_state(self) -> None:
+        """가상모드면 현재 virtual_balance를 paper_trading_state에 재저장.
+
+        15:00 EOD청산 이후(15:00~15:30) position_monitor 손절 등 post-EOD 체결이
+        virtual_balance를 갱신하므로, equity 스냅샷 직전 최종 잔고로 동기화한다.
+        실전모드/참조불가/예외는 EOD 흐름을 막지 않도록 흡수한다.
+        """
+        try:
+            de = getattr(self.bot, 'decision_engine', None)
+            if not getattr(de, 'is_virtual_mode', False):
+                return
+            vm = getattr(de, 'virtual_trading', None)
+            if vm is None:
+                self.logger.warning("paper_trading_state 재저장 생략: virtual_trading 참조 불가")
+                return
+            vm.save_paper_trading_state()
+        except Exception as e:
+            self.logger.warning(f"paper_trading_state 재저장 오류 (무시): {e}")
+
+    async def _run_data_collection(self, current_time) -> None:
+        """EOD 데이터 수집(비차단). ~수분 루프라 to_thread로 모니터 태스크 비차단."""
+        import asyncio
+        trade_date = current_time.strftime("%Y%m%d")
+        result = await asyncio.to_thread(run_data_collection, trade_date)
+        daily = result.get("daily", {})
+        minute = result.get("minute", {})
+        index = result.get("index", {})
+        rec = result.get("reconcile", {})
+        self.logger.info(
+            f"EOD 데이터 수집 완료: 일봉 {daily} · 분봉 {minute} · 지수 {index}"
+            + (f" · 교차비교 {rec}" if rec else " · (전환완료 비교생략)")
+        )
+        for ds, r in (rec or {}).items():
+            if isinstance(r, dict) and r.get("verdict") not in ("PASS", "EMPTY", None):
+                self.logger.warning(f"EOD 교차비교 {ds} 불일치: {r}")
 
     def _verify_screener_snapshot(self) -> None:
         """EOD 스크리너 스냅샷 실행 여부 검증 (D6)
