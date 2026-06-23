@@ -68,6 +68,17 @@ _ensure_module('telegram.constants')
 _ensure_module('websockets')
 _ensure_module('websockets.client')
 
-# yaml / dotenv (may or may not be installed)
-_ensure_module('yaml', {'safe_load': lambda x: {}, 'dump': lambda *a, **kw: ''})
-_ensure_module('dotenv', {'load_dotenv': lambda *a, **kw: None, 'find_dotenv': lambda: ''})
+# yaml / dotenv — only mock when not actually installed.
+# 주의: 무조건 _ensure_module 하면 yaml 이 아직 import 되기 전인 세션에서
+# safe_load 가 항상 {}를 반환하는 가짜 yaml 이 전역 설치되어, 이후 모든
+# config.yaml 로드가 빈 dict 가 된다(전략 config 읽는 테스트 줄줄이 실패).
+# psycopg2 와 동일하게 실제 import 를 먼저 시도하고 실패할 때만 mock 한다.
+try:
+    import yaml  # noqa: F401
+except ImportError:
+    _ensure_module('yaml', {'safe_load': lambda x: {}, 'dump': lambda *a, **kw: ''})
+
+try:
+    import dotenv  # noqa: F401
+except ImportError:
+    _ensure_module('dotenv', {'load_dotenv': lambda *a, **kw: None, 'find_dotenv': lambda: ''})
