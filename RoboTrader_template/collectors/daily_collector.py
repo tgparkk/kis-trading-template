@@ -77,7 +77,11 @@ def reconcile_verdict(real_rows: int, new_rows: int, value_match: int) -> dict:
     if real_rows == 0 and new_rows == 0:
         return {"coverage": 1.0, "value_match_rate": 1.0, "verdict": "EMPTY"}
     coverage = new_rows / real_rows if real_rows else 0.0
-    value_match_rate = value_match / new_rows if new_rows else 0.0
+    # value_match_rate 분모는 레거시(real_rows) 기준 — grace 교차검증은 "새 DB가 레거시
+    # 참조값을 재현하는가"를 본다. new_rows를 분모로 쓰면 새 DB가 더 넓게 수집(전체시장
+    # > 레거시 워치리스트)할 때 추가 종목이 '불일치'로 깎여 항상 거짓 FAIL이 난다
+    # (2026-06-23: 교집합 2484/2484 100%일치인데 2484/2577=0.964로 FAIL나던 결함).
+    value_match_rate = value_match / real_rows if real_rows else 0.0
     verdict = "PASS" if coverage >= COVERAGE_MIN and value_match_rate >= VALUE_MATCH_MIN else "FAIL"
     return {"coverage": coverage, "value_match_rate": value_match_rate, "verdict": verdict}
 

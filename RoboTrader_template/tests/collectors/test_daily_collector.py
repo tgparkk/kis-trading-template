@@ -22,6 +22,17 @@ def test_reconcile_verdict_handles_zero_real():
     assert v["verdict"] in ("PASS", "EMPTY")
 
 
+def test_reconcile_verdict_pass_when_new_db_has_broader_coverage():
+    """새 DB가 레거시보다 더 넓게 수집(전체시장 > 워치리스트)해도, 교집합 종가가
+    일치하면 PASS여야 한다. value_match_rate는 레거시(real_rows) 기준 — 새 DB의
+    추가 종목을 '불일치'로 깎으면 안 된다(2026-06-23 라이브: new2577/real2486,
+    교집합 2484/2484 100%일치인데 value_match/new_rows=0.9639로 거짓 FAIL나던 회귀)."""
+    v = reconcile_verdict(real_rows=2486, new_rows=2577, value_match=2484)
+    assert v["coverage"] >= 0.99           # 더 넓은 수집(>1.0)도 충족
+    assert v["value_match_rate"] >= 0.99    # 레거시 기준 99.9% 일치
+    assert v["verdict"] == "PASS"
+
+
 def _descending_daily_df():
     """KIS output2 처럼 최신일 우선(내림차순) 일봉 df (5 bars, 06-23 가장 위)."""
     return pd.DataFrame([
