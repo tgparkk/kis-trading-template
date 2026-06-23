@@ -269,22 +269,27 @@ class PositionMonitor:
                         return
 
                 # 트레일링 스톱 체크
-                self._check_trailing_stop(trading_stock, current_price, buy_price, profit_rate)
-                if trading_stock.trailing_stop_activated:
-                    trailing_stop_price = (
-                        trading_stock.highest_price_since_buy
-                        * (1 - TRAILING_STOP_CALLBACK_RATE)
-                    )
-                    if current_price <= trailing_stop_price:
-                        reason = (
-                            f"트레일링 스톱 매도: 현재가 {current_price:,.0f}원 "
-                            f"<= 최고가({trading_stock.highest_price_since_buy:,.0f}원) "
-                            f"대비 -{TRAILING_STOP_CALLBACK_RATE:.0%} "
-                            f"(수익률 {profit_rate:.2%})"
+                # ★전략-소유 포지션은 공통 트레일링(+5%/-3%)을 적용하지 않는다.
+                # 전략별 손익비(tp/sl)·max_hold·고유 청산(MA/EMA trail 등)이 governing —
+                # 멀티버스 백테스트와 정합(사장님 결정 2026-06-24 "전략별 손익비 우선").
+                # 공통 트레일링은 비전략(레거시) 포지션에만 안전망으로 유지한다.
+                if strategy_for_sell is None:
+                    self._check_trailing_stop(trading_stock, current_price, buy_price, profit_rate)
+                    if trading_stock.trailing_stop_activated:
+                        trailing_stop_price = (
+                            trading_stock.highest_price_since_buy
+                            * (1 - TRAILING_STOP_CALLBACK_RATE)
                         )
-                        self.logger.info(f"{stock_code} {reason}")
-                        await self._execute_sell(trading_stock, current_price, reason)
-                        return
+                        if current_price <= trailing_stop_price:
+                            reason = (
+                                f"트레일링 스톱 매도: 현재가 {current_price:,.0f}원 "
+                                f"<= 최고가({trading_stock.highest_price_since_buy:,.0f}원) "
+                                f"대비 -{TRAILING_STOP_CALLBACK_RATE:.0%} "
+                                f"(수익률 {profit_rate:.2%})"
+                            )
+                            self.logger.info(f"{stock_code} {reason}")
+                            await self._execute_sell(trading_stock, current_price, reason)
+                            return
 
                 # 목표 익절률 체크
                 if hasattr(trading_stock, 'target_profit_rate') and trading_stock.target_profit_rate:
