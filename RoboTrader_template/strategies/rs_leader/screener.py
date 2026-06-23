@@ -51,6 +51,12 @@ class RSLeaderScreenerAdapter(RuleScreenerBase):
             return None
         if len(close) <= rs_lb:
             return None
-        rs_ret = last / float(close.iloc[-1 - rs_lb]) - 1.0
+        ref = float(close.iloc[-1 - rs_lb])
+        # RS 분모(과거 close) 0/NaN 가드: 손상된 일봉(과거 text-date 오염 등)이
+        # ZeroDivisionError/NaN score 를 내지 않도록 방어. (rule.py 는 abs_lb 기준가만
+        # 가드하고 screener 의 rs_lb 기준가는 미가드였음 — 감사 2026-06-23)
+        if not (ref > 0):  # 0·음수·NaN 모두 차단(NaN 비교는 항상 False)
+            return None
+        rs_ret = last / ref - 1.0
         reason = f"RS리더: 절대상승추세 + {rs_lb}일수익률 {rs_ret * 100:+.1f}%"
         return (float(rs_ret), reason)  # score=RS수익률 → scan 정렬+topK = RS랭킹
