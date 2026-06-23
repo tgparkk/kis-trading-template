@@ -127,16 +127,23 @@ class TradingContext:
         '마지막 행 = 확정 봉(no-lookahead)' 을 전제(rules.py 주석)하므로, 단일 소스인
         이 로더에서 date == 오늘(KST) 인 trailing row 를 배제해 백테스트와 정합시킨다.
 
-        - date 컬럼이 없으면(합성/테스트 데이터) 변형 없이 그대로 반환한다.
+        - date/datetime 컬럼이 모두 없으면(합성/테스트 데이터) 변형 없이 그대로 반환한다.
         - 분봉/장중 데이터는 이 경로(get_daily_data)를 타지 않으므로 영향 없음.
         - EOD 에 확정 봉으로 재저장되면 다음 거래일 정상 마지막 봉이 된다.
+
+        ※ no-lookahead 보증이 이 드롭 하나에 의존하므로(감사 2026-06-23), 일봉 소스가
+          'date' 대신 'datetime' 만 주더라도 미확정봉이 새지 않도록 datetime 으로 폴백한다.
         """
         if data is None or getattr(data, "empty", True):
             return data
-        if "date" not in data.columns or len(data) == 0:
+        if len(data) == 0:
+            return data
+        date_col = "date" if "date" in data.columns else (
+            "datetime" if "datetime" in data.columns else None)
+        if date_col is None:
             return data
         try:
-            last_date = pd.to_datetime(data["date"].iloc[-1]).date()
+            last_date = pd.to_datetime(data[date_col].iloc[-1]).date()
         except (ValueError, TypeError):
             return data
         if last_date == now_kst().date():
