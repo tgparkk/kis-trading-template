@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from utils.logger import setup_logger
-from utils.korean_time import now_kst
+from utils.korean_time import now_kst, KST
 from core.models import StockState
 from config.constants import (
     DEFAULT_TARGET_PROFIT_RATE, DEFAULT_STOP_LOSS_RATE,
@@ -109,6 +109,57 @@ class StateRestorer:
                 if getattr(s, 'name', None)
             }
         return self._by_class_name_cache.get(name)
+
+    def _normalize_entry_time(self, buy_time):
+        """복원 buy_time → 전략 self.positions['entry_time'] 용 tz-aware KST datetime.
+
+        daytrading 등은 entry_time 을 now_kst()(tz-aware)와
+        count_trading_days_between 으로 비교한다. naive/tz-aware 혼용 시
+        TypeError 가 나 on_tick tick 이 손상되므로 KST tz 를 보장한다.
+        변환 불가/None 이면 None(전략은 hold_days=0 으로 안전 처리).
+        """
+        if buy_time is None:
+            return None
+        try:
+            if isinstance(buy_time, (int, float)):
+                dt = datetime.fromtimestamp(buy_time, tz=KST)
+            elif isinstance(buy_time, datetime):  # pandas.Timestamp 포함
+                dt = buy_time
+            else:
+                import pandas as pd
+                dt = pd.to_datetime(buy_time).to_pydatetime()
+        except Exception:
+            return None
+        if getattr(dt, 'tzinfo', None) is None:
+            try:
+                dt = dt.replace(tzinfo=KST)
+            except Exception:
+                return None
+        return dt
+
+    def _sync_strategy_positions(self, by_owner: Dict[str, Dict[str, dict]]) -> None:
+        """복원 포지션을 owner 전략별 self.positions 로 주입한다.
+
+        재시작 시 전략 인스턴스의 self.positions 는 {}로 비어 generate_signal
+        매도 분기(`stock_code in self.positions`)가 동작하지 않는다. 그 결과
+        전략측 청산(max_hold 거래일·sl·tp·trail)이 복원 포지션에 영영 적용되지
+        않는다(프레임워크 백스톱은 max_hold 강제청산을 하지 않음). 이 호출이
+        그 공백을 메운다.
+
+        Args:
+            by_owner: {owner_name: {stock_code: {quantity, entry_price, entry_time}}}
+                      owner 가 strategies dict 에서 해석되지 않으면(비활성) 스킵.
+        """
+        for owner_name, pos_map in by_owner.items():
+            if not owner_name or not pos_map:
+                continue
+            strategy = self._resolve_owner_strategy(owner_name)
+            if strategy is None or not hasattr(strategy, 'sync_positions'):
+                continue
+            try:
+                strategy.sync_positions(pos_map)
+            except Exception as e:
+                logger.warning(f"[복원] {owner_name} sync_positions 주입 실패: {e}")
 
     def _sync_fund_manager_for_position(self, stock_code: str, quantity: int, buy_price: float) -> float:
         """복원된 포지션에 대해 FundManager 자금을 동기화
@@ -373,6 +424,7 @@ class StateRestorer:
             total_invested = 0.0
             stale_info = []  # 장기보유 종목 정보 수집
             restored_positions = []  # 전략 원장 재구성용 {stock_code, strategy, quantity, buy_price}
+            by_owner = {}  # 전략 self.positions 주입용 {owner: {code: {qty, entry_price, entry_time}}}
 
             for _, holding in holdings.iterrows():
                 stock_code = holding['stock_code']
@@ -444,6 +496,14 @@ class StateRestorer:
                             'buy_price': buy_price,
                         })
 
+                        # 전략 self.positions 주입용 수집 (owner 있을 때만)
+                        if owner_name:
+                            by_owner.setdefault(owner_name, {})[stock_code] = {
+                                'quantity': quantity,
+                                'entry_price': buy_price,
+                                'entry_time': self._normalize_entry_time(buy_time),
+                            }
+
                         # 가상매수 기록 ID 복원
                         buy_record_id = int(holding.get('id', 0)) if holding.get('id') else None
                         if buy_record_id:
@@ -498,6 +558,9 @@ class StateRestorer:
                             f"손절가 {buy_price*(1-stop_loss_rate):,.0f}원"
                             f"{f', 보유 {ts_days_held}일' if ts_days_held > 0 else ''}"
                         )
+
+            # 복원 포지션을 전략 self.positions 로 주입 (재시작 시 전략측 청산 복원)
+            self._sync_strategy_positions(by_owner)
 
             # 전략 원장 활성 시: 매매기록에서 전략별 현금/포지션 재구성 (재시작 영속화)
             vtm = self.virtual_trading_manager
@@ -596,6 +659,7 @@ class StateRestorer:
             holding_restored = 0
             total_invested = 0.0
             stale_info = []  # 장기보유 종목 정보 수집
+            by_owner = {}  # 전략 self.positions 주입용 {owner: {code: {qty, entry_price, entry_time}}}
 
             for real_stock in real_holdings:
                 stock_code = real_stock.get('stock_code', '')
@@ -653,6 +717,14 @@ class StateRestorer:
                         trading_stock.target_profit_rate = target_profit_rate
                         trading_stock.stop_loss_rate = stop_loss_rate
 
+                        # 전략 self.positions 주입용 수집 (owner 있을 때만)
+                        if owner_name:
+                            by_owner.setdefault(owner_name, {})[stock_code] = {
+                                'quantity': quantity,
+                                'entry_price': avg_price,
+                                'entry_time': self._normalize_entry_time(buy_time),
+                            }
+
                         # C7 fix: 매도 미체결이 있으면 SELL_PENDING으로 복원
                         if stock_code in pending_sell_codes:
                             restore_state = StockState.SELL_PENDING
@@ -698,6 +770,9 @@ class StateRestorer:
                             f"손절가 {avg_price*(1-stop_loss_rate):,.0f}원"
                             f"{f', 보유 {ts_days_held}일' if ts_days_held > 0 else ''}"
                         )
+
+            # 복원 포지션을 전략 self.positions 로 주입 (재시작 시 전략측 청산 복원)
+            self._sync_strategy_positions(by_owner)
 
             if real_holdings:
                 logger.info(f"[실전매매] 보유 종목 {holding_restored}/{len(real_holdings)}개 복원 완료")
