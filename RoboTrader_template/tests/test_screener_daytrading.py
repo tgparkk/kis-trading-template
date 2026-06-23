@@ -47,3 +47,12 @@ def test_base_filter_smallcap_only():
     kept = [u["code"] for u in a.base_filter(universe)]
     assert "K" in kept
     assert "B" not in kept
+
+
+def test_default_high_window_matches_validated_live_rule():
+    """스크리너 high_window=15 — 라이브 config/strategy 검증값과 일치(멀티버스 rank1).
+    이전 20은 후보 선정이 더 엄격해 진입 정의와 불일치였음(감사 2026-06-23)."""
+    p = Daytrading3MethodsBreakoutScreenerAdapter().default_params()
+    assert p["high_window"] == 15
+    assert p["vol_lookback"] == 20
+    assert p["vol_mult"] == 2.0
