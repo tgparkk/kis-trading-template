@@ -51,6 +51,10 @@ def collect_one(code: str, lookback_days: int = 7) -> list:
         parsed["stock_code"] = code
         parsed["market_cap"] = (parsed["close"] * market_cap) if market_cap else None
         rows.append(parsed)
+    # KIS 일봉 output2는 정렬 보장이 없다(보통 최신일 우선=내림차순). 날짜 오름차순으로
+    # 정렬한 뒤 최신 lookback_days 개를 취해야 '가장 최근 바'(당일 포함)가 반영된다.
+    # (이전엔 rows[-N:]가 오름차순을 가정 → 내림차순 응답에선 가장 오래된 바를 적재하던 버그)
+    rows.sort(key=lambda r: r["date"])
     return rows[-lookback_days:] if lookback_days else rows
 
 
