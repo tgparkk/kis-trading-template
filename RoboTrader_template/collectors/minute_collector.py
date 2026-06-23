@@ -67,7 +67,7 @@ def reconcile_minute(trade_date: str) -> dict:
     legacy = psycopg2.connect(
         host=os.getenv("KIS_DB_HOST", "localhost"), port=int(os.getenv("KIS_DB_PORT", 5433)),
         dbname="robotrader", user=os.getenv("KIS_DB_USER", "robotrader"),
-        password=os.getenv("KIS_DB_PASSWORD", "1234"))
+        password=os.getenv("KIS_DB_PASSWORD", "robotrader_secure_pw_2024"))
     try:
         legacy_bars = _load_bars(legacy, trade_date)
         with KisDbConnection.get_connection() as conn:
