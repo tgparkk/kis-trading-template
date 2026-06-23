@@ -5,6 +5,8 @@ Pytest Configuration and Fixtures
 Common fixtures for testing the trading template system.
 """
 
+import asyncio
+
 import pytest
 import pandas as pd
 import numpy as np
@@ -12,6 +14,31 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, MagicMock, AsyncMock
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
+
+
+# ============================================================================
+# Event Loop 격리 (순서 오염 방지)
+# ============================================================================
+@pytest.fixture(autouse=True)
+def _ensure_event_loop():
+    """매 테스트 전 전역 asyncio 이벤트 루프를 신선하게 보장한다.
+
+    일부 테스트가 ``asyncio.run()``(종료 시 내부적으로 set_event_loop(None) 호출)
+    이나 ``new_event_loop().close()`` 로 전역 루프를 None/closed 상태로 남기면,
+    이후 ``@pytest.mark.asyncio`` 테스트(pytest_asyncio)가 get_event_loop() 에서
+    'There is no current event loop' RuntimeError 로 줄줄이 실패한다(Python 3.9).
+    broad 실행 시에만 터지는 순서 의존 오염의 주원인 — 매 테스트 시작 시 유효한
+    루프를 복원해 차단한다.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = None
+    except RuntimeError:
+        loop = None
+    if loop is None:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+    yield
 
 
 # ============================================================================
