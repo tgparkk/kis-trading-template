@@ -951,3 +951,24 @@ class TestLog:
         with patch.object(ctx.logger, 'info') as mock_info:
             ctx.log("메시지", level="nonexistent")
         mock_info.assert_called_once_with("메시지")
+
+
+class TestDropUnconfirmedDatetimeFallback:
+    """_drop_unconfirmed_today_bar 가 date 컬럼이 없고 datetime 만 있어도 당일봉을
+    드롭하는지(감사 2026-06-23: no-lookahead 보증이 이 드롭에 의존)."""
+
+    def test_drops_today_via_datetime_when_no_date_column(self):
+        from core.trading_context import TradingContext
+        today = now_kst().date()
+        dts = pd.to_datetime([today - timedelta(days=2),
+                              today - timedelta(days=1), today])
+        df = pd.DataFrame({"datetime": dts, "close": [1.0, 2.0, 3.0]})  # no 'date'
+        out = TradingContext._drop_unconfirmed_today_bar(df)
+        assert len(out) == 2
+        assert pd.to_datetime(out["datetime"].iloc[-1]).date() < today
+
+    def test_no_date_nor_datetime_returns_unchanged(self):
+        from core.trading_context import TradingContext
+        df = pd.DataFrame({"close": [1.0, 2.0, 3.0]})
+        out = TradingContext._drop_unconfirmed_today_bar(df)
+        assert len(out) == 3

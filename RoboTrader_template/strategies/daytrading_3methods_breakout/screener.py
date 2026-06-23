@@ -15,7 +15,9 @@ class Daytrading3MethodsBreakoutScreenerAdapter(RuleScreenerBase):
 
     def default_params(self) -> Dict[str, Any]:
         return {
-            "high_window": 20,
+            # high_window=15: 라이브 config.yaml/strategy 검증값과 일치(멀티버스 2026-06-02
+            # rank1). 이전 20은 스크리너만 더 엄격해 후보-진입 정의 불일치였음(감사 2026-06-23).
+            "high_window": 15,
             "vol_lookback": 20,
             "vol_mult": 2.0,
             "max_market_cap": 500_000_000_000,  # 5천억 미만

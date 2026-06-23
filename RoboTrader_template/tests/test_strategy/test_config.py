@@ -129,13 +129,15 @@ risk_management:
 """
         (test_strategy / "config.yaml").write_text(config_content)
 
-        # Change working directory temporarily
+        # Change working directory temporarily.
+        # try/finally 로 복원 — 테스트 본문이 실패해도 cwd 가 tmp_path 로 새지
+        # 않게 한다(다른 테스트의 상대경로 config 읽기 오염 방지).
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
-
-        yield test_strategy
-
-        os.chdir(original_cwd)
+        try:
+            yield test_strategy
+        finally:
+            os.chdir(original_cwd)
 
     def test_strategy_config_init(self):
         """Test StrategyConfig initialization."""
@@ -153,9 +155,10 @@ risk_management:
         assert result['strategy']['name'] == 'test_strategy'
         assert result['risk_management']['take_profit_ratio'] == 0.03
 
-    def test_strategy_config_load_not_found(self, tmp_path):
+    def test_strategy_config_load_not_found(self, tmp_path, monkeypatch):
         """Test StrategyConfig.load raises error for non-existent strategy."""
-        os.chdir(tmp_path)
+        # monkeypatch.chdir 는 테스트 종료 시 cwd 를 자동 복원한다(누수 방지).
+        monkeypatch.chdir(tmp_path)
         (tmp_path / "strategies").mkdir()
 
         config = StrategyConfig("nonexistent")

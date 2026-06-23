@@ -143,3 +143,33 @@ def test_entry_band_wired_breakout(monkeypatch):
     # breakout: max = ref * 1.03, min = None
     assert sig.entry_max_price == pytest.approx(REF * 1.03)
     assert sig.entry_min_price is None
+
+
+def test_fetch_entry_history_drops_today_bar_no_lookahead():
+    """_fetch_entry_history 가 당일(KST) 미확정 봉을 제거해 iloc[-1]=확정봉이 되는지.
+    look-ahead 보증이 이 단일 가드에 의존하므로 회귀 테스트로 고정(감사 2026-06-23).
+    당일 봉이 남으면 '당일 +3% 양봉/신고가' 조건이 미정산 종가를 읽는 hard look-ahead."""
+    import logging
+    from strategies.book_envelope_200d.strategy import BookEnvelope200dStrategy
+    from utils.korean_time import now_kst
+
+    today = now_kst().date()
+    dates = pd.to_datetime([today - dt.timedelta(days=2),
+                            today - dt.timedelta(days=1), today])
+    df = pd.DataFrame({"date": dates, "open": [1.0, 1.0, 1.0],
+                       "high": [1.0, 1.0, 1.0], "low": [1.0, 1.0, 1.0],
+                       "close": [1.0, 1.0, 9.0], "volume": [1, 1, 1]})
+
+    class _Stub:
+        def get_daily_prices(self, code, end_date=None, days=None):
+            return df.copy()
+
+    s = object.__new__(BookEnvelope200dStrategy)  # __init__ 우회
+    s._entry_df_cache = {}
+    s._entry_lookback = 210
+    s.logger = logging.getLogger("test_envelope")
+    s._quant_reader = lambda: _Stub()
+
+    out = s._fetch_entry_history("005930")
+    assert out is not None and len(out) == 2          # 당일봉 1개 제거
+    assert pd.to_datetime(out["date"].iloc[-1]).date() < today  # 마지막=확정봉

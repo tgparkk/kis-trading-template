@@ -34,6 +34,16 @@ def test_match_too_short_returns_none():
     assert adapter.match(_df(closes), adapter.default_params()) is None
 
 
+def test_match_zero_reference_close_returns_none_not_raises():
+    """RS 분모(rs_lb 과거 close)가 0/손상값이어도 ZeroDivisionError 없이 None.
+    (감사 2026-06-23: 손상 일봉이 스크리너를 죽이지 않도록 가드)."""
+    closes = list(np.linspace(10000, 20000, 130))  # 최근 윈도우는 정상 상승 → 룰 통과
+    closes[9] = 0.0  # ref = close.iloc[-1-120] = index 9 → 분모 0
+    adapter = RSLeaderScreenerAdapter()
+    res = adapter.match(_df(closes), adapter.default_params())  # 예외 없어야 함
+    assert res is None
+
+
 def test_base_filter_liquidity():
     adapter = RSLeaderScreenerAdapter()
     uni = [
