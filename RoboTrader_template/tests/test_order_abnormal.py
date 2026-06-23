@@ -327,3 +327,91 @@ class TestPaperTradingBypassesFundCheck:
         # 가상매매는 FundManager 체크를 안 하므로 성공해야 함
         result = await om.place_buy_order("005930", 10, 70000)
         assert result is not None  # 가상매매이므로 성공
+
+
+class TestBrokerDictResultNormalization:
+    """실전 경로(paper_trading=False)는 KISBroker의 dict 반환을 처리해야 한다.
+
+    런타임 브로커는 KISBroker이고 place_buy_order/place_sell_order/cancel_order는
+    plain dict({"success":..., "order_id":..., "message":...})를 반환한다.
+    그러나 소비 코드(order_executor)는 OrderResult를 가정하고 result.success/.order_id
+    속성에 접근한다 → dict엔 속성이 없어 AttributeError → 외부 except가 삼켜 None 반환.
+    결과: KIS가 수락한 실주문이 추적 안 됨(pending_orders 미등록). 첫 실주문에 봇이 깨짐.
+    (사전-실전 감사 BLOCKER #1, 2026-06-24)
+    """
+
+    @staticmethod
+    def _broker_buy_dict(order_id="ORD-DICT-1"):
+        return {"success": True, "order_id": order_id,
+                "message": f"buy order success", "data": {"ODNO": order_id}}
+
+    @pytest.mark.asyncio
+    async def test_real_buy_tracks_order_from_broker_dict(self):
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = self._broker_buy_dict("ORD-DICT-1")
+            result = await om.place_buy_order("005930", 10, 70000)
+
+        assert result == "ORD-DICT-1"
+        assert "ORD-DICT-1" in om.pending_orders
+
+    @pytest.mark.asyncio
+    async def test_real_sell_tracks_order_from_broker_dict(self):
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        broker_dict = {"success": True, "order_id": "ORD-DICT-S1",
+                       "message": "sell order success", "data": {"ODNO": "ORD-DICT-S1"}}
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            result = await om.place_sell_order("005930", 10, 70000)
+
+        assert result == "ORD-DICT-S1"
+        assert "ORD-DICT-S1" in om.pending_orders
+
+    @pytest.mark.asyncio
+    async def test_real_cancel_succeeds_from_broker_dict(self):
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        # 취소 대상 미체결 주문 등록
+        order = Order(
+            order_id="ORD-DICT-C1", stock_code="005930", order_type=OrderType.BUY,
+            price=70000, quantity=10, timestamp=now_kst(),
+            status=OrderStatus.PENDING, remaining_quantity=10,
+        )
+        om.pending_orders["ORD-DICT-C1"] = order
+
+        broker_dict = {"success": True, "order_id": "ORD-DICT-C1",
+                       "message": "cancel success", "data": None}
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            ok = await om.cancel_order("ORD-DICT-C1")
+
+        assert ok is True
+        assert order.status == OrderStatus.CANCELLED
+
+    @pytest.mark.asyncio
+    async def test_cancel_remaining_only_succeeds_from_broker_dict(self):
+        """부분체결 타임아웃의 잔여취소 경로도 KISBroker dict 반환을 처리해야 한다."""
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        order = Order(
+            order_id="ORD-DICT-R1", stock_code="005930", order_type=OrderType.BUY,
+            price=70000, quantity=10, timestamp=now_kst(),
+            status=OrderStatus.PENDING, remaining_quantity=10,
+        )
+        om.pending_orders["ORD-DICT-R1"] = order
+
+        broker_dict = {"success": True, "order_id": "ORD-DICT-R1",
+                       "message": "cancel ok", "data": None}
+        with patch('core.orders.order_timeout.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            ok = await om._cancel_remaining_only("ORD-DICT-R1")
+
+        assert ok is True

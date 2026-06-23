@@ -12,6 +12,7 @@ from ..models import OrderType, OrderStatus
 from utils.korean_time import now_kst
 from utils.async_helpers import run_with_timeout
 from config.constants import ORDER_CANCEL_MAX_RETRIES, ORDER_CANCEL_RETRY_INTERVAL
+from .order_executor import coerce_order_result
 
 if TYPE_CHECKING:
     from .order_base import OrderManagerBase
@@ -174,11 +175,11 @@ class OrderTimeoutMixin:
                 if not order:
                     return False
                 order_dvsn = "01" if order.price == 0 else "00"
-                result = await run_with_timeout(
+                result = coerce_order_result(await run_with_timeout(
                     self.executor, self.broker.cancel_order,
                     order_id, order.stock_code, order_dvsn,
                     timeout_seconds=35, default=None
-                )
+                ))
                 if result and result.success:
                     self.logger.info(f"잔여 주문 취소 API 성공: {order_id} (시도 {attempt + 1}/{ORDER_CANCEL_MAX_RETRIES})")
                     return True
