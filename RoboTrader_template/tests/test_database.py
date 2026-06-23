@@ -10,20 +10,27 @@ DB 계층 유닛 테스트
 import sys
 from unittest.mock import MagicMock as _MagicMock
 
-# psycopg2 mock (CI 환경에서 미설치)
-# 항상 덮어쓰기 — 다른 테스트 파일이 IntegrityError 없는 mock을 먼저 넣을 수 있음
-_mock_pg = _MagicMock()
-# 실제 예외 클래스 정의 (테스트에서 raise/except 가능하도록)
-class _IntegrityError(Exception):
-    pass
-class _OperationalError(Exception):
-    pass
-_mock_pg.IntegrityError = _IntegrityError
-_mock_pg.OperationalError = _OperationalError
-sys.modules['psycopg2'] = _mock_pg
-sys.modules['psycopg2.pool'] = _mock_pg.pool
-sys.modules['psycopg2.extras'] = _mock_pg.extras
-sys.modules['psycopg2.extensions'] = _mock_pg.extensions
+# psycopg2 — 실제 설치돼 있으면 그대로 사용한다.
+# (과거: 무조건 sys.modules['psycopg2']=MagicMock 으로 덮어써 import 시점부터
+#  세션 전역 psycopg2 가 Mock 이 됐고, 이후 DB 통합 테스트들이 broad 실행 시
+#  'Expected bytes or unicode string, got MagicMock' 로 줄줄이 실패했다.)
+# 미설치(CI 등)일 때만 mock 한다. 이 파일의 테스트는 DatabaseConnection._pool 을
+# 직접 Mock 으로 주입하므로 전역 psycopg2 mock 에 의존하지 않는다.
+try:
+    import psycopg2  # noqa: F401
+except ImportError:
+    _mock_pg = _MagicMock()
+    # 실제 예외 클래스 정의 (테스트에서 raise/except 가능하도록)
+    class _IntegrityError(Exception):
+        pass
+    class _OperationalError(Exception):
+        pass
+    _mock_pg.IntegrityError = _IntegrityError
+    _mock_pg.OperationalError = _OperationalError
+    sys.modules['psycopg2'] = _mock_pg
+    sys.modules['psycopg2.pool'] = _mock_pg.pool
+    sys.modules['psycopg2.extras'] = _mock_pg.extras
+    sys.modules['psycopg2.extensions'] = _mock_pg.extensions
 
 import pytest
 import pandas as pd

@@ -55,13 +55,21 @@ def test_auto_resolve_latest_screener():
 
     # json_path=None → 자동 탐색
     candidates = selector.load_from_screener(max_candidates=5)
-    # 파일이 있으면 결과가 있어야 함
-    screener_files = list(selector.screener_data_dir.glob("screener_*.json"))
-    if screener_files:
-        assert len(candidates) > 0, "스크리너 파일 존재하지만 후보 0개"
-        print(f"✅ 자동 탐색: {len(candidates)}개 후보")
+
+    # 프로덕션 계약(candidate_selector._resolve_screener_path):
+    #   최신 screener_*.json 의 파일명에 '당일자'(now_kst YYYYMMDD)가 포함될 때만
+    #   해당 파일을 사용하고, 아니면 None 반환 → 자동 수집 fallback(빈 결과).
+    # 따라서 "파일이 존재하면 후보>0"은 틀린 가정 — 당일자 파일 유무로 분기해야 한다.
+    # (과거 테스트는 이 당일 규칙을 미반영해 data/ 의 스크리너 파일이 노후되며 깨졌다.)
+    from utils.korean_time import now_kst
+    today_tag = now_kst().strftime("%Y%m%d")
+    today_file = selector.screener_data_dir / f"screener_{today_tag}.json"
+    if today_file.exists():
+        assert len(candidates) > 0, "당일 스크리너 존재하지만 후보 0개"
+        print(f"✅ 자동 탐색(당일 {today_tag}): {len(candidates)}개 후보")
     else:
-        print("SKIP: 스크리너 파일 없음")
+        assert candidates == [], "당일 스크리너 없음 → 빈 결과(자동 수집 fallback)가 정상"
+        print(f"✅ 당일({today_tag}) 스크리너 없음 → fallback(빈 결과) 정상 동작")
 
 
 def test_etf_filter_comprehensive():
