@@ -9,9 +9,12 @@ test_phase5_foreign_flow.py
   - foreign_net_buy_5d_cum: DB fixture 기반 누적 정확성
   - foreign_flow_signal: 양수/음수/누락 종목 처리
   - DB 실패 시 NaN 반환 (graceful degradation)
-  - 백필 스크립트 _monthly_windows: 날짜 분할 정확성
-  - 백필 스크립트 _map_and_append: 컬럼 매핑
-  - dry-run 모드: DB 저장 없이 건수 반환
+
+참고: 과거 backfill_foreign_flow.py(pykrx) 유틸 검증 클래스 TestBackfillUtils 는
+스크립트가 Naver 소스 구현으로 통째 교체되며(_monthly_windows/_map_and_append/
+_insert_batch 삭제) 고아가 되어 제거함(2026-06-23). 신규 스크립트는 네트워크/DB
+바운드라 순수 단위 대상이 없음. 런타임 신호 모듈 signals/foreign_flow.py 는 위
+커버리지로 유지.
 """
 from __future__ import annotations
 
@@ -240,92 +243,3 @@ class TestForeignFlowSignal:
 
         assert len(result) == 0
         assert isinstance(result, pd.Series)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. 백필 스크립트 유틸 함수 검증
-# ─────────────────────────────────────────────────────────────────────────────
-
-class TestBackfillUtils:
-    """backfill_foreign_flow.py 유틸 함수 단위 검증."""
-
-    def test_monthly_windows_count(self):
-        """2021-01 ~ 2021-06: 6개 윈도우 반환."""
-        from scripts.backfill_foreign_flow import _monthly_windows
-
-        windows = _monthly_windows(date(2021, 1, 1), date(2021, 6, 30))
-        assert len(windows) == 6, f"월별 윈도우 수 불일치: {len(windows)}"
-
-    def test_monthly_windows_format(self):
-        """윈도우 날짜가 YYYYMMDD 형식."""
-        from scripts.backfill_foreign_flow import _monthly_windows
-
-        windows = _monthly_windows(date(2026, 1, 1), date(2026, 3, 31))
-        for fromdate, todate in windows:
-            assert len(fromdate) == 8 and fromdate.isdigit()
-            assert len(todate) == 8 and todate.isdigit()
-
-    def test_monthly_windows_no_overlap(self):
-        """윈도우가 연속적이고 겹치지 않음."""
-        from scripts.backfill_foreign_flow import _monthly_windows
-        from datetime import datetime
-
-        windows = _monthly_windows(date(2024, 1, 1), date(2024, 12, 31))
-        for i in range(len(windows) - 1):
-            end_i   = datetime.strptime(windows[i][1], "%Y%m%d").date()
-            start_i1 = datetime.strptime(windows[i + 1][0], "%Y%m%d").date()
-            assert end_i < start_i1, f"윈도우 겹침: {windows[i]} / {windows[i+1]}"
-
-    def test_insert_batch_dry_run_no_db_call(self):
-        """dry-run 모드에서 DB INSERT 호출 없음."""
-        from scripts.backfill_foreign_flow import _insert_batch
-
-        rows = [
-            {"stock_code": "005930", "trade_date": date(2026, 5, 22),
-             "net_buy_vol": 100, "net_buy_val": 1_000_000},
-        ]
-        with patch("scripts.backfill_foreign_flow._get_conn") as mock_conn:
-            result = _insert_batch(rows, dry_run=True)
-            mock_conn.assert_not_called()
-
-        assert result == len(rows)
-
-    def test_map_and_append_standard_columns(self):
-        """표준 pykrx 컬럼명(한국어)으로 매핑 정상 작동."""
-        from scripts.backfill_foreign_flow import _map_and_append
-
-        import pandas as pd
-        df = pd.DataFrame([
-            {
-                "날짜": "20260522",
-                "티커": "005930",
-                "순매수거래량": 10000,
-                "순매수거래대금": 5_000_000,
-            }
-        ])
-
-        rows: list = []
-        _map_and_append(df, rows)
-
-        assert len(rows) == 1
-        assert rows[0]["stock_code"] == "005930"
-        assert rows[0]["trade_date"] == date(2026, 5, 22)
-        assert rows[0]["net_buy_vol"] == 10000
-        assert rows[0]["net_buy_val"] == 5_000_000
-
-    def test_map_and_append_invalid_ticker_skipped(self):
-        """유효하지 않은 티커(문자 포함) 스킵."""
-        from scripts.backfill_foreign_flow import _map_and_append
-
-        import pandas as pd
-        df = pd.DataFrame([
-            {"날짜": "20260522", "티커": "INVALID", "순매수거래량": 1, "순매수거래대금": 1},
-            {"날짜": "20260522", "티커": "000660", "순매수거래량": 2, "순매수거래대금": 2},
-        ])
-
-        rows: list = []
-        _map_and_append(df, rows)
-
-        codes = [r["stock_code"] for r in rows]
-        assert "INVALID" not in codes
-        assert "000660" in codes
