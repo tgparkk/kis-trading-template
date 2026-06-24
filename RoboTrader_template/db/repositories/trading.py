@@ -10,6 +10,7 @@ import psycopg2
 from .base import BaseRepository
 from utils.korean_time import now_kst
 from utils.rate_limited_logger import RateLimitedLogger
+from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
 
 
 class TradingRepository(BaseRepository):
@@ -155,8 +156,19 @@ class TradingRepository(BaseRepository):
                     row = cursor.fetchone()
                     buy_price = float(row[0]) if row else None
 
-                profit_loss = (price - buy_price) * quantity if buy_price else 0.0
-                profit_rate = (price - buy_price) / buy_price if buy_price and buy_price > 0 else 0.0
+                # 손익은 수수료(매수+매도)·증권세 차감한 net (사전-실전 감사 #14).
+                # gross 저장은 실거래 손익 과대계상 → 실테이블 리더보드 도입 시 왜곡.
+                if buy_price and buy_price > 0:
+                    buy_cost = buy_price * quantity
+                    sell_amount = price * quantity
+                    buy_commission = buy_cost * COMMISSION_RATE
+                    sell_commission = sell_amount * COMMISSION_RATE
+                    sell_tax = sell_amount * SECURITIES_TAX_RATE
+                    profit_loss = sell_amount - buy_cost - buy_commission - sell_commission - sell_tax
+                    profit_rate = profit_loss / buy_cost if buy_cost > 0 else 0.0
+                else:
+                    profit_loss = 0.0
+                    profit_rate = 0.0
 
                 cursor.execute(f'''
                     INSERT INTO {self._real_table}

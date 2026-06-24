@@ -478,6 +478,38 @@ class TestRealSellQuantityClamp:
         assert om.pending_orders["ORD-S-UNK"].quantity == 10  # 조정 없음
 
 
+class TestSellPartialTimeoutFees:
+    """매도 부분체결 타임아웃 손익이 수수료·세금을 반영해야 한다.
+
+    전량 체결 경로(order_monitor)는 매수수수료+매도수수료+증권세를 차감하나,
+    부분체결 타임아웃 SELL 경로(order_timeout)는 gross(수수료 무시)였다 →
+    FundManager equity 과대계상·후속 사이징 부풀림(사전-실전 감사 #12, 2026-06-24).
+    """
+
+    @pytest.mark.asyncio
+    async def test_sell_partial_timeout_pnl_includes_fees(self):
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = MagicMock()
+        om.fund_manager = fm
+        om.trading_manager = None
+
+        order = Order(
+            order_id="ORD-PT", stock_code="005930", order_type=OrderType.SELL,
+            price=10_000, quantity=10, timestamp=now_kst(),
+            status=OrderStatus.PARTIAL, remaining_quantity=4,
+        )
+        om.pending_orders["ORD-PT"] = order
+        om._cancel_remaining_only = AsyncMock(return_value=True)
+
+        # 매수원가=매도가=10,000 → gross 손익 0. 수수료/세금 차감 시 음수가 되어야 한다.
+        await om._handle_partial_fill_timeout("ORD-PT", order, filled_qty=6)
+
+        fm.adjust_pnl.assert_called_once()
+        pnl_arg = fm.adjust_pnl.call_args[0][0]
+        assert pnl_arg < 0, f"수수료/세금 차감으로 음수여야 함, got {pnl_arg}"
+
+
 class TestNoDoubleReserveOnPrereserved:
     """분석기가 맨 stock_code 로 선예약하면 place_buy_order 는 2차 예약을 만들지 않고
     그 예약을 실제 order_id 로 이전한다 → reserved_funds 무누수.

@@ -11,7 +11,10 @@ from typing import TYPE_CHECKING
 from ..models import OrderType, OrderStatus
 from utils.korean_time import now_kst
 from utils.async_helpers import run_with_timeout
-from config.constants import ORDER_CANCEL_MAX_RETRIES, ORDER_CANCEL_RETRY_INTERVAL
+from config.constants import (
+    ORDER_CANCEL_MAX_RETRIES, ORDER_CANCEL_RETRY_INTERVAL,
+    COMMISSION_RATE, SECURITIES_TAX_RATE,
+)
 from .order_executor import coerce_order_result
 
 if TYPE_CHECKING:
@@ -221,8 +224,12 @@ class OrderTimeoutMixin:
                     buy_cost = buy_cost_per_share * filled_qty
                     sell_amount = filled_price * filled_qty
                     self.fund_manager.release_investment(buy_cost, stock_code=order.stock_code)
-                    # 매매 손익을 total_funds와 available_funds에 반영
-                    pnl = sell_amount - buy_cost
+                    # 매매 손익을 total_funds와 available_funds에 반영 (수수료/세금 포함 —
+                    # 전량 체결 경로와 동일 산식. 누락 시 equity 과대계상. 사전-실전 감사 #12)
+                    buy_commission = buy_cost * COMMISSION_RATE
+                    sell_commission = sell_amount * COMMISSION_RATE
+                    sell_tax = sell_amount * SECURITIES_TAX_RATE
+                    pnl = sell_amount - buy_cost - buy_commission - sell_commission - sell_tax
                     if pnl != 0:
                         self.fund_manager.adjust_pnl(pnl)
                     self.logger.info(f"FundManager 매도 부분 체결 자금 회수: {order.stock_code} - 매수원가: {buy_cost:,.0f}원, 매도금: {sell_amount:,.0f}원, 손익: {pnl:+,.0f}원")
