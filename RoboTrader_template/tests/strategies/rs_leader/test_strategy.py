@@ -87,6 +87,48 @@ def test_sell_hold_when_above_ma():
     assert should is False
 
 
+# --- 분봉 청산 가드 (whipsaw 방지) ---
+# position_monitor.py가 보유종목 매도판단에 무조건 timeframe='intraday'로 분봉을
+# 전달한다. rs_leader의 ma_break는 무조건(ret 게이트 없음)이라 분봉 MA20≈현재가
+# 부근에서 항상 발동 → 매수 직후 청산. timeframe 가드가 매도분기보다 앞에 있어야
+# 분봉 경로가 차단된다. 일봉(base.on_tick) 경로는 그대로 동작해야 한다.
+
+def _held_strategy(entry_price: float = 10000.0):
+    s = RSLeaderStrategy(config=_load_config())
+    s.on_init(None, None, None)
+    s.positions["000001"] = {
+        "quantity": 10, "entry_price": entry_price, "entry_time": None,
+    }
+    return s
+
+
+def _ma_break_df():
+    """상승 후 MA20 아래로 마감 → ma_break(무조건) 발동 형태.
+
+    get_min_data_length()(=65봉) 통과를 위해 71봉으로 구성. 마지막 봉(10050)이
+    MA20(10059.5) 아래라 ma_break 발동, entry_price=10050이면 ret=0이라
+    stop_loss/take_profit 미충족 → 청산 사유는 ma_break 단독.
+    """
+    closes = list(range(10000, 10070)) + [10050]
+    return _df(closes)
+
+
+def test_intraday_held_no_sell():
+    """timeframe='intraday'(position_monitor 경로)는 보유 중이어도 매도신호 금지."""
+    s = _held_strategy(entry_price=10050.0)
+    assert s.generate_signal("000001", _ma_break_df(), timeframe="intraday") is None
+
+
+def test_daily_held_still_sells_on_ma_break():
+    """가드 이동이 정상 일봉 청산(base.on_tick daily 경로)을 죽이면 안 됨."""
+    from strategies.base import SignalType
+    s = _held_strategy(entry_price=10050.0)
+    sig = s.generate_signal("000001", _ma_break_df(), timeframe="daily")
+    assert sig is not None
+    assert sig.signal_type == SignalType.SELL
+    assert sig.metadata.get("exit_reason") == "ma_break"
+
+
 # --- 진입 밴드 (2026-06-15) — 돌파형: up=3%, down=None ---
 
 def test_buy_signal_has_breakout_band(monkeypatch):

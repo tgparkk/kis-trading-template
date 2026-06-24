@@ -83,13 +83,16 @@ class RSLeaderStrategy(BaseStrategy):
                         timeframe: str = "daily") -> Optional[Signal]:
         if data is None or len(data) < self.get_min_data_length():
             return None
+        if timeframe != "daily":
+            # 매도분기보다 먼저 — position_monitor는 보유종목 매도판단에 무조건
+            # timeframe='intraday'로 분봉을 전달한다. ma_break가 무조건(ret 게이트
+            # 없음)이라 분봉 MA20≈현재가 부근에서 항상 발동 → 매수 즉시 청산.
+            return None
         if stock_code in self.positions:
             return self._check_sell(stock_code, data)
         if self.daily_trades >= self._max_daily_trades:
             return None
         if len(self.positions) >= self._max_positions:
-            return None
-        if timeframe != "daily":
             return None
         return self._check_buy(stock_code, data)
 
