@@ -12,8 +12,9 @@ Elder EMA Pullback Strategy — Triple Screen (Variant A) 실전판
 진입 (Variant A, rule=triple_screen_ema_pullback):
   1. Screen 1 — EMA65 상승 (5바 전 대비 기울기 > 0)
   2. Screen 2 — low[-1] <= EMA13*touch_band(1.02) AND close[-1] > EMA13
-  3. Screen 3 — 전일 고가 + 1틱 매수스톱: 실전에선 metadata["buy_stop_price"]로 전달.
-     (실전 체결 경로는 시장가/현재가 기준이므로 백테스트의 stop-fill과 차이 — 보고 D 참고)
+  3. Screen 3 — 전일 고가 + 1틱 매수스톱: 이제 entry_min_price로 강제
+     = 백테스트 entry_mechanism="stop" 진입과 정합. 현재가가 매수스톱 아래면
+     engine이 진입을 스킵(=미돌파 취소). 갭업 추격 상한 entry_max=buy_stop*(1+up_pct).
 
 청산 (Variant A, VARIANT_PARAMS["A"]):
   - 손절: -8%
@@ -109,9 +110,11 @@ class ElderEmaPullbackStrategy(BaseStrategy):
         # 진입 룰 인스턴스 (백테스트와 동일 touch_band)
         self._entry_rule = rule_triple_screen_ema_pullback(touch_band=self._touch_band)
 
-        # 진입 지정가 밴드 (눌림형): 기준가 위로 추격 금지, 하한은 손절폭까지 허용.
-        # 갭업/상한가 종목을 스테일 종가로 체결하던 허수 진입 차단(2026-06-15).
-        self._entry_band_up_pct = float(risk.get("entry_band_up_pct", 0.01))
+        # 진입 지정가 밴드 (돌파형/매수스톱, 2026-06-24): entry_min=buy_stop(돌파 게이트),
+        # entry_max=buy_stop*(1+up_pct)(갭업 추격 상한). up_pct는 config 노브로 유지.
+        # 기본값 2%(돌파 갭업 추격 상한, 2026-06-24 사장님 결정): 1%는 갭업 돌파 시 미진입 빈발.
+        self._entry_band_up_pct = float(risk.get("entry_band_up_pct", 0.02))
+        # _entry_band_down_pct: 돌파형 전환으로 _check_buy에서 더이상 사용 안 함(미사용 유지).
         _band_down = risk.get("entry_band_down_pct", self._stop_loss_pct)
         self._entry_band_down_pct = float(_band_down) if _band_down is not None else None
 
@@ -330,14 +333,20 @@ class ElderEmaPullbackStrategy(BaseStrategy):
 
         current_price = float(data["close"].astype(float).iloc[-1])
 
-        # Screen 3 매수스톱 (백테스트: 전일=현재봉 고가 + 1틱). 실전에선 참고용 메타데이터.
+        # Screen 3 매수스톱 (백테스트: 전일=현재봉 고가 + 1틱).
+        # 이제 entry_min_price로 강제 = 백테스트 entry_mechanism="stop" 진입과 정합.
         last_high = float(data["high"].astype(float).iloc[-1])
         buy_stop_price = last_high + krx_tick(last_high)
 
         target = current_price * (1 + self._take_profit_pct)
         stop = current_price * (1 - self._stop_loss_pct)
-        entry_min, entry_max = self._entry_band(
-            current_price, down_pct=self._entry_band_down_pct, up_pct=self._entry_band_up_pct)
+        # 돌파형 진입 밴드: 하한 = buy_stop(돌파 게이트, engine이 live_price<entry_min이면 스킵
+        # = 매수스톱 의미), 상한 = buy_stop*(1+up_pct)(돌파 위 갭업 추격 차단).
+        # ⚠️ 상한도 반드시 buy_stop 기준 — current_price 기준으로 두면 high>close일 때
+        # entry_min(=buy_stop>=close) > entry_max가 되어 영영 미진입한다.
+        # _entry_band_down_pct는 돌파형이라 진입에 더이상 사용하지 않는다(on_init에 유지만).
+        entry_min = buy_stop_price
+        entry_max = buy_stop_price * (1 + self._entry_band_up_pct)
         recommended_qty = max(1, int(self._max_per_stock_amount // current_price))
 
         metadata = {
