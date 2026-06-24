@@ -386,6 +386,23 @@ class TradingContext:
                 )
                 return None
 
+            # ── 매수스톱(돌파 게이트) 강제 (entry_min_price) ──────────────────
+            # Signal.entry_min_price가 설정된 전략(elder=전일고가+1틱 매수스톱)은
+            # 실시간 현재가가 그 값 미만이면 '미돌파' = 진입 스킵한다. 백테스트
+            # entry_mechanism="stop"(돌파 시에만 체결)과 정합 — 라이브 실행레이어에서
+            # 돌파 게이트를 강제(2026-06-25 C). entry_min 미설정(None)인 다른 전략은
+            # 무조건 통과(기존 동작 보존). 현재가 미확보(None)면 비교 불가이므로 막지
+            # 않고, 다운스트림(decision_engine._get_live_price=None) 보류 로직에 위임한다.
+            entry_min = getattr(signal, 'entry_min_price', None) if signal is not None else None
+            if isinstance(entry_min, (int, float)) and not isinstance(entry_min, bool) and entry_min > 0:
+                live_price = await self.get_current_price(stock_code)
+                if live_price is not None and live_price < entry_min:
+                    self.logger.info(
+                        f"매수스톱 미도달 스킵: {stock_code} "
+                        f"(현재가 {live_price:,.0f} < 매수스톱 {entry_min:,.0f})"
+                    )
+                    return None
+
             # EOD 청산 시간 이후 intraday 전략 매수 차단 (안 C: F1 재매수 사고 방지)
             if MarketHours.is_eod_liquidation_time():
                 current_strategy = self._strategies_dict.get(self._strategy_key)
