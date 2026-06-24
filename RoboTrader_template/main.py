@@ -310,6 +310,10 @@ class DayTradingBot:
         #  daily_trades 오염 → 매수 마비. 2026-06-11 진단)
         if getattr(self, 'strategies', None):
             self.decision_engine.set_strategies(self.strategies)
+            # 실매매 체결 콜백도 소유 전략으로 라우팅 (완료 핸들러 owner-aware).
+            # (단일 set_strategy만 연결되면 전 전략 실체결이 첫 전략에 오귀속.
+            #  사전-실전 감사 BLOCKER #2, 2026-06-24)
+            self.trading_manager.set_strategies(self.strategies)
 
         # FundManager + paper_trading 모드 전달
         self.trading_manager.set_fund_manager(self.fund_manager)
