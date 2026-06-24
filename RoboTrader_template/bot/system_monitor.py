@@ -194,6 +194,14 @@ class SystemMonitor:
                 except Exception as eq_err:
                     self.logger.error(f"EOD equity 스냅샷 적재 오류: {eq_err}")
 
+                # EOD regime 지수(KOSPI/KOSDAQ) 일봉 갱신 → 게이트 SSOT(daily_prices)
+                # 자동 신선화. 수동 backfill 미실행 시 게이트 stale/fail-open 방지(2026-06-24).
+                try:
+                    import asyncio
+                    await asyncio.to_thread(self._run_regime_index_refresh)
+                except Exception as ri_err:
+                    self.logger.error(f"EOD regime 지수 갱신 오류: {ri_err}")
+
                 # EOD 데이터 수집(일봉·분봉·지수 → kis_template) + grace 교차비교
                 try:
                     await self._run_data_collection(current_time)
@@ -235,6 +243,25 @@ class SystemMonitor:
                 f"리플레이 현금합 {result['total_cash']:,.0f} vs "
                 f"paper_trading_state {result.get('eod_balance')}"
             )
+
+    def _run_regime_index_refresh(self) -> None:
+        """regime 게이트 SSOT(daily_prices KOSPI/KOSDAQ)를 FDR로 최신화(멱등).
+
+        게이트는 robotrader.daily_prices 의 KOSPI/KOSDAQ 일봉을 읽는데, 이를 채우던
+        scripts/backfill_kospi_index.py 가 수동·미스케줄이라 동결되면 게이트가
+        stale/fail-open 된다(2026-06-24 진단). 매 EOD FDR 로 자동 갱신해 방지한다.
+        예외는 EOD 흐름을 막지 않도록 흡수한다.
+        """
+        try:
+            from core.regime.index_refresh import refresh_regime_indices
+            repo = getattr(getattr(self.bot, 'db_manager', None), 'price_repo', None)
+            if repo is None:
+                from db.repositories.price import PriceRepository
+                repo = PriceRepository()
+            res = refresh_regime_indices(repo)
+            self.logger.info(f"EOD regime 지수 갱신 완료: {res}")
+        except Exception as e:
+            self.logger.warning(f"regime 지수 갱신 오류 (무시): {e}")
 
     def _resave_paper_trading_state(self) -> None:
         """가상모드면 현재 virtual_balance를 paper_trading_state에 재저장.
