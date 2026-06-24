@@ -426,6 +426,29 @@ class KISBroker(BaseBroker):
             self.logger.error(f"Error getting tradable amount for {stock_code}: {e}")
             return None
 
+    def get_sellable_quantity(self, stock_code: str) -> Optional[int]:
+        """종목의 매도가능 수량(실제 보유수량) 조회.
+
+        실매도 전 내부 보유수량과 broker 실보유를 대조해 과다매도(KIS 거부→
+        재시도→서킷브레이커)를 막는 데 쓴다. 미보유면 0, 조회 실패면 None.
+        get_tradable_amount(ord_psbl_qty)는 매수가능수량이라 매도엔 부적합하므로
+        실보유(get_holdings)를 직접 읽는다(사전-실전 감사 BLOCKER #5, 2026-06-24).
+        """
+        if not self._connected:
+            self.logger.error("Broker not connected")
+            return None
+
+        try:
+            holdings = self.get_holdings()
+            for h in holdings or []:
+                if str(h.get('stock_code', '')) == str(stock_code):
+                    return int(h.get('quantity', 0))
+            return 0  # 보유 종목 목록에 없음 → 매도가능 0
+
+        except Exception as e:
+            self.logger.error(f"Error getting sellable quantity for {stock_code}: {e}")
+            return None
+
     # ====================================================================
     # Market Data Methods (migrated from KISAPIManager)
     # ====================================================================

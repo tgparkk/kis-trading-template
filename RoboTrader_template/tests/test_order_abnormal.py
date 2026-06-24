@@ -415,3 +415,64 @@ class TestBrokerDictResultNormalization:
             ok = await om._cancel_remaining_only("ORD-DICT-R1")
 
         assert ok is True
+
+
+class TestRealSellQuantityClamp:
+    """실매도 수량을 broker 실보유(매도가능수량)와 대조해 과다매도를 막는다.
+
+    내부 보유수량이 broker 실보유보다 크면(부분체결·수동매매·T+결제 드리프트),
+    KIS 가 전량 매도를 거부 → 재시도 3회 → 30분 서킷브레이커로 손절/EOD 구간에
+    실포지션이 안 팔리고 무한 노출. 매도 전 min(내부, broker매도가능)으로 clamp.
+    (사전-실전 감사 BLOCKER #5, 2026-06-24)
+    """
+
+    @pytest.mark.asyncio
+    async def test_sell_clamps_to_broker_sellable(self):
+        broker = make_broker_mock()
+        broker.get_sellable_quantity = MagicMock(return_value=4)  # broker 실보유 4주
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        broker_dict = {"success": True, "order_id": "ORD-S-CLAMP",
+                       "message": "ok", "data": {"ODNO": "ORD-S-CLAMP"}}
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            result = await om.place_sell_order("005930", 10, 70000)  # 내부는 10주 요청
+
+        assert result == "ORD-S-CLAMP"
+        # 추적 주문 수량이 broker 실보유(4)로 조정되어야 한다
+        assert om.pending_orders["ORD-S-CLAMP"].quantity == 4
+
+    @pytest.mark.asyncio
+    async def test_sell_aborts_when_broker_holds_zero(self):
+        broker = make_broker_mock()
+        broker.get_sellable_quantity = MagicMock(return_value=0)  # broker 실보유 0
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = {"success": True, "order_id": "X",
+                                        "message": "", "data": None}
+            result = await om.place_sell_order("005930", 10, 70000)
+
+        assert result is None  # 매도가능 0 → 주문 미발송
+
+    @pytest.mark.asyncio
+    async def test_sell_proceeds_when_sellable_unknown(self):
+        """매도가능수량 조회 실패(None) 시 위험축소 매도를 막지 않고 내부수량으로 진행."""
+        broker = make_broker_mock()
+        broker.get_sellable_quantity = MagicMock(return_value=None)
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        broker_dict = {"success": True, "order_id": "ORD-S-UNK",
+                       "message": "ok", "data": {"ODNO": "ORD-S-UNK"}}
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            result = await om.place_sell_order("005930", 10, 70000)
+
+        assert result == "ORD-S-UNK"
+        assert om.pending_orders["ORD-S-UNK"].quantity == 10  # 조정 없음

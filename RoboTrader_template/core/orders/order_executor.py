@@ -313,6 +313,30 @@ class OrderExecutorMixin:
         from api.kis_api_manager import OrderResult
         from utils.price_utils import round_to_tick
 
+        # 매도 전 broker 실보유(매도가능수량)와 대조해 과다매도 방지.
+        # 내부 수량이 실보유보다 크면(부분체결·수동매매·T+결제 드리프트) KIS 가
+        # 전량 거부 → 재시도 → 30분 서킷브레이커로 손절/EOD 매도 실패·무한 노출.
+        # min(내부, 실보유)로 조정, 실보유 0이면 미발송. 조회 실패(None)/비정수는
+        # 위험축소 매도를 막지 않도록 스킵(사전-실전 감사 BLOCKER #5, 2026-06-24).
+        sellable = None
+        if hasattr(self.broker, 'get_sellable_quantity'):
+            try:
+                sellable = self.broker.get_sellable_quantity(stock_code)
+            except Exception as e:
+                self.logger.warning(f"매도가능수량 조회 실패({stock_code}): {e}")
+                sellable = None
+        if isinstance(sellable, int) and not isinstance(sellable, bool):
+            if sellable <= 0:
+                self.logger.error(
+                    f"매도 불가: {stock_code} broker 매도가능수량 0 (내부 {quantity}주)"
+                )
+                return None
+            if quantity > sellable:
+                self.logger.warning(
+                    f"매도수량 조정: {stock_code} {quantity}→{sellable}주 (broker 실보유 기준)"
+                )
+                quantity = sellable
+
         # API 호출을 별도 스레드에서 실행 (타임아웃 20초)
         result: OrderResult = coerce_order_result(await run_with_timeout(
             self.executor,
