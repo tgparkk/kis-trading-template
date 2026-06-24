@@ -456,3 +456,45 @@ class TestAnalyzeSellDecision:
 
         # 예외가 전파되지 않아야 한다
         await analyzer.analyze_sell_decision(stock)
+
+
+class TestLiveBuyFundReservationKey:
+    """실전 매수 자금 예약 키 정합 (사전-실전 감사 BLOCKER #7, 2026-06-24).
+
+    place_buy_order 의 H4 중복방지는 has_reservation(stock_code)(맨 종목코드)를
+    확인한다. 그러나 분석기가 _reserve_id = f"{code}_{timestamp}" 로 예약하면
+    키가 어긋나 place_buy_order 가 2차 예약을 생성하고, 1차(_reserve_id)는
+    체결 확인 경로(OrderMonitor=2차만 확정)서 영영 해제되지 않아 reserved_funds
+    가 매수마다 영구 누수 → 몇 건 후 '자금부족'으로 인스턴스 매수 정지.
+    예약 키를 맨 stock_code 로 정렬해 2차 예약 자체가 안 생기게 한다.
+    """
+
+    @pytest.mark.asyncio
+    async def test_live_buy_reserves_under_bare_stock_code(self):
+        stock = _make_trading_stock("005930")
+        stock.is_buy_cooldown_active = Mock(return_value=False)
+        stock.set_buy_time = Mock()
+        bot = _make_bot(is_virtual=False, reserve_ok=True)
+        analyzer = _make_analyzer(bot)
+
+        await analyzer.analyze_buy_decision(stock, available_funds=1_000_000)
+
+        bot.fund_manager.reserve_funds.assert_called_once()
+        reserved_key = bot.fund_manager.reserve_funds.call_args[0][0]
+        # place_buy_order 의 has_reservation(stock_code) 가 감지하도록 키 = 맨 종목코드
+        assert reserved_key == "005930"
+
+    @pytest.mark.asyncio
+    async def test_live_buy_failure_cancels_same_reservation_key(self):
+        """실전 매수 실패 시 예약했던 것과 동일한 키로 취소한다(누수·오취소 방지)."""
+        stock = _make_trading_stock("005930")
+        stock.is_buy_cooldown_active = Mock(return_value=False)
+        stock.set_buy_time = Mock()
+        bot = _make_bot(is_virtual=False, reserve_ok=True)
+        bot.decision_engine.execute_real_buy = AsyncMock(return_value=False)
+        analyzer = _make_analyzer(bot)
+
+        await analyzer.analyze_buy_decision(stock, available_funds=1_000_000)
+
+        reserved_key = bot.fund_manager.reserve_funds.call_args[0][0]
+        bot.fund_manager.cancel_order.assert_called_once_with(reserved_key)

@@ -476,3 +476,33 @@ class TestRealSellQuantityClamp:
 
         assert result == "ORD-S-UNK"
         assert om.pending_orders["ORD-S-UNK"].quantity == 10  # 조정 없음
+
+
+class TestNoDoubleReserveOnPrereserved:
+    """분석기가 맨 stock_code 로 선예약하면 place_buy_order 는 2차 예약을 만들지 않고
+    그 예약을 실제 order_id 로 이전한다 → reserved_funds 무누수.
+    (사전-실전 감사 BLOCKER #7 place 측 보증, 2026-06-24)
+    """
+
+    @pytest.mark.asyncio
+    async def test_prereserved_stock_code_not_double_reserved(self):
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        # 분석기 선예약 시뮬 (수정 후 키 = 맨 stock_code)
+        fm.reserve_funds("005930", 700_000)
+        assert len(fm.order_reservations) == 1
+
+        broker_dict = {"success": True, "order_id": "ORD-NODUP",
+                       "message": "ok", "data": {"ODNO": "ORD-NODUP"}}
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            result = await om.place_buy_order("005930", 10, 70000)
+
+        assert result == "ORD-NODUP"
+        # 예약은 여전히 1건(2차 예약 없음), 그리고 stock_code→order_id 로 이전됨
+        assert len(fm.order_reservations) == 1
+        assert "ORD-NODUP" in fm.order_reservations
+        assert "005930" not in fm.order_reservations
