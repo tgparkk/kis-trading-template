@@ -324,8 +324,14 @@ class TestStrategyLoaderIntegration:
 
 
 # ----------------------------------------------------------------------------- #
-# 4. 진입 밴드 (2026-06-15) — 눌림형: up=0%, down=stop_loss_pct(0.08)
+# 4. 진입 밴드 (2026-06-24) — 돌파형(매수스톱): 전일고가+1틱 돌파 시에만 진입.
+#    백테스트 entry_mechanism="stop"과 정합. entry_min=buy_stop(돌파 게이트),
+#    entry_max=buy_stop*(1+up_pct)(갭업 추격 상한). 둘 다 buy_stop 기준이라
+#    high>close여도 entry_min<=entry_max 불변식이 깨지지 않는다.
 # ----------------------------------------------------------------------------- #
+from strategies.books.elder_triple_screen.rules import krx_tick
+
+
 class TestEntryBand:
 
     def _build(self, monkeypatch):
@@ -344,14 +350,51 @@ class TestEntryBand:
         strat.on_init(broker=None, data_provider=None, executor=None)
         return strat
 
-    def test_buy_signal_has_pullback_band(self, monkeypatch):
-        """BUY 신호에 눌림형 밴드(max=cur, min=cur*(1-0.08))가 담긴다."""
+    def test_buy_signal_entry_min_is_buy_stop(self, monkeypatch):
+        """entry_min_price == buy_stop_price(= 마지막 확정봉 high + krx_tick(high)).
+
+        engine은 live_price < entry_min이면 진입을 스킵하므로, 이는
+        '전일고가+1틱 돌파 시에만 체결' = 백테스트 매수스톱 게이트.
+        """
         from strategies.base import SignalType
         strat = self._build(monkeypatch)
         df = _uptrend_pullback_df()
         sig = strat.generate_signal("005930", df, timeframe="daily")
         assert sig is not None and sig.signal_type == SignalType.BUY
-        cur = float(df["close"].iloc[-1])
-        sl = 0.08
-        assert sig.entry_max_price == pytest.approx(cur * 1.01)  # 눌림형 +1% 여유
-        assert sig.entry_min_price == pytest.approx(cur * (1 - sl))
+        last_high = float(df["high"].iloc[-1])
+        buy_stop = last_high + krx_tick(last_high)
+        assert sig.metadata.get("buy_stop_price") == pytest.approx(buy_stop)
+        assert sig.entry_min_price == pytest.approx(buy_stop)
+
+    def test_buy_signal_entry_max_is_buy_stop_chase(self, monkeypatch):
+        """entry_max_price == buy_stop_price * (1 + up_pct). 갭업 추격 상한도 buy_stop 기준."""
+        from strategies.base import SignalType
+        strat = self._build(monkeypatch)
+        df = _uptrend_pullback_df()
+        sig = strat.generate_signal("005930", df, timeframe="daily")
+        assert sig is not None and sig.signal_type == SignalType.BUY
+        last_high = float(df["high"].iloc[-1])
+        buy_stop = last_high + krx_tick(last_high)
+        up = strat._entry_band_up_pct
+        assert sig.entry_max_price == pytest.approx(buy_stop * (1 + up))
+
+    def test_entry_band_invariant_min_le_max_when_high_above_close(self, monkeypatch):
+        """회귀 잠금: high가 close보다 1% 넘게 높아도 entry_min <= entry_max.
+
+        과거 버그: entry_max를 current_price 기준(cur*1.01)으로 두면
+        high>close일 때 entry_min(=buy_stop>=high>cur*1.01)이 entry_max를 넘겨
+        영영 미진입했다. entry_max도 buy_stop 기준이므로 불변식이 유지돼야 한다.
+        """
+        from strategies.base import SignalType
+        strat = self._build(monkeypatch)
+        df = _uptrend_pullback_df()
+        # 마지막 봉 high를 close보다 +5%로 강제 (1% 초과 갭) → 과거 회귀 조건 재현
+        last_close = float(df["close"].iloc[-1])
+        df.loc[df.index[-1], "high"] = last_close * 1.05
+        sig = strat.generate_signal("005930", df, timeframe="daily")
+        assert sig is not None and sig.signal_type == SignalType.BUY
+        assert sig.entry_min_price is not None and sig.entry_max_price is not None
+        assert sig.entry_min_price <= sig.entry_max_price
+        # target/stop은 현행 유지(current_price 기준)
+        assert sig.target_price == pytest.approx(last_close * 1.30)
+        assert sig.stop_loss == pytest.approx(last_close * 0.92)
