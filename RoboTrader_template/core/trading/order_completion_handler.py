@@ -44,6 +44,8 @@ class OrderCompletionHandler:
 
         # 전략 콜백 연결 (외부에서 set_strategy로 설정)
         self.strategy = None
+        # 다중전략 맵 (폴더키 → 전략 인스턴스). 실매매 체결을 소유 전략으로 라우팅.
+        self.strategies_by_key: dict = {}
 
     def set_strategy(self, strategy: Any) -> None:
         """전략 연결 (on_order_filled 콜백용)"""
@@ -51,10 +53,36 @@ class OrderCompletionHandler:
         if strategy:
             self.logger.info(f"OrderCompletionHandler에 전략 연결: {strategy.name}")
 
-    def _notify_strategy_order_filled(self, order) -> None:
-        """전략의 on_order_filled 콜백 호출"""
+    def set_strategies(self, strategies_by_key: dict) -> None:
+        """다중전략 맵 연결 — 실매매 체결 콜백을 소유 전략으로 라우팅.
+
+        고정 self.strategy 통보는 전 전략 체결이 첫 전략(Elder)의
+        daily_trades/positions를 오염시켜 매수 마비를 일으켰다(2026-06-11 진단).
+        실매매 완료 핸들러에도 owner-aware 라우팅을 적용한다
+        (사전-실전 감사 BLOCKER #2, 2026-06-24).
+        """
+        self.strategies_by_key = strategies_by_key or {}
+        if self.strategies_by_key:
+            self.logger.info(
+                f"OrderCompletionHandler에 {len(self.strategies_by_key)}개 전략 맵 연결"
+            )
+
+    def _resolve_owner_strategy(self, owner_name):
+        """owner 폴더키로 소유 전략 인스턴스 해석.
+
+        미해석(맵 없음·미등록 owner)이면 self.strategy(레거시 단일전략 fallback).
+        """
+        if owner_name and self.strategies_by_key:
+            target = self.strategies_by_key.get(owner_name)
+            if target is not None:
+                return target
+        return self.strategy
+
+    def _notify_strategy_order_filled(self, order, owner_name=None) -> None:
+        """전략의 on_order_filled 콜백 호출 (소유 전략으로 라우팅)"""
         try:
-            if self.strategy and hasattr(self.strategy, 'on_order_filled'):
+            target = self._resolve_owner_strategy(owner_name)
+            if target and hasattr(target, 'on_order_filled'):
                 # OrderInfo 객체로 변환하여 전달 (strategy.on_order_filled는 OrderInfo를 기대)
                 order_type = order.order_type
                 if hasattr(order_type, 'value'):
@@ -69,7 +97,7 @@ class OrderCompletionHandler:
                     price=float(order.get_filled_price()),
                     filled_at=now_kst(),
                 )
-                self.strategy.on_order_filled(order_info)
+                target.on_order_filled(order_info)
                 self.logger.debug(f"전략 on_order_filled 콜백 호출: {order.stock_code}")
         except Exception as e:
             self.logger.warning(f"전략 on_order_filled 콜백 오류: {e}")
@@ -128,7 +156,7 @@ class OrderCompletionHandler:
                         # 실거래 매수 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
 
                         # 전략 콜백 호출
-                        self._notify_strategy_order_filled(order)
+                        self._notify_strategy_order_filled(order, trading_stock.owner_strategy_name)
 
                         self.logger.info(f"{trading_stock.stock_code} 매수 완료")
 
@@ -190,7 +218,7 @@ class OrderCompletionHandler:
                             profit_rate = ((float(order.get_filled_price()) - _buy_price) / _buy_price) * 100
 
                         # 전략 콜백 호출
-                        self._notify_strategy_order_filled(order)
+                        self._notify_strategy_order_filled(order, trading_stock.owner_strategy_name)
 
                         self.logger.info(
                             f"{trading_stock.stock_code} 매도 완료 (수익률: {profit_rate:.2f}%)"
@@ -288,7 +316,7 @@ class OrderCompletionHandler:
             # 실거래 매수 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
 
             # 전략 콜백 호출
-            self._notify_strategy_order_filled(order)
+            self._notify_strategy_order_filled(order, trading_stock.owner_strategy_name)
 
             self.logger.debug(f"매수 체결 처리 완료 (콜백): {trading_stock.stock_code}")
         else:
@@ -322,7 +350,7 @@ class OrderCompletionHandler:
                 profit_rate = ((float(order.get_filled_price()) - _buy_price) / _buy_price) * 100
 
             # 전략 콜백 호출
-            self._notify_strategy_order_filled(order)
+            self._notify_strategy_order_filled(order, trading_stock.owner_strategy_name)
 
             self.logger.debug(
                 f"매도 체결 처리 완료 (콜백): {trading_stock.stock_code} "

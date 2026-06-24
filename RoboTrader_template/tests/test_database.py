@@ -807,13 +807,18 @@ class TestTradingRepositoryRealSell:
 
         assert result is True
 
-        # INSERT 호출에서 profit_loss 확인
+        # INSERT 호출에서 profit_loss 확인 — 수수료/세금 차감한 net (사전-실전 감사 #14)
+        from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
         insert_call = mock_cursor.execute.call_args_list[-1]
         params = insert_call[0][1]
-        # profit_loss = (75000 - 70000) * 10 = 50000
-        assert params[7] == 50000.0  # profit_loss
-        # profit_rate = (75000 - 70000) / 70000
-        assert abs(params[8] - 0.0714) < 0.001  # profit_rate
+        buy_cost = 70000 * 10
+        sell_amount = 75000 * 10
+        expected_pl = (sell_amount - buy_cost
+                       - buy_cost * COMMISSION_RATE
+                       - sell_amount * COMMISSION_RATE
+                       - sell_amount * SECURITIES_TAX_RATE)
+        assert abs(params[7] - expected_pl) < 1e-6  # profit_loss (net)
+        assert abs(params[8] - expected_pl / buy_cost) < 1e-9  # profit_rate (net)
 
     @patch('db.repositories.base.DatabaseConnection')
     @patch('db.repositories.trading.now_kst')

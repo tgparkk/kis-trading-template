@@ -268,8 +268,10 @@ class TestRealTradingEdgeCases:
         with patch('bot.state_restorer.DatabaseConnection'):
             await real_restorer._restore_holdings_from_real_account()
 
-        # DB 폴백으로 get_virtual_open_positions 호출
-        base_deps['db_manager'].get_virtual_open_positions.assert_called_once()
+        # 라이브 모드 DB 폴백은 실거래 테이블을 읽는다 (가상 테이블 아님).
+        # 사전-실전 감사 BLOCKER #3, 2026-06-24.
+        base_deps['db_manager'].get_real_open_positions.assert_called_once()
+        base_deps['db_manager'].get_virtual_open_positions.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_계좌_조회_None_반환_시_DB_폴백(self, real_restorer, base_deps):
@@ -279,7 +281,9 @@ class TestRealTradingEdgeCases:
         with patch('bot.state_restorer.DatabaseConnection'):
             await real_restorer._restore_holdings_from_real_account()
 
-        base_deps['db_manager'].get_virtual_open_positions.assert_called_once()
+        # 라이브 모드 DB 폴백은 실거래 테이블을 읽는다 (BLOCKER #3, 2026-06-24).
+        base_deps['db_manager'].get_real_open_positions.assert_called_once()
+        base_deps['db_manager'].get_virtual_open_positions.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_빈_positions_리스트(self, real_restorer, base_deps):

@@ -127,6 +127,35 @@ def get_circuit_breaker_state() -> CircuitBreakerState:
     return _circuit_breaker_state
 
 
+def arm_circuit_breaker_from_info(stock_code: str, info: Optional[Dict],
+                                  cb_state: Optional['CircuitBreakerState'] = None) -> bool:
+    """라이브 KIS 종목 기본정보로 런타임 VI 상태를 arm한다.
+
+    프로덕션에 trigger_vi 프로듀서가 없어 VI/거래정지 매수 가드가 영구 no-op
+    이던 문제를 해소한다(사전-실전 감사 BLOCKER #6, 2026-06-24). 매수 시점에
+    호출해 해당 종목이 VI/거래정지면 trigger_vi 로 표기 → is_vi_active 가드 발효.
+
+    KIS 응답 필드:
+    - vi_cls_code: '0' 미발동 / '1' 정적VI / '2' 동적VI / '3' 동적+정적
+    - iscd_stat_cls_code: '09' 거래정지
+
+    실제 KIS 보고에만 arm 하므로 오탐(정상거래 차단) 위험이 없다.
+    info 가 비었으면(조회 실패) arm 하지 않아 위험축소가 아닌 신규매수만 영향.
+
+    Returns:
+        True if VI/거래정지로 arm 됨, 아니면 False.
+    """
+    if not info:
+        return False
+    cb = cb_state if cb_state is not None else get_circuit_breaker_state()
+    vi = str(info.get('vi_cls_code', '') or '')
+    halted = str(info.get('iscd_stat_cls_code', '') or info.get('stat_cls_code', '') or '')
+    if vi in ('1', '2', '3') or halted == '09':
+        cb.trigger_vi(stock_code)
+        return True
+    return False
+
+
 class MarketHours:
     """시장별 거래시간 설정"""
 

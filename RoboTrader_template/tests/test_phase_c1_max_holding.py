@@ -235,6 +235,61 @@ class TestMaxHoldingDaysPositionMonitor:
             f"실제: {sell_reasons[0]}"
         )
 
+    @pytest.mark.asyncio
+    async def test_max_holding_from_buy_time_when_days_held_frozen(self):
+        """연속 운영 중 days_held=0 고착이라도 last_buy_time 기준 거래일로 max_hold 발동.
+
+        live 당일 매수 포지션은 days_held=0 으로 시작하는데, 무재시작 연속 운영 시
+        갱신되지 않아 max_hold 백스톱이 영영 미발동했다(사전-실전 감사 #9).
+        """
+        from utils.korean_time import now_kst
+        pm = _make_position_monitor()
+        strategy = _make_strategy_with_max_holding(max_days=5)
+        pm._strategy = strategy
+
+        ts = _make_trading_stock(days_held=0)
+        ts.last_buy_time = now_kst() - timedelta(days=20)  # 20캘린더일 전 → 거래일 ~14 >= 5
+        pm.decision_engine = AsyncMock()
+
+        sold = {}
+
+        async def capture_sell(trading_stock, price, reason):
+            sold['reason'] = reason
+            trading_stock.is_selling = False
+
+        with patch.object(pm, '_execute_sell', side_effect=capture_sell):
+            with patch.object(pm, '_get_current_price', new_callable=AsyncMock,
+                              return_value=10_100.0):
+                await pm._analyze_sell_for_stock(ts)
+
+        assert 'reason' in sold, "days_held 고착이어도 last_buy_time 기준 max_hold 발동해야 함"
+        assert "초과" in sold['reason']
+
+    @pytest.mark.asyncio
+    async def test_same_day_position_not_force_sold(self):
+        """당일 매수(last_buy_time=오늘)는 거래일 0이라 max_hold 미발동(조기매도 방지)."""
+        from utils.korean_time import now_kst
+        pm = _make_position_monitor()
+        strategy = _make_strategy_with_max_holding(max_days=5)
+        pm._strategy = strategy
+
+        ts = _make_trading_stock(days_held=0)
+        ts.last_buy_time = now_kst()  # 당일
+        pm.decision_engine = AsyncMock()
+
+        sell_called = []
+
+        async def capture_sell(trading_stock, price, reason):
+            sell_called.append(reason)
+
+        with patch.object(pm, '_execute_sell', side_effect=capture_sell):
+            with patch.object(pm, '_get_current_price', new_callable=AsyncMock,
+                              return_value=10_100.0):
+                await pm._analyze_sell_for_stock(ts)
+
+        for r in sell_called:
+            assert "초과" not in r, f"당일 매수는 max_hold 조기발동 금지, got: {r}"
+
 
 # ============================================================================
 # C1-B: BacktestEngine max_holding_days 시뮬 테스트

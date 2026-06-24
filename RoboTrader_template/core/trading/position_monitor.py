@@ -261,6 +261,18 @@ class PositionMonitor:
                             days_held = self.decision_engine.virtual_trading.get_days_held(stock_code)
                         else:
                             days_held = 0
+                    # 연속 운영(무재시작) 중 days_held 가 0/None 으로 고착되면 max_hold
+                    # 백스톱이 영영 미발동한다 → 매수 체결 시각(last_buy_time)에서 거래일
+                    # 수를 직접 보강. 당일 매수는 거래일 0이라 조기매도되지 않는다
+                    # (사전-실전 감사 #9, 2026-06-24).
+                    if not days_held and getattr(trading_stock, 'last_buy_time', None) is not None:
+                        try:
+                            from utils.korean_holidays import count_trading_days_between
+                            days_held = count_trading_days_between(
+                                trading_stock.last_buy_time, now_kst()
+                            )
+                        except Exception:
+                            pass
                     max_days = strategy_for_sell.max_holding_days
                     if isinstance(days_held, int) and days_held >= max_days:
                         reason = f"보유기간 {days_held}일 초과 (한도: {max_days}일)"

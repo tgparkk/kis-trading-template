@@ -15,6 +15,31 @@ if TYPE_CHECKING:
     from .order_base import OrderManagerBase
 
 
+def coerce_order_result(result):
+    """브로커 응답을 OrderResult로 정규화한다.
+
+    런타임 브로커(KISBroker)의 place_buy_order/place_sell_order/cancel_order는
+    plain dict({"success", "order_id", "message", "error_code", "data"})를 반환하지만,
+    소비 코드는 OrderResult 속성 접근(.success/.order_id/.message)을 기대한다.
+    dict가 와도 동일하게 다루도록 OrderResult로 변환한다.
+    None(타임아웃 default)은 그대로 None을 반환한다.
+
+    이 정규화가 없으면 실전 경로(paper_trading=False)에서 dict.success 접근이
+    AttributeError를 내고 상위 except가 삼켜 None을 반환 → KIS가 수락한 실주문이
+    추적되지 않는다(사전-실전 감사 BLOCKER #1, 2026-06-24).
+    """
+    if result is None or not isinstance(result, dict):
+        return result
+    from api.kis_api_manager import OrderResult
+    return OrderResult(
+        success=bool(result.get("success", False)),
+        order_id=result.get("order_id", "") or "",
+        message=result.get("message", "") or "",
+        error_code=result.get("error_code", "") or "",
+        data=result.get("data"),
+    )
+
+
 class OrderExecutorMixin:
     """주문 실행 관련 메서드들을 모아둔 Mixin 클래스"""
 
@@ -123,12 +148,12 @@ class OrderExecutorMixin:
         # API 호출을 별도 스레드에서 실행 (타임아웃 20초)
         from utils.price_utils import round_to_tick
         order_price = int(round_to_tick(price))
-        result: OrderResult = await run_with_timeout(
+        result: OrderResult = coerce_order_result(await run_with_timeout(
             self.executor,
             self.broker.place_buy_order,
             stock_code, quantity, order_price,
             timeout_seconds=35, default=None
-        )
+        ))
 
         if not result:
             self.logger.error(f"매수 주문 API 타임아웃: {stock_code}")
@@ -288,13 +313,37 @@ class OrderExecutorMixin:
         from api.kis_api_manager import OrderResult
         from utils.price_utils import round_to_tick
 
+        # 매도 전 broker 실보유(매도가능수량)와 대조해 과다매도 방지.
+        # 내부 수량이 실보유보다 크면(부분체결·수동매매·T+결제 드리프트) KIS 가
+        # 전량 거부 → 재시도 → 30분 서킷브레이커로 손절/EOD 매도 실패·무한 노출.
+        # min(내부, 실보유)로 조정, 실보유 0이면 미발송. 조회 실패(None)/비정수는
+        # 위험축소 매도를 막지 않도록 스킵(사전-실전 감사 BLOCKER #5, 2026-06-24).
+        sellable = None
+        if hasattr(self.broker, 'get_sellable_quantity'):
+            try:
+                sellable = self.broker.get_sellable_quantity(stock_code)
+            except Exception as e:
+                self.logger.warning(f"매도가능수량 조회 실패({stock_code}): {e}")
+                sellable = None
+        if isinstance(sellable, int) and not isinstance(sellable, bool):
+            if sellable <= 0:
+                self.logger.error(
+                    f"매도 불가: {stock_code} broker 매도가능수량 0 (내부 {quantity}주)"
+                )
+                return None
+            if quantity > sellable:
+                self.logger.warning(
+                    f"매도수량 조정: {stock_code} {quantity}→{sellable}주 (broker 실보유 기준)"
+                )
+                quantity = sellable
+
         # API 호출을 별도 스레드에서 실행 (타임아웃 20초)
-        result: OrderResult = await run_with_timeout(
+        result: OrderResult = coerce_order_result(await run_with_timeout(
             self.executor,
             self.broker.place_sell_order,
             stock_code, quantity, int(round_to_tick(price)) if not market else 0, ("01" if market else "00"),
             timeout_seconds=35, default=None
-        )
+        ))
 
         if not result:
             self.logger.error(f"매도 주문 API 타임아웃: {stock_code}")
@@ -360,12 +409,12 @@ class OrderExecutorMixin:
                 order_dvsn = "01"
 
             # API 호출을 별도 스레드에서 실행 (타임아웃 20초)
-            result: OrderResult = await run_with_timeout(
+            result: OrderResult = coerce_order_result(await run_with_timeout(
                 self.executor,
                 self.broker.cancel_order,
                 order_id, order.stock_code, order_dvsn,
                 timeout_seconds=35, default=None
-            )
+            ))
 
             if not result:
                 self.logger.error(f"주문 취소 API 타임아웃: {order_id}")

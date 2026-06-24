@@ -136,9 +136,14 @@ class TradingAnalyzer:
                             self.logger.warning(f"{stock_code} 매수 포기: 가용 자금 없음")
                             return
 
-                # FundManager 자금 예약 (유니크 ID 사용)
+                # FundManager 자금 예약.
+                # 키는 반드시 맨 stock_code — place_buy_order 의 H4 중복방지가
+                # has_reservation(stock_code) 로 이 예약을 감지해 2차 예약을 만들지
+                # 않도록 해야 한다. timestamped 키는 키 불일치로 2차 예약을 유발하고
+                # 1차 예약이 영구 누수된다(사전-실전 감사 BLOCKER #7, 2026-06-24).
+                # 동일 종목 동시 매수는 has_active_buy_order 가드로 차단되어 안전.
                 from utils.korean_time import now_kst as _now_kst
-                _reserve_id = f"{stock_code}_{_now_kst().strftime('%H%M%S%f')}"
+                _reserve_id = stock_code
                 reserve_ok = self.bot.fund_manager.reserve_funds(_reserve_id, required_amount)
                 if not reserve_ok:
                     self.logger.warning(f"{stock_code} 자금 예약 실패 - 매수 스킵")

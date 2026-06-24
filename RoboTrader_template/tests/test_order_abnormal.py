@@ -327,3 +327,214 @@ class TestPaperTradingBypassesFundCheck:
         # 가상매매는 FundManager 체크를 안 하므로 성공해야 함
         result = await om.place_buy_order("005930", 10, 70000)
         assert result is not None  # 가상매매이므로 성공
+
+
+class TestBrokerDictResultNormalization:
+    """실전 경로(paper_trading=False)는 KISBroker의 dict 반환을 처리해야 한다.
+
+    런타임 브로커는 KISBroker이고 place_buy_order/place_sell_order/cancel_order는
+    plain dict({"success":..., "order_id":..., "message":...})를 반환한다.
+    그러나 소비 코드(order_executor)는 OrderResult를 가정하고 result.success/.order_id
+    속성에 접근한다 → dict엔 속성이 없어 AttributeError → 외부 except가 삼켜 None 반환.
+    결과: KIS가 수락한 실주문이 추적 안 됨(pending_orders 미등록). 첫 실주문에 봇이 깨짐.
+    (사전-실전 감사 BLOCKER #1, 2026-06-24)
+    """
+
+    @staticmethod
+    def _broker_buy_dict(order_id="ORD-DICT-1"):
+        return {"success": True, "order_id": order_id,
+                "message": f"buy order success", "data": {"ODNO": order_id}}
+
+    @pytest.mark.asyncio
+    async def test_real_buy_tracks_order_from_broker_dict(self):
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = self._broker_buy_dict("ORD-DICT-1")
+            result = await om.place_buy_order("005930", 10, 70000)
+
+        assert result == "ORD-DICT-1"
+        assert "ORD-DICT-1" in om.pending_orders
+
+    @pytest.mark.asyncio
+    async def test_real_sell_tracks_order_from_broker_dict(self):
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        broker_dict = {"success": True, "order_id": "ORD-DICT-S1",
+                       "message": "sell order success", "data": {"ODNO": "ORD-DICT-S1"}}
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            result = await om.place_sell_order("005930", 10, 70000)
+
+        assert result == "ORD-DICT-S1"
+        assert "ORD-DICT-S1" in om.pending_orders
+
+    @pytest.mark.asyncio
+    async def test_real_cancel_succeeds_from_broker_dict(self):
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        # 취소 대상 미체결 주문 등록
+        order = Order(
+            order_id="ORD-DICT-C1", stock_code="005930", order_type=OrderType.BUY,
+            price=70000, quantity=10, timestamp=now_kst(),
+            status=OrderStatus.PENDING, remaining_quantity=10,
+        )
+        om.pending_orders["ORD-DICT-C1"] = order
+
+        broker_dict = {"success": True, "order_id": "ORD-DICT-C1",
+                       "message": "cancel success", "data": None}
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            ok = await om.cancel_order("ORD-DICT-C1")
+
+        assert ok is True
+        assert order.status == OrderStatus.CANCELLED
+
+    @pytest.mark.asyncio
+    async def test_cancel_remaining_only_succeeds_from_broker_dict(self):
+        """부분체결 타임아웃의 잔여취소 경로도 KISBroker dict 반환을 처리해야 한다."""
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        order = Order(
+            order_id="ORD-DICT-R1", stock_code="005930", order_type=OrderType.BUY,
+            price=70000, quantity=10, timestamp=now_kst(),
+            status=OrderStatus.PENDING, remaining_quantity=10,
+        )
+        om.pending_orders["ORD-DICT-R1"] = order
+
+        broker_dict = {"success": True, "order_id": "ORD-DICT-R1",
+                       "message": "cancel ok", "data": None}
+        with patch('core.orders.order_timeout.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            ok = await om._cancel_remaining_only("ORD-DICT-R1")
+
+        assert ok is True
+
+
+class TestRealSellQuantityClamp:
+    """실매도 수량을 broker 실보유(매도가능수량)와 대조해 과다매도를 막는다.
+
+    내부 보유수량이 broker 실보유보다 크면(부분체결·수동매매·T+결제 드리프트),
+    KIS 가 전량 매도를 거부 → 재시도 3회 → 30분 서킷브레이커로 손절/EOD 구간에
+    실포지션이 안 팔리고 무한 노출. 매도 전 min(내부, broker매도가능)으로 clamp.
+    (사전-실전 감사 BLOCKER #5, 2026-06-24)
+    """
+
+    @pytest.mark.asyncio
+    async def test_sell_clamps_to_broker_sellable(self):
+        broker = make_broker_mock()
+        broker.get_sellable_quantity = MagicMock(return_value=4)  # broker 실보유 4주
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        broker_dict = {"success": True, "order_id": "ORD-S-CLAMP",
+                       "message": "ok", "data": {"ODNO": "ORD-S-CLAMP"}}
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            result = await om.place_sell_order("005930", 10, 70000)  # 내부는 10주 요청
+
+        assert result == "ORD-S-CLAMP"
+        # 추적 주문 수량이 broker 실보유(4)로 조정되어야 한다
+        assert om.pending_orders["ORD-S-CLAMP"].quantity == 4
+
+    @pytest.mark.asyncio
+    async def test_sell_aborts_when_broker_holds_zero(self):
+        broker = make_broker_mock()
+        broker.get_sellable_quantity = MagicMock(return_value=0)  # broker 실보유 0
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = {"success": True, "order_id": "X",
+                                        "message": "", "data": None}
+            result = await om.place_sell_order("005930", 10, 70000)
+
+        assert result is None  # 매도가능 0 → 주문 미발송
+
+    @pytest.mark.asyncio
+    async def test_sell_proceeds_when_sellable_unknown(self):
+        """매도가능수량 조회 실패(None) 시 위험축소 매도를 막지 않고 내부수량으로 진행."""
+        broker = make_broker_mock()
+        broker.get_sellable_quantity = MagicMock(return_value=None)
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        broker_dict = {"success": True, "order_id": "ORD-S-UNK",
+                       "message": "ok", "data": {"ODNO": "ORD-S-UNK"}}
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            result = await om.place_sell_order("005930", 10, 70000)
+
+        assert result == "ORD-S-UNK"
+        assert om.pending_orders["ORD-S-UNK"].quantity == 10  # 조정 없음
+
+
+class TestSellPartialTimeoutFees:
+    """매도 부분체결 타임아웃 손익이 수수료·세금을 반영해야 한다.
+
+    전량 체결 경로(order_monitor)는 매수수수료+매도수수료+증권세를 차감하나,
+    부분체결 타임아웃 SELL 경로(order_timeout)는 gross(수수료 무시)였다 →
+    FundManager equity 과대계상·후속 사이징 부풀림(사전-실전 감사 #12, 2026-06-24).
+    """
+
+    @pytest.mark.asyncio
+    async def test_sell_partial_timeout_pnl_includes_fees(self):
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = MagicMock()
+        om.fund_manager = fm
+        om.trading_manager = None
+
+        order = Order(
+            order_id="ORD-PT", stock_code="005930", order_type=OrderType.SELL,
+            price=10_000, quantity=10, timestamp=now_kst(),
+            status=OrderStatus.PARTIAL, remaining_quantity=4,
+        )
+        om.pending_orders["ORD-PT"] = order
+        om._cancel_remaining_only = AsyncMock(return_value=True)
+
+        # 매수원가=매도가=10,000 → gross 손익 0. 수수료/세금 차감 시 음수가 되어야 한다.
+        await om._handle_partial_fill_timeout("ORD-PT", order, filled_qty=6)
+
+        fm.adjust_pnl.assert_called_once()
+        pnl_arg = fm.adjust_pnl.call_args[0][0]
+        assert pnl_arg < 0, f"수수료/세금 차감으로 음수여야 함, got {pnl_arg}"
+
+
+class TestNoDoubleReserveOnPrereserved:
+    """분석기가 맨 stock_code 로 선예약하면 place_buy_order 는 2차 예약을 만들지 않고
+    그 예약을 실제 order_id 로 이전한다 → reserved_funds 무누수.
+    (사전-실전 감사 BLOCKER #7 place 측 보증, 2026-06-24)
+    """
+
+    @pytest.mark.asyncio
+    async def test_prereserved_stock_code_not_double_reserved(self):
+        broker = make_broker_mock()
+        om = OrderManager(make_config(paper_trading=False), broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+
+        # 분석기 선예약 시뮬 (수정 후 키 = 맨 stock_code)
+        fm.reserve_funds("005930", 700_000)
+        assert len(fm.order_reservations) == 1
+
+        broker_dict = {"success": True, "order_id": "ORD-NODUP",
+                       "message": "ok", "data": {"ODNO": "ORD-NODUP"}}
+        with patch('core.orders.order_executor.run_with_timeout', new_callable=AsyncMock) as mock_timeout:
+            mock_timeout.return_value = broker_dict
+            result = await om.place_buy_order("005930", 10, 70000)
+
+        assert result == "ORD-NODUP"
+        # 예약은 여전히 1건(2차 예약 없음), 그리고 stock_code→order_id 로 이전됨
+        assert len(fm.order_reservations) == 1
+        assert "ORD-NODUP" in fm.order_reservations
+        assert "005930" not in fm.order_reservations

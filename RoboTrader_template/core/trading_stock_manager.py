@@ -163,6 +163,12 @@ class TradingStockManager:
         self._position_monitor.set_strategy(strategy)
         self.logger.debug(f"TradingStockManager에 전략 연결: {strategy.name if strategy else 'None'}")
 
+    def set_strategies(self, strategies_by_key: dict) -> None:
+        """다중전략 맵 연결 — 실매매 체결 콜백을 소유 전략으로 라우팅.
+        (사전-실전 감사 BLOCKER #2, 2026-06-24)
+        """
+        self._completion_handler.set_strategies(strategies_by_key)
+
     def set_fund_manager(self, fund_manager: Any) -> None:
         """FundManager 연결"""
         self._order_execution.set_fund_manager(fund_manager)

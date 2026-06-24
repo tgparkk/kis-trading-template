@@ -171,6 +171,9 @@ class DatabaseManager:
     def get_virtual_open_positions(self) -> pd.DataFrame:
         return self.trading_repo.get_virtual_open_positions()
 
+    def get_real_open_positions(self) -> pd.DataFrame:
+        return self.trading_repo.get_real_open_positions()
+
     def get_virtual_trading_history(self, days: int = 30, include_open: bool = True) -> pd.DataFrame:
         return self.trading_repo.get_virtual_trading_history(days, include_open)
 

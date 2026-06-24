@@ -412,9 +412,17 @@ class StateRestorer:
             logger.error(f"❌ 후보 종목 복원 실패: {e}")
 
     async def _restore_holdings_from_db(self) -> None:
-        """가상매매 모드: DB에서 보유 종목 복원"""
+        """DB에서 보유 종목 복원.
+
+        라이브(실전) 모드에서는 real_trading_records 를 읽는다. 실전 fallback이
+        가상 테이블(is_test=true)을 읽으면 실보유 0건 복원→실포지션 고아화
+        (사전-실전 감사 BLOCKER #3, 2026-06-24).
+        """
         try:
-            holdings = self.db_manager.get_virtual_open_positions()
+            if self.is_paper_trading:
+                holdings = self.db_manager.get_virtual_open_positions()
+            else:
+                holdings = self.db_manager.get_real_open_positions()
             if holdings.empty:
                 logger.info("[가상매매] 보유 종목 없음")
                 return
@@ -606,8 +614,10 @@ class StateRestorer:
             )
             logger.info(f"📊 [실전매매] 실제 계좌 보유 종목: {len(real_holdings)}개")
 
-            # 2. DB 보유 종목 조회
-            db_holdings = self.db_manager.get_virtual_open_positions()
+            # 2. DB 보유 종목 조회 (실전 owner/buy_time 보강은 실거래 테이블에서)
+            #    가상 테이블을 읽으면 실보유 owner 가 공백→전략별 청산 무력
+            #    (사전-실전 감사 BLOCKER #4, 2026-06-24).
+            db_holdings = self.db_manager.get_real_open_positions()
             db_holdings_dict = {}
             if not db_holdings.empty:
                 for _, row in db_holdings.iterrows():
