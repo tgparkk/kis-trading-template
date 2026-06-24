@@ -352,3 +352,67 @@ class TestBackwardCompatSingleStrategy:
         assert bot._candidates_loaded is True
         # strategy_name 설정 확인
         assert ts_mock.strategy_name == "SampleStrategy"
+
+
+# ============================================================================
+# 6. 거래량 폴백 풀에 전략 base_filter 적용 (유니버스 누수 차단)
+# ============================================================================
+
+class TestVolumeFallbackRespectsBaseFilter:
+    """거래량 순위 폴백 풀이 수용 전략의 screener base_filter를 통과한 종목만
+    포함해야 한다. base_filter는 거래대금≥10억·시총<5천억 컷이며, 폴백 풀은
+    원래 이 컷을 거치지 않아 daytrading 유니버스를 위반했다(2026-06-25 감사 E).
+    """
+
+    def test_volume_fallback_respects_strategy_base_filter(self):
+        from main import apply_volume_fallback_with_filter
+
+        fallback = [
+            _make_candidate("000001"),  # 위반: 거래대금<10억·시총>5천억
+            _make_candidate("000002"),  # 통과
+        ]
+        # CandidateStock은 market_cap/trading_value를 들지 않으므로 quant 유니버스
+        # 스냅샷(SSOT)에서 조회한다. 단위테스트는 이 조회를 주입한다.
+        universe_lookup = {
+            "000001": {"market_cap": 600_000_000_000, "trading_value": 500_000_000},
+            "000002": {"market_cap": 300_000_000_000, "trading_value": 2_000_000_000},
+        }
+
+        pool = apply_volume_fallback_with_filter(
+            "daytrading_3methods_breakout", fallback, universe_lookup=universe_lookup
+        )
+        codes = {c.code for c in pool}
+
+        assert "000002" in codes
+        assert "000001" not in codes  # base_filter가 폴백에도 적용
+
+    def test_unknown_strategy_returns_fallback_unchanged(self):
+        """어댑터가 없는 전략은 보수적으로 기존 동작(필터 미적용) 유지."""
+        from main import apply_volume_fallback_with_filter
+
+        fallback = [_make_candidate("000001"), _make_candidate("000002")]
+        universe_lookup = {
+            "000001": {"market_cap": 600_000_000_000, "trading_value": 500_000_000},
+        }
+
+        pool = apply_volume_fallback_with_filter(
+            "no_such_strategy_xyz", fallback, universe_lookup=universe_lookup
+        )
+
+        # 어댑터 없음 → 폴백 풀 그대로
+        assert {c.code for c in pool} == {"000001", "000002"}
+
+    def test_missing_universe_data_treated_as_filtered_out(self):
+        """유니버스 스냅샷에 없는 종목은 거래대금 검증 불가 → base_filter 컷에서 제외.
+
+        base_filter는 trading_value 미상(0)을 min_trading_value 미만으로 취급하므로
+        스냅샷에 없는 종목은 자연히 빠진다(스크리너와 동일 의미).
+        """
+        from main import apply_volume_fallback_with_filter
+
+        fallback = [_make_candidate("000003")]  # 스냅샷에 없음
+        pool = apply_volume_fallback_with_filter(
+            "daytrading_3methods_breakout", fallback, universe_lookup={}
+        )
+
+        assert pool == []
