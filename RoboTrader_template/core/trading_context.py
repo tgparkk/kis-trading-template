@@ -352,6 +352,25 @@ class TradingContext:
                     )
                     return None
 
+            # 매수 시점에 라이브 KIS 종목정보로 런타임 VI 상태를 arm한다.
+            # (프로듀서 부재로 영구 no-op이던 VI/거래정지 가드를 발효 —
+            #  선정 후 매수 시점에 VI 진입한 종목 차단. 사전-실전 감사 BLOCKER #6)
+            try:
+                from api.kis_market_api import get_stock_basic_info
+                from config.market_hours import arm_circuit_breaker_from_info
+                _vi_info = get_stock_basic_info(stock_code)
+                if _vi_info is not None:
+                    if hasattr(_vi_info, 'to_dict') and callable(_vi_info.to_dict):
+                        _vi_info = _vi_info.to_dict()
+                    elif hasattr(_vi_info, '__dict__'):
+                        _vi_info = _vi_info.__dict__
+                    arm_circuit_breaker_from_info(
+                        stock_code, _vi_info if isinstance(_vi_info, dict) else None, cb_state
+                    )
+            except Exception as _vi_err:
+                # 라이브 VI 조회 실패는 매수를 막지 않는다(보수적 통과)
+                self.logger.debug(f"{stock_code} 라이브 VI 조회 실패(가드 스킵): {_vi_err}")
+
             # 개별 종목 VI 발동 시 매수 스킵
             if cb_state.is_vi_active(stock_code):
                 self.logger.debug(f"{stock_code} 매수 스킵: VI 발동 중")
