@@ -297,6 +297,20 @@ class TestStrategyLoaderIntegration:
         assert sig.signal_type == SignalType.SELL
         assert sig.metadata["exit_reason"] == "stop_loss"
 
+    def test_generate_signal_intraday_held_no_sell(self, monkeypatch):
+        """분봉 whipsaw 가드: position_monitor가 보유종목 매도판단에 무조건
+        timeframe='intraday'로 분봉을 전달한다. 일봉 매도조건(여기선 손절)이
+        충족되는 동일 df라도 intraday 경로에선 매도신호를 내면 안 된다
+        (timeframe 가드가 매도분기보다 앞에 있어야 함)."""
+        strat = self._build(monkeypatch)
+        df = _make_df(list(np.linspace(10000, 13000, 30)))
+        cur = float(df["close"].iloc[-1])
+        strat.positions["005930"] = {
+            "quantity": 10, "entry_price": cur / 0.95, "entry_time": None,  # -5%
+        }
+        # daily 경로면 stop_loss SELL인 동일 상황 → intraday 경로는 None이어야 한다.
+        assert strat.generate_signal("005930", df, timeframe="intraday") is None
+
 
 # ----------------------------------------------------------------------------- #
 # 4. 진입 밴드 (2026-06-15) — 눌림형: up=0%, down=stop_loss_pct(0.03)

@@ -126,6 +126,13 @@ class BookPullbackMa20Strategy(BaseStrategy):
         if data is None or len(data) < self.get_min_data_length():
             return None
 
+        # 매도분기보다 먼저 — position_monitor는 보유종목 매도판단에 무조건
+        # timeframe='intraday'로 분봉을 전달한다. trail_ma 청산을 분봉 MA20으로
+        # 평가하면 매수 직후 whipsaw 청산이 발생하므로 분봉 경로를 여기서 차단한다.
+        # 일봉(base.on_tick, exit_timeframe='daily') 매도는 그대로 동작한다.
+        if timeframe != "daily":
+            return None
+
         # 보유 종목 → 매도(청산) 판단 우선
         if stock_code in self.positions:
             return self._check_sell(stock_code, data)
@@ -133,10 +140,6 @@ class BookPullbackMa20Strategy(BaseStrategy):
         if self.daily_trades >= self._max_daily_trades:
             return None
         if len(self.positions) >= self._max_positions:
-            return None
-
-        # 진입은 확정 일봉 기준 (백테스트와 동일). 매도 경로(intraday)에서는 신규 진입 안 함.
-        if timeframe != "daily":
             return None
 
         return self._check_buy(stock_code, data)
