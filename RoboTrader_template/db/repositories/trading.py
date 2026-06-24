@@ -388,6 +388,49 @@ class TradingRepository(BaseRepository):
             self.logger.error(f"미체결 포지션 조회 실패: {e}")
             return pd.DataFrame()
 
+    def get_real_open_positions(self) -> pd.DataFrame:
+        """미체결 실거래 포지션 조회 (real_trading_records).
+
+        실전 재시작 복원이 owner 전략(strategy 컬럼)·buy_time 을 실거래 테이블에서
+        직접 읽도록 한다. real_trading_records 는 is_test/source 필터가 없는 실거래 전용
+        테이블이며(인스턴스별 _real_table), tp/sl 컬럼은 save_real_buy 가 채우지 않아
+        NULL 일 수 있으나 다운스트림이 기본값으로 처리한다.
+        (사전-실전 감사 BLOCKER #3/#4, 2026-06-24)
+        """
+        try:
+            with self._get_connection() as conn:
+                # real_trading_records 는 target_profit_rate/stop_loss_rate 컬럼이 없다
+                # (init-scripts/01-init.sql). 다운스트림 복원이 .get()→DEFAULT 로 처리한다.
+                query = f'''
+                    SELECT b.id, b.stock_code, b.stock_name, b.quantity,
+                           b.price as buy_price, b.timestamp as buy_time,
+                           b.strategy, b.reason as buy_reason
+                    FROM {self._real_table} b
+                    WHERE b.action = 'BUY'
+                        AND NOT EXISTS (
+                            SELECT 1 FROM {self._real_table} s
+                            WHERE s.buy_record_id = b.id AND s.action = 'SELL'
+                        )
+                    ORDER BY b.timestamp DESC
+                '''
+
+                cursor = conn.cursor()
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                else:
+                    df = pd.DataFrame()
+                cursor.close()
+                if not df.empty and 'buy_time' in df.columns:
+                    df['buy_time'] = pd.to_datetime(df['buy_time'], errors='coerce')
+                return df
+
+        except Exception as e:
+            self.logger.error(f"미체결 실거래 포지션 조회 실패: {e}")
+            return pd.DataFrame()
+
     def get_virtual_trading_history(self, days: int = 30, include_open: bool = True) -> pd.DataFrame:
         """가상 매매 이력 조회"""
         try:
