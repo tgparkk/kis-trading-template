@@ -518,3 +518,51 @@ class TestEquitySnapshotResavesPaperState:
             monitor._run_equity_snapshot()
 
         vm.save_paper_trading_state.assert_not_called()
+
+
+class TestEquityResnapshotAfterDataCollection:
+    """EOD equity 재스냅샷이 당일종가 수집(step6) '후'에 한 번 더 도는지 검증.
+
+    버그(2026-06-25): 15:35 1차 스냅샷은 보유를 평가소스(quant)의 당일종가로
+    평가하나, 15:35 시점엔 당일종가가 아직 없어 전일종가로 stale 폴백된다. 봇은
+    step6(_run_data_collection)에서 당일 공식종가를 kis_template 으로 직접 수집하므로,
+    그 후 _run_equity_snapshot 을 멱등 재호출해 T-close 로 덮어써야 한다.
+    """
+
+    def _make_monitor(self):
+        from bot.system_monitor import SystemMonitor
+        mock_bot = MagicMock()
+        with patch.object(SystemMonitor, '_init_dashboard', lambda self: None):
+            monitor = SystemMonitor(mock_bot)
+        return monitor
+
+    def test_재스냅샷_데이터수집_후_호출(self):
+        """15:35+ 흐름에서 _run_equity_snapshot 이 _run_data_collection 후에 다시 호출됨."""
+        from datetime import datetime, timezone, timedelta
+        KST = timezone(timedelta(hours=9))
+        current_time = datetime(2026, 6, 25, 15, 36, 0, tzinfo=KST)
+
+        monitor = self._make_monitor()
+        monitor._last_daily_report_date = None
+
+        call_order = []
+
+        async def fake_data_collection(ct):
+            call_order.append('data_collection')
+
+        with patch('bot.system_monitor.print_today_trading_summary'), \
+             patch.object(monitor, '_verify_eod_fund_integrity'), \
+             patch.object(monitor, '_verify_screener_snapshot'), \
+             patch.object(monitor, '_run_regime_index_refresh'), \
+             patch.object(monitor, '_run_data_collection', side_effect=fake_data_collection), \
+             patch.object(monitor, '_run_equity_snapshot',
+                          side_effect=lambda: call_order.append('equity_snapshot')):
+            asyncio.run(monitor._handle_postmarket_tasks(current_time))
+
+        # 1차(데이터수집 전) + 재스냅샷(데이터수집 후) 둘 다 호출
+        assert call_order.count('equity_snapshot') >= 1
+        assert 'data_collection' in call_order
+        # 마지막 equity_snapshot 은 data_collection 보다 뒤(=재평가가 최종 권위)
+        assert call_order.index('data_collection') < len(call_order) - 1
+        assert call_order[-1] == 'equity_snapshot', (
+            f"재스냅샷이 데이터수집 후 마지막이어야 함: {call_order}")

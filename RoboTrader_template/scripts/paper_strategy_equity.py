@@ -174,24 +174,77 @@ def _load_calendar(conn, epoch: date) -> List[date]:
     return sorted(days)
 
 
-def _load_closes(codes: List[str], dates: List[date]) -> Dict[Tuple[str, date], float]:
-    """quant 일봉에서 종목별 종가 로드 (보유평가용)."""
+class _KisTemplateDailyReader:
+    """kis_template.daily_prices 읽기 전용 리더 (보유평가 1순위 소스).
+
+    QuantDailyReader.get_daily_prices 와 동일 인터페이스/스키마(date text 'YYYY-MM-DD',
+    close)를 kis_template DB(KisDbConnection)에 대해 제공한다. 봇이 EOD step6
+    (collectors.eod_collection.run_data_collection)에서 당일 공식종가를 이 DB로 직접
+    수집하므로, 외부 quant ETL 타이밍과 무관하게 당일(T) 종가를 신뢰성 있게 갖는다
+    (2026-06-25 stale-equity 버그 수정의 핵심 — A안 자족적 평가소스).
+    """
+
+    def get_daily_prices(self, stock_code: str, end_date=None, days: int = 120):
+        import pandas as pd
+        from db.kis_db_connection import KisDbConnection
+
+        end = None
+        if end_date is not None:
+            end = end_date if isinstance(end_date, str) else end_date.strftime("%Y-%m-%d")
+        with KisDbConnection.get_connection() as conn:
+            with conn.cursor() as cur:
+                if end:
+                    cur.execute(
+                        "SELECT date, close FROM daily_prices "
+                        "WHERE stock_code = %s AND date <= %s ORDER BY date DESC LIMIT %s",
+                        (stock_code, end, int(days)),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT date, close FROM daily_prices "
+                        "WHERE stock_code = %s ORDER BY date DESC LIMIT %s",
+                        (stock_code, int(days)),
+                    )
+                rows = cur.fetchall()
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows, columns=["date", "close"])
+        df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
+        df = df.dropna(subset=["date"])
+        return df.sort_values("date").reset_index(drop=True)
+
+
+def _default_close_readers():
+    """보유평가 종가 소스(우선순위 순). 1순위=kis_template(봇 자체 수집, 당일종가 신뢰),
+    2순위=robotrader_quant(과거 폴백). 1순위가 (code,date)를 주면 그 값이 권위."""
     from db.quant_daily_reader import QuantDailyReader
-    reader = QuantDailyReader()
+    return [_KisTemplateDailyReader(), QuantDailyReader()]
+
+
+def _load_closes(codes: List[str], dates: List[date],
+                 readers: Optional[List] = None) -> Dict[Tuple[str, date], float]:
+    """종목별 종가 로드 (보유평가용). readers 우선순위로 병합 — 먼저 채워진
+    (code, date) 가 권위(1순위 미존재시에만 2순위로 폴백)."""
     closes: Dict[Tuple[str, date], float] = {}
     if not dates:
         return closes
+    if readers is None:
+        readers = _default_close_readers()
     span = max(30, (max(dates) - min(dates)).days + 10)
     for code in codes:
-        try:
-            df = reader.get_daily_prices(code, end_date=max(dates), days=span)
-        except Exception:
-            continue
-        if df is None or df.empty:
-            continue
-        for _, row in df.iterrows():
-            d = row["date"].date() if hasattr(row["date"], "date") else row["date"]
-            closes[(str(code), d)] = float(row["close"])
+        for reader in readers:
+            try:
+                df = reader.get_daily_prices(code, end_date=max(dates), days=span)
+            except Exception:
+                continue
+            if df is None or df.empty:
+                continue
+            for _, row in df.iterrows():
+                d = row["date"].date() if hasattr(row["date"], "date") else row["date"]
+                key = (str(code), d)
+                # 1순위가 이미 채운 키는 덮어쓰지 않음(우선순위 보존)
+                if key not in closes:
+                    closes[key] = float(row["close"])
     return closes
 
 
