@@ -665,9 +665,19 @@ class DayTradingBot:
                     strategy_instance = self.strategies.get(strategy_name)
                     accepts_fallback = getattr(strategy_instance, "accepts_volume_fallback", True)
                     if accepts_fallback:
-                        pool_by_strategy[strategy_name] = fallback
+                        # 폴백 풀에도 수용 전략의 스크리너 base_filter 적용
+                        # (거래대금·시총 컷) → 유니버스 누수 차단(감사 2026-06-25 E).
+                        filtered_fallback = apply_volume_fallback_with_filter(
+                            strategy_name,
+                            fallback,
+                            broker=getattr(self, "broker", None),
+                            db_manager=getattr(self, "db_manager", None),
+                            config=getattr(self, "config", None),
+                        )
+                        pool_by_strategy[strategy_name] = filtered_fallback
                         self.logger.info(
-                            f"[E6] 거래량 폴백 배정 → {strategy_name} ({len(fallback)}종목)"
+                            f"[E6] 거래량 폴백 배정 → {strategy_name} "
+                            f"({len(filtered_fallback)}/{len(fallback)}종목, base_filter 적용)"
                         )
                         break
             except Exception as e:
@@ -884,6 +894,78 @@ def should_use_volume_fallback(per_strategy_candidates: dict) -> bool:
     if not per_strategy_candidates:
         return True
     return all(not v for v in per_strategy_candidates.values())
+
+
+def apply_volume_fallback_with_filter(
+    strategy_name: str,
+    fallback: list,
+    *,
+    broker=None,
+    db_manager=None,
+    config=None,
+    universe_lookup: Optional[Dict[str, Dict]] = None,
+    scan_date=None,
+):
+    """거래량 순위 폴백 풀(CandidateStock 리스트)에 수용 전략의 스크리너
+    base_filter(거래대금≥10억·시총<5천억 등)를 적용해 유니버스 위반 종목을 제거한다.
+
+    폴백 풀은 원래 스크리너 base_filter를 거치지 않아 daytrading 유니버스를 위반했다
+    (감사 2026-06-25 E). 여기서 수용 전략의 어댑터를 얻어 base_filter로 거른다.
+
+    - 어댑터가 없거나(미지원 전략) base_filter가 없으면 폴백 풀을 그대로 반환(보수적).
+    - CandidateStock은 market_cap/trading_value를 들지 않으므로 quant 유니버스 스냅샷
+      (스크리너와 동일 SSOT)에서 code→{market_cap, trading_value}를 조회해 dict로 변환 후
+      base_filter에 통과시킨다. 스냅샷에 없는 종목은 base_filter가 trading_value 미상(0)을
+      컷으로 처리해 자연히 제외된다.
+    """
+    if not fallback:
+        return fallback
+
+    from runners._adapter_factory import build_adapter
+
+    adapter = build_adapter(
+        strategy_name, broker=broker, db_manager=db_manager, config=config
+    )
+    base_filter = getattr(adapter, "base_filter", None) if adapter is not None else None
+    if base_filter is None:
+        # 어댑터 미존재/필터 미지원 → 기존 동작 유지
+        return fallback
+
+    # code → {market_cap, trading_value} 조회 (주입 또는 quant 스냅샷)
+    if universe_lookup is None:
+        universe_lookup = {}
+        try:
+            from db.quant_daily_reader import QuantDailyReader
+            from utils.korean_time import now_kst
+            sd = scan_date or now_kst().date()
+            for it in QuantDailyReader().get_universe_snapshot(sd):
+                universe_lookup[str(it["stock_code"])] = {
+                    "market_cap": it.get("market_cap", 0),
+                    "trading_value": it.get("trading_value", 0),
+                }
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                f"[E6] 폴백 base_filter용 유니버스 스냅샷 조회 실패 → 필터 미적용: {e}"
+            )
+            return fallback
+
+    # CandidateStock → base_filter용 dict (market_cap/trading_value 보강)
+    dict_universe = []
+    by_code = {}
+    for c in fallback:
+        info = universe_lookup.get(c.code, {})
+        u = {
+            "code": c.code,
+            "name": getattr(c, "name", c.code),
+            "market": getattr(c, "market", "KRX"),
+            "market_cap": info.get("market_cap", 0),
+            "trading_value": info.get("trading_value", 0),
+        }
+        dict_universe.append(u)
+        by_code[c.code] = c
+
+    passed_codes = {u["code"] for u in base_filter(dict_universe)}
+    return [by_code[code] for code in passed_codes if code in by_code]
 
 
 async def main() -> None:

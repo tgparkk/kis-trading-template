@@ -15,7 +15,7 @@
   2. 동적 산출값 -2.99% → 적용값 -3.0% (하한 발동 경계)
   3. 동적 산출값 -3.0% → 적용값 -3.0% (경계 — 발동 안 함)
   4. 동적 산출값 -5.0% → 적용값 -5.0% (하한 미발동, 그대로 유지)
-  5. Signal 경로(2순위)에서 산출된 좁은 손절도 하한 적용
+  5. config 경로(3순위)에서 산출된 좁은 손절도 하한 적용
 """
 import asyncio
 import sys
@@ -124,25 +124,31 @@ class TestStopLossFloor:
         _run_virtual_buy(engine, stock_loss_rate=0.05, target_rate=0.10)
         assert captured['stop_loss_rate'] == pytest.approx(0.05)
 
-    def test_signal_path_narrow_stop_floored(self):
-        """Signal.stop_loss로 좁게 산출돼도 하한 적용 (2순위 경로 검증)."""
+    def test_config_path_narrow_stop_floored(self):
+        """전략 config stop_loss_ratio=0.02(3% 미만)이면 하한 적용 (3순위 경로 검증).
+
+        옵션α(2026-06-25 Task 5(D)): 2순위(Signal 역산) 제거 후 FLOOR 커버리지 보존.
+        호출자가 rate를 명시하지 않고 signal도 None일 때 3순위(전략 config)가 stop_loss_ratio=0.02를
+        공급 → STOP_LOSS_FLOOR 0.03으로 clamp되어야 한다.
+        """
         engine, captured = _build_engine_with_mocks()
 
-        # Signal: target_price=10300 (3%), stop_loss=9805 (-1.95%)
-        signal = MagicMock()
-        signal.target_price = 10300.0
-        signal.stop_loss = 9805.0  # buy_price 10000 대비 -1.95%
+        # 전략 config: take_profit_ratio=0.05, stop_loss_ratio=0.02 (3% 미만)
+        strategy = Mock()
+        strategy.name = "test_strategy"
+        strategy.config = {"risk_management": {"take_profit_ratio": 0.05, "stop_loss_ratio": 0.02}}
+        engine.strategy = strategy
 
-        # 호출자는 명시값을 안 줘서 2순위(Signal) → 비율 변환 → 하한 적용
+        # 호출자 명시값 없음, signal=None → 3순위(config 0.02) → FLOOR 0.03으로 clamp
         _run_virtual_buy(
             engine,
             stock_loss_rate=None,
             target_rate=None,
             buy_price=10000.0,
-            signal=signal,
+            signal=None,
         )
         assert captured['stop_loss_rate'] == pytest.approx(0.03), \
-            f"Signal 경로 하한 미적용: 환산 -1.95% → {captured['stop_loss_rate']*100:.2f}%"
+            f"config 경로 하한 미적용: 0.02 입력 → {captured['stop_loss_rate']*100:.2f}%"
 
     def test_trading_stock_attribute_floored(self):
         """trading_stock.stop_loss_rate에도 하한 적용된 값이 기록되는지 (DB 일관성)."""
