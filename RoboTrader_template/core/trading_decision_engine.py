@@ -487,7 +487,7 @@ class TradingDecisionEngine:
 
         익절/손절률 우선순위 (높을수록 먼저 적용):
             1순위: 호출자가 명시적으로 전달한 target_profit_rate / stop_loss_rate
-            2순위: Signal.target_price / Signal.stop_loss (절대가 → 매수가 대비 비율 변환)
+            (2순위 Signal 절대가 역산은 2026-06-25 Task 5(D) 옵션α로 제거 — 백테스트 정합)
             3순위: 전략 config.yaml의 risk_management.take_profit_ratio / stop_loss_ratio
             4순위: 시스템 기본값 — trading_config.json risk_management 우선,
                    없으면 constants.py DEFAULT_TARGET_PROFIT_RATE / DEFAULT_STOP_LOSS_RATE
@@ -533,18 +533,13 @@ class TradingDecisionEngine:
             # ----------------------------------------------------------------
             # [1순위] 호출자 명시 값은 파라미터로 이미 수신됨 (target_profit_rate, stop_loss_rate)
 
-            # [2순위] Signal의 target_price / stop_loss (절대가 → 비율 변환)
-            # ★갭업 체결 방어: signal.target_price는 전일 확정종가 기준(전일종가×1.10 등)
-            #   이라, 갭업 체결로 buy_price > signal.target_price면 역산 tp가 음수가 된다.
-            #   음수 tp는 position_monitor가 "profit_rate >= 음수" 를 즉시 만족시켜 매수
-            #   직후 익절 청산을 유발한다(089970 2026-06-12). 양수일 때만 채택하고,
-            #   음수/0이면 None 유지 → 3순위(전략 config)·4순위(default)로 자연 낙하.
-            if target_profit_rate is None and signal and signal.target_price and buy_price > 0:
-                _tp = (signal.target_price - buy_price) / buy_price
-                if _tp > 0:
-                    target_profit_rate = _tp
-            if stop_loss_rate is None and signal and signal.stop_loss and buy_price > 0:
-                stop_loss_rate = (buy_price - signal.stop_loss) / buy_price
+            # [2순위 제거] Signal의 target_price / stop_loss(절대가) 역산은 제거됨
+            #   (2026-06-25 Task 5(D) 옵션α, docs/.../2026-06-25-D-signal-rate-findings.md).
+            #   역산 tp/sl = config% + 체결시점 갭(gap_factor)이라 백테스트(진입가×(1±config%))와
+            #   상시 괴리되고, 갭업 시 tp 음수/sl 과소(FLOOR binding) 왜곡을 유발했다.
+            #   8전략 모두 Signal 절대가를 `price×(1±config%)`로 설정 → config%와 동일 정보를
+            #   절대가로 포장한 것뿐이고, 이 역산이 유일 사용처라 제거 side-effect 없음.
+            #   이제 tp/sl은 항상 1순위(호출자) → 3순위(config%) → 4순위(default)로 결정된다.
 
             # [3순위] 전략 config.yaml의 risk_management 섹션
             if (target_profit_rate is None or stop_loss_rate is None) and self.strategy:

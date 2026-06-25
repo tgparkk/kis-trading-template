@@ -65,8 +65,12 @@ def _make_trading_stock():
 
 
 def test_gap_up_signal_does_not_set_negative_tp_falls_back_to_config():
-    """갭업 체결(signal.target_price < buy_price)이면 음수 tp 대신 전략 config tp(양수)로 fallback."""
-    # 전략 config의 take_profit_ratio = 10%
+    """갭업 체결이어도 tp/sl은 항상 전략 config%(진입가 기준)로 결정된다.
+
+    옵션α(2026-06-25 Task 5(D)): Signal.target_price/stop_loss 역산(2순위)을 제거.
+    Signal 절대가가 무엇이든 tp/sl은 3순위(전략 config%)로 결정 → 백테스트 정합.
+    """
+    # 전략 config의 take_profit_ratio = 10%, stop_loss_ratio = 8%
     strategy = Mock()
     strategy.name = "book_envelope_200d"
     strategy.config = {"risk_management": {"take_profit_ratio": 0.10, "stop_loss_ratio": 0.08}}
@@ -74,7 +78,7 @@ def test_gap_up_signal_does_not_set_negative_tp_falls_back_to_config():
     engine = _make_engine(strategy=strategy)
     stock = _make_trading_stock()
 
-    # 089970 재현 수치: target_price 93,610 < buy_price 95,400 (갭업)
+    # 089970 재현 수치: target_price 93,610 < buy_price 95,400 (갭업) — 역산 시 tp 음수였던 케이스
     signal = _make_signal(target_price=93_610, stop_loss=87_900)
     buy_price = 95_400
 
@@ -90,41 +94,102 @@ def test_gap_up_signal_does_not_set_negative_tp_falls_back_to_config():
     )
 
     assert result is True
-    # 핵심: 음수가 아니라 전략 config tp(0.10)로 fallback 되어야 함
-    assert stock.target_profit_rate is not None
-    assert stock.target_profit_rate > 0, (
-        f"갭업 체결 시 음수 tp가 채택됨: {stock.target_profit_rate}"
-    )
+    # 핵심: Signal 절대가 무관, 전략 config%로 결정
     assert stock.target_profit_rate == pytest.approx(0.10)
+    assert stock.stop_loss_rate == pytest.approx(0.08)
 
 
-def test_normal_signal_positive_tp_is_adopted():
-    """정상 케이스: signal.target_price > buy_price이면 역산 양수 tp가 그대로 채택됨(회귀 방지)."""
+def test_signal_absolute_price_is_ignored_uses_config():
+    """Signal.target_price/stop_loss(절대가)가 설정돼 있어도 무시되고 config%가 사용된다(옵션α).
+
+    갭업 5% 체결: signal.target_price = ref_close*1.10, buy_price = ref_close*1.05.
+    역산(구 2순위)이면 tp ≈ +4.76%, sl ≈ +3.81%로 config(10%/8%)와 달라졌을 것.
+    제거 후에는 항상 config tp=0.10 / sl=0.08 (진입가 기준)이어야 한다.
+    """
     strategy = Mock()
-    strategy.name = "book_envelope_200d"
+    strategy.name = "rs_leader"
     strategy.config = {"risk_management": {"take_profit_ratio": 0.10, "stop_loss_ratio": 0.08}}
 
     engine = _make_engine(strategy=strategy)
     stock = _make_trading_stock()
 
-    # 정상: target 110,000 > buy 100,000 → tp = +10%
-    signal = _make_signal(target_price=110_000, stop_loss=92_000)
-    buy_price = 100_000
+    ref_close = 100_000
+    signal = _make_signal(target_price=ref_close * 1.10, stop_loss=ref_close * 0.92)
+    buy_price = ref_close * 1.05  # 갭업 5%
 
     result = asyncio.new_event_loop().run_until_complete(
         engine.execute_virtual_buy(
             trading_stock=stock,
             combined_data=None,
-            buy_reason="test normal",
+            buy_reason="test gap-up ignore signal",
             buy_price=buy_price,
             signal=signal,
-            strategy_name="book_envelope_200d",
+            strategy_name="rs_leader",
         )
     )
 
     assert result is True
-    # Signal 역산 tp(+10%)가 채택되어야 함 (config와 우연히 같지만 역산 경로 검증)
     assert stock.target_profit_rate == pytest.approx(0.10)
+    assert stock.stop_loss_rate == pytest.approx(0.08)
+
+
+def test_caller_explicit_rate_takes_priority_over_config():
+    """1순위(호출자 명시 rate)는 여전히 config보다 우선한다."""
+    strategy = Mock()
+    strategy.name = "rs_leader"
+    strategy.config = {"risk_management": {"take_profit_ratio": 0.10, "stop_loss_ratio": 0.08}}
+
+    engine = _make_engine(strategy=strategy)
+    stock = _make_trading_stock()
+
+    signal = _make_signal(target_price=110_000, stop_loss=92_000)
+
+    result = asyncio.new_event_loop().run_until_complete(
+        engine.execute_virtual_buy(
+            trading_stock=stock,
+            combined_data=None,
+            buy_reason="test explicit",
+            buy_price=100_000,
+            signal=signal,
+            target_profit_rate=0.20,
+            stop_loss_rate=0.05,
+            strategy_name="rs_leader",
+        )
+    )
+
+    assert result is True
+    # 호출자 명시값 우선 (config 0.10/0.08 아님)
+    assert stock.target_profit_rate == pytest.approx(0.20)
+    assert stock.stop_loss_rate == pytest.approx(0.05)
+
+
+def test_config_sl_below_floor_is_clamped_to_3pct():
+    """config sl < 3%이면 STOP_LOSS_FLOOR(0.03)로 clamp된다(역산 제거 후에도 유지)."""
+    strategy = Mock()
+    strategy.name = "book_pullback_ma5_like"
+    # config sl = 2% < 3% floor
+    strategy.config = {"risk_management": {"take_profit_ratio": 0.15, "stop_loss_ratio": 0.02}}
+
+    engine = _make_engine(strategy=strategy)
+    stock = _make_trading_stock()
+
+    signal = _make_signal(target_price=115_000, stop_loss=98_000)
+
+    result = asyncio.new_event_loop().run_until_complete(
+        engine.execute_virtual_buy(
+            trading_stock=stock,
+            combined_data=None,
+            buy_reason="test floor",
+            buy_price=100_000,
+            signal=signal,
+            strategy_name="book_pullback_ma5_like",
+        )
+    )
+
+    assert result is True
+    assert stock.target_profit_rate == pytest.approx(0.15)
+    # 2% → FLOOR 3%로 clamp
+    assert stock.stop_loss_rate == pytest.approx(0.03)
 
 
 # ---------------------------------------------------------------------------
