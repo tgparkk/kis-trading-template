@@ -8,12 +8,31 @@ virtual_trading_records 를 전략별로 리플레이해 일별 (cash, positions
 """
 from datetime import date
 
+import pandas as pd
 import pytest
 
-from scripts.paper_strategy_equity import replay_strategy_equity
+from scripts.paper_strategy_equity import replay_strategy_equity, _load_closes
 
 COMM = 0.00015
 TAX = 0.0018
+
+
+class _FakeReader:
+    """get_daily_prices(code, end_date, days) → 오름차순 DataFrame(date, close).
+
+    closes_by_code: {code: {date: close}}. 없는 종목은 빈 DataFrame.
+    """
+
+    def __init__(self, closes_by_code):
+        self._data = closes_by_code
+
+    def get_daily_prices(self, stock_code, end_date=None, days=120):
+        series = self._data.get(str(stock_code))
+        if not series:
+            return pd.DataFrame()
+        rows = [{"date": pd.Timestamp(d), "close": float(c)} for d, c in series.items()]
+        df = pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
+        return df
 
 
 def _rec(d, action, code, qty, price, strategy="s1"):
@@ -182,3 +201,67 @@ def test_no_trade_day_carries_state_forward():
     assert len(rows) == 3
     assert rows[1]["cash"] == rows[0]["cash"]
     assert rows[2]["equity"] == pytest.approx(rows[0]["equity"])
+
+
+# ── 평가 소스 선택 (T-close vs T-1 stale) ──────────────────────────────────
+# 버그(2026-06-25): 15:35 EOD 스냅샷이 보유를 robotrader_quant(외부 ETL) 종가로
+# 평가하는데, 15:35 시점엔 당일(T) 공식종가가 quant 에 아직 없어 전일(T-1) 종가로
+# 폴백 → equity 가 하루 밀려 기록됨. 봇은 step6 에서 당일종가를 자체 DB(kis_template)
+# 로 직접 수집하므로, _load_closes 는 kis_template 을 1순위로 써야 T-close 로 평가된다.
+
+D_T1 = date(2026, 6, 24)
+D_T = date(2026, 6, 25)
+
+
+def test_load_closes_prefers_primary_reader_for_today_close():
+    """1순위 리더(kis_template)에 당일종가가 있으면 그 값을 쓴다(2순위 stale 무시)."""
+    # quant(2순위)는 당일종가가 없고 전일(T-1)만 있는 stale 상태 재현
+    quant = _FakeReader({"A": {D_T1: 1000.0}})
+    # kis_template(1순위)은 step6 수집으로 당일종가 1200 보유
+    kis = _FakeReader({"A": {D_T1: 1000.0, D_T: 1200.0}})
+    closes = _load_closes(["A"], [D_T1, D_T], readers=[kis, quant])
+    assert closes[("A", D_T)] == pytest.approx(1200.0)  # T-close (stale 아님)
+    assert closes[("A", D_T1)] == pytest.approx(1000.0)
+
+
+def test_load_closes_stale_when_only_fallback_has_t1_close():
+    """1순위에 당일종가가 없고 2순위(quant)도 T-1 까지만 있으면 (A,T) 키는 없다.
+
+    이 경우 replay 의 보유평가는 last_close(=T-1) 로 폴백 → stale equity (현 버그 재현).
+    """
+    quant = _FakeReader({"A": {D_T1: 1000.0}})  # T-1 까지만
+    kis = _FakeReader({"A": {D_T1: 1000.0}})     # 아직 step6 미수집 → T 없음
+    closes = _load_closes(["A"], [D_T1, D_T], readers=[kis, quant])
+    assert (("A", D_T) not in closes)  # 당일종가 소스에 없음
+
+    # replay 에 이 closes 를 주면 보유평가가 T-1(1000) 로 stale 평가됨
+    rows = replay_strategy_equity(
+        records=[_rec(D_T1, "BUY", "A", 10, 1000)],
+        initial_capital=10_000_000,
+        dates=[D_T1, D_T],
+        closes=closes,
+    )
+    assert rows[-1]["position_value"] == pytest.approx(10 * 1000.0)  # stale = T-1
+
+
+def test_load_closes_falls_back_to_secondary_when_primary_missing_code():
+    """1순위에 종목이 아예 없으면 2순위(quant) 종가로 폴백한다."""
+    quant = _FakeReader({"B": {D_T1: 500.0, D_T: 550.0}})
+    kis = _FakeReader({})  # B 없음
+    closes = _load_closes(["B"], [D_T1, D_T], readers=[kis, quant])
+    assert closes[("B", D_T)] == pytest.approx(550.0)
+
+
+def test_load_closes_resnapshot_uses_t_close_after_collection():
+    """step6(당일종가 수집) 후 재평가하면 보유가 T-close 로 평가됨(버그 수정 검증)."""
+    # 수집 후: kis_template(1순위)에 당일종가 1200 존재
+    quant = _FakeReader({"A": {D_T1: 1000.0}})
+    kis = _FakeReader({"A": {D_T1: 1000.0, D_T: 1200.0}})
+    closes = _load_closes(["A"], [D_T1, D_T], readers=[kis, quant])
+    rows = replay_strategy_equity(
+        records=[_rec(D_T1, "BUY", "A", 10, 1000)],
+        initial_capital=10_000_000,
+        dates=[D_T1, D_T],
+        closes=closes,
+    )
+    assert rows[-1]["position_value"] == pytest.approx(10 * 1200.0)  # T-close

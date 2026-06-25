@@ -208,6 +208,15 @@ class SystemMonitor:
                 except Exception as dc_err:
                     self.logger.error(f"EOD 데이터 수집 오류: {dc_err}")
 
+                # EOD equity 재스냅샷: step6 가 당일(T) 공식종가를 kis_template 으로
+                # 수집한 뒤 다시 평가해 15:35 1차 스냅샷의 stale 보유평가(당일종가 미적재
+                # 시 전일종가 폴백, 2026-06-25 버그)를 T-close 로 덮어쓴다. 멱등(전구간
+                # UPSERT)이라 재호출이 최종 권위가 된다. 예외는 EOD 흐름을 막지 않는다.
+                try:
+                    self._run_equity_snapshot()
+                except Exception as eq2_err:
+                    self.logger.error(f"EOD equity 재스냅샷 적재 오류: {eq2_err}")
+
     def _run_equity_snapshot(self) -> None:
         """EOD 전략별 일별 equity 를 paper_strategy_equity 에 적재 (하루 1회).
 
