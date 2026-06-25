@@ -534,8 +534,15 @@ class TradingDecisionEngine:
             # [1순위] 호출자 명시 값은 파라미터로 이미 수신됨 (target_profit_rate, stop_loss_rate)
 
             # [2순위] Signal의 target_price / stop_loss (절대가 → 비율 변환)
+            # ★갭업 체결 방어: signal.target_price는 전일 확정종가 기준(전일종가×1.10 등)
+            #   이라, 갭업 체결로 buy_price > signal.target_price면 역산 tp가 음수가 된다.
+            #   음수 tp는 position_monitor가 "profit_rate >= 음수" 를 즉시 만족시켜 매수
+            #   직후 익절 청산을 유발한다(089970 2026-06-12). 양수일 때만 채택하고,
+            #   음수/0이면 None 유지 → 3순위(전략 config)·4순위(default)로 자연 낙하.
             if target_profit_rate is None and signal and signal.target_price and buy_price > 0:
-                target_profit_rate = (signal.target_price - buy_price) / buy_price
+                _tp = (signal.target_price - buy_price) / buy_price
+                if _tp > 0:
+                    target_profit_rate = _tp
             if stop_loss_rate is None and signal and signal.stop_loss and buy_price > 0:
                 stop_loss_rate = (buy_price - signal.stop_loss) / buy_price
 

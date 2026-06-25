@@ -304,7 +304,11 @@ class PositionMonitor:
                             return
 
                 # 목표 익절률 체크
-                if hasattr(trading_stock, 'target_profit_rate') and trading_stock.target_profit_rate:
+                # ★음수 tp 방어: 갭업 체결 등으로 target_profit_rate가 음수로 산정되면
+                #   "profit_rate >= 음수" 가 매수 직후 즉시 참이 되어 조기 청산된다
+                #   (089970 2026-06-12). 양수일 때만 익절 판정에 진입한다.
+                if hasattr(trading_stock, 'target_profit_rate') and trading_stock.target_profit_rate \
+                        and trading_stock.target_profit_rate > 0:
                     if profit_rate >= trading_stock.target_profit_rate:
                         reason = (
                             f"목표 익절 도달 ({profit_rate:.2%} >= "
