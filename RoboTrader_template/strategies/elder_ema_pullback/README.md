@@ -12,7 +12,7 @@ Elder 삼중창 (Variant A) — 추세추종.
 ## 진입 (`rule_triple_screen_ema_pullback`)
 1. **Screen1** = EMA65 상승 (5바 전 대비 기울기 > 0)
 2. **Screen2** = `low[-1] ≤ EMA13×1.02` AND `close[-1] > EMA13` (눌림 회복)
-3. **Screen3** = 전일고가 +1틱 매수스톱 (metadata로 전달 — 실전 체결은 시장가 기준이라 백테스트 stop-fill과 차이)
+3. **Screen3** = 전일고가 +1틱 매수스톱 (`entry_min_price`로 강제 — 현재가가 매수스톱 미만이면 진입 스킵 = 백테스트 `entry_mechanism="stop"` 돌파 진입과 정합, 2026-06-25)
 
 ## 청산
 sl **-8%** / tp **+30%** / 수익 중 EMA13 하향이탈 trailing / EMA65 추세반전(5바 전 대비 하락) 청산 / max_hold **100일**.

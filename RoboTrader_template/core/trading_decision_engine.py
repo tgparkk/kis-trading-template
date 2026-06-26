@@ -542,17 +542,32 @@ class TradingDecisionEngine:
             #   이제 tp/sl은 항상 1순위(호출자) → 3순위(config%) → 4순위(default)로 결정된다.
 
             # [3순위] 전략 config.yaml의 risk_management 섹션
-            if (target_profit_rate is None or stop_loss_rate is None) and self.strategy:
-                try:
-                    cfg = getattr(self.strategy, 'config', None)
-                    if isinstance(cfg, dict):
-                        rm = cfg.get('risk_management', {})
-                        if target_profit_rate is None and rm.get('take_profit_ratio'):
-                            target_profit_rate = float(rm['take_profit_ratio'])
-                        if stop_loss_rate is None and rm.get('stop_loss_ratio'):
-                            stop_loss_rate = float(rm['stop_loss_ratio'])
-                except Exception:
-                    pass  # 전략 config 조회 실패 시 4순위로 fallback
+            #   소유 전략 해소: strategy_name(폴더키)으로 self.strategies_by_key를
+            #   우선 조회(라인 605 owner 해소와 동일 원칙). self.strategy 고정 참조는
+            #   멀티전략 모드에서 소유 전략이 아닐 수 있어 타 전략 config(예: Elder)로
+            #   tp/sl을 오염시킨다. 키는 config.yaml의 `_pct`를 우선, 없으면 레거시
+            #   `_ratio`로 fallback(8전략 config.yaml은 전부 `_pct`만 보유).
+            if target_profit_rate is None or stop_loss_rate is None:
+                owner_strategy = (
+                    self.strategies_by_key.get(strategy_name) if strategy_name else None
+                ) or self.strategy
+                if owner_strategy is not None:
+                    try:
+                        cfg = getattr(owner_strategy, 'config', None)
+                        if isinstance(cfg, dict):
+                            rm = cfg.get('risk_management', {})
+                            tp_cfg = rm.get('take_profit_pct')
+                            if tp_cfg is None:
+                                tp_cfg = rm.get('take_profit_ratio')
+                            sl_cfg = rm.get('stop_loss_pct')
+                            if sl_cfg is None:
+                                sl_cfg = rm.get('stop_loss_ratio')
+                            if target_profit_rate is None and tp_cfg is not None:
+                                target_profit_rate = float(tp_cfg)
+                            if stop_loss_rate is None and sl_cfg is not None:
+                                stop_loss_rate = float(sl_cfg)
+                    except Exception:
+                        pass  # 전략 config 조회 실패 시 4순위로 fallback
 
             # [4순위] 시스템 기본값: trading_config.json risk_management 우선,
             #         없으면 constants.py DEFAULT_* (클래스 상수 DEFAULT_TAKE_PROFIT / DEFAULT_STOP_LOSS)
