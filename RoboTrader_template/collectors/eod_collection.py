@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from collectors.daily_collector import collect_daily, reconcile_daily  # noqa: E402
 from collectors.minute_collector import collect_minute, reconcile_minute  # noqa: E402
-from collectors.index_collector import collect_index  # noqa: E402
+from collectors.index_collector import collect_index, reconcile_index  # noqa: E402
 from config.constants import KIS_DATA_SOURCE  # noqa: E402
 from utils.logger import setup_logger  # noqa: E402
 
@@ -39,5 +39,6 @@ def run_data_collection(trade_date: str = None) -> dict:
         out["reconcile"] = {
             "daily": _safe(reconcile_daily, dash),
             "minute": _safe(reconcile_minute, compact),
+            "index": _safe(reconcile_index, dash),
         }
     return out
