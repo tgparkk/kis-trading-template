@@ -93,6 +93,10 @@ class SystemMonitor:
         # 전략의 get_target_stocks()를 통한 후보 종목 자동 등록
         await self._register_strategy_target_stocks()
 
+        # 장전 regime 지수 자동 갱신 (EOD 15:48 FDR 일시실패로 SSOT 동결 보정,
+        # 하루 1회·성공 시에만 가드 설정 → 실패 시 다음 루프 재시도, 2026-06-26)
+        await self._run_premarket_regime_index_refresh()
+
         # 장전 브리핑 (하루 1회)
         await self._run_premarket_briefing()
 
@@ -253,13 +257,42 @@ class SystemMonitor:
                 f"paper_trading_state {result.get('eod_balance')}"
             )
 
-    def _run_regime_index_refresh(self) -> None:
+    async def _run_premarket_regime_index_refresh(self) -> None:
+        """장전 regime 지수(KOSPI/KOSDAQ) 자동 갱신 (하루 1회, 성공 시에만 가드).
+
+        EOD 15:48 _run_regime_index_refresh 가 FDR 일시실패로 {KOSPI:0,KOSDAQ:0}
+        을 반환하면 게이트 SSOT(daily_prices)가 동결(stale)돼 exclude_bear 전략을
+        잘못 게이팅한다(2026-06-26 진단). 장전에 한 번 더 갱신해 보정한다.
+        성공(값>0) 시에만 가드를 설정해, 실패 시 다음 장전 루프에서 자동 재시도한다.
+        예외는 게이트 외 정상흐름을 막지 않도록 흡수한다.
+        """
+        try:
+            today = now_kst().date()
+            if getattr(self, '_regime_index_refreshed_date', None) == today:
+                return
+            res = await asyncio.to_thread(self._run_regime_index_refresh)
+            if isinstance(res, dict) and res and min(res.values()) > 0:
+                self._regime_index_refreshed_date = today
+                self.logger.info(f"장전 regime 지수 갱신 완료: {res}")
+            else:
+                # 가드 미설정 → 다음 장전 루프에서 재시도
+                self.logger.warning(
+                    f"장전 regime 지수 갱신 실패/0행 — 가드 미설정, 다음 루프 재시도: {res}"
+                )
+        except Exception as e:
+            self.logger.warning(f"장전 regime 지수 갱신 오류 (무시): {e}")
+
+    def _run_regime_index_refresh(self) -> dict:
         """regime 게이트 SSOT(daily_prices KOSPI/KOSDAQ)를 FDR로 최신화(멱등).
 
         게이트는 robotrader.daily_prices 의 KOSPI/KOSDAQ 일봉을 읽는데, 이를 채우던
         scripts/backfill_kospi_index.py 가 수동·미스케줄이라 동결되면 게이트가
         stale/fail-open 된다(2026-06-24 진단). 매 EOD FDR 로 자동 갱신해 방지한다.
         예외는 EOD 흐름을 막지 않도록 흡수한다.
+
+        Returns:
+            refresh_regime_indices 결과 dict({"KOSPI": n, "KOSDAQ": n}). 예외 시 빈 dict.
+            (EOD 경로는 반환값을 안 쓰므로 호환 유지; 장전 가드 판단용으로 사용.)
         """
         try:
             from core.regime.index_refresh import refresh_regime_indices
@@ -268,9 +301,15 @@ class SystemMonitor:
                 from db.repositories.price import PriceRepository
                 repo = PriceRepository()
             res = refresh_regime_indices(repo)
-            self.logger.info(f"EOD regime 지수 갱신 완료: {res}")
+            # 어떤 지수든 0행이면 stale 우려 → WARNING. 전부 >0 이면 INFO.
+            if isinstance(res, dict) and res and min(res.values()) > 0:
+                self.logger.info(f"regime 지수 갱신 완료: {res}")
+            else:
+                self.logger.warning(f"regime 지수 갱신 결과 0행 — stale 우려: {res}")
+            return res
         except Exception as e:
             self.logger.warning(f"regime 지수 갱신 오류 (무시): {e}")
+            return {}
 
     def _resave_paper_trading_state(self) -> None:
         """가상모드면 현재 virtual_balance를 paper_trading_state에 재저장.

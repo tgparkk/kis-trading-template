@@ -64,16 +64,87 @@ def test_refresh_writes_both_indices_normalized():
     assert "date" in df0.columns and "close" in df0.columns
 
 
-def test_one_index_failure_isolated():
-    from core.regime.index_refresh import refresh_regime_indices
+def test_one_index_failure_isolated(monkeypatch):
+    import core.regime.index_refresh as ir
+    monkeypatch.setattr(ir.time, "sleep", lambda *a, **k: None)  # 재시도 대기 제거(고속)
     repo = Mock()
     repo.save_daily_prices_batch = Mock(return_value=True)
     fdr = _FakeFDR({"KS11": _fdr_df(), "KQ11": RuntimeError("fdr down")})
 
-    res = refresh_regime_indices(repo, start="2026-06-15", fdr=fdr)
+    res = ir.refresh_regime_indices(repo, start="2026-06-15", fdr=fdr)
 
     assert res["KOSPI"] == 2   # KOSPI 정상
     assert res["KOSDAQ"] == 0  # KOSDAQ 실패해도 예외 전파 안 함
     # KOSPI 는 그래도 기록됨
     codes = [c.args[0] for c in repo.save_daily_prices_batch.call_args_list]
     assert "KOSPI" in codes
+
+
+class _FlakyFDR:
+    """티커별로 초기 N회는 실패(예외) 후 성공 df 반환 — 일시실패 재시도 검증용."""
+
+    def __init__(self, fail_then_succeed):
+        self.fail_then_succeed = fail_then_succeed  # ticker -> 초기 실패 횟수
+        self.calls = {}
+
+    def DataReader(self, ticker, start=None):
+        self.calls[ticker] = self.calls.get(ticker, 0) + 1
+        if self.calls[ticker] <= self.fail_then_succeed.get(ticker, 0):
+            raise RuntimeError("transient fdr fail")
+        return _fdr_df()
+
+
+class _EmptyThenFullFDR:
+    """티커별 1회차는 빈 df, 이후 정상 df — 빈 df 도 재시도 대상임을 검증."""
+
+    def __init__(self):
+        self.calls = {}
+
+    def DataReader(self, ticker, start=None):
+        self.calls[ticker] = self.calls.get(ticker, 0) + 1
+        if self.calls[ticker] == 1:
+            return _fdr_df().iloc[0:0]   # 빈 df
+        return _fdr_df()
+
+
+def test_refresh_retries_on_transient_failure(monkeypatch):
+    """FDR 1회 실패 후 성공이면 재시도해 행을 받아온다(EOD 15:48 일시실패 보정)."""
+    import core.regime.index_refresh as ir
+    monkeypatch.setattr(ir.time, "sleep", lambda *a, **k: None)
+    repo = Mock()
+    repo.save_daily_prices_batch = Mock(return_value=True)
+    fdr = _FlakyFDR({"KS11": 1, "KQ11": 1})
+
+    res = ir.refresh_regime_indices(repo, start="2026-06-15", fdr=fdr)
+
+    assert res["KOSPI"] == 2 and res["KOSDAQ"] == 2
+    assert fdr.calls["KS11"] == 2 and fdr.calls["KQ11"] == 2  # 1실패+1성공
+
+
+def test_refresh_retries_on_empty_df(monkeypatch):
+    """빈 df 도 재시도 대상 — 1회차 빈 df, 2회차 정상 df 면 성공."""
+    import core.regime.index_refresh as ir
+    monkeypatch.setattr(ir.time, "sleep", lambda *a, **k: None)
+    repo = Mock()
+    repo.save_daily_prices_batch = Mock(return_value=True)
+    fdr = _EmptyThenFullFDR()
+
+    res = ir.refresh_regime_indices(repo, start="2026-06-15", fdr=fdr)
+
+    assert res["KOSPI"] == 2 and res["KOSDAQ"] == 2
+    assert fdr.calls["KS11"] == 2 and fdr.calls["KQ11"] == 2
+
+
+def test_refresh_gives_up_after_three_failures(monkeypatch):
+    """3회 모두 실패하면 현행처럼 0(예외 격리)·저장 미호출."""
+    import core.regime.index_refresh as ir
+    monkeypatch.setattr(ir.time, "sleep", lambda *a, **k: None)
+    repo = Mock()
+    repo.save_daily_prices_batch = Mock(return_value=True)
+    fdr = _FlakyFDR({"KS11": 3, "KQ11": 3})
+
+    res = ir.refresh_regime_indices(repo, start="2026-06-15", fdr=fdr)
+
+    assert res["KOSPI"] == 0 and res["KOSDAQ"] == 0
+    assert fdr.calls["KS11"] == 3 and fdr.calls["KQ11"] == 3  # 최대 3회
+    repo.save_daily_prices_batch.assert_not_called()
