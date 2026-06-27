@@ -571,18 +571,39 @@ class TradingDecisionEngine:
 
             # [4순위] 시스템 기본값: trading_config.json risk_management 우선,
             #         없으면 constants.py DEFAULT_* (클래스 상수 DEFAULT_TAKE_PROFIT / DEFAULT_STOP_LOSS)
+            tp_defaulted = False
+            sl_defaulted = False
             if target_profit_rate is None:
                 config_tp = getattr(
                     getattr(self.config, 'risk_management', None),
                     'take_profit_ratio', None
                 )
-                target_profit_rate = float(config_tp) if config_tp else self.DEFAULT_TAKE_PROFIT
+                if config_tp:
+                    target_profit_rate = float(config_tp)
+                else:
+                    target_profit_rate = self.DEFAULT_TAKE_PROFIT
+                    tp_defaulted = True
             if stop_loss_rate is None:
                 config_sl = getattr(
                     getattr(self.config, 'risk_management', None),
                     'stop_loss_ratio', None
                 )
-                stop_loss_rate = float(config_sl) if config_sl else self.DEFAULT_STOP_LOSS
+                if config_sl:
+                    stop_loss_rate = float(config_sl)
+                else:
+                    stop_loss_rate = self.DEFAULT_STOP_LOSS
+                    sl_defaulted = True
+
+            # [L2 관찰성] 동작은 불변(DEFAULT 그대로 적용)이되, 사일런트 디폴트를
+            #   WARNING으로 표면화한다. 1·3순위가 모두 미해소되어 글로벌 DEFAULT로
+            #   낙하했다는 것은 전략 config tp/sl 누락 신호일 수 있다(2026-06-27 L2).
+            if tp_defaulted or sl_defaulted:
+                owner_key = strategy_name or (self.strategy.name if self.strategy else "unknown")
+                self.logger.warning(
+                    f"config tp/sl 누락 → DEFAULT 적용 [{owner_key}/{trading_stock.stock_code}] "
+                    f"tp={target_profit_rate*100:.1f}% sl={stop_loss_rate*100:.1f}% "
+                    f"(tp_default={tp_defaulted}, sl_default={sl_defaulted})"
+                )
 
             # ----------------------------------------------------------------
             # [옵션 D-A] 손절 하한 -3.0% 강제 적용 (사장님 결재 2026-05-14)

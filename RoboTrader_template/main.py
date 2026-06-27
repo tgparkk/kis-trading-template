@@ -912,7 +912,9 @@ def apply_volume_fallback_with_filter(
     폴백 풀은 원래 스크리너 base_filter를 거치지 않아 daytrading 유니버스를 위반했다
     (감사 2026-06-25 E). 여기서 수용 전략의 어댑터를 얻어 base_filter로 거른다.
 
-    - 어댑터가 없거나(미지원 전략) base_filter가 없으면 폴백 풀을 그대로 반환(보수적).
+    - 어댑터가 없거나(미지원 전략) base_filter가 없으면, 또는 유니버스 스냅샷 조회가
+      실패하면 컨셉 필터를 적용할 수 없으므로 빈 풀을 반환한다(fail-closed, 2026-06-27 M1).
+      무필터 폴백을 반환하면 대형주 거래량 폴백이 소형/중소형 컨셉 전략에 누수된다.
     - CandidateStock은 market_cap/trading_value를 들지 않으므로 quant 유니버스 스냅샷
       (스크리너와 동일 SSOT)에서 code→{market_cap, trading_value}를 조회해 dict로 변환 후
       base_filter에 통과시킨다. 스냅샷에 없는 종목은 base_filter가 trading_value 미상(0)을
@@ -928,8 +930,13 @@ def apply_volume_fallback_with_filter(
     )
     base_filter = getattr(adapter, "base_filter", None) if adapter is not None else None
     if base_filter is None:
-        # 어댑터 미존재/필터 미지원 → 기존 동작 유지
-        return fallback
+        # 어댑터 미존재/필터 미지원 → 컨셉 필터를 못 거므로 폴백 종목을 넣지 않는다
+        # (fail-closed). 무필터 폴백을 반환하면 대형주 거래량 폴백이 소형/중소형
+        # 컨셉 전략(daytrading<5천억·ma5/ma20≤3조)에 누수된다(2026-06-27 M1).
+        logging.getLogger(__name__).warning(
+            f"[E6] {strategy_name} base_filter 없음 → 폴백 풀 fail-closed(빈 풀)"
+        )
+        return []
 
     # code → {market_cap, trading_value} 조회 (주입 또는 quant 스냅샷)
     if universe_lookup is None:
@@ -944,10 +951,12 @@ def apply_volume_fallback_with_filter(
                     "trading_value": it.get("trading_value", 0),
                 }
         except Exception as e:
+            # 스냅샷 조회 실패 → base_filter를 적용할 수 없으므로 폴백 종목을 넣지
+            # 않는다(fail-closed). 무필터 폴백 반환은 유니버스 위반 누수를 만든다(M1).
             logging.getLogger(__name__).warning(
-                f"[E6] 폴백 base_filter용 유니버스 스냅샷 조회 실패 → 필터 미적용: {e}"
+                f"[E6] 폴백 base_filter용 유니버스 스냅샷 조회 실패 → 폴백 풀 fail-closed(빈 풀): {e}"
             )
-            return fallback
+            return []
 
     # CandidateStock → base_filter용 dict (market_cap/trading_value 보강)
     dict_universe = []

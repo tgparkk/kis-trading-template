@@ -151,3 +151,42 @@ def test_config_pct_below_floor_clamped():
     assert result is True
     assert stock.target_profit_rate == pytest.approx(0.15)
     assert stock.stop_loss_rate == pytest.approx(0.03)
+
+
+# ---------------------------------------------------------------------------
+# L2 (관찰성): config tp/sl 누락 → 4순위 DEFAULT 폴백 발동 시 WARNING 로그
+#   동작은 불변(여전히 0.15/0.10 적용). 사일런트 디폴트를 로그로 표면화만 한다.
+# ---------------------------------------------------------------------------
+
+def _default_warning_logged(engine) -> bool:
+    """logger.warning 호출 중 tp/sl DEFAULT 폴백 경고가 있는지."""
+    for c in engine.logger.warning.call_args_list:
+        msg = c.args[0] if c.args else ""
+        if "DEFAULT" in str(msg) and ("tp" in str(msg) or "sl" in str(msg) or "손익절" in str(msg)):
+            return True
+    return False
+
+
+def test_default_fallback_emits_warning():
+    """config risk_management 누락 → DEFAULT 0.15/0.10 폴백 발동 시 WARNING 로그."""
+    engine = _make_engine(strategy=None, strategies_by_key={})
+
+    result, stock = _run(engine, "unknown_strategy")
+    assert result is True
+    # 동작 불변: 여전히 DEFAULT 적용
+    assert stock.target_profit_rate == pytest.approx(0.15)
+    assert stock.stop_loss_rate == pytest.approx(0.10)
+    # 관찰성: 사일런트 디폴트를 경고로 표면화
+    assert _default_warning_logged(engine), "DEFAULT 폴백 발동 시 WARNING 로그가 있어야 합니다."
+
+
+def test_config_present_emits_no_default_warning():
+    """config tp/sl 존재 → DEFAULT 미발동 → 경고 없음."""
+    strategy = _strategy("elder_ema_pullback",
+                         "take_profit_pct", 0.30, "stop_loss_pct", 0.08)
+    engine = _make_engine(strategy=strategy,
+                          strategies_by_key={"elder_ema_pullback": strategy})
+
+    result, stock = _run(engine, "elder_ema_pullback")
+    assert result is True
+    assert not _default_warning_logged(engine), "config 존재 시 DEFAULT 경고가 없어야 합니다."
