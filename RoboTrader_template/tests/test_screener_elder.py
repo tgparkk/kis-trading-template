@@ -50,8 +50,22 @@ def test_base_filter_market_cap_tier():
     kept = [u["code"] for u in a.base_filter(universe)]
     assert "A" in kept       # 대형 통과
     assert "B" not in kept   # 소형 제외
-    assert "C" in kept       # market_cap=0(미상) soft 통과
+    assert "C" not in kept   # market_cap=0(미상) → fail-closed 제외(컨셉 검증 불가)
     assert "D" not in kept   # trading_value 미달 제외
+
+
+def test_base_filter_min_cap_boundary_and_live_equivalence():
+    """채워진 시총엔 기존과 동일한 하한 컷(라이브 동등성). 경계값(정확히 min)은 통과."""
+    a = ElderEmaPullbackScreenerAdapter()
+    p = a.default_params()
+    tv = p["min_trading_value"] * 2
+    universe = [
+        {"code": "EQ", "name": "eq", "market_cap": p["min_market_cap"],      "trading_value": tv},  # 경계 통과
+        {"code": "LO", "name": "lo", "market_cap": p["min_market_cap"] - 1,  "trading_value": tv},  # 미달 제외
+        {"code": "HI", "name": "hi", "market_cap": p["min_market_cap"] + 1,  "trading_value": tv},  # 통과
+    ]
+    kept = [u["code"] for u in a.base_filter(universe)]
+    assert kept == ["EQ", "HI"]
 
 
 def test_match_triggers_on_uptrend_pullback():
@@ -63,16 +77,16 @@ def test_match_triggers_on_uptrend_pullback():
     assert "ema" in reason.lower() or "triple" in reason.lower()
 
 
-def test_base_filter_passes_when_market_cap_unknown():
-    """market_cap=0(미상)이어도 trading_value 충족 시 통과해야 한다 (시장 라벨 무관)."""
+def test_base_filter_excludes_when_market_cap_unknown():
+    """market_cap=0(미상)이면 시총 컨셉(대형) 검증 불가 → fail-closed 제외."""
     a = ElderEmaPullbackScreenerAdapter()
     universe = [
         {"code": "X", "name": "unknown", "market_cap": 0, "trading_value": 1e10},
         {"code": "Y", "name": "low_tv",  "market_cap": 0, "trading_value": 1e6},   # trading_value 미달
+        {"code": "Z", "name": "none",                     "trading_value": 1e10},  # 키 자체 결측
     ]
     kept = [u["code"] for u in a.base_filter(universe)]
-    assert "X" in kept       # market_cap=0 이어도 통과
-    assert "Y" not in kept   # trading_value 미달
+    assert kept == []        # 결측은 거래대금과 무관하게 전부 제외
 
 
 def test_match_none_on_downtrend():

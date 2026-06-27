@@ -27,6 +27,40 @@ class RuleScreenerBase(ScreenerBase):
             self._quant = QuantDailyReader()
         return self._quant
 
+    @staticmethod
+    def _passes_market_cap(
+        mcap: Optional[float],
+        *,
+        min_cap: Optional[float] = None,
+        max_cap: Optional[float] = None,
+        max_inclusive: bool = False,
+    ) -> bool:
+        """시총 가드 (fail-closed). 통과 시 True, 제외 시 False.
+
+        결측(None)·0·음수면 전략 컨셉(대형/중소형) 검증이 불가능하므로 **무조건 제외**.
+        라이브 경로는 ``COALESCE(market_cap,0)`` 로 결측이 0 으로 들어오므로 ``<=0`` 가
+        실제 결측을 잡는다(None 은 방어). 시총이 채워진 종목엔 하한/상한 컷만 적용해
+        기존(라이브) 동작을 그대로 보존한다.
+
+        Args:
+            mcap: 종목 시가총액(원). None/0/음수 = 결측 → 제외.
+            min_cap: 하한(이상). ``mcap < min_cap`` 이면 제외.
+            max_cap: 상한. ``max_inclusive=False``(기본)면 ``mcap >= max_cap`` 제외
+                ('미만' 컨셉, daytrading). True 면 ``mcap > max_cap`` 제외('이하' 컨셉,
+                ma5/ma20).
+        """
+        if mcap is None or mcap <= 0:
+            return False
+        if min_cap is not None and mcap < min_cap:
+            return False
+        if max_cap is not None:
+            if max_inclusive:
+                if mcap > max_cap:
+                    return False
+            elif mcap >= max_cap:
+                return False
+        return True
+
     @abstractmethod
     def base_filter(self, universe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """유니버스(dict 리스트)에서 전략 성격에 맞는 종목만 추린다."""

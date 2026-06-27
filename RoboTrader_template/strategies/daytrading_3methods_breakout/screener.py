@@ -26,12 +26,12 @@ class Daytrading3MethodsBreakoutScreenerAdapter(RuleScreenerBase):
         }
 
     def base_filter(self, universe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        # market_cap=0(미상)이면 상한 컷 건너뜀. 시장 라벨 게이트 없음.
+        # '중소형(5천억 미만)' 컨셉. 시총 결측(0/None)이면 검증 불가 → fail-closed 제외
+        # (상한형은 `0 >= max` 가 False 라 과거엔 결측이 조용히 통과했음). 시장 라벨 게이트 없음.
         p = self.default_params()
         out = []
         for u in universe:
-            mcap = u.get("market_cap", 0)
-            if mcap > 0 and mcap >= p["max_market_cap"]:
+            if not self._passes_market_cap(u.get("market_cap"), max_cap=p["max_market_cap"]):
                 continue
             if u.get("trading_value", 0) < p["min_trading_value"]:
                 continue

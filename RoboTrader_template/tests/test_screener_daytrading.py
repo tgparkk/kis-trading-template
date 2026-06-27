@@ -26,16 +26,19 @@ def test_match_triggers_on_breakout():
     assert "breakout" in verdict[1].lower()
 
 
-def test_base_filter_passes_when_market_cap_unknown():
-    """market_cap=0(미상)이어도 trading_value 충족 시 통과해야 한다 (시장 라벨 무관)."""
+def test_base_filter_excludes_when_market_cap_unknown():
+    """market_cap=0(미상)이면 시총 컨셉(중소형) 검증 불가 → fail-closed 제외.
+
+    상한형(>=)은 결측(0)이 `0 >= max` False 라 과거엔 조용히 통과했었음 — 회귀 방지.
+    """
     a = Daytrading3MethodsBreakoutScreenerAdapter()
     universe = [
         {"code": "X", "name": "unknown", "market_cap": 0, "trading_value": 1e9},
         {"code": "Y", "name": "low_tv",  "market_cap": 0, "trading_value": 1e5},  # trading_value 미달
+        {"code": "Z", "name": "none",                     "trading_value": 1e9},  # 키 결측
     ]
     kept = [u["code"] for u in a.base_filter(universe)]
-    assert "X" in kept
-    assert "Y" not in kept
+    assert kept == []
 
 
 def test_base_filter_smallcap_only():
@@ -47,6 +50,20 @@ def test_base_filter_smallcap_only():
     kept = [u["code"] for u in a.base_filter(universe)]
     assert "K" in kept
     assert "B" not in kept
+
+
+def test_base_filter_max_cap_exclusive_boundary_live_equivalence():
+    """채워진 시총엔 기존과 동일한 상한 컷('미만'=exclusive >=). 경계값(정확히 max)은 제외."""
+    a = Daytrading3MethodsBreakoutScreenerAdapter()
+    p = a.default_params()
+    tv = p["min_trading_value"] * 2
+    universe = [
+        {"code": "LO", "name": "lo", "market_cap": p["max_market_cap"] - 1, "trading_value": tv},  # 통과
+        {"code": "EQ", "name": "eq", "market_cap": p["max_market_cap"],     "trading_value": tv},  # 경계 제외(>=)
+        {"code": "HI", "name": "hi", "market_cap": p["max_market_cap"] + 1, "trading_value": tv},  # 제외
+    ]
+    kept = [u["code"] for u in a.base_filter(universe)]
+    assert kept == ["LO"]
 
 
 def test_default_high_window_matches_validated_live_rule():

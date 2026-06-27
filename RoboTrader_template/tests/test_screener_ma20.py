@@ -46,16 +46,19 @@ def test_match_triggers_on_pullback():
     assert "ma20" in reason.lower()
 
 
-def test_base_filter_passes_when_market_cap_unknown():
-    """market_cap=0(미상)이어도 trading_value 충족 시 통과해야 한다."""
+def test_base_filter_excludes_when_market_cap_unknown():
+    """market_cap=0(미상)이면 시총 컨셉(중소형) 검증 불가 → fail-closed 제외.
+
+    상한형(>)은 결측(0)이 `0 > max` False 라 과거엔 조용히 통과했었음 — 회귀 방지.
+    """
     a = BookPullbackMa20ScreenerAdapter()
     universe = [
         {"code": "X", "name": "unknown", "market": "KOSPI",  "market_cap": 0, "trading_value": 1e9},
         {"code": "Y", "name": "low_tv",  "market": "KOSPI",  "market_cap": 0, "trading_value": 1e5},  # trading_value 미달
+        {"code": "Z", "name": "none",    "market": "KOSPI",                   "trading_value": 1e9},  # 키 결측
     ]
     kept = [u["code"] for u in a.base_filter(universe)]
-    assert "X" in kept
-    assert "Y" not in kept
+    assert kept == []
 
 
 def test_base_filter_excludes_megacap():
@@ -66,3 +69,17 @@ def test_base_filter_excludes_megacap():
     ]
     kept = [u["code"] for u in a.base_filter(universe)]
     assert "S" in kept and "M" not in kept
+
+
+def test_base_filter_max_cap_inclusive_boundary_live_equivalence():
+    """채워진 시총엔 기존과 동일한 상한 컷('이하'=inclusive >). 경계값(정확히 max)은 통과."""
+    a = BookPullbackMa20ScreenerAdapter()
+    p = a.default_params()
+    tv = p["min_trading_value"] * 2
+    universe = [
+        {"code": "LO", "name": "lo", "market_cap": p["max_market_cap"] - 1, "trading_value": tv},  # 통과
+        {"code": "EQ", "name": "eq", "market_cap": p["max_market_cap"],     "trading_value": tv},  # 경계 통과(>)
+        {"code": "HI", "name": "hi", "market_cap": p["max_market_cap"] + 1, "trading_value": tv},  # 제외
+    ]
+    kept = [u["code"] for u in a.base_filter(universe)]
+    assert kept == ["LO", "EQ"]
