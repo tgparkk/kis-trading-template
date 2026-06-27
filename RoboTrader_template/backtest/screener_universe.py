@@ -30,7 +30,8 @@ def _snapshot_to_universe(snapshot: List[Dict[str, Any]]) -> List[Dict[str, Any]
         {
             "code": it["stock_code"],
             "name": it["stock_code"],
-            "market_cap": it.get("market_cap", 0),
+            # 결측을 0 으로 위장하지 않는다 — base_filter 가 결측(None/0)을 fail-closed 제외.
+            "market_cap": it.get("market_cap"),
             "trading_value": it.get("trading_value", 0),
         }
         for it in snapshot

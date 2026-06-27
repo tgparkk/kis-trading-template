@@ -21,13 +21,14 @@ class BookPullbackMa5ScreenerAdapter(RuleScreenerBase):
         }
 
     def base_filter(self, universe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        # KOSPI+KOSDAQ 모두 허용 — 중소형 시총만 필터(눌림목은 시장 무관)
-        # market_cap=0(미상)이면 상한 컷 건너뜀
+        # KOSPI+KOSDAQ 모두 허용 — 중소형(3조 이하) 시총만 필터(눌림목은 시장 무관).
+        # 시총 결측(0/None)이면 검증 불가 → fail-closed 제외(상한형 `0 > max` 회귀 방지).
         p = self.default_params()
         out = []
         for u in universe:
-            mcap = u.get("market_cap", 0)
-            if mcap > 0 and mcap > p["max_market_cap"]:
+            if not self._passes_market_cap(
+                u.get("market_cap"), max_cap=p["max_market_cap"], max_inclusive=True
+            ):
                 continue
             if u.get("trading_value", 0) < p["min_trading_value"]:
                 continue

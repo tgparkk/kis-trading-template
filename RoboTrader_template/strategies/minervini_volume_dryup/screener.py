@@ -27,8 +27,8 @@ class MinerviniVolumeDryupScreenerAdapter(RuleScreenerBase):
         p = self.default_params()
         out = []
         for u in universe:
-            mcap = u.get("market_cap", 0)
-            if mcap > 0 and mcap < p["min_market_cap"]:
+            # 시총 결측(0/None)이면 컨셉 검증 불가 → fail-closed 제외.
+            if not self._passes_market_cap(u.get("market_cap"), min_cap=p["min_market_cap"]):
                 continue
             if u.get("trading_value", 0) < p["min_trading_value"]:
                 continue

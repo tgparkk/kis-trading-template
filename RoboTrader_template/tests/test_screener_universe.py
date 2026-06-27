@@ -35,32 +35,33 @@ def _mixed_snapshot():
         {"stock_code": "BIG", "market_cap": 1e12, "trading_value": 5e9},
         # 거래대금 미달(<10억) → 제외
         {"stock_code": "THIN", "market_cap": 2e11, "trading_value": 1e8},
-        # 시총 미상(0) + 거래대금 충족 → 통과(상한 컷 건너뜀)
+        # 시총 미상(0) → fail-closed 제외(상한 컷을 우회하던 회귀 방지)
         {"stock_code": "UNK", "market_cap": 0, "trading_value": 3e9},
     ]
 
 
 def test_load_returns_only_base_filter_passers():
-    """daytrading_3methods_breakout: 5천억·10억 필터 통과 종목만 반환."""
+    """daytrading_3methods_breakout: 5천억·10억 필터 통과 종목만 반환(시총 미상 제외)."""
     reader = FakeReader(_mixed_snapshot())
     codes = load_screener_universe(
         "daytrading_3methods_breakout", "2026-06-24", reader=reader
     )
-    assert set(codes) == {"SMALL", "UNK"}
+    assert set(codes) == {"SMALL"}
     assert "BIG" not in codes      # 대형 시총 위반 제외
     assert "THIN" not in codes     # 거래대금 미달 제외
+    assert "UNK" not in codes      # 시총 미상(0) → fail-closed 제외
     assert reader.calls == ["2026-06-24"]
 
 
-def test_market_cap_unknown_passes_when_trading_value_ok():
-    """시총 0(미상)이어도 거래대금 충족 시 통과해야 한다."""
+def test_market_cap_unknown_excluded_fail_closed():
+    """시총 0(미상)이면 거래대금이 충족돼도 fail-closed 제외(컨셉 검증 불가)."""
     reader = FakeReader([
         {"stock_code": "UNK", "market_cap": 0, "trading_value": 3e9},
     ])
     codes = load_screener_universe(
         "daytrading_3methods_breakout", "2026-06-24", reader=reader
     )
-    assert codes == ["UNK"]
+    assert codes == []
 
 
 def test_empty_snapshot_returns_empty(caplog):
@@ -95,4 +96,4 @@ def test_range_wrapper_maps_dates_to_universes():
     )
     assert set(result.keys()) == {"2026-06-23", "2026-06-24"}
     for codes in result.values():
-        assert set(codes) == {"SMALL", "UNK"}
+        assert set(codes) == {"SMALL"}

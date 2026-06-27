@@ -23,16 +23,30 @@ def test_match_triggers_on_volume_dryup():
     assert "dryup" in verdict[1].lower()
 
 
-def test_base_filter_passes_when_market_cap_unknown():
-    """market_cap=0(미상)이어도 trading_value 충족 시 통과해야 한다 (시장 라벨 무관)."""
+def test_base_filter_excludes_when_market_cap_unknown():
+    """market_cap=0(미상)이면 시총 컨셉(중형 이상) 검증 불가 → fail-closed 제외."""
     a = MinerviniVolumeDryupScreenerAdapter()
     universe = [
         {"code": "X", "name": "unknown", "market_cap": 0, "trading_value": 1e10},
         {"code": "Y", "name": "low_tv",  "market_cap": 0, "trading_value": 1e6},   # trading_value 미달
+        {"code": "Z", "name": "none",                     "trading_value": 1e10},  # 키 결측
     ]
     kept = [u["code"] for u in a.base_filter(universe)]
-    assert "X" in kept
-    assert "Y" not in kept
+    assert kept == []
+
+
+def test_base_filter_min_cap_boundary_and_live_equivalence():
+    """채워진 시총엔 기존과 동일한 하한 컷(라이브 동등성). 경계값(정확히 min)은 통과."""
+    a = MinerviniVolumeDryupScreenerAdapter()
+    p = a.default_params()
+    tv = p["min_trading_value"] * 2
+    universe = [
+        {"code": "EQ", "name": "eq", "market_cap": p["min_market_cap"],     "trading_value": tv},
+        {"code": "LO", "name": "lo", "market_cap": p["min_market_cap"] - 1, "trading_value": tv},
+        {"code": "HI", "name": "hi", "market_cap": p["min_market_cap"] + 1, "trading_value": tv},
+    ]
+    kept = [u["code"] for u in a.base_filter(universe)]
+    assert kept == ["EQ", "HI"]
 
 
 def test_match_none_when_volume_not_dry():
