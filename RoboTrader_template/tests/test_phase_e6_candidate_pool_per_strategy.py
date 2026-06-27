@@ -386,8 +386,11 @@ class TestVolumeFallbackRespectsBaseFilter:
         assert "000002" in codes
         assert "000001" not in codes  # base_filter가 폴백에도 적용
 
-    def test_unknown_strategy_returns_fallback_unchanged(self):
-        """어댑터가 없는 전략은 보수적으로 기존 동작(필터 미적용) 유지."""
+    def test_unknown_strategy_returns_empty_fail_closed(self):
+        """어댑터가 없어(base_filter 없음) 컨셉 필터를 못 거는 전략은 폴백 종목을
+        아예 넣지 않는다(fail-closed). 이전엔 무필터 폴백을 그대로 반환(fail-open)해
+        대형주 거래량 폴백이 소형/중소형 컨셉 전략에 누수될 수 있었다(2026-06-27 M1).
+        """
         from main import apply_volume_fallback_with_filter
 
         fallback = [_make_candidate("000001"), _make_candidate("000002")]
@@ -399,8 +402,29 @@ class TestVolumeFallbackRespectsBaseFilter:
             "no_such_strategy_xyz", fallback, universe_lookup=universe_lookup
         )
 
-        # 어댑터 없음 → 폴백 풀 그대로
-        assert {c.code for c in pool} == {"000001", "000002"}
+        # 어댑터 없음(base_filter None) → fail-closed: 빈 풀
+        assert pool == []
+
+    def test_snapshot_read_exception_returns_empty_fail_closed(self):
+        """quant 유니버스 스냅샷 조회가 예외를 던지면 컨셉 필터를 적용할 수 없으므로
+        폴백 종목을 넣지 않는다(fail-closed). 이전엔 무필터 폴백을 반환했다(2026-06-27 M1).
+        """
+        from main import apply_volume_fallback_with_filter
+
+        fallback = [_make_candidate("000001"), _make_candidate("000002")]
+
+        # 어댑터는 정상(daytrading base_filter 존재)이지만 스냅샷 조회에서 예외 주입.
+        # universe_lookup=None → 함수가 QuantDailyReader로 조회 시도 → raise.
+        with patch(
+            "db.quant_daily_reader.QuantDailyReader",
+            side_effect=RuntimeError("snapshot read failed"),
+        ):
+            pool = apply_volume_fallback_with_filter(
+                "daytrading_3methods_breakout", fallback, universe_lookup=None
+            )
+
+        # 스냅샷 조회 예외 → fail-closed: 빈 풀
+        assert pool == []
 
     def test_missing_universe_data_treated_as_filtered_out(self):
         """유니버스 스냅샷에 없는 종목은 거래대금 검증 불가 → base_filter 컷에서 제외.

@@ -331,6 +331,16 @@ class BaseStrategy(ABC):
     # - 모멘텀/추세 전략처럼 거래량 급등주가 전략 로직과 잘 맞는 경우: True (기본값)
     # - 역추세/가치 전략처럼 거래량 급등주가 오히려 논리 미스매치인 경우: False로 오버라이드
     #   → False이면 빈 풀을 그대로 유지하고 해당 전략은 당일 매매를 스킵한다.
+    #
+    # TODO(L3, 2026-06-27): 이 기본값 True는 신규 전략이 implicit하게 안전망 폴백을
+    #   수용하는 fail-open이다. 이상적으로는 opt-in(기본 False)이 안전하다.
+    #   조사 결과 활성 8전략은 전부 accepts_volume_fallback을 명시 선언한다
+    #   (elder/minervini/daytrading/book_envelope/book_pullback_ma5/ma20/rs_leader=True,
+    #    deep_mr_dev20=False) → 기본값에 의존하지 않으므로 라이브 동작은 영향 없음.
+    #   그러나 예제/템플릿 전략(momentum 등)과 기존 테스트(test_example_strategies.py가
+    #   BaseStrategy 기본값=True를 단언)는 기본값에 의존해, 지금 False로 뒤집으면
+    #   라이브 외 회귀가 발생한다. 라이브 리스크 회피를 우선해 기본값은 보존하고
+    #   문서 TODO로만 남긴다(L3 스킵). 추후 예제 전략·테스트 정리와 함께 opt-in 전환.
     accepts_volume_fallback: bool = True
 
     def __init__(self, config: Dict[str, Any] = None):
