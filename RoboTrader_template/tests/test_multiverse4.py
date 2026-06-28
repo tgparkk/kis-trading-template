@@ -254,8 +254,8 @@ def test_load_strategy_universe_data_unions_screener():
     """데이터 로드 유니버스 = 스크리너 일자별 통과집합의 합집합 (top-volume 정적 아님)."""
     from scripts.multiverse4_returns_export import _load_strategy_universe_data, SPECS
 
-    def fake_range(strategy, start, end, reader=None):
-        return {"2024-01-31": ["AAA", "BBB"], "2024-02-29": ["BBB", "CCC"]}
+    def fake_universe(strategy, scan_date, reader=None):
+        return {"2024-01-31": ["AAA", "BBB"], "2024-02-29": ["BBB", "CCC"]}.get(scan_date, [])
 
     loaded_codes = {}
 
@@ -270,7 +270,7 @@ def test_load_strategy_universe_data_unions_screener():
     data, turnover = _load_strategy_universe_data(
         SPECS["minervini_volume_dryup"], "2024-01-01", "2024-02-29",
         ["2024-01-31", "2024-02-29"], reader=object(),
-        range_fn=fake_range, load_daily_fn=fake_load_daily)
+        universe_fn=fake_universe, load_daily_fn=fake_load_daily)
 
     assert set(loaded_codes["arg"]) == {"AAA", "BBB", "CCC"}
     assert set(data.keys()) == {"AAA", "BBB", "CCC"}

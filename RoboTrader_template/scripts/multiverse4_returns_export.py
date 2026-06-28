@@ -52,7 +52,7 @@ except Exception:
     pass
 
 from backtest.screener_universe import (  # noqa: E402
-    load_screener_universe_range,
+    load_screener_universe,
     make_scan_eligible_resolver,
 )
 from scripts.book_param_multiverse import (  # noqa: E402
@@ -272,14 +272,14 @@ def _monthly_scan_dates(start: str, end: str) -> List[str]:
 # ---------------------------------------------------------------------------
 
 def _load_strategy_universe_data(spec, start, end, scan_dates, reader,
-                                 range_fn=None, load_daily_fn=None):
-    """전략별 라이브 스크리너 합집합 종목의 일봉 + turnover (PIT 유니버스 정합)."""
-    if range_fn is None:
-        range_fn = load_screener_universe_range
+                                 universe_fn=None, load_daily_fn=None):
+    """전략별 라이브 스크리너 합집합(월별 scan_dates) 종목의 일봉 + turnover (PIT 정합)."""
+    if universe_fn is None:
+        universe_fn = load_screener_universe
     if load_daily_fn is None:
         load_daily_fn = _load_daily_adj
-    by_date = range_fn(spec.name, start, end, reader=reader)
-    union = sorted({c for codes in by_date.values() for c in codes})
+    union = sorted({c for sd in scan_dates
+                    for c in universe_fn(spec.name, sd, reader=reader)})
     data = load_daily_fn(union, start, end)
     turnover = {c: float((df["close"] * df["volume"]).sum()) for c, df in data.items()}
     return data, turnover
