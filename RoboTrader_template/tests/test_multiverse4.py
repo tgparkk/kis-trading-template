@@ -193,3 +193,15 @@ def test_monthly_scan_dates_basic():
     assert out[-1] == "2024-04-10"
     assert out == sorted(out)
     assert len(out) == len(set(out))    # 중복 없음
+
+
+# ---------------------------------------------------------------------------
+# _per_stock_amount 헬퍼 — 라이브 INITIAL/K 정합 사이징
+# ---------------------------------------------------------------------------
+
+def test_per_stock_amount_is_capital_over_k():
+    from scripts.multiverse4_returns_export import _per_stock_amount, SPECS, INITIAL
+    assert _per_stock_amount(SPECS["elder_ema_pullback"], None) == pytest.approx(INITIAL / 20)
+    assert _per_stock_amount(SPECS["minervini_volume_dryup"], None) == pytest.approx(INITIAL / 3)
+    assert _per_stock_amount(SPECS["daytrading_3methods_breakout"], None) == pytest.approx(INITIAL / 5)
+    assert _per_stock_amount(SPECS["elder_ema_pullback"], 1_000_000.0) == pytest.approx(1_000_000.0)

@@ -73,9 +73,8 @@ from scripts.rs_leader.exit_adapter import MA20TrailExitAdapter  # noqa: E402
 from scripts.rs_leader.rule import RSLeaderRule  # noqa: E402
 
 INITIAL = 10_000_000.0       # 라이브 가상매매 = 전략당 독립 1천만 (VIRTUAL_CAPITAL_PER_STRATEGY)
-# ★종목당 매수금액 — 라이브 페이퍼의 실제 체결 사이징은 yaml max_per_stock_amount(300만)가
-#   아니라 virtual_trading_manager.get_max_quantity 의 min(virtual_investment_amount=100만,
-#   전략 budget) 이다(core/virtual_trading_manager.py:68,390). 라이브 충실 = 1_000_000.
+# 라이브 per-stock 매수금액 = INITIAL/K (전략별; 라이브 자본÷K 정합, 2026-06-11 K-split).
+# 과거 주석의 "고정 100만"은 stale(K-split 이전). 아래 상수는 --max-per-stock 기본/민감도용.
 MAX_PER_STOCK = 1_000_000.0
 
 
@@ -269,15 +268,28 @@ def _monthly_scan_dates(start: str, end: str) -> List[str]:
 # 실행
 # ---------------------------------------------------------------------------
 
+def _per_stock_amount(spec: StrategySpec, override: Optional[float]) -> float:
+    """라이브 정합 per-stock 매수금액 = INITIAL/K (라이브 main.py allocate_strategy_capital
+    → virtual_trading_manager.get_max_quantity 와 동일). override 지정 시 그 값(민감도용)."""
+    if override is not None:
+        return float(override)
+    return INITIAL / float(spec.K)
+
+
 def run_one(spec: StrategySpec, data: Dict[str, pd.DataFrame],
             turnover: Dict[str, float],
-            max_per_stock: float = MAX_PER_STOCK) -> dict:
+            max_per_stock: Optional[float] = None,
+            resolver=None) -> dict:
     cache = spec.build_signals(data)
+    if resolver is not None:
+        from backtest.screener_universe import pit_gate_signal_cache
+        cache = pit_gate_signal_cache(cache, data, resolver)
     n_sig = sum(len(v) for v in cache.values())
+    per_stock = _per_stock_amount(spec, max_per_stock)
     res = run_portfolio(data=data, signal_cache=cache, adapter=spec.adapter,
                         params=spec.params, turnover=turnover,
                         initial_capital=INITIAL, max_positions=spec.K,
-                        max_per_stock=max_per_stock)
+                        max_per_stock=per_stock)
     dr: pd.Series = res["daily_returns"]
     dr.index = pd.to_datetime(dr.index)
     dr = dr.sort_index()
