@@ -205,3 +205,41 @@ def test_per_stock_amount_is_capital_over_k():
     assert _per_stock_amount(SPECS["minervini_volume_dryup"], None) == pytest.approx(INITIAL / 3)
     assert _per_stock_amount(SPECS["daytrading_3methods_breakout"], None) == pytest.approx(INITIAL / 5)
     assert _per_stock_amount(SPECS["elder_ema_pullback"], 1_000_000.0) == pytest.approx(1_000_000.0)
+
+
+# ---------------------------------------------------------------------------
+# run_one PIT 게이팅 회귀 테스트 (Task 3)
+# ---------------------------------------------------------------------------
+
+def test_run_one_applies_pit_resolver():
+    """resolver 가 특정 종목을 미적격 처리하면 그 종목 신호가 제거되어 매매되지 않는다."""
+    from scripts.multiverse4_returns_export import run_one, StrategySpec
+    from scripts.book_portfolio_multiverse import _SLTPMHAdapter
+
+    n = 8
+    def mk_df():
+        return pd.DataFrame({
+            "datetime": pd.date_range("2024-01-01", periods=n, freq="D"),
+            "open": [100.0] * 3 + [120.0] * 5,
+            "high": [121.0] * n, "low": [99.0] * n,
+            "close": [100.0] * 3 + [120.0] * 5,
+            "volume": [1000.0] * n,
+        })
+    data = {"AAA": mk_df(), "BBB": mk_df()}
+
+    spec = StrategySpec(
+        name="toy", warmup=0, K=2,
+        params=dict(stop_loss_pct=0.5, take_profit_pct=0.10, max_hold_bars=99),
+        adapter=_SLTPMHAdapter(),
+        build_signals=lambda d: {"AAA": [2], "BBB": [2]},
+    )
+    turnover = {"AAA": 1.0, "BBB": 1.0}
+    resolver = lambda code, d: code == "AAA"   # AAA 만 적격
+
+    r_all = run_one(spec, data, turnover, max_per_stock=10_000_000.0, resolver=None)
+    r_gated = run_one(spec, data, turnover, max_per_stock=10_000_000.0, resolver=resolver)
+
+    sells_all = {t["stock_code"] for t in r_all["trades"] if t["side"] == "sell"}
+    sells_gated = {t["stock_code"] for t in r_gated["trades"] if t["side"] == "sell"}
+    assert "BBB" in sells_all          # 게이트 없으면 둘 다 매매
+    assert sells_gated == {"AAA"}      # 게이트 후 BBB 신호 제거 → AAA 만
