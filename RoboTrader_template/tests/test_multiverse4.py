@@ -234,7 +234,8 @@ def test_run_one_applies_pit_resolver():
         build_signals=lambda d: {"AAA": [2], "BBB": [2]},
     )
     turnover = {"AAA": 1.0, "BBB": 1.0}
-    resolver = lambda code, d: code == "AAA"   # AAA 만 적격
+    def resolver(code, d):  # AAA 만 적격
+        return code == "AAA"
 
     r_all = run_one(spec, data, turnover, max_per_stock=10_000_000.0, resolver=None)
     r_gated = run_one(spec, data, turnover, max_per_stock=10_000_000.0, resolver=resolver)
@@ -243,3 +244,35 @@ def test_run_one_applies_pit_resolver():
     sells_gated = {t["stock_code"] for t in r_gated["trades"] if t["side"] == "sell"}
     assert "BBB" in sells_all          # 게이트 없으면 둘 다 매매
     assert sells_gated == {"AAA"}      # 게이트 후 BBB 신호 제거 → AAA 만
+
+
+# ---------------------------------------------------------------------------
+# _load_strategy_universe_data — 스크리너 합집합 유니버스 로더 (Task 4)
+# ---------------------------------------------------------------------------
+
+def test_load_strategy_universe_data_unions_screener():
+    """데이터 로드 유니버스 = 스크리너 일자별 통과집합의 합집합 (top-volume 정적 아님)."""
+    from scripts.multiverse4_returns_export import _load_strategy_universe_data, SPECS
+
+    def fake_range(strategy, start, end, reader=None):
+        return {"2024-01-31": ["AAA", "BBB"], "2024-02-29": ["BBB", "CCC"]}
+
+    loaded_codes = {}
+
+    def fake_load_daily(codes, start, end):
+        loaded_codes["arg"] = list(codes)
+        return {c: pd.DataFrame({
+            "datetime": pd.date_range("2024-01-01", periods=3, freq="D"),
+            "open": [1.0, 1.0, 1.0], "high": [1.0, 1.0, 1.0],
+            "low": [1.0, 1.0, 1.0], "close": [1.0, 2.0, 3.0],
+            "volume": [10.0, 10.0, 10.0]}) for c in codes}
+
+    data, turnover = _load_strategy_universe_data(
+        SPECS["minervini_volume_dryup"], "2024-01-01", "2024-02-29",
+        ["2024-01-31", "2024-02-29"], reader=object(),
+        range_fn=fake_range, load_daily_fn=fake_load_daily)
+
+    assert set(loaded_codes["arg"]) == {"AAA", "BBB", "CCC"}
+    assert set(data.keys()) == {"AAA", "BBB", "CCC"}
+    assert set(turnover.keys()) == {"AAA", "BBB", "CCC"}
+    assert all(v > 0 for v in turnover.values())

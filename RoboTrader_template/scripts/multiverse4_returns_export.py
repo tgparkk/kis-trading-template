@@ -51,12 +51,15 @@ try:
 except Exception:
     pass
 
+from backtest.screener_universe import (  # noqa: E402
+    load_screener_universe_range,
+    make_scan_eligible_resolver,
+)
 from scripts.book_param_multiverse import (  # noqa: E402
     _build_strategy,
     _daily_minmax_dates,
     _load_book,
     _load_daily_adj,
-    _load_top_volume_daily,
 )
 from scripts.book_portfolio_multiverse import (  # noqa: E402
     _SLTPMHAdapter,
@@ -268,6 +271,20 @@ def _monthly_scan_dates(start: str, end: str) -> List[str]:
 # 실행
 # ---------------------------------------------------------------------------
 
+def _load_strategy_universe_data(spec, start, end, scan_dates, reader,
+                                 range_fn=None, load_daily_fn=None):
+    """전략별 라이브 스크리너 합집합 종목의 일봉 + turnover (PIT 유니버스 정합)."""
+    if range_fn is None:
+        range_fn = load_screener_universe_range
+    if load_daily_fn is None:
+        load_daily_fn = _load_daily_adj
+    by_date = range_fn(spec.name, start, end, reader=reader)
+    union = sorted({c for codes in by_date.values() for c in codes})
+    data = load_daily_fn(union, start, end)
+    turnover = {c: float((df["close"] * df["volume"]).sum()) for c, df in data.items()}
+    return data, turnover
+
+
 def _per_stock_amount(spec: StrategySpec, override: Optional[float]) -> float:
     """라이브 정합 per-stock 매수금액 = INITIAL/K (라이브 main.py allocate_strategy_capital
     → virtual_trading_manager.get_max_quantity 와 동일). override 지정 시 그 값(민감도용)."""
@@ -324,31 +341,23 @@ def main(argv: Optional[List[str]] = None):
     end = args.end or mx
     print(f"[period] {start} ~ {end}")
 
-    # 유니버스/일봉은 top_n 별로 1회 로드 (50: 6전략 공유, 300: rs_leader)
-    data_by_topn: Dict[int, Dict[str, pd.DataFrame]] = {}
-    turnover_by_topn: Dict[int, Dict[str, float]] = {}
-
-    def _get_data(top_n: int):
-        if top_n not in data_by_topn:
-            uni = _load_top_volume_daily(start, end, top_n)
-            d = _load_daily_adj(uni, start, end)
-            data_by_topn[top_n] = d
-            turnover_by_topn[top_n] = {c: float((df["close"] * df["volume"]).sum())
-                                       for c, df in d.items()}
-            print(f"[load] top_n={top_n} universe={len(uni)} loaded={len(d)}")
-        return data_by_topn[top_n], turnover_by_topn[top_n]
-
+    reader = None  # QuantDailyReader 지연 생성(실행시 1회)
     summary_rows = []
     with _patch_costs(args.commission, args.tax, args.slippage):
         for name in args.strategies:
             spec = SPECS[name]
-            top_n = spec.top_n
+            scan_dates = _monthly_scan_dates(start, end)
             if args.smoke:
-                top_n = 20 if spec.top_n == 50 else 50
-            data, turnover = _get_data(top_n)
-            print(f"[run] {name} (K={spec.K}, top_n={top_n}, "
-                  f"per_stock={args.max_per_stock:,.0f}) ...")
-            r = run_one(spec, data, turnover, max_per_stock=args.max_per_stock)
+                scan_dates = [start[:10], end[:10]]  # 스모크: 경계 2개만
+            if reader is None:
+                from db.quant_daily_reader import QuantDailyReader
+                reader = QuantDailyReader()
+            data, turnover = _load_strategy_universe_data(spec, start, end, scan_dates, reader)
+            resolver = make_scan_eligible_resolver(spec.name, scan_dates, reader=reader)
+            per_stock = args.max_per_stock if args.max_per_stock != MAX_PER_STOCK else None
+            print(f"[run] {name} (K={spec.K}, universe={len(data)}, "
+                  f"per_stock={_per_stock_amount(spec, per_stock):,.0f}) ...")
+            r = run_one(spec, data, turnover, max_per_stock=per_stock, resolver=resolver)
             df_out = pd.DataFrame({
                 "date": r["daily_returns"].index.strftime("%Y-%m-%d"),
                 "daily_return": r["daily_returns"].to_numpy(),
@@ -358,7 +367,7 @@ def main(argv: Optional[List[str]] = None):
             pd.DataFrame(r["trades"]).to_csv(out / f"{name}_trades.csv", index=False)
             print(f"[done] {name}: signals={r['n_signals']} trades={r['n_trades']} "
                   f"sharpe={r['sharpe']:.2f} pnl={r['pnl']:+.1%} maxdd={r['maxdd']:.1%}")
-            summary_rows.append(dict(strategy=name, top_n=top_n, K=spec.K,
+            summary_rows.append(dict(strategy=name, top_n=spec.top_n, K=spec.K,
                                      n_signals=r["n_signals"], n_trades=r["n_trades"],
                                      sharpe=round(r["sharpe"], 3), pnl=round(r["pnl"], 4),
                                      maxdd=round(r["maxdd"], 4)))
