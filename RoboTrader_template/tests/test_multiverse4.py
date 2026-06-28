@@ -178,3 +178,18 @@ def test_block_bootstrap_deterministic_and_sane():
         assert key in m1
     assert m1["sharpe_p05"] <= m1["sharpe_p50"] <= m1["sharpe_p95"]
     assert m1["maxdd_p05"] <= m1["maxdd_p50"] <= m1["maxdd_p95"]
+
+
+# ---------------------------------------------------------------------------
+# _monthly_scan_dates 헬퍼 (PIT 스크리너 캐던스)
+# ---------------------------------------------------------------------------
+
+def test_monthly_scan_dates_basic():
+    from scripts.multiverse4_returns_export import _monthly_scan_dates
+    out = _monthly_scan_dates("2024-01-15", "2024-04-10")
+    assert out[0] == "2024-01-15"
+    assert "2024-02-29" in out          # 2024 윤년 2월 말일
+    assert "2024-03-31" in out
+    assert out[-1] == "2024-04-10"
+    assert out == sorted(out)
+    assert len(out) == len(set(out))    # 중복 없음

@@ -244,6 +244,27 @@ def _maxdd(eq: np.ndarray) -> float:
     return float(-dd.min())
 
 
+def _monthly_scan_dates(start: str, end: str) -> List[str]:
+    """[start, end] 를 월별 scan_date 로 분해. 시작월=start, 종료월=end, 중간월=말일.
+
+    시총/거래대금은 완만 변화 → 월별 근사로 충분. get_universe_snapshot 의
+    date<=scan_date 방어 폴백이 캘린더 말일/거래일 차이를 흡수한다.
+    """
+    s = pd.Timestamp(start[:10])
+    e = pd.Timestamp(end[:10])
+    if e < s:
+        return [start[:10]]
+    try:
+        month_ends = pd.date_range(s, e, freq="ME")  # pandas >= 2.2
+    except ValueError:
+        month_ends = pd.date_range(s, e, freq="M")   # pandas < 2.2
+    dates = {s.strftime("%Y-%m-%d"), e.strftime("%Y-%m-%d")}
+    for d in month_ends:
+        if s <= d <= e:
+            dates.add(d.strftime("%Y-%m-%d"))
+    return sorted(dates)
+
+
 # ---------------------------------------------------------------------------
 # 실행
 # ---------------------------------------------------------------------------
