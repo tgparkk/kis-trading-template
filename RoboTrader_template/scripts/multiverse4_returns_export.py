@@ -63,6 +63,8 @@ from scripts.book_portfolio_multiverse import (  # noqa: E402
     _load_kospi_close,
     _precompute_signals,
 )
+from scripts.discovery.exit_adapters import MAReversionExitAdapter  # noqa: E402
+from scripts.discovery.rules import MeanReversionMA20Rule  # noqa: E402
 from scripts.entry_filters import apply_entry_filter  # noqa: E402
 from scripts.exit_multiverse import adapters as xadapters  # noqa: E402
 from scripts.exit_multiverse import signals as xsignals  # noqa: E402
@@ -141,6 +143,15 @@ def _sig_rs_leader(data):
     return apply_entry_filter(data, cache, filt="rs_rank", threshold=0.7, n=120)
 
 
+def _sig_deep_mr(data):
+    # 진입 = 백테스트 룰 단일소스 MeanReversionMA20Rule((종가-MA20)/MA20<=-20% & RSI14<30).
+    # 라이브 deep_mr_dev20/config.yaml 값(entry_deviation_pct=-20, ma20/rsi14/oversold30) 무수정.
+    # 룰 generate_signal(code, window, "daily") 시그니처가 _precompute_signals 규약과 일치.
+    rule = MeanReversionMA20Rule(ma_period=20, entry_deviation_pct=-20.0,
+                                 rsi_period=14, rsi_oversold=30.0, use_rsi_filter=True)
+    return _precompute_signals(data, rule, 35, "daily")
+
+
 SPECS: Dict[str, StrategySpec] = {
     "elder_ema_pullback": StrategySpec(
         name="elder_ema_pullback", warmup=70, K=20,
@@ -180,6 +191,16 @@ SPECS: Dict[str, StrategySpec] = {
         params=dict(stop_loss_pct=0.08, take_profit_pct=99.0, max_hold_bars=30),
         adapter=MA20TrailExitAdapter(ma=20),
         build_signals=_sig_rs_leader),
+    # deep_mr_dev20 — MA20 -20% 폭락 평균회귀 (8번째 페이퍼 전략).
+    # 청산 = MAReversionExitAdapter(sl7→tp12→MA20×0.9 회복→max_hold7) = 라이브
+    #   evaluate_sell_conditions 우선순위와 1:1 (strategy.py:142-158). K=5·종목당 200만은
+    #   라이브 사이징이나, 본 harness 의 라이브충실 사이징 정본 = max_per_stock(100만, 타 7전략
+    #   동일). top_n=300 = 게이트 검증 스케일(거래대금 100억 컷 top300 근사).
+    "deep_mr_dev20": StrategySpec(
+        name="deep_mr_dev20", warmup=35, K=5, top_n=300,
+        params=dict(stop_loss_pct=0.07, take_profit_pct=0.12, max_hold_bars=7),
+        adapter=MAReversionExitAdapter(ma=20, recovery_ratio=0.9),
+        build_signals=_sig_deep_mr),
 }
 
 

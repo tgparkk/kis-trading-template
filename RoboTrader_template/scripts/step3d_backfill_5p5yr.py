@@ -64,7 +64,7 @@ from backtest.data_completeness import (  # noqa: E402
 )
 from db.quant_daily_reader import QuantDailyReader  # noqa: E402
 
-# 7전략 — 시총컷 보유(elder·minervini·daytrading·ma5·ma20) + 거래대금만(envelope·rs).
+# 8전략 — 시총컷 보유(elder·minervini·daytrading·ma5·ma20) + 거래대금만(envelope·rs·deep_mr).
 ALL_STRATEGIES = [
     "elder_ema_pullback",
     "minervini_volume_dryup",
@@ -73,6 +73,7 @@ ALL_STRATEGIES = [
     "book_pullback_ma5",
     "book_pullback_ma20",
     "rs_leader",
+    "deep_mr_dev20",
 ]
 
 # PIT-clean 시총 플로어 구성만(섹터 제외는 look-ahead 라 본 패스에서 미실행).
@@ -113,6 +114,148 @@ def build_shares_map(cache_path: Path) -> Dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
+# 2024-내재 주식수 — quant daily_prices 에서 market_cap 이 실재하는 첫 시점(연도)의
+#   market_cap ÷ close = 내재 주식수. FDR 2026 현재주식수보다 2021–23 에 시간적으로 가깝고
+#   (증자/자사주 오차 축소) quant 의 market_cap 정의(상장보통주)와 *동일 규약*이라 floor 게이트
+#   일관성이 높다. 표본검증: 삼성 5.92e9(2024내재) vs DART 보통주 5.97e9(역사) 오차 0.85%,
+#   FDR 현재 5.85e9 오차 2.1% → 2024내재가 역사주식수에 더 가깝다.
+# ---------------------------------------------------------------------------
+
+def build_implied_shares_map(reader: QuantDailyReader, year: int = 2024) -> Dict[str, float]:
+    """각 종목의 ``year`` 첫 market_cap>0 시점 ``market_cap ÷ close`` = 내재 주식수."""
+    shares: Dict[str, float] = {}
+    with reader._conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ON (stock_code) stock_code, market_cap, close
+                FROM daily_prices
+                WHERE date >= %s AND date <= %s AND market_cap > 0 AND close > 0
+                ORDER BY stock_code, date ASC
+                """,
+                (f"{year}-01-01", f"{year}-12-31"),
+            )
+            for code, mc, cl in cur.fetchall():
+                try:
+                    s = float(mc) / float(cl)
+                except (TypeError, ValueError, ZeroDivisionError):
+                    continue
+                if s > 0:
+                    shares[str(code)] = s
+    print(f"[shares:implied{year}] built {len(shares)} codes (market_cap/close 첫 시점)")
+    return shares
+
+
+# ---------------------------------------------------------------------------
+# DART 역사 주식수 — OPENDART stockTotqySttus 의 *보통주* 발행주식총수(진짜 역사값).
+#   키(.env OPENDART_API_KEY)가 있을 때만. corp_code 매핑 + 종목당 1회 조회(json 캐시).
+#   주: 합계(보통주+우선주) 아닌 *보통주* se 행을 쓴다(quant market_cap=상장보통주 규약 정합).
+# ---------------------------------------------------------------------------
+
+def _load_dotenv_min() -> str:
+    """.env 에서 OPENDART_API_KEY 만 최소 로딩(python-dotenv 의존 회피)."""
+    key = ""
+    env = ROOT / ".env"
+    if env.exists():
+        for line in env.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("OPENDART_API_KEY") and "=" in line:
+                key = line.split("=", 1)[1].strip()
+    return key
+
+
+def _dart_corp_map(key: str) -> Dict[str, str]:
+    import io as _io
+    import zipfile
+    import xml.etree.ElementTree as ET
+    import requests
+    z = requests.get("https://opendart.fss.or.kr/api/corpCode.xml",
+                     params={"crtfc_key": key}, timeout=60)
+    zf = zipfile.ZipFile(_io.BytesIO(z.content))
+    root = ET.fromstring(zf.read(zf.namelist()[0]))
+    cmap: Dict[str, str] = {}
+    for it in root.iter("list"):
+        sc = (it.findtext("stock_code") or "").strip()
+        cc = (it.findtext("corp_code") or "").strip()
+        if sc and len(sc) == 6 and cc:
+            cmap[sc] = cc
+    return cmap
+
+
+def build_dart_shares_map(codes: List[str], cache_path: Path, year: int = 2022,
+                          key: Optional[str] = None) -> Dict[str, float]:
+    """종목별 DART 보통주 발행주식총수(bsns_year=year 연간보고서). json 캐시. 키 없으면 {}."""
+    key = key or _load_dotenv_min()
+    if not key:
+        print("[shares:dart] OPENDART_API_KEY 미설정 — DART 스킵")
+        return {}
+    cache: Dict[str, float] = {}
+    if cache_path.exists():
+        try:
+            cache = {str(k): float(v) for k, v in
+                     json.loads(cache_path.read_text(encoding="utf-8")).items()}
+        except Exception:
+            cache = {}
+    todo = [c for c in codes if c not in cache]
+    if not todo:
+        print(f"[shares:dart] cache hit (all {len(codes)} codes) -> {cache_path}")
+        return cache
+    import time as _t
+    import requests
+    cmap = _dart_corp_map(key)
+    print(f"[shares:dart] year={year} querying {len(todo)} codes (cached {len(cache)}) ...")
+    for i, code in enumerate(todo, 1):
+        cc = cmap.get(code)
+        common = None
+        if cc:
+            try:
+                r = requests.get(
+                    "https://opendart.fss.or.kr/api/stockTotqySttus.json",
+                    params={"crtfc_key": key, "corp_code": cc,
+                            "bsns_year": str(year), "reprt_code": "11011"},
+                    timeout=15).json()
+                for row in (r.get("list") or []):
+                    if "보통주" in str(row.get("se", "")):
+                        v = str(row.get("istc_totqy", "")).replace(",", "")
+                        if v.isdigit() and int(v) > 0:
+                            common = float(int(v))
+                        break
+            except Exception:
+                common = None
+        if common is not None:
+            cache[code] = common
+        if i % 100 == 0 or i == len(todo):
+            print(f"[shares:dart]   {i}/{len(todo)} (last {code}={common})")
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+        _t.sleep(0.12)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    print(f"[shares:dart] built {len(cache)} codes -> {cache_path}")
+    return cache
+
+
+def merge_shares_priority(*maps: Dict[str, float]) -> tuple:
+    """우선순위대로 종목별 주식수 병합. 앞 map 이 우선. (merged, source_counts) 반환.
+
+    source label = maps 의 인자 순서 인덱스에 대응(호출자가 라벨 매핑). 채울 수 없으면 결측 유지.
+    """
+    merged: Dict[str, float] = {}
+    source: Dict[str, int] = {}
+    allcodes = set()
+    for m in maps:
+        allcodes.update(m.keys())
+    for code in allcodes:
+        for idx, m in enumerate(maps):
+            v = m.get(code)
+            if v and v > 0:
+                merged[code] = float(v)
+                source[code] = idx
+                break
+    return merged, source
+
+
+# ---------------------------------------------------------------------------
 # market_cap override 리더 래퍼 — 결측 시총을 shares*close 로 메모리 보강.
 # quant 테이블 UPDATE 금지 — snapshot dict 의 market_cap 만 in-memory 보강.
 # ---------------------------------------------------------------------------
@@ -125,6 +268,15 @@ class MarketCapOverrideReader:
     (snapshot 쿼리의 ``date = (SELECT max(date) WHERE date<=%s)`` 와 동일 기준일).
     채울 수 없으면(미매칭 shares/close 결측) market_cap 을 그대로 0 유지(fail-closed).
     그 외 모든 속성/메서드는 inner 로 위임.
+
+    ``shares`` 는 종목별 단일 주식수 dict 로, 정밀도 우선순위(merge_shares_priority)로 미리
+    병합되어 주입된다(--shares-mode):
+      1. DART 보통주 발행주식총수(역사 실값, OPENDART 키 필요)  — ``dart`` 모드.
+      2. 2024-내재 주식수(quant market_cap÷close 첫 시점, 동일 규약·시간적 근접) — 기본.
+      3. FDR 현재(2026) 상장주식수 — 폴백.
+      4. 결측 유지(fail-closed).
+    역사 실주식수(true precision)는 KRX/pykrx 차단으로 한정되나 DART 는 접근 가능
+    (단 종목수×API 호출 비용·보통주/우선주 규약 주의 → 기본 off, 표본검증·opt-in).
     """
 
     def __init__(self, inner: QuantDailyReader, shares: Dict[str, float]):
@@ -180,6 +332,16 @@ def main(argv: Optional[List[str]] = None):
                     help="짧은 기간(2021-01~2021-06)으로 빠른 배선 확인")
     ap.add_argument("--shares-cache",
                     default=str(ROOT / "scratchpad" / "shares_map.json"))
+    ap.add_argument("--dart-cache",
+                    default=str(ROOT / "scratchpad" / "dart_shares_map.json"))
+    ap.add_argument("--shares-mode", choices=["fdr", "implied2024", "dart"],
+                    default="implied2024",
+                    help="시총 백필 주식수 소스 우선순위. fdr=FDR현재(레거시), "
+                         "implied2024=2024내재→FDR(기본·규약정합), dart=DART보통주→2024내재→FDR(역사실값).")
+    ap.add_argument("--implied-year", type=int, default=2024,
+                    help="내재주식수 산출 연도(market_cap÷close 첫 시점). 기본 2024.")
+    ap.add_argument("--dart-year", type=int, default=2022,
+                    help="DART 보통주 발행주식총수 조회 연도(2021–23 백필 대표값). 기본 2022.")
     ap.add_argument("--out", default=str(ROOT / "scratchpad" / "step3d_backfill_5p5yr.md"))
     ap.add_argument("--max-per-stock", type=float, default=MAX_PER_STOCK)
     ap.add_argument("--min-cap-coverage", type=float, default=0.8)
@@ -199,8 +361,25 @@ def main(argv: Optional[List[str]] = None):
     print(f"[strategies] {strategies}")
     print(f"[configs] {configs}")
 
-    shares = build_shares_map(Path(args.shares_cache))
     base_reader = QuantDailyReader()
+    # 정밀화 주식수 맵 — --shares-mode 우선순위로 병합(merge_shares_priority).
+    fdr = build_shares_map(Path(args.shares_cache))
+    if args.shares_mode == "fdr":
+        shares, src = merge_shares_priority(fdr)
+        src_labels = ["fdr"]
+    else:
+        implied = build_implied_shares_map(base_reader, args.implied_year)
+        if args.shares_mode == "implied2024":
+            shares, src = merge_shares_priority(implied, fdr)
+            src_labels = [f"implied{args.implied_year}", "fdr"]
+        else:  # dart
+            cand = sorted(set(fdr) | set(implied))
+            dart = build_dart_shares_map(cand, Path(args.dart_cache), args.dart_year)
+            shares, src = merge_shares_priority(dart, implied, fdr)
+            src_labels = ["dart", f"implied{args.implied_year}", "fdr"]
+    from collections import Counter
+    src_counts = dict(Counter(src_labels[i] for i in src.values()))
+    print(f"[shares:mode={args.shares_mode}] merged {len(shares)} codes; source={src_counts}")
     reader = MarketCapOverrideReader(base_reader, shares)
 
     scan_dates = _scan_dates(start, end, args.scan_freq)
@@ -247,7 +426,8 @@ def main(argv: Optional[List[str]] = None):
     print(df.to_string(index=False))
 
     _write_report(Path(args.out), df, start, end, args.scan_freq, scan_dates,
-                  unions, market_size, strategies, configs, cov_raw, cov, args.smoke)
+                  unions, market_size, strategies, configs, cov_raw, cov, args.smoke,
+                  args.shares_mode, src_counts)
     print(f"\n[out] {args.out}")
     return df
 
@@ -269,8 +449,15 @@ def _md_table(frame: pd.DataFrame) -> str:
 
 
 def _write_report(out: Path, df, start, end, scan_freq, scan_dates, unions,
-                  market_size, strategies, configs, cov_raw, cov, smoke):
+                  market_size, strategies, configs, cov_raw, cov, smoke,
+                  shares_mode="implied2024", src_counts=None):
     out.parent.mkdir(parents=True, exist_ok=True)
+    src_counts = src_counts or {}
+    _backfill_desc = {
+        "fdr": "FDR 현재주식수(Stocks) × quant 조정종가(close) [레거시]",
+        "implied2024": "2024-내재주식수(market_cap÷close 첫 시점) → FDR 폴백, × quant close [규약정합]",
+        "dart": "DART 보통주 발행주식총수(역사실값) → 2024-내재 → FDR, × quant close [true precision]",
+    }.get(shares_mode, shares_mode)
     content = f"""# Step 3d — market_cap 백필 override 5.5년 PIT 재측정 (raw 출력)
 
 > 측정 전용·SSOT·라이브 무수정. 신규 스크립트 `scripts/step3d_backfill_5p5yr.py` 실행 산출.
@@ -279,7 +466,8 @@ def _write_report(out: Path, df, start, end, scan_freq, scan_dates, unions,
 ## 설정
 - 기간: **{start} ~ {end}**{" (smoke)" if smoke else ""}, scan_freq={scan_freq}, scan_dates={len(scan_dates)}
 - max_per_stock=100만, multiverse4 SPECS 정본 sim/비용/사이징.
-- 백필: `과거 시총 = FDR 현재주식수(Stocks) × quant 조정종가(close)`.
+- 백필 모드: **{shares_mode}** — {_backfill_desc}
+- 주식수 소스 분포: {src_counts}
 
 ## 데이터완전성 (백필 전/후)
 - raw     : {cov_raw.summary()}

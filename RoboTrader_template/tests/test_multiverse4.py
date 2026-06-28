@@ -28,9 +28,10 @@ from scripts.multiverse4_portfolio_analysis import (  # noqa: E402
     tail_coloss_lift,
 )
 
-LIVE_7 = {
+LIVE_8 = {
     "elder_ema_pullback", "book_envelope_200d", "daytrading_3methods_breakout",
     "minervini_volume_dryup", "book_pullback_ma20", "book_pullback_ma5", "rs_leader",
+    "deep_mr_dev20",
 }
 
 
@@ -38,8 +39,8 @@ LIVE_7 = {
 # 스펙 레지스트리 — 라이브 config.yaml 값과 1:1 (드리프트 가드)
 # ---------------------------------------------------------------------------
 
-def test_specs_cover_live_7():
-    assert set(SPECS.keys()) == LIVE_7
+def test_specs_cover_live_8():
+    assert set(SPECS.keys()) == LIVE_8
 
 
 @pytest.mark.parametrize("name,sl,tp,mh,k", [
@@ -50,6 +51,7 @@ def test_specs_cover_live_7():
     ("book_pullback_ma20", 0.08, 0.10, 50, 5),
     ("book_pullback_ma5", 0.03, 0.15, 30, 5),
     ("rs_leader", 0.08, 99.0, 30, 10),  # tp99=무효(추세추종, 트레일이 주청산)
+    ("deep_mr_dev20", 0.07, 0.12, 7, 5),  # sl7/tp12/max_hold7 = config.yaml risk_management 1:1
 ])
 def test_specs_match_live_exit_params(name, sl, tp, mh, k):
     spec = SPECS[name]
@@ -66,6 +68,10 @@ def test_specs_trailing_exits_match_live():
     assert SPECS["elder_ema_pullback"].params.get("trail_ema") == 13
     assert SPECS["elder_ema_pullback"].params.get("trend_flip_exit") is True
     assert type(SPECS["rs_leader"].adapter).__name__ == "MA20TrailExitAdapter"
+    # deep_mr: MA20×0.9 회복 청산 어댑터 (라이브 evaluate_sell_conditions ma_recovery 정합)
+    dm = SPECS["deep_mr_dev20"].adapter
+    assert type(dm).__name__ == "MAReversionExitAdapter"
+    assert dm.ma == 20 and dm.recovery_ratio == pytest.approx(0.9)
     # 고정 sl/tp/mh 전략(라이브 트레일 없음)은 범용 어댑터
     for name in ("book_envelope_200d", "daytrading_3methods_breakout"):
         assert type(SPECS[name].adapter).__name__ == "_SLTPMHAdapter"
