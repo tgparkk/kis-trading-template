@@ -15,6 +15,16 @@ if TYPE_CHECKING:
     from main import DayTradingBot
 
 
+# 장전 regime 지수 갱신 throttle 상수 (2026-06-29 폭격 루프 수정)
+# 연속 실패 시 재시도 최소 간격(분). 직전 시도 후 [n번째 실패] 인덱스로 참조하며
+# 상한(마지막 값)에 캡된다. 1→2→5→15분.
+_REGIME_REFRESH_BACKOFF_MINUTES = (1, 2, 5, 15)
+# 거래일당 최대 시도 횟수. 초과 시 그날은 재시도 중단(다음 거래일 리셋).
+_REGIME_REFRESH_MAX_ATTEMPTS_PER_DAY = 12
+# DB 멱등 스킵 판정 대상 지수 코드(daily_prices stock_code).
+INDEX_CODES_FOR_SKIP = ("KOSPI", "KOSDAQ")
+
+
 class SystemMonitor:
     """시스템 모니터링 클래스"""
 
@@ -22,6 +32,8 @@ class SystemMonitor:
         self.bot = bot
         self.logger = setup_logger(__name__)
         self._last_daily_report_date = None
+        # 주입 가능한 시계(테스트 결정론). 기본 실제 KST 시계.
+        self._clock = now_kst
 
         # 대시보드 초기화
         self._init_dashboard()
@@ -263,24 +275,93 @@ class SystemMonitor:
         EOD 15:48 _run_regime_index_refresh 가 FDR 일시실패로 {KOSPI:0,KOSDAQ:0}
         을 반환하면 게이트 SSOT(daily_prices)가 동결(stale)돼 exclude_bear 전략을
         잘못 게이팅한다(2026-06-26 진단). 장전에 한 번 더 갱신해 보정한다.
-        성공(값>0) 시에만 가드를 설정해, 실패 시 다음 장전 루프에서 자동 재시도한다.
-        예외는 게이트 외 정상흐름을 막지 않도록 흡수한다.
+
+        과거(2026-06-26~28 도입판)에는 실패 시 가드 미설정 → "다음 루프 재시도"라
+        모니터 루프(~9초)마다 무제한 FDR 재호출이 발생했고, 이 폭격이 FDR 제공자
+        세션 차단(LOGOUT)을 자기강화시켜 하루 종일 빠져나오지 못했다(2026-06-29 실측
+        23,908회 실패). 이를 막기 위해 다음 throttle 을 적용한다:
+          1) DB 멱등 스킵: 오늘자 KOSPI/KOSDAQ 일봉이 이미 있으면 FDR 미호출·성공처리.
+          2) 쿨다운/지수 백오프: 직전 시도 후 _REGIME_REFRESH_BACKOFF_MINUTES(1→2→5→15분,
+             상한 캡) 경과 전엔 재호출 금지.
+          3) 일일 시도 캡: 거래일당 _REGIME_REFRESH_MAX_ATTEMPTS_PER_DAY 회 초과 시 중단.
+          4) 성공 게이트: 그날 성공하면 더 호출 안 함.
+        거래일이 바뀌면 카운터/백오프가 리셋된다. 예외는 정상흐름을 막지 않도록 흡수.
         """
         try:
-            today = now_kst().date()
+            clock = getattr(self, '_clock', None) or now_kst
+            nowdt = clock()
+            today = nowdt.date()
+
+            # 4) 성공 게이트: 오늘 이미 갱신 성공
             if getattr(self, '_regime_index_refreshed_date', None) == today:
                 return
+
+            # 거래일 전환 시 throttle 상태 리셋
+            if getattr(self, '_regime_refresh_state_date', None) != today:
+                self._regime_refresh_state_date = today
+                self._regime_refresh_attempts = 0
+                self._regime_refresh_last_attempt_at = None
+
+            # 1) DB 멱등 스킵: 이미 백필돼 있으면 FDR 두들기지 않음
+            if self._regime_indices_present_for(today):
+                self._regime_index_refreshed_date = today
+                self.logger.info("장전 regime 지수 이미 최신(DB 존재) — FDR 호출 스킵")
+                return
+
+            # 3) 일일 시도 캡
+            if self._regime_refresh_attempts >= _REGIME_REFRESH_MAX_ATTEMPTS_PER_DAY:
+                return
+
+            # 2) 쿨다운/지수 백오프
+            last = getattr(self, '_regime_refresh_last_attempt_at', None)
+            if last is not None:
+                idx = min(self._regime_refresh_attempts - 1,
+                          len(_REGIME_REFRESH_BACKOFF_MINUTES) - 1)
+                wait_sec = _REGIME_REFRESH_BACKOFF_MINUTES[max(idx, 0)] * 60
+                if (nowdt - last).total_seconds() < wait_sec:
+                    return
+
+            # 시도 기록 후 실제 갱신
+            self._regime_refresh_attempts += 1
+            self._regime_refresh_last_attempt_at = nowdt
             res = await asyncio.to_thread(self._run_regime_index_refresh)
             if isinstance(res, dict) and res and min(res.values()) > 0:
                 self._regime_index_refreshed_date = today
                 self.logger.info(f"장전 regime 지수 갱신 완료: {res}")
             else:
-                # 가드 미설정 → 다음 장전 루프에서 재시도
+                # 가드 미설정 → 쿨다운/백오프 경과 후 재시도(폭격 방지)
                 self.logger.warning(
-                    f"장전 regime 지수 갱신 실패/0행 — 가드 미설정, 다음 루프 재시도: {res}"
+                    f"장전 regime 지수 갱신 실패/0행 — 재시도 대기"
+                    f"(시도 {self._regime_refresh_attempts}/"
+                    f"{_REGIME_REFRESH_MAX_ATTEMPTS_PER_DAY}): {res}"
                 )
         except Exception as e:
             self.logger.warning(f"장전 regime 지수 갱신 오류 (무시): {e}")
+
+    def _regime_indices_present_for(self, trade_date) -> bool:
+        """robotrader.daily_prices 에 trade_date 자 KOSPI·KOSDAQ 일봉이 모두 있으면 True.
+
+        이미 백필돼 있으면 FDR 를 호출하지 않기 위한 멱등 스킵 게이트.
+        참조 불가/예외 시 False(스킵 안 함 → 기존 동작 유지).
+        """
+        try:
+            repo = getattr(getattr(self.bot, 'db_manager', None), 'price_repo', None)
+            if repo is None:
+                from db.repositories.price import PriceRepository
+                repo = PriceRepository()
+            for name in INDEX_CODES_FOR_SKIP:
+                latest = repo.get_latest_daily_price(name)
+                if not latest:
+                    return False
+                d = latest.get('date')
+                if hasattr(d, 'date'):
+                    d = d.date()
+                if d != trade_date:
+                    return False
+            return True
+        except Exception as e:
+            self.logger.warning(f"regime 지수 DB 존재 확인 오류 (무시): {e}")
+            return False
 
     def _run_regime_index_refresh(self) -> dict:
         """regime 게이트 SSOT(daily_prices KOSPI/KOSDAQ)를 FDR로 최신화(멱등).
