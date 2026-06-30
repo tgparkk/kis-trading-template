@@ -979,6 +979,9 @@ def apply_volume_fallback_with_filter(
 
 async def main() -> None:
     """메인 함수"""
+    from bot.env_guard import assert_correct_environment
+    assert_correct_environment(os.path.dirname(os.path.abspath(__file__)))
+
     bot = DayTradingBot()
 
     # 시스템 초기화

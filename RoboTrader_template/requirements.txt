@@ -11,5 +11,5 @@ matplotlib
 psycopg2-binary>=2.9.9
 yfinance
 holidays
-finance-datareader
+finance-datareader>=0.9.202
 beautifulsoup4
