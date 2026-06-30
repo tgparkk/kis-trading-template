@@ -101,6 +101,46 @@ class TestNoLookAhead:
 # 2. foreign_net_buy_5d_cum 누적 정확성
 # ─────────────────────────────────────────────────────────────────────────────
 
+class TestSourceTable:
+    """소스가 신규 kis_template.foreign_flow.foreign_net_vol 로 전환됐는지 검증."""
+
+    def test_query_targets_foreign_flow_table_and_column(self):
+        """SQL 이 foreign_flow.foreign_net_vol 을 date BETWEEN 으로 최근 5일 조회."""
+        from signals.foreign_flow import foreign_net_buy_5d_cum
+
+        captured = {}
+        mock_cur = MagicMock()
+        mock_cur.__enter__ = lambda s: s
+        mock_cur.__exit__ = MagicMock(return_value=False)
+        mock_cur.fetchall.return_value = []
+
+        def _capture(sql, params=None):
+            captured["sql"] = sql
+            captured["params"] = params
+
+        mock_cur.execute.side_effect = _capture
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cur
+        mock_conn.close = MagicMock()
+
+        with patch("signals.foreign_flow._get_conn", return_value=mock_conn):
+            foreign_net_buy_5d_cum("005930", date(2026, 6, 30))
+
+        sql = captured["sql"].lower()
+        assert "from foreign_flow" in sql
+        assert "foreign_net_vol" in sql
+        assert "date between %s and %s" in sql
+        assert "limit 5" in sql
+        # params = (stock_code, lookback_from, end_date)
+        assert captured["params"][0] == "005930"
+        assert captured["params"][2] == date(2026, 6, 30)
+
+    def test_uses_kis_db_env_defaults(self):
+        """_DB_DEFAULTS 가 kis_template DB(KIS_DB_* env) 를 가리킨다(레거시 robotrader 아님)."""
+        import signals.foreign_flow as ff
+        assert ff._DB_DEFAULTS["database"] == "kis_template"
+
+
 class TestForeignNetBuy5dCum:
     """5일 누적 순매수 계산 정확성."""
 

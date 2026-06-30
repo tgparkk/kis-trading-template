@@ -22,6 +22,7 @@ DAILY_COLUMNS = [
     "returns_1d", "returns_5d", "returns_20d", "volatility_20d", "adj_factor",
 ]
 CORP_COLUMNS = ["stock_code", "event_type", "event_date", "end_date", "meta"]
+FOREIGN_COLUMNS = ["stock_code", "date", "foreign_net_vol", "source"]
 BATCH = 5000
 
 
@@ -91,11 +92,18 @@ def seed_corp_events(apply: bool = False) -> dict:
     return _copy("robotrader", sel, "corp_events", CORP_COLUMNS, apply, row_builder=build_corp_insert_rows)
 
 
+def seed_foreign_flow(apply: bool = False) -> dict:
+    sel = f"SELECT {', '.join(FOREIGN_COLUMNS)} FROM foreign_flow"
+    return _copy("robotrader_quant", sel, "foreign_flow", FOREIGN_COLUMNS, apply)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
     d = seed_daily_prices(args.apply)
     e = seed_corp_events(args.apply)
-    print(f"daily_prices: {d}")
-    print(f"corp_events:  {e}")
+    f = seed_foreign_flow(args.apply)
+    print(f"daily_prices:  {d}")
+    print(f"corp_events:   {e}")
+    print(f"foreign_flow:  {f}")

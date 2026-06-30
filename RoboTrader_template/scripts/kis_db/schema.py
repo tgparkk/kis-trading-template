@@ -11,7 +11,7 @@ from db.kis_db_connection import KisDbConnection  # noqa: E402
 
 EXPECTED_TABLES = {
     "minute_candles", "daily_prices", "index_daily",
-    "corp_events", "collection_reconciliation",
+    "corp_events", "collection_reconciliation", "foreign_flow",
 }
 
 DDL_STATEMENTS = [
@@ -81,6 +81,18 @@ DDL_STATEMENTS = [
         PRIMARY KEY (stock_code, event_type, event_date)
     )
     """,
+    # 외국인 순매매량 (robotrader_quant.foreign_flow 동일 — 네이버 금융 소스)
+    """
+    CREATE TABLE IF NOT EXISTS foreign_flow (
+        stock_code VARCHAR NOT NULL,
+        date DATE NOT NULL,
+        foreign_net_vol BIGINT,
+        source VARCHAR DEFAULT 'naver',
+        created_at TIMESTAMP DEFAULT now(),
+        PRIMARY KEY (stock_code, date)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_foreign_flow_date ON foreign_flow(date)",
     # 교차 DB 비교 결과 (신규)
     """
     CREATE TABLE IF NOT EXISTS collection_reconciliation (

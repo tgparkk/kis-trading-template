@@ -419,9 +419,10 @@ class SystemMonitor:
         daily = result.get("daily", {})
         minute = result.get("minute", {})
         index = result.get("index", {})
+        foreign = result.get("foreign_flow", {})
         rec = result.get("reconcile", {})
         self.logger.info(
-            f"EOD 데이터 수집 완료: 일봉 {daily} · 분봉 {minute} · 지수 {index}"
+            f"EOD 데이터 수집 완료: 일봉 {daily} · 분봉 {minute} · 지수 {index} · 외국인수급 {foreign}"
             + (f" · 교차비교 {rec}" if rec else " · (전환완료 비교생략)")
         )
         for ds, r in (rec or {}).items():
