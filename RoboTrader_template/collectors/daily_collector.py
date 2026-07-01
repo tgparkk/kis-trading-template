@@ -91,7 +91,7 @@ def reconcile_daily(trade_date: str) -> dict:
     legacy = psycopg2.connect(
         host=os.getenv("KIS_DB_HOST", "localhost"), port=int(os.getenv("KIS_DB_PORT", 5433)),
         dbname="robotrader_quant", user=os.getenv("KIS_DB_USER", "robotrader"),
-        password=os.getenv("KIS_DB_PASSWORD", "robotrader_secure_pw_2024"))
+        password=os.getenv("KIS_DB_PASSWORD", "1234"))
     try:
         with legacy.cursor() as lc:
             lc.execute("SELECT count(*) FROM daily_prices WHERE date = %s", (trade_date,))

@@ -38,7 +38,7 @@ from scripts.rs_leader.decompose import (  # noqa: E402
 )
 
 DB = dict(host="localhost", port=5433, dbname="robotrader_quant",
-          user="robotrader", password="robotrader_secure_pw_2024")
+          user="robotrader", password="1234")
 
 # 약세장 에피소드(국면별 분해·OOS용) — 성격 다른 3개.
 BEAR_EPISODES = [

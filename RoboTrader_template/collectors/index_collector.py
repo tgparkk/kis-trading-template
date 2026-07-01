@@ -47,7 +47,7 @@ def reconcile_index(trade_date: str) -> dict:
     legacy = psycopg2.connect(
         host=os.getenv("KIS_DB_HOST", "localhost"), port=int(os.getenv("KIS_DB_PORT", 5433)),
         dbname="robotrader_quant", user=os.getenv("KIS_DB_USER", "robotrader"),
-        password=os.getenv("KIS_DB_PASSWORD", "robotrader_secure_pw_2024"))
+        password=os.getenv("KIS_DB_PASSWORD", "1234"))
     try:
         # 레거시 KS11/KQ11 close → {KOSPI: close, KOSDAQ: close}
         legacy_closes = {}

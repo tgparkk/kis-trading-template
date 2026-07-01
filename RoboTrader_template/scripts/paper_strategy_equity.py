@@ -137,7 +137,7 @@ def _db_conn():
         port=int(os.getenv("TIMESCALE_PORT", 5433)),
         database=os.getenv("TIMESCALE_DB", "robotrader"),
         user=os.getenv("TIMESCALE_USER", "robotrader"),
-        password=os.getenv("TIMESCALE_PASSWORD", "robotrader_secure_pw_2024"),
+        password=os.getenv("TIMESCALE_PASSWORD", "1234"),
     )
 
 
