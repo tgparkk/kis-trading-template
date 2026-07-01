@@ -16,6 +16,19 @@ kis-trading-template/
 └── RoboTrader_template (이 프로젝트) ← 프레임워크 + 샘플 전략
 ```
 
+## 🧭 운영 vs 연구 코드 라우팅 (에이전트 필독)
+
+이 repo는 운영(라이브 매매) 코드와 연구/일회성 코드가 한 트리에 섞여 있다.
+**운영 동작을 찾을 때 연구 디렉토리를 근거로 삼지 말 것.**
+
+- **운영(production)**: `core/` `bot/` `framework/` `api/` `strategies/`
+  `collectors/` `db/` `runners/` `signals/` `lib/` `utils/`
+- **연구/일회성(research, 라이브 아님)**: `scripts/` `multiverse/` `books/` `council/`
+  → 검색 시 후순위. 죽은 실험 코드를 라이브로 오인하지 말 것.
+
+**예외**: 라이브가 실제로 의존하는 연구 파일이 9엣지 존재(특히 정적분석에 안 잡히는
+`collectors/daily_adj.py`의 동적 import). 이동·삭제 전 반드시 [docs/CODE_MAP.md](docs/CODE_MAP.md) 확인.
+
 ## 아키텍처
 
 ### 레이어 구조
@@ -130,4 +143,4 @@ kis-trading-template/
 
 ---
 
-**마지막 업데이트**: 2026-06-24 (문서 구조 재편 — 모듈 상세·전략 상세 분리)
+**마지막 업데이트**: 2026-07-02 (운영 vs 연구 라우팅 블록 추가 — CODE_MAP.md 참조)
