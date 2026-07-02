@@ -32,6 +32,7 @@ import pandas as pd
 
 from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE, TRAILING_STOP_CALLBACK_RATE
 from strategies.base import BaseStrategy, SignalType
+from backtest import metrics
 from backtest.result import BacktestResult  # noqa: F401
 
 
@@ -551,66 +552,12 @@ class BacktestEngine:
             candidate_pool_hits=candidate_pool_hits,
         )
 
-    @staticmethod
-    def _calc_mdd(equity_curve: List[float]) -> float:
-        """최대 낙폭(MDD) 계산. 양수로 반환 (예: 0.15 = 15% 낙폭)."""
-        if len(equity_curve) < 2:
-            return 0.0
-        arr = np.array(equity_curve, dtype=float)
-        peak = np.maximum.accumulate(arr)
-        drawdowns = (peak - arr) / peak
-        return float(np.max(drawdowns))
-
-    @staticmethod
-    def _calc_sharpe(equity_curve: List[float], risk_free_rate: float = 0.0) -> float:
-        """일별 수익률 기반 샤프 비율 계산 (연율화, 무위험수익률 기본 0%)."""
-        if len(equity_curve) < 2:
-            return 0.0
-        arr = np.array(equity_curve, dtype=float)
-        daily_returns = np.diff(arr) / arr[:-1]
-        excess = daily_returns - risk_free_rate / 252
-        if excess.std() == 0:
-            return 0.0
-        return float(excess.mean() / excess.std() * np.sqrt(252))
-
-    @staticmethod
-    def _calc_calmar(total_return: float, mdd: float, n_days: int) -> float:
-        """칼마 비율 계산 (연환산 수익률 / MDD).
-
-        Args:
-            total_return: 누적 수익률 (예: 0.12 = +12%).
-            mdd: 최대 낙폭 (양수, 예: 0.15 = 15%).
-            n_days: 백테스트 일수 (연율화 기준).
-
-        Returns:
-            CAGR / MDD. MDD가 0이면 0 반환.
-        """
-        if mdd <= 0 or n_days <= 0:
-            return 0.0
-        years = n_days / 252.0
-        # 복리 연환산: (1 + total_return)^(1/years) - 1
-        cagr = (1.0 + total_return) ** (1.0 / years) - 1.0
-        return float(cagr / mdd)
-
-    @staticmethod
-    def _calc_sortino(equity_curve: List[float], risk_free_rate: float = 0.0) -> float:
-        """소르티노 비율 계산 (하방 편차 기반, 연율화, 무위험률 기본 0%).
-
-        하방 편차 = 음수 초과 수익률의 표준편차.
-        """
-        if len(equity_curve) < 2:
-            return 0.0
-        arr = np.array(equity_curve, dtype=float)
-        daily_returns = np.diff(arr) / arr[:-1]
-        excess = daily_returns - risk_free_rate / 252
-        downside = excess[excess < 0]
-        if len(downside) == 0:
-            # 손실 일자 없으면 무한대 → 실용상 큰 값 반환
-            return float(excess.mean() * np.sqrt(252)) if excess.mean() > 0 else 0.0
-        downside_std = float(np.std(downside))
-        if downside_std == 0:
-            return 0.0
-        return float(excess.mean() / downside_std * np.sqrt(252))
+    # 하위호환 별칭: 본문은 backtest/metrics.py로 이동(2026-07-02 Phase2).
+    # BacktestEngine._calc_* / self._calc_* 호출부(내부·테스트·연구) 무수정 보존.
+    _calc_mdd = staticmethod(metrics.calc_mdd)
+    _calc_sharpe = staticmethod(metrics.calc_sharpe)
+    _calc_calmar = staticmethod(metrics.calc_calmar)
+    _calc_sortino = staticmethod(metrics.calc_sortino)
 
     def _get_trading_days_range(self, start_date: str, end_date: str) -> List[str]:
         """start_date~end_date 범위의 거래일 목록 반환 (YYYYMMDD 포맷).
