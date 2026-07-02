@@ -7,6 +7,9 @@ def test_uses_canonical_returns_sql():
     # 동일 SQL을 재사용(중복 정의 금지)
     import collectors.daily_derived as m
     assert m.SQL_UPDATE_RETURNS is SQL_UPDATE_RETURNS
+    # 연구 스크립트의 역방향 import도 동일 객체여야 한다 (승격 후 정합성)
+    import scripts.etl_backfill_daily_prices as etl
+    assert etl.SQL_UPDATE_RETURNS is m.SQL_UPDATE_RETURNS
 
 
 class _Cur:

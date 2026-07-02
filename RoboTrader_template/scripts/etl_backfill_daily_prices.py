@@ -35,6 +35,7 @@ import psycopg2.extras
 # 로깅 설정
 # ─────────────────────────────────────────────────────────────────────────────
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)  # 직접 실행(python scripts/...) 시 repo 루트 import 보장 (collectors 역방향 import)
 _LOGS_DIR = os.path.join(_ROOT, "logs")
 os.makedirs(_LOGS_DIR, exist_ok=True)
 
