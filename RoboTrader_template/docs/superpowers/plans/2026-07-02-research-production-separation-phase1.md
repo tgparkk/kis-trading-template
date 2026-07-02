@@ -11,7 +11,8 @@
 ## Global Constraints
 
 - **동작 보존**: 전략 로직·매매 행동·SQL·수치 변경 금지. 이동/재배선만.
-- **이동 1건 = 커밋 1개**, 매 커밋 전 `venv\Scripts\python -m pytest tests/ -q` 전체 그린 (baseline은 Task 0에서 캡처).
+- **이동 1건 = 커밋 1개**, 매 커밋 전 `venv\Scripts\python -m pytest tests/ -q` 전체 통과 (baseline은 Task 0에서 캡처).
+- **기지 실패(known-fail) 1건**: `tests/test_discovery.py::test_bb_reversion_triggers` — main 기존 결함(연구 전용 bb_reversion 룰의 ADX 경계선 취약 테스트, 06-30 venv 패키지 갱신으로 수치 이동, 라이브 무관). 이 계획에서 고치지 않는다. 모든 태스크의 통과 기준 = **baseline passed 수 유지 + 실패는 정확히 이 1건만**(신규 실패 0). 사장님 결정 후 별도 수정.
 - repo 루트 = `D:\GIT\kis-trading-template\RoboTrader_template` (모든 경로·명령의 cwd).
 - 브랜치: `feat/research-production-separation-phase1` (main에서 분기). main 머지·push는 사용자 승인 후.
 - Python 3.9 호환: `X | None` 파라미터 문법이 있는 코드를 옮길 때 `from __future__ import annotations`를 반드시 동반.
