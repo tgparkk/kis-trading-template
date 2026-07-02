@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, is_market_open
 from config.market_hours import MarketHours
-from scripts.daily_trading_summary import print_today_trading_summary
+from tools.daily_trading_summary import print_today_trading_summary
 from collectors.eod_collection import run_data_collection
 
 if TYPE_CHECKING:

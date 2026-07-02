@@ -20,7 +20,7 @@ echo.
 
 echo [3/3] 공식 일일 리포트 실행 중...
 echo.
-python scripts\daily_trading_summary.py
+python tools\daily_trading_summary.py
 echo.
 
 echo ================================================================================
