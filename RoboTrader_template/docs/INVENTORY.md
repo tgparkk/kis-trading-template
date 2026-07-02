@@ -2,6 +2,18 @@
 
 | 파일 | 태그 | 참조자 |
 |---|---|---|
+| `backtest\__init__.py` | UNREFERENCED | - |
+| `backtest\allocation_backtester.py` | TEST-ONLY | TEST:tests\allocation\test_systrader79_avgmom.py |
+| `backtest\book_backtester.py` | RESEARCH | RESEARCH:scripts\book_param_multiverse.py; RESEARCH:scripts\run_books_research.py; RESEARCH:scripts\run_daytrading_3methods.py; RESEARCH:scripts\run_dino_surge.py; RESEARCH:scripts\run_elder_triple_screen.py |
+| `backtest\data_completeness.py` | RESEARCH | RESEARCH:scripts\step3c_size_sector_filter.py; TEST:tests\test_data_completeness.py |
+| `backtest\engine.py` | RESEARCH | RESEARCH:backtest\__init__.py; RESEARCH:backtest\multiverse.py; RESEARCH:backtest\regime_analysis.py; RESEARCH:scripts\run_intraday_tournament.py; TEST:tests\test_backtest_engine.py |
+| `backtest\engine_minute.py` | RESEARCH | RESEARCH:backtest\engine.py |
+| `backtest\metrics.py` | RESEARCH | RESEARCH:backtest\engine.py |
+| `backtest\multiverse.py` | RESEARCH | RESEARCH:backtest\__init__.py; RESEARCH:scripts\param_optimizer.py; RESEARCH:scripts\run_buy_filter_grid.py; TEST:tests\test_multiverse.py |
+| `backtest\regime_analysis.py` | RESEARCH | RESEARCH:scripts\exit_multiverse\objective.py; RESEARCH:scripts\exit_multiverse\run.py; RESEARCH:scripts\regime_split_elder_minervini.py; TEST:tests\exit_multiverse\test_objective.py; TEST:tests\test_regime_analysis.py |
+| `backtest\result.py` | RESEARCH | RESEARCH:backtest\engine.py; RESEARCH:backtest\engine_minute.py |
+| `backtest\screener_universe.py` | RESEARCH | RESEARCH:scripts\multiverse4_returns_export.py; RESEARCH:scripts\step2_universe_rebaseline.py; RESEARCH:scripts\step3_pit_rebaseline.py; RESEARCH:scripts\step3c_size_sector_filter.py; TEST:tests\test_pit_gating.py |
+| `backtest\tournament_metrics.py` | RESEARCH | RESEARCH:scripts\run_intraday_tournament.py; TEST:tests\test_tournament_metrics.py |
 | `multiverse\__init__.py` | UNREFERENCED | - |
 | `multiverse\composable\__init__.py` | UNREFERENCED | - |
 | `multiverse\composable\_normalize.py` | UNREFERENCED | - |
@@ -139,6 +151,7 @@
 | `scripts\multiverse3_real_exit.py` | TEST-ONLY | TEST:tests\regime\test_multiverse3_real_exit.py |
 | `scripts\multiverse4_portfolio_analysis.py` | RESEARCH | RESEARCH:scripts\discovery\sizing_scenarios.py; RESEARCH:scripts\strategy_gate.py; TEST:tests\test_multiverse4.py |
 | `scripts\multiverse4_returns_export.py` | RESEARCH | RESEARCH:scripts\dynamic_rr_multiverse.py; RESEARCH:scripts\step2_universe_rebaseline.py; RESEARCH:scripts\step3_pit_rebaseline.py; RESEARCH:scripts\step3c_size_sector_filter.py; RESEARCH:scripts\strategy_gate.py |
+| `scripts\param_optimizer.py` | UNREFERENCED | - |
 | `scripts\portfolio_sim_elder.py` | TEST-ONLY | TEST:tests\regime\test_portfolio_sim_elder_mkt_rs.py |
 | `scripts\preflight_strategy_validate.py` | TEST-ONLY | TEST:tests\test_preflight.py |
 | `scripts\regime_split_elder_minervini.py` | UNREFERENCED | - |
@@ -148,6 +161,7 @@
 | `scripts\rs_leader\decompose.py` | TEST-ONLY | TEST:tests\rs_leader\test_decompose.py |
 | `scripts\rs_leader\exit_adapter.py` | RESEARCH | RESEARCH:scripts\multiverse4_returns_export.py; TEST:tests\rs_leader\test_exit_adapter.py |
 | `scripts\run_books_research.py` | UNREFERENCED | - |
+| `scripts\run_buy_filter_grid.py` | UNREFERENCED | - |
 | `scripts\run_daytrading_3methods.py` | UNREFERENCED | - |
 | `scripts\run_dino_surge.py` | TEST-ONLY | TEST:tests\books\test_dino_surge_daily.py |
 | `scripts\run_elder_triple_screen.py` | UNREFERENCED | - |

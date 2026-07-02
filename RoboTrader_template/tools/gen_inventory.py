@@ -1,4 +1,4 @@
-"""연구 디렉토리(scripts/, multiverse/) 인벤토리 생성 — AST import 그래프 기반.
+"""연구 디렉토리(scripts/, multiverse/, backtest/) 인벤토리 생성 — AST import 그래프 기반.
 
 분류:
   LIVE-DEP   : 운영 디렉토리 파일이 import (Phase1 이후 0이어야 정상)
@@ -13,7 +13,7 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROD_DIRS = ["core", "bot", "framework", "api", "strategies", "collectors",
              "db", "runners", "signals", "lib", "utils", "tools", "config"]
-RESEARCH_DIRS = ["scripts", "multiverse"]
+RESEARCH_DIRS = ["scripts", "multiverse", "backtest"]
 SKIP_DIRS = {"__pycache__", "venv", "venv_broken_quantcopy", ".git", "logs", "reports"}
 
 

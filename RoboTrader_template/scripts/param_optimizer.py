@@ -4,7 +4,7 @@
 전략의 파라미터 그리드를 탐색하여 순수익(PnL) 최대 조합을 찾는다.
 
 Usage:
-    python -m RoboTrader_template.runners.param_optimizer \
+    python -m RoboTrader_template.scripts.param_optimizer \
         --strategies sample,bb_reversion \
         --stock-codes 005930,000660,035420 \
         --days 90 \
@@ -13,7 +13,7 @@ Usage:
         --top-n 20
 
     # 스크리너 그리드 이중 루프 (K 스크리너 조합 × M 전략 조합)
-    python -m RoboTrader_template.runners.param_optimizer \
+    python -m RoboTrader_template.scripts.param_optimizer \
         --strategies bb_reversion \
         --stock-codes 015760,008350 \
         --days 120 --n-jobs 4 --min-trades 1 --top-n 5 \
@@ -53,7 +53,7 @@ from strategies.screener_base import ScreenerBase  # noqa: E402
 from runners._adapter_factory import build_adapter  # noqa: E402
 
 
-_LOGGER = logging.getLogger("runners.param_optimizer")
+_LOGGER = logging.getLogger("scripts.param_optimizer")
 _OUTPUT_DIR = _PROJ_ROOT / "output"
 _STRATEGIES_DIR = _PROJ_ROOT / "strategies"
 _INITIAL_CAPITAL = 10_000_000.0

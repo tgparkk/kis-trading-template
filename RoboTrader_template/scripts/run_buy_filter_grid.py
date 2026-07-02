@@ -5,7 +5,7 @@ Phase 2: 매수필터 파라미터 최적화 — OOS + 워크포워드 검증
 
 실행:
     cd RoboTrader_template
-    python runners/run_buy_filter_grid.py
+    python scripts/run_buy_filter_grid.py
 
 결과:
     output/buy_filter_grid_2026-05-01.parquet

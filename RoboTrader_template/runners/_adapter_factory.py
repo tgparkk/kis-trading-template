@@ -1,6 +1,6 @@
 """
 어댑터 팩토리 — 스크리너 어댑터 인스턴스 생성 공통 유틸.
-screener_snapshot_collector 와 param_optimizer 에서 공용으로 사용한다.
+screener_snapshot_collector(runners/) 와 param_optimizer(scripts/, 2026-07-02 이동) 에서 공용으로 사용한다.
 """
 from __future__ import annotations
 

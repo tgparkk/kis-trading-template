@@ -90,7 +90,7 @@ def build_adjacent_grid(
 
 
 def export_grid_yaml(grid: Dict[str, List[Any]], path: str) -> None:
-    """Stage 2 multiverse_grid override yaml로 저장 (param_optimizer가 일반 grid처럼 읽음)."""
+    """Stage 2 multiverse_grid override yaml로 저장 (scripts/param_optimizer.py가 일반 grid처럼 읽음, 2026-07-02 이동)."""
     import yaml
     from pathlib import Path
     Path(path).parent.mkdir(parents=True, exist_ok=True)
