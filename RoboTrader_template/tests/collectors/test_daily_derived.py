@@ -1,6 +1,6 @@
 # tests/collectors/test_daily_derived.py
 from collectors.daily_derived import update_returns_volatility
-from scripts.etl_backfill_daily_prices import SQL_UPDATE_RETURNS
+from collectors.daily_derived import SQL_UPDATE_RETURNS
 
 
 def test_uses_canonical_returns_sql():
