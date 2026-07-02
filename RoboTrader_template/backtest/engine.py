@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date as DateType
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import numpy as np
@@ -34,13 +33,6 @@ import pandas as pd
 
 from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE, TRAILING_STOP_CALLBACK_RATE
 from strategies.base import BaseStrategy, SignalType
-
-# CandidateRepository는 make_screener_snapshot_provider 헬퍼에서 사용.
-# DB 의존성이 없는 환경(순수 백테스트)에서는 import만 해두고 실제 호출은 provider 내부에서 발생.
-try:
-    from db.repositories.candidate import CandidateRepository as CandidateRepository
-except ImportError:  # DB 패키지 없는 경량 환경
-    CandidateRepository = None  # type: ignore[assignment,misc]
 
 
 # KS11 일봉 시장환경 필터용 상수 (daily_candles.stock_code 값, 옵션 C 2026-05-19)
@@ -1329,69 +1321,9 @@ class BacktestEngine:
 
 # ============================================================================
 # 헬퍼 팩토리: screener_snapshots DB 기반 candidate_provider 생성
+# core/screener_snapshot_provider.py로 승격됨 (2026-07-02 Phase2).
+# 운영 코드(core/candidate_selector.py)는 새 경로로 직접 import하며,
+# 아래는 연구/테스트 호환을 위한 re-export만 유지.
 # ============================================================================
 
-def make_screener_snapshot_provider(
-    strategy_name: str,
-    params_hash: Optional[str] = None,
-) -> Callable[[str, str], List[str]]:
-    """
-    screener_snapshots DB 테이블에서 날짜별 후보 코드 리스트를 반환하는
-    candidate_provider 콜백을 생성합니다.
-
-    Usage:
-        from backtest.engine import BacktestEngine, make_screener_snapshot_provider
-
-        provider = make_screener_snapshot_provider("SampleStrategy")
-        result = engine.run(
-            stock_codes=all_codes,
-            daily_data=data,
-            candidate_provider=provider,
-        )
-
-    Args:
-        strategy_name: screener_snapshots.strategy 컬럼값 (예: "SampleStrategy")
-        params_hash: 특정 파라미터 해시로 한정할 경우 지정. None이면 해당 날짜의
-                     모든 파라미터 해시 스냅샷을 합산해 후보 풀 구성.
-
-    Returns:
-        (strategy_name: str, scan_date: str) → List[str] 형태의 콜백.
-        DB 조회 실패 또는 스냅샷 없는 날짜는 빈 리스트를 반환합니다.
-    """
-    # 조회 결과를 날짜별로 캐싱해 반복 DB 호출 방지
-    _cache: Dict[str, List[str]] = {}
-
-    def _provider(strategy: str, scan_date: str) -> List[str]:
-        if scan_date in _cache:
-            return _cache[scan_date]
-
-        try:
-            if CandidateRepository is None:
-                raise ImportError("db.repositories.candidate 패키지를 사용할 수 없습니다")
-
-            repo = CandidateRepository()
-            parsed_date = DateType.fromisoformat(scan_date)
-
-            if params_hash:
-                rows = repo.get_screener_snapshot(strategy_name, parsed_date, params_hash)
-                codes = [r["stock_code"] for r in rows]
-            else:
-                df = repo.get_snapshot_date_range(
-                    strategy=strategy_name,
-                    start_date=parsed_date,
-                    end_date=parsed_date,
-                    params_hash=None,
-                )
-                codes = df["stock_code"].tolist() if not df.empty else []
-
-            _cache[scan_date] = codes
-            return codes
-
-        except Exception as e:
-            logging.getLogger("backtest.screener_provider").warning(
-                f"screener_snapshots 조회 실패 [{scan_date}]: {e}"
-            )
-            _cache[scan_date] = []
-            return []
-
-    return _provider
+from core.screener_snapshot_provider import make_screener_snapshot_provider  # noqa: E402,F401

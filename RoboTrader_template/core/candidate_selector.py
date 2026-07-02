@@ -882,7 +882,7 @@ class CandidateSelector:
         try:
             prev_trading_day = get_previous_trading_day(now_kst())
             prev_day_str = prev_trading_day.strftime("%Y-%m-%d")
-            from backtest.engine import make_screener_snapshot_provider
+            from core.screener_snapshot_provider import make_screener_snapshot_provider
             provider = make_screener_snapshot_provider(strategy_name)
             codes = provider(strategy_name, prev_day_str)
             if codes:

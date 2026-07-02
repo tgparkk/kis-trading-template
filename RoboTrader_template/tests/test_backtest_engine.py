@@ -399,7 +399,7 @@ class TestScreenerSnapshotProviderHelper:
             "rank_in_snapshot": [1, 2],
         })
 
-        with patch("backtest.engine.CandidateRepository") as MockRepo:
+        with patch("core.screener_snapshot_provider.CandidateRepository") as MockRepo:
             mock_repo_instance = MagicMock()
             MockRepo.return_value = mock_repo_instance
             mock_repo_instance.get_snapshot_date_range.return_value = mock_df
@@ -422,7 +422,7 @@ class TestScreenerSnapshotProviderHelper:
             {"stock_code": "000660", "stock_name": "SK하이닉스", "rank_in_snapshot": 2, "score": 78.0, "metadata": None},
         ]
 
-        with patch("backtest.engine.CandidateRepository") as MockRepo:
+        with patch("core.screener_snapshot_provider.CandidateRepository") as MockRepo:
             mock_repo_instance = MagicMock()
             MockRepo.return_value = mock_repo_instance
             mock_repo_instance.get_screener_snapshot.return_value = mock_rows
@@ -439,7 +439,7 @@ class TestScreenerSnapshotProviderHelper:
         """동일 날짜 두 번 호출 시 DB를 한 번만 조회."""
         mock_df = pd.DataFrame({"stock_code": ["005930"]})
 
-        with patch("backtest.engine.CandidateRepository") as MockRepo:
+        with patch("core.screener_snapshot_provider.CandidateRepository") as MockRepo:
             mock_repo_instance = MagicMock()
             MockRepo.return_value = mock_repo_instance
             mock_repo_instance.get_snapshot_date_range.return_value = mock_df
@@ -453,7 +453,7 @@ class TestScreenerSnapshotProviderHelper:
 
     def test_provider_returns_empty_on_db_error(self):
         """DB 에러 시 빈 리스트를 반환하고 예외를 전파하지 않음."""
-        with patch("backtest.engine.CandidateRepository") as MockRepo:
+        with patch("core.screener_snapshot_provider.CandidateRepository") as MockRepo:
             MockRepo.side_effect = Exception("DB 연결 실패")
 
             provider = make_screener_snapshot_provider("SampleStrategy")
