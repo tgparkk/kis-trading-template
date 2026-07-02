@@ -167,3 +167,7 @@ logs/tick_trace/*.jsonl
 # Feature Edge / Timing Lab 대용량 생성 산출물 (재생성 가능, GitHub 100MB 초과)
 reports/discovery/feature_edge/*.parquet
 reports/discovery/timing_lab/*.parquet
+
+# venv 백업·임시 작업 디렉토리 (git add -A 가드)
+venv_broken_quantcopy/
+scratchpad/
