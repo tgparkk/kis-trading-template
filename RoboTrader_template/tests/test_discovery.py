@@ -155,9 +155,11 @@ def test_strength_no_lookahead():
 
 def _bb_df():
     # 횡보(저ADX) 후 마지막 봉 하단 이탈 + 거래량 증가
+    # 진폭 1.5→0.5로 축소: ADX14가 임계값(20) 근처 경계선(21.28, 마진 -1.28)에
+    # 걸리던 취약 픽스처를 확실한 횡보(ADX≈11, 마진 ~9)로 강화 (4조건 전부 여유 확보).
     n = 60
     rng = np.random.default_rng(7)
-    close = 100.0 + np.sin(np.linspace(0, 12, n)) * 1.5 + rng.normal(0, 0.3, n)
+    close = 100.0 + np.sin(np.linspace(0, 12, n)) * 0.5 + rng.normal(0, 0.3, n)
     close[-1] = close[:-1].min() - 4.0  # BB 하단 관통 + RSI 급락
     vol = np.full(n, 1000.0)
     vol[-1] = 1500.0
