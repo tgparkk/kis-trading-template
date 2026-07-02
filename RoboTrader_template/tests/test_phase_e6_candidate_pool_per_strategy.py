@@ -15,6 +15,7 @@ from core.candidate_selector import CandidateSelector, CandidateStock
 from core.trading.stock_state_manager import StockStateManager
 from core.models import TradingStock, StockState
 from utils.korean_time import now_kst
+from bot.candidate_loader import CandidateLoader
 
 
 # ============================================================================
@@ -217,6 +218,9 @@ class TestLoadScreenerCandidatesMultiStrategy:
         # db_manager
         bot.db_manager = None
 
+        # candidate_loader (실제 위임 대상 — main.py wrapper가 self.candidate_loader로 위임)
+        bot.candidate_loader = CandidateLoader(bot)
+
         return bot
 
     def test_single_strategy_uses_legacy_path(self):
@@ -343,6 +347,7 @@ class TestBackwardCompatSingleStrategy:
         bot.db_manager = None
         bot.telegram = MagicMock()
         bot.telegram.notify_system_status = AsyncMock()
+        bot.candidate_loader = CandidateLoader(bot)
 
         async def run():
             await DayTradingBot._load_screener_candidates(bot)
