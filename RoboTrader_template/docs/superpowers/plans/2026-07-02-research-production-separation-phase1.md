@@ -261,6 +261,8 @@ git add -A && git commit -m "refactor(tools): paper_strategy_equity를 tools/로
 from collectors.daily_derived import SQL_UPDATE_RETURNS  # noqa: E402
 ```
 
+⚠️ **역방향 import 공통 함정**: 이 스크립트는 `python scripts/etl_backfill_daily_prices.py`로 직접 실행되며, 이때 sys.path[0]=scripts/라 `collectors`가 안 잡힌다. 기존 `_ROOT`(line 37) 계산 직후에 `sys.path.insert(0, _ROOT)`를 추가한 뒤 역방향 import를 배치할 것. 검증: `venv\Scripts\python scripts/etl_backfill_daily_prices.py --help`가 ModuleNotFoundError 없이 usage 출력.
+
 - [ ] **Step 3: 테스트 import 갱신**
 
 `tests/collectors/test_daily_derived.py:3`: `from scripts.etl_backfill_daily_prices import SQL_UPDATE_RETURNS` → `from collectors.daily_derived import SQL_UPDATE_RETURNS`
@@ -367,6 +369,12 @@ from collectors.adj_factors import compute_adj_factors
 from collectors.adj_factors import compute_adj_factors  # noqa: E402
 ```
 
+⚠️ **역방향 import 공통 함정**(Task 5 리뷰에서 발견): 직접 실행(`python scripts/10pct_strategy/p0_apply_adj_factor.py`) 시 sys.path[0]가 스크립트 디렉토리라 `collectors`가 안 잡힌다. 파일 상단 import 블록(기존 `import sys/os` 이후)에 repo 루트 부트스트랩을 추가할 것 — **깊이 2이므로 dirname 3중**:
+```python
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+```
+검증: `venv\Scripts\python scripts/10pct_strategy/p0_apply_adj_factor.py --help 2>&1 | head -3`가 ModuleNotFoundError 없이 동작(인자 파서가 없으면 DB 접속 전 단계까지 import 성공 확인으로 갈음 — DB 쓰기 실행 금지).
+
 - [ ] **Step 6: 테스트 통과 + 라이브 동등성 스모크**
 
 Run: `venv\Scripts\python -m pytest tests/collectors/test_adj_factors.py -v` → Expected: 3 PASS.
@@ -423,6 +431,13 @@ import requests
 # fetch_foreign_naver 는 라이브 수집기가 소유 → collectors 로 승격 (2026-07-02 Phase1).
 from collectors.foreign_flow_fetcher import _make_session, fetch_foreign_naver  # noqa: E402,F401
 ```
+
+⚠️ **역방향 import 공통 함정**(Task 5 리뷰에서 발견): 직접 실행(`python scripts/backfill_foreign_flow.py`, docstring line 15의 문서화된 usage) 시 sys.path[0]=scripts/라 `collectors`가 안 잡힌다. 역방향 import 직전에 부트스트랩 추가(깊이 1 = dirname 2중):
+```python
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+```
+검증: `venv\Scripts\python scripts/backfill_foreign_flow.py --help`가 ModuleNotFoundError 없이 usage 출력.
 
 `collectors/foreign_flow_collector.py:19`: `from scripts.backfill_foreign_flow import fetch_foreign_naver` → `from collectors.foreign_flow_fetcher import fetch_foreign_naver`
 
