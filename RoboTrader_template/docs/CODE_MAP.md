@@ -9,6 +9,8 @@
   - `tools/` = EOD 운영 도구(일일 리포트·equity 스냅샷). 라이브 봇이 import하는 비(非)전략 운영 코드.
 - **연구/일회성(research, 라이브 아님)**: `scripts/` `multiverse/` `books/` `council/`
   → 운영 동작을 여기서 추론하지 말 것. 파일별 태깅은 [INVENTORY.md](INVENTORY.md) 참조.
+- **archive/**: 무참조 확정 연구코드 보관소(2026-07-02 76건 이동, 판정근거
+  `docs/superpowers/plans/2026-07-02-archive-candidates.md`). 검색 대상 아님, 복원은 git mv 역방향.
 
 ## ✅ 라이브 → 연구 의존 엣지: **0건** (2026-07-02 Phase 1 승격 완료)
 

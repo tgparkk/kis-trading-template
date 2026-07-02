@@ -23,8 +23,8 @@ kis-trading-template/
 
 - **운영(production)**: `core/` `bot/` `framework/` `api/` `strategies/`
   `collectors/` `db/` `runners/` `signals/` `lib/` `utils/` `tools/`
-- **연구/일회성(research, 라이브 아님)**: `scripts/` `multiverse/` `books/` `council/`
-  → 검색 시 후순위. 죽은 실험 코드를 라이브로 오인하지 말 것.
+- **연구/일회성(research, 라이브 아님)**: `scripts/` `multiverse/` `books/` `council/` `archive/`
+  → 검색 시 후순위. 죽은 실험 코드를 라이브로 오인하지 말 것. `archive/`는 무참조 확정분 보관소(검색 제외 권장).
 
 **예외 없음 (2026-07-02 Phase1 완료)**: `scripts/`·`multiverse/`에 라이브 의존 엣지 0.
 운영 도구는 `tools/`(EOD 리포트·equity 스냅샷). 승격 이력·드리프트 점검 명령은
