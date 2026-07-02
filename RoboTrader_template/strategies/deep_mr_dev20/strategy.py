@@ -1,7 +1,7 @@
 """Deep MR Dev20 Strategy — MA20 -20% 폭락 평균회귀 (페이퍼 관찰 전용).
 
 발굴 파이프라인 배치3 졸업 (gate_deep_mr_dev20.md, 3배치 22변형 중 유일 품질 전관문 통과).
-진입: 백테스트 룰 단일소스(scripts.discovery.rules.MeanReversionMA20Rule, -20%/RSI<30) 재사용.
+진입: 백테스트 룰 단일소스(strategies.deep_mr_dev20.rule.MeanReversionMA20Rule, -20%/RSI<30) 재사용.
 청산: sl -7% → tp +12% → MA20×0.9 회복 → 최대보유 7거래일
       (백테스트 MAReversionExitAdapter 와 동일 우선순위).
 exit_timeframe="daily" — 일봉 청산 전략의 분봉 오작동(Elder whipsaw, 2026-06-09) 방지.
@@ -15,7 +15,7 @@ from config.market_hours import MarketHours
 from utils.korean_time import now_kst
 from utils.korean_holidays import count_trading_days_between
 from ..base import BaseStrategy, OrderInfo, Signal, SignalType
-from scripts.discovery.rules import MeanReversionMA20Rule
+from strategies.deep_mr_dev20.rule import MeanReversionMA20Rule
 
 
 class DeepMrDev20Strategy(BaseStrategy):

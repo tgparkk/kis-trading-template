@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from strategies._rule_screener_base import RuleScreenerBase
-from scripts.discovery.rules import MeanReversionMA20Rule
+from strategies.deep_mr_dev20.rule import MeanReversionMA20Rule
 
 
 class DeepMrDev20ScreenerAdapter(RuleScreenerBase):
