@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from scripts.rs_leader.rule import RSLeaderRule
+from strategies.rs_leader.rule import RSLeaderRule
 from strategies.base import SignalType
 
 

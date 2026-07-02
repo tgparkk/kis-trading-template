@@ -2,7 +2,7 @@
 
 match 가 절대상승추세 통과 종목의 120일 수익률을 score 로 반환 → RuleScreenerBase.scan
 의 정렬+topK 가 곧 횡단면 RS 랭킹(별도 패널 불요). 진입 추세 판정은 검증에서 쓴
-scripts.rs_leader.rule.RSLeaderRule 단일 소스를 재사용(DRY).
+strategies.rs_leader.rule.RSLeaderRule 단일 소스를 재사용(DRY).
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from strategies._rule_screener_base import RuleScreenerBase
-from scripts.rs_leader.rule import RSLeaderRule
+from strategies.rs_leader.rule import RSLeaderRule
 
 
 class RSLeaderScreenerAdapter(RuleScreenerBase):

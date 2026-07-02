@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.rs_leader.rule import RSLeaderRule  # noqa: E402
+from strategies.rs_leader.rule import RSLeaderRule  # noqa: E402
 from scripts.rs_leader.exit_adapter import MA20TrailExitAdapter  # noqa: E402
 from scripts.book_portfolio_multiverse import (  # noqa: E402
     _SLTPMHAdapter, _precompute_signals, _build_daily_regime_map,

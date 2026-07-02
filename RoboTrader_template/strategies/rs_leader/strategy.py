@@ -1,6 +1,6 @@
 """RS Leader Strategy — 횡보장 RS 리더 (페이퍼 관찰 전용).
 
-진입: 절대상승추세(scripts.rs_leader.rule.RSLeaderRule 단일 소스 재사용) — 횡단면 RS
+진입: 절대상승추세(strategies.rs_leader.rule.RSLeaderRule 단일 소스 재사용) — 횡단면 RS
 랭킹은 EOD 스크리너가 담당하고, 이 전략은 선정 풀에서 per-stock 추세 재확인 후 매수.
 청산: MA20 하향이탈(무조건, 검증 4-bis 정합) / sl -8% / max_hold 30거래일.
 holding_period="swing" → EOD 일괄청산 건너뜀. paper_trading=True.
@@ -13,7 +13,7 @@ from config.market_hours import MarketHours
 from utils.korean_time import now_kst
 from utils.korean_holidays import count_trading_days_between
 from ..base import BaseStrategy, OrderInfo, Signal, SignalType
-from scripts.rs_leader.rule import RSLeaderRule
+from strategies.rs_leader.rule import RSLeaderRule
 
 
 class RSLeaderStrategy(BaseStrategy):

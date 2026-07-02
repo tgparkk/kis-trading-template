@@ -73,7 +73,7 @@ from scripts.exit_multiverse import adapters as xadapters  # noqa: E402
 from scripts.exit_multiverse import signals as xsignals  # noqa: E402
 from scripts.exit_multiverse.portfolio_sim import run_portfolio  # noqa: E402
 from scripts.rs_leader.exit_adapter import MA20TrailExitAdapter  # noqa: E402
-from scripts.rs_leader.rule import RSLeaderRule  # noqa: E402
+from strategies.rs_leader.rule import RSLeaderRule  # noqa: E402
 
 INITIAL = 10_000_000.0       # 라이브 가상매매 = 전략당 독립 1천만 (VIRTUAL_CAPITAL_PER_STRATEGY)
 # 라이브 per-stock 매수금액 = INITIAL/K (전략별; 라이브 자본÷K 정합, 2026-06-11 K-split).
