@@ -11,7 +11,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from scripts.paper_strategy_equity import replay_strategy_equity, _load_closes
+from tools.paper_strategy_equity import replay_strategy_equity, _load_closes
 
 COMM = 0.00015
 TAX = 0.0018

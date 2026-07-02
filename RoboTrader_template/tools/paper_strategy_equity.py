@@ -15,9 +15,9 @@ UPSERT 한다(멱등·백필 가능). 수수료 모델은 봇(virtual_trading_ma
 체결도 라이브 현금식에 반영됨). --epoch 로 더 늦은 부분뷰 산출은 가능.
 
 사용:
-  python scripts/paper_strategy_equity.py                # 에포크~오늘 백필+저장
-  python scripts/paper_strategy_equity.py --no-write     # 콘솔 리더보드만
-  # 콘솔 한글 깨짐 방지: PYTHONIOENCODING=utf-8 python -X utf8 scripts/paper_strategy_equity.py
+  python tools/paper_strategy_equity.py                # 에포크~오늘 백필+저장
+  python tools/paper_strategy_equity.py --no-write     # 콘솔 리더보드만
+  # 콘솔 한글 깨짐 방지: PYTHONIOENCODING=utf-8 python -X utf8 tools/paper_strategy_equity.py
 """
 import os
 import sys

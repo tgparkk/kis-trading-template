@@ -488,7 +488,7 @@ class TestEquitySnapshotResavesPaperState:
         vm.save_paper_trading_state.side_effect = lambda: call_order.append('resave') or True
 
         with patch('db.connection.DatabaseConnection.get_connection') as mock_conn, \
-             patch('scripts.paper_strategy_equity.run_daily_equity_snapshot') as mock_snap:
+             patch('tools.paper_strategy_equity.run_daily_equity_snapshot') as mock_snap:
             mock_conn.return_value.__enter__ = MagicMock(return_value=MagicMock())
             mock_conn.return_value.__exit__ = MagicMock(return_value=False)
             mock_snap.side_effect = lambda conn: call_order.append('snapshot') or {
@@ -509,7 +509,7 @@ class TestEquitySnapshotResavesPaperState:
         monitor = SystemMonitor(mock_bot)
 
         with patch('db.connection.DatabaseConnection.get_connection') as mock_conn, \
-             patch('scripts.paper_strategy_equity.run_daily_equity_snapshot') as mock_snap:
+             patch('tools.paper_strategy_equity.run_daily_equity_snapshot') as mock_snap:
             mock_conn.return_value.__enter__ = MagicMock(return_value=MagicMock())
             mock_conn.return_value.__exit__ = MagicMock(return_value=False)
             mock_snap.return_value = {'ok': True, 'trade_date': '2026-06-23',

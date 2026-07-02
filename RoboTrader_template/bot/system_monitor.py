@@ -242,7 +242,7 @@ class SystemMonitor:
         SSOT(paper_trading_state)와 현금 불일치이므로 WARNING.
         """
         from db.connection import DatabaseConnection
-        from scripts.paper_strategy_equity import run_daily_equity_snapshot
+        from tools.paper_strategy_equity import run_daily_equity_snapshot
 
         # 0) post-EOD 체결 반영: paper_trading_state 재저장.
         #    save_paper_trading_state는 15:00 EOD청산 훅에서 1회 저장되나, 그 후

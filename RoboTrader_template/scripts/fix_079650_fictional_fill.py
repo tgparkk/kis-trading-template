@@ -16,7 +16,7 @@
   - 멱등: 이미 삭제됐으면 no-op.
   - 단일 트랜잭션.
 
-실행 후: `python scripts/paper_strategy_equity.py` 재실행으로 전략별 equity 곡선
+실행 후: `python tools/paper_strategy_equity.py` 재실행으로 전략별 equity 곡선
 재산출(멱등 리플레이). paper_trading_state(현금)는 다음 봇 사이클에 자동 재계산.
 
 usage: python scripts/fix_079650_fictional_fill.py        # 보정 실행
@@ -95,7 +95,7 @@ def main(argv=None):
         conn.commit()
         print(f"삭제 완료. 누적(보정 후): SELL {sells2}건 / 총손익(수수료전) {float(cum_after):,.0f}원 "
               f"(Δ {float(cum_after) - float(cum_before):,.0f})")
-    print("→ 다음: python scripts/paper_strategy_equity.py 로 전략별 equity 재산출")
+    print("→ 다음: python tools/paper_strategy_equity.py 로 전략별 equity 재산출")
     return 0
 
 
