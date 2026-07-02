@@ -41,9 +41,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from core.trading_context import TradingContext  # noqa: F401 — 문자열 어노테이션용
 
 _ONTICK_SKIP_LOG_INTERVAL = timedelta(minutes=10)
 
