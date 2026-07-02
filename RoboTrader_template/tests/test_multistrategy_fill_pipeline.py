@@ -303,12 +303,15 @@ class TestAllocationLifecycle:
         import main
         from types import SimpleNamespace
         from core.virtual_trading_manager import VirtualTradingManager
+        from bot.initializer import BotInitializer
         vtm = VirtualTradingManager(db_manager=None, broker=None, paper_trading=True)
         bot = SimpleNamespace(
             decision_engine=SimpleNamespace(virtual_trading=vtm, is_virtual_mode=True),
             strategies=strategies,
             logger=Mock(),
         )
+        # main.py wrapper가 self.bot_initializer로 위임 — 실제 델리게이트 배선 필요.
+        bot.bot_initializer = BotInitializer(bot)
         main.DayTradingBot._allocate_strategy_capital(bot)
         return vtm
 

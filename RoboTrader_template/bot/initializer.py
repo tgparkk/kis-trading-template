@@ -11,6 +11,7 @@ from utils.logger import setup_logger
 from utils.korean_time import now_kst, get_market_status
 from utils.price_utils import check_duplicate_process, load_config
 from config.market_hours import MarketHours
+from config.constants import VIRTUAL_CAPITAL_PER_STRATEGY
 
 if TYPE_CHECKING:
     from main import DayTradingBot
@@ -47,6 +48,52 @@ class BotInitializer:
             self.logger.info("리밸런싱 모드 활성화: 09:05 리밸런싱으로 매수, 장중 손절/익절 매도 판단 활성화")
         else:
             self.logger.info("하이브리드 모드: 리밸런싱 + 실시간 매수 판단 병행")
+
+    def _allocate_strategy_capital(self) -> None:
+        """가상매매 모드에서 각 전략 폴더키에 독립 초기자본을 할당.
+
+        VirtualTradingManager 전략별 자금 격리 원장을 활성화한다.
+        - 키는 self.bot.strategies의 폴더키 — TradingContext._strategy_key와 동일하게 매칭됨.
+        - 할당이 1건이라도 있으면 집계 virtual_balance = 전략 잔고 합계로 동기화됨.
+        - 실전 모드이거나 전략이 없으면 아무것도 하지 않음(레거시 단일 잔고 보존).
+        """
+        try:
+            if not self.bot.strategies:
+                return
+            vtm = getattr(self.bot.decision_engine, 'virtual_trading', None)
+            is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
+            if not is_virtual or vtm is None:
+                return
+            if not hasattr(vtm, 'allocate_strategy_capital'):
+                return
+            for key, strat in self.bot.strategies.items():
+                # 종목당 기본 예산 = 초기자본/K 균등분할 (A안, 2026-06-11 결재 —
+                # 백테스트 균등복리 K분할 정합. Elder K20→50만/종목 등).
+                # K는 yaml config에서 직접 읽는다 — _max_positions 속성은 각 전략
+                # on_init()(bot.initialize 시점)에서야 설정되므로 여기(__init__)서는
+                # 항상 부재 → K분할 전면 미적용이었음 (2026-06-12 라이브 확인).
+                risk = ((getattr(strat, "config", None) or {})
+                        .get("risk_management", {}) or {})
+                k = risk.get("max_positions") or getattr(strat, '_max_positions', None)
+                vtm.allocate_strategy_capital(
+                    key, VIRTUAL_CAPITAL_PER_STRATEGY, max_positions=k)
+                # 전략별 종목당 투자금액 (yaml risk_management.paper_investment_per_stock).
+                # 명시 시 K분할 기본값을 덮어씀 — 사이징 시나리오 검증값(예: deep_mr_dev20).
+                try:
+                    per_stock = ((getattr(strat, "config", None) or {})
+                                 .get("risk_management", {})
+                                 .get("paper_investment_per_stock"))
+                    if per_stock and hasattr(vtm, "set_strategy_investment_amount"):
+                        vtm.set_strategy_investment_amount(key, float(per_stock))
+                except Exception as e:
+                    self.logger.warning(f"전략 종목당 투자금액 설정 실패({key}): {e}")
+            self.logger.info(
+                f"전략별 가상 자금 할당 완료: {list(self.bot.strategies.keys())} "
+                f"(전략당 {VIRTUAL_CAPITAL_PER_STRATEGY:,.0f}원, "
+                f"총 {vtm.get_virtual_balance():,.0f}원)"
+            )
+        except Exception as e:
+            self.logger.warning(f"전략별 가상 자금 할당 실패 (단일 잔고 사용): {e}")
 
     async def initialize_system(self) -> bool:
         """시스템 초기화 (비동기)"""
