@@ -1,12 +1,8 @@
 # collectors/daily_adj.py
 """adj_factor 갱신 — corp_events 분할이벤트 기반(새 DB). compute_adj_factors 재사용."""
-import importlib
-
 import psycopg2.extras
 
-# p0_apply_adj_factor 는 패키지 경로에 숫자 시작 디렉토리(10pct_strategy)라 importlib 사용
-_p0 = importlib.import_module("scripts.10pct_strategy.p0_apply_adj_factor")
-compute_adj_factors = _p0.compute_adj_factors
+from collectors.adj_factors import compute_adj_factors
 
 
 def load_split_events(conn) -> dict:

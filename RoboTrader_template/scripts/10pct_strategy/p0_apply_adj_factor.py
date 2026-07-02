@@ -24,6 +24,8 @@ import math
 from datetime import date, datetime
 from collections import defaultdict
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 import psycopg2
 import psycopg2.extras
 import pandas as pd
@@ -134,29 +136,8 @@ def load_split_events() -> dict:
 # ---------------------------------------------------------------------------
 # Step 2: Compute PIT adj_factor per (stock, date)
 # ---------------------------------------------------------------------------
-def compute_adj_factors(events: dict, stock_dates: dict) -> dict:
-    """
-    For each (stock, date T):
-      adj_factor(T) = product(sf for (ed, sf) in events[stock] if ed > T)
-
-    Returns: {stock_code: {date_str: adj_factor}}
-    """
-    result = {}
-    for stock_code, ev_list in events.items():
-        if stock_code not in stock_dates:
-            continue
-        dates = stock_dates[stock_code]
-        stock_result = {}
-        for date_str in dates:
-            try:
-                t = date.fromisoformat(date_str)
-            except ValueError:
-                stock_result[date_str] = 1.0
-                continue
-            future_factors = [sf for (ed, sf) in ev_list if ed > t]
-            stock_result[date_str] = math.prod(future_factors) if future_factors else 1.0
-        result[stock_code] = stock_result
-    return result
+# compute_adj_factors 는 라이브 수집기가 소유 → collectors 로 승격 (2026-07-02 Phase1).
+from collectors.adj_factors import compute_adj_factors  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
