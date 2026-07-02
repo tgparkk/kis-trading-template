@@ -1,0 +1,9 @@
+# lint/분석 도구 설정 전용 (패키징 아님). 동작 영향 0.
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+# 연구/일회성 코드는 lint 대상 제외 (docs/CODE_MAP.md 의 경계와 일치)
+extend-exclude = ["scripts", "multiverse", "books", "council", "venv", "venv_broken_quantcopy", "archive"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]  # 시작은 치명 오류만(문법·미정의명). 점진 확대.
