@@ -16,7 +16,7 @@ import psycopg2  # noqa: E402
 from db.kis_db_connection import KisDbConnection  # noqa: E402
 from collectors.foreign_flow_writer import naver_df_to_rows, upsert_foreign_rows  # noqa: E402
 from collectors.daily_collector import load_universe, reconcile_verdict  # noqa: E402
-from scripts.backfill_foreign_flow import fetch_foreign_naver  # noqa: E402
+from collectors.foreign_flow_fetcher import fetch_foreign_naver  # noqa: E402
 from utils.logger import setup_logger  # noqa: E402
 
 logger = setup_logger(__name__)
