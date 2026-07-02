@@ -23,10 +23,10 @@ kis-trading-template/
 
 - **운영(production)**: `core/` `bot/` `framework/` `api/` `strategies/`
   `collectors/` `db/` `runners/` `signals/` `lib/` `utils/` `tools/`
-- **연구/일회성(research, 라이브 아님)**: `scripts/` `multiverse/` `books/` `council/` `archive/`
+- **연구/일회성(research, 라이브 아님)**: `scripts/` `multiverse/` `books/` `council/` `archive/` `backtest/`
   → 검색 시 후순위. 죽은 실험 코드를 라이브로 오인하지 말 것. `archive/`는 무참조 확정분 보관소(검색 제외 권장).
 
-**예외 없음 (2026-07-02 Phase1 완료)**: `scripts/`·`multiverse/`에 라이브 의존 엣지 0.
+**예외 없음 (2026-07-02 Phase1 완료 + Phase2 `backtest/` 분류 확정)**: `scripts/`·`multiverse/`·`backtest/`에 라이브 의존 엣지 0.
 운영 도구는 `tools/`(EOD 리포트·equity 스냅샷). 승격 이력·드리프트 점검 명령은
 [docs/CODE_MAP.md](docs/CODE_MAP.md), 연구 파일별 태깅은 [docs/INVENTORY.md](docs/INVENTORY.md).
 
@@ -144,4 +144,4 @@ kis-trading-template/
 
 ---
 
-**마지막 업데이트**: 2026-07-02 (Phase1 완료 — 라이브→연구 엣지 0, `tools/` 운영 편입)
+**마지막 업데이트**: 2026-07-02 (Phase1 완료 — 라이브→연구 엣지 0, `tools/` 운영 편입 / Phase2 — `backtest/` 연구 분류 확정, `runners/` 연구 러너 2본 `scripts/`로 강등)
