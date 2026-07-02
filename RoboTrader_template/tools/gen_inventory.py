@@ -33,11 +33,10 @@ def module_name(relpath):
     return relpath[:-3].replace(os.sep, ".").replace("/", ".")
 
 
-def imports_of(relpath):
+def imports_of_source(text):
     try:
-        with open(os.path.join(ROOT, relpath), encoding="utf-8") as fh:
-            tree = ast.parse(fh.read())
-    except (SyntaxError, UnicodeDecodeError):
+        tree = ast.parse(text)
+    except SyntaxError:
         return set()
     mods = set()
     for node in ast.walk(tree):
@@ -45,6 +44,8 @@ def imports_of(relpath):
             mods.update(a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             mods.add(node.module)
+            for a in node.names:  # from pkg import module 케이스 포착
+                mods.add(f"{node.module}.{a.name}")
         elif isinstance(node, ast.Call):
             # importlib.import_module("...") / __import__("...") 리터럴 인자 포착
             fn = node.func
@@ -53,6 +54,15 @@ def imports_of(relpath):
                     and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
                 mods.add(node.args[0].value)
     return mods
+
+
+def imports_of(relpath):
+    try:
+        with open(os.path.join(ROOT, relpath), encoding="utf-8") as fh:
+            text = fh.read()
+    except UnicodeDecodeError:
+        return set()
+    return imports_of_source(text)
 
 
 def main():

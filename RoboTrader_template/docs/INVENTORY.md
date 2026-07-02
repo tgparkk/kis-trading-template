@@ -146,38 +146,38 @@
 | `scripts\entry_filters.py` | RESEARCH | RESEARCH:scripts\book_portfolio_multiverse.py; RESEARCH:scripts\multiverse3_real_exit.py; RESEARCH:scripts\multiverse4_returns_export.py; RESEARCH:scripts\portfolio_sim_elder.py; RESEARCH:scripts\rs_leader_validation.py |
 | `scripts\etl_backfill_daily_prices.py` | TEST-ONLY | TEST:tests\collectors\test_daily_derived.py |
 | `scripts\exit_multiverse\__init__.py` | UNREFERENCED | - |
-| `scripts\exit_multiverse\adapters.py` | UNREFERENCED | - |
-| `scripts\exit_multiverse\data_loader.py` | UNREFERENCED | - |
-| `scripts\exit_multiverse\exits.py` | UNREFERENCED | - |
-| `scripts\exit_multiverse\objective.py` | UNREFERENCED | - |
-| `scripts\exit_multiverse\portfolio_sim.py` | RESEARCH | RESEARCH:scripts\book_portfolio_multiverse.py; RESEARCH:scripts\discovery\sizing_scenarios.py; RESEARCH:scripts\dynamic_rr_multiverse.py; RESEARCH:scripts\multiverse3_real_exit.py; RESEARCH:scripts\multiverse4_returns_export.py |
-| `scripts\exit_multiverse\report.py` | UNREFERENCED | - |
-| `scripts\exit_multiverse\run.py` | UNREFERENCED | - |
-| `scripts\exit_multiverse\run_all.py` | UNREFERENCED | - |
-| `scripts\exit_multiverse\signals.py` | TEST-ONLY | TEST:tests\regime\test_multiverse3_real_exit.py |
-| `scripts\exit_multiverse\walkforward.py` | UNREFERENCED | - |
+| `scripts\exit_multiverse\adapters.py` | RESEARCH | RESEARCH:scripts\exit_multiverse\run.py; RESEARCH:scripts\exit_multiverse\run_all.py; RESEARCH:scripts\multiverse3_real_exit.py; RESEARCH:scripts\multiverse4_returns_export.py; TEST:tests\exit_multiverse\test_adapters.py |
+| `scripts\exit_multiverse\data_loader.py` | RESEARCH | RESEARCH:scripts\exit_multiverse\run.py; RESEARCH:scripts\multiverse3_real_exit.py; TEST:tests\exit_multiverse\test_data_loader.py; TEST:tests\exit_multiverse\test_equivalence.py |
+| `scripts\exit_multiverse\exits.py` | RESEARCH | RESEARCH:scripts\exit_multiverse\adapters.py; TEST:tests\exit_multiverse\test_exits.py |
+| `scripts\exit_multiverse\objective.py` | RESEARCH | RESEARCH:scripts\exit_multiverse\walkforward.py; TEST:tests\exit_multiverse\test_objective.py |
+| `scripts\exit_multiverse\portfolio_sim.py` | RESEARCH | RESEARCH:scripts\book_portfolio_multiverse.py; RESEARCH:scripts\discovery\sizing_scenarios.py; RESEARCH:scripts\dynamic_rr_multiverse.py; RESEARCH:scripts\exit_multiverse\walkforward.py; RESEARCH:scripts\multiverse3_real_exit.py |
+| `scripts\exit_multiverse\report.py` | RESEARCH | RESEARCH:scripts\exit_multiverse\run.py; TEST:tests\exit_multiverse\test_report.py |
+| `scripts\exit_multiverse\run.py` | RESEARCH | RESEARCH:scripts\exit_multiverse\run_all.py; TEST:tests\exit_multiverse\test_run_smoke.py |
+| `scripts\exit_multiverse\run_all.py` | TEST-ONLY | TEST:tests\exit_multiverse\test_run_all.py |
+| `scripts\exit_multiverse\signals.py` | RESEARCH | RESEARCH:scripts\exit_multiverse\run.py; RESEARCH:scripts\multiverse3_real_exit.py; RESEARCH:scripts\multiverse4_returns_export.py; TEST:tests\exit_multiverse\test_equivalence.py; TEST:tests\exit_multiverse\test_signals.py |
+| `scripts\exit_multiverse\walkforward.py` | RESEARCH | RESEARCH:scripts\exit_multiverse\run.py; TEST:tests\exit_multiverse\test_walkforward.py |
 | `scripts\extract_spike_precursors.py` | UNREFERENCED | - |
 | `scripts\feature_edge\__init__.py` | UNREFERENCED | - |
-| `scripts\feature_edge\config.py` | UNREFERENCED | - |
+| `scripts\feature_edge\config.py` | RESEARCH | RESEARCH:scripts\feature_edge\loaders.py; RESEARCH:scripts\feature_edge\portfolio_backtest.py; RESEARCH:scripts\feature_edge\run_edge_lab.py; TEST:tests\feature_edge\test_config.py |
 | `scripts\feature_edge\event_features.py` | RESEARCH | RESEARCH:scripts\feature_edge\panel.py; TEST:tests\feature_edge\test_event_features.py |
 | `scripts\feature_edge\flow_features.py` | RESEARCH | RESEARCH:scripts\feature_edge\panel.py; TEST:tests\feature_edge\test_flow_features.py |
 | `scripts\feature_edge\labelers.py` | RESEARCH | RESEARCH:scripts\feature_edge\portfolio_backtest.py; RESEARCH:scripts\feature_edge\run_edge_lab.py; TEST:tests\feature_edge\test_labelers.py |
-| `scripts\feature_edge\loaders.py` | UNREFERENCED | - |
+| `scripts\feature_edge\loaders.py` | RESEARCH | RESEARCH:scripts\feature_edge\portfolio_backtest.py; RESEARCH:scripts\feature_edge\run_edge_lab.py; RESEARCH:scripts\feature_edge\timing\cost_validation.py; RESEARCH:scripts\feature_edge\timing\run_timing_lab.py; TEST:tests\feature_edge\test_loaders.py |
 | `scripts\feature_edge\market_features.py` | RESEARCH | RESEARCH:scripts\feature_edge\panel.py; TEST:tests\feature_edge\test_market_features.py |
 | `scripts\feature_edge\metrics.py` | RESEARCH | RESEARCH:scripts\feature_edge\run_edge_lab.py; TEST:tests\feature_edge\test_metrics.py |
 | `scripts\feature_edge\panel.py` | RESEARCH | RESEARCH:scripts\feature_edge\run_edge_lab.py; TEST:tests\feature_edge\test_panel.py |
 | `scripts\feature_edge\portfolio_backtest.py` | TEST-ONLY | TEST:tests\feature_edge\test_portfolio_backtest.py |
 | `scripts\feature_edge\price_features.py` | RESEARCH | RESEARCH:scripts\feature_edge\panel.py; RESEARCH:scripts\feature_edge\portfolio_backtest.py; TEST:tests\feature_edge\test_price_features.py |
 | `scripts\feature_edge\run_edge_lab.py` | TEST-ONLY | TEST:tests\feature_edge\test_run_edge_lab.py |
-| `scripts\feature_edge\signals.py` | TEST-ONLY | TEST:tests\feature_edge\test_signals.py |
+| `scripts\feature_edge\signals.py` | RESEARCH | RESEARCH:scripts\feature_edge\timing\cost_validation.py; RESEARCH:scripts\feature_edge\timing\run_timing_lab.py; TEST:tests\feature_edge\test_signals.py |
 | `scripts\feature_edge\timing\__init__.py` | UNREFERENCED | - |
-| `scripts\feature_edge\timing\buy_rules.py` | TEST-ONLY | TEST:tests\feature_edge\timing\test_buy_rules.py |
-| `scripts\feature_edge\timing\config.py` | UNREFERENCED | - |
+| `scripts\feature_edge\timing\buy_rules.py` | RESEARCH | RESEARCH:scripts\feature_edge\timing\cost_validation.py; RESEARCH:scripts\feature_edge\timing\run_timing_lab.py; TEST:tests\feature_edge\timing\test_buy_rules.py |
+| `scripts\feature_edge\timing\config.py` | RESEARCH | RESEARCH:scripts\feature_edge\timing\cost_validation.py; RESEARCH:scripts\feature_edge\timing\run_timing_lab.py; TEST:tests\feature_edge\timing\test_config.py |
 | `scripts\feature_edge\timing\cost_validation.py` | TEST-ONLY | TEST:tests\feature_edge\timing\test_cost_validation.py |
 | `scripts\feature_edge\timing\intraday_features.py` | RESEARCH | RESEARCH:scripts\feature_edge\timing\buy_rules.py; RESEARCH:scripts\feature_edge\timing\sell_rules.py; TEST:tests\feature_edge\timing\test_intraday_features.py |
-| `scripts\feature_edge\timing\intraday_loader.py` | UNREFERENCED | - |
+| `scripts\feature_edge\timing\intraday_loader.py` | RESEARCH | RESEARCH:scripts\feature_edge\timing\cost_validation.py; RESEARCH:scripts\feature_edge\timing\run_timing_lab.py; TEST:tests\feature_edge\timing\test_intraday_loader.py |
 | `scripts\feature_edge\timing\run_timing_lab.py` | RESEARCH | RESEARCH:scripts\feature_edge\timing\cost_validation.py; TEST:tests\feature_edge\timing\test_run_timing_lab.py |
-| `scripts\feature_edge\timing\sell_rules.py` | TEST-ONLY | TEST:tests\feature_edge\timing\test_sell_rules.py |
+| `scripts\feature_edge\timing\sell_rules.py` | RESEARCH | RESEARCH:scripts\feature_edge\timing\run_timing_lab.py; TEST:tests\feature_edge\timing\test_sell_rules.py |
 | `scripts\feature_edge\timing\timing_metrics.py` | RESEARCH | RESEARCH:scripts\feature_edge\timing\run_timing_lab.py; TEST:tests\feature_edge\timing\test_timing_metrics.py |
 | `scripts\feature_edge\timing\trade_sim.py` | RESEARCH | RESEARCH:scripts\feature_edge\timing\cost_validation.py; RESEARCH:scripts\feature_edge\timing\run_timing_lab.py; TEST:tests\feature_edge\timing\test_trade_sim.py |
 | `scripts\fix_079650_fictional_fill.py` | UNREFERENCED | - |
