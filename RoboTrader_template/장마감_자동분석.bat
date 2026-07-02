@@ -8,10 +8,11 @@ echo ============================================================
 echo.
 
 REM 기본: 분석만 수행 (Claude 호출 안함)
-REM python scripts/auto_analysis.py --analyze-only
+REM [2026-07-02] scripts/auto_analysis.py 는 저장소에 존재하지 않아 비활성화 (Phase1).
+REM 복구 시 docs/CODE_MAP.md 의 .bat 섹션도 함께 갱신할 것.
 
 REM 문제 발견 시 Claude와 대화
-python scripts/auto_analysis.py
+echo (auto_analysis.py 부재로 분석 스킵 — docs/CODE_MAP.md 참조)
 
 echo.
 echo ============================================================
