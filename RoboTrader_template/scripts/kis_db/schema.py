@@ -10,8 +10,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from db.kis_db_connection import KisDbConnection  # noqa: E402
 
 EXPECTED_TABLES = {
+    # 시장데이터 (기존)
     "minute_candles", "daily_prices", "index_daily",
     "corp_events", "collection_reconciliation", "foreign_flow",
+    # 운영 테이블 (Phase A — init-scripts 01/05. paper_strategy_equity 는
+    # Task 2 에서 DDL 승격과 함께 추가됨 — DDL 없이 여기 넣으면
+    # test_every_expected_table_has_ddl 회귀 테스트가 깨짐)
+    "virtual_trading_records", "real_trading_records",
+    "paper_trading_state",
+    "candidate_stocks", "screener_snapshots",
 }
 
 DDL_STATEMENTS = [
@@ -106,6 +113,103 @@ DDL_STATEMENTS = [
         verdict VARCHAR,
         created_at TIMESTAMP DEFAULT now(),
         PRIMARY KEY (trade_date, dataset)
+    )
+    """,
+    # ── 운영 테이블 (init-scripts/01-init.sql 컬럼/인덱스/제약 그대로) ──────────
+    # 후보 종목
+    """
+    CREATE TABLE IF NOT EXISTS candidate_stocks (
+        id SERIAL PRIMARY KEY,
+        stock_code VARCHAR(10) NOT NULL,
+        stock_name VARCHAR(100),
+        selection_date TIMESTAMPTZ NOT NULL,
+        score NUMERIC(10, 4) NOT NULL,
+        reasons TEXT,
+        status VARCHAR(20) DEFAULT 'active',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_candidate_date ON candidate_stocks(selection_date DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_candidate_code ON candidate_stocks(stock_code)",
+    "CREATE INDEX IF NOT EXISTS idx_candidate_status ON candidate_stocks(status)",
+    # 가상 매매 기록 (source 컬럼 포함 — 05-vtr-source-column.sql)
+    """
+    CREATE TABLE IF NOT EXISTS virtual_trading_records (
+        id SERIAL PRIMARY KEY,
+        stock_code VARCHAR(10) NOT NULL,
+        stock_name VARCHAR(100),
+        action VARCHAR(10) NOT NULL,
+        quantity INTEGER NOT NULL,
+        price NUMERIC(15, 2) NOT NULL,
+        timestamp TIMESTAMPTZ NOT NULL,
+        strategy VARCHAR(50),
+        reason TEXT,
+        is_test BOOLEAN DEFAULT TRUE,
+        profit_loss NUMERIC(15, 2) DEFAULT 0,
+        profit_rate NUMERIC(10, 6) DEFAULT 0,
+        buy_record_id INTEGER REFERENCES virtual_trading_records(id),
+        target_profit_rate NUMERIC(10, 6),
+        stop_loss_rate NUMERIC(10, 6),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        source VARCHAR(50)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_virtual_trading_code_date ON virtual_trading_records(stock_code, timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_virtual_trading_action ON virtual_trading_records(action)",
+    "CREATE INDEX IF NOT EXISTS idx_virtual_trading_test ON virtual_trading_records(is_test)",
+    "CREATE INDEX IF NOT EXISTS idx_virtual_trading_timestamp ON virtual_trading_records(timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_virtual_trading_source ON virtual_trading_records(source)",
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_virtual_trading_unique_sell
+    ON virtual_trading_records(buy_record_id)
+    WHERE action = 'SELL' AND buy_record_id IS NOT NULL
+    """,
+    # 실거래 기록 base (동적 real_trading_{instance} 의 LIKE 템플릿)
+    """
+    CREATE TABLE IF NOT EXISTS real_trading_records (
+        id SERIAL PRIMARY KEY,
+        stock_code VARCHAR(10) NOT NULL,
+        stock_name VARCHAR(100),
+        action VARCHAR(10) NOT NULL,
+        quantity INTEGER NOT NULL,
+        price NUMERIC(15, 2) NOT NULL,
+        timestamp TIMESTAMPTZ NOT NULL,
+        strategy VARCHAR(50),
+        reason TEXT,
+        profit_loss NUMERIC(15, 2) DEFAULT 0,
+        profit_rate NUMERIC(10, 6) DEFAULT 0,
+        buy_record_id INTEGER REFERENCES real_trading_records(id),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_real_trading_code_date ON real_trading_records(stock_code, timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_real_trading_action ON real_trading_records(action)",
+    "CREATE INDEX IF NOT EXISTS idx_real_trading_timestamp ON real_trading_records(timestamp DESC)",
+    # 스크리너 시점 스냅샷 (jsonb params_json/metadata)
+    """
+    CREATE TABLE IF NOT EXISTS screener_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        strategy VARCHAR(50) NOT NULL,
+        scan_date DATE NOT NULL,
+        params_hash VARCHAR(40) NOT NULL,
+        params_json JSONB NOT NULL,
+        stock_code VARCHAR(20) NOT NULL,
+        stock_name VARCHAR(100),
+        rank_in_snapshot INT,
+        score DOUBLE PRECISION,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (strategy, scan_date, params_hash, stock_code)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_screener_snapshots_strategy_date ON screener_snapshots (strategy, scan_date)",
+    "CREATE INDEX IF NOT EXISTS idx_screener_snapshots_params ON screener_snapshots (strategy, params_hash)",
+    # 가상매매 EOD 잔고 이월
+    """
+    CREATE TABLE IF NOT EXISTS paper_trading_state (
+        trade_date  DATE PRIMARY KEY,
+        eod_balance NUMERIC(15, 2) NOT NULL,
+        updated_at  TIMESTAMPTZ DEFAULT now()
     )
     """,
 ]
