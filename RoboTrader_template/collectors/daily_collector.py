@@ -17,6 +17,7 @@ import psycopg2  # noqa: E402
 from db.kis_db_connection import KisDbConnection  # noqa: E402
 from collectors.daily_writer import parse_kis_daily_row, upsert_daily_rows  # noqa: E402
 from collectors.daily_derived import update_returns_volatility  # noqa: E402
+from collectors.split_factor_infer import infer_and_stamp_split_factors  # noqa: E402
 from collectors.daily_adj import update_adj_factors  # noqa: E402
 from api import kis_market_api  # noqa: E402
 from utils.logger import setup_logger  # noqa: E402
@@ -69,8 +70,11 @@ def collect_daily(target_date: str = None, limit: int = None) -> dict:
             if rows:
                 total += upsert_daily_rows(conn, rows)
         update_returns_volatility(conn)
+        # split_factor 스탬프는 반드시 update_adj_factors 이전 — 새로 확정된 권리락
+        # 배수를 daily_adj 가 같은 밤에 adj_factor 로 반영하도록.
+        stamped = infer_and_stamp_split_factors(conn)
         adj = update_adj_factors(conn)
-    return {"codes": len(codes), "rows": total, "adj": adj}
+    return {"codes": len(codes), "rows": total, "adj": adj, "split_factor_stamped": stamped}
 
 
 def reconcile_verdict(real_rows: int, new_rows: int, value_match: int) -> dict:
