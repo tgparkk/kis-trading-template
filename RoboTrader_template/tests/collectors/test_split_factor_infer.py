@@ -44,6 +44,44 @@ def test_first_clean_gap_takes_first_qualifying():
     assert sfi._first_clean_gap(prices) == ("2026-05-06", 3)
 
 
+# ── R3: 캘린더 간격 가드 (거래정지 허용, 장기결측 거부) ─────────────────────────
+
+def test_first_clean_gap_accepts_001130_real_halt_across_weekend():
+    """실제 001130 사례(2026-07-06 라이브 DB 조회값): 4일 거래정지(거래량0, 종가동결)
+    후 금(05-15)→월(05-18) 재개 시 종가 156500→14300 (ratio~10.94→11). 캘린더 간격
+    3일(주말 포함)은 정상 거래재개 패턴이므로 반드시 허용돼야 한다(회귀 방지)."""
+    prices = [
+        ("2026-05-08", 156500.0),
+        ("2026-05-11", 156500.0),
+        ("2026-05-12", 156500.0),
+        ("2026-05-13", 156500.0),
+        ("2026-05-14", 156500.0),
+        ("2026-05-15", 156500.0),   # 거래정지 마지막 날(금)
+        ("2026-05-18", 14300.0),    # 재개(월) — 진짜 갭
+        ("2026-05-19", 13410.0),
+        ("2026-05-20", 12830.0),
+    ]
+    assert sfi._first_clean_gap(prices) == ("2026-05-18", 11)
+
+
+def test_first_clean_gap_rejects_multiweek_hole():
+    """비율은 그럴듯해도(2.0) 캘린더 간격이 19일이면 거래정지가 아니라 장기 데이터
+    결측/미상장 구간일 가능성이 높다 — 분할 갭으로 오인해선 안 된다."""
+    prices = [("2026-01-01", 100.0), ("2026-01-20", 50.0)]
+    assert sfi._first_clean_gap(prices) is None
+
+
+def test_first_clean_gap_skips_rejected_hole_then_finds_valid_gap():
+    """장기 결측 쌍은 거부하고 계속 스캔해 이후의 진짜(간격 정상) 갭을 찾아야 한다."""
+    prices = [
+        ("2026-01-01", 100.0),
+        ("2026-01-25", 50.0),   # 24일 간격, ratio 2.0 — 거부(계속 스캔)
+        ("2026-01-26", 50.0),   # ratio 1.0 — 갭 아님
+        ("2026-01-27", 25.0),   # 1일 간격, ratio 2.0 — 채택
+    ]
+    assert sfi._first_clean_gap(prices) == ("2026-01-27", 2)
+
+
 # ── infer_and_stamp_split_factors (mock DB) ──────────────────────────────────
 
 class _Cursor:
@@ -133,7 +171,7 @@ def test_infer_skips_when_no_gap_yet_idempotent():
 def test_infer_handles_bonus_issue_type():
     conn = _Conn(
         events=[("012345", "bonus_issue", date(2026, 3, 10))],
-        prices={"012345": [("2026-03-10", 300.0), ("2026-03-25", 100.0)]},  # 3:1
+        prices={"012345": [("2026-03-10", 300.0), ("2026-03-12", 100.0)]},  # 3:1, 2일 간격
     )
     assert sfi.infer_and_stamp_split_factors(conn) == 1
     _, meta_json, _, etype, _ = conn.updates[0]
