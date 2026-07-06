@@ -92,7 +92,9 @@ class _Cursor:
     def execute(self, sql, params=None):
         s = " ".join(sql.upper().split())
         if s.startswith("SELECT STOCK_CODE, EVENT_TYPE, EVENT_DATE FROM CORP_EVENTS"):
-            self._rows = list(self.conn.events)
+            # R5: 프로덕션 SQL 이 event_type='split' 만 조회하므로 목도 동일하게 필터링
+            # (실제 DB WHERE 절을 충실히 모사 — bonus_issue 는 여기서 걸러진다).
+            self._rows = [e for e in self.conn.events if e[1] == "split"]
         elif "FROM DAILY_PRICES" in s:
             self._rows = self.conn.prices.get(params[0], [])
         elif s.startswith("UPDATE CORP_EVENTS"):
@@ -199,7 +201,7 @@ def test_infer_001130_real_case_stamps_11_event_date_preserved():
 def test_infer_skips_when_no_gap_yet_idempotent():
     """권리락 전(갭 없음) → 스탬프 안 함, 재실행해도 동일(멱등)."""
     conn = _Conn(
-        events=[("000660", "bonus_issue", date(2026, 5, 1))],
+        events=[("000660", "split", date(2026, 5, 1))],
         prices={"000660": [("2026-05-01", 100.0), ("2026-05-02", 99.0)]},
     )
     assert sfi.infer_and_stamp_split_factors(conn) == 0
@@ -208,13 +210,23 @@ def test_infer_skips_when_no_gap_yet_idempotent():
     assert sfi.infer_and_stamp_split_factors(conn) == 0
 
 
-def test_infer_handles_bonus_issue_type():
+def test_infer_scopes_to_split_only_bonus_issue_excluded():
+    """R5: bonus_issue 는 더 이상 스탬프 대상이 아니다 — daily_adj 가 'split'만
+    소비하므로 bonus_issue 를 추론·스탬프하는 것은 낭비(매일 밤 불필요한 UPDATE)이자
+    실제로 쓰이지 않는 조용한 divergence 였다(2026-07-06 code review). corp_events
+    캡처(Item 2)는 유지하되 가격조정 스탬프만 하지 않는다 — bonus_issue 가격조정은
+    의도적인 후속 과제."""
     conn = _Conn(
-        events=[("012345", "bonus_issue", date(2026, 3, 10))],
-        prices={"012345": [("2026-03-10", 300.0), ("2026-03-12", 100.0)]},  # 3:1, 2일 간격
+        events=[
+            ("005930", "split", date(2026, 5, 1)),
+            ("012345", "bonus_issue", date(2026, 3, 10)),
+        ],
+        prices={
+            "005930": [("2026-05-01", 100.0), ("2026-05-20", 100.0), ("2026-05-21", 50.0)],
+            "012345": [("2026-03-10", 300.0), ("2026-03-12", 100.0)],  # 3:1 갭 있어도 무시돼야 함
+        },
     )
-    assert sfi.infer_and_stamp_split_factors(conn) == 1
-    meta_json, _, etype, _ = conn.updates[0]
-    assert etype == "bonus_issue"
-    import json
-    assert json.loads(meta_json)["split_factor"] == 3
+    n = sfi.infer_and_stamp_split_factors(conn)
+    assert n == 1   # split만 스탬프
+    stamped_codes = {u[1] for u in conn.updates}   # (meta_json, sc, etype, event_date)
+    assert stamped_codes == {"005930"}
