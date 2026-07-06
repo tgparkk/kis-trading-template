@@ -96,12 +96,15 @@ def _latest_kis_daily_date() -> str:
             return cur.fetchone()[0]
 
 
-def _column_presence(conn, table, columns) -> dict:
-    """지정 컬럼이 NULL 아닌 값을 가진 행 수(존재/충전 확인)."""
+def _column_presence(conn, trade_date, columns) -> dict:
+    """지정 컬럼이 NULL 아닌 값을 가진 행 수(존재/충전 확인). date 는 바인드 파라미터."""
     out = {}
     with conn.cursor() as cur:
         for c in columns:
-            cur.execute(f"SELECT COUNT(*) FROM {table} WHERE {c} IS NOT NULL")
+            cur.execute(
+                f"SELECT COUNT(*) FROM daily_prices WHERE date = %s AND {c} IS NOT NULL",
+                (trade_date,),
+            )
             out[c] = cur.fetchone()[0]
     return out
 
@@ -116,9 +119,7 @@ def report_daily(trade_date: str) -> dict:
             with conn.cursor() as nc:
                 nc.execute("SELECT stock_code, close FROM daily_prices WHERE date = %s", (trade_date,))
                 new_map = {sc: (float(c) if c is not None else None) for sc, c in nc.fetchall()}
-            col_presence = _column_presence(conn,
-                "(SELECT * FROM daily_prices WHERE date = '%s') dp" % trade_date,
-                ["market_cap", "trading_value"])
+            col_presence = _column_presence(conn, trade_date, ["market_cap", "trading_value"])
     finally:
         legacy.close()
     rep = build_equivalence_report(f"daily@{trade_date}", legacy_map, new_map)
@@ -126,11 +127,19 @@ def report_daily(trade_date: str) -> dict:
     return rep
 
 
+def _normalize_trade_date(s: str) -> str:
+    """YYYY-MM-DD → YYYYMMDD 정규화(순수 함수, no DB).
+
+    minute_candles.trade_date 컬럼은 YYYYMMDD 문자열, daily_prices.date 와 형식이 다르다
+    — db/repositories/price.py 와 동일 패턴. 이미 압축형(YYYYMMDD)이면 그대로 반환.
+    """
+    if len(s) == 10 and s[4] == '-':
+        return s.replace('-', '')
+    return s
+
+
 def report_minute(trade_date: str) -> dict:
-    # YYYY-MM-DD → YYYYMMDD 정규화 (minute_candles.trade_date 컬럼은 YYYYMMDD 문자열,
-    # daily_prices.date 와 형식이 다르다 — db/repositories/price.py 와 동일 패턴).
-    if len(trade_date) == 10 and trade_date[4] == '-':
-        trade_date = trade_date.replace('-', '')
+    trade_date = _normalize_trade_date(trade_date)
     legacy = _legacy_conn("robotrader")
     try:
         # 표본: 당일 존재하는 (stock_code, idx) 최근 종가 대조 — 종목별 마지막 idx close

@@ -51,3 +51,15 @@ def test_build_report_fail_on_unexplained():
     assert r["counts"]["unexplained"] == 1
     assert r["verdict"] == "FAIL"
     assert r["unexplained_samples"][:1] == [("A", 10000.0, 12345.0)]
+
+
+def test_normalize_trade_date_hyphenated():
+    assert rep._normalize_trade_date("2026-07-03") == "20260703"
+
+
+def test_normalize_trade_date_already_compact():
+    assert rep._normalize_trade_date("20260703") == "20260703"
+
+
+def test_normalize_trade_date_year_end():
+    assert rep._normalize_trade_date("2026-12-31") == "20261231"
