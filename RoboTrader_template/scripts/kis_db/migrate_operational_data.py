@@ -12,6 +12,7 @@ usage: python -m scripts.kis_db.migrate_operational_data            # dry-run
 import argparse
 import json
 import os
+import re
 import sys
 
 import psycopg2
@@ -24,6 +25,19 @@ from scripts.kis_db import schema  # noqa: E402
 
 BATCH = 5000
 SOURCE_DB = "robotrader"
+
+# --instance 값은 반드시 이 패턴을 따라야 함(SQL 인젝션 방지, f-string 으로 테이블명에 직접 삽입되므로).
+INSTANCE_PATTERN = r"^real_trading_[A-Za-z0-9_]+$"
+
+
+def validate_instance(name: str) -> str:
+    """--instance 값을 SQL 사용 전에 검증. 어긋나면 ValueError(불량값 명시)."""
+    if not re.fullmatch(INSTANCE_PATTERN, name):
+        raise ValueError(
+            f"invalid --instance value: {name!r} (must match {INSTANCE_PATTERN!r})"
+        )
+    return name
+
 
 VTR_COLUMNS = [
     "id", "stock_code", "stock_name", "action", "quantity", "price",
@@ -56,13 +70,16 @@ _SCREENER_TEMPLATE = (
 
 
 def _source_conn():
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         host=os.getenv("KIS_DB_HOST", "localhost"),
         port=int(os.getenv("KIS_DB_PORT", 5433)),
         dbname=SOURCE_DB,
         user=os.getenv("KIS_DB_USER", "robotrader"),
         password=os.getenv("KIS_DB_PASSWORD", "1234"),
     )
+    # 레거시 robotrader 는 절대 쓰지 않는다 — 세션 레벨 하드 가드(코드 규율이 아닌 서버측 보증).
+    conn.set_session(readonly=True)
+    return conn
 
 
 def build_vtr_select() -> str:
@@ -94,7 +111,8 @@ def discover_real_tables(conn):
     with conn.cursor() as cur:
         cur.execute(
             "SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema='public' AND table_name LIKE 'real_trading_%' "
+            "WHERE table_schema='public' AND table_type = 'BASE TABLE' "
+            "AND table_name LIKE 'real_trading_%' "
             "ORDER BY table_name"
         )
         return [r[0] for r in cur.fetchall()]
@@ -122,9 +140,13 @@ def migrate_table(src_conn, select_sql, table, columns, conflict_target,
                     break
                 source_rows += len(rows)
                 if apply:
-                    with dst.cursor() as dcur:
-                        execute_values(dcur, upsert, row_builder(rows), template=template)
-                    dst.commit()
+                    try:
+                        with dst.cursor() as dcur:
+                            execute_values(dcur, upsert, row_builder(rows), template=template)
+                        dst.commit()
+                    except Exception:
+                        dst.rollback()
+                        raise
                     copied += len(rows)
         finally:
             if dst_cm:
@@ -144,6 +166,9 @@ def bump_serial_sequence(dst_conn, table, id_col="id") -> None:
 
 
 def run(apply=False, extra_instances=None) -> dict:
+    # SQL/커넥션 오픈보다 먼저 검증 — 불량값은 어떤 부작용도 없이 즉시 거부.
+    for name in (extra_instances or []):
+        validate_instance(name)
     results = {}
     # 대상 스키마 보장(멱등)
     if apply:
@@ -153,17 +178,19 @@ def run(apply=False, extra_instances=None) -> dict:
     real_tables = []
     try:
         # 1) virtual_trading_records (우리 source 만)
+        # bare ON CONFLICT — idx_virtual_trading_unique_sell(partial, buy_record_id) 도 방어
         results["virtual_trading_records"] = migrate_table(
             src, build_vtr_select(), "virtual_trading_records",
-            VTR_COLUMNS, "(id)", apply)
+            VTR_COLUMNS, None, apply)
         # 2) candidate_stocks (전량)
         results["candidate_stocks"] = migrate_table(
             src, f"SELECT {', '.join(CANDIDATE_COLUMNS)} FROM candidate_stocks ORDER BY id",
             "candidate_stocks", CANDIDATE_COLUMNS, "(id)", apply)
         # 3) screener_snapshots (전량, jsonb 직렬화)
+        # bare ON CONFLICT — UNIQUE(strategy, scan_date, params_hash, stock_code) 도 방어
         results["screener_snapshots"] = migrate_table(
             src, f"SELECT {', '.join(SCREENER_COLUMNS)} FROM screener_snapshots ORDER BY id",
-            "screener_snapshots", SCREENER_COLUMNS, "(id)", apply,
+            "screener_snapshots", SCREENER_COLUMNS, None, apply,
             row_builder=build_screener_rows, template=_SCREENER_TEMPLATE)
         # 4) paper_trading_state (전량, PK=trade_date)
         results["paper_trading_state"] = migrate_table(
@@ -204,6 +231,8 @@ def main(argv=None) -> int:
     ap.add_argument("--instance", action="append", default=None,
                     help="추가 real_trading_{instance} 테이블명(반복 가능)")
     args = ap.parse_args(argv)
+    for name in (args.instance or []):
+        validate_instance(name)
     results = run(apply=args.apply, extra_instances=args.instance)
     mode = "APPLY" if args.apply else "DRY-RUN"
     print(f"[{mode}] 운영 데이터 이관 결과:")
