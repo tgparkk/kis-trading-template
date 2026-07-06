@@ -62,6 +62,27 @@ def test_real_trading_records_is_like_template_base():
     assert "id serial primary key" in rtr
 
 
+def test_virtual_trading_records_has_is_overflow_column():
+    # 드리프트 가드: 라이브 robotrader.virtual_trading_records 에 있는
+    # is_overflow BOOLEAN (created_at 뒤, source 앞) 이 kis_template DDL 에 누락됐던 회귀 방지.
+    vtr = [s for s in DDL_STATEMENTS
+           if "create table if not exists virtual_trading_records" in s.lower()][0].lower()
+    assert "is_overflow boolean" in vtr
+
+
+def test_real_trading_records_strategy_is_text_and_has_fee_net_profit_columns():
+    # 드리프트 가드: 라이브 robotrader.real_trading_records 는 strategy TEXT(51자 도달 확인됨,
+    # varchar(50) 이면 StringDataRightTruncation) + fee_amount/net_profit/net_profit_rate
+    # DOUBLE PRECISION 3컬럼(created_at 뒤)이 kis_template DDL 에 누락됐던 회귀 방지.
+    rtr = [s for s in DDL_STATEMENTS
+           if "create table if not exists real_trading_records" in s.lower()][0].lower()
+    assert "strategy text" in rtr
+    assert "strategy varchar(50)" not in rtr
+    assert "fee_amount double precision" in rtr
+    assert "net_profit double precision" in rtr
+    assert "net_profit_rate double precision" in rtr
+
+
 def test_paper_trading_state_and_candidate_and_screener_present():
     joined = "\n".join(DDL_STATEMENTS).lower()
     assert "create table if not exists paper_trading_state" in joined

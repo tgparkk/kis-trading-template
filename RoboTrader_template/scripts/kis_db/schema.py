@@ -168,6 +168,7 @@ DDL_STATEMENTS = [
         target_profit_rate NUMERIC(10, 6),
         stop_loss_rate NUMERIC(10, 6),
         created_at TIMESTAMPTZ DEFAULT NOW(),
+        is_overflow BOOLEAN,
         source VARCHAR(50)
     )
     """,
@@ -191,12 +192,15 @@ DDL_STATEMENTS = [
         quantity INTEGER NOT NULL,
         price NUMERIC(15, 2) NOT NULL,
         timestamp TIMESTAMPTZ NOT NULL,
-        strategy VARCHAR(50),
+        strategy TEXT,
         reason TEXT,
         profit_loss NUMERIC(15, 2) DEFAULT 0,
         profit_rate NUMERIC(10, 6) DEFAULT 0,
         buy_record_id INTEGER REFERENCES real_trading_records(id),
-        created_at TIMESTAMPTZ DEFAULT NOW()
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        fee_amount DOUBLE PRECISION,
+        net_profit DOUBLE PRECISION,
+        net_profit_rate DOUBLE PRECISION
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_real_trading_code_date ON real_trading_records(stock_code, timestamp DESC)",

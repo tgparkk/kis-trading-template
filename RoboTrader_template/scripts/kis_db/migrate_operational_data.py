@@ -43,12 +43,12 @@ VTR_COLUMNS = [
     "id", "stock_code", "stock_name", "action", "quantity", "price",
     "timestamp", "strategy", "reason", "is_test", "profit_loss",
     "profit_rate", "buy_record_id", "target_profit_rate", "stop_loss_rate",
-    "created_at", "source",
+    "created_at", "is_overflow", "source",
 ]
 REAL_COLUMNS = [
     "id", "stock_code", "stock_name", "action", "quantity", "price",
     "timestamp", "strategy", "reason", "profit_loss", "profit_rate",
-    "buy_record_id", "created_at",
+    "buy_record_id", "created_at", "fee_amount", "net_profit", "net_profit_rate",
 ]
 CANDIDATE_COLUMNS = [
     "id", "stock_code", "stock_name", "selection_date", "score",

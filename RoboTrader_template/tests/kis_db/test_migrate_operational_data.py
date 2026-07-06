@@ -6,11 +6,13 @@ import scripts.kis_db.migrate_operational_data as mig
 
 
 def test_vtr_columns_exact_order():
+    # 드리프트 가드: 라이브 robotrader.virtual_trading_records 의 is_overflow(created_at 뒤,
+    # source 앞)가 이관 컬럼 목록에서 누락됐던 회귀 방지.
     assert mig.VTR_COLUMNS == [
         "id", "stock_code", "stock_name", "action", "quantity", "price",
         "timestamp", "strategy", "reason", "is_test", "profit_loss",
         "profit_rate", "buy_record_id", "target_profit_rate", "stop_loss_rate",
-        "created_at", "source",
+        "created_at", "is_overflow", "source",
     ]
 
 
@@ -19,9 +21,20 @@ def test_vtr_select_filters_our_source_and_orders_by_id():
     assert sql == (
         "SELECT id, stock_code, stock_name, action, quantity, price, "
         "timestamp, strategy, reason, is_test, profit_loss, profit_rate, "
-        "buy_record_id, target_profit_rate, stop_loss_rate, created_at, source "
+        "buy_record_id, target_profit_rate, stop_loss_rate, created_at, "
+        "is_overflow, source "
         "FROM virtual_trading_records WHERE source = 'kis_template' ORDER BY id"
     )
+
+
+def test_real_columns_exact_order():
+    # 드리프트 가드: 라이브 robotrader.real_trading_records 의 fee_amount/net_profit/
+    # net_profit_rate(created_at 뒤)가 이관 컬럼 목록에서 누락됐던 회귀 방지.
+    assert mig.REAL_COLUMNS == [
+        "id", "stock_code", "stock_name", "action", "quantity", "price",
+        "timestamp", "strategy", "reason", "profit_loss", "profit_rate",
+        "buy_record_id", "created_at", "fee_amount", "net_profit", "net_profit_rate",
+    ]
 
 
 def test_screener_columns_and_json_serialization():
