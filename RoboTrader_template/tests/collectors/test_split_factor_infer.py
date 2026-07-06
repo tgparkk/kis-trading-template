@@ -129,7 +129,13 @@ class _Conn:
         self.rolledback += 1
 
 
-def test_infer_stamps_factor_and_moves_event_date():
+def test_infer_stamps_factor_without_moving_event_date():
+    """R1: event_date(PK, 공시일)는 절대 변경하지 않는다 — meta 병합만.
+
+    PK 이동은 (a) 같은 슬롯 재수집 시 새 행이 다시 들어와 이중스탬프 위험,
+    (b) 기존 pykrx 백필 105건과 PK 충돌 여지를 낳는 근본원인이었다(2026-07-06 code
+    review). 유효 권리락일은 meta.effective_date 에만 기록한다.
+    """
     conn = _Conn(
         events=[("005930", "split", date(2026, 5, 1))],  # 공시일
         prices={
@@ -144,16 +150,50 @@ def test_infer_stamps_factor_and_moves_event_date():
     n = sfi.infer_and_stamp_split_factors(conn)
     assert n == 1
     assert len(conn.updates) == 1
-    eff_date, meta_json, sc, etype, old_date = conn.updates[0]
-    assert eff_date == "2026-05-21"          # 유효 권리락일로 이동
-    assert old_date == date(2026, 5, 1)      # WHERE 는 원 공시일
+    meta_json, sc, etype, where_date = conn.updates[0]   # SET 절에 event_date 없음(4개 파라미터만)
+    assert where_date == date(2026, 5, 1)     # WHERE 는 원 공시일 그대로(불변)
     assert sc == "005930" and etype == "split"
     import json
     patch = json.loads(meta_json)
     assert patch["split_factor"] == 2
-    assert patch["effective_date"] == "2026-05-21"
+    assert patch["effective_date"] == "2026-05-21"   # 유효 권리락일은 meta 에만 기록
     assert patch["split_factor_inferred"] is True
     assert conn.committed == 1
+
+
+def test_infer_001130_real_case_stamps_11_event_date_preserved():
+    """001130 실사례 end-to-end 회귀(2026-07-06 code review 하드닝) — 원 공시일
+    (rcept_dt=2026-03-12)에서 출발해 +90일 창 안의 진짜 halt 갭(05-15→05-18, 실측
+    156500→14300)을 찾아 factor 11 을 스탬프하되, event_date(PK)는 공시일 그대로
+    보존해야 한다(이 회귀가 code review 에서 지적된 원인 — 과거엔 PK를 05-18 로
+    이동시켰음)."""
+    conn = _Conn(
+        events=[("001130", "split", date(2026, 3, 12))],  # 실제 DART rcept_dt
+        prices={
+            "001130": [
+                ("2026-03-12", 156500.0),
+                ("2026-04-15", 156500.0),
+                ("2026-05-08", 156500.0),
+                ("2026-05-11", 156500.0),
+                ("2026-05-12", 156500.0),
+                ("2026-05-13", 156500.0),
+                ("2026-05-14", 156500.0),
+                ("2026-05-15", 156500.0),   # 거래정지 마지막 날(금)
+                ("2026-05-18", 14300.0),    # 재개(월) — 실측 갭
+                ("2026-05-19", 13410.0),
+                ("2026-05-20", 12830.0),
+            ]
+        },
+    )
+    n = sfi.infer_and_stamp_split_factors(conn)
+    assert n == 1
+    meta_json, sc, etype, where_date = conn.updates[0]
+    assert where_date == date(2026, 3, 12)   # PK 불변 — 공시일 그대로
+    assert sc == "001130" and etype == "split"
+    import json
+    patch = json.loads(meta_json)
+    assert patch["split_factor"] == 11
+    assert patch["effective_date"] == "2026-05-18"
 
 
 def test_infer_skips_when_no_gap_yet_idempotent():
@@ -174,7 +214,7 @@ def test_infer_handles_bonus_issue_type():
         prices={"012345": [("2026-03-10", 300.0), ("2026-03-12", 100.0)]},  # 3:1, 2일 간격
     )
     assert sfi.infer_and_stamp_split_factors(conn) == 1
-    _, meta_json, _, etype, _ = conn.updates[0]
+    meta_json, _, etype, _ = conn.updates[0]
     assert etype == "bonus_issue"
     import json
     assert json.loads(meta_json)["split_factor"] == 3

@@ -1,13 +1,25 @@
 # collectors/split_factor_infer.py
-"""corp_events split/bonus_issue 이벤트의 split_factor 추론 — 가격 불연속 기반.
+"""corp_events split 이벤트의 split_factor 추론 — 가격 불연속 기반.
 
 scripts/10pct_strategy/p0_apply_adj_factor.py 의 검증된 price-gap 추론 로직을
 운영 경로로 미러링하되, pykrx 가 아니라 kis_template.daily_prices 를 읽는다.
 
 DART rcept_dt 는 '공시일'이라 실제 권리락(ex-date)은 수 주 뒤다. 따라서 공시일부터
 +90일 구간의 일봉을 앞에서부터 스캔해 '첫 clean 갭'을 찾고, 그 갭이 발생한 날짜를
-유효 event_date 로 확정한다. 아직 권리락 전이라 갭이 없으면 이번 실행에선 건너뛰고
-(멱등) 다음 실행에서 재시도한다.
+meta.effective_date 에 기록한다. event_date(PK, DART 공시일)는 절대 변경하지 않는다
+(2026-07-06 code review 하드닝) — PK를 이동시키면 (a) 같은 슬롯이 재수집될 때 새
+행이 다시 들어와 이중스탬프 위험이 생기고, (b) 기존 pykrx 백필 105건(effective_date
+없이 event_date=ex-date로 이미 적재됨)과 PK 충돌 여지가 생긴다.
+daily_adj.load_split_events 가 COALESCE(effective_date, event_date) 로 실제 조정
+시점을 해석하므로 event_date 는 원본(공시일) 그대로 두는 것으로 충분하다.
+
+아직 권리락 전이라 갭이 없으면 이번 실행에선 건너뛰고(멱등) 다음 실행에서 재시도한다.
+가짜 갭 방지: 두 일봉 사이 캘린더 간격이 크면(거래정지 아닌 장기 결측 등) 후보에서
+제외한다(001130 처럼 4일 거래정지 후 재개하는 정상 케이스는 통과).
+
+scope: event_type='split' 만 추론·스탬프한다(daily_adj 가 'split'만 소비하므로).
+bonus_issue 는 corp_events 캡처는 유지하되(Item 2) 가격조정 스탬프는 의도적으로
+하지 않는다 — 별도 후속 과제.
 
 infer_and_stamp_split_factors(conn) 는 daily_adj.update_adj_factors 보다 먼저 호출되어야
 당일 밤 adj_factor 에 즉시 반영된다(collectors/daily_collector.collect_daily 참조).
@@ -31,11 +43,15 @@ _MAX_GAP_CALENDAR_DAYS = 5
 
 
 def _load_events_needing_factor(conn) -> list:
-    """split_factor 미보유 split/bonus_issue 이벤트 로드 → [(stock_code, event_type, event_date)]."""
+    """split_factor 미보유 split 이벤트 로드 → [(stock_code, event_type, event_date)].
+
+    bonus_issue 는 의도적으로 제외한다(daily_adj 가 'split'만 소비 — 스탬프해도
+    쓰이지 않고 매일 밤 불필요한 UPDATE 만 유발했다, 2026-07-06 code review).
+    """
     with conn.cursor() as cur:
         cur.execute(
             "SELECT stock_code, event_type, event_date FROM corp_events "
-            "WHERE event_type IN ('split', 'bonus_issue') "
+            "WHERE event_type = 'split' "
             "AND (meta->>'split_factor') IS NULL "
             "ORDER BY stock_code, event_date"
         )
@@ -75,11 +91,11 @@ def _first_clean_gap(prices: list):
 
 
 def infer_and_stamp_split_factors(conn) -> int:
-    """split_factor 미보유 이벤트를 가격갭으로 추론·스탬프. 반환: 스탬프된 행 수.
+    """split_factor 미보유 split 이벤트를 가격갭으로 추론·스탬프. 반환: 스탬프된 행 수.
 
-    - 갭 발견: event_date 를 유효 권리락일로 갱신 + meta 병합(split_factor / effective_date /
-      split_factor_inferred). meta 다른 키는 보존(jsonb || 병합).
-    - 갭 미발견(권리락 전): 건너뜀 → 멱등(다음 실행 재시도).
+    - 갭 발견: event_date(PK, 공시일)는 그대로 두고 meta 만 병합(split_factor /
+      effective_date=갭 발생일 / split_factor_inferred). meta 다른 키는 보존(jsonb || 병합).
+    - 갭 미발견(권리락 전 또는 캘린더 간격 초과로 거부): 건너뜀 → 멱등(다음 실행 재시도).
     """
     events = _load_events_needing_factor(conn)
     stamped = 0
@@ -102,17 +118,17 @@ def infer_and_stamp_split_factors(conn) -> int:
             with conn.cursor() as cur:
                 cur.execute(
                     "UPDATE corp_events "
-                    "SET event_date = %s, meta = COALESCE(meta, '{}'::jsonb) || %s::jsonb "
+                    "SET meta = COALESCE(meta, '{}'::jsonb) || %s::jsonb "
                     "WHERE stock_code = %s AND event_type = %s AND event_date = %s",
-                    (eff_date_iso, meta_patch, stock_code, event_type, event_date),
+                    (meta_patch, stock_code, event_type, event_date),
                 )
             conn.commit()
             stamped += 1
             logger.info(
-                "split_factor 스탬프: %s %s %s→%s x%d",
+                "split_factor 스탬프: %s %s 공시일=%s 권리락일=%s x%d (event_date 불변)",
                 stock_code, event_type, start_iso, eff_date_iso, factor,
             )
-        except Exception as e:  # noqa: BLE001 — 유효일 충돌 등은 격리·다음행 진행
+        except Exception as e:  # noqa: BLE001 — 실패는 격리·다음행 진행
             conn.rollback()
             logger.warning("split_factor 스탬프 실패 %s %s: %s", stock_code, event_type, e)
     return stamped
