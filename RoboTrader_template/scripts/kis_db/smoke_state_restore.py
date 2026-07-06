@@ -23,9 +23,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE  # noqa: E402
+from config.constants import (  # noqa: E402
+    COMMISSION_RATE,
+    SECURITIES_TAX_RATE,
+    VIRTUAL_CAPITAL_PER_STRATEGY,
+)
 
-DEFAULT_CAPITAL = 10_000_000
+DEFAULT_CAPITAL = VIRTUAL_CAPITAL_PER_STRATEGY
 
 
 def build_restore_summary(open_positions, strategy_sums, candidate_codes,
@@ -128,7 +132,11 @@ def run_smoke(dbname: str, capital: float = DEFAULT_CAPITAL) -> dict:
     from db.repositories.candidate import CandidateRepository
     from utils.korean_time import now_kst
 
-    trading_repo = TradingRepository()
+    # real_table_name 을 기본값으로 명시 고정 → __init__ 의 ensure_real_table()
+    # (CREATE TABLE ... LIKE ... INCLUDING ALL) DDL 분기를 절대 타지 않는다.
+    # KIS_INSTANCE_DIR 가 세팅된 환경에서 인자 없이 생성하면 비-기본 테이블명이
+    # 주입되어 DDL 이 발동한다 — 이 스모크는 read-only 여야 한다(가상 테이블만 읽음).
+    trading_repo = TradingRepository(real_table_name="real_trading_records")
     candidate_repo = CandidateRepository()
 
     tm = _FakeTradingManager()
@@ -145,12 +153,18 @@ def run_smoke(dbname: str, capital: float = DEFAULT_CAPITAL) -> dict:
     )
     asyncio.run(restorer.restore_todays_candidates())
 
-    open_positions = list(tm.captured.values())
+    # tm.captured 는 후보 스캔 종목(quantity=0)과 실보유 종목(set_position 으로
+    # quantity>0 확정) 을 모두 담는다 — quantity>0 로 걸러야 진짜 보유만 남는다.
+    # (걸러내지 않으면 유실된 실보유가 같은 종목이 후보로도 잡혀 있을 때 가짜 PASS)
+    open_positions = [p for p in tm.captured.values() if p["quantity"] > 0]
     strategy_sums = trading_repo.get_strategy_trade_sums()
     today = now_kst().strftime("%Y-%m-%d")
+    # _restore_candidates 와 동일하게 DATE(selection_date)=today 로 엄격 필터
+    # (get_candidate_history(days=1) 의 24시간 롤링 윈도우는 복원 의미론과 다름)
     cand_df = candidate_repo.get_candidate_history(days=1)
     if not cand_df.empty and "stock_code" in cand_df.columns:
-        cand_codes = list(cand_df["stock_code"])
+        same_day = cand_df["selection_date"].dt.strftime("%Y-%m-%d") == today
+        cand_codes = list(cand_df.loc[same_day, "stock_code"])
     else:
         cand_codes = []
     return build_restore_summary(open_positions, strategy_sums, cand_codes, capital)
