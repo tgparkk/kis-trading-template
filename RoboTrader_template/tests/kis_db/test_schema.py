@@ -2,16 +2,13 @@ from scripts.kis_db.schema import DDL_STATEMENTS, EXPECTED_TABLES
 
 
 def test_expected_tables_present():
-    # NOTE: "paper_strategy_equity" is intentionally NOT included yet — its DDL
-    # is added in Task 2 (schema.py PAPER_STRATEGY_EQUITY_DDL promotion). Adding
-    # the name here without matching DDL would break the pre-existing
-    # test_every_expected_table_has_ddl regression check below.
     assert EXPECTED_TABLES == {
         "minute_candles", "daily_prices", "index_daily",
         "corp_events", "collection_reconciliation", "foreign_flow",
         "virtual_trading_records", "real_trading_records",
         "paper_trading_state",
         "candidate_stocks", "screener_snapshots",
+        "paper_strategy_equity",
     }
 
 
@@ -73,3 +70,31 @@ def test_paper_trading_state_and_candidate_and_screener_present():
     assert "create table if not exists screener_snapshots" in joined
     assert "params_json jsonb not null" in joined
     assert "unique (strategy, scan_date, params_hash, stock_code)" in joined
+
+
+def test_paper_strategy_equity_ddl_is_shared_between_schema_and_tool():
+    from scripts.kis_db.schema import PAPER_STRATEGY_EQUITY_DDL
+    ddl = PAPER_STRATEGY_EQUITY_DDL.lower()
+    assert "create table if not exists paper_strategy_equity" in ddl
+    assert "primary key (trade_date, strategy, source)" in ddl
+    assert "source varchar(50) not null default 'kis_template'" in ddl
+    # schema.DDL_STATEMENTS 에도 포함(create_all 이 생성)
+    joined = "\n".join(DDL_STATEMENTS).lower()
+    assert "create table if not exists paper_strategy_equity" in joined
+    # tools 의 _ensure_table 가 동일 상수를 실행하는지 (드리프트 방지)
+    import tools.paper_strategy_equity as pse
+
+    class _Cur:
+        def __init__(self): self.sql = None
+        def execute(self, sql): self.sql = sql
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _Conn:
+        def __init__(self): self.cur = _Cur()
+        def cursor(self): return self.cur
+        def commit(self): pass
+
+    c = _Conn()
+    pse._ensure_table(c)
+    assert c.cur.sql.strip() == PAPER_STRATEGY_EQUITY_DDL.strip()

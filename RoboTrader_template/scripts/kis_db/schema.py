@@ -13,13 +13,30 @@ EXPECTED_TABLES = {
     # 시장데이터 (기존)
     "minute_candles", "daily_prices", "index_daily",
     "corp_events", "collection_reconciliation", "foreign_flow",
-    # 운영 테이블 (Phase A — init-scripts 01/05. paper_strategy_equity 는
-    # Task 2 에서 DDL 승격과 함께 추가됨 — DDL 없이 여기 넣으면
-    # test_every_expected_table_has_ddl 회귀 테스트가 깨짐)
+    # 운영 테이블 (Phase A — init-scripts 01/05)
     "virtual_trading_records", "real_trading_records",
     "paper_trading_state",
     "candidate_stocks", "screener_snapshots",
+    # paper_strategy_equity — tools/paper_strategy_equity._ensure_table 에서
+    # 승격된 DDL(Task 2, PAPER_STRATEGY_EQUITY_DDL)
+    "paper_strategy_equity",
 }
+
+# paper_strategy_equity — tools/paper_strategy_equity._ensure_table 에서 승격(SSOT).
+PAPER_STRATEGY_EQUITY_DDL = """
+    CREATE TABLE IF NOT EXISTS paper_strategy_equity (
+        trade_date date NOT NULL,
+        strategy varchar(50) NOT NULL,
+        source varchar(50) NOT NULL DEFAULT 'kis_template',
+        cash numeric(15,2) NOT NULL,
+        position_value numeric(15,2) NOT NULL,
+        equity numeric(15,2) NOT NULL,
+        realized_pnl_cum numeric(15,2) NOT NULL,
+        n_open integer NOT NULL,
+        updated_at timestamptz DEFAULT now(),
+        PRIMARY KEY (trade_date, strategy, source)
+    )
+    """
 
 DDL_STATEMENTS = [
     # 분봉 (robotrader.minute_candles 동일)
@@ -212,6 +229,7 @@ DDL_STATEMENTS = [
         updated_at  TIMESTAMPTZ DEFAULT now()
     )
     """,
+    PAPER_STRATEGY_EQUITY_DDL,
 ]
 
 

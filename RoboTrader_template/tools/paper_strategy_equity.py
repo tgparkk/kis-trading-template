@@ -249,22 +249,9 @@ def _load_closes(codes: List[str], dates: List[date],
 
 
 def _ensure_table(conn):
-    ddl = """
-    CREATE TABLE IF NOT EXISTS paper_strategy_equity (
-        trade_date date NOT NULL,
-        strategy varchar(50) NOT NULL,
-        source varchar(50) NOT NULL DEFAULT 'kis_template',
-        cash numeric(15,2) NOT NULL,
-        position_value numeric(15,2) NOT NULL,
-        equity numeric(15,2) NOT NULL,
-        realized_pnl_cum numeric(15,2) NOT NULL,
-        n_open integer NOT NULL,
-        updated_at timestamptz DEFAULT now(),
-        PRIMARY KEY (trade_date, strategy, source)
-    )
-    """
+    from scripts.kis_db.schema import PAPER_STRATEGY_EQUITY_DDL
     with conn.cursor() as cur:
-        cur.execute(ddl)
+        cur.execute(PAPER_STRATEGY_EQUITY_DDL)
     conn.commit()
 
 
