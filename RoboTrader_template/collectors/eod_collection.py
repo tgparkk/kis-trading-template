@@ -12,6 +12,7 @@ from collectors.daily_collector import collect_daily, reconcile_daily  # noqa: E
 from collectors.minute_collector import collect_minute, reconcile_minute  # noqa: E402
 from collectors.index_collector import collect_index, reconcile_index  # noqa: E402
 from collectors.foreign_flow_collector import collect_foreign_flow, reconcile_foreign_flow  # noqa: E402
+from collectors.corp_events_collector import collect_corp_events, reconcile_corp_events  # noqa: E402
 from config.constants import KIS_DATA_SOURCE  # noqa: E402
 from utils.logger import setup_logger  # noqa: E402
 
@@ -32,6 +33,7 @@ def run_data_collection(trade_date: str = None) -> dict:
         "minute": _safe(collect_minute, trade_date),
         "index": _safe(collect_index),
         "foreign_flow": _safe(collect_foreign_flow, trade_date),
+        "corp_events": _safe(collect_corp_events, trade_date),
         "reconcile": {},
     }
     if KIS_DATA_SOURCE == "legacy" and trade_date:
@@ -43,5 +45,6 @@ def run_data_collection(trade_date: str = None) -> dict:
             "minute": _safe(reconcile_minute, compact),
             "index": _safe(reconcile_index, dash),
             "foreign_flow": _safe(reconcile_foreign_flow, dash),
+            "corp_events": _safe(reconcile_corp_events, dash),
         }
     return out
