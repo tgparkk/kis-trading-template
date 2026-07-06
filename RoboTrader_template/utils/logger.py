@@ -62,7 +62,11 @@ def _get_shared_handlers(use_kst: bool = False):
         log_dir = Path(LOG_DIR)
         log_dir.mkdir(parents=True, exist_ok=True)
         today = datetime.now().strftime("%Y%m%d")
-        log_file = log_dir / f"trading_{today}.log"
+        # pytest 실행 중이면 프로덕션 로그(trading_YYYYMMDD.log)를 절대 건드리지
+        # 않도록 별도 파일로 분리. 싱글톤 핸들러가 collection 시점(테스트 아이템
+        # 실행 전)에 생성될 수 있으므로 env 변수 대신 sys.modules로 감지.
+        prefix = "test_trading_" if "pytest" in sys.modules else "trading_"
+        log_file = log_dir / f"{prefix}{today}.log"
 
         _shared_file_handler = logging.handlers.RotatingFileHandler(
             log_file, maxBytes=10*1024*1024, backupCount=7, encoding='utf-8'
