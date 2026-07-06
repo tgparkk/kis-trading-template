@@ -57,6 +57,37 @@ def _patch_db(monkeypatch, conn):
 
 # ── collect_corp_events ──────────────────────────────────────────────────────
 
+# ── R6: .env 파싱 정확 매칭 (변형 키 오인 방지) ──────────────────────────────
+
+def test_parse_dart_key_exact_match_not_prefix():
+    """OPENDART_API_KEY_BACKUP= 같은 변형 키를 잘못 집어오지 않아야 한다."""
+    lines = ["OPENDART_API_KEY_BACKUP=WRONGKEY", "OPENDART_API_KEY=REALKEY"]
+    assert cec._parse_dart_key_from_lines(lines) == "REALKEY"
+
+
+def test_parse_dart_key_prefers_exact_even_when_backup_appears_after():
+    lines = ["OPENDART_API_KEY=REALKEY", "OPENDART_API_KEY_BACKUP=WRONGKEY"]
+    assert cec._parse_dart_key_from_lines(lines) == "REALKEY"
+
+
+def test_parse_dart_key_handles_export_prefix():
+    lines = ["export OPENDART_API_KEY=REALKEY2"]
+    assert cec._parse_dart_key_from_lines(lines) == "REALKEY2"
+
+
+def test_parse_dart_key_returns_empty_when_absent():
+    assert cec._parse_dart_key_from_lines(["FOO=bar", "OPENDART_API_KEY_BACKUP=X"]) == ""
+
+
+def test_parse_dart_key_strips_quotes():
+    assert cec._parse_dart_key_from_lines(['OPENDART_API_KEY="QUOTED"']) == "QUOTED"
+
+
+def test_load_dart_key_prefers_env_var(monkeypatch):
+    monkeypatch.setenv("OPENDART_API_KEY", "FROM_ENV")
+    assert cec._load_dart_key() == "FROM_ENV"
+
+
 def test_collect_no_key_skips_without_crash(monkeypatch):
     monkeypatch.setattr(cec, "_load_dart_key", lambda: "")
     out = cec.collect_corp_events()

@@ -44,6 +44,25 @@ DART_EVENT_MAP = [
 ]
 
 
+def _parse_dart_key_from_lines(lines) -> str:
+    """.env 라인들에서 정확히 'OPENDART_API_KEY' 키만 매칭(변형 키 오인 방지).
+
+    이전엔 startswith 로 매칭해 'OPENDART_API_KEY_BACKUP=...' 같은 변형 키까지
+    잘못 집어올 수 있었다(2026-07-06 code review, R6). 'export ' 접두는 허용
+    (쉘 소싱 가능한 .env 관례).
+    """
+    for line in lines:
+        line = line.strip()
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        if k.strip() == "OPENDART_API_KEY":
+            return v.strip().strip('"').strip("'")
+    return ""
+
+
 def _load_dart_key() -> str:
     """OPENDART_API_KEY — 환경변수 우선, 없으면 프로젝트 .env 최소 파싱(dotenv 의존 회피)."""
     key = (os.getenv("OPENDART_API_KEY") or "").strip()
@@ -52,13 +71,9 @@ def _load_dart_key() -> str:
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
     try:
         with open(env_path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("OPENDART_API_KEY") and "=" in line:
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+            return _parse_dart_key_from_lines(f)
     except OSError:
-        pass
-    return ""
+        return ""
 
 
 def _classify(report_nm: str):
