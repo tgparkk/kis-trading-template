@@ -235,6 +235,27 @@ def test_reconcile_checks_prev_trading_day_not_today(monkeypatch):
     assert result["verdict"] == "PASS"  # no-legacy PASS, 더 이상 거짓 FAIL 없음
 
 
+def test_reconcile_logs_check_date_for_self_describing_row(monkeypatch):
+    """R7: DB 행은 trade_date=T(EOD 실행일)로 기록되지만 실제 검증 대상은 T-1이다.
+    schema 에 여분 필드가 없어(collection_reconciliation 은 scripts/kis_db/schema.py
+    소유, 연구트리라 이번 하드닝 범위 밖) 로그로 자기서술성을 확보한다 — trade_date
+    와 check_date 를 모두 명시적으로 남겨 운영자가 로그만으로 어느 날짜가 실제
+    검증됐는지 알 수 있어야 한다."""
+    _patch_date_aware(
+        monkeypatch,
+        legacy_by_date={},
+        new_by_date={"2026-06-29": [("005930", 100)]},
+    )
+    logged = []
+    monkeypatch.setattr(ffc.logger, "info", lambda *a, **kw: logged.append(a))
+    ffc.reconcile_foreign_flow("2026-06-30")
+    assert logged, "reconcile_foreign_flow 는 check_date 를 명시하는 info 로그를 남겨야 한다"
+    msg_args = logged[-1]
+    joined = " ".join(str(x) for x in msg_args)
+    assert "2026-06-30" in joined  # trade_date
+    assert "2026-06-29" in joined  # check_date
+
+
 def test_reconcile_genuine_prev_day_gap_fails(monkeypatch):
     """T-1 데이터가 실제로 비어 있으면(진짜 네이버 장애) FAIL."""
     _patch_date_aware(
