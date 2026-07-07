@@ -19,6 +19,12 @@ if sys.platform == 'win32':
 # 프로젝트 경로 추가
 sys.path.append(str(Path(__file__).parent))
 
+# .env → os.environ 부트스트랩 (반드시 config/db import 보다 먼저).
+# KIS_DATA_SOURCE 는 config.constants 가 import 시점에 읽고,
+# TIMESCALE_DB 는 db.connection 이 런타임에 읽는다. stdlib 전용·무크래시.
+from config.env_bootstrap import bootstrap as _bootstrap_env
+_bootstrap_env()
+
 from core.models import StockState
 from core.candidate_selector import CandidateSelector
 from core.data_collector import RealTimeDataCollector
