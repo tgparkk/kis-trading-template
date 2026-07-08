@@ -20,6 +20,9 @@ EXPECTED_TABLES = {
     # paper_strategy_equity — tools/paper_strategy_equity._ensure_table 에서
     # 승격된 DDL(Task 2, PAPER_STRATEGY_EQUITY_DDL)
     "paper_strategy_equity",
+    # 퀀트 테이블 (robotrader 패리티) — 봇 _verify_tables required_tables 에 있으나
+    # schema.py 가 만들지 않아 "누락된 테이블" 경고 + 라이브 수동추가를 유발했다(2026-07-08).
+    "quant_portfolio", "financial_data", "quant_factors",
 }
 
 # paper_strategy_equity — tools/paper_strategy_equity._ensure_table 에서 승격(SSOT).
@@ -234,6 +237,74 @@ DDL_STATEMENTS = [
     )
     """,
     PAPER_STRATEGY_EQUITY_DDL,
+    # ── 퀀트 테이블 (robotrader 패리티, 트리거 미사용) ──────────────────────────
+    # 봇 _verify_tables required_tables 패리티(2026-07-08 컷오버 누락 재발방지).
+    # 퀀트 포트폴리오 (일자별 종목 순위/점수)
+    """
+    CREATE TABLE IF NOT EXISTS quant_portfolio (
+        id SERIAL PRIMARY KEY,
+        calc_date VARCHAR(10) NOT NULL,
+        stock_code VARCHAR(10) NOT NULL,
+        stock_name VARCHAR(100),
+        rank INTEGER,
+        total_score NUMERIC(10, 4),
+        reason TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(calc_date, stock_code)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_quant_portfolio_date ON quant_portfolio(calc_date)",
+    "CREATE INDEX IF NOT EXISTS idx_quant_portfolio_rank ON quant_portfolio(calc_date, rank)",
+    # 재무 데이터 (종목/연/분기별 밸류·성장 지표)
+    """
+    CREATE TABLE IF NOT EXISTS financial_data (
+        id SERIAL PRIMARY KEY,
+        stock_code VARCHAR(10) NOT NULL,
+        base_year VARCHAR(4) NOT NULL,
+        base_quarter VARCHAR(2) NOT NULL,
+        report_date VARCHAR(10),
+        per NUMERIC(15, 4),
+        pbr NUMERIC(15, 4),
+        eps NUMERIC(15, 2),
+        bps NUMERIC(15, 2),
+        roe NUMERIC(10, 4),
+        roa NUMERIC(10, 4),
+        debt_ratio NUMERIC(10, 4),
+        operating_margin NUMERIC(10, 4),
+        sales NUMERIC(20, 2),
+        net_income NUMERIC(20, 2),
+        market_cap NUMERIC(20, 2),
+        industry_code VARCHAR(20),
+        retrieved_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(stock_code, base_year, base_quarter)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_financial_data_base ON financial_data(base_year, base_quarter)",
+    "CREATE INDEX IF NOT EXISTS idx_financial_data_code ON financial_data(stock_code)",
+    # 퀀트 팩터 (일자별 종목 팩터 점수)
+    """
+    CREATE TABLE IF NOT EXISTS quant_factors (
+        id SERIAL PRIMARY KEY,
+        calc_date VARCHAR(10) NOT NULL,
+        stock_code VARCHAR(10) NOT NULL,
+        value_score NUMERIC(10, 4),
+        momentum_score NUMERIC(10, 4),
+        quality_score NUMERIC(10, 4),
+        growth_score NUMERIC(10, 4),
+        total_score NUMERIC(10, 4),
+        factor_rank INTEGER,
+        factor_details TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(calc_date, stock_code)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_quant_factors_code ON quant_factors(stock_code)",
+    "CREATE INDEX IF NOT EXISTS idx_quant_factors_date ON quant_factors(calc_date)",
+    "CREATE INDEX IF NOT EXISTS idx_quant_factors_rank ON quant_factors(calc_date, factor_rank)",
 ]
 
 

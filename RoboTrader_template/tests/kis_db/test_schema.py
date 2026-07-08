@@ -9,7 +9,67 @@ def test_expected_tables_present():
         "paper_trading_state",
         "candidate_stocks", "screener_snapshots",
         "paper_strategy_equity",
+        # quant 3테이블 (봇 _verify_tables required_tables 패리티, 2026-07-08)
+        "quant_portfolio", "financial_data", "quant_factors",
     }
+
+
+def test_verify_tables_required_quant_tables_have_ddl():
+    # 봇 db/database_manager._verify_tables 의 required_tables 에 있으나
+    # schema.py 가 만들지 않아 "누락된 테이블" 경고 + 라이브 수동추가를 유발했던
+    # 3테이블(2026-07-08 컷오버) 이 EXPECTED_TABLES + DDL 에 존재하는지 회귀 가드.
+    joined = "\n".join(DDL_STATEMENTS).lower()
+    for t in ("quant_portfolio", "financial_data", "quant_factors"):
+        assert t in EXPECTED_TABLES, f"EXPECTED_TABLES 누락: {t}"
+        assert f"create table if not exists {t}" in joined, f"DDL 누락: {t}"
+
+
+def test_quant_portfolio_ddl_matches_legacy():
+    qp = [s for s in DDL_STATEMENTS
+          if "create table if not exists quant_portfolio" in s.lower()][0].lower()
+    assert "id serial primary key" in qp
+    assert "calc_date varchar(10) not null" in qp
+    assert "stock_code varchar(10) not null" in qp
+    assert "total_score numeric(10, 4)" in qp
+    assert "unique(calc_date, stock_code)" in qp or "unique (calc_date, stock_code)" in qp
+    joined = "\n".join(DDL_STATEMENTS).lower()
+    assert "idx_quant_portfolio_date" in joined
+    assert "idx_quant_portfolio_rank" in joined
+    # 트리거 미사용 컨벤션(schema.py 는 트리거 함수/트리거를 만들지 않음)
+    assert "create trigger" not in joined
+    assert "create or replace function" not in joined
+
+
+def test_financial_data_ddl_matches_legacy():
+    fd = [s for s in DDL_STATEMENTS
+          if "create table if not exists financial_data" in s.lower()][0].lower()
+    assert "id serial primary key" in fd
+    assert "stock_code varchar(10) not null" in fd
+    assert "base_year varchar(4) not null" in fd
+    assert "base_quarter varchar(2) not null" in fd
+    assert "per numeric(15, 4)" in fd
+    assert "market_cap numeric(20, 2)" in fd
+    assert "unique(stock_code, base_year, base_quarter)" in fd \
+        or "unique (stock_code, base_year, base_quarter)" in fd
+    joined = "\n".join(DDL_STATEMENTS).lower()
+    assert "idx_financial_data_base" in joined
+    assert "idx_financial_data_code" in joined
+
+
+def test_quant_factors_ddl_matches_legacy():
+    qf = [s for s in DDL_STATEMENTS
+          if "create table if not exists quant_factors" in s.lower()][0].lower()
+    assert "id serial primary key" in qf
+    assert "calc_date varchar(10) not null" in qf
+    assert "stock_code varchar(10) not null" in qf
+    assert "value_score numeric(10, 4)" in qf
+    assert "factor_rank integer" in qf
+    assert "factor_details text" in qf
+    assert "unique(calc_date, stock_code)" in qf or "unique (calc_date, stock_code)" in qf
+    joined = "\n".join(DDL_STATEMENTS).lower()
+    assert "idx_quant_factors_code" in joined
+    assert "idx_quant_factors_date" in joined
+    assert "idx_quant_factors_rank" in joined
 
 
 def test_foreign_flow_ddl_matches_legacy():

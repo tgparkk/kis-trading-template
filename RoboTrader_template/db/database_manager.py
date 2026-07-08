@@ -101,20 +101,32 @@ class DatabaseManager:
                 else:
                     self.logger.info("모든 필수 테이블 확인 완료")
 
-                # Hypertable 확인
-                cursor.execute('''
-                    SELECT hypertable_name FROM timescaledb_information.hypertables
-                    WHERE hypertable_schema = 'public'
-                ''')
-                hypertables = {row[0] for row in cursor.fetchall()}
+                # Hypertable 확인 (비치명)
+                # kis_template 는 설계상 하이퍼테이블 0개(daily_prices 도 date TEXT
+                # 평테이블)이다. TimescaleDB 확장이 없으면 timescaledb_information
+                # 뷰가 부재해 이 조회가 UndefinedTable 로 실패하므로, 독립된
+                # try/except 로 감싸 봇 부팅을 막지 않도록 경고만 남기고 계속 진행한다.
+                # (2026-07-08 컷오버 크래시 재발방지)
+                try:
+                    cursor.execute('''
+                        SELECT hypertable_name FROM timescaledb_information.hypertables
+                        WHERE hypertable_schema = 'public'
+                    ''')
+                    hypertables = {row[0] for row in cursor.fetchall()}
 
-                expected_hypertables = {'daily_prices'}
-                missing_hypertables = expected_hypertables - hypertables
+                    expected_hypertables = {'daily_prices'}
+                    missing_hypertables = expected_hypertables - hypertables
 
-                if missing_hypertables:
-                    self.logger.warning(f"Hypertable 미설정: {missing_hypertables}")
-                else:
-                    self.logger.info("TimescaleDB hypertable 확인 완료")
+                    if missing_hypertables:
+                        self.logger.warning(f"Hypertable 미설정: {missing_hypertables}")
+                    else:
+                        self.logger.info("TimescaleDB hypertable 확인 완료")
+                except Exception as e:
+                    # 실패 쿼리로 psycopg2 트랜잭션이 abort 상태가 되므로 rollback 필수
+                    conn.rollback()
+                    self.logger.warning(
+                        f"TimescaleDB 뷰 조회 실패 — 하이퍼테이블 확인 건너뜀: {e}"
+                    )
 
         except Exception as e:
             self.logger.error(f"테이블 확인 실패: {e}")
