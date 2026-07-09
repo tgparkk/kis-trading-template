@@ -44,3 +44,9 @@
   게이트 재실행 → 24/24 동일 유지 확인 (is_valid 도입이 결과 불변).
   LOW 미수정(최종리뷰 재검토): reproduce 스킵가드가 짧은 종목-일 허용(전방창 절단, 진단SQL과 일치하므로 무영향).
 - Task 3b + Task 4: complete, review clean (opus). 게이트 PASS.
+- Task 5: complete (commits f713af5..647fec3) — 36 passed.
+  누수 가드 실증됨(리뷰어가 close.shift(-1) 주입 → 테스트가 잡음).
+  계획서 자기모순(consec_down: 구현 close<open vs 테스트 close<prev_close) → 테스트 채택, 문서 정정.
+  리뷰 Important 1건 수정(647fec3): _bars_since_prior_high 의 np.argmax 가 shift(1) NaN 을
+  최대값으로 골라 drop_speed 를 drop_pct/(t+1) 시간대 아티팩트로 오염. 개장 구간 전체 영향.
+  → nanargmax + -inf 마스크. 정답 [nan,1,1,1,2,3,1,2] 재현 테스트 2개 추가.
