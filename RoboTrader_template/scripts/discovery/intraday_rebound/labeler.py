@@ -12,6 +12,7 @@ import pandas as pd
 OUT_COLUMNS = [
     "prior_high", "drop_pct_actual", "is_candidate",
     "hit_up", "hit_down", "hit_close", "mae", "forward_bars",
+    "lookback_bars_used", "is_full_lookback",
 ]
 
 
@@ -22,6 +23,7 @@ class LabelParams:
     drop_pct: float
     forward_min: int
     theta: float
+    min_lookback_min: int = 15
 
     @property
     def lookback_bars(self) -> int:
@@ -30,6 +32,10 @@ class LabelParams:
     @property
     def forward_bars(self) -> int:
         return max(1, self.forward_min // self.timeframe_minutes)
+
+    @property
+    def min_lookback_bars(self) -> int:
+        return max(1, self.min_lookback_min // self.timeframe_minutes)
 
 
 def compute_labels(bars: pd.DataFrame, params: LabelParams) -> pd.DataFrame:
@@ -46,8 +52,15 @@ def compute_labels(bars: pd.DataFrame, params: LabelParams) -> pd.DataFrame:
     close = bars["close"].to_numpy(dtype=float)
 
     prior_high = (
-        pd.Series(high).rolling(L, min_periods=L).max().shift(1).to_numpy()
+        pd.Series(high)
+        .rolling(L, min_periods=params.min_lookback_bars)
+        .max()
+        .shift(1)
+        .to_numpy()
     )
+
+    lookback_used = np.minimum(np.arange(n), L)
+    is_full = lookback_used == L
 
     with np.errstate(invalid="ignore", divide="ignore"):
         drop_actual = close / prior_high - 1.0
@@ -96,4 +109,6 @@ def compute_labels(bars: pd.DataFrame, params: LabelParams) -> pd.DataFrame:
         "hit_close": hit_close,
         "mae": mae,
         "forward_bars": fwd_bars,
+        "lookback_bars_used": lookback_used,
+        "is_full_lookback": is_full,
     })
