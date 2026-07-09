@@ -2008,7 +2008,7 @@ def build(start: str, end: str) -> None:
                     theta = FIXED_THETA if k_atr is None else k_atr * ctx["atr14_pct"]
                     p = LabelParams(tf, N, D, M, theta)
                     lab = compute_labels(bars, p)
-                    cand = lab["is_candidate"] & lab["prior_high"].notna() & (lab["forward_bars"] > 0)
+                    cand = lab["is_candidate"] & lab["is_valid"] & (lab["forward_bars"] > 0)
                     if not cand.any():
                         continue
 
@@ -2017,6 +2017,7 @@ def build(start: str, end: str) -> None:
                     rec = pd.concat([feats[FEATURE_NAMES], lab], axis=1)[cand.to_numpy()]
                     rec["trade_date"] = day
                     rec["stock_code"] = code
+                    rec["segment"] = np.where(rec["is_full_lookback"], "full", "partial")
                     rec["atr14_pct"] = ctx["atr14_pct"]
                     rec["market_cap"] = ctx["market_cap"]
                     rec["amount_rank"] = ctx["amount_rank"]
@@ -2077,7 +2078,7 @@ def _shape_event(bars: pd.DataFrame, ctx: dict, day: str, code: str) -> dict | N
     """종목-일당 첫 딥드롭 봉 하나 + 직전 SHAPE_WINDOW 봉 종가."""
     p = LabelParams(SHAPE_TF, SHAPE_N, SHAPE_D, SHAPE_M, FIXED_THETA)
     lab = compute_labels(bars, p)
-    cand = (lab["is_candidate"] & lab["prior_high"].notna()
+    cand = (lab["is_candidate"] & lab["is_valid"]
             & (lab["forward_bars"] > 0)).to_numpy()
     if not cand.any():
         return None

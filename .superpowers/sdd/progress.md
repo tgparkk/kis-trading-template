@@ -11,3 +11,36 @@
 - Global Constraints: 워크트리 격리·시스템 파이썬 명시
 
 ## 태스크
+- Task 1: complete (commits 6c2e0f1..d143819, review clean)
+  - 유니버스 199종목 독립 재확인. readonly 세션이 CREATE TEMP TABLE 거부 확인.
+  - 리뷰 Important 1건(캐시 stale) → 사장님 결정으로 캐시 전면 제거(d143819).
+  - Minor(미수정, 최종리뷰서 재검토): read_sql 커서 close 미보장(연결close로 무해),
+    min_coverage float 경계비교, 캐시 원자성(N/A - 제거됨), SQL ORDER BY + python sorted 중복.
+- Task 2: complete (commits d143819..8691e5e, review clean)
+  - 11 passed. 드리프트 감시(tf=3/5/15)로 라이브 TimeFrameConverter와 OHLCV 동일 확인
+    → 스펙 2.2절의 floor(epoch/180) 임시 SQL 버킷 경계도 같았다는 방증.
+  - 리뷰 Important 2건 수정(8691e5e): ①정렬 안된 입력이 open/close를 행순서로 집계(라벨 뒤집힘)
+    → mergesort 선행정렬 ②빈 입력 object dtype이 concat시 숫자컬럼 오염 → 명시 dtype.
+  - Minor(미수정): test_partial_bucket이 open/close/low/volume/amount 미검증(cosmetic).
+- Task 3: complete (commits 8691e5e..2cb1875, review clean — opus 리뷰, 인덱스 산술 독립 재현)
+  - 21 passed. prior_high가 t 제외, mae가 첫 up-hit에서 절단(이후 저점 무시),
+    hit_down이 hit_up과 독립, 잘린 창에서 hit_close만 NaN — 4개 핵심 semantics 전부 검증됨.
+  - 리뷰어 ⚠️ 크로스태스크 항목(drop_pct=0.0이 전 봉을 안 잡는다) → 관리자가 해소:
+    reproduce.py는 is_candidate를 쓰지 않고 drop_pct_actual로 사후 버킷팅하므로 무영향. 갭 아님.
+  - Minor(미수정, 최종리뷰 재검토): ①출력이 입력 index 미보존(resample이 RangeIndex라 무해)
+    ②mae의 close[t] 나눗셈 errstate 미가드 ③test_no_window_crosses_session_boundary가 길이만 검사(오명명).
+- Task 4 (1차): FAIL — 게이트가 스펙 2.2절 최초 표의 오류를 잡아냄.
+  임시 SQL이 워밍업 미제외+정규장 필터 부재로 표본 15% 부풀림. 진단 SQL(두 결함만 수정)이
+  파이프라인과 12/12 일치 → 파이프라인이 맞고 스펙이 틀렸음 확정.
+  사장님 결정: 개장 60분을 버리지 말되 절대 섞지 말 것 → Task 3b 신설.
+  스펙 정정 커밋 20d3f56, 계획 갱신 커밋 아래.
+- Task 3b: complete (commit 1c604f2) — 26 passed. min_lookback_min=15, lookback_bars_used/is_full_lookback.
+  개장 60분 딥드롭 17,337건 회수. 기존 10테스트 무수정(공유 P의 min_lookback_min=6만 조정).
+- Task 4: PASS (commits 7f31159 + spec) — 8셀 x 3지표 24/24 독립 진단 SQL과 소수점까지 일치.
+  full: no_drop 1.100 / shallow 1.014 / mid 1.018 / deep 1.348 (얕은 둘 다 베이스라인 미만)
+  partial: 1.083 -> 1.102 -> 1.214 -> 1.233 (단조증가)
+  반올림 버그 수정 확인(no_drop 1.103 -> 1.100).
+- Task 3b/4 fix (commit 31f110b): is_valid 컬럼 + inf 가드. 28 passed.
+  게이트 재실행 → 24/24 동일 유지 확인 (is_valid 도입이 결과 불변).
+  LOW 미수정(최종리뷰 재검토): reproduce 스킵가드가 짧은 종목-일 허용(전방창 절단, 진단SQL과 일치하므로 무영향).
+- Task 3b + Task 4: complete, review clean (opus). 게이트 PASS.
