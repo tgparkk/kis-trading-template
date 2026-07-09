@@ -974,7 +974,7 @@ def reproduce_spec_table(start: str = "20260601", end: str = "20260630") -> pd.D
             if len(bars) < params.min_lookback_bars + 2:
                 continue
             lab = compute_labels(bars, params)
-            lab = lab[lab["prior_high"].notna() & (lab["forward_bars"] > 0)]
+            lab = lab[lab["is_valid"] & (lab["forward_bars"] > 0)]
             frames.append(lab[["drop_pct_actual", "hit_up", "hit_down",
                                "is_full_lookback"]])
 
