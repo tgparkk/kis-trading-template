@@ -83,3 +83,28 @@ theta={fixed 3%, 1.5xATR} 로 축소(432 -> 72) (c) 1차 결과 보고 필요한
 - test_no_window_crosses_session_boundary 가 길이만 검사(오명명)
 - test_partial_bucket 이 open/close/low/volume/amount 미검증
 - _bars_since_prior_high 동점 시 가장 오래된 고점 선택(의도적, docstring 기재됨)
+
+## first-touch (삼중배리어) 분석 — 멀티버스 착수 판정 (2026-07-10)
+커밋 06d5c32 (분석) + 850562d (리뷰수정). 49 passed. opus 리뷰 APPROVE.
+
+2026-06, 199종목, TF=3, N=60, D=4%, M=60, TP/SL ±3%:
+  full    n=20286  up 17.45 / down 12.89 / ambiguous 0(raw) / none 69.66(평균 -0.07%)
+                   gross +0.09%  breakeven 0.09%
+  partial n=17337  up 21.76 / down 17.46 / ambiguous 0(raw) / none 60.78(평균 -0.23%)
+                   gross -0.01%  (비용 전에 이미 음수)
+
+- 독립측정(17.76/13.18) vs 선착측정(17.45/12.89) 차이 0.3%p, 전부 재분류로 설명(24건).
+  → 1.348 비대칭은 실재. double-touch 아티팩트 아님. ambiguous raw count = 0 (독립검증).
+- 왕복비용 0.21% (config/constants.py:118-119: 수수료 0.015%x2 + 거래세 0.18%).
+  총기대값 0.09% < 0.21% → 순 -0.12%/거래.
+- 게다가 gross 는 상한: 진입가 close[t](실제는 다음봉 시가), TP/SL 정확체결 가정(SL 갭쓰루 무시),
+  슬리피지 0. 실제는 더 나쁨.
+
+**판정: 대칭 배리어로는 엣지 없음. 멀티버스 착수 부적격.**
+다음 후보 2개(둘 다 멀티버스보다 훨씬 쌈):
+  (a) 비대칭 배리어: theta_up/theta_dn 분리. MAE 근거 — +3% 친 건들의 MAE 중앙값 -0.61%,
+      p10 -2.22% → SL -1.5%로 조여도 이기는 거래 대부분 생존.
+  (b) 특징 필터로 p_up-p_down 확대 (현재 4.6%p → 비용 넘기려면 ~12%p 필요). = Task 6.
+partial(개장60분)은 gross 부터 음수 → 우선순위 낮음.
+
+리뷰 미수정 Minor: none 버킷 창 절단 편향(절단 3.6%, mean_terminal_none 을 0쪽으로 약 0.014%p 낙관).
