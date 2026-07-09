@@ -50,3 +50,36 @@
   리뷰 Important 1건 수정(647fec3): _bars_since_prior_high 의 np.argmax 가 shift(1) NaN 을
   최대값으로 골라 drop_speed 를 drop_pct/(t+1) 시간대 아티팩트로 오염. 개장 구간 전체 영향.
   → nanargmax + -inf 마스크. 정답 [nan,1,1,1,2,3,1,2] 재현 테스트 2개 추가.
+
+## 중단 지점 (2026-07-10, 사장님 지시로 다음 세션 이어서)
+
+**완료:** Task 1, 2, 3, 3b, 4(게이트 PASS), 5. 36 passed. 커밋 647fec3 (+ledger 8762b1e).
+**미착수:** Task 6(랭킹), Task 7(모양 프로브), Task 8(데이터셋 빌드+리포트).
+
+### 재개 절차
+1. `cd D:/tmp/wt-intraday-rebound` (워크트리 살아 있음, 브랜치 feat/intraday-rebound-discovery)
+   라이브 트리 D:\GIT\kis-trading-template 는 main. 절대 건드리지 말 것.
+2. `python -m pytest tests/discovery/intraday_rebound/ -q` → 36 passed 확인
+3. Task 6부터. brief: scripts/task-brief docs/superpowers/plans/2026-07-09-*.md 6
+
+### Task 8 착수 전 반드시 해결할 것 (미해결 블로커)
+실측: 라벨러만 10.7시간 (144격자 x 65,670 종목-일 x 3 TF). 특징/DB/parquet 포함 20시간+.
+07:40 라이브 봇과 CPU 경쟁 → 그대로 돌리면 안 됨.
+
+구조적 낭비 2건 (계획서 Task 8 코드에 있음):
+- compute_features 는 (TF, N) 에만 의존하는데 격자점마다(144회) 재계산됨 → 종목-일당 9회면 충분
+- compute_labels 가 prior_high 를 매 격자점 재계산 (역시 (TF,N) 의존)
+- D(하락폭)는 순수 필터라 라벨 재계산 불필요. 실제 window pass 는 TF x N x M x theta = 108
+
+권장: (a) (TF,N) 루프 바깥에서 prior_high/features 1회 계산 (b) 격자를 N=60 고정,
+theta={fixed 3%, 1.5xATR} 로 축소(432 -> 72) (c) 1차 결과 보고 필요한 격자만 확장.
+사장님 미결정 상태. 다음 세션 첫 질문으로 올릴 것.
+
+### 최종 리뷰 때 재검토할 미수정 Minor
+- read_sql 커서 close 미보장(연결 close 로 무해)
+- reproduce 스킵가드가 짧은 종목-일 허용(전방창 절단; 진단 SQL 과 일치하므로 무영향)
+- labeler 출력이 입력 index 미보존(resample 이 RangeIndex 라 무해)
+- mae 의 close[t] 나눗셈 errstate 미가드
+- test_no_window_crosses_session_boundary 가 길이만 검사(오명명)
+- test_partial_bucket 이 open/close/low/volume/amount 미검증
+- _bars_since_prior_high 동점 시 가장 오래된 고점 선택(의도적, docstring 기재됨)
