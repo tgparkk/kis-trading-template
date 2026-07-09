@@ -85,7 +85,48 @@ def test_empty_input_returns_empty_frame_with_columns():
         "datetime", "open", "high", "low", "close", "volume", "amount"
     ]), 3)
     assert out.empty
-    assert "bar_count" in out.columns
+    assert list(out.columns) == [
+        "datetime", "open", "high", "low", "close", "volume", "amount", "bar_count"
+    ]
+
+
+def test_empty_input_returns_numeric_dtypes_not_object():
+    out = resample_ohlcv(pd.DataFrame(columns=[
+        "datetime", "open", "high", "low", "close", "volume", "amount"
+    ]), 3)
+    assert out["datetime"].dtype == "datetime64[ns]"
+    for col in ["open", "high", "low", "close", "volume", "amount"]:
+        assert out[col].dtype == "float64", (col, out[col].dtype)
+    assert out["bar_count"].dtype == "int64"
+
+
+def test_concat_of_empty_and_real_result_preserves_float64_close():
+    empty = resample_ohlcv(pd.DataFrame(columns=[
+        "datetime", "open", "high", "low", "close", "volume", "amount"
+    ]), 3)
+    real = resample_ohlcv(_minute_df([
+        ("09:00", 100, 105, 99, 104, 10, 1000),
+        ("09:01", 104, 110, 103, 108, 20, 2000),
+        ("09:02", 108, 109, 101, 102, 30, 3000),
+    ]), 3)
+
+    out = pd.concat([empty, real], ignore_index=True)
+
+    assert out["close"].dtype == "float64"
+
+
+def test_unsorted_input_still_yields_chronological_open_close():
+    """행 순서가 시간순이 아니어도 open/close 는 시간순 기준으로 계산되어야 한다."""
+    df = _minute_df([
+        ("09:01", 999, 999, 999, 999, 1, 100),   # 중간 시각, open/close 값으로 쓰이면 버그
+        ("09:00", 111, 111, 111, 111, 1, 100),   # 가장 이른 시각 -> open 이어야 함
+        ("09:02", 222, 222, 222, 222, 1, 100),   # 가장 늦은 시각 -> close 이어야 함
+    ])
+    out = resample_ohlcv(df, 3)
+
+    assert len(out) == 1
+    assert out.iloc[0]["open"] == 111
+    assert out.iloc[0]["close"] == 222
 
 
 @pytest.mark.parametrize("tf", [3, 5, 15])
