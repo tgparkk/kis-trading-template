@@ -21,6 +21,9 @@
 - **유니버스:** 상시수집 199종목 고정 (2025-04-01 이후 거래일의 90% 이상 수집).
 - **기간:** 2025-04-01 ~ 2026-07-09. 인샘플 `~2026-01-31`, 아웃샘플 `2026-02-01~`.
 - **테스트:** `pytest`. 신규 테스트는 `tests/discovery/intraday_rebound/` 아래. DB 접속이 필요한 테스트는 `@pytest.mark.integration`으로 표시하고 기본 스위트에서 제외한다.
+- **작업 트리는 `D:/tmp/wt-intraday-rebound` 하나뿐이다.** 라이브 봇이 `D:\GIT\kis-trading-template`에서 매일 07:40에 기동한다. **그 트리를 읽지도 쓰지도 말고, 거기서 `cd`·`pytest`·`git checkout`을 실행하지 말 것.** 페이퍼 트레이딩 로그와 DB가 오염된다. 모든 명령은 `cd D:/tmp/wt-intraday-rebound/RoboTrader_template`에서 시작한다.
+- **파이썬은 시스템 인터프리터**(`C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_64\python.exe`). 워크트리에 venv가 없다. `python -m pytest`로 실행한다. pandas 2.2.3 / numpy 2.0.2 / sklearn 1.6.1 / pyarrow 21.0.0 / psycopg2 확인됨.
+- `config/key.ini` 부재 경고가 import 시 출력되나 무해하다. 무시한다.
 - **커밋은 각 Task 끝에서.** 브랜치 `feat/intraday-rebound-discovery`. push 금지 (사용자 승인 필요).
 
 ## 스펙 대비 변경 1건
@@ -73,7 +76,7 @@ tests/discovery/intraday_rebound/
 - [ ] **Step 1: 패키지 디렉토리와 `__init__.py` 생성**
 
 ```bash
-cd D:/GIT/kis-trading-template/RoboTrader_template
+cd D:/tmp/wt-intraday-rebound/RoboTrader_template
 mkdir -p scripts/discovery/intraday_rebound/_cache
 mkdir -p tests/discovery/intraday_rebound
 printf '"""장중 급락 후 반등 발굴 (연구 전용, 라이브 무접촉)."""\n' > scripts/discovery/intraday_rebound/__init__.py
@@ -138,7 +141,7 @@ def read_sql(sql: str, params: tuple, dbname: str) -> pd.DataFrame:
 - [ ] **Step 3: 읽기 전용 세션이 쓰기를 거부하는지 확인**
 
 ```bash
-cd D:/GIT/kis-trading-template/RoboTrader_template
+cd D:/tmp/wt-intraday-rebound/RoboTrader_template
 python -c "
 from scripts.discovery.intraday_rebound import db
 import psycopg2
@@ -208,7 +211,7 @@ def load_universe(dbname: str = MINUTE_DB,
 - [ ] **Step 5: 유니버스가 199종목인지 확인 (스펙 2.1절 재현)**
 
 ```bash
-cd D:/GIT/kis-trading-template/RoboTrader_template
+cd D:/tmp/wt-intraday-rebound/RoboTrader_template
 python -c "
 from scripts.discovery.intraday_rebound.universe import load_universe
 codes = load_universe(use_cache=False)
@@ -225,7 +228,7 @@ Expected: `count = 199` 다음 `OK`.
 - [ ] **Step 6: 커밋**
 
 ```bash
-cd D:/GIT/kis-trading-template
+cd D:/tmp/wt-intraday-rebound
 git add RoboTrader_template/scripts/discovery/intraday_rebound/ RoboTrader_template/tests/discovery/intraday_rebound/
 git commit -m "feat(discovery): 반등 발굴 스캐폴딩 + 읽기전용 커넥터 + 유니버스 산출"
 ```
@@ -245,7 +248,9 @@ git commit -m "feat(discovery): 반등 발굴 스캐폴딩 + 읽기전용 커넥
   - 출력 컬럼: `datetime, open, high, low, close, volume, amount, bar_count`
   - 빈 버킷은 행을 만들지 않는다.
 
-**왜 래핑하나:** 라이브 `core.timeframe_converter.TimeFrameConverter.convert_to_timeframe`는 OHLCV만 다루고 `amount`를 버린다. 우리는 거래대금 특징이 필요하다. 리샘플 로직을 새로 쓰지 않고(두 벌이 되면 언젠가 어긋난다) OHLCV는 그대로 위임하고 `amount`/`bar_count`만 같은 버킷 규칙(`datetime.floor(f'{n}min')`)으로 붙인다. pandas `resample`의 기본 `origin='start_day'`는 `floor`와 동일한 경계를 만든다.
+**설계 근거.** 라이브 `core.timeframe_converter.TimeFrameConverter.convert_to_timeframe`는 OHLCV만 다루고 `amount`를 버린다. 우리는 거래대금 특징이 필요하다. 또 입력 전체 길이가 `timeframe_minutes`보다 짧으면 `None`을 반환하는데, 우리는 부분 버킷도 봉으로 쳐야 한다(거래 없는 분이 흔하다).
+
+그래서 `groupby(datetime.floor(f'{n}min'))` **한 벌**로 직접 구현한다. 위임 + 폴백 두 벌을 두면 두 경로가 언젠가 어긋난다. 대신 **라이브 변환기와 결과가 같은지 검증하는 테스트**(`test_matches_live_converter_on_a_full_session`)를 둔다. 중복 없이 드리프트를 감시한다. pandas `resample`의 기본 `origin='start_day'`는 `floor`와 동일한 경계를 만들므로 두 구현의 OHLCV는 일치해야 한다.
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
@@ -338,25 +343,61 @@ def test_empty_input_returns_empty_frame_with_columns():
     ]), 3)
     assert out.empty
     assert "bar_count" in out.columns
+
+
+@pytest.mark.parametrize("tf", [3, 5, 15])
+def test_matches_live_converter_on_a_full_session(tf):
+    """드리프트 감시: 우리 구현의 OHLCV 는 라이브 TimeFrameConverter 와 같아야 한다.
+
+    리샘플 로직을 두 벌 두지 않는 대신, 두 구현이 어긋나면 여기서 잡는다.
+    """
+    from core.timeframe_converter import TimeFrameConverter
+
+    rng = np.random.default_rng(0)
+    n = 390                                   # 09:00~15:29 정규장 1분봉
+    close = 10000 + np.cumsum(rng.normal(0, 5, n))
+    df = pd.DataFrame({
+        "datetime": pd.date_range("2026-06-01 09:00", periods=n, freq="1min"),
+        "open": close + rng.normal(0, 1, n),
+        "high": close + rng.uniform(0, 10, n),
+        "low": close - rng.uniform(0, 10, n),
+        "close": close,
+        "volume": rng.integers(1, 1000, n).astype(float),
+        "amount": rng.integers(1, 10**6, n).astype(float),
+    })
+
+    ours = resample_ohlcv(df, tf)
+    theirs = TimeFrameConverter.convert_to_timeframe(df, tf)
+
+    pd.testing.assert_frame_equal(
+        ours[["datetime", "open", "high", "low", "close", "volume"]]
+            .reset_index(drop=True),
+        theirs[["datetime", "open", "high", "low", "close", "volume"]]
+            .reset_index(drop=True),
+        check_dtype=False,
+    )
 ```
+
+`import numpy as np`를 테스트 파일 상단에 추가한다.
 
 - [ ] **Step 2: 테스트 실패 확인**
 
-Run: `cd D:/GIT/kis-trading-template/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_resample.py -v`
+Run: `cd D:/tmp/wt-intraday-rebound/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_resample.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.discovery.intraday_rebound.resample'`
 
 - [ ] **Step 3: `resample.py` 구현**
 
 ```python
 # scripts/discovery/intraday_rebound/resample.py
-"""1분봉 → N분봉 리샘플. OHLCV는 라이브 TimeFrameConverter에 위임하고
-amount/bar_count만 동일 버킷 규칙으로 덧붙인다. 빈 버킷은 행을 만들지 않는다.
+"""1분봉 → N분봉 리샘플.
+
+버킷 경계는 datetime.floor(f'{n}min'). 빈 버킷은 행을 만들지 않는다 (ffill 금지).
+라이브 TimeFrameConverter 와 OHLCV 가 일치하는지는
+tests/.../test_resample.py::test_matches_live_converter_on_a_full_session 이 감시한다.
 """
 from __future__ import annotations
 
 import pandas as pd
-
-from core.timeframe_converter import TimeFrameConverter
 
 OUT_COLUMNS = ["datetime", "open", "high", "low", "close", "volume", "amount", "bar_count"]
 
@@ -367,51 +408,34 @@ def resample_ohlcv(minute_df: pd.DataFrame, timeframe_minutes: int) -> pd.DataFr
 
     df = minute_df.copy()
     df["datetime"] = pd.to_datetime(df["datetime"])
-
-    ohlcv = TimeFrameConverter.convert_to_timeframe(df, timeframe_minutes)
-    if ohlcv is None or ohlcv.empty:
-        # 입력이 timeframe_minutes보다 짧으면 위임 함수가 None을 준다.
-        # 그래도 버킷 하나는 성립하므로 직접 만든다.
-        ohlcv = _fallback_ohlcv(df, timeframe_minutes)
-        if ohlcv.empty:
-            return pd.DataFrame(columns=OUT_COLUMNS)
-
     bucket = df["datetime"].dt.floor(f"{timeframe_minutes}min")
-    extra = df.groupby(bucket).agg(
-        amount=("amount", "sum"),
-        bar_count=("close", "size"),
-    ).reset_index()
-    extra = extra.rename(columns={"datetime": "bucket"})
-    extra.columns = ["datetime", "amount", "bar_count"]
 
-    out = ohlcv.merge(extra, on="datetime", how="inner")
-    return out[OUT_COLUMNS].reset_index(drop=True)
-
-
-def _fallback_ohlcv(df: pd.DataFrame, timeframe_minutes: int) -> pd.DataFrame:
-    bucket = df["datetime"].dt.floor(f"{timeframe_minutes}min")
-    g = df.groupby(bucket).agg(
+    out = df.groupby(bucket, sort=True).agg(
         open=("open", "first"),
         high=("high", "max"),
         low=("low", "min"),
         close=("close", "last"),
         volume=("volume", "sum"),
+        amount=("amount", "sum"),
+        bar_count=("close", "size"),
     ).reset_index()
-    g.columns = ["datetime", "open", "high", "low", "close", "volume"]
-    return g
+    out.columns = OUT_COLUMNS
+    return out
 ```
+
+`groupby`는 존재하는 버킷만 만든다. 빈 3분 구간에 대해 행이 생기지 않으므로 forward-fill 함정이 원천 차단된다.
 
 - [ ] **Step 4: 테스트 통과 확인**
 
-Run: `cd D:/GIT/kis-trading-template/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_resample.py -v`
-Expected: 5 passed
+Run: `cd D:/tmp/wt-intraday-rebound/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_resample.py -v`
+Expected: 8 passed (5 + 파라미터화된 드리프트 감시 3)
 
-`test_missing_minutes_do_not_create_bars`가 통과한다는 것은 `convert_to_timeframe`의 `.dropna()`가 빈 버킷을 제거한다는 뜻이다. 실패하면 `resample_ohlcv`에서 `ohlcv = ohlcv.dropna(subset=["open"])`를 추가한다.
+`test_matches_live_converter_on_a_full_session`이 실패하면 **버킷 경계가 어긋난 것이다.** 우리 `floor`와 pandas `resample(origin='start_day')`가 다른 결과를 냈다는 뜻이므로, 리샘플러를 고치기 전에 어느 쪽이 옳은지 먼저 판단한다.
 
 - [ ] **Step 5: 커밋**
 
 ```bash
-cd D:/GIT/kis-trading-template
+cd D:/tmp/wt-intraday-rebound
 git add RoboTrader_template/scripts/discovery/intraday_rebound/resample.py RoboTrader_template/tests/discovery/intraday_rebound/test_resample.py
 git commit -m "feat(discovery): 리샘플 어댑터 (amount/bar_count 추가, 빈 버킷 미생성)"
 ```
@@ -573,7 +597,7 @@ def test_no_window_crosses_session_boundary_because_input_is_one_day():
 
 - [ ] **Step 2: 테스트 실패 확인**
 
-Run: `cd D:/GIT/kis-trading-template/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_labeler.py -v`
+Run: `cd D:/tmp/wt-intraday-rebound/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_labeler.py -v`
 Expected: FAIL — `ModuleNotFoundError: ... labeler`
 
 - [ ] **Step 3: `labeler.py` 구현**
@@ -685,13 +709,13 @@ def compute_labels(bars: pd.DataFrame, params: LabelParams) -> pd.DataFrame:
 
 - [ ] **Step 4: 테스트 통과 확인**
 
-Run: `cd D:/GIT/kis-trading-template/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_labeler.py -v`
+Run: `cd D:/tmp/wt-intraday-rebound/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_labeler.py -v`
 Expected: 10 passed
 
 - [ ] **Step 5: 커밋**
 
 ```bash
-cd D:/GIT/kis-trading-template
+cd D:/tmp/wt-intraday-rebound
 git add RoboTrader_template/scripts/discovery/intraday_rebound/labeler.py RoboTrader_template/tests/discovery/intraday_rebound/test_labeler.py
 git commit -m "feat(discovery): 라벨러 (hit_up/hit_down/hit_close/MAE, 첫 도달에서 MAE 절단)"
 ```
@@ -823,7 +847,7 @@ if __name__ == "__main__":
 
 Run:
 ```bash
-cd D:/GIT/kis-trading-template/RoboTrader_template
+cd D:/tmp/wt-intraday-rebound/RoboTrader_template
 python -m scripts.discovery.intraday_rebound.reproduce --start 20260601 --end 20260630
 ```
 
@@ -857,7 +881,7 @@ Expected (허용 오차 내):
 - [ ] **Step 5: 커밋**
 
 ```bash
-cd D:/GIT/kis-trading-template
+cd D:/tmp/wt-intraday-rebound
 git add RoboTrader_template/scripts/discovery/intraday_rebound/reproduce.py docs/superpowers/specs/2026-07-09-intraday-rebound-discovery-design.md
 git commit -m "feat(discovery): 스펙 2.2절 재현 게이트 + 재현 결과 기록"
 ```
@@ -1033,7 +1057,7 @@ def test_consec_down_counts_consecutive_bearish_bars():
 
 - [ ] **Step 2: 테스트 실패 확인**
 
-Run: `cd D:/GIT/kis-trading-template/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_features.py -v`
+Run: `cd D:/tmp/wt-intraday-rebound/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_features.py -v`
 Expected: FAIL — `ModuleNotFoundError: ... features`
 
 - [ ] **Step 3: `features.py` 구현**
@@ -1164,7 +1188,7 @@ def compute_features(bars: pd.DataFrame,
 
 - [ ] **Step 4: 테스트 통과 확인**
 
-Run: `cd D:/GIT/kis-trading-template/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_features.py -v`
+Run: `cd D:/tmp/wt-intraday-rebound/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_features.py -v`
 Expected: 6 passed
 
 `test_time_truncation_no_lookahead`가 실패하면 **어떤 특징이 미래를 보고 있다.** 실패한 컬럼명이 정확한 범인이다. `expanding()`/`rolling()`은 안전하고, `.mean()` 같은 전역 집계나 `shift(-k)`는 위험하다.
@@ -1172,7 +1196,7 @@ Expected: 6 passed
 - [ ] **Step 5: 커밋**
 
 ```bash
-cd D:/GIT/kis-trading-template
+cd D:/tmp/wt-intraday-rebound
 git add RoboTrader_template/scripts/discovery/intraday_rebound/features.py RoboTrader_template/tests/discovery/intraday_rebound/test_features.py
 git commit -m "feat(discovery): 특징 18종 + 시점절단 누수 테스트"
 ```
@@ -1304,7 +1328,7 @@ def test_rank_features_shuffled_labels_collapse_to_zero():
 
 - [ ] **Step 2: 테스트 실패 확인**
 
-Run: `cd D:/GIT/kis-trading-template/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_ranking.py -v`
+Run: `cd D:/tmp/wt-intraday-rebound/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_ranking.py -v`
 Expected: FAIL — `ModuleNotFoundError: ... ranking`
 
 - [ ] **Step 3: `ranking.py` 구현**
@@ -1418,7 +1442,7 @@ def rank_features(df: pd.DataFrame,
 
 - [ ] **Step 4: 테스트 통과 확인**
 
-Run: `cd D:/GIT/kis-trading-template/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_ranking.py -v`
+Run: `cd D:/tmp/wt-intraday-rebound/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_ranking.py -v`
 Expected: 7 passed
 
 `test_stratified_auc_cancels_a_pure_volatility_proxy`와 `test_directional_auc_is_zero_for_symmetric_volatility_signal`이 이 라운드의 방법론적 심장이다. 이 둘이 통과하면 스펙 2.2절의 실수는 구조적으로 재발할 수 없다.
@@ -1426,7 +1450,7 @@ Expected: 7 passed
 - [ ] **Step 5: 커밋**
 
 ```bash
-cd D:/GIT/kis-trading-template
+cd D:/tmp/wt-intraday-rebound
 git add RoboTrader_template/scripts/discovery/intraday_rebound/ranking.py RoboTrader_template/tests/discovery/intraday_rebound/test_ranking.py
 git commit -m "feat(discovery): 층화 AUC + 방향성 AUC + 날짜 블록 부트스트랩"
 ```
@@ -1558,7 +1582,7 @@ def test_probe_report_is_deterministic_for_fixed_seed():
 
 - [ ] **Step 3: 테스트 실패 확인**
 
-Run: `cd D:/GIT/kis-trading-template/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_shape_probe.py -v`
+Run: `cd D:/tmp/wt-intraday-rebound/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_shape_probe.py -v`
 Expected: FAIL — `ModuleNotFoundError: ... shape_probe`
 
 - [ ] **Step 4: `shape_probe.py` 구현**
@@ -1634,13 +1658,13 @@ def probe_report(events: pd.DataFrame, windows: np.ndarray, k: int,
 
 - [ ] **Step 5: 테스트 통과 확인**
 
-Run: `cd D:/GIT/kis-trading-template/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_shape_probe.py -v`
+Run: `cd D:/tmp/wt-intraday-rebound/RoboTrader_template && python -m pytest tests/discovery/intraday_rebound/test_shape_probe.py -v`
 Expected: 6 passed
 
 - [ ] **Step 6: 커밋**
 
 ```bash
-cd D:/GIT/kis-trading-template
+cd D:/tmp/wt-intraday-rebound
 git add RoboTrader_template/scripts/discovery/intraday_rebound/shape_probe.py RoboTrader_template/tests/discovery/intraday_rebound/test_shape_probe.py docs/superpowers/specs/2026-07-09-intraday-rebound-discovery-design.md
 git commit -m "feat(discovery): 모양 프로브 (KMeans) + 스펙 8절 k-Shape→KMeans 수정"
 ```
@@ -1908,7 +1932,7 @@ def _flush_shape(rows: list[dict]) -> None:
 - [ ] **Step 1c: 모양 프로브 실행 코드**
 
 ```bash
-cd D:/GIT/kis-trading-template/RoboTrader_template
+cd D:/tmp/wt-intraday-rebound/RoboTrader_template
 python -c "
 import pandas as pd
 from scripts.discovery.intraday_rebound.shape_probe import probe_report, znorm_windows
@@ -1927,7 +1951,7 @@ for k in (8, 10, 12):
 
 Run:
 ```bash
-cd D:/GIT/kis-trading-template/RoboTrader_template
+cd D:/tmp/wt-intraday-rebound/RoboTrader_template
 python -m scripts.discovery.intraday_rebound.build_dataset --start 20260601 --end 20260630
 ```
 Expected: `wrote labels_tf3_N60_D25_M60_fixed.parquet: N rows` 형태로 다수 파일. 오류 없이 종료.
@@ -1938,7 +1962,7 @@ Expected: `wrote labels_tf3_N60_D25_M60_fixed.parquet: N rows` 형태로 다수 
 
 Run:
 ```bash
-cd D:/GIT/kis-trading-template/RoboTrader_template
+cd D:/tmp/wt-intraday-rebound/RoboTrader_template
 nohup python -m scripts.discovery.intraday_rebound.build_dataset \
   --start 20250401 --end 20260709 > _cache/build.log 2>&1 &
 ```
@@ -2019,7 +2043,7 @@ def is_oos_ranking(path: Path) -> pd.DataFrame:
 
 Run:
 ```bash
-cd D:/GIT/kis-trading-template/RoboTrader_template
+cd D:/tmp/wt-intraday-rebound/RoboTrader_template
 python -c "
 from scripts.discovery.intraday_rebound.report import grid_table, is_oos_ranking
 from pathlib import Path
@@ -2047,14 +2071,14 @@ print(is_oos_ranking(best).to_string(index=False))
 
 Run:
 ```bash
-cd D:/GIT/kis-trading-template/RoboTrader_template
+cd D:/tmp/wt-intraday-rebound/RoboTrader_template
 python -m pytest tests/discovery/intraday_rebound/ -v
 python -m pytest tests/ -q 2>&1 | tail -5
 ```
 Expected: 신규 34 passed. 기존 스위트에 **신규 실패 0** (기존 known failure는 그대로).
 
 ```bash
-cd D:/GIT/kis-trading-template
+cd D:/tmp/wt-intraday-rebound
 git add RoboTrader_template/scripts/discovery/intraday_rebound/ docs/superpowers/reports/
 git commit -m "feat(discovery): 데이터셋 빌더 + 리포트 (격자/낙관편향/IS-OOS 랭킹/모양 프로브)"
 ```
