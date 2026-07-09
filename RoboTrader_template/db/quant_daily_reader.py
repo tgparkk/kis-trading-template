@@ -66,6 +66,11 @@ class QuantDailyReader:
         (2) 바깥 조회에서도 market_cap 채워진 행만 반환해 운영 전용 스트래글러·지수 유사행
         (KOSPI/KOSDAQ, market_cap NULL)을 유니버스에서 배제한다 → 레거시(분리 DB)의
         '순수 퀀트 유니버스' 의미를 복원한다. (룩어헤드는 여전히 ``date <= scan_date`` 로 차단.)
+
+        완전한 퀀트일이 하나도 없으면(신규 DB/초기 부팅 극단) 조용히 빈 리스트를 반환한다.
+        선택된 유니버스 일자가 scan_date 보다 과거인데 scan_date 당일에 행이 존재하는
+        경우(=market_cap 없는 운영 부분일자를 건너뛴 상황)는 관측성을 위해
+        ``logger.debug`` 로 남긴다(코드리뷰 MINOR#2, best-effort — 실패해도 메인 조회에 영향 없음).
         """
         d = scan_date if isinstance(scan_date, str) else scan_date.strftime("%Y-%m-%d")
         try:
@@ -81,6 +86,7 @@ class QuantDailyReader:
                         (d,),
                     )
                     rows = cur.fetchall()
+                    self._log_partial_day_skip(cur, d)
             return [
                 {"stock_code": str(c), "market_cap": float(m or 0), "trading_value": float(t or 0)}
                 for c, m, t in rows
@@ -91,6 +97,37 @@ class QuantDailyReader:
         except psycopg2.Error as e:
             logger.warning("quant get_universe_snapshot 실패 (%s): %s", d, e)
             return []
+
+    def _log_partial_day_skip(self, cur, d: str) -> None:
+        """부분 운영일(market_cap 미충전) 스킵을 debug 로그로 남긴다(관측성 전용, best-effort).
+
+        scan_date(d) 자체에 daily_prices 행이 존재하는데 전부 market_cap NULL 이라
+        get_universe_snapshot 이 더 과거의 완전 퀀트일로 폴백한 경우에만 남긴다.
+        - 당일이 완전 유니버스인 정상 경로(eff_date == d)
+        - scan_date 자체에 행이 아예 없는 휴장일 정상 폴백(scan_date_has_rows == False)
+        위 두 경우는 흔히 발생하는 정상 경로라 잡음이 되므로 로그를 남기지 않는다.
+        이 조회/파싱이 실패해도(예: 구버전 fake, 일시적 오류) 조용히 무시해 메인
+        유니버스 조회 결과에는 영향을 주지 않는다.
+        """
+        try:
+            cur.execute(
+                "SELECT (SELECT max(date) FROM daily_prices "
+                "        WHERE date <= %s AND market_cap IS NOT NULL), "
+                "       EXISTS(SELECT 1 FROM daily_prices WHERE date = %s)",
+                (d, d),
+            )
+            row = cur.fetchone()
+            if not row:
+                return
+            eff_date, scan_date_has_rows = row[0], row[1]
+            if eff_date is not None and str(eff_date) != d and scan_date_has_rows:
+                logger.debug(
+                    "유니버스 스냅샷 부분 운영일 스킵: scan_date=%s 선택일=%s "
+                    "(당일 market_cap 미충전 행 존재 → 직전 완전 퀀트일로 폴백)",
+                    d, eff_date,
+                )
+        except Exception:
+            pass
 
     def get_daily_prices(self, stock_code: str, end_date=None, days: int = 120) -> pd.DataFrame:
         """stock_code 의 일봉 최근 days행(end_date 이하). 오름차순 DataFrame.
