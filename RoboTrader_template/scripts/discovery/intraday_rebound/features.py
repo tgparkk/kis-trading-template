@@ -26,14 +26,24 @@ def _safe_div(a, b):
 
 
 def _bars_since_prior_high(high: pd.Series, lookback_bars: int) -> pd.Series:
-    """직전 lookback_bars 봉 중 최고가가 몇 봉 전이었는지 (자기 봉 제외)."""
+    """직전 lookback_bars 봉 중 최고가가 몇 봉 전이었는지 (자기 봉 제외).
+
+    동률(tie)일 경우 np.argmax/nanargmax 는 가장 오래된(가장 앞쪽) 발생 인덱스를
+    반환한다 → "몇 봉 전"이 최대로 계산된다. 의도된 동작이다.
+    """
     def _idx(window: np.ndarray) -> float:
-        return float(len(window) - int(np.argmax(window)))
+        if np.all(np.isnan(window)):
+            return np.nan
+        masked = np.where(np.isnan(window), -np.inf, window)
+        idx = int(np.nanargmax(masked))
+        return float(len(window) - idx)
 
     return high.shift(1).rolling(lookback_bars, min_periods=1).apply(_idx, raw=True)
 
 
 def _consec_down(close: pd.Series, open_: pd.Series) -> pd.Series:
+    # bar 0 은 이전 종가가 없으므로 시가와 비교한다(이음매).
+    # bar 1 이후는 직전 종가와 비교한다.
     prev_close = close.shift(1)
     prev_close.iloc[0] = open_.iloc[0]
     bearish = (close < prev_close).to_numpy()
@@ -95,6 +105,8 @@ def compute_features(bars: pd.DataFrame,
 
     log_amount_cum = np.log1p(amt.cumsum())
 
+    # KRX 정규장 시작(09:00) 기준으로 앵커링한다. 해당 종목의 첫 체결/봉이 아니다.
+    # 예: 첫 봉이 09:07 이면 minutes_since_open 은 0 이 아니라 7.0 이다(의도된 동작).
     session_open = b["datetime"].iloc[0].normalize() + pd.Timedelta(hours=9)
     minutes_since_open = (b["datetime"] - session_open).dt.total_seconds() / 60.0
 
