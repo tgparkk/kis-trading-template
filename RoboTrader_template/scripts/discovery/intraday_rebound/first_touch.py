@@ -34,8 +34,8 @@ REGULAR_OPEN = pd.Timestamp("09:00:00").time()
 REGULAR_CLOSE = pd.Timestamp("15:30:00").time()
 
 OUT_COLUMNS = [
-    "segment", "n", "pct_up", "pct_down", "pct_ambiguous", "pct_none",
-    "mean_terminal_none", "gross_expectancy_pct",
+    "segment", "n", "pct_up", "pct_down", "pct_ambiguous", "n_ambiguous",
+    "pct_none", "mean_terminal_none", "gross_expectancy_pct",
     "gross_expectancy_optimistic_pct", "breakeven_cost_pct",
 ]
 
@@ -61,8 +61,14 @@ def first_touch_outcome(bars: pd.DataFrame, close_idx: int, forward_bars: int,
     terminal_ret = close[end]/entry - 1, always computed (used for the "none"
     bucket). entry = close[close_idx].
     """
+    assert bars.index.equals(pd.RangeIndex(len(bars))), \
+        "first_touch_outcome expects positional RangeIndex bars"
+    highs = bars["high"].to_numpy(dtype=float)
+    lows = bars["low"].to_numpy(dtype=float)
+    closes = bars["close"].to_numpy(dtype=float)
+
     n = len(bars)
-    entry = float(bars["close"].iloc[close_idx])
+    entry = float(closes[close_idx])
     end = min(close_idx + forward_bars, n - 1)
 
     up_target = entry * (1.0 + theta)
@@ -70,8 +76,8 @@ def first_touch_outcome(bars: pd.DataFrame, close_idx: int, forward_bars: int,
 
     outcome = "none"
     for j in range(close_idx + 1, end + 1):
-        hi = float(bars["high"].iloc[j])
-        lo = float(bars["low"].iloc[j])
+        hi = highs[j]
+        lo = lows[j]
         up_touch = hi >= up_target
         dn_touch = lo <= dn_target
         if up_touch and dn_touch:
@@ -84,7 +90,7 @@ def first_touch_outcome(bars: pd.DataFrame, close_idx: int, forward_bars: int,
             continue
         break
 
-    terminal_ret = float(bars["close"].iloc[end]) / entry - 1.0
+    terminal_ret = float(closes[end]) / entry - 1.0
     return outcome, terminal_ret
 
 
@@ -93,6 +99,11 @@ def _aggregate(df: pd.DataFrame, theta: float) -> pd.DataFrame:
     records = []
     for segment, g in df.groupby("segment", sort=True):
         n = len(g)
+
+        known = {"up", "down", "ambiguous", "none"}
+        unknown = set(g["outcome"]) - known
+        assert not unknown, f"unknown outcome labels: {unknown}"
+
         counts = g["outcome"].value_counts()
         p_up = counts.get("up", 0) / n
         p_down = counts.get("down", 0) / n
@@ -115,6 +126,7 @@ def _aggregate(df: pd.DataFrame, theta: float) -> pd.DataFrame:
         pct_up = round(p_up * 100, 2)
         pct_down = round(p_down * 100, 2)
         pct_ambiguous = round(p_amb * 100, 2)
+        n_ambiguous = int(counts.get("ambiguous", 0))
         # pct_none 은 나머지로 강제한다 — 넷을 독립적으로 반올림하면 합이 100 을
         # 벗어날 수 있다(예: 42.86+28.57+14.29+14.29=100.01).
         pct_none = round(100.0 - pct_up - pct_down - pct_ambiguous, 2)
@@ -132,6 +144,7 @@ def _aggregate(df: pd.DataFrame, theta: float) -> pd.DataFrame:
             "pct_up": pct_up,
             "pct_down": pct_down,
             "pct_ambiguous": pct_ambiguous,
+            "n_ambiguous": n_ambiguous,
             "pct_none": pct_none,
             "mean_terminal_none": round(mean_terminal_none * 100, 2),
             "gross_expectancy_pct": gross_expectancy_pct,

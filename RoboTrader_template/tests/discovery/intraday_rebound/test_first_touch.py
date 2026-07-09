@@ -104,3 +104,94 @@ def test_aggregate_percentages_sum_to_100():
     assert total == pytest.approx(100.0, abs=1e-9)
     assert row["n"] == 7
     assert row["mean_terminal_none"] == pytest.approx(-1.0)  # -0.01 -> -1.00%
+
+
+def test_aggregate_expectancy_numbers_match_hand_computation():
+    # Hand-built mix, n=20: 10 up, 5 down, 2 ambiguous, 3 none.
+    # none terminal_ret = [-0.01, 0.00, +0.01] -> mean_terminal_none = 0.0.
+    # theta = 0.03.
+    # p_up=10/20=0.50, p_down=5/20=0.25, p_amb=2/20=0.10, p_none=3/20=0.15.
+    #
+    # conservative (ambiguous = loss):
+    #   gross = p_up*theta - (p_down + p_amb)*theta + p_none*mean_terminal_none
+    #         = 0.50*0.03 - (0.25+0.10)*0.03 + 0.15*0.0
+    #         = 0.015 - 0.0105 + 0.0
+    #         = 0.0045
+    #   gross_expectancy_pct = 0.0045 * 100 = 0.45
+    #
+    # optimistic (ambiguous = win):
+    #   gross_optimistic = (p_up+p_amb)*theta - p_down*theta + p_none*mean_terminal_none
+    #                     = (0.50+0.10)*0.03 - 0.25*0.03 + 0.0
+    #                     = 0.018 - 0.0075 + 0.0
+    #                     = 0.0105
+    #   gross_expectancy_optimistic_pct = 0.0105 * 100 = 1.05
+    #
+    # breakeven_cost_pct = gross_expectancy_pct (since conservative gross > 0) = 0.45
+    rows = (
+        [{"segment": "s", "outcome": "up", "terminal_ret": 0.0}] * 10
+        + [{"segment": "s", "outcome": "down", "terminal_ret": 0.0}] * 5
+        + [{"segment": "s", "outcome": "ambiguous", "terminal_ret": 0.0}] * 2
+        + [{"segment": "s", "outcome": "none", "terminal_ret": r}
+           for r in (-0.01, 0.00, 0.01)]
+    )
+    df = pd.DataFrame(rows)
+    out = _aggregate(df, theta=0.03)
+    assert len(out) == 1
+    row = out.iloc[0]
+
+    assert row["n"] == 20
+    assert row["n_ambiguous"] == 2
+    assert row["mean_terminal_none"] == pytest.approx(0.0)
+    assert row["gross_expectancy_pct"] == pytest.approx(0.45)
+    assert row["gross_expectancy_optimistic_pct"] == pytest.approx(1.05)
+    assert row["breakeven_cost_pct"] == pytest.approx(0.45)
+
+    # ambiguous-sign contract: optimistic must be strictly greater than
+    # conservative whenever p_amb > 0 (ambiguous counted as win, not loss).
+    assert row["gross_expectancy_optimistic_pct"] > row["gross_expectancy_pct"]
+
+
+def test_aggregate_breakeven_cost_is_nan_when_conservative_gross_not_positive():
+    # All "down" -> conservative gross = 0*theta - (1.0+0)*theta + 0 = -theta < 0.
+    df = pd.DataFrame({
+        "segment": ["s"] * 4,
+        "outcome": ["down"] * 4,
+        "terminal_ret": [0.0] * 4,
+    })
+    out = _aggregate(df, theta=0.03)
+    row = out.iloc[0]
+    assert row["gross_expectancy_pct"] <= 0
+    assert np.isnan(row["breakeven_cost_pct"])
+
+
+def test_aggregate_optimistic_equals_conservative_when_no_ambiguous():
+    # p_amb == 0 -> the ambiguous term drops out of both formulas, so the two
+    # expectancy numbers must be exactly equal (not just bounded).
+    df = pd.DataFrame({
+        "segment": ["s"] * 4,
+        "outcome": ["up", "up", "down", "none"],
+        "terminal_ret": [0.0, 0.0, 0.0, 0.0],
+    })
+    out = _aggregate(df, theta=0.03)
+    row = out.iloc[0]
+    assert row["n_ambiguous"] == 0
+    assert row["gross_expectancy_optimistic_pct"] == row["gross_expectancy_pct"]
+
+
+def test_aggregate_rejects_unknown_outcome_label():
+    df = pd.DataFrame({
+        "segment": ["s"],
+        "outcome": ["bogus"],
+        "terminal_ret": [0.0],
+    })
+    with pytest.raises(AssertionError):
+        _aggregate(df, theta=0.03)
+
+
+def test_first_touch_outcome_rejects_non_rangeindex_bars():
+    bars = _bars(closes=[100, 100, 100],
+                highs=[100, 101, 102],
+                lows=[100, 99, 98])
+    bars.index = [10, 11, 12]
+    with pytest.raises(AssertionError):
+        first_touch_outcome(bars, close_idx=0, forward_bars=2, theta=0.03)
