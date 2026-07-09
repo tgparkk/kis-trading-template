@@ -1,3 +1,5 @@
+import logging
+
 import pandas as pd
 from datetime import date
 from db.quant_daily_reader import QuantDailyReader
@@ -326,10 +328,18 @@ def _callseq_reader(rows, meta):
     return r
 
 
-def test_universe_logs_debug_on_partial_day_skip(monkeypatch):
+def test_universe_logs_debug_on_partial_day_skip(monkeypatch, caplog):
     """scan_date 당일에 행이 있는데(market_cap 미충전) 건너뛰고 과거 완전일로 폴백하면
-    logger.debug 로 선택된 date 와 scan_date 를 모두 남긴다."""
+    logger.debug 로 선택된 date 와 scan_date 를 모두 남긴다.
+
+    _log_partial_day_skip 은 낭비 방지를 위해 logger.isEnabledFor(DEBUG) 가드로
+    메타쿼리 자체를 건너뛰므로, 로그가 실제로 발화하는지 검증하려면 대상 로거
+    (db.quant_daily_reader)의 레벨을 DEBUG 로 올려야 한다(caplog.set_level 이 테스트
+    종료 시 원래 레벨로 자동 복원).
+    """
     from db import quant_daily_reader as qdr_module
+
+    caplog.set_level(logging.DEBUG, logger=qdr_module.logger.name)
 
     calls = []
     monkeypatch.setattr(qdr_module.logger, "debug", lambda *a, **k: calls.append(a))

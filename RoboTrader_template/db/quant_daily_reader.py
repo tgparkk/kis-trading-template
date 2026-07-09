@@ -7,6 +7,7 @@ DB의 date 컬럼은 text('YYYY-MM-DD')라 ISO 문자열 비교로 필터/정렬
 유니버스에 종목명 소스가 없어 CandidateStock.name=종목코드로 채움
 (기존 _fetch_candidates_for_strategy 와 동일).
 """
+import logging
 import os
 import threading
 from contextlib import contextmanager
@@ -108,7 +109,12 @@ class QuantDailyReader:
         위 두 경우는 흔히 발생하는 정상 경로라 잡음이 되므로 로그를 남기지 않는다.
         이 조회/파싱이 실패해도(예: 구버전 fake, 일시적 오류) 조용히 무시해 메인
         유니버스 조회 결과에는 영향을 주지 않는다.
+
+        debug 레벨이 비활성(프로덕션 평상시)이면 메타쿼리 자체를 실행하지 않는다
+        (아무도 안 볼 로그를 위한 순수 DB 라운드트립 낭비 방지, 코드리뷰 하드닝).
         """
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
         try:
             cur.execute(
                 "SELECT (SELECT max(date) FROM daily_prices "
