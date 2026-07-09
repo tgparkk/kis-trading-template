@@ -67,7 +67,7 @@ def reproduce_spec_table(start: str = "20260601", end: str = "20260630") -> pd.D
             if len(bars) < params.min_lookback_bars + 2:
                 continue
             lab = compute_labels(bars, params)
-            lab = lab[lab["prior_high"].notna() & (lab["forward_bars"] > 0)]
+            lab = lab[lab["is_valid"] & (lab["forward_bars"] > 0)]
             frames.append(lab[["drop_pct_actual", "hit_up", "hit_down",
                                "is_full_lookback"]])
 
@@ -82,7 +82,7 @@ def reproduce_spec_table(start: str = "20260601", end: str = "20260630") -> pd.D
     ).reset_index()
 
     # 비율은 반올림 전 원 평균으로. 반올림된 백분율끼리 나누면 오차가 생긴다.
-    agg["up_over_dn"] = (agg["up_mean"] / agg["dn_mean"]).round(3)
+    agg["up_over_dn"] = (agg["up_mean"] / agg["dn_mean"].replace(0, np.nan)).round(3)
     agg["pct_up"] = (agg["up_mean"] * 100).round(2)
     agg["pct_dn"] = (agg["dn_mean"] * 100).round(2)
 

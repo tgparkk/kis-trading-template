@@ -171,3 +171,30 @@ def test_partial_lookback_bar_can_be_a_candidate():
     assert bool(out.loc[5, "is_candidate"]) is True
     assert bool(out.loc[5, "is_full_lookback"]) is False
     assert out.loc[5, "lookback_bars_used"] == 5
+
+
+def test_is_valid_false_exactly_where_prior_high_is_nan():
+    p = LabelParams(timeframe_minutes=3, lookback_min=15, drop_pct=0.025,
+                    forward_min=6, theta=0.03, min_lookback_min=9)
+    # L = 5 bars, min_lookback = 3 bars
+    bars = _bars([100] * 8)
+    out = compute_labels(bars, p)
+    expected = [False, False, False, True, True, True, True, True]
+    assert out["is_valid"].tolist() == expected
+    assert out["prior_high"].isna().tolist() == [not v for v in expected]
+
+
+def test_warmup_rows_are_invalid_but_not_full_lookback():
+    """is_full_lookback=False 는 워밍업(무효)과 부분룩백(유효)을 둘 다 포함한다."""
+    p = LabelParams(timeframe_minutes=3, lookback_min=15, drop_pct=0.025,
+                    forward_min=6, theta=0.03, min_lookback_min=9)
+    bars = _bars([100] * 8)
+    out = compute_labels(bars, p)
+
+    warmup = out[~out["is_valid"]]
+    assert len(warmup) == 3
+    assert not warmup["is_full_lookback"].any()
+
+    partial_valid = out[out["is_valid"] & ~out["is_full_lookback"]]
+    assert len(partial_valid) == 2          # t=3,4  (L=5)
+    assert partial_valid["prior_high"].notna().all()

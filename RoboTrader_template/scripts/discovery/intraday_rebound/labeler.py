@@ -12,7 +12,7 @@ import pandas as pd
 OUT_COLUMNS = [
     "prior_high", "drop_pct_actual", "is_candidate",
     "hit_up", "hit_down", "hit_close", "mae", "forward_bars",
-    "lookback_bars_used", "is_full_lookback",
+    "lookback_bars_used", "is_full_lookback", "is_valid",
 ]
 
 
@@ -39,6 +39,14 @@ class LabelParams:
 
 
 def compute_labels(bars: pd.DataFrame, params: LabelParams) -> pd.DataFrame:
+    """행 단위 라벨을 계산한다.
+
+    계약: ``is_valid=False`` 인 행은 ``prior_high`` 가 없는 워밍업 구간이며
+    (t < min_lookback_bars) 어떤 통계 계산 전에도 반드시 제외해야 한다.
+    ``is_full_lookback`` 은 ``is_valid`` 인 행들 사이에서만 전체/부분 룩백
+    구간을 구분한다 — ``is_full_lookback=False`` 단독으로는 워밍업(무효)과
+    부분 룩백(유효)을 구분할 수 없다.
+    """
     n = len(bars)
     if n == 0:
         return pd.DataFrame(columns=OUT_COLUMNS)
@@ -61,6 +69,7 @@ def compute_labels(bars: pd.DataFrame, params: LabelParams) -> pd.DataFrame:
 
     lookback_used = np.minimum(np.arange(n), L)
     is_full = lookback_used == L
+    is_valid = ~np.isnan(prior_high)
 
     with np.errstate(invalid="ignore", divide="ignore"):
         drop_actual = close / prior_high - 1.0
@@ -111,4 +120,5 @@ def compute_labels(bars: pd.DataFrame, params: LabelParams) -> pd.DataFrame:
         "forward_bars": fwd_bars,
         "lookback_bars_used": lookback_used,
         "is_full_lookback": is_full,
+        "is_valid": is_valid,
     })
