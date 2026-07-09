@@ -51,11 +51,21 @@ class QuantDailyReader:
             p.putconn(c)
 
     def get_universe_snapshot(self, scan_date) -> list:
-        """scan_date(date 또는 'YYYY-MM-DD') 이하 '최신 거래일'의 (stock_code, market_cap, trading_value).
+        """scan_date(date 또는 'YYYY-MM-DD') 이하 '완전한 퀀트 유니버스'가 있는 최신일의 (stock_code, market_cap, trading_value).
 
-        정확매칭(date = scan_date) 대신 ``date <= scan_date`` 중 최대일을 사용하는 방어적 조회.
-        EOD 스크리너가 quant 적재(~15:35) 전에 돌거나, scan_date 가 휴장/미적재일이어도
+        정확매칭(date = scan_date) 대신 ``date <= scan_date`` 중 최대일을 쓰는 방어적 조회로,
+        EOD 스크리너가 quant 적재(~15:35) 전에 돌거나 scan_date 가 휴장/미적재일이어도
         직전 거래일 유니버스로 폴백해 빈 유니버스가 되지 않게 한다(타이밍 무관).
+
+        추가로 ``market_cap IS NOT NULL`` 판별을 건다(DB 컷오버 KIS_DATA_SOURCE=new 대비):
+        운영 현재가 쓰기(price.save_daily_prices_batch)는 OHLCV/volume 만 채우고
+        market_cap 등 퀀트 메타는 NULL로 남긴다. 반면 퀀트 유니버스 행(수집기/이관분)만
+        market_cap 이 채워진다. 병합 DB(kis_template)에서는 보유 종목 몇 개만 오늘자로
+        UPSERT 되면 max(date)=오늘이 되어 전종목 유니버스가 그 몇 종목으로 붕괴한다.
+        따라서 (1) 서브쿼리에서 market_cap 채워진 행이 있는 최신일만 고르고(부분 운영일 건너뜀),
+        (2) 바깥 조회에서도 market_cap 채워진 행만 반환해 운영 전용 스트래글러·지수 유사행
+        (KOSPI/KOSDAQ, market_cap NULL)을 유니버스에서 배제한다 → 레거시(분리 DB)의
+        '순수 퀀트 유니버스' 의미를 복원한다. (룩어헤드는 여전히 ``date <= scan_date`` 로 차단.)
         """
         d = scan_date if isinstance(scan_date, str) else scan_date.strftime("%Y-%m-%d")
         try:
@@ -65,7 +75,9 @@ class QuantDailyReader:
                         "SELECT stock_code, COALESCE(market_cap,0), "
                         "COALESCE(NULLIF(trading_value,0), (close*volume)::numeric, 0) "
                         "FROM daily_prices "
-                        "WHERE date = (SELECT max(date) FROM daily_prices WHERE date <= %s)",
+                        "WHERE date = (SELECT max(date) FROM daily_prices "
+                        "              WHERE date <= %s AND market_cap IS NOT NULL) "
+                        "AND market_cap IS NOT NULL",
                         (d,),
                     )
                     rows = cur.fetchall()
