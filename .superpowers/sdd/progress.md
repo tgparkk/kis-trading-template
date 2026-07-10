@@ -108,3 +108,15 @@ theta={fixed 3%, 1.5xATR} 로 축소(432 -> 72) (c) 1차 결과 보고 필요한
 partial(개장60분)은 gross 부터 음수 → 우선순위 낮음.
 
 리뷰 미수정 Minor: none 버킷 창 절단 편향(절단 3.6%, mean_terminal_none 을 0쪽으로 약 0.014%p 낙관).
+
+## 특징 프로브 결과 (2026-07-10, 커밋 아래)
+Task 6(ranking.py, dcdc994) + outcome_probe.py. 65 passed.
+full 세그먼트에서 CI가 0을 넘지 않는 특징 2개(둘 다 음수 = 하락 예측):
+  close_pos_in_day -0.075 (-0.175,-0.024) / lower_wick_ratio -0.043 (-0.076,-0.020)
+=> "이미 반등한 흔적"을 사면 진다. 엣지는 pct_dn 감소(12.89->9.48)에서 옴 = 손실회피 필터.
+close_pos bin0 net +0.066%, 교집합(둘 다 하위20%) n=1410 net +0.097%.
+⚠️ 인샘플 21일, 18특징 스크리닝 후 선택, 분위 사후결정, 슬리피지 0. 매매 근거 아님.
+
+다음: (a) 비대칭 배리어(SL -1.5%)와 결합 — 이 필터는 pct_dn 을 깎으므로 좁은 SL 에서 효과 증폭
+      (b) OOS 검증(2026-02~05 또는 2025-04~2026-01) 필수. 이 순서 지킬 것.
+이벤트 테이블 캐시: scripts/discovery/intraday_rebound/_cache/events_probe_202606.parquet
