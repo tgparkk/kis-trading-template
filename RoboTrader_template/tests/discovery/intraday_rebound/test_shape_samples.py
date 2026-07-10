@@ -13,23 +13,27 @@ from scripts.discovery.intraday_rebound.shape_samples import (
     N_SAMPLE_PER_CLASS,
     UP_TARGET,
     WINDOWS,
+    _compute_vol_ref,
     _finalize_event,
     _find_touch_offset,
+    _round_vol,
     build_eligible_record,
     sample_events,
     stratified_sample,
 )
 
 
-def _ohlc_bars(closes):
+def _ohlc_bars(closes, volumes=None):
     n = len(closes)
+    if volumes is None:
+        volumes = [1] * n
     return pd.DataFrame({
         "datetime": pd.date_range("2026-06-01 09:00", periods=n, freq="3min"),
         "open": closes,
         "high": closes,
         "low": closes,
         "close": closes,
-        "volume": [1] * n,
+        "volume": volumes,
         "amount": [1] * n,
         "bar_count": [3] * n,
     })
@@ -59,6 +63,9 @@ def _synthetic_record(outcome, window, code, date, rng):
         "w": [entry_close] * LOOKBACK_BARS,
         "entry_close": entry_close,
         "pre_ohlc": pre_ohlc, "entry_ohlc": entry_ohlc, "post_ohlc": post_ohlc,
+        "pre_vols": [1.0] * LOOKBACK_BARS,
+        "entry_vol": 1.0,
+        "post_vols": [1.0] * FORWARD_BARS,
     }
 
 
@@ -91,6 +98,9 @@ def test_finalize_event_entry_close_is_exactly_100_and_ratios_preserved():
         "w": [entry_close] * LOOKBACK_BARS,
         "entry_close": entry_close,
         "pre_ohlc": pre_ohlc, "entry_ohlc": entry_ohlc, "post_ohlc": post_ohlc,
+        "pre_vols": [1000.0] * LOOKBACK_BARS,
+        "entry_vol": 12345.0,
+        "post_vols": [2000.0] * FORWARD_BARS,
     }
     km = _trivial_kmeans()
 
@@ -102,6 +112,90 @@ def test_finalize_event_entry_close_is_exactly_100_and_ratios_preserved():
     norm_ratio = event["pre"][0][0] / event["pre"][0][1]
     assert norm_ratio == pytest.approx(raw_ratio, abs=1e-6)
     assert event["touch_offset"] == 5
+
+
+# ---------------------------------------------------------------------------
+# per-bar volume fields (raw, not normalized)
+# ---------------------------------------------------------------------------
+
+def test_finalize_event_volumes_are_raw_not_scaled():
+    entry_close = 200.0
+    pre_ohlc = np.array([[200.0, 205.0, 195.0, 200.0]] * LOOKBACK_BARS)
+    entry_ohlc = np.array([210.0, 210.0, 195.0, 200.0])
+    post_ohlc = np.tile([200.0, 200.0, 200.0, 200.0], (FORWARD_BARS, 1))
+    post_ohlc[4] = [200.0, 208.0, 200.0, 200.0]
+
+    record = {
+        "code": "000001", "date": "2026-06-01", "entry_time": "09:30",
+        "window": "W1", "outcome": "up", "drop_pct": -0.06, "pre_vol": 1.2345,
+        "w": [entry_close] * LOOKBACK_BARS,
+        "entry_close": entry_close,
+        "pre_ohlc": pre_ohlc, "entry_ohlc": entry_ohlc, "post_ohlc": post_ohlc,
+        "pre_vols": [1000.0] * LOOKBACK_BARS,
+        "entry_vol": 12345.0,
+        "post_vols": [2000.0] * FORWARD_BARS,
+    }
+    km = _trivial_kmeans()
+
+    event = _finalize_event(record, km, "E001")
+
+    # raw, unscaled -- not divided/multiplied by entry_close like OHLC is.
+    assert event["entry_vol"] == 12345
+    assert event["pre_vols"] == [1000] * LOOKBACK_BARS
+    assert event["post_vols"] == [2000] * FORWARD_BARS
+    assert len(event["pre_vols"]) == LOOKBACK_BARS
+    assert len(event["post_vols"]) == FORWARD_BARS
+    assert event["vol_ref"] == 1000  # median of pre_vols (all 1000)
+    # pre_vol (the volatility scalar) must remain untouched, unconfused
+    # with the new volume fields.
+    assert event["pre_vol"] == 1.2345
+
+
+def test_round_vol_whole_numbers_become_int_others_2dp():
+    assert _round_vol(12345.0) == 12345
+    assert isinstance(_round_vol(12345.0), int)
+    assert _round_vol(1234.567) == 1234.57
+    assert isinstance(_round_vol(1234.567), float)
+
+
+def test_compute_vol_ref_falls_back_to_mean_when_median_is_zero():
+    pre_vols = [0.0] * 15 + [100.0] * 5  # median=0, mean=25
+    ref = _compute_vol_ref(pre_vols)
+    assert ref == pytest.approx(25.0)
+
+
+def test_compute_vol_ref_falls_back_to_one_when_median_and_mean_are_zero():
+    pre_vols = [0.0] * LOOKBACK_BARS
+    ref = _compute_vol_ref(pre_vols)
+    assert ref == 1.0
+
+
+def test_compute_vol_ref_uses_median_when_nonzero():
+    pre_vols = [10.0, 20.0, 30.0, 40.0, 50.0]
+    ref = _compute_vol_ref(pre_vols)
+    assert ref == 30.0
+
+
+# ---------------------------------------------------------------------------
+# build_eligible_record: raw volume slices attached to the record
+# ---------------------------------------------------------------------------
+
+def test_build_eligible_record_attaches_pre_entry_post_volumes():
+    closes = [100.0] * 20 + [90.0, 95.0] + [90.0] * 19
+    volumes = [float(v) for v in range(1, len(closes) + 1)]
+    bars = _ohlc_bars(closes, volumes=volumes)
+    idx = LOOKBACK_BARS
+    row = build_event_row(bars, idx, trade_date="20260601", stock_code="000001")
+
+    record = build_eligible_record(bars, idx, row)
+
+    assert record is not None
+    assert len(record["pre_vols"]) == LOOKBACK_BARS
+    assert len(record["post_vols"]) == FORWARD_BARS
+    assert record["entry_vol"] == volumes[idx]
+    assert not isinstance(record["entry_vol"], list)
+    assert list(record["pre_vols"]) == volumes[idx - LOOKBACK_BARS: idx]
+    assert list(record["post_vols"]) == volumes[idx + 1: idx + 1 + FORWARD_BARS]
 
 
 # ---------------------------------------------------------------------------

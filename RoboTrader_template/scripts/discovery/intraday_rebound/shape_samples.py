@@ -102,6 +102,7 @@ def build_eligible_record(bars: pd.DataFrame, idx: int, row: dict) -> dict | Non
     ohlc = bars[["open", "high", "low", "close"]].to_numpy(dtype=float)
     entry_close = float(ohlc[idx, 3])
     trade_date = row["trade_date"]
+    volume = bars["volume"].to_numpy(dtype=float)
 
     return {
         "code": row["stock_code"],
@@ -116,6 +117,9 @@ def build_eligible_record(bars: pd.DataFrame, idx: int, row: dict) -> dict | Non
         "pre_ohlc": ohlc[idx - LOOKBACK_BARS: idx],
         "entry_ohlc": ohlc[idx],
         "post_ohlc": ohlc[idx + 1: idx + 1 + FORWARD_BARS],
+        "pre_vols": volume[idx - LOOKBACK_BARS: idx],
+        "entry_vol": float(volume[idx]),
+        "post_vols": volume[idx + 1: idx + 1 + FORWARD_BARS],
     }
 
 
@@ -139,6 +143,28 @@ def _normalize_ohlc(arr: np.ndarray, entry_close: float) -> list[list[float]]:
     """가격을 entry_close 로 나누고 100 을 곱해 절대 가격대를 지운다."""
     scale = 100.0 / entry_close
     return np.round(arr * scale, 3).tolist()
+
+
+def _round_vol(x: float) -> float:
+    """거래량은 정규화하지 않고 raw 값을 그대로 낸다 -- 정수면 int, 아니면
+    소수 2자리로 반올림해 파일 크기를 줄인다.
+    """
+    x = float(x)
+    rounded = round(x)
+    if abs(x - rounded) < 1e-9:
+        return int(rounded)
+    return round(x, 2)
+
+
+def _compute_vol_ref(pre_vols: list[float]) -> float:
+    """pre_vols(idx-20..idx-1)의 중앙값. 0이면 평균, 그것도 0이면 1.0."""
+    arr = np.asarray(pre_vols, dtype=float)
+    ref = float(np.median(arr))
+    if ref == 0:
+        ref = float(np.mean(arr))
+    if ref == 0:
+        ref = 1.0
+    return ref
 
 
 def _find_touch_offset(post: list[list[float]], outcome: str) -> int:
@@ -181,6 +207,7 @@ def _finalize_event(record: dict, km: KMeans, event_id: str) -> dict:
         )
 
     cluster = assign_cluster(km, record["w"])
+    vol_ref = _compute_vol_ref(record["pre_vols"])
 
     return {
         "id": event_id,
@@ -191,6 +218,10 @@ def _finalize_event(record: dict, km: KMeans, event_id: str) -> dict:
         "outcome": outcome,
         "drop_pct": round(record["drop_pct"], 4),
         "pre_vol": round(record["pre_vol"], 4),
+        "pre_vols": [_round_vol(v) for v in record["pre_vols"]],
+        "entry_vol": _round_vol(record["entry_vol"]),
+        "post_vols": [_round_vol(v) for v in record["post_vols"]],
+        "vol_ref": _round_vol(vol_ref),
         "euclid_cluster": cluster,
         "pre": pre,
         "entry": entry,
