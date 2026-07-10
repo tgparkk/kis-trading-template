@@ -330,3 +330,18 @@ close_pos_in_day / lower_wick_ratio 손실회피 필터.
 "이미 반등이 시작된 흔적(종가가 당일 고가쪽, 긴 아랫꼬리)을 보고 사면 진다."
 IS +0.22%p, OOS +0.15%p 로 총기대값 개선, 워크포워드에서도 4/7 폴드 선택.
 반등 예측기가 아니라 손실 회피기임에 주의.
+
+## 세션 종료 상태 (2026-07-10 23:20)
+origin/main = 59e2d80 (FF push 완료). 라이브 트리도 59e2d80, 워킹트리 clean, 라이브 코드 변경 0건.
+머지 방식 = rebase 아닌 merge. 이유: 사전등록 커밋 c4851f2 해시 보존(결과 전 커밋이라는 증거).
+회귀 판정: 브랜치 15 failed/3625 passed vs main 15 failed/3452 passed → 실패집합 동일, 회귀 0건.
+(전체 그린이 불가능한 이유는 아래 env 유출 버그. "전체 그린"을 머지 게이트로 쓰면 안 됨.)
+
+## 다음 세션 미결 3건
+1. collectors/minute_writer.py:18 idx=enumerate → 결정적 값으로. 그 다음 UNIQUE(stock,trade_date,datetime)
+   + ON CONFLICT 대상 변경. **순서 반대로 하면 다음 수집에서 봇 사망(07-08 유형).**
+2. scripts/kis_db/smoke_state_restore.py:129 os.environ["TIMESCALE_DB"] 미복원 → try/finally 복원
+   또는 dbname 인자화. 테스트는 monkeypatch.setenv 로.
+3. 중복 오염 34건(모양 프로브 4,323 중 0.79%) 제외 후 옴니버스 재검정 (p=0.0027 유지되는지).
+
+연구 자체는 종료(워크포워드 사전등록 미달). 이월 자산 = lower_wick_ratio/close_pos_in_day 손실회피 필터.
