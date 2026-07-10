@@ -24,7 +24,7 @@ from sklearn.cluster import KMeans
 from .db import MINUTE_DB, read_sql
 from .first_touch import first_touch_outcome
 from .resample import resample_ohlcv
-from .universe import load_universe
+from .universe import load_frozen_universe
 
 TF = 3
 LOOKBACK_MIN = 60
@@ -188,7 +188,7 @@ def build_event_row(bars: pd.DataFrame, idx: int, trade_date: str,
 
 def build_events(start: str = START_DATE, end: str = END_DATE) -> pd.DataFrame:
     """day -> stock(정규장) 루프. 종목-일당 조건을 만족하는 첫 봉만 이벤트로 남긴다."""
-    codes = load_universe()
+    codes = load_frozen_universe()
     days = read_sql(_DAYS_SQL, (start, end), MINUTE_DB)["trade_date"].tolist()
 
     rows: list[dict] = []

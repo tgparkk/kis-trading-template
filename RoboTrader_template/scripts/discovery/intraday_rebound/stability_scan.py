@@ -23,7 +23,7 @@ import pandas as pd
 
 from .db import MINUTE_DB, read_sql
 from .resample import resample_ohlcv
-from .universe import load_universe
+from .universe import load_frozen_universe
 
 TFS = (3, 5, 15)
 NS = (30, 60, 120)
@@ -228,7 +228,7 @@ def scan(windows: dict[str, tuple[str, str]] = WINDOWS) -> pd.DataFrame:
     """window -> day -> stock -> tf 루프. (종목-일, tf) 당 first-touch 오프셋을
     한 번만 스캔하고, 108 개 (N, D, M) 셀 전부를 재스캔 없이 파생시켜 누적한다.
     """
-    codes = load_universe()
+    codes = load_frozen_universe()
 
     counts: dict[tuple, Counter] = {}
     dates: dict[tuple, set] = {}

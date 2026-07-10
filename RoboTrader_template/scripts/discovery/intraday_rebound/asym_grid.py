@@ -29,7 +29,7 @@ from .outcome_probe import (
     _trade_date_to_dash,
 )
 from .resample import resample_ohlcv
-from .universe import load_universe
+from .universe import load_frozen_universe
 
 # 2026-06 하위 5분위 컷 (feature-probe 결과). 라이브 룰이 아니다 — in-sample
 # 그리드에서 이 컷을 통과한 부분집합이 손절을 좁혔을 때 어떻게 반응하는지 볼
@@ -166,7 +166,7 @@ def _build_grid_rows(start: str, end: str, theta_ups: tuple[float, ...],
     그리드 전체 (theta_up, theta_dn) 쌍에 대해 first_touch_outcome 을
     재스캔한다 (DB 는 날짜당 한 번만 읽는다).
     """
-    codes = load_universe()
+    codes = load_frozen_universe()
     days = read_sql(_DAYS_SQL, (start, end), MINUTE_DB)["trade_date"].tolist()
     # theta 는 compute_labels 내부의 hit_up/hit_down/mae/hit_close 계산에만
     # 쓰이는데, 이 모듈은 그 컬럼들을 소비하지 않는다(is_candidate/forward_bars/

@@ -19,7 +19,7 @@ from .first_touch import first_touch_outcome
 from .labeler import LabelParams, compute_labels
 from .ranking import rank_features
 from .resample import resample_ohlcv
-from .universe import load_universe
+from .universe import load_frozen_universe
 
 # 고정 그리드포인트 (스펙에 명시된 값). 전체 그리드 탐색은 별도 작업이다.
 TF = 3
@@ -162,7 +162,7 @@ def _rank_segments(events: pd.DataFrame, n_boot: int = 200,
 
 def build_events(start: str, end: str) -> pd.DataFrame:
     """day -> stock 루프로 후보 봉마다 특징 + first-touch 결과를 모은다."""
-    codes = load_universe()
+    codes = load_frozen_universe()
     days = read_sql(_DAYS_SQL, (start, end), MINUTE_DB)["trade_date"].tolist()
     params = LabelParams(timeframe_minutes=TF, lookback_min=LOOKBACK_MIN,
                          drop_pct=DROP_PCT, forward_min=FORWARD_MIN, theta=THETA)

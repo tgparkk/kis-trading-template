@@ -13,7 +13,7 @@ import pandas as pd
 from .db import MINUTE_DB, read_sql
 from .labeler import LabelParams, compute_labels
 from .resample import resample_ohlcv
-from .universe import load_universe
+from .universe import load_frozen_universe
 
 _DAYS_SQL = """
 SELECT DISTINCT trade_date FROM minute_candles
@@ -49,7 +49,7 @@ def _bucket(drop: float) -> str:
 
 
 def reproduce_spec_table(start: str = "20260601", end: str = "20260630") -> pd.DataFrame:
-    codes = load_universe()
+    codes = load_frozen_universe()
     days = read_sql(_DAYS_SQL, (start, end), MINUTE_DB)["trade_date"].tolist()
     params = LabelParams(timeframe_minutes=3, lookback_min=60, drop_pct=0.0,
                          forward_min=60, theta=0.03, min_lookback_min=15)

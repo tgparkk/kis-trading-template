@@ -16,7 +16,7 @@ import pandas as pd
 from .db import MINUTE_DB, read_sql
 from .labeler import LabelParams, compute_labels
 from .resample import resample_ohlcv
-from .universe import load_universe
+from .universe import load_frozen_universe
 
 _DAYS_SQL = """
 SELECT DISTINCT trade_date FROM minute_candles
@@ -164,7 +164,7 @@ def analyze(start: str, end: str, tf: int = 3, lookback_min: int = 60,
            drop_pct: float = 0.04, forward_min: int = 60,
            theta: float = 0.03) -> pd.DataFrame:
     """day -> stock(정규장) 루프로 first-touch 순서를 재구성해 segment 별로 집계한다."""
-    codes = load_universe()
+    codes = load_frozen_universe()
     days = read_sql(_DAYS_SQL, (start, end), MINUTE_DB)["trade_date"].tolist()
     params = LabelParams(timeframe_minutes=tf, lookback_min=lookback_min,
                          drop_pct=drop_pct, forward_min=forward_min, theta=theta)
