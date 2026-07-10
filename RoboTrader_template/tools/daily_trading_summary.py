@@ -261,10 +261,14 @@ def print_today_trading_summary():
         print()
 
         # 일봉 데이터
+        # daily_prices.date 는 kis_template 에서 text('YYYY-MM-DD') 컬럼이므로
+        # ::date 캐스팅 없이 문자열 그대로 비교한다(캐스팅 시 "연산자 없음: text
+        # = date"로 실패, 2026-07-10 라이브 로그). today 는 이미 'YYYY-MM-DD'
+        # 문자열(위 now_kst().strftime 결과)이라 별도 정규화가 필요 없다.
         cursor.execute('''
             SELECT COUNT(DISTINCT stock_code)
             FROM daily_prices
-            WHERE date = %s::date
+            WHERE date = %s
         ''', (today,))
         daily_count = cursor.fetchone()[0] or 0
 
