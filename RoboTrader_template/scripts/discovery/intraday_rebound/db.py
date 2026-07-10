@@ -2,7 +2,12 @@
 """읽기 전용 DB 커넥터. dbname을 명시적으로 받는다.
 
 라이브 db.connection.DatabaseConnection은 TIMESCALE_DB env를 따라가므로
-이 연구에서는 사용하지 않는다 (분봉 SSOT는 robotrader, 일봉은 kis_template).
+이 연구에서는 사용하지 않는다.
+
+2026-07-10: 분봉 히스토리가 kis_template으로 이관됨 — `(stock_code, trade_date,
+datetime)` 기준 중복제거, 잉여 행은 kis_template.minute_candles_dupes에 보존.
+robotrader는 decommission 예정. 옛 DB 대비 비교 실행이 필요할 경우를 위해
+REBOUND_MINUTE_DB/REBOUND_DAILY_DB env로 오버라이드 가능하게 유지한다.
 """
 from __future__ import annotations
 
@@ -17,8 +22,8 @@ DB_PORT = int(os.getenv("REBOUND_DB_PORT", "5433"))
 DB_USER = os.getenv("REBOUND_DB_USER", "robotrader")
 DB_PASSWORD = os.getenv("REBOUND_DB_PASSWORD", "1234")
 
-MINUTE_DB = "robotrader"
-DAILY_DB = "kis_template"
+MINUTE_DB = os.getenv("REBOUND_MINUTE_DB", "kis_template")
+DAILY_DB = os.getenv("REBOUND_DAILY_DB", "kis_template")
 
 
 @contextmanager
