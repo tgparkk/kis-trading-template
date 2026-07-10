@@ -195,3 +195,29 @@ def test_first_touch_outcome_rejects_non_rangeindex_bars():
     bars.index = [10, 11, 12]
     with pytest.raises(AssertionError):
         first_touch_outcome(bars, close_idx=0, forward_bars=2, theta=0.03)
+
+
+def test_asymmetric_down_when_low_crosses_tight_theta_dn_but_high_stays_below_wide_theta():
+    # entry = 100, theta=0.03 -> up target 103 (wide); theta_dn=0.015 -> down
+    # target 98.5 (tight). j=1's low (98) crosses the tight dn target but its
+    # high (102) does not reach the wide up target -> "down". With symmetric
+    # theta=0.03 this same bar would have been "none" (low 98 > 97).
+    bars = _bars(closes=[100, 100, 100],
+                highs=[100, 102, 100],
+                lows=[100, 98, 100])
+    outcome, ret = first_touch_outcome(bars, close_idx=0, forward_bars=2,
+                                       theta=0.03, theta_dn=0.015)
+    assert outcome == "down"
+    assert ret == pytest.approx(bars["close"].iloc[2] / 100.0 - 1.0)
+
+
+def test_asymmetric_up_when_high_crosses_wide_theta_and_low_stays_above_tight_theta_dn():
+    # mirrored case: j=1's high (103.5) crosses the wide up target (103) and
+    # its low (99) does not reach the tight down target (98.5) -> "up".
+    bars = _bars(closes=[100, 100, 100],
+                highs=[100, 103.5, 100],
+                lows=[100, 99, 100])
+    outcome, ret = first_touch_outcome(bars, close_idx=0, forward_bars=2,
+                                       theta=0.03, theta_dn=0.015)
+    assert outcome == "up"
+    assert ret == pytest.approx(bars["close"].iloc[2] / 100.0 - 1.0)

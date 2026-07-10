@@ -46,14 +46,17 @@ def _filter_regular_session(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def first_touch_outcome(bars: pd.DataFrame, close_idx: int, forward_bars: int,
-                        theta: float) -> tuple[str, float]:
+                        theta: float, theta_dn: float | None = None) -> tuple[str, float]:
     """Scan bars close_idx+1 .. close_idx+forward_bars (clipped to the last bar).
+
+    ``theta`` is the up barrier. ``theta_dn`` is the down barrier; it defaults
+    to ``theta`` (symmetric barriers, today's behavior) when omitted.
 
     Returns (outcome, terminal_ret) where outcome is one of:
       "up"        first bar whose high >= entry*(1+theta), and that bar's low
-                  stays above entry*(1-theta)
-      "down"      first bar whose low <= entry*(1-theta), and that bar's high
-                  stays below entry*(1+theta)
+                  stays above entry*(1-theta_dn)
+      "down"      first bar whose low <= entry*(1-theta_dn), and that bar's
+                  high stays below entry*(1+theta)
       "ambiguous" the first barrier-touching bar touches BOTH barriers within
                   its own high/low
       "none"      neither barrier touched within the window
@@ -61,6 +64,8 @@ def first_touch_outcome(bars: pd.DataFrame, close_idx: int, forward_bars: int,
     terminal_ret = close[end]/entry - 1, always computed (used for the "none"
     bucket). entry = close[close_idx].
     """
+    if theta_dn is None:
+        theta_dn = theta
     assert bars.index.equals(pd.RangeIndex(len(bars))), \
         "first_touch_outcome expects positional RangeIndex bars"
     highs = bars["high"].to_numpy(dtype=float)
@@ -72,7 +77,7 @@ def first_touch_outcome(bars: pd.DataFrame, close_idx: int, forward_bars: int,
     end = min(close_idx + forward_bars, n - 1)
 
     up_target = entry * (1.0 + theta)
-    dn_target = entry * (1.0 - theta)
+    dn_target = entry * (1.0 - theta_dn)
 
     outcome = "none"
     for j in range(close_idx + 1, end + 1):
