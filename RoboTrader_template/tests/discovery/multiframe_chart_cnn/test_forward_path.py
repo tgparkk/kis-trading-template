@@ -57,3 +57,38 @@ def test_missing_fill_returns_none():
     entry_dt = d1["datetime"].iloc[0]  # 그날 마지막봉이자 유일봉, 다음날 없음
     res = build_forward_path(day_bars, "20260601", entry_dt, horizon_days=3)
     assert res is None
+
+
+def test_horizon1_last_bar_fills_next_day():
+    # horizon_days=1 이라도 체결 탐색은 day_bars 전체에서 이뤄져야 한다.
+    d1 = _mk_day("20260601", [100, 101])
+    d2 = _mk_day("20260602", [110, 111])
+    day_bars = {"20260601": d1, "20260602": d2}
+    entry_dt = d1["datetime"].iloc[1]  # 그날 마지막봉(09:01) 결정 → 체결 = 다음날 첫봉 110
+    res = build_forward_path(day_bars, "20260601", entry_dt, horizon_days=1)
+    assert res is not None
+    entry_open, fh, fl, fo, fc = res
+    assert entry_open == pytest.approx(110.0)
+
+
+def test_entry_day_missing_returns_none():
+    d2 = _mk_day("20260602", [110, 111])
+    day_bars = {"20260602": d2}
+    entry_dt = d2["datetime"].iloc[0]
+    res = build_forward_path(day_bars, "20260601", entry_dt, horizon_days=3)
+    assert res is None
+
+
+def test_tail_truncation_length():
+    # 가용 거래일이 2일뿐인데 horizon_days=3 → 경계는 마지막 가용일(20260602) 끝으로 clamp.
+    d1 = _mk_day("20260601", [100, 101, 102])
+    d2 = _mk_day("20260602", [110, 111])
+    day_bars = {"20260601": d1, "20260602": d2}
+    entry_dt = d1["datetime"].iloc[0]  # 09:00 결정 → 체결 09:01 = 101
+    res = build_forward_path(day_bars, "20260601", entry_dt, horizon_days=3)
+    assert res is not None
+    entry_open, fh, fl, fo, fc = res
+    assert entry_open == pytest.approx(101.0)
+    # 체결(09:01) 다음부터 20260602 마지막 봉까지 = 09:02,20260602 09:00,09:01 = 3개
+    assert len(fo) == 3
+    assert fo[-1] == pytest.approx(111.0)
