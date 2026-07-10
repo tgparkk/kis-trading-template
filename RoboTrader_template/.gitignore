@@ -23,8 +23,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# lib/ lib64/ 제거(2026-07-10): Python 표준 gitignore 의 venv/setuptools 패턴이었으나
+# 프로젝트 자체 패키지 RoboTrader_template/lib/ (pit_helpers, signals/*) 를 잡아먹어
+# git 미추적 상태였다 → tests/test_no_lookahead.py 등 7개 테스트가 clean checkout·
+# 워크트리·CI 에서 수집 불가했음. venv 는 아래 `venv/` 로, 빌드산출물은 `build/` 로 이미 무시된다.
 parts/
 sdist/
 var/

@@ -22,9 +22,12 @@ kis-trading-template/
 **운영 동작을 찾을 때 연구 디렉토리를 근거로 삼지 말 것.**
 
 - **운영(production)**: `core/` `bot/` `framework/` `api/` `strategies/`
-  `collectors/` `db/` `runners/` `signals/` `lib/` `utils/` `tools/`
-- **연구/일회성(research, 라이브 아님)**: `scripts/` `multiverse/` `books/` `council/` `archive/` `backtest/`
+  `collectors/` `db/` `runners/` `signals/` `utils/` `tools/`
+- **연구/일회성(research, 라이브 아님)**: `scripts/` `multiverse/` `books/` `council/` `archive/` `backtest/` `lib/`
   → 검색 시 후순위. 죽은 실험 코드를 라이브로 오인하지 말 것. `archive/`는 무참조 확정분 보관소(검색 제외 권장).
+  → `lib/`(pit_helpers·signals/*)는 **2026-07-10 운영에서 연구/테스트 지원으로 재분류**: 운영 디렉토리 전수 grep 결과 import 0건,
+     실제 소비자는 `tests/`(test_no_lookahead·test_phase5_*)와 `archive/` 뿐이다. 같은 날 `.gitignore` 의 venv 패턴(`lib/`)이
+     이 패키지를 잡아먹어 git 미추적이던 것도 함께 해소했다.
 
 **예외 없음 (2026-07-02 Phase1 완료 + Phase2 `backtest/` 분류 확정)**: `scripts/`·`multiverse/`·`backtest/`에 라이브 의존 엣지 0.
 운영 도구는 `tools/`(EOD 리포트·equity 스냅샷). 승격 이력·드리프트 점검 명령은
