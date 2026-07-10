@@ -67,3 +67,53 @@ def test_build_dataset_excludes_boundary_entry_days():
 
     result_stride2 = eligible_entry_days(days, sample_every_n_days=2)
     assert result_stride2 == ["d1", "d3"]  # 짝수 stride 중 전방창 온전한 것만
+
+
+def test_build_sample_fills_15min_channel_with_prior_days():
+    # Plan-1 addendum(Task 7): 15분봉 채널은 당일 데이터만으로는(하루 최대
+    # ~27봉) 60봉 캔버스를 못 채운다 — 직전 거래일들을 이력에 포함해야 한다.
+    day_bars = {
+        "20260601": _day_1m("20260601", 100.0, 390),
+        "20260602": _day_1m("20260602", 100.0, 390),
+        "20260603": _day_1m("20260603", 100.0, 390),
+    }
+    entry_dt = day_bars["20260603"]["datetime"].iloc[60]  # 10:00 진입 (당일 61봉뿐)
+    s = build_sample(day_bars, "20260603", entry_dt, tp=0.03, sl=0.03, lookback_days=3)
+    assert s is not None
+    filled_cols = int(np.sum(np.any(s["image"][4] != 0, axis=0)))
+    assert filled_cols > 33  # 직전 2거래일 로드로 15분봉 채널이 넓게 채워짐
+
+    # 대조: 당일 데이터만 있으면(직전일 로드 안 됨) 10:00 진입은 15분봉 ~5개뿐.
+    same_day_only = {"20260603": day_bars["20260603"]}
+    s_same_day = build_sample(same_day_only, "20260603", entry_dt, tp=0.03, sl=0.03,
+                              lookback_days=3)
+    assert s_same_day is not None
+    filled_same_day = int(np.sum(np.any(s_same_day["image"][4] != 0, axis=0)))
+    assert filled_same_day < 10
+    assert filled_cols > filled_same_day
+
+
+def test_build_sample_no_lookahead_multiday():
+    # 진입일 이후(entry_dt 초과) 봉이 이미지에 절대 섞이면 안 된다 — 직전
+    # 거래일을 이력에 추가한 뒤에도 이 불변식이 유지되는지 확인한다.
+    day1 = _day_1m("20260601", 100.0, 390)
+    day2 = _day_1m("20260602", 100.0, 390)
+    day3_normal = _day_1m("20260603", 100.0, 390)
+    entry_dt = day3_normal["datetime"].iloc[60]  # 10:00 진입
+
+    # day3 변형: entry_dt 이후 봉만 가격을 100배로 스파이크시킨다(미래 정보).
+    day3_spiked = day3_normal.copy()
+    after_mask = pd.to_datetime(day3_spiked["datetime"]) > entry_dt
+    day3_spiked.loc[after_mask, ["open", "high", "low", "close"]] *= 100.0
+
+    day_bars_normal = {"20260601": day1, "20260602": day2, "20260603": day3_normal}
+    day_bars_spiked = {"20260601": day1, "20260602": day2, "20260603": day3_spiked}
+
+    s_normal = build_sample(day_bars_normal, "20260603", entry_dt, tp=0.03, sl=0.03,
+                            lookback_days=3)
+    s_spiked = build_sample(day_bars_spiked, "20260603", entry_dt, tp=0.03, sl=0.03,
+                            lookback_days=3)
+    assert s_normal is not None and s_spiked is not None
+    # 이미지/스칼라는 entry_dt 이전 이력에만 의존해야 하므로 완전히 동일해야 한다.
+    np.testing.assert_array_equal(s_normal["image"], s_spiked["image"])
+    np.testing.assert_array_equal(s_normal["scalars"], s_spiked["scalars"])

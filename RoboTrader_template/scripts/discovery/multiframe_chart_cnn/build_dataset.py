@@ -60,12 +60,31 @@ def eligible_entry_days(days: list[str], sample_every_n_days: int) -> list[str]:
 
 
 def build_sample(day_bars_1m: dict, entry_day: str, entry_dt, tp: float, sl: float,
-                 stock_code: str | None = None):
-    # 진입 시각까지의 1분봉으로 이미지/스칼라.
-    entry_frame = day_bars_1m[entry_day]
-    hist = entry_frame[pd.to_datetime(entry_frame["datetime"]) <= entry_dt]
+                 stock_code: str | None = None, lookback_days: int = 3):
+    # Plan-1 addendum(Task 7): 진입일 데이터만으로는 15분봉 채널이 절대 60봉을
+    # 채울 수 없다(하루 최대 ~27봉) — 직전 lookback_days 거래일을 이미지
+    # 이력에 포함한다. 단, 진입일 프레임은 여전히 entry_dt 이하로만 필터링해
+    # look-ahead 를 막는다(직전 거래일은 날짜 자체가 entry_dt 이전이라 필터
+    # 불필요).
+    days_sorted = sorted(day_bars_1m.keys())
+    if entry_day not in days_sorted:
+        return None
+    ei = days_sorted.index(entry_day)
+    # Task 7 부가: horizon(최대 3거래일) 중 실제로 봉이 존재하는 거래일 수 —
+    # 전방창이 종목별로 조기 절단됐는지(라벨 신뢰도) 메타로 노출한다.
+    n_forward_days = sum(1 for d in days_sorted[ei:ei + 3] if len(day_bars_1m.get(d, [])) > 0)
+
+    hist_days = days_sorted[max(0, ei - lookback_days): ei + 1]
+    frames = []
+    for d in hist_days:
+        frame = day_bars_1m[d]
+        if d == entry_day:
+            frame = frame[pd.to_datetime(frame["datetime"]) <= entry_dt]
+        frames.append(frame)
+    hist = pd.concat(frames, ignore_index=True)
     if len(hist) == 0:
         return None
+
     fwd = build_forward_path(day_bars_1m, entry_day, entry_dt, horizon_days=3)
     if fwd is None:
         return None
@@ -79,12 +98,14 @@ def build_sample(day_bars_1m: dict, entry_day: str, entry_dt, tp: float, sl: flo
         "outcome": outcome, "realized_ret": realized,
         "stock_code": stock_code, "trade_date": entry_day,
         "entry_time": pd.Timestamp(entry_dt),
+        "n_forward_days": n_forward_days,
     }
 
 
 def build_dataset(start: str, end: str, tp: float = 0.03, sl: float = 0.03,
                   sample_every_n_days: int = 1, cutoff_from_end_bars: int = 20,
-                  time_stride: int = 5, out_dir: Path = CACHE_DIR) -> dict:
+                  time_stride: int = 5, lookback_days: int = 3,
+                  out_dir: Path = CACHE_DIR) -> dict:
     codes = load_frozen_universe()
     days = read_sql(_DAYS_SQL, (start, end), MINUTE_DB)["trade_date"].tolist()
     # 날짜 층화 추출: sample_every_n_days 간격의 거래일 중 3거래일 전방창이
@@ -95,11 +116,12 @@ def build_dataset(start: str, end: str, tp: float = 0.03, sl: float = 0.03,
     images = []
     meta_rows = []
 
-    # 3거래일 창을 위해 각 진입일마다 앞으로 최대 4거래일치 봉이 필요.
+    # 3거래일 전방창(라벨) + lookback_days 거래일 후방창(15분봉 이미지 충전)을
+    # 위해 각 진입일마다 [i-lookback_days, i+3) 범위의 봉이 필요.
     day_index = {d: i for i, d in enumerate(days)}
     for d in entry_days:
         i = day_index[d]
-        window = days[i:i + 3]
+        window = days[max(0, i - lookback_days): i + 3]
         # 창 거래일 봉을 종목별로 로드.
         per_stock: dict[str, dict] = {code: {} for code in codes}
         for wd in window:
@@ -119,7 +141,8 @@ def build_dataset(start: str, end: str, tp: float = 0.03, sl: float = 0.03,
             bars3 = resample_ohlcv(day_bars[d], 3)
             for entry_dt in iter_candidate_times(bars3, DECISION_START, cutoff_from_end_bars,
                                                  stride=time_stride):
-                s = build_sample(day_bars, d, entry_dt, tp, sl, stock_code=code)
+                s = build_sample(day_bars, d, entry_dt, tp, sl, stock_code=code,
+                                 lookback_days=lookback_days)
                 if s is None:
                     continue
                 # OVERRIDE 2: 샘플마다 즉시 uint8 로 변환 후 append(예산 스파이크가
@@ -132,7 +155,8 @@ def build_dataset(start: str, end: str, tp: float = 0.03, sl: float = 0.03,
                 img_u8 = (s["image"] * 255.0).round().clip(0, 255).astype(np.uint8)
                 images.append(img_u8)
                 meta_rows.append({k: s[k] for k in
-                                  ("outcome", "realized_ret", "stock_code", "trade_date", "entry_time")})
+                                  ("outcome", "realized_ret", "stock_code", "trade_date",
+                                   "entry_time", "n_forward_days")})
         print(f"day {d}: samples_so_far={len(images)}")
 
     if not images:
@@ -162,6 +186,7 @@ if __name__ == "__main__":
     ap.add_argument("--sl", type=float, default=0.03)
     ap.add_argument("--every", type=int, default=1)
     ap.add_argument("--stride", type=int, default=5)
+    ap.add_argument("--lookback", type=int, default=3)
     args = ap.parse_args()
     print(build_dataset(args.start, args.end, args.tp, args.sl, args.every,
-                        time_stride=args.stride))
+                        time_stride=args.stride, lookback_days=args.lookback))
