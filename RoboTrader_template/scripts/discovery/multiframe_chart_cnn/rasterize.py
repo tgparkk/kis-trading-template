@@ -31,26 +31,27 @@ def render_frame(bars: pd.DataFrame, n_bars: int = 60, size: int = 64) -> np.nda
         return img
 
     b = bars.tail(n_bars)
+    if len(b) > size:
+        b = b.iloc[-size:]
     o = b["open"].to_numpy(dtype=float)
     h = b["high"].to_numpy(dtype=float)
-    l = b["low"].to_numpy(dtype=float)
+    low_arr = b["low"].to_numpy(dtype=float)
     c = b["close"].to_numpy(dtype=float)
     v = b["volume"].to_numpy(dtype=float)
     m = len(b)
 
-    lo, hi = float(np.min(l)), float(np.max(h))
+    lo, hi = float(np.min(low_arr)), float(np.max(h))
     vmax = float(np.max(v)) if np.max(v) > 0 else 1.0
 
     # 오른쪽 정렬: 마지막 봉이 가장 오른쪽 칸.
     x_off = size - m if m < size else 0
-    # 봉 수 > size 면 마지막 size 개만(tail 이미 n_bars=60<=64 보장하나 방어)
     for k in range(m):
         x = x_off + k
         if x < 0 or x >= size:
             continue
         # 심지: 고가~저가
         y_hi = _y(h[k], lo, hi, size)
-        y_lo = _y(l[k], lo, hi, size)
+        y_lo = _y(low_arr[k], lo, hi, size)
         img[0, y_hi:y_lo + 1, x] = np.maximum(img[0, y_hi:y_lo + 1, x], WICK)
         # 몸통: open~close
         y_o = _y(o[k], lo, hi, size)
@@ -60,7 +61,7 @@ def render_frame(bars: pd.DataFrame, n_bars: int = 60, size: int = 64) -> np.nda
         img[0, top:bot + 1, x] = body_val
         # 거래량: 바닥에서 위로
         vfrac = v[k] / vmax
-        vh = int(round(vfrac * (size - 1)))
+        vh = min(int(round(vfrac * size)), size)
         if vh > 0:
             img[1, size - vh:size, x] = vfrac
     return img

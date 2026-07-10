@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import pytest
 
 from scripts.discovery.multiframe_chart_cnn.rasterize import render_frame, render_multiframe
 
@@ -63,3 +62,22 @@ def test_render_multiframe_deterministic():
     a = render_multiframe(bars1m)
     b = render_multiframe(bars1m)
     np.testing.assert_array_equal(a, b)
+
+
+def test_render_frame_draws_most_recent_when_over_size():
+    # 100개 오름차순 봉(가장 최근이 가장 높은 값) 중 size=64 보다 많음.
+    bars = _mk_bars(list(range(100, 200)))
+    img = render_frame(bars, n_bars=100, size=64)
+    # 가장 오른쪽 칸(63)은 가장 최근 봉(=가장 높은 값)이어야 함 → 몸통이 상단(row 작음)에 위치.
+    rows = np.where(img[0, :, 63] >= 0.6)[0]
+    assert rows.size > 0
+    assert rows.min() < 8
+
+
+def test_volume_max_bar_reaches_top_row():
+    prices = list(range(100, 110))
+    vols = [10, 10, 10, 10, 10, 10, 10, 10, 10, 500]
+    bars = _mk_bars(prices, vols=vols)
+    img = render_frame(bars, n_bars=10, size=64)
+    # 최대거래량 봉(마지막 봉 → 가장 오른쪽 칸 63)은 상단(row 0)까지 채워져야 함.
+    assert img[1, 0, 63] > 0.0
