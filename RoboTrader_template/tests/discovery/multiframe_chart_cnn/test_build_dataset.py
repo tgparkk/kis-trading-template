@@ -1,9 +1,8 @@
 import numpy as np
 import pandas as pd
-import pytest
 
 from scripts.discovery.multiframe_chart_cnn.build_dataset import (
-    iter_candidate_times, build_sample,
+    iter_candidate_times, build_sample, eligible_entry_days,
 )
 
 
@@ -50,7 +49,7 @@ def test_build_sample_produces_shapes_and_label():
     assert s["image"].shape == (6, 64, 64)
     assert s["scalars"].shape == (2,)
     assert s["outcome"] in {"tp", "sl", "timeout"}
-    assert s["stock_code"] is None or isinstance(s["trade_date"], str)
+    assert isinstance(s["trade_date"], str)
 
 
 def test_build_sample_none_when_no_forward():
@@ -58,3 +57,13 @@ def test_build_sample_none_when_no_forward():
     entry_dt = day_bars["20260601"]["datetime"].iloc[-1]  # 마지막봉, 전방 없음
     s = build_sample(day_bars, "20260601", entry_dt, tp=0.03, sl=0.03)
     assert s is None
+
+
+def test_build_dataset_excludes_boundary_entry_days():
+    # 3거래일 전방 창을 온전히 갖춘 진입일만 남아야 한다(마지막 2거래일 제외).
+    days = [f"d{i}" for i in range(1, 7)]  # d1..d6, 6거래일
+    result = eligible_entry_days(days, sample_every_n_days=1)
+    assert result == ["d1", "d2", "d3", "d4"]  # d5, d6은 3일 전방창 부족으로 제외
+
+    result_stride2 = eligible_entry_days(days, sample_every_n_days=2)
+    assert result_stride2 == ["d1", "d3"]  # 짝수 stride 중 전방창 온전한 것만

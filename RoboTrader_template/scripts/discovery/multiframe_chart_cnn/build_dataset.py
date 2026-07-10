@@ -52,6 +52,13 @@ def iter_candidate_times(bars3: pd.DataFrame, decision_start, cutoff_from_end_ba
     return list(times)
 
 
+def eligible_entry_days(days: list[str], sample_every_n_days: int) -> list[str]:
+    # 3거래일 전방창을 온전히 갖춘 날짜만 진입일 후보로 남긴다(라벨은 3거래일
+    # 전방이 필요하므로 마지막 2거래일은 창이 잘려 설계상 제외된다).
+    return [d for i, d in enumerate(days)
+            if i % sample_every_n_days == 0 and i + 3 <= len(days)]
+
+
 def build_sample(day_bars_1m: dict, entry_day: str, entry_dt, tp: float, sl: float,
                  stock_code: str | None = None):
     # 진입 시각까지의 1분봉으로 이미지/스칼라.
@@ -80,9 +87,9 @@ def build_dataset(start: str, end: str, tp: float = 0.03, sl: float = 0.03,
                   time_stride: int = 5, out_dir: Path = CACHE_DIR) -> dict:
     codes = load_frozen_universe()
     days = read_sql(_DAYS_SQL, (start, end), MINUTE_DB)["trade_date"].tolist()
-    # 라벨은 3거래일 전방이 필요 → 마지막 2거래일은 진입 불가(전방 절단).
-    # 날짜 층화 추출: sample_every_n_days 간격의 거래일만 진입일로.
-    entry_days = days[::sample_every_n_days]
+    # 날짜 층화 추출: sample_every_n_days 간격의 거래일 중 3거래일 전방창이
+    # 온전한 날짜만 진입일로(마지막 2거래일은 설계상 진입일에서 제외됨).
+    entry_days = eligible_entry_days(days, sample_every_n_days)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     images = []
@@ -93,8 +100,6 @@ def build_dataset(start: str, end: str, tp: float = 0.03, sl: float = 0.03,
     for d in entry_days:
         i = day_index[d]
         window = days[i:i + 3]
-        if len(window) < 1:
-            continue
         # 창 거래일 봉을 종목별로 로드.
         per_stock: dict[str, dict] = {code: {} for code in codes}
         for wd in window:
@@ -117,20 +122,26 @@ def build_dataset(start: str, end: str, tp: float = 0.03, sl: float = 0.03,
                 s = build_sample(day_bars, d, entry_dt, tp, sl, stock_code=code)
                 if s is None:
                     continue
-                images.append(s["image"])
+                # OVERRIDE 2: 샘플마다 즉시 uint8 로 변환 후 append(예산 스파이크가
+                # float32 610만장=150GB 를 추정 — uint8 는 1/4 인 ~28GB). 리스트에
+                # float32 이미지를 전부 쌓았다가 끝에 한 번에 변환하면 변환 순간
+                # float32+uint8 스택이 동시에 메모리에 존재해 피크 RAM 이 4배로
+                # 튄다 — 샘플 단위 변환으로 피크를 uint8 스택 크기로 제한한다.
+                # render_multiframe/build_sample 은 float32 [0,1] 을 그대로
+                # 반환한다(순수함수 계약 불변); 여기서만 0~255 로 스케일해 변환.
+                img_u8 = (s["image"] * 255.0).round().clip(0, 255).astype(np.uint8)
+                images.append(img_u8)
                 meta_rows.append({k: s[k] for k in
                                   ("outcome", "realized_ret", "stock_code", "trade_date", "entry_time")})
         print(f"day {d}: samples_so_far={len(images)}")
 
     if not images:
-        return {"n": 0}
-    # OVERRIDE 2: uint8 저장(예산 스파이크가 float32 610만장=150GB 를 추정 —
-    # uint8 로 저장하면 1/4 인 ~28GB). render_multiframe/build_sample 은
-    # float32 [0,1] 을 그대로 반환한다(순수함수 계약 불변); 여기 저장 시점에서만
-    # 0~255 로 스케일해 uint8 로 변환한다.
+        return {"n": 0, "image_shape": None, "dtype": None, "images_gb": 0.0,
+                "pct_tp": float("nan"), "pct_sl": float("nan"),
+                "pct_timeout": float("nan")}
     # 소비자는 로드 후 반드시 255.0 으로 나눠 [0,1] 로 복원해야 한다:
     #   images = np.load(...).astype(np.float32) / 255.0
-    arr = (np.stack(images) * 255.0).round().clip(0, 255).astype(np.uint8)
+    arr = np.stack(images)
     np.save(out_dir / "images.npy", arr)
     meta = pd.DataFrame(meta_rows)
     meta.to_parquet(out_dir / "meta.parquet", index=False)
