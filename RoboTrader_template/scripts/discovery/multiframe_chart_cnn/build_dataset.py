@@ -59,8 +59,17 @@ def eligible_entry_days(days: list[str], sample_every_n_days: int) -> list[str]:
             if i % sample_every_n_days == 0 and i + 3 <= len(days)]
 
 
-def build_sample(day_bars_1m: dict, entry_day: str, entry_dt, tp: float, sl: float,
-                 stock_code: str | None = None, lookback_days: int = 3):
+def _build_hist_and_path(day_bars_1m: dict, entry_day: str, entry_dt,
+                         lookback_days: int = 3):
+    """진입 시점 이력(hist) + 3거래일 전방경로(fwd) + 유효 전방일수를 조립한다.
+
+    build_sample 과 build_sample_aux 가 공유하는 순수 내부 조립부 — 이미지·
+    스칼라·라벨을 계산하기 위한 입력을 bit-identical 하게 재현한다. build_sample
+    이 None 을 반환하던 조건(진입일 부재 / hist 비어 있음 / 전방경로 없음)을
+    그대로 유지한다.
+
+    반환: (hist, fwd, n_forward_days) 또는 None.
+    """
     # Plan-1 addendum(Task 7): 진입일 데이터만으로는 15분봉 채널이 절대 60봉을
     # 채울 수 없다(하루 최대 ~27봉) — 직전 lookback_days 거래일을 이미지
     # 이력에 포함한다. 단, 진입일 프레임은 여전히 entry_dt 이하로만 필터링해
@@ -88,6 +97,15 @@ def build_sample(day_bars_1m: dict, entry_day: str, entry_dt, tp: float, sl: flo
     fwd = build_forward_path(day_bars_1m, entry_day, entry_dt, horizon_days=3)
     if fwd is None:
         return None
+    return hist, fwd, n_forward_days
+
+
+def build_sample(day_bars_1m: dict, entry_day: str, entry_dt, tp: float, sl: float,
+                 stock_code: str | None = None, lookback_days: int = 3):
+    built = _build_hist_and_path(day_bars_1m, entry_day, entry_dt, lookback_days)
+    if built is None:
+        return None
+    hist, fwd, n_forward_days = built
     entry_open, fh, fl, fo, fc = fwd
     outcome, realized = label3d(entry_open, fh, fl, fo, fc, tp, sl)
 
