@@ -101,7 +101,7 @@ def train_one(Ximg, Xscal, y, w, epochs, batch, lr, device, seed):
         for i in range(0, n, batch):
             idx = perm[i:i + batch]
             opt.zero_grad()
-            out = model(Ximg[idx].to(device), Xscal[idx].to(device))
+            out = model(Ximg[idx].to(device).float().div_(255.0), Xscal[idx].to(device))
             loss = lossf(out, y[idx].to(device))
             loss.backward(); opt.step()
     return model
@@ -113,7 +113,7 @@ def scores_of(model, Ximg, Xscal, batch, device):
     outs = []
     with torch.no_grad():
         for i in range(0, len(Ximg), batch):
-            p = torch.softmax(model(Ximg[i:i + batch].to(device),
+            p = torch.softmax(model(Ximg[i:i + batch].to(device).float().div_(255.0),
                                     Xscal[i:i + batch].to(device)), dim=1)
             outs.append(p.cpu().numpy())
     p = np.concatenate(outs)
@@ -169,7 +169,8 @@ def main():
           f"scalars={scalars.shape}", flush=True)
 
     def load_imgs(mask):
-        return torch.from_numpy(images[mask].astype(np.float32) / 255.0)
+        # uint8 유지(호스트 RAM 절약): float/255 변환은 GPU에서 배치마다 수행.
+        return torch.from_numpy(np.ascontiguousarray(images[mask]))
 
     folds = make_folds(dates, args.n_folds)
     rows = []
@@ -235,9 +236,10 @@ def main():
     wsum = df["n_sel"].sum()
     pooled_lift = float((df["lift_pp"] * df["n_sel"]).sum() / wsum)
     pooled_sel_net = float((df["sel_net_pct"] * df["n_sel"]).sum() / wsum)
-    g1 = n_pos > n_eval / 2; g2 = pooled_lift > 0.10; g3 = pooled_sel_net > 0
+    # g1: ≥5/7 (prereg 2026-07-12 해석확정, 엄격)
+    g1 = n_pos / n_eval >= 5 / 7; g2 = pooled_lift > 0.10; g3 = pooled_sel_net > 0
     print("\n=== GATE (prereg) ===")
-    print(f"lift>0 folds: {n_pos}/{n_eval} -> {'PASS' if g1 else 'FAIL'} (need majority)")
+    print(f"lift>0 folds: {n_pos}/{n_eval} -> {'PASS' if g1 else 'FAIL'} (need >=5/7)")
     print(f"pooled lift : {pooled_lift:+.4f}pp -> {'PASS' if g2 else 'FAIL'} (need >+0.10)")
     print(f"pooled sel_net: {pooled_sel_net:+.4f}% -> {'PASS' if g3 else 'FAIL'} (need >0)")
     print(f"VERDICT: {'PASS' if (g1 and g2 and g3) else 'FAIL'}")
