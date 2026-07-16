@@ -45,7 +45,10 @@ _TEMPLATE_ROOT = Path(__file__).resolve().parents[2]
 if str(_TEMPLATE_ROOT) not in sys.path:
     sys.path.insert(0, str(_TEMPLATE_ROOT))
 
-from config.constants import resolve_daily_source_db  # noqa: E402
+from config.constants import (  # noqa: E402
+    resolve_daily_source_db,
+    resolve_minute_source_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -361,66 +364,66 @@ def read_minute(
 
     09:00 결정 = T-1 분봉까지, 09:01 결정 = 09:00 분봉까지.
     반환 컬럼: date, time, open, high, low, close, volume
+    (분당 1봉 보장 — 아래 중복 봉 dedupe 참조)
 
-    ⚠️ 현재 죽은 경로 — 소스 통일(resolve_minute_source_db) 대상이 아니다.
-      이 함수는 `minute_prices` 테이블을 읽는데 그 테이블은 **어느 DB 에도 없다**
-      (실측 2026-07-16: robotrader/kis_template/robotrader_quant 전부 부재.
-       실제 분봉 테이블명은 `minute_candles`). 즉 호출하면 어느 소스를 가리키든
-      실패하므로, DB 만 바꿔도 고쳐지지 않는다(테이블명·스키마 정합이 선행돼야 함).
-      되살릴 때는 minute_candles 로 교정하면서 resolve_minute_source_db() 를 태울 것.
+    소스: resolve_minute_source_db() → 기본 kis_template.minute_candles
+          (KIS_DATA_SOURCE=legacy 면 robotrader). DB명 하드코딩 금지.
+
+    ★ PIT 기준 컬럼 = `datetime` (timestamp), `date`/`time` 아님:
+      minute_candles 엔 date/time(varchar)과 datetime(timestamp)이 **둘 다** 있다.
+      - date='20260401'/time='090000' 은 **YYYYMMDD/HHMMSS varchar** 라 파이썬
+        date/time 파라미터와 직접 비교되지 않는다(타입 에러 또는 잘못된 문자열 비교).
+      - 두 표현은 실측 전량 일치(55,941,645행 중 to_char 불일치 0건, NULL 0건)
+        하므로 timestamp 인 datetime 을 쓰는 편이 안전하고 인덱스/비교가 자연스럽다.
+      과거의 `cols[1]` 위치 기반 컬럼 추측은 제거했다 — 스키마가 확정된 이상
+      information_schema 탐지 자체가 불필요하다(그 탐지가 minute_prices 를 찾다
+      실패해 cols=[] → IndexError 로 이 함수를 통째로 죽여왔다).
+
+    ★ 경계 = 엄격 부등호 `datetime < as_of_dt` (as_of_time 과 같은 분의 봉 **배제**):
+      분봉은 open-stamp(봉 라벨 = 시작 분)다 — 실측: 09:00 봉이 시가 동시호가
+      물량(005930 2026-04-01 volume=1,806,186)을 싣고, 하루 381봉 =
+      09:00~15:19 연속 + 15:30 종가 동시호가. 따라서 09:01 봉은 [09:01, 09:02)
+      구간이고 09:01:00 시점엔 아직 시작조차 안 했다 = **관측 불가능** → 배제.
+      PIT 기준은 "그 시점에 관측 가능했는가" 이므로 배제가 정답이며, docstring
+      계약("09:01 결정 = 09:00 분봉까지")과도 일치한다.
+      ⚠️ 한계: as_of_time 이 분 단위가 아니면(예: 09:01:30) 아직 미완성인 09:01 봉이
+        포함된다. 현 계약은 분 단위 의사결정 시점만 상정한다(호출자 전원 분 단위).
+
+    ★ 중복 봉 dedupe — `DISTINCT ON (datetime)`:
+      PK 가 (stock_code, trade_date, idx) 인데 trade_date 는 **수집일**이라
+      (실측: trade_date <> date 인 행 11,998건) 같은 봉이 서로 다른 trade_date
+      파티션에 중복 적재된다. (stock_code, trade_date, datetime) 중복은 0이지만
+      봉의 진짜 정체성인 (stock_code, datetime) 기준으론 **8,806 키가 중복**이고
+      그 중 790 키는 OHLCV 값까지 서로 다르다.
+      dedupe 없이 읽으면 조용히 같은 봉을 두 번 반환한다 — 실측 010170:
+      LIMIT 390 이 distinct 195분만 덮어 lookback 이 절반으로 무너진다.
+      tie-break `trade_date ASC, idx ASC` = 같은 trade_date 안에선 기존 관행
+      min(idx) 를 그대로 유지하고, 파티션이 갈릴 땐 먼저 수집된 쪽을 택한다.
+      ⚠️ 어느 행이 참인지는 **미판정**(별건: minute_writer idx 결함). 이 tie-break 은
+        정확성 주장이 아니라 **결정성** 보장이다. 다만 실측 1건(010170 2025-09-05)
+        에선 trade_date==date 인 쪽만 daily_prices 고가/저가 범위에 들어맞았다
+        (재수집분 hi=1395 > 일봉 고가 1336).
     """
-    with _conn(_ROBOTRADER_DB) as conn:
+    as_of_dt = datetime.combine(as_of_date, as_of_time)
+    sql = """
+        SELECT DISTINCT ON (datetime)
+            datetime::date AS date,
+            datetime::time AS time,
+            open, high, low, close, volume
+        FROM minute_candles
+        WHERE stock_code = %(symbol)s
+          AND datetime < %(as_of_dt)s
+        ORDER BY datetime DESC, trade_date ASC, idx ASC
+        LIMIT %(limit)s
+    """
+    # 가격 재사용 연결(_get_reuse_conn)은 쓰지 않는다 — 그 연결은 일봉 소스
+    # (resolve_daily_source_db)에 묶여 있어 legacy 롤백 시 분봉 소스와 DB 가
+    # 갈라진다(일봉 robotrader_quant vs 분봉 robotrader).
+    with _conn(resolve_minute_source_db()) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # minute_prices 컬럼 확인 (date/time 분리 vs datetime 통합)
             cur.execute(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name = 'minute_prices'
-                ORDER BY ordinal_position
-                """
+                sql, dict(symbol=symbol, as_of_dt=as_of_dt, limit=lookback_minutes)
             )
-            cols = [r["column_name"] for r in cur.fetchall()]
-
-            if "time" in cols:
-                # date + time 분리 스키마
-                sql = """
-                    SELECT date, time, open, high, low, close, volume
-                    FROM minute_prices
-                    WHERE stock_code = %(symbol)s
-                      AND (
-                          date < %(as_of_date)s
-                          OR (date = %(as_of_date)s AND time < %(as_of_time)s)
-                      )
-                    ORDER BY date DESC, time DESC
-                    LIMIT %(limit)s
-                """
-                cur.execute(
-                    sql,
-                    dict(
-                        symbol=symbol,
-                        as_of_date=as_of_date,
-                        as_of_time=as_of_time,
-                        limit=lookback_minutes,
-                    ),
-                )
-            else:
-                # datetime 통합 스키마 (컬럼명 추정: datetime 또는 trade_time)
-                dt_col = "datetime" if "datetime" in cols else cols[1]
-                as_of_dt = datetime.combine(as_of_date, as_of_time)
-                sql = f"""
-                    SELECT
-                        {dt_col}::date AS date,
-                        {dt_col}::time AS time,
-                        open, high, low, close, volume
-                    FROM minute_prices
-                    WHERE stock_code = %(symbol)s
-                      AND {dt_col} < %(as_of_dt)s
-                    ORDER BY {dt_col} DESC
-                    LIMIT %(limit)s
-                """
-                cur.execute(sql, dict(symbol=symbol, as_of_dt=as_of_dt, limit=lookback_minutes))
-
             rows = cur.fetchall()
 
     if not rows:
@@ -428,11 +431,6 @@ def read_minute(
 
     df = pd.DataFrame(rows)
     df["date"] = pd.to_datetime(df["date"]).dt.date
-    # time 컬럼: timedelta 또는 datetime.time 모두 처리
-    if pd.api.types.is_timedelta64_dtype(df["time"]):
-        df["time"] = df["time"].apply(
-            lambda td: (datetime.min + td).time() if pd.notna(td) else None
-        )
     df = df.sort_values(["date", "time"]).reset_index(drop=True)
     return df
 
