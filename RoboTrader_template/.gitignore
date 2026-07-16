@@ -139,6 +139,11 @@ logs/
 
 # 데이터 파일
 data/
+# 예외: multiverse/data/ 는 데이터 디렉토리가 아니라 프로젝트 자체 Python 패키지다.
+# 위 data/ 패턴이 이 패키지를 삼켜 소스가 git 미추적이 되던 것을 해소(2026-07-16).
+# git 규칙상 부모 디렉토리가 제외되면 내부 파일을 재포함할 수 없으므로, 디렉토리 자체를 먼저 un-ignore 한다.
+# (2026-07-10 lib/ 사건 726febf 과 동일 유형)
+!multiverse/data/
 *.csv
 *.xlsx
 *.json.bak
