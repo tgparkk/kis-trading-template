@@ -76,14 +76,21 @@ def quant_conn():
 class TestFiveYearContinuity:
     """5년 연속성 — MIN/MAX 날짜 및 월별 거래일 수 검증."""
 
-    def test_min_date_is_20210112(self, quant_conn):
-        """MIN(date) = 2021-01-12 — ETL 시작일 확인."""
+    def test_min_date_is_20210104(self, quant_conn):
+        """MIN(date) = 2021-01-04 — 일봉 SSOT(kis_template) 시작일 확인.
+
+        2026-07-16 소스 통일로 기대치 갱신: 2021-01-12 → 2021-01-04.
+        레거시 robotrader_quant 는 2021-01-12 부터였고 kis_template 은 8일 더
+        이른 2021-01-04 부터 보유한다(상위집합). 즉 이 변화는 **이력이 늘어난 것**
+        이지 결손이 아니다. (KIS_DATA_SOURCE=legacy 롤백 시엔 2021-01-12 가 되므로
+        이 단언은 기본 소스 기준이다.)
+        """
         with quant_conn.cursor() as cur:
             cur.execute(
                 f"SELECT MIN(date) FROM daily_prices WHERE {_VALID_DATE};"
             )
             result = cur.fetchone()[0]
-        assert result == "2021-01-12", f"MIN(date) 기대 2021-01-12, 실제: {result}"
+        assert result == "2021-01-04", f"MIN(date) 기대 2021-01-04, 실제: {result}"
 
     def test_max_date_is_20260430(self, quant_conn):
         """MAX(date) = 2026-04-30 — ETL 마지막일 확인."""
@@ -352,14 +359,52 @@ class TestAdjFactor:
             "D2 ETL이 daily_prices를 직접 수정했는지 확인 필요"
         )
 
-    def test_adj_factor_null_count_is_zero(self, quant_conn):
-        """adj_factor NULL 건수 = 0 (DEFAULT 1.0 으로 채워져야 함)."""
+    def test_null_adj_factor_does_not_corrupt_price_path(self, quant_conn):
+        """adj_factor NULL 은 무해해야 한다 — 가격 경로를 오염시키지 않는다.
+
+        가드 목적 재정의 (2026-07-16). 기존 단언 ``NULL 건수 == 0`` 은
+        "adj_factor 가 DEFAULT 1.0 으로 전부 채워져 **가격에 곱해도 안전하다**"는
+        전제의 ETL 무결성 가드였다. 그 전제가 두 가지로 무효가 됐다:
+
+        ① 곱셈 금지 규약 — adj_factor 는 **가격 산술에 쓰이지 않는다**.
+           곱하면 분할일에 가짜 절벽이 생긴다(실측: 035720 2021-04-14
+           close=112,000 × adj_factor=5 → 560,000 → 분할일 -78.5%, 가격제한
+           ±30% 초과 = 물리적 불가). pit_reader·_load_daily_adj 모두 raw 사용.
+           → NULL 이어도 곱할 일이 없으므로 NaN 전파 경로 자체가 없다.
+        ② SSOT 가 kis_template 로 이동 — NULL 44,923행이 **정상 존재**한다
+           (KOSPI 지수행 1,357개 전부 포함). robotrader_quant 는 같은 자리에 1.0.
+
+        건수를 실측치(44,923)에 핀으로 박지 않는 이유: 수집이 진행될수록 계속
+        늘어난다(실측 35,011 → 44,923). 핀을 박으면 다음 수집일마다 거짓 실패한다.
+
+        따라서 건수가 아니라 **NULL 이 무해함**을 지킨다. 이 가드는 다음이 깨지면
+        실패한다(= vacuous 아님):
+          - NULL adj_factor 행의 가격(close)이 결측/비정상이 되면 → 가격 경로 오염
+          - adj_factor 에 0/음수 쓰레기가 들어오면 → 어떤 산술에도 안전하지 않음
+        실측(2026-07-16) 두 소스 모두 0건: kis_template·robotrader_quant 공통.
+        """
         with quant_conn.cursor() as cur:
             cur.execute(
-                "SELECT COUNT(*) FROM daily_prices WHERE adj_factor IS NULL;"
+                """
+                SELECT
+                    COUNT(*) FILTER (
+                        WHERE adj_factor IS NULL AND (close IS NULL OR close <= 0)
+                    ) AS null_adj_broken_close,
+                    COUNT(*) FILTER (
+                        WHERE adj_factor IS NOT NULL AND adj_factor <= 0
+                    ) AS nonpositive_adj
+                FROM daily_prices;
+                """
             )
-            null_count = cur.fetchone()[0]
-        assert null_count == 0, f"adj_factor NULL {null_count}건"
+            null_adj_broken_close, nonpositive_adj = cur.fetchone()
+
+        assert null_adj_broken_close == 0, (
+            f"adj_factor NULL 이면서 close 가 결측/비정상인 행 {null_adj_broken_close}건 — "
+            "NULL 이 가격 경로를 오염시키고 있다"
+        )
+        assert nonpositive_adj == 0, (
+            f"adj_factor <= 0 인 행 {nonpositive_adj}건 — 역조정 메타 손상"
+        )
 
 
 # ================================================================== #

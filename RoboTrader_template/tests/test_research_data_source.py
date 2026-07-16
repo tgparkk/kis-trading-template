@@ -25,11 +25,23 @@
     → 재무 경로만 quant 를 계속 본다. 이 예외는 test_financial_* 로 고정한다.
 """
 import importlib
+import sys
 from datetime import date
+from pathlib import Path
 
 import pytest
 
-import config.constants as constants
+# multiverse/data/ 는 현재 .gitignore 의 `data/` 패턴에 먹혀 __init__.py 가 git
+# 미추적이다(별건 이슈). 그래서 지금은 PEP 420 네임스페이스 패키지로 import 된다.
+# 별건 수정으로 __init__.py 가 커밋되면 일반 패키지가 되는데, 그 __init__.py 는
+# `from RoboTrader_template.multiverse.data import ...` 를 하므로 **repo 루트**
+# (RoboTrader_template 의 부모)가 sys.path 에 있어야 import 된다.
+# 두 상태 모두에서 이 파일이 돌도록 repo 루트를 미리 넣어둔다.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+import config.constants as constants  # noqa: E402
 
 
 # ===========================================================================
