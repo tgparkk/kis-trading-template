@@ -127,8 +127,10 @@ class TestRestoreHoldingsReconstruction:
             10_000_000 - 1_000_000.0 * (1.0 + COMMISSION_RATE))
         assert vtm.get_strategy_balance("stratB") == pytest.approx(
             10_000_000 - 660_000.0 * (1.0 + COMMISSION_RATE))
-        # owner 복원
-        assert vtm._position_owner == {'005930': 'stratA', '000660': 'stratB'}
+        # owner 복원 — 키는 (종목코드, buy_record_id). holdings 의 id 가 전달되어야
+        # 다owner 동일종목에서 소유권이 서로 덮이지 않는다.
+        assert vtm._position_owner == {
+            ('005930', 1): 'stratA', ('000660', 2): 'stratB'}
 
     def test_ledger_inactive_skips_reconstruction(self):
         vtm = _make_vtm()  # 할당 없음 → 원장 비활성

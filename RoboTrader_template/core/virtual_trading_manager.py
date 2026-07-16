@@ -9,7 +9,7 @@ Emergency Sell Path (2026-03-01):
 import json
 import os
 from datetime import date, datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from utils.logger import setup_logger
 from utils.rate_limited_logger import RateLimitedLogger
 from utils.korean_time import now_kst
@@ -48,7 +48,11 @@ class VirtualTradingManager:
         self._strategy_invested: Dict[str, float] = {}   # 폴더키 → 투자중 금액
         self._strategy_positions: Dict[str, List[str]] = {}  # 폴더키 → 보유 종목코드 목록
         self._strategy_initial: Dict[str, float] = {}    # 폴더키 → 초기 할당 자본
-        self._position_owner: Dict[str, str] = {}        # 종목코드 → 소유 전략 폴더키
+        # (종목코드, 매수기록ID) → 소유 전략 폴더키.
+        # 전략별 완전독립 포지션(2026-06-16 B안)은 같은 종목을 여러 전략이 동시
+        # 보유하는 것을 허용하므로(stock_state_manager 슬롯), 종목코드 단독 키로는
+        # 소유권을 표현할 수 없다(먼저/나중 매수가 서로를 덮어씀).
+        self._position_owner: Dict[Tuple[str, Optional[int]], str] = {}
 
         # Emergency Sell Path: DB 저장 실패 시 재시도 큐
         self._pending_sell_records: List[Dict] = []
@@ -265,7 +269,10 @@ class VirtualTradingManager:
         Args:
             initial_per_strategy: 전략별 초기 할당 자본 (보통 VIRTUAL_CAPITAL_PER_STRATEGY)
             trade_sums: {strategy: {'buy_gross':.., 'sell_gross':..}} (get_strategy_trade_sums)
-            open_positions: [{stock_code, strategy(폴더키), quantity, buy_price}, ...]
+            open_positions: [{stock_code, strategy(폴더키), quantity, buy_price,
+                              buy_record_id}, ...]
+                buy_record_id(BUY 행 PK)는 다owner 동일종목의 소유권 구분에 쓰인다.
+                없으면 종목코드 단독으로 폴백하므로 같은 종목의 소유권 1건만 남는다.
         """
         # 하위호환: 원장 미사용(레거시/단일전략/실전)이면 no-op.
         if not self._strategy_balances and not trade_sums and not open_positions:
@@ -335,7 +342,12 @@ class VirtualTradingManager:
                 self._strategy_invested[owner] = 0.0
                 self._strategy_positions[owner] = []
             if code:
-                self._position_owner[code] = owner
+                # 매수기록ID 로 키잉 — 입력이 timestamp DESC 순서라
+                # (db/repositories/trading.py) 종목코드 단독 키였을 땐 먼저 산
+                # 전략이 마지막에 순회되어 나중 매수자의 소유권을 덮어썼다.
+                self._position_owner[
+                    self._owner_key(code, pos.get('buy_record_id'))
+                ] = owner
                 self._strategy_positions.setdefault(owner, []).append(code)
             self._strategy_invested[owner] = (
                 self._strategy_invested.get(owner, 0.0)
@@ -348,6 +360,73 @@ class VirtualTradingManager:
             f"전략 원장 재구성 완료: {len(self._strategy_balances)}개 전략 "
             f"(집계 {self.virtual_balance:,.0f}원)"
         )
+
+    # ------------------------------------------------------------------
+    # 포지션 소유권 (다owner 동일종목 지원)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _owner_key(stock_code: str, buy_record_id) -> Tuple[str, Optional[int]]:
+        """_position_owner 키 정규화: (종목코드, 매수기록ID).
+
+        매수기록ID는 BUY 행의 DB PK로 포지션(슬롯)을 유일하게 식별한다.
+        """
+        try:
+            rid = int(buy_record_id) if buy_record_id is not None else None
+        except (TypeError, ValueError):
+            rid = None
+        return (stock_code, rid)
+
+    def _resolve_position_owner(self, stock_code: str, buy_record_id,
+                                strategy: str) -> Optional[str]:
+        """매도 대상 포지션의 소유 전략 폴더키를 결정 (없으면 None).
+
+        우선순위:
+          1) 호출자가 준 strategy 가 원장 폴더키면 그대로 신뢰한다.
+             호출자(trading_decision_engine)는 슬롯별 owner_strategy_name 을
+             넘기므로 다owner 동일종목에서도 이미 올바른 per-slot 값이다.
+          2) 폴더키가 아니면(호출자가 클래스명을 넘기는 상위 경로 버그) 매수 시
+             기록한 (종목코드, 매수기록ID) 소유자로 정규화한다. BUY(폴더키)와
+             SELL 이 동일 폴더키로 DB 에 기록되어야 재시작 재구성
+             (get_strategy_trade_sums 의 strategy 컬럼 그룹핑)이 라운드트립을
+             한 버킷으로 합산한다.
+          3) 매수기록ID 가 불일치/미상이면 해당 종목의 소유자가 유일할 때만
+             정규화한다. 소유자가 여럿이면 오귀속 위험이 있으므로 포기한다.
+
+        Returns:
+            소유 전략 폴더키. None 이면 원장 귀속 불가 → 레거시 단일 잔고 경로.
+        """
+        if not self._strategy_balances:
+            return None
+        # 1) 호출자의 per-slot 전략을 신뢰
+        if strategy and strategy in self._strategy_balances:
+            return strategy
+        # 2) 매수기록ID 로 실소유자 식별 → 폴더키 정규화
+        owner = self._position_owner.get(self._owner_key(stock_code, buy_record_id))
+        if owner is not None and owner in self._strategy_balances:
+            return owner
+        # 3) 소유자가 유일할 때만 종목코드로 정규화
+        owners = {
+            o for (code, _), o in self._position_owner.items() if code == stock_code
+        }
+        if len(owners) == 1:
+            only = next(iter(owners))
+            if only in self._strategy_balances:
+                return only
+        return None
+
+    def _pop_position_owner(self, stock_code: str, buy_record_id,
+                            owner: str) -> None:
+        """청산된 포지션의 소유권 항목 하나를 제거 (타 전략 항목은 보존)."""
+        key = self._owner_key(stock_code, buy_record_id)
+        if self._position_owner.get(key) == owner:
+            self._position_owner.pop(key, None)
+            return
+        # 매수기록ID 불일치/미상: 같은 종목·같은 소유자 항목 하나만 제거
+        for k, v in list(self._position_owner.items()):
+            if k[0] == stock_code and v == owner:
+                self._position_owner.pop(k, None)
+                return
 
     def _has_strategy_ledger(self, strategy_name: str = "") -> bool:
         """전략 원장 활성 여부. strategy_name이 주어지면 해당 전략 할당 여부.
@@ -484,7 +563,11 @@ class VirtualTradingManager:
                             self._strategy_invested.get(strategy, 0.0) + total_cost_with_fee
                         )
                         self._strategy_positions.setdefault(strategy, []).append(stock_code)
-                        self._position_owner[stock_code] = strategy
+                        # 매수기록ID 로 키잉 — 다른 전략이 같은 종목을 이미 보유해도
+                        # 서로의 소유권을 덮어쓰지 않는다.
+                        self._position_owner[
+                            self._owner_key(stock_code, buy_record_id)
+                        ] = strategy
                         self._sync_aggregate_from_strategies()
                     else:
                         # 가상 잔고에서 매수 금액 + 수수료 차감 (레거시 단일 잔고)
@@ -532,26 +615,25 @@ class VirtualTradingManager:
             sell_tax = total_received * SECURITIES_TAX_RATE
             net_received = total_received - sell_commission - sell_tax
 
-            # 소유 전략 원장으로 복구 (할당된 종목일 때만), 아니면 단일 잔고
-            owner = self._position_owner.get(stock_code)
-            # 폴백: _position_owner 미기록이나 전달된 strategy가 폴더키로 직매칭되면 귀속
-            if owner is None and self._strategy_balances and strategy in self._strategy_balances:
-                owner = strategy
-            if owner is not None and owner in self._strategy_balances:
-                # DB 기록 strategy 정규화: 원장 owner(폴더키)를 single source of
-                # truth로 사용. 호출자가 클래스명을 넘겨도(상위 경로 버그) BUY(폴더키)와
-                # SELL이 동일 폴더키로 기록되어, 재시작 재구성(get_strategy_trade_sums의
-                # strategy 컬럼 그룹핑)이 라운드트립을 한 버킷으로 정확히 합산한다.
+            # 소유 전략 원장으로 복구 (할당된 종목일 때만), 아니면 단일 잔고.
+            # 소유자 판정은 _resolve_position_owner 로 분리 — 호출자의 per-slot
+            # strategy 를 우선 신뢰하고, 폴더키가 아닐 때만 매수기록ID 로 정규화한다.
+            owner = self._resolve_position_owner(stock_code, buy_record_id, strategy)
+            if owner is not None:
+                # DB 기록 strategy 를 폴더키로 통일 — BUY 와 SELL 이 같은 키여야
+                # 재시작 재구성(get_strategy_trade_sums 의 strategy 컬럼 그룹핑)이
+                # 라운드트립을 한 버킷으로 정확히 합산한다.
                 strategy = owner
                 self._strategy_balances[owner] += net_received
                 # invested 감소 (매수 시 적립한 cost 추적치). 음수 방지.
                 self._strategy_invested[owner] = max(
                     0.0, self._strategy_invested.get(owner, 0.0) - net_received
                 )
+                # 같은 종목을 여러 전략이 보유해도 소유 전략 목록에서만 1건 제거.
                 positions = self._strategy_positions.get(owner)
                 if positions and stock_code in positions:
                     positions.remove(stock_code)
-                self._position_owner.pop(stock_code, None)
+                self._pop_position_owner(stock_code, buy_record_id, owner)
                 self._sync_aggregate_from_strategies()
             else:
                 self.update_virtual_balance(net_received, "매도")

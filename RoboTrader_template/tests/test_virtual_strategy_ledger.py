@@ -12,6 +12,14 @@ import pytest
 from unittest.mock import Mock, patch
 
 
+def _owners_of(vtm, stock_code):
+    """해당 종목의 소유 전략 목록.
+
+    _position_owner 는 (종목코드, 매수기록ID) 로 키잉된다 (다owner 동일종목 지원).
+    """
+    return [o for (code, _), o in vtm._position_owner.items() if code == stock_code]
+
+
 def _make_vtm():
     """패치된 VirtualTradingManager 인스턴스 (paper 모드, DB 없음)."""
     with patch('core.virtual_trading_manager.setup_logger'):
@@ -235,8 +243,10 @@ class TestRestoreLedgerFromRecords:
             'stratB': {'buy_gross': 660_000.0, 'sell_gross': 0.0},
         }
         positions = [
-            {'stock_code': '005930', 'strategy': 'stratA', 'quantity': 10, 'buy_price': 100_000.0},
-            {'stock_code': '000660', 'strategy': 'stratB', 'quantity': 6, 'buy_price': 110_000.0},
+            {'stock_code': '005930', 'strategy': 'stratA', 'quantity': 10,
+             'buy_price': 100_000.0, 'buy_record_id': 1},
+            {'stock_code': '000660', 'strategy': 'stratB', 'quantity': 6,
+             'buy_price': 110_000.0, 'buy_record_id': 2},
         ]
         vtm.restore_strategy_ledger_from_records(INITIAL, sums, positions)
 
@@ -244,7 +254,8 @@ class TestRestoreLedgerFromRecords:
             _expected_cash(INITIAL, 1_000_000.0, 0.0))
         assert vtm.get_strategy_balance("stratB") == pytest.approx(
             _expected_cash(INITIAL, 660_000.0, 0.0))
-        assert vtm._position_owner == {'005930': 'stratA', '000660': 'stratB'}
+        assert vtm._position_owner == {
+            ('005930', 1): 'stratA', ('000660', 2): 'stratB'}
         assert vtm.get_strategy_positions("stratA") == ['005930']
         assert vtm.get_strategy_positions("stratB") == ['000660']
 
@@ -334,7 +345,7 @@ class TestRestoreLedgerFromRecords:
         vtm.restore_strategy_ledger_from_records(INITIAL, {}, positions)
 
         assert vtm.get_strategy_balance("stratNew") is None
-        assert '000660' not in vtm._position_owner
+        assert _owners_of(vtm, '000660') == []
 
     def test_legacy_noop_when_inactive(self):
         """하위호환: 원장 미활성 + 빈 입력 → no-op (단일 잔고 불변)."""
@@ -366,9 +377,12 @@ class TestRestartParity:
             'stratA': {'buy_gross': 100_000 * 10, 'sell_gross': 0.0},
             'stratB': {'buy_gross': 110_000 * 6, 'sell_gross': 0.0},
         }
+        # buy_record_id = 런타임 mock DB가 부여한 순번(005930→1, 000660→2)
         positions = [
-            {'stock_code': '005930', 'strategy': 'stratA', 'quantity': 10, 'buy_price': 100_000.0},
-            {'stock_code': '000660', 'strategy': 'stratB', 'quantity': 6, 'buy_price': 110_000.0},
+            {'stock_code': '005930', 'strategy': 'stratA', 'quantity': 10,
+             'buy_price': 100_000.0, 'buy_record_id': 1},
+            {'stock_code': '000660', 'strategy': 'stratB', 'quantity': 6,
+             'buy_price': 110_000.0, 'buy_record_id': 2},
         ]
         restored.restore_strategy_ledger_from_records(INITIAL, sums, positions)
 
@@ -390,8 +404,10 @@ class TestRestartParity:
             'stratB': {'buy_gross': 110_000 * 6, 'sell_gross': 0.0},
         }
         positions = [
-            {'stock_code': '005930', 'strategy': 'stratA', 'quantity': 10, 'buy_price': 100_000.0},
-            {'stock_code': '000660', 'strategy': 'stratB', 'quantity': 6, 'buy_price': 110_000.0},
+            {'stock_code': '005930', 'strategy': 'stratA', 'quantity': 10,
+             'buy_price': 100_000.0, 'buy_record_id': 1},
+            {'stock_code': '000660', 'strategy': 'stratB', 'quantity': 6,
+             'buy_price': 110_000.0, 'buy_record_id': 2},
         ]
         restored.restore_strategy_ledger_from_records(INITIAL, sums, positions)
 
@@ -404,7 +420,7 @@ class TestRestartParity:
 
         assert restored.get_strategy_balance("stratA") > a_before
         assert restored.get_strategy_balance("stratB") == pytest.approx(b_before)
-        assert '005930' not in restored._position_owner
+        assert _owners_of(restored, '005930') == []
 
 
 class TestSellOwnerFallback:
@@ -619,7 +635,7 @@ class TestRestoreLedgerExcludesInactiveStrategies:
         vtm.restore_strategy_ledger_from_records(INITIAL, {}, positions)
 
         assert vtm.get_strategy_balance("SampleStrategy") is None
-        assert '152550' not in vtm._position_owner
+        assert _owners_of(vtm, '152550') == []
         assert vtm.virtual_balance == pytest.approx(INITIAL)  # 활성 전략 그대로
 
     def test_active_strategy_records_still_applied(self):

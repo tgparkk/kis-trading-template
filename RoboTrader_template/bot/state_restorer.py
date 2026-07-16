@@ -497,11 +497,19 @@ class StateRestorer:
                             if (db_strategy and isinstance(db_strategy, str))
                             else ''
                         )
+                        # buy_record_id(BUY 행 PK) = 포지션 유일 식별자. 다owner
+                        # 동일종목에서 소유권이 서로 덮이지 않도록 함께 넘긴다.
+                        raw_id = holding.get('id')
+                        try:
+                            buy_record_id = int(raw_id) if raw_id is not None else None
+                        except (TypeError, ValueError):
+                            buy_record_id = None
                         restored_positions.append({
                             'stock_code': stock_code,
                             'strategy': pos_strategy,
                             'quantity': quantity,
                             'buy_price': buy_price,
+                            'buy_record_id': buy_record_id,
                         })
 
                         # 전략 self.positions 주입용 수집 (owner 있을 때만)
