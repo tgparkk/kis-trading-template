@@ -175,22 +175,69 @@ SCREENER_SNAPSHOT_ENABLED = _os.getenv("SCREENER_SNAPSHOT_ENABLED", "false").low
 del _os
 
 # =============================================================================
-# 데이터 읽기 소스 전환 플래그 (kis_template 전용 DB 이관)
-#   legacy(기본): robotrader_quant / robotrader 에서 읽기 + 교차비교(grace)
-#   new: kis_template 에서 읽기 (전환 완료)
+# 데이터 읽기 소스 전환 플래그 (kis_template 단일 DB)
+#   new(기본): kis_template 에서 읽기 — 라이브·연구 공통 SSOT
+#   legacy: robotrader_quant(일봉) / robotrader(분봉) 에서 읽기 + 교차비교(grace)
+#           = 롤백 전용 경로. 두 레거시 소스는 형제 봇 중단으로 2026-07-10 동결됨.
+#
+# 기본값이 new 인 이유 (2026-07-16, 사장님 지시 "연구도 kis_template 으로 통일"):
+#   라이브 봇은 .env(KIS_DATA_SOURCE=new)를 읽어 이미 kis_template 을 본다. 그러나
+#   .env 는 gitignore 대상이라 clean checkout·격리 워크트리·CI 엔 존재하지 않고,
+#   연구 프로세스는 main.py 부트스트랩을 타지 않아 .env 를 못 읽는다. 기본값이
+#   legacy 였을 때 연구만 조용히 죽은 레거시 DB(2026-07-10 동결)를 읽고 있었다.
+#   → 기본값을 new 로 두면 env 없이 실행돼도 올바른 소스를 쓴다.
+#
+# 기본값 뒤집기의 부작용 검증 (collectors reconcile 분기):
+#   이 플래그의 유일한 다른 소비자는 collectors/eod_collection.py 의
+#   `if KIS_DATA_SOURCE == "legacy"` (EOD 교차비교 게이트) 뿐이다.
+#   - 라이브 .env 는 이미 new 를 명시 → 교차비교는 이미 skip 중 = 동작 변화 없음.
+#   - 레거시 DB 가 동결된 지금 교차비교는 매 거래일 거짓 불일치만 낳는다 → skip 이 정답.
+#   - tests/collectors/test_eod_collection.py 는 모듈 속성을 명시 monkeypatch 하므로
+#     기본값과 무관하게 legacy/new 양 분기를 모두 계속 검증한다.
+#
+# ★ 재무 데이터는 예외: quant_financial_ratio / quant_balance_sheet /
+#   quant_income_statement / financial_statements 는 robotrader_quant 에만 존재하고
+#   kis_template 엔 테이블 자체가 없다. 재무 경로(lib/signals/roe_filter.py,
+#   multiverse/data/pit_reader.read_financial_ratio)는 quant 를 계속 본다.
+#   이 resolver 들은 **가격 데이터(daily_prices/minute_candles) 전용**이다.
 # =============================================================================
 import os as _os_data
 
-KIS_DATA_SOURCE = _os_data.getenv("KIS_DATA_SOURCE", "legacy")
+KIS_DATA_SOURCE = _os_data.getenv("KIS_DATA_SOURCE", "new")
 del _os_data
 
 
-def resolve_daily_source_db() -> str:
-    """일봉 읽기 대상 DB명. KIS_DATA_SOURCE=new 면 kis_template, 아니면 레거시."""
+def _is_legacy_source() -> bool:
+    """롤백 모드 여부. 호출 시점 env 를 읽어 import 순서에 의존하지 않는다."""
     import os as _os
-    if _os.getenv("KIS_DATA_SOURCE", "legacy") == "new":
-        return "kis_template"
-    return _os.getenv("QUANT_DB", "robotrader_quant")
+    return _os.getenv("KIS_DATA_SOURCE", "new") == "legacy"
+
+
+def resolve_daily_source_db() -> str:
+    """일봉(daily_prices) 읽기 대상 DB명 — 가격 데이터 단일 진입점.
+
+    기본 kis_template. KIS_DATA_SOURCE=legacy 면 레거시(robotrader_quant).
+    레거시 DB명 자체는 QUANT_DB 로 override 가능(롤백 시 유연성).
+    """
+    import os as _os
+    if _is_legacy_source():
+        return _os.getenv("QUANT_DB", "robotrader_quant")
+    return "kis_template"
+
+
+def resolve_minute_source_db() -> str:
+    """분봉(minute_candles) 읽기 대상 DB명 — 가격 데이터 단일 진입점.
+
+    기본 kis_template. KIS_DATA_SOURCE=legacy 면 레거시(robotrader).
+    레거시 DB명 자체는 MINUTE_DB 로 override 가능(롤백 시 유연성).
+
+    resolve_daily_source_db() 와 같은 스위치(KIS_DATA_SOURCE)를 공유해 일봉/분봉이
+    서로 다른 세대의 소스로 갈라지지 않게 한다.
+    """
+    import os as _os
+    if _is_legacy_source():
+        return _os.getenv("MINUTE_DB", "robotrader")
+    return "kis_template"
 
 # =============================================================================
 # 장 시작 동시 진입 억제 (Entry Throttle)

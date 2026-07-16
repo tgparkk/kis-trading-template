@@ -1,34 +1,49 @@
 """D4 — 5년 범위 데이터 품질 회귀 테스트.
 
-robotrader_quant.daily_prices (2021-01-12 ~ 2026-04-30, 2,692,842행)
-를 대상으로 연속성·종목 풀·컬럼 무결성·adj_factor·갭 경계를 검증한다.
+일봉 SSOT(resolve_daily_source_db(), 기본 kis_template.daily_prices)를 대상으로
+연속성·종목 풀·컬럼 무결성·adj_factor·갭 경계를 검증한다.
 
 주의:
   - date 컬럼은 TEXT 타입. 정규식 필터 필수 (malformed 102건 존재).
   - OHLC 위반 0.77% 는 실 데이터 한계로 허용 범위 내 처리.
   - 2024-02-29 ~ 2024-03-13 (한국 공휴일 클러스터, ~9영업일)은 알려진 특이점.
   - 2025-10-02 ~ 2025-10-10 (추석 연휴, 8칼력일)도 알려진 특이점.
-  - DB 연결: robotrader_quant, host 127.0.0.1:5433
+  - DB 연결: resolve_daily_source_db() (기본 kis_template), host 127.0.0.1:5433
+
+2026-07-16(연구 소스 통일): 자체 env(TIMESCALE_QUANT_DB)로 DB 를 지정하던 것을
+공용 resolver 로 수렴했다 — 소스 스위치는 KIS_DATA_SOURCE 하나만 남는다.
 """
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
+
 import pytest
 import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
 from datetime import date
 
+_TEMPLATE_ROOT = Path(__file__).resolve().parents[2]
+if str(_TEMPLATE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TEMPLATE_ROOT))
+
+from config.constants import resolve_daily_source_db  # noqa: E402
+
 # ------------------------------------------------------------------ #
-# 연결 헬퍼 — pit_reader._conn_quant() 패턴 재사용
+# 연결 헬퍼 — pit_reader._conn_daily() 패턴 재사용
 # ------------------------------------------------------------------ #
-_QUANT_DB_DEFAULTS = dict(
-    host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
-    port=int(os.getenv("TIMESCALE_PORT", "5433")),
-    user=os.getenv("TIMESCALE_QUANT_USER", os.getenv("TIMESCALE_USER", "robotrader")),
-    password=os.getenv("TIMESCALE_QUANT_PASSWORD", os.getenv("TIMESCALE_PASSWORD", "1234")),
-    database=os.getenv("TIMESCALE_QUANT_DB", "robotrader_quant"),
-)
+def _daily_db_defaults() -> dict:
+    """가격 소스 접속 정보. DB명은 호출 시점 resolver 를 따른다."""
+    return dict(
+        host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
+        port=int(os.getenv("TIMESCALE_PORT", "5433")),
+        user=os.getenv("TIMESCALE_QUANT_USER", os.getenv("TIMESCALE_USER", "robotrader")),
+        password=os.getenv("TIMESCALE_QUANT_PASSWORD", os.getenv("TIMESCALE_PASSWORD", "1234")),
+        database=resolve_daily_source_db(),
+    )
+
 
 # valid date 필터 — malformed TEXT 제거
 _VALID_DATE = "date ~ '^\\d{4}-\\d{2}-\\d{2}$'"
@@ -36,7 +51,7 @@ _VALID_DATE = "date ~ '^\\d{4}-\\d{2}-\\d{2}$'"
 
 @contextmanager
 def _conn_quant():
-    conn = psycopg2.connect(**_QUANT_DB_DEFAULTS)
+    conn = psycopg2.connect(**_daily_db_defaults())
     try:
         yield conn
     finally:
@@ -47,9 +62,9 @@ def _conn_quant():
 def quant_conn():
     """모듈 스코프 DB 연결 — 전체 커버리지 테스트에서 재사용."""
     try:
-        conn = psycopg2.connect(**_QUANT_DB_DEFAULTS)
+        conn = psycopg2.connect(**_daily_db_defaults())
     except Exception as exc:
-        pytest.skip(f"robotrader_quant DB 연결 실패 (환경 없음): {exc}")
+        pytest.skip(f"일봉 소스 DB 연결 실패 (환경 없음): {exc}")
     yield conn
     conn.close()
 

@@ -111,11 +111,15 @@ def _resolve_rule_cls(rules_mod, rule_name: str):
     raise ValueError(f"rule {rule_name!r} 없음. 사용가능: {valid}")
 
 
-# --- 일봉 SSOT 연결 (robotrader_quant) ---------------------------------------
-# 데이터 소스 SSOT: 일봉=robotrader_quant.daily_prices(2601종목/2487행일),
-# 분봉=robotrader.minute_candles, KOSPI 지수 라인=robotrader(전구간).
-# 기본 DatabaseConnection(robotrader)는 하루 ~125종목 sparse·stale 워치리스트라
-# top_volume:50 이 "정본 상위 50"이 아닌 "워치리스트 중 상위 50"이 되는 버그가 있었음.
+# --- 가격 소스 연결 (일봉·분봉 = kis_template) --------------------------------
+# 데이터 소스 SSOT (2026-07-16 연구 소스 통일):
+#   일봉 = resolve_daily_source_db()  → 기본 kis_template.daily_prices
+#   분봉 = resolve_minute_source_db() → 기본 kis_template.minute_candles
+#   KOSPI 지수 라인 = 같은 kis_template.daily_prices (stock_code='KOSPI', 2021~ 전구간)
+# 레거시(robotrader_quant/robotrader)는 형제 봇 중단으로 2026-07-10 동결됐고
+# KIS_DATA_SOURCE=legacy 롤백 경로로만 남는다.
+# 기본 DatabaseConnection(TIMESCALE_DB)은 .env 없는 연구 프로세스에서 robotrader 로
+# 떨어져 하루 ~125종목 sparse·stale 워치리스트를 읽던 우회 지점이라 사용하지 않는다.
 
 from contextlib import contextmanager  # noqa: E402
 
@@ -125,7 +129,7 @@ _DAILY_CODE_RE = r"^[0-9]{6}$"
 
 @contextmanager
 def _quant_daily_connection():
-    """robotrader_quant 일봉 연결(QuantDailyReader 풀 재사용). 읽기 전용."""
+    """일봉 연결(QuantDailyReader 풀 재사용 = resolver 경유). 읽기 전용."""
     from db.quant_daily_reader import QuantDailyReader
     p = QuantDailyReader._get_pool()
     conn = p.getconn()
@@ -135,11 +139,28 @@ def _quant_daily_connection():
         p.putconn(conn)
 
 
+@contextmanager
+def _minute_connection():
+    """분봉 연결 — resolve_minute_source_db() 경유(기본 kis_template). 읽기 전용."""
+    import psycopg2
+    from config.constants import resolve_minute_source_db
+    conn = psycopg2.connect(
+        host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
+        port=int(os.getenv("TIMESCALE_PORT", "5433")),
+        user=os.getenv("TIMESCALE_USER", "robotrader"),
+        password=os.getenv("TIMESCALE_PASSWORD", "1234"),
+        dbname=resolve_minute_source_db(),
+    )
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 # --- minute 로더 (run_books_research.py 복제) ---
 
 def _load_top_volume_minute(period_start: str, period_end: str, top_n: int) -> List[str]:
-    from db.connection import DatabaseConnection
-    with DatabaseConnection.get_connection() as conn:
+    with _minute_connection() as conn:
         q = """
             SELECT stock_code, SUM(close * volume) AS turnover
             FROM minute_candles
@@ -153,9 +174,8 @@ def _load_top_volume_minute(period_start: str, period_end: str, top_n: int) -> L
 
 
 def _load_minute_data(stock_codes: List[str], start_date: str, end_date: str) -> Dict[str, pd.DataFrame]:
-    from db.connection import DatabaseConnection
     out: Dict[str, pd.DataFrame] = {}
-    with DatabaseConnection.get_connection() as conn:
+    with _minute_connection() as conn:
         for code in stock_codes:
             q = """
                 SELECT datetime, open, high, low, close, volume
@@ -174,7 +194,7 @@ def _load_minute_data(stock_codes: List[str], start_date: str, end_date: str) ->
 # --- daily 로더 (run_daytrading_3methods.py 복제) ---
 
 def _load_top_volume_daily(start: str, end: str, top_n: int) -> List[str]:
-    # 일봉 SSOT=robotrader_quant. 6자리 숫자 보통주만(지수·변형코드 제외).
+    # 일봉 SSOT=resolver(기본 kis_template). 6자리 숫자 보통주만(지수·변형코드 제외).
     with _quant_daily_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -190,7 +210,7 @@ def _load_top_volume_daily(start: str, end: str, top_n: int) -> List[str]:
 
 
 def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, pd.DataFrame]:
-    # 일봉 SSOT=robotrader_quant. quant date 는 text 라 불량 문자열 coerce 필요.
+    # 일봉 SSOT=resolver(기본 kis_template). date 는 text 라 불량 문자열 coerce 필요.
     out: Dict[str, pd.DataFrame] = {}
     with _quant_daily_connection() as conn:
         cur = conn.cursor()
@@ -211,10 +231,11 @@ def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, p
                 continue
             for col in ["open", "high", "low", "close", "volume"]:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-            # quant close 는 이미 분할조정된 연속 시세다(스크리너 QuantDailyReader 와 동일 basis).
+            # close 는 이미 분할조정된 연속 시세다(스크리너 QuantDailyReader 와 동일 basis).
             # adj_factor(계단형 역조정 메타, 1~50)를 또 곱하면 분할일에 가짜 절벽이 생겨
             # (예: 카카오 5:1분할일 -78%) 포트폴리오 MaxDD 가 거짓으로 ~99% 까지 붕괴한다.
-            # → 곱하지 않는다(robotrader 시절 adj_factor 는 전부 1.0 라 곱셈이 no-op 였음).
+            # → 곱하지 않는다. (adj_factor 컬럼은 SELECT 되지만 산술에 쓰지 않으므로
+            #    kis_template 의 adj_factor NULL 행도 NaN 을 전파시키지 않는다.)
             drop_mask = df["close"].isna() | (df["close"] <= 0)
             df = df[~drop_mask].copy()
             for col in ["open", "high", "low"]:
@@ -227,7 +248,7 @@ def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, p
 
 
 def _daily_minmax_dates() -> Tuple[str, str]:
-    # 일봉 SSOT=robotrader_quant. 불량 date 문자열은 MIN/MAX 왜곡하므로 ISO 형식만.
+    # 일봉 SSOT=resolver(기본 kis_template). 불량 date 문자열은 MIN/MAX 왜곡하므로 ISO 형식만.
     with _quant_daily_connection() as conn:
         cur = conn.cursor()
         cur.execute(

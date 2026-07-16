@@ -46,7 +46,18 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _get_connection():
-    """robotrader_quant DB 연결 반환. 호출자가 close() 책임."""
+    """robotrader_quant DB 연결 반환. 호출자가 close() 책임.
+
+    ★ 의도된 예외 — 가격 소스 통일(kis_template) 대상이 아니다.
+      2026-07-16 연구 소스 통일은 **가격 데이터(daily_prices/minute_candles)만**
+      kis_template 으로 옮겼다. 재무 테이블(financial_statements 4,350행,
+      quant_balance_sheet/quant_financial_ratio/quant_income_statement 각 45,473행)은
+      robotrader_quant 에만 존재하고 kis_template 엔 테이블 자체가 없다
+      (kis 의 financial_data/quant_factors/quant_portfolio 는 컷오버 때 만든
+      빈 껍데기 0행). 따라서 여기서 resolve_daily_source_db() 를 쓰면 안 된다.
+      재무까지 옮기려면 먼저 kis_template 에 테이블·적재 파이프라인이 필요하다(별건).
+      같은 예외가 multiverse/data/pit_reader.read_financial_ratio 에도 적용된다.
+    """
     try:
         import psycopg2
         return psycopg2.connect(

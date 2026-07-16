@@ -91,6 +91,7 @@ from scripts.book_param_multiverse import (  # noqa: E402
     _load_top_volume_daily,
     _load_top_volume_minute,
     _daily_minmax_dates,
+    _minute_connection,
     _quant_daily_connection,
     _rule_defaults,
     _resolve_rule_cls,
@@ -161,8 +162,8 @@ def _surge_smallcap_codes(start: str, end: str,
         단 mc 커버리지가 낮으면(현 98/256) mc미상 대형주가 거래대금 상위로 누수됨.
       - require_mc=True: mc 가 알려져 있고 mc<cap_max 인 종목만 (엄격 중소형, 누수 차단).
     """
-    # 일봉 SSOT=robotrader_quant. 6자리 숫자 보통주만(지수·변형코드 제외).
-    # quant 는 market_cap 이 사실상 전 종목 완비(robotrader 는 sparse ~98/256 였음).
+    # 일봉 SSOT=resolver(기본 kis_template). 6자리 숫자 보통주만(지수·변형코드 제외).
+    # 정본 일봉은 market_cap 이 사실상 전 종목 완비(레거시 robotrader 는 sparse ~98/256 였음).
     with _quant_daily_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -208,7 +209,7 @@ def _load_surge_daily(start: str, end: str, top_n: int,
     pool, diag = _surge_smallcap_codes(start, end, require_mc=require_mc)
     if not pool:
         return [], diag
-    # 일봉 SSOT=robotrader_quant.
+    # 일봉 SSOT=resolver(기본 kis_template).
     with _quant_daily_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -243,8 +244,7 @@ def _load_surge_minute(period_start: str, period_end: str, top_n: int,
     diag["surge_lookback"] = f"{look_start}~{period_end} ({surge_lookback_days}d)"
     if not pool:
         return [], diag
-    from db.connection import DatabaseConnection
-    with DatabaseConnection.get_connection() as conn:
+    with _minute_connection() as conn:
         q = """
             SELECT stock_code, SUM(close * volume) AS turnover
             FROM minute_candles
@@ -319,13 +319,16 @@ def _build_daily_regime_map(start: str, end: str) -> Dict[pd.Timestamp, str]:
     워밍업(MA120) 확보 위해 start 이전 룩백을 포함해 로드(라벨은 PIT 라 안전).
     """
     from core.regime.regime_classifier import classify_daily, DailyRegimeParams
-    from db.connection import DatabaseConnection
     import datetime as _dt
 
     # MA120 + breadth120 워밍업을 위해 시작 이전 달력 ~400일(≈260 거래일) 룩백 로드.
     look_start = (_dt.date.fromisoformat(str(start)) - _dt.timedelta(days=400)).isoformat()
-    # KOSPI 지수 라인은 robotrader 유지(전구간 보유, quant 엔 'KOSPI' 코드 없음).
-    with DatabaseConnection.get_connection() as conn:
+    # KOSPI 지수 라인도 일봉 SSOT(resolver, 기본 kis_template)에서 읽는다.
+    # 레거시 시절엔 robotrader 를 써야 했다(robotrader_quant 엔 'KOSPI' 코드가 없고
+    # KS11 은 2024+ 만 있어 2021~2023 이 사라짐). kis_template 은 'KOSPI' 를
+    # 2021-01-04~ 전구간 보유(실측 1,357행) → robotrader(1,350행)의 상위집합이라
+    # 이력 손실 없이 통일 가능하다.
+    with _quant_daily_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             "SELECT date, close FROM daily_prices "
@@ -334,19 +337,19 @@ def _build_daily_regime_map(start: str, end: str) -> Dict[pd.Timestamp, str]:
         )
         krows = cur.fetchall()
     if not krows:
-        raise RuntimeError("daily_prices(robotrader) 에 KOSPI 지수 행이 없음 (국면 게이트 불가)")
+        raise RuntimeError("daily_prices 에 KOSPI 지수 행이 없음 (국면 게이트 불가)")
     kospi = pd.Series({pd.Timestamp(r[0]): float(r[1]) for r in krows}, name="close").sort_index()
-    # 전종목 breadth 패널은 정본 유니버스(robotrader_quant).
+    # 전종목 breadth 패널은 정본 유니버스(같은 일봉 SSOT).
     panel = _load_breadth_panel(look_start, end)
     res = classify_daily(kospi, panel, DailyRegimeParams())
     return {pd.Timestamp(d): str(v) for d, v in res["regime"].items()}
 
 
 def _load_breadth_panel(look_start: str, end: str) -> pd.DataFrame:
-    """전종목 close wide 패널(index=date, columns=stock_code) — 정본 유니버스(quant).
+    """전종목 close wide 패널(index=date, columns=stock_code) — 일봉 SSOT 유니버스.
 
     %above-MA120 breadth 산출용. 6자리 숫자 보통주만(지수·변형코드 제외),
-    quant date(text) 불량 문자열은 coerce→dropna.
+    date(text) 불량 문자열은 coerce→dropna.
     """
     with _quant_daily_connection() as conn:
         panel_df = pd.read_sql(
@@ -363,15 +366,14 @@ def _load_breadth_panel(look_start: str, end: str) -> pd.DataFrame:
 
 
 def _load_kospi_close(start: str, end: str, lookback_days: int = 400) -> pd.Series:
-    """KOSPI 일봉 종가(SSOT, daily_prices) Series(index=Timestamp). mkt_rs 필터용.
+    """KOSPI 일봉 종가(일봉 SSOT, daily_prices) Series(index=Timestamp). mkt_rs 필터용.
 
     N일 수익률 워밍업 위해 start 이전 lookback_days 룩백 포함(라이브 PIT 와 동일 — 진입봉
     날짜 ≤t 슬라이스로만 사용). 행 없으면 빈 Series 반환(필터 호출자에서 drop 처리).
     """
-    from db.connection import DatabaseConnection
     import datetime as _dt
     look_start = (_dt.date.fromisoformat(str(start)) - _dt.timedelta(days=lookback_days)).isoformat()
-    with DatabaseConnection.get_connection() as conn:
+    with _quant_daily_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             "SELECT date, close FROM daily_prices "

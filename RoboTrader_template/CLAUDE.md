@@ -33,6 +33,27 @@ kis-trading-template/
 운영 도구는 `tools/`(EOD 리포트·equity 스냅샷). 승격 이력·드리프트 점검 명령은
 [docs/CODE_MAP.md](docs/CODE_MAP.md), 연구 파일별 태깅은 [docs/INVENTORY.md](docs/INVENTORY.md).
 
+## 🗄️ 데이터 소스 SSOT (에이전트 필독)
+
+**가격 데이터는 라이브·연구 모두 `kis_template` 단일 DB.** 직접 DB명을 하드코딩하지 말고 **반드시 resolver 경유**:
+
+```python
+from config.constants import resolve_daily_source_db, resolve_minute_source_db
+resolve_daily_source_db()   # 일봉 → 기본 "kis_template"  (daily_prices)
+resolve_minute_source_db()  # 분봉 → 기본 "kis_template"  (minute_candles)
+```
+
+- **롤백 스위치는 `KIS_DATA_SOURCE=legacy` 하나뿐** (일봉→`robotrader_quant`, 분봉→`robotrader`).
+  소스 스위치를 새 env로 늘리지 말 것 — 일부 경로만 레거시로 새는 사고가 난다.
+- 레거시 `robotrader`/`robotrader_quant`는 형제 봇 중단으로 **2026-07-10 동결**(갱신 안 됨). `kis_template`이 상위집합.
+- **기본값이 `new`인 이유**: `.env`는 gitignore 대상이라 연구 프로세스(clean checkout·워크트리·CI)엔 없다.
+  기본값이 `legacy`였을 때 **연구만 조용히 동결된 죽은 DB를 읽고 있었다**.
+- ⚠️ **`adj_factor`를 곱하지 말 것** — `close`는 이미 분할조정된 연속 시세. 곱하면 분할일 가짜 절벽(거짓 99% MaxDD).
+- ⚠️ **재무(`financial_statements`·`quant_*`)는 `robotrader_quant` 유지 = 의도된 예외** — kis_template엔 테이블 자체가 없다.
+  (`lib/signals/roe_filter.py`, `pit_reader.read_financial_ratio`)
+
+상세·실측 수치·회귀 테스트 → [docs/PAPER_STRATEGIES.md §0.2](docs/PAPER_STRATEGIES.md) · `tests/test_research_data_source.py`
+
 ## 아키텍처
 
 ### 레이어 구조

@@ -1,29 +1,44 @@
 # scripts/discovery/intraday_rebound/db.py
 """읽기 전용 DB 커넥터. dbname을 명시적으로 받는다.
 
-라이브 db.connection.DatabaseConnection은 TIMESCALE_DB env를 따라가므로
+라이브 db.connection.DatabaseConnection은 TIMESCALE_DB env(운영 DB)를 따라가므로
 이 연구에서는 사용하지 않는다.
 
 2026-07-10: 분봉 히스토리가 kis_template으로 이관됨 — `(stock_code, trade_date,
 datetime)` 기준 중복제거, 잉여 행은 kis_template.minute_candles_dupes에 보존.
-robotrader는 decommission 예정. 옛 DB 대비 비교 실행이 필요할 경우를 위해
-REBOUND_MINUTE_DB/REBOUND_DAILY_DB env로 오버라이드 가능하게 유지한다.
+
+2026-07-16(연구 소스 통일): 자체 env(REBOUND_MINUTE_DB/REBOUND_DAILY_DB)로
+kis_template을 개별 지정하던 것을 **공용 resolver로 수렴**했다. 같은 기본값
+(kis_template)을 유지하면서, 롤백 스위치가 프로젝트 전체에 하나(KIS_DATA_SOURCE)만
+남도록 한다 — 소스가 여러 env로 갈라지면 일부 경로만 레거시로 새는 사고가 난다.
+옛 DB 대비 비교 실행은 `KIS_DATA_SOURCE=legacy`로 수행한다.
 """
 from __future__ import annotations
 
 import os
+import sys
 from contextlib import contextmanager
+from pathlib import Path
 
 import pandas as pd
 import psycopg2
+
+_TEMPLATE_ROOT = Path(__file__).resolve().parents[3]
+if str(_TEMPLATE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TEMPLATE_ROOT))
+
+from config.constants import (  # noqa: E402
+    resolve_daily_source_db,
+    resolve_minute_source_db,
+)
 
 DB_HOST = os.getenv("REBOUND_DB_HOST", "127.0.0.1")
 DB_PORT = int(os.getenv("REBOUND_DB_PORT", "5433"))
 DB_USER = os.getenv("REBOUND_DB_USER", "robotrader")
 DB_PASSWORD = os.getenv("REBOUND_DB_PASSWORD", "1234")
 
-MINUTE_DB = os.getenv("REBOUND_MINUTE_DB", "kis_template")
-DAILY_DB = os.getenv("REBOUND_DAILY_DB", "kis_template")
+MINUTE_DB = resolve_minute_source_db()
+DAILY_DB = resolve_daily_source_db()
 
 
 @contextmanager

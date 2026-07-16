@@ -44,9 +44,18 @@ import os
 import sys
 from collections import defaultdict
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+
+# config.constants(일봉 소스 resolver) import — CWD·import 경로와 무관하게
+# RoboTrader_template 루트를 sys.path 에 보정한다(pit_reader 와 동일 패턴).
+_TEMPLATE_ROOT = Path(__file__).resolve().parents[2]
+if str(_TEMPLATE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TEMPLATE_ROOT))
+
+from config.constants import resolve_daily_source_db  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # 운영 환경 인터페이스 명시 (KRX 공식 캘린더)
@@ -66,7 +75,7 @@ def get_trading_calendar(
     end: date,
     host: str = "127.0.0.1",
     port: int = 5433,
-    database: str = "robotrader_quant",
+    database: str | None = None,
     user: str = "robotrader",
     password: str = "1234",
 ) -> list[date]:
@@ -102,9 +111,13 @@ def get_trading_calendar(
     # 환경변수 우선 적용 (DB connection.py와 동일 패턴)
     _host = os.getenv("TIMESCALE_HOST", host)
     _port = int(os.getenv("TIMESCALE_PORT", str(port)))
-    _db   = os.getenv("TIMESCALE_DB", database)
     _user = os.getenv("TIMESCALE_USER", user)
     _pw   = os.getenv("TIMESCALE_PASSWORD", password)
+    # daily_prices 를 읽으므로 일봉 SSOT resolver 를 따른다(기본 kis_template).
+    # 과거엔 database 기본값이 robotrader_quant 하드코딩 + TIMESCALE_DB(운영 DB) 로
+    # override 되는 구조라, 가격 소스와 운영 DB 가 뒤섞이고 .env 없는 연구에서는
+    # 동결된 레거시를 읽었다. 호출자가 database 를 명시하면 그 값이 최우선.
+    _db = database if database is not None else resolve_daily_source_db()
 
     try:
         import psycopg2

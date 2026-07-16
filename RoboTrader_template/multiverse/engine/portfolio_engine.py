@@ -102,11 +102,9 @@ def _get_portfolio_trading_dates(
             ORDER BY date
         """
         try:
-            conn = psycopg2.connect(
-                **pit_reader._QUANT_DB_DEFAULTS,
-                database=pit_reader._QUANT_DB,
-            )
-            try:
+            # 일봉(daily_prices) 읽기 — pit_reader 의 가격 소스 연결을 그대로 재사용해
+            # resolver(기본 kis_template)를 우회하지 않는다.
+            with pit_reader._conn_daily() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         sql,
@@ -117,9 +115,6 @@ def _get_portfolio_trading_dates(
                         ),
                     )
                     rows = cur.fetchall()
-                conn.commit()
-            finally:
-                conn.close()
 
             # daily_prices.date는 PostgreSQL TEXT 타입 — string으로 들어옴
             dates: List[date] = []
