@@ -239,6 +239,35 @@ def resolve_minute_source_db() -> str:
         return _os.getenv("MINUTE_DB", "robotrader")
     return "kis_template"
 
+
+def resolve_corp_events_source_db() -> str:
+    """기업이벤트(corp_events) 읽기 대상 DB명 — 시장 참조 데이터 단일 진입점.
+
+    기본 kis_template. KIS_DATA_SOURCE=legacy 면 레거시(robotrader).
+    레거시 DB명 자체는 CORP_EVENTS_DB 로 override 가능(롤백 시 유연성).
+
+    resolve_daily_source_db() / resolve_minute_source_db() 와 **같은 스위치**
+    (KIS_DATA_SOURCE)를 공유해 가격과 이벤트가 서로 다른 세대로 갈라지지 않게 한다.
+
+    ⚠️ legacy 대상이 robotrader 인 이유(일봉과 다름): robotrader_quant 엔
+      corp_events 테이블이 **없다**(실측 2026-07-17). 일봉 롤백 대상을 그대로
+      따라가면 롤백 즉시 "relation 없음" 으로 죽는다 → 분봉과 같은 robotrader.
+
+    ⚠️ TIMESCALE_DB 를 보지 않는 이유 — corp_events 는 **시장 참조 데이터**이지
+      운영 산출물이 아니다(운영 산출물인 screener_snapshots 만 TIMESCALE_DB 를
+      따른다). TIMESCALE_DB 는 라이브 봇 운영 env 라 재활용하면 두 가지로 샌다:
+        1) 라이브 .env 는 gitignore 대상 → 연구·CI 엔 없다 = 코드 기본값으로
+           떨어진다. 그 기본값이 동결된 robotrader 였다(2026-05-22 stale).
+        2) scripts/kis_db/smoke_state_restore.py 가 os.environ["TIMESCALE_DB"] 를
+           테스트 DB 로 덮고 **복구하지 않는다**(알려진 이슈). TIMESCALE_DB 를
+           읽으면 연구 이벤트가 조용히 테스트 DB 를 따라간다.
+      → 가격 resolver 들과 동일하게 KIS_DATA_SOURCE 하나만 따른다.
+    """
+    import os as _os
+    if _is_legacy_source():
+        return _os.getenv("CORP_EVENTS_DB", "robotrader")
+    return "kis_template"
+
 # =============================================================================
 # 장 시작 동시 진입 억제 (Entry Throttle)
 # =============================================================================

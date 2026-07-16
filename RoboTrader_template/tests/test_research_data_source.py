@@ -50,7 +50,7 @@ import config.constants as constants  # noqa: E402
 
 def _reload_constants(monkeypatch, **env):
     """env 를 적용한 상태로 config.constants 를 리로드해 반환."""
-    for k in ("KIS_DATA_SOURCE", "QUANT_DB", "MINUTE_DB"):
+    for k in ("KIS_DATA_SOURCE", "QUANT_DB", "MINUTE_DB", "CORP_EVENTS_DB"):
         monkeypatch.delenv(k, raising=False)
     for k, v in env.items():
         monkeypatch.setenv(k, v)
@@ -98,9 +98,54 @@ def test_legacy_db_name_override_ignored_in_new_mode(monkeypatch):
     QUANT_DB 가 어딘가에 남아 있어도 연구가 조용히 죽은 레거시로 새지 않도록,
     소스 선택은 KIS_DATA_SOURCE 하나로만 제어된다(단일 스위치).
     """
-    c = _reload_constants(monkeypatch, QUANT_DB="robotrader_quant", MINUTE_DB="robotrader")
+    c = _reload_constants(
+        monkeypatch,
+        QUANT_DB="robotrader_quant",
+        MINUTE_DB="robotrader",
+        CORP_EVENTS_DB="robotrader",
+    )
     assert c.resolve_daily_source_db() == "kis_template"
     assert c.resolve_minute_source_db() == "kis_template"
+    assert c.resolve_corp_events_source_db() == "kis_template"
+
+
+def test_corp_events_resolver_defaults_to_kis_template(monkeypatch):
+    """env 가 하나도 없어도(=연구 기본 실행) 기업이벤트는 kis_template.
+
+    기존: corp_events._DB_DEFAULTS 가 getenv("TIMESCALE_DB", "robotrader") 라
+    연구(.env 없음)가 **동결된 robotrader**(2026-05-22 stale)를 읽었다.
+    """
+    c = _reload_constants(monkeypatch)
+    assert c.resolve_corp_events_source_db() == "kis_template"
+
+
+def test_corp_events_resolver_legacy_rollback(monkeypatch):
+    """롤백 경로: KIS_DATA_SOURCE=legacy → robotrader.
+
+    ⚠️ 일봉 롤백 대상(robotrader_quant)이 **아니다** — robotrader_quant 엔
+      corp_events 테이블 자체가 없어(실측) 롤백 즉시 relation 없음으로 죽는다.
+    """
+    c = _reload_constants(monkeypatch, KIS_DATA_SOURCE="legacy")
+    assert c.resolve_corp_events_source_db() == "robotrader"
+
+
+def test_corp_events_resolver_legacy_db_name_override(monkeypatch):
+    """레거시 모드에서 DB명 자체도 override 가능(형제 resolver 와 동일 패턴)."""
+    c = _reload_constants(
+        monkeypatch, KIS_DATA_SOURCE="legacy", CORP_EVENTS_DB="some_other_events"
+    )
+    assert c.resolve_corp_events_source_db() == "some_other_events"
+
+
+def test_corp_events_shares_the_single_source_switch(monkeypatch):
+    """이벤트 소스는 가격과 **같은 스위치**(KIS_DATA_SOURCE)를 공유한다.
+
+    스위치가 갈라지면 일부 경로만 레거시로 새는 사고가 난다(절대 규약).
+    """
+    c = _reload_constants(monkeypatch, KIS_DATA_SOURCE="legacy")
+    assert c.resolve_daily_source_db() == "robotrader_quant"
+    assert c.resolve_minute_source_db() == "robotrader"
+    assert c.resolve_corp_events_source_db() == "robotrader"
 
 
 # ===========================================================================
@@ -322,6 +367,96 @@ def test_portfolio_engine_uses_pit_reader_daily_conn():
     text = src.read_text(encoding="utf-8")
     assert "pit_reader._conn_daily()" in text, "resolver 경유 연결을 써야 함"
     assert "pit_reader._QUANT_DB" not in text, "resolver 우회 상수 참조가 남아 있음"
+
+
+# ===========================================================================
+# 7) corp_events = 시장 참조 데이터 → 가격과 같은 스위치, TIMESCALE_DB 비의존
+#    실측(2026-07-17): kis_template 1,205행/최신 2026-07-16
+#                      robotrader   1,085행/최신 2026-05-22 (동결)
+#    두 DB 의 컬럼 집합은 동일(stock_code/event_type/event_date/end_date/meta).
+# ===========================================================================
+
+def test_corp_events_conn_targets_kis_template():
+    """corp_events 연결은 resolver 를 경유해 kis_template 에 붙는다."""
+    from multiverse.data import corp_events
+    with corp_events._conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT current_database()")
+            assert cur.fetchone()[0] == "kis_template"
+
+
+def test_corp_events_conn_follows_legacy_rollback(monkeypatch):
+    """롤백 시 이벤트도 레거시(robotrader)로 되돌아간다.
+
+    ★ 이 테스트는 **호출 시점 해석**도 함께 고정한다 — corp_events 는 이 테스트
+      이전에 이미 import 돼 있으므로, DB명이 import 시점에 굳는 구조(기존
+      _DB_DEFAULTS 모듈 상수)면 여기서 env 를 바꿔도 반영되지 않아 실패한다.
+    """
+    monkeypatch.setenv("KIS_DATA_SOURCE", "legacy")
+    from multiverse.data import corp_events
+    with corp_events._conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT current_database()")
+            assert cur.fetchone()[0] == "robotrader"
+
+
+def test_corp_events_does_not_read_timescale_db_env():
+    """corp_events 는 TIMESCALE_DB 를 읽으면 안 된다 — 운영 env 오염 차단.
+
+    TIMESCALE_DB 는 **라이브 봇 운영 env** 이고, scripts/kis_db/smoke_state_restore.py
+    가 os.environ["TIMESCALE_DB"] 를 테스트 DB 로 덮고 복구하지 않는다(알려진 이슈).
+    이벤트 소스가 TIMESCALE_DB 를 읽으면 연구가 조용히 테스트 DB 를 따라간다.
+    시장 참조 데이터는 가격 resolver 들과 동일하게 KIS_DATA_SOURCE 만 따른다.
+    """
+    from pathlib import Path
+    from multiverse.data import corp_events
+    text = Path(corp_events.__file__).read_text(encoding="utf-8")
+    import re
+    assert not re.search(
+        r"""(getenv\(|environ\[|environ\.get\()\s*["']TIMESCALE_DB["']""", text
+    ), "corp_events 가 TIMESCALE_DB(운영 env)를 읽고 있다 — resolver 로 수렴해야 함"
+
+
+def test_corp_events_sees_events_newer_than_legacy_freeze():
+    """행동 증거 — 레거시 동결(2026-05-22) 이후 이벤트가 실제로 보여야 한다.
+
+    검체 196170(bonus_issue 2026-07-16): kis_template 1건 / robotrader **0건**(실측).
+    → robotrader 를 읽고 있으면 빈 DataFrame 이라 반드시 실패한다(비-vacuous).
+    """
+    from multiverse.data import corp_events
+    df = corp_events.read_events("196170", date(2026, 7, 17))
+    assert not df.empty, (
+        "196170 이벤트가 안 보인다 → 동결된 레거시(robotrader)를 읽는 중"
+    )
+    assert df["event_date"].max() > date(2026, 5, 22)
+
+
+def test_get_adj_factor_reads_daily_price_source(monkeypatch):
+    """get_adj_factor 는 daily_prices 를 읽으므로 **일봉** resolver 를 따라야 한다.
+
+    기본 모드에선 두 resolver 가 모두 kis_template 이라 구분이 안 된다 →
+    legacy 로 갈라 놓고(일봉=robotrader_quant, 이벤트=robotrader) 확인한다.
+    기존엔 corp_events._DB_DEFAULTS(=TIMESCALE_DB, 기본 robotrader)로 daily_prices
+    를 읽어 **일봉 SSOT 를 우회**하고 있었다.
+    """
+    monkeypatch.setenv("KIS_DATA_SOURCE", "legacy")
+    import psycopg2 as pg
+    from multiverse.data import corp_events
+
+    captured = []
+    real_connect = pg.connect
+
+    def _spy(**kwargs):
+        captured.append(kwargs.get("database"))
+        return real_connect(**kwargs)
+
+    monkeypatch.setattr(pg, "connect", _spy)
+    corp_events.get_adj_factor("005930", date(2026, 4, 1))
+
+    assert captured, "connect 가 호출되지 않음 — 테스트가 아무것도 검증 못 함"
+    assert captured[0] == "robotrader_quant", (
+        f"daily_prices 를 일봉 소스가 아닌 '{captured[0]}' 에서 읽고 있다"
+    )
 
 
 def test_no_lingering_duplicate_source_envs():

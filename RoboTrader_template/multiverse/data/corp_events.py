@@ -8,12 +8,21 @@ corp_events 테이블이 비어 있어도 모든 함수는 정상 동작:
   corp_events(stock_code TEXT, event_type TEXT, event_date DATE, meta JSONB)
   event_type ∈ {split, rights_issue, bonus_issue, dividend_ex,
                 administrative, caution, warning, halt}
+
+데이터 소스 (2026-07-17 연구 소스 통일):
+  - 이벤트(corp_events) = resolve_corp_events_source_db() → 기본 kis_template
+    (KIS_DATA_SOURCE=legacy 면 robotrader — robotrader_quant 엔 테이블이 없다)
+  - 일봉(daily_prices, get_adj_factor 전용) = resolve_daily_source_db()
+  DB명 하드코딩 금지. TIMESCALE_DB(라이브 운영 env)는 읽지 않는다 — 근거는
+  config/constants.resolve_corp_events_source_db() docstring 참조.
 """
 from __future__ import annotations
 
 import logging
 import os
+import sys
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
@@ -21,6 +30,19 @@ import psycopg2
 import psycopg2.extras
 import psycopg2.extensions
 from contextlib import contextmanager
+
+# config.constants(소스 resolver) import — 이 모듈은 `multiverse.data.corp_events`
+# 와 `RoboTrader_template.multiverse.data.corp_events` 두 경로로 모두 import 되므로,
+# 어느 쪽이든 RoboTrader_template 루트가 sys.path 에 있도록 보정한다
+# (pit_reader.py 와 동일 패턴).
+_TEMPLATE_ROOT = Path(__file__).resolve().parents[2]
+if str(_TEMPLATE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TEMPLATE_ROOT))
+
+from config.constants import (  # noqa: E402
+    resolve_corp_events_source_db,
+    resolve_daily_source_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +59,16 @@ psycopg2.extensions.register_type(DEC2FLOAT)
 # ------------------------------------------------------------------ #
 # 연결 설정
 # ------------------------------------------------------------------ #
+# 접속 정보에서 **DB명은 뺀다** — DB명은 호출 시점 resolver 가 정한다.
+# (기존: database 를 TIMESCALE_DB env 에서 기본값 "robotrader" 로 읽어 모듈 상수로
+#  굳혔다 → ① 연구가 .env 없이 돌면 동결된 robotrader 로 떨어지고
+#          ② 값이 **import 시점**에 고정돼 import 순서/env 변경에 취약했다.
+#  resolver 는 호출 시점 env 를 읽어 두 문제를 함께 없앤다.)
 _DB_DEFAULTS = dict(
     host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
     port=int(os.getenv("TIMESCALE_PORT", "5433")),
     user=os.getenv("TIMESCALE_USER", "robotrader"),
     password=os.getenv("TIMESCALE_PASSWORD", "1234"),
-    database=os.getenv("TIMESCALE_DB", "robotrader"),
 )
 
 # Universe 필터에서 제외할 이벤트 타입
@@ -51,7 +77,8 @@ _EXCLUSION_TYPES = ("administrative", "caution", "warning", "halt")
 
 @contextmanager
 def _conn():
-    conn = psycopg2.connect(**_DB_DEFAULTS)
+    """이벤트 소스 연결 — resolver 경유(기본 kis_template, legacy 면 robotrader)."""
+    conn = psycopg2.connect(**_DB_DEFAULTS, database=resolve_corp_events_source_db())
     try:
         yield conn
         conn.commit()
@@ -189,9 +216,12 @@ def get_adj_factor(stock_code: str, as_of_date: date) -> float:
     float: 누적 수정 배수 (이벤트 없으면 1.0)
     """
     # 1순위: daily_prices.adj_factor 컬럼 조회
+    # ★ daily_prices 는 **일봉 SSOT** 이므로 이벤트 소스가 아니라 일봉 resolver 를
+    #   따른다(기본 kis_template, legacy 면 robotrader_quant). 기존엔 이벤트용
+    #   _DB_DEFAULTS(=TIMESCALE_DB, 기본 robotrader)로 읽어 일봉 SSOT 를 우회했다.
     try:
         import psycopg2 as _pg
-        conn = _pg.connect(**_DB_DEFAULTS)
+        conn = _pg.connect(**_DB_DEFAULTS, database=resolve_daily_source_db())
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 # adj_factor 컬럼 존재 확인
