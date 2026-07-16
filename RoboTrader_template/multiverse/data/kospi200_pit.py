@@ -22,7 +22,7 @@ from typing import Optional
 import psycopg2
 import psycopg2.extras
 
-from RoboTrader_template.multiverse.data.pit_reader import _conn_quant
+from RoboTrader_template.multiverse.data.pit_reader import _conn_daily
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def _find_nearest_trading_date(as_of_date: date) -> Optional[date]:
 
     date 컬럼이 text 타입이므로 ISO 형식 문자열로 비교.
     """
-    with _conn_quant() as conn:
+    with _conn_daily() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -111,7 +111,7 @@ def _query_top_n(trading_date: date) -> list[str]:
 
     date 컬럼이 text 타입이므로 ISO 형식 문자열로 비교.
     """
-    with _conn_quant() as conn:
+    with _conn_daily() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -138,7 +138,7 @@ def _last_trading_day_of_month(year: int, month: int) -> Optional[date]:
     month_end = date(year, month, last_day)
     month_start = date(year, month, 1)
 
-    with _conn_quant() as conn:
+    with _conn_daily() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -165,7 +165,7 @@ def _last_trading_day_of_week(ref_date: date) -> Optional[date]:
     monday = ref_date - timedelta(days=ref_date.weekday())
     sunday = monday + timedelta(days=6)
 
-    with _conn_quant() as conn:
+    with _conn_daily() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
