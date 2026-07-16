@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, is_market_open
+from utils.korean_holidays import is_holiday, get_holiday_name
 from config.market_hours import MarketHours
 from tools.daily_trading_summary import print_today_trading_summary
 from collectors.eod_collection import run_data_collection
@@ -181,9 +182,39 @@ class SystemMonitor:
             self.logger.warning(f"장전 브리핑 오류 (무시): {e}")
 
     async def _handle_postmarket_tasks(self, current_time) -> None:
-        """장 마감 후 태스크 처리"""
+        """장 마감 후 태스크 처리 (거래일에만 — 휴장일은 전체 스킵)"""
         if current_time.hour == 15 and current_time.minute >= 35:
             if self._last_daily_report_date != current_time.date():
+                # 휴장일(주말·공휴일) 게이트 — 이 블록은 '거래일 마감' 후속처리라
+                # 휴장일엔 전 항목이 무의미하거나 유해하다(2026-07-17 제헌절, 컷오버
+                # 후 첫 평일 공휴일 대비). 항목별 근거:
+                #   - 데이터수집: KIS 가 휴장일 요청에 직전 거래일(T-1) 봉을 반환 →
+                #     replace_minute_day 가 T-1 분봉을 DELETE 후 재적재. 부분 재fetch 면
+                #     조용히 절단된다(최대 위험).
+                #   - equity 스냅샷: _resave_paper_trading_state 가 오늘 날짜로
+                #     paper_trading_state 를 UPSERT → _load_calendar 가 휴장일을 거래일로
+                #     주워 paper_strategy_equity 에 유령 행 생성(자산곡선 오염).
+                #   - regime 지수 갱신: 휴장일엔 신규 일봉이 없어 0행 → "stale 우려"
+                #     WARNING 오탐 + FDR 불필요 호출.
+                #   - 스크리너 스냅샷 검증: 장이 없어 훅 자체가 안 도므로 "훅 미실행"
+                #     WARNING 오탐.
+                #   - 매매 리포트/자금 정합성: 체결이 없어 빈 리포트·전일과 동일한
+                #     검증 재출력(노이즈).
+                # 게이트는 is_holiday(주말 OR 공휴일)만 사용한다. is_market_open() 은
+                # 15:35 가 장마감 후라 거래일에도 False → 매일 수집이 죽으므로 금지.
+                # _last_daily_report_date 래치를 재사용해 5초 루프마다 재로깅하지 않는다.
+                if is_holiday(current_time):
+                    self._last_daily_report_date = current_time.date()
+                    # 이름 없는 휴장일 = holidays 라이브러리엔 없고 KIS chk-holiday
+                    # 캐시에만 있는 날(예: 제헌절 — 2008 년부터 법정공휴일 아님).
+                    # 판정 출처를 남겨 다음날 EOD 점검이 즉시 추적 가능하게 한다.
+                    reason = get_holiday_name(current_time) or "KIS 지정 휴장일"
+                    self.logger.info(
+                        f"휴장일({current_time.strftime('%Y-%m-%d')} {reason}) — "
+                        f"EOD 후속 작업 전체 스킵 (데이터수집·equity·regime·리포트)"
+                    )
+                    return
+
                 self.logger.info(f"15:35+ 장 마감 후 일일 매매 리포트 생성 ({current_time.strftime('%H:%M:%S')})")
                 try:
                     print_today_trading_summary()

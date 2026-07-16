@@ -223,3 +223,99 @@ def test_premarket_regime_refresh_success_stops_for_day():
         clock.advance(minutes=30)
         asyncio.run(mon._run_premarket_regime_index_refresh())
     assert calls["n"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 휴장일 EOD 게이트 (2026-07-17 제헌절 — 컷오버 후 첫 평일 공휴일)
+#
+# _handle_postmarket_tasks 는 15:35 를 시각만으로 판정해 휴장일에도 EOD 후속작업을
+# 전부 돌렸다. 최대 위험은 _run_data_collection → minute_writer.replace_minute_day 로,
+# KIS 가 휴장일 요청에 직전 거래일(T-1) 봉을 반환하면 T-1 분봉을 DELETE 후 재적재해
+# 부분 재fetch 시 조용히 절단된다. 아래 테스트가 휴장일 스킵/거래일 실행을 고정한다.
+# ---------------------------------------------------------------------------
+
+def _mk_postmarket_monitor(monkeypatch):
+    """_handle_postmarket_tasks 호출용 — 하위작업 전부 카운팅 스텁으로 대체."""
+    mon, logs = _mk_monitor()
+    mon._last_daily_report_date = None
+    calls = {"summary": 0, "fund": 0, "screener": 0,
+             "equity": 0, "regime": 0, "data_collection": 0}
+
+    def _bump(key, ret=None):
+        def _f(*a, **k):
+            calls[key] += 1
+            return ret
+        return _f
+
+    async def _fake_dc(ct):
+        calls["data_collection"] += 1
+
+    monkeypatch.setattr(sm, "print_today_trading_summary", _bump("summary"))
+    mon._verify_eod_fund_integrity = _bump("fund")
+    mon._verify_screener_snapshot = _bump("screener")
+    mon._run_equity_snapshot = _bump("equity")
+    mon._run_regime_index_refresh = _bump("regime", {"KOSPI": 1, "KOSDAQ": 1})
+    mon._run_data_collection = _fake_dc
+    return mon, logs, calls
+
+
+def test_postmarket_skips_all_tasks_on_weekend(monkeypatch):
+    """주말(토) 15:35 → EOD 후속작업 전부 미실행.
+
+    실달력 사용(is_holiday 미목킹). 토요일은 is_weekend 가 먼저 성립하므로
+    holidays 라이브러리/KIS 캐시 파일(cwd 의존) 유무와 무관하게 결정적이다.
+    """
+    mon, logs, calls = _mk_postmarket_monitor(monkeypatch)
+    saturday = datetime.datetime(2026, 7, 18, 15, 36, 0)
+
+    asyncio.run(mon._handle_postmarket_tasks(saturday))
+
+    assert calls["data_collection"] == 0, "휴장일에 EOD 데이터수집이 돌면 T-1 분봉이 DELETE 된다"
+    assert calls == {"summary": 0, "fund": 0, "screener": 0,
+                     "equity": 0, "regime": 0, "data_collection": 0}, calls
+
+
+def test_postmarket_runs_all_tasks_on_trading_day(monkeypatch):
+    """거래일(목) 15:35 → EOD 후속작업 정상 실행.
+
+    게이트가 과잉(평일까지 차단)이 아님을 고정한다. is_market_open() 을 게이트로
+    쓰면 15:35 는 장마감 후라 False → 매일 수집이 죽는다(이 테스트가 그 회귀를 잡음).
+    """
+    mon, logs, calls = _mk_postmarket_monitor(monkeypatch)
+    thursday = datetime.datetime(2026, 7, 16, 15, 36, 0)
+
+    asyncio.run(mon._handle_postmarket_tasks(thursday))
+
+    assert calls["data_collection"] == 1
+    assert calls == {"summary": 1, "fund": 1, "screener": 1,
+                     "equity": 2, "regime": 1, "data_collection": 1}, calls
+
+
+def test_postmarket_skips_when_calendar_says_holiday(monkeypatch):
+    """평일 공휴일(제헌절 등) → 스킵.
+
+    2026-07-17 의 휴장 사실은 KIS 캐시(holiday_kis_cache.json)에만 있고 그 로드가
+    cwd 의존이라 실달력을 그대로 쓰면 테스트가 실행위치에 좌우된다. 여기서는
+    달력 정확성이 아니라 '달력이 휴장이라 하면 스킵한다'는 게이트 배선만 고정한다.
+    """
+    mon, logs, calls = _mk_postmarket_monitor(monkeypatch)
+    monkeypatch.setattr(sm, "is_holiday", lambda d: True)
+
+    asyncio.run(mon._handle_postmarket_tasks(datetime.datetime(2026, 7, 17, 15, 36, 0)))
+
+    assert calls["data_collection"] == 0
+    assert sum(calls.values()) == 0, calls
+
+
+def test_postmarket_holiday_skip_logs_info_once(monkeypatch):
+    """스킵 시 INFO 1회만 — 5초 루프마다 반복 로깅하지 않음(하루 1회 래치 재사용)."""
+    mon, logs, calls = _mk_postmarket_monitor(monkeypatch)
+    monkeypatch.setattr(sm, "is_holiday", lambda d: True)
+
+    base = datetime.datetime(2026, 7, 17, 15, 36, 0)
+    for i in range(5):   # 모니터 루프 반복
+        asyncio.run(mon._handle_postmarket_tasks(base + datetime.timedelta(seconds=5 * i)))
+
+    assert calls["data_collection"] == 0
+    skip_logs = [a for a in logs["info"] if a and "휴장일" in str(a[0])]
+    assert len(skip_logs) == 1, f"스킵 INFO 는 하루 1회여야 함: {logs['info']}"
