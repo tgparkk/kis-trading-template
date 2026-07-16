@@ -28,6 +28,11 @@ kis-trading-template/
   → `lib/`(pit_helpers·signals/*)는 **2026-07-10 운영에서 연구/테스트 지원으로 재분류**: 운영 디렉토리 전수 grep 결과 import 0건,
      실제 소비자는 `tests/`(test_no_lookahead·test_phase5_*)와 `archive/` 뿐이다. 같은 날 `.gitignore` 의 venv 패턴(`lib/`)이
      이 패키지를 잡아먹어 git 미추적이던 것도 함께 해소했다.
+  → ⚠️ **연구 분류 ≠ git 미추적**. 연구 코드도 전부 추적 대상이다. `multiverse/data/`(PIT 데이터 어댑터 **소스 패키지**,
+     `./data/`·`strategies/data/` 같은 데이터 디렉토리가 **아님**)는 `.gitignore` 의 `data/` 패턴에 먹혀 미추적이던 것을
+     **2026-07-16 해소**(`!multiverse/data/` 예외). 미추적이라 CI·새 클론에서 `multiverse/tests` 가 전량 수집 불가였고
+     (ImportError: corp_events), repo 전역 리팩터 `d89d0b6` 도 이 파일들을 조용히 비껴갔다(`kospi200_pit` 이 낡은
+     `_conn_quant` 참조로 잔존). `lib/`(726febf)과 동일 유형 — **자체 패키지를 삼키는 범용 ignore 패턴을 경계할 것.**
 
 **예외 없음 (2026-07-02 Phase1 완료 + Phase2 `backtest/` 분류 확정)**: `scripts/`·`multiverse/`·`backtest/`에 라이브 의존 엣지 0.
 운영 도구는 `tools/`(EOD 리포트·equity 스냅샷). 승격 이력·드리프트 점검 명령은
