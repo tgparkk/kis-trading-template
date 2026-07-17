@@ -77,11 +77,9 @@ def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, p
                 continue
             df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume", "adj_factor"])
             df["date"] = pd.to_datetime(df["date"])
-            for col in ["open", "high", "low", "close", "volume", "adj_factor"]:
+            for col in ["open", "high", "low", "close", "volume"]:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-            df["adj_factor"] = df["adj_factor"].fillna(1.0)
-            for col in ["open", "high", "low", "close"]:
-                df[col] = df[col] * df["adj_factor"]
+            # quant close 는 이미 분할조정된 연속 시세 → adj_factor 곱하지 않음(곱하면 분할일 가짜 절벽).
             # 거래정지일 등 OHLC 결손 보정: close 유효한 행은 open/high/low(<=0 or NaN)를 close로 채움.
             # close 자체가 0 이하/NaN인 완전 결손 행은 체결 불가 → 드롭.
             n_before = len(df)

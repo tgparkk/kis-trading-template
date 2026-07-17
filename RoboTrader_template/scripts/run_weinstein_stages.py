@@ -108,11 +108,9 @@ def _load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, p
                 continue
             df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume", "adj_factor"])
             df["date"] = pd.to_datetime(df["date"])
-            for col in ["open", "high", "low", "close", "volume", "adj_factor"]:
+            for col in ["open", "high", "low", "close", "volume"]:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-            df["adj_factor"] = df["adj_factor"].fillna(1.0)
-            for col in ["open", "high", "low", "close"]:
-                df[col] = df[col] * df["adj_factor"]
+            # quant close 는 이미 분할조정된 연속 시세 → adj_factor 곱하지 않음(곱하면 분할일 가짜 절벽).
             df = df.dropna(subset=["open", "high", "low", "close"])
             df["datetime"] = df["date"]
             out[code] = df[["datetime", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
