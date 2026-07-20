@@ -1,0 +1,50 @@
+-- =====================================================================
+-- create_minute_candles_unique_index.sql  —  UNIQUE(stock_code,datetime) (Part 3/3)
+-- =====================================================================
+-- 목적: 봉의 자연키 (stock_code, datetime) 에 UNIQUE 인덱스를 걸어, 새 writer 의
+--   `ON CONFLICT (stock_code, datetime) DO NOTHING` 이 작동할 수 있게 하고(해당
+--   대상엔 정확히 이 컬럼들의 UNIQUE/exclusion 제약이 존재해야 함) 재수집 중복을
+--   DB 레벨에서 영구 차단한다.
+--
+-- ★★ 실행 순서 (절대 어기지 말 것) ★★
+--   1) 수집기 STOP
+--   2) scripts/kis_db/dedup_minute_candles.sql 실행 → 중복 0 확인 & COMMIT
+--   3) (이 파일) UNIQUE 인덱스 생성
+--   4) 새 writer 코드 배포(merge/FF)
+--   5) 수집기 재기동
+--   ⚠️ 중복이 남아있는 상태로 이 파일을 실행하면
+--      "could not create unique index ... duplicate key value" 로 실패한다.
+--      → 반드시 Part 2 가 remaining_dup_keys=0 을 낸 뒤에만 실행.
+--   ⚠️ UNIQUE 인덱스가 있는데 **옛** writer 가 돌면, 재수집 봉이 이 인덱스를
+--      위반해 collector 가 크래시한다(2026-07-08 봇 사망과 동형). 그래서 인덱스
+--      생성(3) 직후 반드시 새 writer(4) 를 배포하고 나서 수집기(5) 를 켠다.
+--
+-- ★ CONCURRENTLY 주의:
+--   · CREATE INDEX CONCURRENTLY 는 **트랜잭션 블록 안에서 실행 불가**.
+--     BEGIN/COMMIT 로 감싸지 말고, psql -f 로 이 파일을 **단독** 실행할 것
+--     (이 파일에는 BEGIN 이 없다).
+--   · CONCURRENTLY 는 테이블 쓰기를 오래 막지 않지만, 수집기는 이미 STOP 상태이므로
+--     테이블은 정지 상태다. IF NOT EXISTS 로 재실행 안전.
+--   · 실패 시(예: 남은 중복) 인덱스가 INVALID 로 남을 수 있다 — 아래 롤백 참고.
+--
+-- 적용 명령(사장님 권한 — kis_template DATABASE 에 접속):
+--   psql -h 127.0.0.1 -p 5433 -U robotrader -d kis_template \
+--        -f scripts/kis_db/create_minute_candles_unique_index.sql
+--   ⚠️ 테이블은 public 스키마. `kis_template.` 접두사 금지("kis_template"=DB명).
+--
+-- 롤백 레시피:
+--   · 생성 취소/재시도:
+--       DROP INDEX CONCURRENTLY IF EXISTS idx_minute_candles_code_datetime;
+--   · INVALID 인덱스가 남았는지 확인:
+--       SELECT indexrelid::regclass, indisvalid
+--       FROM pg_index WHERE indexrelid = 'idx_minute_candles_code_datetime'::regclass;
+--     indisvalid=false 면 위 DROP 후 (중복 재정리하고) 다시 생성.
+-- =====================================================================
+
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_minute_candles_code_datetime
+    ON minute_candles (stock_code, datetime);
+
+-- 검증(생성 후):
+--   SELECT indisvalid, indisunique
+--   FROM pg_index WHERE indexrelid = 'idx_minute_candles_code_datetime'::regclass;
+--   기대: indisvalid = t, indisunique = t
