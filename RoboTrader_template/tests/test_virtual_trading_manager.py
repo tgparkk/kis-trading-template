@@ -97,8 +97,9 @@ class TestBuyTimeDaysHeld:
             )
 
         assert result == 42
-        assert '005930' in vtm._buy_times
-        assert vtm._buy_times['005930'] == kst_now
+        # (stock_code, buy_record_id) 키로 기록됨
+        assert ('005930', 42) in vtm._buy_times
+        assert vtm._buy_times[('005930', 42)] == kst_now
 
     def test_days_held_calculation_1day(self):
         """매수 당일 days_held == 1 (count_trading_days_between는 양 끝 포함 카운트)"""
@@ -137,6 +138,53 @@ class TestBuyTimeDaysHeld:
         """미매수 종목은 get_position_buy_time() == None"""
         vtm = _make_vtm()
         assert vtm.get_position_buy_time('000000') is None
+
+
+class TestBuyTimeCrossStrategyIsolation:
+    """회귀: _buy_times 가 stock_code 단독 키였을 때, 두 전략(owner)이 같은 종목을
+    보유하면 buy_time 이 서로 덮어써지거나 한쪽 매도 시 통째로 삭제되어
+    get_days_held(=max_holding/stale 타이밍)가 오귀속된다. (stock_code, buy_record_id)
+    키로 재구성하면 각 owner 의 보유기간이 독립적으로 유지된다."""
+
+    def test_days_held_isolated_per_owner(self):
+        vtm = _make_vtm()
+        t_old = datetime(2026, 4, 20, 9, 0, 0, tzinfo=timezone.utc)  # owner1 먼저 매수
+        t_new = datetime(2026, 4, 27, 9, 0, 0, tzinfo=timezone.utc)  # owner2 나중 매수
+        vtm.restore_buy_time('005930', t_old, buy_record_id=1)
+        vtm.restore_buy_time('005930', t_new, buy_record_id=2)
+
+        # 각 owner 는 자기 매수시각을 반환(덮어쓰기 없음)
+        assert vtm.get_position_buy_time('005930', 1) == t_old
+        assert vtm.get_position_buy_time('005930', 2) == t_new
+
+        now_time = datetime(2026, 4, 30, 9, 0, 0, tzinfo=timezone.utc)
+        with patch('core.virtual_trading_manager.now_kst', return_value=now_time):
+            d1 = vtm.get_days_held('005930', 1)
+            d2 = vtm.get_days_held('005930', 2)
+        assert d1 > d2  # 먼저 산 owner1 이 더 오래 보유
+
+    def test_sell_one_owner_preserves_other_buy_time(self):
+        vtm = _make_vtm()
+        t_old = datetime(2026, 4, 20, 9, 0, 0, tzinfo=timezone.utc)
+        t_new = datetime(2026, 4, 27, 9, 0, 0, tzinfo=timezone.utc)
+        vtm.restore_buy_time('005930', t_old, buy_record_id=1)
+        vtm.restore_buy_time('005930', t_new, buy_record_id=2)
+
+        db_manager = Mock()
+        db_manager.save_virtual_sell.return_value = True
+        vtm.db_manager = db_manager
+
+        now_time = datetime(2026, 4, 30, 9, 0, 0, tzinfo=timezone.utc)
+        with patch('core.virtual_trading_manager.now_kst', return_value=now_time):
+            vtm.execute_virtual_sell(
+                stock_code='005930', stock_name='삼성전자', price=75000,
+                quantity=10, strategy='SampleStrategy', reason='매도',
+                buy_record_id=1,
+            )
+
+        # owner1 매도 후 owner1 buy_time 은 제거, owner2 buy_time 은 보존
+        assert vtm.get_position_buy_time('005930', 1) is None
+        assert vtm.get_position_buy_time('005930', 2) == t_new
 
 
 class TestIsStaleFlagAfter30Days:

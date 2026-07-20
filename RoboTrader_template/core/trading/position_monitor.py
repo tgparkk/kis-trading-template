@@ -258,7 +258,11 @@ class PositionMonitor:
                         if (self.decision_engine and
                                 hasattr(self.decision_engine, 'virtual_trading') and
                                 self.decision_engine.virtual_trading is not None):
-                            days_held = self.decision_engine.virtual_trading.get_days_held(stock_code)
+                            # 슬롯별 매수기록ID 로 조회 — 같은 종목을 여러 전략이
+                            # 보유해도 이 슬롯의 보유기간만 정확히 반영한다.
+                            rid = getattr(trading_stock, '_virtual_buy_record_id', None)
+                            days_held = self.decision_engine.virtual_trading.get_days_held(
+                                stock_code, rid)
                         else:
                             days_held = 0
                     # 연속 운영(무재시작) 중 days_held 가 0/None 으로 고착되면 max_hold

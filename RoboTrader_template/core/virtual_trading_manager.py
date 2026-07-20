@@ -37,9 +37,13 @@ class VirtualTradingManager:
         self.virtual_balance = 0  # 현재 잔고 (가상 또는 실전)
         self.initial_balance = 0  # 시작 잔고 (수익률 계산용)
 
-        # buy_time 추적: stock_code → buy_time(KST datetime)
-        # DB의 virtual_trading_records.timestamp(BUY 행)과 동기화됨
-        self._buy_times: Dict[str, datetime] = {}
+        # buy_time 추적: (stock_code, buy_record_id) → buy_time(KST datetime)
+        # DB의 virtual_trading_records.timestamp(BUY 행)과 동기화됨.
+        # ⚠️ stock_code 단독 키였을 때, 두 전략(owner)이 같은 종목을 보유하면
+        # buy_time 이 서로 덮어써지거나 한쪽 매도 시 통째로 삭제되어 보유기간이
+        # 오귀속됐다(_position_owner 와 동일 결함, f4c3683 참조). 매수기록ID(BUY 행 PK)로
+        # 슬롯을 유일 식별해 격리한다.
+        self._buy_times: Dict[Tuple[str, Optional[int]], datetime] = {}
 
         # ── 전략별 자금 격리 원장 (할당 시에만 활성) ────────────────────────
         # 키는 전략 폴더키(StrategyLoader self.strategies dict 키)와 동일해야 함.
@@ -573,8 +577,10 @@ class VirtualTradingManager:
                         # 가상 잔고에서 매수 금액 + 수수료 차감 (레거시 단일 잔고)
                         self.update_virtual_balance(total_cost_with_fee, "매수")
 
-                    # buy_time 메모리에 기록 (DB timestamp와 동기화)
-                    self._buy_times[stock_code] = now_kst()
+                    # buy_time 메모리에 기록 (DB timestamp와 동기화).
+                    # 매수기록ID 로 키잉 — 다른 전략이 같은 종목을 이미 보유해도
+                    # 서로의 buy_time 을 덮어쓰지 않는다.
+                    self._buy_times[self._owner_key(stock_code, buy_record_id)] = now_kst()
 
                     profit_rate = self.get_virtual_profit_rate()
                     self.logger.info(f"💰 가상 매수 완료: {stock_code}({stock_name}) "
@@ -679,8 +685,9 @@ class VirtualTradingManager:
                 }
                 self._pending_sell_records.append(pending_record)
 
-            # buy_time 메모리에서 제거 (포지션 청산)
-            self._buy_times.pop(stock_code, None)
+            # buy_time 메모리에서 제거 (포지션 청산). 매수기록ID 로 해당 슬롯만
+            # 제거 — 같은 종목을 다른 전략이 보유 중이면 그 buy_time 은 보존한다.
+            self._pop_buy_time(stock_code, buy_record_id)
 
             # 메모리 업데이트는 이미 완료했으므로 항상 True 반환
             return True
@@ -810,27 +817,66 @@ class VirtualTradingManager:
     # buy_time / days_held / is_stale 추적
     # =========================================================================
 
-    def restore_buy_time(self, stock_code: str, buy_time: datetime) -> None:
+    def _resolve_buy_time_key(self, stock_code: str,
+                              buy_record_id=None) -> Optional[Tuple[str, Optional[int]]]:
+        """buy_time 조회 키 결정. 매수기록ID 로 정확 매칭하고, 미상/불일치면
+        같은 종목 항목이 유일할 때만 폴백한다(다owner 모호 시 None → 오귀속 방지).
+
+        레거시 in-memory 잔재(베어 stock_code 키)도 폴백에서 함께 처리한다.
+        """
+        key = self._owner_key(stock_code, buy_record_id)
+        if key in self._buy_times:
+            return key
+        # 구체적 매수기록ID 가 주어졌는데 없으면(이미 청산된 슬롯 등) None —
+        # 타 슬롯으로 폴백하면 그게 바로 오귀속이므로 금지.
+        if key[1] is not None:
+            return None
+        # 매수기록ID 미상(legacy): 같은 종목 항목이 유일할 때만 폴백
+        matches = [
+            k for k in self._buy_times
+            if (k[0] if isinstance(k, tuple) else k) == stock_code
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    def _pop_buy_time(self, stock_code: str, buy_record_id=None) -> None:
+        """청산된 슬롯의 buy_time 하나만 제거 (타 전략의 동일종목 항목은 보존)."""
+        key = self._owner_key(stock_code, buy_record_id)
+        if key in self._buy_times:
+            self._buy_times.pop(key, None)
+            return
+        # 매수기록ID 미상/불일치: 같은 종목 항목 하나만 제거(레거시 베어키 포함)
+        for k in list(self._buy_times):
+            if (k[0] if isinstance(k, tuple) else k) == stock_code:
+                self._buy_times.pop(k, None)
+                return
+
+    def restore_buy_time(self, stock_code: str, buy_time: datetime,
+                         buy_record_id=None) -> None:
         """봇 재시작 시 DB timestamp(BUY 행)로 buy_time 복원 (state_restorer 호환)
 
         Args:
             stock_code: 종목코드
             buy_time: DB에서 읽은 매수 시각 (timezone-aware 권장)
+            buy_record_id: BUY 행 PK. 다owner 동일종목 슬롯 구분에 사용(없으면 legacy).
         """
         if buy_time is not None:
-            self._buy_times[stock_code] = buy_time
+            self._buy_times[self._owner_key(stock_code, buy_record_id)] = buy_time
 
-    def get_position_buy_time(self, stock_code: str) -> Optional[datetime]:
+    def get_position_buy_time(self, stock_code: str,
+                              buy_record_id=None) -> Optional[datetime]:
         """종목의 매수 시각 반환 (없으면 None)"""
-        return self._buy_times.get(stock_code)
+        key = self._resolve_buy_time_key(stock_code, buy_record_id)
+        return self._buy_times.get(key) if key is not None else None
 
-    def get_days_held(self, stock_code: str) -> int:
+    def get_days_held(self, stock_code: str, buy_record_id=None) -> int:
         """종목 보유 영업일 수 계산 (주말·공휴일 제외)
 
         Returns:
             int: 보유 영업일 수 (buy_time 없으면 0)
         """
-        buy_time = self._buy_times.get(stock_code)
+        buy_time = self.get_position_buy_time(stock_code, buy_record_id)
         if buy_time is None:
             return 0
         from utils.korean_holidays import count_trading_days_between
@@ -839,14 +885,14 @@ class VirtualTradingManager:
         today_naive = today.replace(tzinfo=None)
         return max(0, count_trading_days_between(buy_naive, today_naive))
 
-    def is_stale_position(self, stock_code: str) -> bool:
+    def is_stale_position(self, stock_code: str, buy_record_id=None) -> bool:
         """보유 일수가 STALE_POSITION_DAYS 이상인지 확인
 
         Returns:
             bool: True면 장기보유(stale), False면 정상 보유
         """
         from config.constants import STALE_POSITION_DAYS
-        return self.get_days_held(stock_code) >= STALE_POSITION_DAYS
+        return self.get_days_held(stock_code, buy_record_id) >= STALE_POSITION_DAYS
 
     def save_paper_trading_state(self) -> bool:
         """현재 가상 잔고를 오늘 날짜로 paper_trading_state에 UPSERT.
