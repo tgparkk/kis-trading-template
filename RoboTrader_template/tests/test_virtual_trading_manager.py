@@ -186,6 +186,24 @@ class TestBuyTimeCrossStrategyIsolation:
         assert vtm.get_position_buy_time('005930', 1) is None
         assert vtm.get_position_buy_time('005930', 2) == t_new
 
+    def test_pop_concrete_id_miss_preserves_other_owner(self):
+        """회귀(MEDIUM): 구체 buy_record_id 로 pop 했는데 정확 키가 없으면
+        타 owner 의 동일종목 항목을 오삭제하면 안 된다(read 경로와 대칭).
+
+        시나리오: 재시작 후 _buy_times 가 비었다가 owner C 가 매수해 {(code,idC)}만
+        존재. 재시작 前 owner A(idA)를 매도하면 정확 키 (code,idA)가 없다 —
+        폴백으로 owner C 항목을 지워버리면 오귀속 창이 다시 열린다.
+        """
+        vtm = _make_vtm()
+        t_c = datetime(2026, 4, 27, 9, 0, 0, tzinfo=timezone.utc)
+        vtm.restore_buy_time('005930', t_c, buy_record_id=3)  # owner C
+
+        vtm._pop_buy_time('005930', buy_record_id=1)  # owner A(부재) 매도
+
+        # owner C 항목은 반드시 보존
+        assert vtm.get_position_buy_time('005930', 3) == t_c
+        assert ('005930', 3) in vtm._buy_times
+
 
 class TestIsStaleFlagAfter30Days:
     """test_is_stale_flag_after_30_days"""
@@ -249,9 +267,13 @@ class TestStateRestorerCompatibility:
         assert vtm.get_position_buy_time('005930') is None
 
     def test_sell_clears_buy_time(self):
-        """execute_virtual_sell 성공 시 _buy_times에서 제거됨"""
+        """execute_virtual_sell 성공 시 해당 슬롯의 _buy_times 항목이 제거됨.
+
+        Fix C 이후 저장키는 (stock_code, buy_record_id) — 매도 슬롯의 매수기록ID로
+        정확히 그 항목만 제거한다.
+        """
         vtm = _make_vtm()
-        vtm._buy_times['005930'] = datetime(2026, 4, 20, 9, 0, 0, tzinfo=timezone.utc)
+        vtm._buy_times[('005930', 42)] = datetime(2026, 4, 20, 9, 0, 0, tzinfo=timezone.utc)
 
         db_manager = Mock()
         db_manager.save_virtual_sell.return_value = True
@@ -267,7 +289,8 @@ class TestStateRestorerCompatibility:
             buy_record_id=42,
         )
 
-        assert '005930' not in vtm._buy_times
+        assert ('005930', 42) not in vtm._buy_times
+        assert vtm.get_position_buy_time('005930', 42) is None
 
 
 class TestGetCumulativeProfitInfo:

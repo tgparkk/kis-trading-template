@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pandas as pd
+import pytest
 
 import scripts.kis_db.smoke_state_restore as smk
 from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
@@ -167,6 +168,35 @@ def test_run_smoke_restores_absent_timescale_db_env(monkeypatch):
     smk.run_smoke("kis_template_test", capital=10_000.0)
 
     assert "TIMESCALE_DB" not in os.environ
+
+
+def test_run_smoke_restores_timescale_db_env_on_exception(monkeypatch):
+    """회귀: run_smoke() 가 도중에 예외로 터져도 TIMESCALE_DB 는 복원돼야 한다
+    (try/finally 가 예외 경로에서도 원복함을 증명, happy path 뿐 아니라)."""
+    import os
+
+    class _RaisingStateRestorer:
+        def __init__(self, *a, **k):
+            pass
+
+        async def restore_todays_candidates(self):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("bot.state_restorer.StateRestorer", _RaisingStateRestorer)
+    monkeypatch.setattr("db.repositories.trading.TradingRepository",
+                        _FakeTradingRepoRecordsCtorArgs)
+    monkeypatch.setattr("db.repositories.candidate.CandidateRepository",
+                        _FakeCandidateRepoWithMixedDates)
+    monkeypatch.setattr("utils.korean_time.now_kst",
+                        lambda: datetime(2026, 7, 6, 10, 0, 0))
+
+    sentinel = "kis_template_SENTINEL"
+    monkeypatch.setenv("TIMESCALE_DB", sentinel)
+
+    with pytest.raises(RuntimeError):
+        smk.run_smoke("kis_template_test", capital=10_000.0)
+
+    assert os.environ.get("TIMESCALE_DB") == sentinel
 
 
 def test_run_smoke_only_counts_genuine_holdings_and_detects_dropped_holding(monkeypatch):

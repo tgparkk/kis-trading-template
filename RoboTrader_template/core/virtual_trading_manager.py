@@ -846,7 +846,12 @@ class VirtualTradingManager:
         if key in self._buy_times:
             self._buy_times.pop(key, None)
             return
-        # 매수기록ID 미상/불일치: 같은 종목 항목 하나만 제거(레거시 베어키 포함)
+        # 구체적 매수기록ID 가 주어졌는데 정확 키가 없으면(이미 청산된 슬롯 등)
+        # 아무것도 지우지 않는다 — 타 owner 의 동일종목 항목을 지우면 그게 바로
+        # 오귀속이다(read 경로 _resolve_buy_time_key 와 대칭).
+        if key[1] is not None:
+            return
+        # 매수기록ID 미상(legacy): 같은 종목 항목 하나만 제거(베어키 포함)
         for k in list(self._buy_times):
             if (k[0] if isinstance(k, tuple) else k) == stock_code:
                 self._buy_times.pop(k, None)
