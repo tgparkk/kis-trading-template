@@ -7,7 +7,7 @@ INSERT INTO minute_candles
     (stock_code, trade_date, idx, date, time, close, open, high, low, volume, amount, datetime)
 VALUES (%(stock_code)s, %(trade_date)s, %(idx)s, %(date)s, %(time)s, %(close)s, %(open)s,
         %(high)s, %(low)s, %(volume)s, %(amount)s, %(datetime)s)
-ON CONFLICT (stock_code, trade_date, idx) DO NOTHING
+ON CONFLICT (stock_code, datetime) DO NOTHING
 """
 
 
