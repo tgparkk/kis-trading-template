@@ -2,6 +2,10 @@
 """분봉 df → minute_candles 행 + 새 DB 멱등 적재(DELETE+INSERT)."""
 import pandas as pd
 
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
 _INSERT = """
 INSERT INTO minute_candles
     (stock_code, trade_date, idx, date, time, close, open, high, low, volume, amount, datetime)
@@ -18,6 +22,16 @@ def df_to_minute_rows(code: str, df) -> list:
     for idx, (_, r) in enumerate(df.iterrows()):
         d = str(r.get("date", ""))
         dt = r.get("datetime")
+        # datetime 은 봉의 자연키 — ON CONFLICT (stock_code, datetime) 와 UNIQUE
+        # 인덱스가 NULL 을 서로 distinct 로 취급하므로, 키 없는(NaT/누락) 봉을
+        # 적재하면 영구 DB-레벨 dedup 보장에 구멍이 난다. 실측 0건이지만
+        # 미래 malformed fetch 를 fail-fast 하도록 스킵 + 경고(조용한 드롭 금지).
+        if not isinstance(dt, pd.Timestamp) or pd.isna(dt):
+            logger.warning(
+                "[minute_writer] datetime 누락/무효 봉 스킵: stock_code=%s date=%s time=%s datetime=%r",
+                code, d, str(r.get("time", "")), dt,
+            )
+            continue
         rows.append({
             "stock_code": code,
             "trade_date": d,
@@ -30,7 +44,7 @@ def df_to_minute_rows(code: str, df) -> list:
             "low": float(r.get("low", 0) or 0),
             "volume": float(r.get("volume", 0) or 0),
             "amount": float(r.get("amount", 0) or 0),
-            "datetime": (dt.to_pydatetime() if isinstance(dt, pd.Timestamp) else None),
+            "datetime": dt.to_pydatetime(),
         })
     return rows
 

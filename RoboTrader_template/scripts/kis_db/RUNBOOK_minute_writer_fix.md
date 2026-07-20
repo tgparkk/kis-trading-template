@@ -42,11 +42,20 @@
       ) d;   -- 중복 키 수
       ```
 
-## STEP 1 — 수집기 STOP
+## STEP 1 — 모든 write 경로 STOP (수집기 **및** 봇/EOD 스케줄러)
 
-- [ ] 분봉 수집기/봇 프로세스를 정지한다(장중 실행 금지).
-- [ ] 정지 확인(해당 프로세스 없음). minute_candles 에 신규 write 가 없어야 함.
-- **중단/롤백**: 여기서 중단하면 아무 변경도 없음. 수집기 재기동으로 원복.
+minute_candles 에 INSERT 하는 경로는 **둘**이다 — 둘 다 반드시 정지한다.
+하나라도 옛 writer 로 남아 UNIQUE 인덱스(STEP 3) 존재 중에 돌면
+재수집 봉이 인덱스를 위반해 **크래시**(2026-07-08 봇 사망 class).
+
+- [ ] **분봉 수집기** (`collectors/minute_collector.py` → `df_to_minute_rows`/`replace_minute_day`)
+      프로세스 정지(장중 실행 금지).
+- [ ] **봇 프로세스 / system_monitor EOD 스케줄러** 정지 —
+      `bot/system_monitor.py` 의 `_handle_postmarket_tasks` → `_run_data_collection`
+      → `replace_minute_day` 가 **15:35 트리거**로 도는 **두 번째 insert 경로**다.
+      "분봉 수집기만" 멈추고 봇/EOD 스케줄러를 켜둔 채로 두지 말 것.
+- [ ] 정지 확인(위 두 프로세스 모두 없음). minute_candles 에 신규 write 가 없어야 함.
+- **중단/롤백**: 여기서 중단하면 아무 변경도 없음. 프로세스 재기동으로 원복.
 
 ## STEP 2 — 중복 정리 (Part 2)
 

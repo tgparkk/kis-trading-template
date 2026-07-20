@@ -11,8 +11,8 @@
 --   있으면 생성 자체가 실패하기 때문이다.
 --
 -- ★ 실행 전 필수: 수집기(collector)를 STOP 한 유지보수 창에서만 실행.
---   (실행 중이면 ctid 가 이동해 삭제 대상이 어긋날 수 있고, 또 신규 봉이
---    끼어들어 카운트가 흔들린다.)
+--   (loser 는 PK 로 키잉하므로 ctid 이동엔 영향받지 않지만, 실행 중이면 신규
+--    봉이 끼어들어 검증 카운트가 흔들리고 정리 후 즉시 재중복될 수 있다.)
 --
 -- 적용 명령(사장님 권한 — kis_template DATABASE 에 접속):
 --   psql -h 127.0.0.1 -p 5433 -U robotrader -d kis_template \
@@ -57,14 +57,16 @@ BEGIN
     END IF;
 END $$;
 
--- STEP B — loser 행의 ctid 를 확정(트랜잭션 내 스냅샷, 수집기 정지 전제로 안정).
+-- STEP B — loser 행의 **PK (stock_code, trade_date, idx)** 를 확정.
+--   ctid 가 아니라 PK 로 키잉한다 — ctid 는 autovacuum/튜플 재배치로 이동해 삭제
+--   대상이 어긋날 수 있으나, 옛 PK 는 loser 행마다 UNIQUE 라 정확·안정하다.
 --   keeper = 파티션(stock_code, datetime) 내 trade_date ASC, idx ASC 첫 행(rn=1).
 --   loser  = 그 외(rn>1).  datetime IS NULL 행은 자연키가 없어 대상에서 제외
 --            (UNIQUE(stock_code,datetime)는 NULL 을 서로 distinct 로 취급하므로
 --             인덱스 생성을 막지 않는다).
 CREATE TEMP TABLE _mc_losers ON COMMIT DROP AS
-SELECT row_ctid FROM (
-    SELECT ctid AS row_ctid,
+SELECT stock_code, trade_date, idx FROM (
+    SELECT stock_code, trade_date, idx,
            row_number() OVER (
                PARTITION BY stock_code, datetime
                ORDER BY trade_date ASC, idx ASC
@@ -74,16 +76,21 @@ SELECT row_ctid FROM (
 ) ranked
 WHERE rn > 1;
 
--- STEP C — 삭제 전 전량 보존.
+-- STEP C — 삭제 전 전량 보존(PK 조인).
 INSERT INTO minute_candles_dupes
 SELECT mc.*
 FROM minute_candles mc
-JOIN _mc_losers l ON mc.ctid = l.row_ctid;
+JOIN _mc_losers l
+  ON mc.stock_code = l.stock_code
+ AND mc.trade_date = l.trade_date
+ AND mc.idx        = l.idx;
 
--- STEP D — 정확히 그 loser 행만 삭제.
+-- STEP D — 정확히 그 loser 행만 삭제(PK 매칭).
 DELETE FROM minute_candles mc
 USING _mc_losers l
-WHERE mc.ctid = l.row_ctid;
+WHERE mc.stock_code = l.stock_code
+  AND mc.trade_date = l.trade_date
+  AND mc.idx        = l.idx;
 
 -- =====================================================================
 -- 검증 (COMMIT 전에 결과를 눈으로 확인할 것)
