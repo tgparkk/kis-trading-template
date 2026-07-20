@@ -6,6 +6,7 @@ Common fixtures for testing the trading template system.
 """
 
 import asyncio
+import os
 
 import pytest
 import pandas as pd
@@ -14,6 +15,28 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, MagicMock, AsyncMock
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
+
+
+# ============================================================================
+# TIMESCALE_DB env 격리 (스위트 오염 방지)
+# ============================================================================
+@pytest.fixture(autouse=True)
+def _restore_timescale_db_env():
+    """매 테스트 전 TIMESCALE_DB 를 스냅샷하고 종료 시 원복한다(방어층).
+
+    코드 밑단에서 raw ``os.environ["TIMESCALE_DB"] = ...`` 로 env 를 스왑하면
+    pytest monkeypatch 가 커버하지 못해 잔재가 남고, 이후 DB 테스트가 없는 DB 로
+    접속(psycopg2.OperationalError)해 스위트 전체가 연쇄 실패한다. 특정 누수처를
+    고치더라도 다른 누수처를 잡기 위해 여기서 무조건 원복을 보장한다.
+    """
+    _prev = os.environ.get("TIMESCALE_DB")
+    try:
+        yield
+    finally:
+        if _prev is None:
+            os.environ.pop("TIMESCALE_DB", None)
+        else:
+            os.environ["TIMESCALE_DB"] = _prev
 
 
 # ============================================================================

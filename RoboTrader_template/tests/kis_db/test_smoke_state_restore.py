@@ -123,6 +123,52 @@ class _FakeCandidateRepoWithMixedDates:
         })
 
 
+def test_run_smoke_restores_timescale_db_env(monkeypatch):
+    """회귀: run_smoke() 가 TIMESCALE_DB 를 스왑한 뒤 복원하지 않으면
+    이후 pytest 세션의 모든 DB 테스트가 없는 DB 로 접속해 연쇄 실패한다.
+
+    monkeypatch(StateRestorer/TradingRepository/CandidateRepository/now_kst)로
+    실 DB 없이 run_smoke() 를 구동하고, 호출 전후 TIMESCALE_DB 가 동일한지 검증한다.
+    """
+    import os
+
+    monkeypatch.setattr("bot.state_restorer.StateRestorer",
+                        _FakeStateRestorerCapturesCandidatesAndHoldings)
+    monkeypatch.setattr("db.repositories.trading.TradingRepository",
+                        _FakeTradingRepoRecordsCtorArgs)
+    monkeypatch.setattr("db.repositories.candidate.CandidateRepository",
+                        _FakeCandidateRepoWithMixedDates)
+    monkeypatch.setattr("utils.korean_time.now_kst",
+                        lambda: datetime(2026, 7, 6, 10, 0, 0))
+
+    sentinel = "kis_template_SENTINEL"
+    monkeypatch.setenv("TIMESCALE_DB", sentinel)
+
+    smk.run_smoke("kis_template_test", capital=10_000.0)
+
+    assert os.environ.get("TIMESCALE_DB") == sentinel
+
+
+def test_run_smoke_restores_absent_timescale_db_env(monkeypatch):
+    """회귀: 호출 전 TIMESCALE_DB 가 없었다면 호출 후에도 없어야 한다(잔재 금지)."""
+    import os
+
+    monkeypatch.setattr("bot.state_restorer.StateRestorer",
+                        _FakeStateRestorerCapturesCandidatesAndHoldings)
+    monkeypatch.setattr("db.repositories.trading.TradingRepository",
+                        _FakeTradingRepoRecordsCtorArgs)
+    monkeypatch.setattr("db.repositories.candidate.CandidateRepository",
+                        _FakeCandidateRepoWithMixedDates)
+    monkeypatch.setattr("utils.korean_time.now_kst",
+                        lambda: datetime(2026, 7, 6, 10, 0, 0))
+
+    monkeypatch.delenv("TIMESCALE_DB", raising=False)
+
+    smk.run_smoke("kis_template_test", capital=10_000.0)
+
+    assert "TIMESCALE_DB" not in os.environ
+
+
 def test_run_smoke_only_counts_genuine_holdings_and_detects_dropped_holding(monkeypatch):
     monkeypatch.setattr("bot.state_restorer.StateRestorer",
                         _FakeStateRestorerCapturesCandidatesAndHoldings)

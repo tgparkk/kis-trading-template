@@ -126,48 +126,65 @@ def run_smoke(dbname: str, capital: float = DEFAULT_CAPITAL) -> dict:
     풀 초기화 전에 env 를 세팅해야 하므로 반드시 자식 프로세스(--emit-db)로 호출한다.
     부모 프로세스에서 직접 호출하면 이미 초기화된 싱글턴 풀이 남아 잘못된 DB 를 읽을 수 있다.
     """
+    # ⚠️ TIMESCALE_DB 는 반드시 복원해야 한다. 인프로세스 테스트가 run_smoke() 를
+    # 호출하면 이 env 스왑이 잔존해 이후 pytest 세션의 모든 DB 테스트가 없는 DB 로
+    # 접속(psycopg2.OperationalError)해 연쇄 실패한다. try/finally 로 원복 보장.
+    _prev_timescale_db = os.environ.get("TIMESCALE_DB")
     os.environ["TIMESCALE_DB"] = dbname
-    from bot.state_restorer import StateRestorer
-    from db.repositories.trading import TradingRepository
-    from db.repositories.candidate import CandidateRepository
-    from utils.korean_time import now_kst
+    try:
+        from bot.state_restorer import StateRestorer
+        from db.repositories.trading import TradingRepository
+        from db.repositories.candidate import CandidateRepository
+        from utils.korean_time import now_kst
 
-    # real_table_name 을 기본값으로 명시 고정 → __init__ 의 ensure_real_table()
-    # (CREATE TABLE ... LIKE ... INCLUDING ALL) DDL 분기를 절대 타지 않는다.
-    # KIS_INSTANCE_DIR 가 세팅된 환경에서 인자 없이 생성하면 비-기본 테이블명이
-    # 주입되어 DDL 이 발동한다 — 이 스모크는 read-only 여야 한다(가상 테이블만 읽음).
-    trading_repo = TradingRepository(real_table_name="real_trading_records")
-    candidate_repo = CandidateRepository()
+        # real_table_name 을 기본값으로 명시 고정 → __init__ 의 ensure_real_table()
+        # (CREATE TABLE ... LIKE ... INCLUDING ALL) DDL 분기를 절대 타지 않는다.
+        # KIS_INSTANCE_DIR 가 세팅된 환경에서 인자 없이 생성하면 비-기본 테이블명이
+        # 주입되어 DDL 이 발동한다 — 이 스모크는 read-only 여야 한다(가상 테이블만 읽음).
+        trading_repo = TradingRepository(real_table_name="real_trading_records")
+        candidate_repo = CandidateRepository()
 
-    tm = _FakeTradingManager()
-    restorer = StateRestorer(
-        trading_manager=tm,
-        db_manager=trading_repo,
-        telegram_integration=None,
-        config=_FakeConfig(),
-        get_previous_close_callback=lambda code: None,
-        broker=None,
-        fund_manager=None,
-        virtual_trading_manager=None,
-        strategies={},
-    )
-    asyncio.run(restorer.restore_todays_candidates())
+        tm = _FakeTradingManager()
+        restorer = StateRestorer(
+            trading_manager=tm,
+            db_manager=trading_repo,
+            telegram_integration=None,
+            config=_FakeConfig(),
+            get_previous_close_callback=lambda code: None,
+            broker=None,
+            fund_manager=None,
+            virtual_trading_manager=None,
+            strategies={},
+        )
+        asyncio.run(restorer.restore_todays_candidates())
 
-    # tm.captured 는 후보 스캔 종목(quantity=0)과 실보유 종목(set_position 으로
-    # quantity>0 확정) 을 모두 담는다 — quantity>0 로 걸러야 진짜 보유만 남는다.
-    # (걸러내지 않으면 유실된 실보유가 같은 종목이 후보로도 잡혀 있을 때 가짜 PASS)
-    open_positions = [p for p in tm.captured.values() if p["quantity"] > 0]
-    strategy_sums = trading_repo.get_strategy_trade_sums()
-    today = now_kst().strftime("%Y-%m-%d")
-    # _restore_candidates 와 동일하게 DATE(selection_date)=today 로 엄격 필터
-    # (get_candidate_history(days=1) 의 24시간 롤링 윈도우는 복원 의미론과 다름)
-    cand_df = candidate_repo.get_candidate_history(days=1)
-    if not cand_df.empty and "stock_code" in cand_df.columns:
-        same_day = cand_df["selection_date"].dt.strftime("%Y-%m-%d") == today
-        cand_codes = list(cand_df.loc[same_day, "stock_code"])
-    else:
-        cand_codes = []
-    return build_restore_summary(open_positions, strategy_sums, cand_codes, capital)
+        # tm.captured 는 후보 스캔 종목(quantity=0)과 실보유 종목(set_position 으로
+        # quantity>0 확정) 을 모두 담는다 — quantity>0 로 걸러야 진짜 보유만 남는다.
+        # (걸러내지 않으면 유실된 실보유가 같은 종목이 후보로도 잡혀 있을 때 가짜 PASS)
+        open_positions = [p for p in tm.captured.values() if p["quantity"] > 0]
+        strategy_sums = trading_repo.get_strategy_trade_sums()
+        today = now_kst().strftime("%Y-%m-%d")
+        # _restore_candidates 와 동일하게 DATE(selection_date)=today 로 엄격 필터
+        # (get_candidate_history(days=1) 의 24시간 롤링 윈도우는 복원 의미론과 다름)
+        cand_df = candidate_repo.get_candidate_history(days=1)
+        if not cand_df.empty and "stock_code" in cand_df.columns:
+            same_day = cand_df["selection_date"].dt.strftime("%Y-%m-%d") == today
+            cand_codes = list(cand_df.loc[same_day, "stock_code"])
+        else:
+            cand_codes = []
+        return build_restore_summary(open_positions, strategy_sums, cand_codes, capital)
+    finally:
+        # 풀이 테스트 DB 에 바인딩된 채 남지 않도록 먼저 teardown(실패해도 무시).
+        try:
+            from db.connection import DatabaseConnection
+            DatabaseConnection.close_all()
+        except Exception:
+            pass
+        # env 복원: 이전 값이 없었으면 제거, 있었으면 원복.
+        if _prev_timescale_db is None:
+            os.environ.pop("TIMESCALE_DB", None)
+        else:
+            os.environ["TIMESCALE_DB"] = _prev_timescale_db
 
 
 def _spawn_summary(dbname: str, capital: float) -> dict:
