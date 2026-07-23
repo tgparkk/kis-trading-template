@@ -93,11 +93,13 @@ class LiquidationHandler:
                             self.logger.warning(f"장마감 가상청산 실패: {stock_code}")
                     else:
                         # 실매매 - 기존 실매도 로직
-                        moved = self.bot.trading_manager.move_to_sell_candidate(stock_code, "장마감 일괄청산")
+                        _owner = trading_stock.owner_strategy_name or None
+                        moved = self.bot.trading_manager.move_to_sell_candidate(
+                            stock_code, "장마감 일괄청산", strategy=_owner)
                         if moved:
                             await self.bot.trading_manager.execute_sell_order(
                                 stock_code, quantity, sell_price, "장마감 일괄청산", market=True,
-                                force=True
+                                force=True, strategy=_owner
                             )
                             self.logger.info(
                                 f"장마감 청산 주문: {stock_code} {quantity}주 시장가 @{sell_price:,.0f}원"
@@ -181,14 +183,15 @@ class LiquidationHandler:
                                 failed_stocks.append(stock_code)
                         else:
                             # 실매매 - 기존 실매도 로직
+                            _owner = trading_stock.owner_strategy_name or None
                             moved = self.bot.trading_manager.move_to_sell_candidate(
-                                stock_code, f"{time_label} 시장가 일괄매도"
+                                stock_code, f"{time_label} 시장가 일괄매도", strategy=_owner
                             )
                             if moved:
                                 await self.bot.trading_manager.execute_sell_order(
                                     stock_code, quantity, current_price,
                                     f"{time_label} 시장가 일괄매도", market=True,
-                                    force=True
+                                    force=True, strategy=_owner
                                 )
                                 self.logger.info(
                                     f"{time_label} 시장가 매도: "
@@ -283,14 +286,15 @@ class LiquidationHandler:
                         still_failed.append(stock_code)
                 else:
                     # 실매매 - 기존 실매도 로직
+                    _owner = target.owner_strategy_name or None
                     moved = self.bot.trading_manager.move_to_sell_candidate(
-                        stock_code, f"EOD 청산 재시도 #{self._eod_retry_count}"
+                        stock_code, f"EOD 청산 재시도 #{self._eod_retry_count}", strategy=_owner
                     )
                     if moved:
                         await self.bot.trading_manager.execute_sell_order(
                             stock_code, quantity, 0.0,
                             f"EOD 청산 재시도 #{self._eod_retry_count}", market=True,
-                            force=True
+                            force=True, strategy=_owner
                         )
                         self.logger.info(f"EOD 재시도 성공: {stock_code} {quantity}주")
                     else:

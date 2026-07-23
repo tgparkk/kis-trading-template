@@ -205,7 +205,8 @@ class TradingStockManager:
         )
 
     async def execute_buy_order(self, stock_code: str, quantity: int,
-                                price: float, reason: str = "") -> bool:
+                                price: float, reason: str = "",
+                                strategy: Optional[str] = None) -> bool:
         """
         매수 주문 실행
 
@@ -214,30 +215,34 @@ class TradingStockManager:
             quantity: 주문 수량
             price: 주문 가격
             reason: 매수 사유
+            strategy: 소유 전략명(다중소유 오귀속 방지, 미지정 시 기존 폴백)
 
         Returns:
             bool: 주문 성공 여부
         """
         return await self._order_execution.execute_buy_order(
-            stock_code, quantity, price, reason
+            stock_code, quantity, price, reason, strategy=strategy
         )
 
-    def move_to_sell_candidate(self, stock_code: str, reason: str = "") -> bool:
+    def move_to_sell_candidate(self, stock_code: str, reason: str = "",
+                               strategy: Optional[str] = None) -> bool:
         """
         포지션 종목을 매도 후보로 변경
 
         Args:
             stock_code: 종목코드
             reason: 변경 사유
+            strategy: 소유 전략명(다중소유 오귀속 방지, 미지정 시 기존 폴백)
 
         Returns:
             bool: 변경 성공 여부
         """
-        return self._order_execution.move_to_sell_candidate(stock_code, reason)
+        return self._order_execution.move_to_sell_candidate(stock_code, reason, strategy=strategy)
 
     async def execute_sell_order(self, stock_code: str, quantity: int,
                                  price: float, reason: str = "", market: bool = False,
-                                 force: bool = False) -> bool:
+                                 force: bool = False,
+                                 strategy: Optional[str] = None) -> bool:
         """
         매도 주문 실행
 
@@ -248,43 +253,53 @@ class TradingStockManager:
             reason: 매도 사유
             market: 시장가 주문 여부
             force: 동시호가 등 시간대 제한 무시
+            strategy: 소유 전략명(다중소유 오귀속 방지, 미지정 시 기존 폴백)
 
         Returns:
             bool: 주문 성공 여부
         """
         return await self._order_execution.execute_sell_order(
-            stock_code, quantity, price, reason, market, force
+            stock_code, quantity, price, reason, market, force, strategy=strategy
         )
 
-    def remove_stock(self, stock_code: str, reason: str = "") -> bool:
+    def remove_stock(self, stock_code: str, reason: str = "",
+                     strategy: Optional[str] = None) -> bool:
         """
         종목 제거
 
         Args:
             stock_code: 종목코드
             reason: 제거 사유
+            strategy: 소유 전략명(다중소유 오귀속 방지, 미지정 시 기존 폴백)
 
         Returns:
             bool: 제거 성공 여부
         """
-        return self._order_execution.remove_stock(stock_code, reason)
+        return self._order_execution.remove_stock(stock_code, reason, strategy=strategy)
 
-    async def handle_order_timeout(self, order) -> None:
+    async def handle_order_timeout(self, order, strategy: Optional[str] = None) -> None:
         """
         OrderManager에서 타임아웃/취소된 주문 처리
 
         Args:
             order: 타임아웃된 주문 객체 (Order)
+            strategy: 소유 전략명(다중소유 오귀속 방지, 미지정 시 기존 폴백)
         """
-        await self._order_execution.handle_order_timeout(order)
+        await self._order_execution.handle_order_timeout(order, strategy=strategy)
 
-    async def on_partial_fill_timeout(self, order, filled_qty: int, filled_price: float) -> None:
+    async def on_partial_fill_timeout(self, order, filled_qty: int, filled_price: float,
+                                      strategy: Optional[str] = None) -> None:
         """매수 부분 체결 타임아웃 처리"""
-        await self._order_execution.on_partial_fill_timeout(order, filled_qty, filled_price)
+        await self._order_execution.on_partial_fill_timeout(
+            order, filled_qty, filled_price, strategy=strategy
+        )
 
-    async def on_sell_partial_fill_timeout(self, order, filled_qty: int, filled_price: float) -> None:
+    async def on_sell_partial_fill_timeout(self, order, filled_qty: int, filled_price: float,
+                                           strategy: Optional[str] = None) -> None:
         """매도 부분 체결 타임아웃 처리"""
-        await self._order_execution.on_sell_partial_fill_timeout(order, filled_qty, filled_price)
+        await self._order_execution.on_sell_partial_fill_timeout(
+            order, filled_qty, filled_price, strategy=strategy
+        )
 
     def set_re_trading_config(self, enable: bool) -> None:
         """
@@ -339,9 +354,14 @@ class TradingStockManager:
         """종목 정보 조회"""
         return self._state_manager.get_trading_stock(stock_code, strategy=strategy)
 
-    def update_current_order(self, stock_code: str, new_order_id: str) -> None:
-        """정정 등으로 새 주문이 생성되었을 때 현재 주문ID를 최신값으로 동기화"""
-        self._state_manager.update_current_order(stock_code, new_order_id)
+    def update_current_order(self, stock_code: str, new_order_id: str,
+                             strategy: Optional[str] = None) -> None:
+        """정정 등으로 새 주문이 생성되었을 때 현재 주문ID를 최신값으로 동기화
+
+        strategy 지정 시 해당 전략 소유 인스턴스만 갱신(다중소유 오귀속 방지).
+        미지정(None) 시 종목코드 단독 매칭 = 기존 폴백 동작 보존.
+        """
+        self._state_manager.update_current_order(stock_code, new_order_id, strategy=strategy)
 
     def get_portfolio_summary(self) -> Dict[str, Any]:
         """포트폴리오 전체 현황"""

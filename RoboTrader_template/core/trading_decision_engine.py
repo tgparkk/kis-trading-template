@@ -718,16 +718,18 @@ class TradingDecisionEngine:
             if not trading_stock.position or trading_stock.position.quantity <= 0:
                 return False
             stock_code = trading_stock.stock_code
+            # 소유 전략을 명시해 다중소유 종목의 오귀속을 차단(2026-07-23)
+            _owner = trading_stock.owner_strategy_name or None
             # 매도 후보 상태로 전이 (execute_sell_order는 SELL_CANDIDATE 상태 필요)
             move_ok = self.trading_manager.move_to_sell_candidate(
-                stock_code=stock_code, reason=sell_reason)
+                stock_code=stock_code, reason=sell_reason, strategy=_owner)
             if not move_ok:
                 self.logger.warning(f"매도 후보 전환 실패: {stock_code}")
                 return False
             ok = await self.trading_manager.execute_sell_order(
                 stock_code=stock_code,
                 quantity=trading_stock.position.quantity,
-                price=0, reason=sell_reason, market=True)
+                price=0, reason=sell_reason, market=True, strategy=_owner)
             if ok:
                 self.logger.info(f"매도: {stock_code} - {sell_reason}")
             else:

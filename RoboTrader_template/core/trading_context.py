@@ -330,7 +330,13 @@ class TradingContext:
                 self.logger.info(f"매수 판단 스킵: 국면게이트 ({gate_reason})")
                 return None
 
-            trading_stock = self._trading_manager.get_trading_stock(stock_code)
+            # 소유 전략을 명시해 조회 — 같은 종목을 여러 전략이 동시 점유할 때
+            # 삽입순서상 첫 소유자(다른 전략)의 객체를 받아 변이시키는 [모호조회]
+            # 오귀속을 차단한다(2026-07-23). 표기명이 비어 있으면(레거시 단일전략)
+            # None 으로 폴백해 기존 동작을 그대로 보존한다.
+            trading_stock = self._trading_manager.get_trading_stock(
+                stock_code, strategy=self._current_strategy_name or None
+            )
             if trading_stock is None:
                 self.logger.debug(f"매수 스킵: {stock_code} 종목 정보 없음")
                 return None
@@ -510,7 +516,12 @@ class TradingContext:
             주문 성공 시 stock_code, 실패 시 None
         """
         try:
-            trading_stock = self._trading_manager.get_trading_stock(stock_code)
+            # 소유 전략을 명시해 조회 — 다중소유 시 첫 소유자(다른 전략)의 객체를
+            # 받아 owner-mismatch 로 정당한 매도가 잘못 거부되는 것을 차단(2026-07-23).
+            # 표기명이 비어 있으면(레거시 단일전략) None 폴백으로 기존 동작 보존.
+            trading_stock = self._trading_manager.get_trading_stock(
+                stock_code, strategy=self._current_strategy_name or None
+            )
             if trading_stock is None:
                 self.logger.debug(f"매도 스킵: {stock_code} 종목 정보 없음")
                 return None

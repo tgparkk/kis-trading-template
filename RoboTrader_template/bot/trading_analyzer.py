@@ -268,7 +268,11 @@ class TradingAnalyzer:
                                 pass
 
                         # move_to_sell_candidate는 가상매도에서는 직접 호출
-                        self.bot.trading_manager.move_to_sell_candidate(stock_code, sell_reason)
+                        # 소유 전략을 명시해 다중소유 종목의 오귀속을 차단
+                        self.bot.trading_manager.move_to_sell_candidate(
+                            stock_code, sell_reason,
+                            strategy=trading_stock.owner_strategy_name or None
+                        )
                         # 확정된 매도가를 execute_virtual_sell에 전달
                         sell_ok = await self.bot.decision_engine.execute_virtual_sell(
                             trading_stock, sell_price, sell_reason

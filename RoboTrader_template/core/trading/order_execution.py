@@ -154,7 +154,8 @@ class OrderExecution:
             return False
 
     async def execute_buy_order(self, stock_code: str, quantity: int,
-                                price: float, reason: str = "") -> bool:
+                                price: float, reason: str = "",
+                                strategy: Optional[str] = None) -> bool:
         """
         매수 주문 실행
 
@@ -163,13 +164,16 @@ class OrderExecution:
             quantity: 주문 수량
             price: 주문 가격
             reason: 매수 사유
+            strategy: 소유 전략명. 지정 시 해당 전략 소유 인스턴스만 조회/변경한다
+                      (다중소유 종목의 오귀속 방지). 미지정(None) 시 종목코드 단독
+                      매칭 = 기존 폴백 동작 보존.
 
         Returns:
             bool: 주문 성공 여부
         """
         try:
             with self.state_manager.lock:
-                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                 if trading_stock is None:
                     self.logger.warning(f"{stock_code}: 관리 중이지 않은 종목")
                     return False
@@ -226,7 +230,7 @@ class OrderExecution:
 
             if order_id:
                 with self.state_manager.lock:
-                    trading_stock = self.state_manager.get_trading_stock(stock_code)
+                    trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                     if trading_stock is not None:
                         trading_stock.add_order(order_id)
 
@@ -235,7 +239,7 @@ class OrderExecution:
             else:
                 # 주문 실패 시 원래 상태로 되돌림 (SELECTED 또는 COMPLETED)
                 with self.state_manager.lock:
-                    trading_stock = self.state_manager.get_trading_stock(stock_code)
+                    trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                     if trading_stock is not None:
                         # 매수 진행 플래그 리셋
                         trading_stock.is_buying = False
@@ -254,7 +258,7 @@ class OrderExecution:
             self.logger.error(f"{stock_code} 매수 주문 오류: {e}")
             # 오류 시 원래 상태로 되돌림
             with self.state_manager.lock:
-                _ts = self.state_manager.get_trading_stock(stock_code)
+                _ts = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                 if _ts is not None:
                     _ts.is_buying = False
                     original_state = (
@@ -266,20 +270,23 @@ class OrderExecution:
                     )
             return False
 
-    def move_to_sell_candidate(self, stock_code: str, reason: str = "") -> bool:
+    def move_to_sell_candidate(self, stock_code: str, reason: str = "",
+                               strategy: Optional[str] = None) -> bool:
         """
         포지션 종목을 매도 후보로 변경
 
         Args:
             stock_code: 종목코드
             reason: 변경 사유
+            strategy: 소유 전략명. 지정 시 해당 전략 소유 인스턴스만 조회/변경
+                      (다중소유 오귀속 방지). 미지정(None) 시 기존 폴백 동작 보존.
 
         Returns:
             bool: 변경 성공 여부
         """
         try:
             with self.state_manager.lock:
-                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                 if trading_stock is None:
                     self.logger.warning(f"{stock_code}: 관리 중이지 않은 종목")
                     return False
@@ -311,7 +318,8 @@ class OrderExecution:
 
     async def execute_sell_order(self, stock_code: str, quantity: int,
                                  price: float, reason: str = "", market: bool = False,
-                                 force: bool = False) -> bool:
+                                 force: bool = False,
+                                 strategy: Optional[str] = None) -> bool:
         """
         매도 주문 실행
 
@@ -322,13 +330,15 @@ class OrderExecution:
             reason: 매도 사유
             market: 시장가 주문 여부
             force: True이면 시간대 검사를 건너뜀 (EOD 청산 등)
+            strategy: 소유 전략명. 지정 시 해당 전략 소유 인스턴스만 조회/변경
+                      (다중소유 오귀속 방지). 미지정(None) 시 기존 폴백 동작 보존.
 
         Returns:
             bool: 주문 성공 여부
         """
         try:
             with self.state_manager.lock:
-                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                 if trading_stock is None:
                     self.logger.warning(f"{stock_code}: 관리 중이지 않은 종목")
                     return False
@@ -359,7 +369,7 @@ class OrderExecution:
 
             if order_id:
                 with self.state_manager.lock:
-                    trading_stock = self.state_manager.get_trading_stock(stock_code)
+                    trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                     if trading_stock is not None:
                         trading_stock.add_order(order_id)
 
@@ -368,7 +378,7 @@ class OrderExecution:
             else:
                 # 주문 실패 시 매도 후보로 되돌림 + is_selling 즉시 해제
                 with self.state_manager.lock:
-                    _ts = self.state_manager.get_trading_stock(stock_code)
+                    _ts = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                     if _ts is not None:
                         _ts.is_selling = False
                     self.state_manager.change_stock_state(
@@ -381,7 +391,7 @@ class OrderExecution:
             self.logger.error(f"{stock_code} 매도 주문 오류: {e}")
             # 오류 시 매도 후보로 되돌림 + is_selling 즉시 해제
             with self.state_manager.lock:
-                _ts = self.state_manager.get_trading_stock(stock_code)
+                _ts = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                 if _ts is not None:
                     _ts.is_selling = False
                     self.state_manager.change_stock_state(
@@ -390,20 +400,23 @@ class OrderExecution:
                     )
             return False
 
-    def remove_stock(self, stock_code: str, reason: str = "") -> bool:
+    def remove_stock(self, stock_code: str, reason: str = "",
+                     strategy: Optional[str] = None) -> bool:
         """
         종목 제거
 
         Args:
             stock_code: 종목코드
             reason: 제거 사유
+            strategy: 소유 전략명. 지정 시 해당 전략 소유 인스턴스만 조회/변경
+                      (다중소유 오귀속 방지). 미지정(None) 시 기존 폴백 동작 보존.
 
         Returns:
             bool: 제거 성공 여부
         """
         try:
             with self.state_manager.lock:
-                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                 if trading_stock is None:
                     return False
 
@@ -424,7 +437,7 @@ class OrderExecution:
             self.logger.error(f"{stock_code} 제거 오류: {e}")
             return False
 
-    async def handle_order_timeout(self, order) -> None:
+    async def handle_order_timeout(self, order, strategy: Optional[str] = None) -> None:
         """
         OrderManager에서 타임아웃/취소된 주문 처리
 
@@ -432,12 +445,14 @@ class OrderExecution:
 
         Args:
             order: 타임아웃된 주문 객체 (Order)
+            strategy: 소유 전략명. 지정 시 해당 전략 소유 인스턴스만 조회/변경
+                      (다중소유 오귀속 방지). 미지정(None) 시 기존 폴백 동작 보존.
         """
         try:
             stock_code = order.stock_code
 
             with self.state_manager.lock:
-                trading_stock = self.state_manager.get_trading_stock(stock_code)
+                trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
                 if trading_stock is None:
                     self.logger.warning(f"타임아웃 처리할 종목 없음: {stock_code}")
                     return
@@ -501,7 +516,8 @@ class OrderExecution:
                 f"타임아웃 처리 오류: {e}"
             )
 
-    async def on_partial_fill_timeout(self, order, filled_qty: int, filled_price: float) -> None:
+    async def on_partial_fill_timeout(self, order, filled_qty: int, filled_price: float,
+                                      strategy: Optional[str] = None) -> None:
         """
         부분 체결 타임아웃 처리 - 체결된 수량으로 포지션 설정
 
@@ -509,11 +525,13 @@ class OrderExecution:
             order: 부분 체결된 주문 객체 (Order)
             filled_qty: 체결된 수량
             filled_price: 체결 가격
+            strategy: 소유 전략명. 지정 시 해당 전략 소유 인스턴스만 조회/변경
+                      (다중소유 오귀속 방지). 미지정(None) 시 기존 폴백 동작 보존.
         """
         stock_code = order.stock_code
 
         with self.state_manager.lock:
-            trading_stock = self.state_manager.get_trading_stock(stock_code)
+            trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
             if trading_stock is None:
                 self.logger.warning(f"부분 체결 포지션 등록 실패: {stock_code} 종목 없음")
                 return
@@ -531,7 +549,8 @@ class OrderExecution:
 
         self.logger.info(f"부분 체결 포지션 등록 완료: {stock_code} {filled_qty}주 @{filled_price:,.0f}원")
 
-    async def on_sell_partial_fill_timeout(self, order, filled_qty: int, filled_price: float) -> None:
+    async def on_sell_partial_fill_timeout(self, order, filled_qty: int, filled_price: float,
+                                           strategy: Optional[str] = None) -> None:
         """
         매도 부분 체결 타임아웃 처리 - 체결된 수량 반영, 잔량은 POSITIONED로 복구
 
@@ -539,11 +558,13 @@ class OrderExecution:
             order: 부분 체결된 매도 주문 객체 (Order)
             filled_qty: 체결된 수량
             filled_price: 체결 가격
+            strategy: 소유 전략명. 지정 시 해당 전략 소유 인스턴스만 조회/변경
+                      (다중소유 오귀속 방지). 미지정(None) 시 기존 폴백 동작 보존.
         """
         stock_code = order.stock_code
 
         with self.state_manager.lock:
-            trading_stock = self.state_manager.get_trading_stock(stock_code)
+            trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
             if trading_stock is None:
                 self.logger.warning(f"매도 부분 체결 처리 실패: {stock_code} 종목 없음")
                 return
