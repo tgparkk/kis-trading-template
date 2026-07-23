@@ -85,6 +85,29 @@ class TradingContext:
         self._cycle_start_time: Optional[datetime] = None     # 현재 사이클 시작 시각
         self._new_entries_this_cycle: int = 0                  # 현재 사이클 신규 진입 수
 
+    def _get_own_trading_stock(self, stock_code: str):
+        """다중소유 종목에서 호출 전략(caller) 소유 슬롯만 안전하게 조회한다.
+
+        owner_strategy_name 표기는 상태·경로별로 분열한다(실증 2026-07-23):
+        - SELECTED: 폴더키(다중전략 로더) 또는 클래스명(단일전략 로더)
+        - POSITIONED: 클래스명(라이브 매수) 또는 폴더키(DB 복원)
+        따라서 어느 한쪽 표기만으로 조회하면 무거래(전 종목 매수 스킵) 또는
+        정당한 매도 오거부가 발생한다. 폴더키(_strategy_key)와 클래스명
+        (_current_strategy_name) 둘 중 어느 것과 일치해도 '내 것'으로 본다.
+        타 전략은 폴더키·클래스명이 모두 달라 잘못 매칭될 수 없다(각 조회는
+        strategy 완전일치라 0/1개만 반환 → [모호조회] WARNING 도 안 남는다).
+
+        둘 다 매칭 실패(무기명 레거시/미소유)면 종목코드 단독 폴백으로
+        기존 동작을 보존한다.
+        """
+        for key in (self._strategy_key, self._current_strategy_name):
+            if not key:
+                continue
+            ts = self._trading_manager.get_trading_stock(stock_code, strategy=key)
+            if ts is not None:
+                return ts
+        return self._trading_manager.get_trading_stock(stock_code)
+
     def _get_strategy_regime_settings(self) -> Tuple[str, str]:
         """현재 전략의 (regime_index, regime_gate) 반환.
 
@@ -330,13 +353,10 @@ class TradingContext:
                 self.logger.info(f"매수 판단 스킵: 국면게이트 ({gate_reason})")
                 return None
 
-            # 소유 전략을 명시해 조회 — 같은 종목을 여러 전략이 동시 점유할 때
-            # 삽입순서상 첫 소유자(다른 전략)의 객체를 받아 변이시키는 [모호조회]
-            # 오귀속을 차단한다(2026-07-23). 표기명이 비어 있으면(레거시 단일전략)
-            # None 으로 폴백해 기존 동작을 그대로 보존한다.
-            trading_stock = self._trading_manager.get_trading_stock(
-                stock_code, strategy=self._current_strategy_name or None
-            )
+            # 호출 전략 소유 슬롯만 조회 — 같은 종목을 여러 전략이 동시 점유할 때
+            # 다른 전략의 객체를 받아 변이시키는 [모호조회] 오귀속을 차단(2026-07-23).
+            # owner 표기(폴더키/클래스명) 분열에 견고한 조회 사용.
+            trading_stock = self._get_own_trading_stock(stock_code)
             if trading_stock is None:
                 self.logger.debug(f"매수 스킵: {stock_code} 종목 정보 없음")
                 return None
@@ -516,19 +536,20 @@ class TradingContext:
             주문 성공 시 stock_code, 실패 시 None
         """
         try:
-            # 소유 전략을 명시해 조회 — 다중소유 시 첫 소유자(다른 전략)의 객체를
-            # 받아 owner-mismatch 로 정당한 매도가 잘못 거부되는 것을 차단(2026-07-23).
-            # 표기명이 비어 있으면(레거시 단일전략) None 폴백으로 기존 동작 보존.
-            trading_stock = self._trading_manager.get_trading_stock(
-                stock_code, strategy=self._current_strategy_name or None
-            )
+            # 호출 전략 소유 슬롯만 조회 — 다중소유 시 다른 전략의 객체를 받아
+            # owner-mismatch 로 정당한 매도가 잘못 거부되는 것을 차단(2026-07-23).
+            # owner 표기(폴더키/클래스명) 분열에 견고한 조회 사용.
+            trading_stock = self._get_own_trading_stock(stock_code)
             if trading_stock is None:
                 self.logger.debug(f"매도 스킵: {stock_code} 종목 정보 없음")
                 return None
 
-            # 소유권 가드: 다른 전략 소유 종목 매도 거부
+            # 소유권 가드: 다른 전략 소유 종목 매도 거부. owner 표기가 폴더키/클래스명
+            # 으로 분열하므로(실증 2026-07-23), 둘 중 어느 것과도 불일치할 때만 거부한다
+            # — 클래스명 단독 비교 시 복원 포지션(owner=폴더키)의 정당한 매도를 오거부함.
             owner_name = getattr(trading_stock, 'owner_strategy_name', '')
-            if owner_name and self._current_strategy_name and owner_name != self._current_strategy_name:
+            _my_ids = {k for k in (self._strategy_key, self._current_strategy_name) if k}
+            if owner_name and _my_ids and owner_name not in _my_ids:
                 self.logger.info(
                     f"매도 거부: {stock_code}는 {owner_name} 소유, "
                     f"{self._current_strategy_name}이 호출"

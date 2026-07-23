@@ -5,21 +5,26 @@
 StockStateManager.get_trading_stock(stock_code, strategy=None) 은 삽입순서상 첫
 소유자를 임의 반환하고 [모호조회] WARNING 을 찍는다. TradingContext.buy()/sell()
 가 strategy 를 넘기지 않으면 caller 자신의 전략이 아닌 '다른 전략의 TradingStock'
-을 받아 변이(mutate)시킬 수 있다. 최악 시 caller 슬롯이 감시·매도에서 누락되는
-고아 포지션.
+을 받아 변이(mutate)시킬 수 있다(최악: 감시·매도 누락 고아 포지션).
 
-이 파일은 기존 test_stock_state_manager_composite.py / test_phase_e8_duplicate_stock_guard.py
-(StockStateManager 단독 또는 Mock trading_manager)와 달리, **실제 TradingContext 경로 +
-실제 StockStateManager** 로 2소유자 시나리오를 태워, 반환/변이되는 객체의 정체성(identity,
-`is`)이 호출 전략(B)의 슬롯인지, 그리고 사이클 중 [모호조회] WARNING 이 0건인지를 검증한다.
+★ 프로덕션 owner 표기 분열(실증 2026-07-23):
+- SELECTED(buy 조회): 폴더키(다중전략 로더 candidate_loader.py:186) 또는
+  클래스명(단일전략 로더 :95).
+- POSITIONED(sell 조회): 클래스명(라이브 매수 trading_decision_engine.py:644)
+  또는 폴더키(DB 복원 state_restorer.py:482 = ledger_key).
+TradingContext 는 _strategy_key=폴더키, _current_strategy_name=클래스명 을 갖는다.
+따라서 어느 한쪽 표기만으로 조회하면 무거래(전 종목 매수 스킵) 또는 정당한
+매도 오거부가 난다. 이 파일은 **프로덕션 형상**(owner=폴더키/클래스명 분열,
+_current_strategy_name=클래스명)을 모델링해 표기-불변 조회를 검증한다.
 """
-import asyncio
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from core.trading.stock_state_manager import StockStateManager
+from core.trading_stock_manager import TradingStockManager
+from core.trading_decision_engine import TradingDecisionEngine
 from core.trading_context import TradingContext
 from core.models import TradingStock, StockState
 from utils.korean_time import now_kst
@@ -95,14 +100,15 @@ class _FakeTradingManager:
         return self._ssm.get_stocks_by_state(state)
 
 
-def _make_ctx(trading_manager, trading_analyzer, current_strategy: str):
-    """current_strategy 를 표기명(_current_strategy_name)으로 갖는 TradingContext.
+def _make_ctx(trading_manager, trading_analyzer, folder_key: str, class_name: str):
+    """_strategy_key=folder_key, _current_strategy_name=class_name 인 TradingContext.
 
-    strategies_dict 에 .name==current_strategy 인스턴스를 넣어 __init__ 이
-    _current_strategy_name 을 그 이름으로 세팅하게 한다.
+    strategies_dict[folder_key].name==class_name 이면 __init__ 이
+    _current_strategy_name 을 클래스명으로, _strategy_key 를 폴더키로 분리 저장한다
+    (프로덕션 형상 재현).
     """
     strat = MagicMock()
-    strat.name = current_strategy
+    strat.name = class_name
     strat.holding_period = "swing"  # EOD intraday 차단 회피(안전)
 
     decision_engine = MagicMock()
@@ -118,7 +124,7 @@ def _make_ctx(trading_manager, trading_analyzer, current_strategy: str):
     broker = MagicMock()
     broker.get_current_price.return_value = None
 
-    return TradingContext(
+    ctx = TradingContext(
         trading_manager=trading_manager,
         decision_engine=decision_engine,
         fund_manager=fund_manager,
@@ -127,79 +133,81 @@ def _make_ctx(trading_manager, trading_analyzer, current_strategy: str):
         trading_analyzer=trading_analyzer,
         db_manager=None,
         broker=broker,
-        strategy_name="owner_b_key",
-        strategies_dict={"owner_b_key": strat},
+        strategy_name=folder_key,
+        strategies_dict={folder_key: strat},
     )
+    # 형상 사전검증: 폴더키≠클래스명 분리 저장 확인
+    assert ctx._strategy_key == folder_key
+    assert ctx._current_strategy_name == class_name
+    return ctx
 
 
-def _register_two_owners(code: str, state: StockState):
-    """전략 A(먼저)·전략 B(나중) 두 소유자로 동일 종목 등록. (ssm, ts_a, ts_b) 반환."""
-    ssm = StockStateManager()
-    ts_a = _make_ts(code, owner="StrategyA", state=state)
-    ts_b = _make_ts(code, owner="StrategyB", state=state)
-    assert ssm.register_stock(ts_a) is True
-    assert ssm.register_stock(ts_b) is True
-    return ssm, ts_a, ts_b
+async def _run_buy(ctx, code):
+    with patch("config.market_hours.get_circuit_breaker_state") as mock_cb, \
+         patch("config.market_hours.MarketHours.is_eod_liquidation_time",
+               return_value=False):
+        cb = MagicMock()
+        cb.is_market_halted.return_value = False
+        cb.is_vi_active.return_value = False
+        mock_cb.return_value = cb
+        return await ctx.buy(code)
 
 
 # ============================================================================
-# 1. sell() — 2소유자에서 호출 전략(B)의 객체를 받아야 한다
+# 1. buy() — SELECTED owner=폴더키 인데 조회를 클래스명으로 하면 무거래(CRITICAL)
 # ============================================================================
 
-class TestSellMultiOwnerIdentity:
-    """전략 B 의 sell() 이 A 의 객체를 받아 owner-mismatch 로 잘못 거부되지 않아야."""
+class TestBuyOwnerRepresentationCritical:
+    """단일 소유라도 SELECTED owner 가 폴더키면, 클래스명 조회는 None→전 종목 매수 스킵."""
 
     @pytest.mark.asyncio
-    async def test_sell_targets_callers_own_slot(self):
+    async def test_buy_finds_slot_when_owner_is_folder_key(self):
         code = "004100"
-        ssm, ts_a, ts_b = _register_two_owners(code, StockState.POSITIONED)
+        ssm = StockStateManager()
+        # 프로덕션 다중전략 로더 형상: SELECTED owner = 폴더키
+        ts = _make_ts(code, owner="elder_ema_pullback", state=StockState.SELECTED)
+        assert ssm.register_stock(ts) is True
         tm = _FakeTradingManager(ssm)
         analyzer = AsyncMock()
-        ctx = _make_ctx(tm, analyzer, current_strategy="StrategyB")
+        analyzer.analyze_buy_decision = AsyncMock(return_value=True)
+        # ctx: 폴더키=elder_ema_pullback, 클래스명=ElderEmaPullbackStrategy
+        ctx = _make_ctx(tm, analyzer,
+                        folder_key="elder_ema_pullback",
+                        class_name="ElderEmaPullbackStrategy")
 
-        with _StateLogCapture() as cap:
-            result = await ctx.sell(code)
+        result = await _run_buy(ctx, code)
 
-        # B 의 매도는 정상 진행되어야 하고, analyze_sell_decision 이 B 의 객체로 호출돼야 한다.
-        assert result == code, "B 소유 종목 매도가 owner-mismatch 로 잘못 거부됨"
-        analyzer.analyze_sell_decision.assert_awaited_once()
-        passed = analyzer.analyze_sell_decision.call_args.args[0]
-        assert passed is ts_b, (
-            "sell() 이 호출 전략(B)이 아닌 다른 전략(A)의 TradingStock 을 넘김 "
-            f"(passed owner={getattr(passed, 'owner_strategy_name', None)})"
+        # 정정 전(클래스명 단독 조회) 이면 None → 매수 스킵(RED). 정정 후 GREEN.
+        assert result == code, (
+            "SELECTED owner=폴더키인 종목을 클래스명으로만 조회 → 무거래(매수 스킵)"
         )
-        # 2소유자 매도 경로에서 [모호조회] WARNING 이 0건이어야 한다.
-        assert cap.ambiguous_msgs() == [], (
-            f"[모호조회] WARNING 발생: {cap.ambiguous_msgs()}"
-        )
+        analyzer.analyze_buy_decision.assert_awaited_once()
+        passed = analyzer.analyze_buy_decision.call_args.args[0]
+        assert passed is ts
 
 
 # ============================================================================
-# 2. buy() — 2소유자에서 호출 전략(B)의 객체를 변이해야 한다 (wrong-object mutation)
+# 2. buy() — 2소유자에서 호출 전략(B)의 슬롯만 조회/변이 (wrong-object mutation)
 # ============================================================================
 
 class TestBuyMultiOwnerIdentity:
-    """전략 B 의 buy() 가 A 의 객체를 받아 A 의 owner 를 덮어쓰지 않아야."""
+    """전략 A(폴더키 aaa)·B(폴더키 bbb)가 같은 종목 SELECTED. B.buy()가 B 슬롯만."""
 
     @pytest.mark.asyncio
     async def test_buy_mutates_callers_own_slot(self):
         code = "004100"
-        # SELECTED 상태로 두 소유자 등록 (매수 게이트 통과 대상)
-        ssm, ts_a, ts_b = _register_two_owners(code, StockState.SELECTED)
+        ssm = StockStateManager()
+        ts_a = _make_ts(code, owner="aaa", state=StockState.SELECTED)   # 먼저
+        ts_b = _make_ts(code, owner="bbb", state=StockState.SELECTED)   # 나중
+        assert ssm.register_stock(ts_a) is True
+        assert ssm.register_stock(ts_b) is True
         tm = _FakeTradingManager(ssm)
         analyzer = AsyncMock()
-        analyzer.analyze_buy_decision = AsyncMock(return_value=True)  # 체결 성공
-        ctx = _make_ctx(tm, analyzer, current_strategy="StrategyB")
+        analyzer.analyze_buy_decision = AsyncMock(return_value=True)
+        ctx = _make_ctx(tm, analyzer, folder_key="bbb", class_name="BbbStrategy")
 
         with _StateLogCapture() as cap:
-            with patch("config.market_hours.get_circuit_breaker_state") as mock_cb, \
-                 patch("config.market_hours.MarketHours.is_eod_liquidation_time",
-                       return_value=False):
-                cb = MagicMock()
-                cb.is_market_halted.return_value = False
-                cb.is_vi_active.return_value = False
-                mock_cb.return_value = cb
-                result = await ctx.buy(code)
+            result = await _run_buy(ctx, code)
 
         assert result == code
         analyzer.analyze_buy_decision.assert_awaited_once()
@@ -208,12 +216,99 @@ class TestBuyMultiOwnerIdentity:
             "buy() 가 호출 전략(B)이 아닌 다른 전략(A)의 TradingStock 을 넘김 "
             f"(passed owner={getattr(passed, 'owner_strategy_name', None)})"
         )
-        # 매수 성공 후 owner 기록이 A 의 객체를 덮어쓰지 않아야 한다(오귀속 방지).
-        assert ts_a.owner_strategy_name == "StrategyA", (
+        # 매수 성공 후 owner 재기록이 A 의 객체를 덮어쓰지 않아야 한다(오귀속 방지).
+        assert ts_a.owner_strategy_name == "aaa", (
             "buy() 가 다른 전략(A)의 owner_strategy_name 을 덮어씀 = 크로스모듈 오귀속"
         )
-        assert ts_b.owner_strategy_name == "StrategyB"
-        # 2소유자 매수 경로에서 [모호조회] WARNING 이 0건이어야 한다.
-        assert cap.ambiguous_msgs() == [], (
-            f"[모호조회] WARNING 발생: {cap.ambiguous_msgs()}"
+        assert cap.ambiguous_msgs() == [], f"[모호조회] 발생: {cap.ambiguous_msgs()}"
+
+
+# ============================================================================
+# 3. sell() — POSITIONED owner 표기 분열(클래스명/폴더키) 모두에서 B 슬롯 조회
+# ============================================================================
+
+class TestSellOwnerRepresentationInvariant:
+    """POSITIONED owner 가 라이브(클래스명)/복원(폴더키) 어느 표기여도 정확히 조회."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("owner_repr", ["BbbStrategy", "bbb"])
+    async def test_sell_targets_callers_own_slot(self, owner_repr):
+        code = "004100"
+        ssm = StockStateManager()
+        # A 는 라이브 표기(클래스명), B 는 파라미터 표기로 POSITIONED
+        ts_a = _make_ts(code, owner="AaaStrategy", state=StockState.POSITIONED)
+        ts_b = _make_ts(code, owner=owner_repr, state=StockState.POSITIONED)
+        assert ssm.register_stock(ts_a) is True
+        assert ssm.register_stock(ts_b) is True
+        tm = _FakeTradingManager(ssm)
+        analyzer = AsyncMock()
+        ctx = _make_ctx(tm, analyzer, folder_key="bbb", class_name="BbbStrategy")
+
+        with _StateLogCapture() as cap:
+            result = await ctx.sell(code)
+
+        # 복원 표기(폴더키)일 때 정정 전(클래스명 단독 조회)은 None→매도 스킵(RED).
+        assert result == code, "B 소유 종목 매도가 owner 표기 분열로 잘못 거부됨"
+        analyzer.analyze_sell_decision.assert_awaited_once()
+        passed = analyzer.analyze_sell_decision.call_args.args[0]
+        assert passed is ts_b, (
+            "sell() 이 호출 전략(B)이 아닌 다른 전략(A)의 TradingStock 을 넘김 "
+            f"(passed owner={getattr(passed, 'owner_strategy_name', None)})"
         )
+        assert cap.ambiguous_msgs() == [], f"[모호조회] 발생: {cap.ambiguous_msgs()}"
+
+
+# ============================================================================
+# 4. execute_real_buy (MEDIUM) — 2소유자에서 올바른 슬롯만 BUY_PENDING
+# ============================================================================
+
+class TestExecuteRealBuyMultiOwner:
+    """execute_real_buy 가 owner 를 execute_buy_order 로 전달해 B 슬롯만 전이."""
+
+    def _make_real_tm(self):
+        order_manager = MagicMock()
+        order_manager.place_buy_order = AsyncMock(return_value="ORD-1")
+        # set_trading_manager 역참조 훅(있으면 호출됨) — no-op mock
+        order_manager.set_trading_manager = MagicMock()
+        tm = TradingStockManager(
+            intraday_manager=MagicMock(),
+            data_collector=MagicMock(),
+            order_manager=order_manager,
+        )
+        return tm
+
+    def _make_engine(self, tm):
+        # 무거운 __init__ 우회 — execute_real_buy 는 trading_manager·logger 만 사용
+        engine = TradingDecisionEngine.__new__(TradingDecisionEngine)
+        engine.trading_manager = tm
+        engine.logger = logging.getLogger("test.decision_engine")
+        return engine
+
+    @pytest.mark.asyncio
+    async def test_real_buy_transitions_only_callers_slot(self):
+        code = "004100"
+        tm = self._make_real_tm()
+        # 2소유자 SELECTED (프로덕션 다중전략 형상: owner=폴더키)
+        ts_a = _make_ts(code, owner="aaa", state=StockState.SELECTED)
+        ts_b = _make_ts(code, owner="bbb", state=StockState.SELECTED)
+        tm._register_stock(ts_a)
+        tm._register_stock(ts_b)
+        # 등록 확인
+        assert tm.get_trading_stock(code, strategy="aaa") is ts_a
+        assert tm.get_trading_stock(code, strategy="bbb") is ts_b
+
+        engine = self._make_engine(tm)
+
+        with _StateLogCapture() as cap:
+            ok = await engine.execute_real_buy(
+                ts_b, buy_reason="test", buy_price=1000.0, quantity=10
+            )
+
+        assert ok is True
+        # B 슬롯만 BUY_PENDING, A 슬롯은 그대로 SELECTED
+        assert ts_b.state == StockState.BUY_PENDING, "B 슬롯이 BUY_PENDING 이 아님"
+        assert ts_a.state == StockState.SELECTED, (
+            "다른 전략(A)의 슬롯이 잘못 BUY_PENDING 으로 전이됨 = 오귀속"
+        )
+        tm.order_manager.place_buy_order.assert_awaited_once()
+        assert cap.ambiguous_msgs() == [], f"[모호조회] 발생: {cap.ambiguous_msgs()}"

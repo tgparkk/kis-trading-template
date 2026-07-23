@@ -447,9 +447,12 @@ class TradingDecisionEngine:
             if quantity <= 0 or buy_price <= 0: return False
             from core.trading_stock_manager import TradingStockManager
             if isinstance(self.trading_manager, TradingStockManager):
+                # 소유 전략을 객체에서 직접 읽어 전달(표기-불변) — 다중소유 종목의
+                # 매수 실행 레그 오귀속 차단(execute_real_sell 와 대칭, 2026-07-23).
                 ok = await self.trading_manager.execute_buy_order(
                     stock_code=trading_stock.stock_code,
-                    price=buy_price, quantity=quantity, reason=buy_reason)
+                    price=buy_price, quantity=quantity, reason=buy_reason,
+                    strategy=trading_stock.owner_strategy_name or None)
                 if ok: self.logger.info(f"매수: {trading_stock.stock_code} {quantity}주 @{buy_price:,.0f}")
                 return ok
             return False
