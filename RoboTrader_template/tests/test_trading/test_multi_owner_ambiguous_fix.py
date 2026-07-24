@@ -312,3 +312,96 @@ class TestExecuteRealBuyMultiOwner:
         )
         tm.order_manager.place_buy_order.assert_awaited_once()
         assert cap.ambiguous_msgs() == [], f"[모호조회] 발생: {cap.ambiguous_msgs()}"
+
+
+# ============================================================================
+# 5. TradingAnalyzer.analyze_buy_decision — 매수 전 상태확인 조회의 [모호조회]
+# ============================================================================
+
+class TestAnalyzerBuyStateLookupOwnerInvariant:
+    """bot/trading_analyzer.py 의 '매수 전 종목 상태 확인' 조회.
+
+    caller(TradingContext.buy)는 strategy_name 으로 **폴더키**(_strategy_key)를
+    넘긴다(trading_context.py:499). 그런데 SELECTED owner 표기는 폴더키(다중전략
+    로더)/클래스명(단일전략 로더)으로 분열한다. 따라서 strategy_name 을 그대로
+    조회키로 쓰면 클래스명 owner 형상에서 매칭 0(None)이 된다.
+    → 객체(trading_stock)에서 owner 를 읽는 표기-불변 조회여야 한다.
+    """
+
+    class _RecordingTradingManager(_FakeTradingManager):
+        """get_trading_stock 호출 인자·반환값을 기록하는 trading_manager."""
+
+        def __init__(self, ssm: StockStateManager):
+            super().__init__(ssm)
+            self.lookup_calls = []
+            self._change_stock_state = MagicMock()
+
+        def get_trading_stock(self, stock_code, strategy=None):
+            result = self._ssm.get_trading_stock(stock_code, strategy=strategy)
+            self.lookup_calls.append((stock_code, strategy, result))
+            return result
+
+    @staticmethod
+    def _make_bot(tm):
+        import pandas as pd
+        from config.constants import CANDIDATE_MIN_DAILY_DATA
+
+        bot = MagicMock()
+        bot.trading_manager = tm
+        bot.strategies = {}
+        n = CANDIDATE_MIN_DAILY_DATA + 5
+        bot.db_manager.price_repo.get_daily_prices.return_value = pd.DataFrame({
+            "date": [f"2026070{i % 9 + 1}" for i in range(n)],
+            "close": [1000.0] * n,
+        })
+        bot.decision_engine.is_virtual_mode = True
+        bot.decision_engine.analyze_buy_decision = AsyncMock(return_value=(
+            True, "테스트 매수", {
+                "buy_price": 1000.0,
+                "quantity": 10,
+                "max_buy_amount": 10000.0,
+                "signal": None,
+            },
+        ))
+        bot.decision_engine.execute_virtual_buy = AsyncMock(return_value=True)
+        bot.fund_manager.reserve_funds.return_value = True
+        return bot
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("owner_b, owner_a", [
+        ("bbb", "aaa"),                       # 다중전략 로더 형상: owner=폴더키
+        ("BbbStrategy", "AaaStrategy"),       # 단일전략 로더 형상: owner=클래스명
+    ])
+    async def test_pre_buy_state_lookup_targets_callers_own_slot(self, owner_b, owner_a):
+        from bot.trading_analyzer import TradingAnalyzer
+
+        code = "004100"
+        ssm = StockStateManager()
+        ts_a = _make_ts(code, owner=owner_a, state=StockState.SELECTED)  # 먼저 등록
+        ts_b = _make_ts(code, owner=owner_b, state=StockState.SELECTED)  # 호출 전략
+        assert ssm.register_stock(ts_a) is True
+        assert ssm.register_stock(ts_b) is True
+
+        tm = self._RecordingTradingManager(ssm)
+        analyzer = TradingAnalyzer(self._make_bot(tm))
+
+        with _StateLogCapture() as cap:
+            # 프로덕션 caller 형상: strategy_name = 폴더키(_strategy_key)
+            executed = await analyzer.analyze_buy_decision(
+                ts_b, available_funds=None, signal=None, strategy_name="bbb"
+            )
+
+        assert executed is True, "매수 경로가 상태확인 지점까지 도달하지 못함(테스트 형상 오류)"
+        assert tm.lookup_calls, "매수 전 상태 확인 조회가 일어나지 않음(테스트 형상 오류)"
+
+        # (a) [모호조회] WARNING 무발생
+        assert cap.ambiguous_msgs() == [], (
+            f"[모호조회] 발생: {cap.ambiguous_msgs()}"
+        )
+        # (b) 올바른 소유자(B)의 TradingStock 반환 — 표기(폴더키/클래스명) 무관
+        _code, _strategy, returned = tm.lookup_calls[0]
+        assert returned is ts_b, (
+            "매수 전 상태 확인이 호출 전략(B)이 아닌 슬롯을 조회함 "
+            f"(owner_b={owner_b}, strategy={_strategy!r}, "
+            f"returned owner={getattr(returned, 'owner_strategy_name', None)})"
+        )

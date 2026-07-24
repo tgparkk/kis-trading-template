@@ -149,8 +149,16 @@ class TradingAnalyzer:
                     self.logger.warning(f"{stock_code} 자금 예약 실패 - 매수 스킵")
                     return
 
-                # 매수 전 종목 상태 확인
-                current_stock = self.bot.trading_manager.get_trading_stock(stock_code)
+                # 매수 전 종목 상태 확인.
+                # 소유 전략은 인자(strategy_name=폴더키)가 아니라 **객체에서** 읽는다.
+                # SELECTED owner 표기는 폴더키(다중전략 로더)/클래스명(단일전략 로더)
+                # 으로 분열하므로(실증 2026-07-23, 01d336e) 폴더키 단독 조회는 클래스명
+                # owner 형상에서 매칭 0 이 된다. 객체 조회는 표기-불변이고, 슬롯당
+                # (code, owner) 가 유일하므로 [모호조회] WARNING 도 남지 않는다.
+                # (analyze_sell_decision 및 execute_real_buy 와 동일 관례)
+                current_stock = self.bot.trading_manager.get_trading_stock(
+                    stock_code, strategy=trading_stock.owner_strategy_name or None
+                )
                 if current_stock:
                     self.logger.debug(f"매수 전 상태 확인: {stock_code} 현재상태={current_stock.state.value}")
 
