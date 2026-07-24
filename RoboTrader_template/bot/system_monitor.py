@@ -113,6 +113,26 @@ class SystemMonitor:
         # 장전 브리핑 (하루 1회)
         await self._run_premarket_briefing()
 
+    def _resolve_strategy_key(self, strategy) -> str:
+        """전략 인스턴스의 폴더키(self.bot.strategies 의 dict 키)를 역조회한다.
+
+        SELECTED 소유자 표기는 **폴더키**여야 한다. SELECTED 소비자인
+        TradingContext.get_selected_stocks 가 owner 미지정 시 _strategy_key
+        (= 폴더키, main.py:447-449·464 가 dict 키를 넘긴다)와 비교하기 때문이다
+        (core/trading_context.py:285-297). 클래스명(strategy.name)으로 등록하면
+        어느 전략에게도 안 보이는 유령 슬롯이 된다(65bf870 유형의 매칭 0).
+
+        인자 표기를 믿지 않고 **객체 동일성(is)** 으로 키를 얻으므로 표기-불변이다
+        (01d336e·6f63b60 관례). 키를 못 찾으면 ""(무기명=공용)로 폴백해 기존 동작을
+        보존한다 — 표기를 추측해 넣으면 유령 슬롯이 되므로 추측하지 않는다.
+        """
+        strategies = getattr(self.bot, 'strategies', None)
+        if isinstance(strategies, dict):
+            for key, instance in strategies.items():
+                if instance is strategy:
+                    return key
+        return ""
+
     async def _register_strategy_target_stocks(self) -> None:
         """전략의 get_target_stocks()에서 후보 종목을 가져와 등록"""
         try:
@@ -134,6 +154,8 @@ class SystemMonitor:
             if not trading_manager or not hasattr(trading_manager, 'add_selected_stock'):
                 return
 
+            owner_key = self._resolve_strategy_key(strategy)
+
             self.logger.info(f"전략 후보 종목 {len(target_stocks)}개 등록 시작")
             registered = 0
             for stock_code in target_stocks:
@@ -148,16 +170,24 @@ class SystemMonitor:
                                 stock_name = fetched
                     except Exception:
                         pass
+                    # 소유자를 등록 시점에 바인딩한다(add_selected_stock 내부에서
+                    # TradingStock(owner_strategy_name=...) 으로 생성 —
+                    # order_execution.py:119). 등록 후 재조회해서 라벨을 덮어쓰던
+                    # 기존 코드는 두 가지 결함이 있었다(2026-07-24):
+                    #  ① get_trading_stock(stock_code) 무한정 조회는 다중소유 종목에서
+                    #     삽입순 첫 소유자(= 다른 전략)의 슬롯을 반환한다.
+                    #  ② TradingStock.strategy_name 은 owner_strategy_name 의 별칭
+                    #     프로퍼티라(core/models.py:206-213) 그 대입이 '표시용 이름'이
+                    #     아니라 소유권 자체를 덮어쓴다 → 남의 슬롯 오귀속.
+                    # 등록 시 바인딩하면 재조회 자체가 불필요하다(owner 지정 조회로
+                    # 매칭된 슬롯이든 신규 생성 슬롯이든 owner 는 이미 owner_key).
                     success = await trading_manager.add_selected_stock(
                         stock_code=stock_code,
                         stock_name=stock_name,
-                        selection_reason=f"{strategy.name} get_target_stocks()"
+                        selection_reason=f"{strategy.name} get_target_stocks()",
+                        owner_strategy=owner_key,
                     )
                     if success:
-                        # 순수 전략 이름 설정 (DB strategy 컬럼용)
-                        ts = trading_manager.get_trading_stock(stock_code)
-                        if ts:
-                            ts.strategy_name = strategy.name
                         registered += 1
                 except Exception as e:
                     self.logger.warning(f"전략 후보 종목 등록 실패 ({stock_code}): {e}")
