@@ -33,6 +33,7 @@ from utils.korean_time import now_kst
 
 
 STATE_LOGGER_NAME = "core.trading.stock_state_manager"
+MONITOR_LOGGER_NAME = "bot.system_monitor"
 
 TARGET_CODE = "005930"
 FOLDER_KEY_B = "bbb"
@@ -40,17 +41,21 @@ CLASS_NAME_B = "BbbStrategy"
 
 
 class _StateLogCapture:
-    """StockStateManager 네임드 로거([모호조회]) 직접 캡처 (기존 e8 테스트 관례)."""
+    """네임드 로거 직접 캡처 (기존 e8 테스트 관례).
 
-    def __init__(self):
+    setup_logger 가 propagate=False 로 만들기 때문에(utils/logger.py:106)
+    caplog 로는 잡히지 않는다 → 대상 로거에 핸들러를 직접 붙인다.
+    """
+
+    def __init__(self, logger_name: str = STATE_LOGGER_NAME):
         self.records = []
 
         class _H(logging.Handler):
             def emit(_self, record):
-                self.records.append(record.getMessage())
+                self.records.append((record.levelno, record.getMessage()))
 
         self._handler = _H()
-        self._logger = logging.getLogger(STATE_LOGGER_NAME)
+        self._logger = logging.getLogger(logger_name)
 
     def __enter__(self):
         self._logger.addHandler(self._handler)
@@ -64,7 +69,10 @@ class _StateLogCapture:
         return False
 
     def ambiguous_msgs(self):
-        return [m for m in self.records if "[모호조회]" in m]
+        return [m for _lvl, m in self.records if "[모호조회]" in m]
+
+    def warnings(self):
+        return [m for lvl, m in self.records if lvl >= logging.WARNING]
 
 
 def _make_trading_manager() -> TradingStockManager:
@@ -121,21 +129,28 @@ class TestSystemMonitorTargetStockOwnerBinding:
     """_register_strategy_target_stocks 가 남의 슬롯을 건드리지 않는지."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("state_a", [
+        StockState.SELECTED,
+        # ★ 돈이 걸린 변형: 살아있는 보유. base 는 add_selected_stock 이
+        # is_already_managed 로 조기반환(order_execution.py:107-109)한 뒤
+        # 재조회한 A 슬롯의 strategy_name 을 덮어써 **보유 소유자를 재배정**한다.
+        StockState.POSITIONED,
+    ])
     @pytest.mark.parametrize("owner_a", [
         "aaa",           # 다중전략 로더 형상: owner=폴더키
         "AaaStrategy",   # 단일전략 로더 형상: owner=클래스명
     ])
-    async def test_does_not_hijack_other_strategy_slot(self, owner_a):
+    async def test_does_not_hijack_other_strategy_slot(self, owner_a, state_a):
         from bot.system_monitor import SystemMonitor
 
         tm = _make_trading_manager()
         ssm: StockStateManager = tm._state_manager
 
-        # 전략 A 가 같은 종목을 이미 SELECTED 로 점유 (설계상 정상)
+        # 전략 A 가 같은 종목을 이미 점유 (설계상 정상 — 전략별 자본 독립)
         ts_a = TradingStock(
             stock_code=TARGET_CODE,
             stock_name=TARGET_CODE,
-            state=StockState.SELECTED,
+            state=state_a,
             selected_time=now_kst(),
             selection_reason="A 전략 선정",
         )
@@ -158,8 +173,11 @@ class TestSystemMonitorTargetStockOwnerBinding:
         assert len(b_slots) == 1, (
             f"호출 전략(B) 소유 슬롯이 생성되지 않음 (slots={[s.owner_strategy_name for s in slots]})"
         )
-        assert b_slots[0].owner_strategy_name in (FOLDER_KEY_B, CLASS_NAME_B), (
-            f"B 슬롯 소유자 표기가 전략 식별자가 아님: {b_slots[0].owner_strategy_name!r}"
+        # 표기는 **폴더키** 정확히 하나만 정답이다. 클래스명도 받아주면
+        # 65bf870(폴더키↔클래스명 분열 → 매칭 0) 로의 회귀가 그대로 통과한다.
+        assert b_slots[0].owner_strategy_name == FOLDER_KEY_B, (
+            f"B 슬롯 소유자 표기가 폴더키가 아님: {b_slots[0].owner_strategy_name!r} "
+            f"(클래스명 {CLASS_NAME_B!r} 이면 65bf870 회귀 = 유령 슬롯)"
         )
         # (c) [모호조회] 무발생
         assert cap.ambiguous_msgs() == [], f"[모호조회] 발생: {cap.ambiguous_msgs()}"
@@ -211,4 +229,37 @@ class TestSystemMonitorTargetStockOwnerBinding:
         visible = [s.stock_code for s in ctx_other.get_selected_stocks()]
         assert TARGET_CODE not in visible, (
             "타 전략 컨텍스트에 남의 후보가 보임 — 소유자 미바인딩(공용 슬롯)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unresolvable_owner_warns_loudly(self):
+        """폴더키 역조회 실패(bot.strategies 가 dict 가 아님) 시 WARNING 을 남긴다.
+
+        main.py:192/238 이 dict 를 보장하므로 프로덕션에선 도달하지 않는 분기지만,
+        **그래서** 테스트가 필요하다 — 미래 리팩터가 bot.strategies 의 형상을 바꾸면
+        owner=""(공유 슬롯)로 조용히 떨어지고, 그 슬롯은 모든 전략 컨텍스트에 보여
+        두 전략이 같은 TradingStock 을 변이하는 f4c3683 실패 모드가 된다.
+        """
+        from bot.system_monitor import SystemMonitor
+
+        tm = _make_trading_manager()
+        bot = _make_bot(tm)
+        bot.strategies = None            # 형상 붕괴 (dict 아님)
+
+        monitor = SystemMonitor(bot)
+        with _StateLogCapture(MONITOR_LOGGER_NAME) as cap:
+            await monitor._register_strategy_target_stocks()
+
+        warns = [m for m in cap.warnings() if "[소유자미해결]" in m]
+        assert warns, (
+            f"폴더키 역조회 실패가 조용히 넘어감 — WARNING 없음 "
+            f"(captured={cap.records})"
+        )
+
+        # 실제로 공유 슬롯(owner="")이 되었음을 함께 못박아 둔다:
+        # 경고 문구가 설명하는 결과와 코드의 결과가 어긋나지 않도록.
+        slots = tm._state_manager._find_by_code(TARGET_CODE)
+        assert [s.owner_strategy_name for s in slots] == [""], (
+            f"폴백 결과가 공유 슬롯(owner='')이 아님: "
+            f"{[s.owner_strategy_name for s in slots]}"
         )

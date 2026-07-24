@@ -123,14 +123,33 @@ class SystemMonitor:
         어느 전략에게도 안 보이는 유령 슬롯이 된다(65bf870 유형의 매칭 0).
 
         인자 표기를 믿지 않고 **객체 동일성(is)** 으로 키를 얻으므로 표기-불변이다
-        (01d336e·6f63b60 관례). 키를 못 찾으면 ""(무기명=공용)로 폴백해 기존 동작을
-        보존한다 — 표기를 추측해 넣으면 유령 슬롯이 되므로 추측하지 않는다.
+        (01d336e·6f63b60 관례).
+
+        ⚠️ 폴백 ""는 **기존 동작 보존이 아니다**(2026-07-24 리뷰 정정). 수정 전에는
+        해석 실패든 성공이든 클래스명이 들어가 아무에게도 안 보이는 유령 슬롯이었다.
+        ""는 무기명 = **공유 슬롯**이라 반대로 **모든 전략 컨텍스트에 보인다**
+        (get_selected_stocks 의 owner 미지정 비교가 ""에 대해 항상 통과). 그러면
+        core/trading_context.py:103-109 가 무한정 get_trading_stock(code) 로 떨어져
+        두 전략이 같은 TradingStock 을 변이하는 f4c3683 실패 모드가 되므로,
+        공유 슬롯은 유령 슬롯보다 나쁘다.
+
+        그럼에도 표기를 추측해 넣지는 않는다(추측은 확정적 유령 슬롯). 대신
+        **일어나면 안 되는 경로**로 취급해 조용히 넘기지 않고 WARNING 을 남긴다 —
+        main.py:192/238 이 bot.strategies 를 dict 로 보장하므로 프로덕션에서는
+        도달하지 않아야 하며, 도달했다면 형상이 깨진 것이다.
         """
         strategies = getattr(self.bot, 'strategies', None)
         if isinstance(strategies, dict):
             for key, instance in strategies.items():
                 if instance is strategy:
                     return key
+        self.logger.warning(
+            f"[소유자미해결] 전략 폴더키 역조회 실패 "
+            f"(strategy={getattr(strategy, 'name', strategy)!r}, "
+            f"strategies={type(strategies).__name__}) — "
+            f"owner=''(공유 슬롯)로 등록된다. 모든 전략에 노출되어 "
+            f"동일 슬롯 동시 변이 위험(f4c3683 유형)."
+        )
         return ""
 
     async def _register_strategy_target_stocks(self) -> None:
