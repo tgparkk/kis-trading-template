@@ -204,7 +204,6 @@ class TestFundScenarios:
 
     def test_fund_consistency_after_operations(self):
         """다양한 자금 연산 후 정합성 유지"""
-        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
 
         fm.reserve_funds("ORD1", 900_000)
@@ -217,9 +216,9 @@ class TestFundScenarios:
         fm.release_investment(400_000)
 
         status = fm.get_status()
-        commission = 850_000 * COMMISSION_RATE
         total_check = status['available_funds'] + status['reserved_funds'] + status['invested_funds']
-        assert total_check == pytest.approx(status['total_funds'] - commission)
+        assert total_check == pytest.approx(status['total_funds'])
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
 
 # ============================================================================

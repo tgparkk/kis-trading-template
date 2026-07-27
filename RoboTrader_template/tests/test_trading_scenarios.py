@@ -279,17 +279,15 @@ class TestScenario3PartialFillTimeout:
         filled_amount = 6 * 70000
         fm.confirm_order("ORD-FUND-001", filled_amount)
 
-        # 검증: invested_funds는 체결금액(수수료 미포함), available은 수수료 차감
-        from config.constants import COMMISSION_RATE
-        commission = filled_amount * COMMISSION_RATE
-        total_cost = filled_amount + commission
+        # 검증: invested_funds는 체결금액, 미체결 4주분(280,000원)은 전액 환불
         assert fm.invested_funds == pytest.approx(filled_amount)
         assert fm.reserved_funds == 0
-        assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
+        assert fm.available_funds == pytest.approx(10_000_000 - filled_amount)
 
-        # 총 자금 정합성 (수수료만큼 차이)
+        # 총 자금 정합성 (갭 없음 — 매수 수수료는 매도 시 실현손익에 반영)
         total = fm.available_funds + fm.reserved_funds + fm.invested_funds
-        assert total == pytest.approx(fm.total_funds - commission)
+        assert total == pytest.approx(fm.total_funds)
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
     @pytest.mark.asyncio
     async def test_full_scenario_partial_fill_timeout(self):
@@ -333,15 +331,12 @@ class TestScenario3PartialFillTimeout:
         filled_amount = 6 * 70000
         fm.confirm_order("ORD-INTEGRATED", filled_amount)
 
-        from config.constants import COMMISSION_RATE
-        commission = filled_amount * COMMISSION_RATE
-        total_cost = filled_amount + commission
-
         status = fm.get_status()
         assert status['invested_funds'] == pytest.approx(filled_amount)
         assert status['reserved_funds'] == 0
-        # 총 정합성 (수수료만큼 차이)
-        assert status['available_funds'] + status['invested_funds'] == pytest.approx(status['total_funds'] - commission)
+        # 총 정합성 (갭 없음)
+        assert status['available_funds'] + status['invested_funds'] == pytest.approx(status['total_funds'])
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
 
 # ============================================================================
@@ -555,8 +550,7 @@ class TestPartialFillFundConsistency:
         assert fm.available_funds == 9_300_000
 
     def test_partial_fill_refund_calculation(self):
-        """부분 체결 환불금 계산"""
-        from config.constants import COMMISSION_RATE
+        """부분 체결 환불금 계산 — 미체결분 전액 환불"""
         fm = FundManager(initial_funds=10_000_000)
 
         # 예약
@@ -566,14 +560,13 @@ class TestPartialFillFundConsistency:
         filled_amount = 6 * 70000  # 420,000원
         fm.confirm_order("ORD-REFUND", filled_amount)
 
-        commission = filled_amount * COMMISSION_RATE
-        total_cost = filled_amount + commission
-        assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
+        # 미체결 280,000원은 전액 환불 (매수 수수료는 매도 시 실현손익에 반영)
+        assert fm.available_funds == pytest.approx(10_000_000 - filled_amount)
         assert fm.invested_funds == pytest.approx(filled_amount)
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
     def test_multiple_partial_fills_consistency(self):
-        """여러 부분 체결 후 정합성"""
-        from config.constants import COMMISSION_RATE
+        """여러 부분 체결 후 정합성 — 갭이 건수만큼 누적되지 않는다"""
         fm = FundManager(initial_funds=10_000_000)
 
         # 주문 1: 700,000원 예약 -> 420,000원 체결
@@ -585,15 +578,14 @@ class TestPartialFillFundConsistency:
         fm.confirm_order("ORD-2", 300_000)
 
         # 검증 (invested_funds는 체결금액만, 수수료 미포함)
-        c1 = 420_000 * COMMISSION_RATE
-        c2 = 300_000 * COMMISSION_RATE
         total_invested = 420_000 + 300_000
         status = fm.get_status()
         assert status['invested_funds'] == pytest.approx(total_invested)
         assert status['reserved_funds'] == 0
 
         total = status['available_funds'] + status['reserved_funds'] + status['invested_funds']
-        assert total == pytest.approx(status['total_funds'] - c1 - c2)
+        assert total == pytest.approx(status['total_funds'])
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
 
 # ============================================================================

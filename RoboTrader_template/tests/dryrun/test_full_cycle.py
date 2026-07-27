@@ -183,18 +183,16 @@ class TestFullDayCycle(unittest.TestCase):
         result = self.broker.place_buy_order(stock_code, quantity, buy_price)
         self.assertTrue(result['success'])
 
-        # 3) 체결 확인 → 투자 확정 (수수료 포함)
-        from config.constants import COMMISSION_RATE
+        # 3) 체결 확인 → 투자 확정
+        #    (매수 수수료는 매도 시 실현손익에 반영되므로 여기서 차감하지 않는다)
         actual_amount = quantity * buy_price
         self.fund_manager.confirm_order("ORD-001", actual_amount)
-
-        commission = actual_amount * COMMISSION_RATE
-        total_cost = actual_amount + commission
 
         status = self.fund_manager.get_status()
         self.assertEqual(status['reserved_funds'], 0)
         self.assertAlmostEqual(status['invested_funds'], actual_amount, places=0)
-        self.assertAlmostEqual(status['available_funds'], 10_000_000 - total_cost, places=0)
+        self.assertAlmostEqual(status['available_funds'], 10_000_000 - actual_amount, places=0)
+        self.assertTrue(self.fund_manager.verify_fund_integrity()['is_valid'])
 
         # 4) 보유 확인
         holdings = self.broker.get_holdings()

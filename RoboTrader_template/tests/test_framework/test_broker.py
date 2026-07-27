@@ -257,12 +257,13 @@ class TestFundManager:
         fund_manager.reserve_funds("ORD001", 500000)
         fund_manager.confirm_order("ORD001", 495000)
 
-        from config.constants import COMMISSION_RATE
-        commission = 495000 * COMMISSION_RATE
-        expected_available = 10000000 - 500000 + (500000 - 495000 - commission)  # 예약 500000 → 체결+수수료 환불
+        # 예약 500000 → 체결 495000, 미체결 5000 환불
+        # (매수 수수료는 매도 시 실현손익에 포함되므로 체결 시점에 차감하지 않는다)
+        expected_available = 10000000 - 500000 + (500000 - 495000)
         assert fund_manager.invested_funds == 495000
         assert fund_manager.reserved_funds == 0
         assert fund_manager.available_funds == pytest.approx(expected_available)
+        assert fund_manager.verify_fund_integrity()['is_valid'] is True
 
     def test_fund_manager_cancel_order(self, fund_manager):
         """Test cancel_order method."""
@@ -274,27 +275,24 @@ class TestFundManager:
 
     def test_fund_manager_release_investment(self, fund_manager):
         """Test release_investment method."""
-        from config.constants import COMMISSION_RATE
         fund_manager.reserve_funds("ORD001", 500000)
         fund_manager.confirm_order("ORD001", 500000)
         fund_manager.release_investment(500000)
 
-        commission = 500000 * COMMISSION_RATE
         assert fund_manager.invested_funds == 0
-        # available = 10M - commission (수수료는 available에서 이미 차감됨)
-        assert fund_manager.available_funds == pytest.approx(10000000 - commission)
+        # 매수→회수 왕복은 손익 반영이 없으면 원금이 그대로 복구된다
+        assert fund_manager.available_funds == pytest.approx(10000000)
+        assert fund_manager.verify_fund_integrity()['is_valid'] is True
 
     def test_fund_manager_get_status(self, fund_manager):
         """Test get_status method."""
-        from config.constants import COMMISSION_RATE
         fund_manager.reserve_funds("ORD001", 500000)
         fund_manager.confirm_order("ORD001", 500000)
 
-        commission = 500000 * COMMISSION_RATE
         status = fund_manager.get_status()
 
         assert status['total_funds'] == 10000000
-        assert status['available_funds'] == pytest.approx(9500000 - commission)
+        assert status['available_funds'] == pytest.approx(9500000)
         assert status['invested_funds'] == 500000
         assert status['reserved_funds'] == 0
         assert 'utilization_rate' in status

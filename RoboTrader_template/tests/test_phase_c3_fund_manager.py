@@ -228,20 +228,26 @@ class TestThreeWayConsistency:
         fm = FundManager(initial_funds=INITIAL)
         mfm = MockFundManager(initial_capital=INITIAL)
 
-        # FundManager는 수수료를 반영하므로 MockFundManager보다
-        # commit 후 available이 commission만큼 적을 수 있음.
-        # 따라서 tol_pct를 0.1%로 설정 (COMMISSION_RATE ≈ 0.015% 수준)
+        # 두 구현 모두 체결 시 순수 체결금액으로 차액을 정산하므로(매수 수수료는
+        # 매도 시 실현손익에 반영) after_commit은 오차 없이 일치해야 한다.
+        # 과거에는 FundManager만 commit 시점에 수수료를 available에서 차감해
+        # after_commit이 어긋났고, 이 테스트는 그 값을 비교 대상에서 제외하고
+        # 나머지 tol_pct도 0.1%로 느슨하게 두어 divergence를 가리고 있었다.
         fm_result = self._run_scenario(fm)
         mfm_result = self._run_scenario(mfm)
 
-        for key in ['initial', 'after_reserve', 'invested_after_commit',
+        for key in ['initial', 'after_reserve', 'after_realize',
+                    'invested_after_commit', 'after_release',
                     'invested_after_release']:
-            self._assert_close(fm_result[key], mfm_result[key], key, tol_pct=0.1)
+            self._assert_close(fm_result[key], mfm_result[key], key, tol_pct=0.01)
 
-        # 예약 직후 available: 둘 다 9_000_000 (수수료 없음)
-        self._assert_close(
-            fm_result['after_reserve'], mfm_result['after_reserve'],
-            'after_reserve', tol_pct=0.01,
+        # after_commit은 %-기반 허용오차로는 못 잡는다: 괴리(수수료 142.5원)를
+        # 체결금액 950K가 아니라 available 9.05M 대비로 재기 때문에 0.00157%로
+        # 희석되어 0.01% 한도를 6배 밑돈다. 따라서 정확 일치로 고정한다.
+        assert fm_result['after_commit'] == mfm_result['after_commit'], (
+            f"[after_commit] FundManager={fm_result['after_commit']:,.2f} vs "
+            f"MockFundManager={mfm_result['after_commit']:,.2f} — "
+            f"체결 시점 자금 이동이 두 구현에서 어긋났다"
         )
 
         # 매도 후 투자금 = 0

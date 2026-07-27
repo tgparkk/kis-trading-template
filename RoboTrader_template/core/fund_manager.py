@@ -307,8 +307,31 @@ class FundManager:
         Args:
             order_id: 주문 ID
             actual_amount: 실제 체결 금액 (수수료 미포함 순수 체결 금액)
+
+        Note:
+            매수 수수료는 여기서 차감하지 않는다. 매도 시 실현손익 산식이
+            buy_commission을 이미 포함하고 있고(order_monitor._handle_full_fill,
+            order_timeout 매도 부분체결, trading_decision_engine 가상매도) 그
+            손익은 adjust_pnl로 total_funds에 반영된다. 따라서 체결 시점에
+            available_funds에서 또 차감하면 이중계상이며, total_funds는 손대지
+            않으므로 정합성 등식
+            (total == available + reserved + invested)이 매수 1건마다
+            수수료만큼 깨진다. 그 갭은 다음 매도의 adjust_pnl 재계산으로 조용히
+            지워져서, EOD 정합성 CRITICAL이 "당일 마지막 자금 이벤트가 매수인지
+            매도인지"에 따라 비결정적으로 발화했다(2026-07-27 329원 / 07-21 69원).
+            이 메서드는 자금을 계정 간 *이동*만 시키며 총액을 바꾸지 않는다.
+
+            ⚠️ 되돌리지 말 것: 매수 수수료는 "매도 시 1회" 인식이 의도된 설계다.
+            release_investment()는 순수 매수원가만 회수하도록 호출되고
+            (order_monitor.py:387, order_timeout.py:226,
+             trading_decision_engine.py:880, liquidation_handler.py:340)
+            같은 자리의 pnl 산식이 buy_commission을 이미 포함한다. 그 결과
+            체결~매도 구간 동안 total_funds/available_funds는 미청산 포지션의
+            매수 수수료만큼 실제 현금을 과대표시하며(2억 북 기준 13,200원,
+            0.0066%) 매도 시점에 정확히 자동 해소된다. 이 과대표시를 없애려고
+            체결 시점 차감을 되살리면 수수료가 두 번 청구되고 위 등식이 다시
+            깨진다.
         """
-        from config.constants import COMMISSION_RATE
         with self._lock:
             actual_amount = float(actual_amount)
 
@@ -322,26 +345,18 @@ class FundManager:
             self.reserved_funds -= reserved_amount
             del self.order_reservations[order_id]
 
-            # 수수료 포함 실제 투자 비용
-            commission = actual_amount * COMMISSION_RATE
-            total_cost = actual_amount + commission
-
             # 투자 금액으로 이동 (순수 체결 금액만 - 매도 시 정확한 회수를 위해)
             self.invested_funds += actual_amount
 
-            # 차액 정산: 예약>체결이면 환불, 체결>예약이면 추가 차감
-            diff = reserved_amount - total_cost
-            if diff > 0:
-                # 예약보다 적게 체결 → 차액 환불
-                self.available_funds += diff
-            elif diff < 0:
-                # 예약보다 많이 체결 → 추가 비용 차감
-                self.available_funds += diff  # diff is negative
+            # 차액 정산: 순수 체결금액 기준. 예약>체결이면 미체결분 환불,
+            # 체결>예약이면 초과 체결분만 추가 차감. (수수료는 위 Note 참조)
+            diff = reserved_amount - actual_amount
+            self.available_funds += diff
+            if diff < 0:
+                # 예약보다 많이 체결 → 초과분 추가 차감
                 self.logger.warning(f"💰 주문 체결: {order_id} - 투자: {actual_amount:,.0f}원, "
-                                  f"수수료: {commission:,.0f}원, "
+                                  f"예약: {reserved_amount:,.0f}원, "
                                   f"추가차감: {-diff:,.0f}원 (체결>예약)")
-            else:
-                pass
     
     def reverse_confirm(self, order_id: str, amount: float) -> None:
         """체결 확인 취소 (오탐지 복구용) - invested → reserved"""

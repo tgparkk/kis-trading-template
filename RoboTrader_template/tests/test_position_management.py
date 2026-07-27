@@ -236,15 +236,14 @@ class TestReleaseInvestmentSafety:
     """투자 자금 회수 음수 방지"""
 
     def test_release_clamped_to_zero(self):
-        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 1_000_000)
         fm.release_investment(5_000_000)  # 1M만 투자했는데 5M 회수 시도
         assert fm.invested_funds == 0
-        # invested_funds=actual_amount(1M), available_funds lost commission
-        commission = 1_000_000 * COMMISSION_RATE
-        assert fm.available_funds == pytest.approx(10_000_000 - commission)
+        # 회수액이 invested(1M)로 클램핑되므로 원금만 복구된다
+        assert fm.available_funds == pytest.approx(10_000_000)
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
     def test_release_with_stock_code_tracking(self):
         fm = FundManager(initial_funds=10_000_000)
@@ -270,14 +269,13 @@ class TestExtendedStatus:
         assert status['max_position_count'] == 5
 
     def test_status_consistency_extended(self):
-        from config.constants import COMMISSION_RATE
         fm = FundManager(initial_funds=10_000_000)
         fm.reserve_funds("ORD1", 1_000_000)
         fm.confirm_order("ORD1", 800_000)
-        commission = 800_000 * COMMISSION_RATE
         status = fm.get_status()
         total_check = status['available_funds'] + status['reserved_funds'] + status['invested_funds']
-        assert total_check == pytest.approx(status['total_funds'] - commission)
+        assert total_check == pytest.approx(status['total_funds'])
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
 
 # ============================================================================

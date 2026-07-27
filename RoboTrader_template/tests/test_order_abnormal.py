@@ -305,13 +305,11 @@ class TestPartialFillFundManager:
         actual_amount = 70000 * 3  # 210,000원
         fm.confirm_order("ORD-PF", actual_amount)
 
-        # 예약 해제, 투자 확정 (수수료 포함)
-        from config.constants import COMMISSION_RATE
-        commission = actual_amount * COMMISSION_RATE
-        total_cost = actual_amount + commission
+        # 예약 해제, 투자 확정 (미체결 7주분은 전액 환불)
         assert fm.reserved_funds == 0
         assert fm.invested_funds == pytest.approx(actual_amount)
-        assert fm.available_funds == pytest.approx(10_000_000 - total_cost)
+        assert fm.available_funds == pytest.approx(10_000_000 - actual_amount)
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
 
 class TestPaperTradingBypassesFundCheck:

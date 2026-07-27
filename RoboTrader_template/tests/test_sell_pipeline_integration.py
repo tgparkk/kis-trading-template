@@ -655,15 +655,14 @@ class TestFundManagerSync:
         fm.confirm_order('005930', 1_000_000)
         fm.add_position('005930')
 
-        from config.constants import COMMISSION_RATE
-        commission = 1_000_000 * COMMISSION_RATE
         expected_invested = 1_000_000
-        expected_available = 10_000_000 - expected_invested - commission
+        expected_available = 10_000_000 - expected_invested
 
         assert fm.available_funds == pytest.approx(expected_available)
-        # Consistency check: available + reserved + invested == total - commission
+        # Consistency check: available + reserved + invested == total (no gap)
         total = fm.available_funds + fm.reserved_funds + fm.invested_funds
-        assert total == pytest.approx(fm.total_funds - commission)
+        assert total == pytest.approx(fm.total_funds)
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
     def test_position_count_warning_on_overflow(self, caplog):
         """Restoring 25 positions with max=20 logs a warning."""
@@ -728,18 +727,19 @@ class TestFundManagerSync:
     def test_fund_manager_total_consistency_after_multiple_operations(self):
         """Total funds remain consistent across multiple buy/sell cycles."""
         from core.fund_manager import FundManager
-        from config.constants import COMMISSION_RATE
 
         fm = FundManager(initial_funds=10_000_000)
 
         # Cycle 1: Buy
         fm.reserve_funds('005930', 1_000_000)
         fm.confirm_order('005930', 1_000_000)
-        commission = 1_000_000 * COMMISSION_RATE
 
-        # Consistency check: commission is deducted from available but not tracked in invested
+        # 매수 체결은 계정 간 이동이므로 등식이 즉시 성립해야 한다.
+        # (과거에는 여기서 수수료만큼 갭이 생기고, 아래 adjust_pnl 재계산이
+        #  그 갭을 조용히 지웠다 — EOD 정합성 알람 비결정성의 원인)
         total = fm.available_funds + fm.reserved_funds + fm.invested_funds
-        assert total == pytest.approx(fm.total_funds - commission)
+        assert total == pytest.approx(fm.total_funds)
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
         # Cycle 2: Sell with profit
         fm.release_investment(fm.invested_funds, stock_code='005930')
@@ -749,9 +749,9 @@ class TestFundManagerSync:
         # After sell with profit, total_funds should increase
         assert fm.total_funds == pytest.approx(10_000_000 + pnl)
 
-        # adjust_pnl restores invariant: available = total - reserved - invested
         total = fm.available_funds + fm.reserved_funds + fm.invested_funds
         assert total == pytest.approx(fm.total_funds)
+        assert fm.verify_fund_integrity()['is_valid'] is True
 
     def test_sync_with_account_corrects_discrepancy(self):
         """sync_with_account corrects discrepancy after 3 consecutive mismatches."""
