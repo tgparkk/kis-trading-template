@@ -17,7 +17,7 @@ C3 설계 원칙:
 """
 import threading
 from datetime import datetime
-from typing import Callable, Dict, Optional, Set
+from typing import Callable, Dict, Optional, Set, Tuple
 try:
     from typing import Protocol, runtime_checkable
 except ImportError:  # Python 3.7 호환
@@ -193,7 +193,13 @@ class FundManager:
 
         # 동시 보유 종목 수 제한
         self.max_position_count = max_position_count
-        self.current_position_codes: Set[str] = set()  # 현재 보유 종목 코드
+        # 보유 레지스트리 = (종목코드, owner) 엔트리 집합.
+        # stock_code 단독 키였을 때는 두 전략이 같은 종목을 보유하다 한 전략이
+        # 매도하면 discard 가 코드를 통째로 지워, 남은 전략의 보유가
+        # position_count·can_add_position 한도에서 사라졌다(2026-07-28 라이브 실증:
+        # 037230 = ma5 1433주 + ma20 141주 → ma5 매도 후 보유 30 vs 실보유 31).
+        # owner=None 은 레거시(실주문 경로 등 owner 를 안전히 알 수 없는 호출).
+        self._position_entries: Set[Tuple[str, Optional[str]]] = set()
 
         # 익절/손절 후 재매수 쿨다운 (종목코드 → 쿨다운 만료 시각)
         self._sell_cooldowns: Dict[str, datetime] = {}
@@ -402,13 +408,16 @@ class FundManager:
             
             self.logger.debug(f"💰 주문 취소: {order_id} - 환불: {reserved_amount:,.0f}원")
     
-    def release_investment(self, amount: float, stock_code: str = "") -> None:
+    def release_investment(self, amount: float, stock_code: str = "",
+                           owner: Optional[str] = None) -> None:
         """
         투자 자금 회수 (매도 완료시)
-        
+
         Args:
             amount: 회수할 금액
             stock_code: 종목코드 (보유 종목 추적용)
+            owner: 소유 전략 표기 (슬롯 객체의 owner_strategy_name).
+                   다중 소유 종목에서 남의 보유를 지우지 않으려면 필수.
         """
         with self._lock:
             amount = float(amount)
@@ -423,10 +432,10 @@ class FundManager:
             self.invested_funds -= amount
             self.available_funds += amount
             
-            # 보유 종목에서 제거
-            if stock_code and stock_code in self.current_position_codes:
-                self.current_position_codes.discard(stock_code)
-            
+            # 보유 종목에서 제거 (RLock 재진입 — remove_position 이 같은 락을 잡는다)
+            if stock_code:
+                self.remove_position(stock_code, owner)
+
             self.logger.info(f"💰 투자 회수: {amount:,.0f}원 "
                            f"(가용: {self.available_funds:,.0f}원, "
                            f"보유종목: {len(self.current_position_codes)}개)")
@@ -537,6 +546,23 @@ class FundManager:
         from config.constants import COMMISSION_RATE, SECURITIES_TAX_RATE
         return amount * (1 - COMMISSION_RATE - SECURITIES_TAX_RATE)
 
+    @property
+    def current_position_codes(self) -> Set[str]:
+        """현재 보유 종목 코드 집합 (distinct stock_code — 하위호환 뷰).
+
+        내부 레지스트리는 (code, owner) 엔트리지만, 보유 "종목 수"의 의미는
+        기존과 동일한 distinct 종목 수다(보유한도·리포트·텔레그램 표기).
+        반환값은 스냅샷이므로 변이해도 내부 상태에 반영되지 않는다.
+        """
+        with self._lock:
+            return {code for code, _ in self._position_entries}
+
+    @current_position_codes.setter
+    def current_position_codes(self, codes) -> None:
+        """전체 교체 (하위호환) — 대입된 코드는 owner=None 엔트리로 등록."""
+        with self._lock:
+            self._position_entries = {(code, None) for code in (codes or set())}
+
     def can_add_position(self, stock_code: str = "") -> bool:
         """
         새 포지션 추가 가능 여부 확인
@@ -560,15 +586,43 @@ class FundManager:
                 return False
             return True
 
-    def add_position(self, stock_code: str) -> None:
-        """보유 종목 추가"""
-        with self._lock:
-            self.current_position_codes.add(stock_code)
+    def add_position(self, stock_code: str, owner: Optional[str] = None) -> None:
+        """보유 종목 추가
 
-    def remove_position(self, stock_code: str) -> None:
-        """보유 종목 제거"""
+        Args:
+            stock_code: 종목코드
+            owner: 소유 전략 표기 (슬롯 객체의 owner_strategy_name).
+                   같은 (code, owner) 재추가는 멱등. None 이면 레거시 엔트리.
+        """
         with self._lock:
-            self.current_position_codes.discard(stock_code)
+            self._position_entries.add((stock_code, owner or None))
+
+    def remove_position(self, stock_code: str, owner: Optional[str] = None) -> None:
+        """보유 종목 제거 (멱등)
+
+        owner 를 지정하면 정확히 그 (code, owner) 엔트리만 제거한다. 없으면 no-op
+        (한 번의 매도에 release_investment + remove_position 이 연달아 호출되는
+        기존 이중제거 경로가 있으므로 멱등이 필수).
+
+        owner 미지정 시에는 해당 종목의 엔트리가 정확히 1개일 때만 제거한다.
+        2개 이상(다중 소유)에서의 모호한 제거가 이번 결함의 본질이므로,
+        지우지 않고 경고만 남긴다.
+        """
+        with self._lock:
+            owner = owner or None
+            if owner is not None:
+                self._position_entries.discard((stock_code, owner))
+                return
+
+            matched = [e for e in self._position_entries if e[0] == stock_code]
+            if len(matched) == 1:
+                self._position_entries.discard(matched[0])
+            elif len(matched) > 1:
+                owners = [e[1] for e in matched]
+                self.logger.warning(
+                    f"⚠️ [모호제거] {stock_code} 보유 owner {len(matched)}개({owners}) — "
+                    f"owner 미지정 제거 요청을 보류합니다 (다중소유 오제거 방지)"
+                )
 
     def set_sell_cooldown(self, stock_code: str, reason: str = "") -> None:
         """
