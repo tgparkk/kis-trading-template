@@ -877,10 +877,16 @@ class TradingDecisionEngine:
                             sell_commission = sell_amount * COMMISSION_RATE
                             sell_tax = sell_amount * SECURITIES_TAX_RATE
                             pnl_with_fees = sell_amount - invested - buy_commission - sell_commission - sell_tax
-                            self.fund_manager.release_investment(invested, stock_code=code)
+                            # owner 는 슬롯 객체에서 읽는다(표기-불변). 같은 종목을
+                            # 두 전략이 보유할 때 남의 보유를 지우지 않기 위함.
+                            fm_owner = trading_stock.owner_strategy_name or None
+                            self.fund_manager.release_investment(
+                                invested, stock_code=code, owner=fm_owner
+                            )
                             if pnl_with_fees != 0:
                                 self.fund_manager.adjust_pnl(pnl_with_fees)
-                            self.fund_manager.remove_position(code)
+                            # remove_position 은 멱등 — 위 release 와 이중호출 무해
+                            self.fund_manager.remove_position(code, fm_owner)
                             self.fund_manager.set_sell_cooldown(code, sell_reason)
                         except Exception as fm_e:
                             self.logger.error(f"{code} 매도 후 자금관리 업데이트 실패: {fm_e}")

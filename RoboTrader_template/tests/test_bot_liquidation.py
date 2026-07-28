@@ -367,6 +367,8 @@ class TestForceCompleteFailedStocks:
     async def test_releases_investment_for_each_failed_stock(self):
         """강제 완료 시 투자 원금이 회수된다 (release_investment 호출)"""
         stock = _make_trading_stock("005930", avg_price=50000, quantity=10)
+        # owner 는 슬롯 객체에서 읽혀 FundManager 로 전달된다 (다중소유 레지스트리)
+        stock.owner_strategy_name = "book_pullback_ma5"
         bot = _make_bot(positioned_stocks=[stock])
         handler = _make_handler(bot)
         handler._eod_failed_stocks = {"005930"}
@@ -374,7 +376,10 @@ class TestForceCompleteFailedStocks:
         await handler._force_complete_failed_stocks()
 
         bot.fund_manager.release_investment.assert_called_once_with(
-            50000.0 * 10, stock_code="005930"
+            50000.0 * 10, stock_code="005930", owner="book_pullback_ma5"
+        )
+        bot.fund_manager.remove_position.assert_called_once_with(
+            "005930", "book_pullback_ma5"
         )
 
     @pytest.mark.asyncio

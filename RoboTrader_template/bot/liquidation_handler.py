@@ -336,11 +336,14 @@ class LiquidationHandler:
                     buy_cost = avg_price * quantity
 
                 # 1. FundManager 자금 회수 (PnL 0 - 실제 매도 없으므로 손익 불확정)
+                #    owner 는 슬롯 객체에서 읽는다(표기-불변) — 다중 소유 종목에서
+                #    남의 보유 엔트리를 지우지 않기 위함.
+                fm_owner = trading_stock.owner_strategy_name or None
                 if buy_cost > 0:
                     self.bot.fund_manager.release_investment(
-                        buy_cost, stock_code=stock_code
+                        buy_cost, stock_code=stock_code, owner=fm_owner
                     )
-                self.bot.fund_manager.remove_position(stock_code)
+                self.bot.fund_manager.remove_position(stock_code, fm_owner)
 
                 # 2. 상태 강제 전환 → COMPLETED
                 self.bot.trading_manager._change_stock_state(

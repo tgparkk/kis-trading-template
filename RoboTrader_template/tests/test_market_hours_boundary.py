@@ -266,6 +266,8 @@ class TestEodLiquidationRetry:
         mock_stock.stock_code = "005930"
         mock_stock.position = Mock(quantity=10, avg_price=50000.0)
         mock_stock.is_selling = True
+        # owner 는 슬롯 객체에서 읽혀 FundManager 로 전달된다 (다중소유 레지스트리)
+        mock_stock.owner_strategy_name = "book_pullback_ma5"
         bot.trading_manager.get_trading_stock.return_value = mock_stock
         bot.fund_manager = Mock()
 
@@ -274,9 +276,11 @@ class TestEodLiquidationRetry:
 
         # 자금 회수 확인: 50000 * 10 = 500000
         bot.fund_manager.release_investment.assert_called_once_with(
-            500000.0, stock_code="005930"
+            500000.0, stock_code="005930", owner="book_pullback_ma5"
         )
-        bot.fund_manager.remove_position.assert_called_once_with("005930")
+        bot.fund_manager.remove_position.assert_called_once_with(
+            "005930", "book_pullback_ma5"
+        )
 
         # 상태 COMPLETED 전환 확인
         from core.models import StockState

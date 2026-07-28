@@ -161,13 +161,17 @@ class StateRestorer:
             except Exception as e:
                 logger.warning(f"[복원] {owner_name} sync_positions 주입 실패: {e}")
 
-    def _sync_fund_manager_for_position(self, stock_code: str, quantity: int, buy_price: float) -> float:
+    def _sync_fund_manager_for_position(self, stock_code: str, quantity: int, buy_price: float,
+                                        owner: Optional[str] = None) -> float:
         """복원된 포지션에 대해 FundManager 자금을 동기화
 
         Args:
             stock_code: 종목코드
             quantity: 보유 수량
             buy_price: 매수 단가
+            owner: 소유 전략 표기 (슬롯 객체의 owner_strategy_name).
+                   같은 종목을 두 전략이 보유하면 (code, owner) 엔트리가 2개가 되어야
+                   한 전략의 매도가 남은 전략의 보유를 지우지 않는다(2026-07-28).
 
         Returns:
             float: 동기화된 투자 금액
@@ -195,7 +199,7 @@ class StateRestorer:
                     self.fund_manager.available_funds = 0
 
             # 보유 종목 등록 (add_position은 내부에서 자체 lock 사용)
-            self.fund_manager.add_position(stock_code)
+            self.fund_manager.add_position(stock_code, owner)
 
         except Exception as e:
             logger.error(f"FundManager 동기화 오류 ({stock_code}): {e}")
@@ -545,9 +549,10 @@ class StateRestorer:
                         )
                         holding_restored += 1
 
-                        # FundManager 자금 동기화
+                        # FundManager 자금 동기화 (owner 는 슬롯 객체에서 — 표기-불변)
                         invested = self._sync_fund_manager_for_position(
-                            stock_code, quantity, buy_price
+                            stock_code, quantity, buy_price,
+                            owner=trading_stock.owner_strategy_name or None,
                         )
                         total_invested += invested
 
@@ -766,9 +771,10 @@ class StateRestorer:
                         )
                         holding_restored += 1
 
-                        # FundManager 자금 동기화
+                        # FundManager 자금 동기화 (owner 는 슬롯 객체에서 — 표기-불변)
                         invested = self._sync_fund_manager_for_position(
-                            stock_code, quantity, avg_price
+                            stock_code, quantity, avg_price,
+                            owner=trading_stock.owner_strategy_name or None,
                         )
                         total_invested += invested
 

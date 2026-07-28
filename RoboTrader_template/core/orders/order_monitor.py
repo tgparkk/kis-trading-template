@@ -358,6 +358,10 @@ class OrderMonitorMixin:
                 if order.order_type == OrderType.BUY:
                     # 매수: 예약 → 투자 확정
                     self.fund_manager.confirm_order(order_id, actual_amount)
+                    # owner 미지정(레거시 엔트리): Order 에 소유 전략 필드가 없고,
+                    # owner 없는 슬롯 조회를 새로 추가하면 다중소유에서 임의 소유자를
+                    # 집게 된다. 매도 측(:387)도 동일하게 owner=None 으로 회수하므로
+                    # add/remove 표기가 대칭이라 레지스트리는 정합한다.
                     self.fund_manager.add_position(order.stock_code)
                 elif order.order_type == OrderType.SELL:
                     sell_amount = actual_amount

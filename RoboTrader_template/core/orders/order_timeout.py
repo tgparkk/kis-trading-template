@@ -288,6 +288,9 @@ class OrderTimeoutMixin:
             try:
                 actual_amount = filled_price * filled_qty
                 self.fund_manager.confirm_order(order_id, actual_amount)
+                # owner 미지정(레거시 엔트리) — order_monitor 매수 경로와 동일 이유:
+                # Order 에 소유 전략 필드가 없고, owner 없는 슬롯 조회를 새로 만들지
+                # 않는다. 매도 회수(:226)도 owner=None 이라 표기가 대칭이다.
                 self.fund_manager.add_position(order.stock_code)
                 self.logger.info(f"FundManager 매수 부분 체결 확정: {order_id} - {actual_amount:,.0f}원 ({filled_qty}주)")
             except Exception as e:

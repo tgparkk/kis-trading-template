@@ -530,7 +530,12 @@ class TestFundManagerSync:
         fm.reserved_funds = 0.0
         fm.current_position_codes = set()
         fm.max_position_count = 20
-        fm.add_position = MagicMock(side_effect=lambda code: fm.current_position_codes.add(code))
+        # 실제 API 시그니처와 동일하게 owner 를 받는다 (add_position(code, owner=None)).
+        # 다중소유 레지스트리 도입(2026-07-28) 후 복원 경로가 owner 를 넘기므로,
+        # 1-인자 mock 은 TypeError 를 삼켜 거짓 실패를 만든다.
+        fm.add_position = MagicMock(
+            side_effect=lambda code, owner=None: fm.current_position_codes.add(code)
+        )
         return fm
 
     def _make_vtm(self, balance=10_000_000):
