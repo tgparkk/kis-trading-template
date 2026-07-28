@@ -190,11 +190,12 @@ class TradingAnalyzer:
                         # 보유 종목 추가 (FundManager 보유 레지스트리 추적).
                         # owner 는 인자(strategy_name)가 아니라 **슬롯 객체**에서 읽는다.
                         # owner 표기는 경로별로 폴더키/클래스명으로 분열하므로, 매도 측
-                        # (trading_decision_engine·liquidation_handler)이 같은 객체 필드를
-                        # 읽어야만 (code, owner) 엔트리가 일치한다(표기-불변, 01d336e).
-                        # 객체에 owner 가 비어 있을 때만 인자로 폴백한다.
+                        # (trading_decision_engine:880·liquidation_handler:341)과
+                        # 문자 그대로 동일한 식이어야 (code, owner) 엔트리가 일치한다
+                        # (표기-불변, 01d336e). 인자 폴백을 두면 add/remove 가
+                        # 비대칭이 되어 엔트리가 영구 잔류할 수 있다.
                         self.bot.fund_manager.add_position(
-                            stock_code, trading_stock.owner_strategy_name or strategy_name or None
+                            stock_code, trading_stock.owner_strategy_name or None
                         )
                         # 매수 쿨다운 설정
                         trading_stock.set_buy_time(_now_kst())

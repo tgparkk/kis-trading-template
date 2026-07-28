@@ -17,7 +17,7 @@ C3 설계 원칙:
 """
 import threading
 from datetime import datetime
-from typing import Callable, Dict, Optional, Set, Tuple
+from typing import Callable, Dict, FrozenSet, Optional, Set, Tuple
 try:
     from typing import Protocol, runtime_checkable
 except ImportError:  # Python 3.7 호환
@@ -547,15 +547,19 @@ class FundManager:
         return amount * (1 - COMMISSION_RATE - SECURITIES_TAX_RATE)
 
     @property
-    def current_position_codes(self) -> Set[str]:
+    def current_position_codes(self) -> FrozenSet[str]:
         """현재 보유 종목 코드 집합 (distinct stock_code — 하위호환 뷰).
 
         내부 레지스트리는 (code, owner) 엔트리지만, 보유 "종목 수"의 의미는
         기존과 동일한 distinct 종목 수다(보유한도·리포트·텔레그램 표기).
-        반환값은 스냅샷이므로 변이해도 내부 상태에 반영되지 않는다.
+
+        frozenset 을 돌려주는 것은 의도적이다 — 레거시 in-place 변이
+        (codes.add(x) / codes.discard(x))가 스냅샷에 조용히 먹히는 대신
+        AttributeError 로 드러나게 한다. 등록·해제는 add_position /
+        remove_position 만 사용해야 owner 가 기록된다.
         """
         with self._lock:
-            return {code for code, _ in self._position_entries}
+            return frozenset(code for code, _ in self._position_entries)
 
     @current_position_codes.setter
     def current_position_codes(self, codes) -> None:
@@ -574,13 +578,15 @@ class FundManager:
             bool: 추가 가능 여부
         """
         with self._lock:
+            codes = self.current_position_codes  # 스냅샷 1회 (property 재구성 방지)
+
             # 이미 보유 중인 종목이면 분할매수로 허용 (별도 체크)
-            if stock_code and stock_code in self.current_position_codes:
+            if stock_code and stock_code in codes:
                 return True
-            
-            if len(self.current_position_codes) >= self.max_position_count:
+
+            if len(codes) >= self.max_position_count:
                 self.logger.warning(
-                    f"⚠️ 동시 보유 종목 수 초과: 현재 {len(self.current_position_codes)}개 "
+                    f"⚠️ 동시 보유 종목 수 초과: 현재 {len(codes)}개 "
                     f"/ 최대 {self.max_position_count}개"
                 )
                 return False

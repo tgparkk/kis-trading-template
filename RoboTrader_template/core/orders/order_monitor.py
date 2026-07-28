@@ -360,8 +360,13 @@ class OrderMonitorMixin:
                     self.fund_manager.confirm_order(order_id, actual_amount)
                     # owner 미지정(레거시 엔트리): Order 에 소유 전략 필드가 없고,
                     # owner 없는 슬롯 조회를 새로 추가하면 다중소유에서 임의 소유자를
-                    # 집게 된다. 매도 측(:387)도 동일하게 owner=None 으로 회수하므로
-                    # add/remove 표기가 대칭이라 레지스트리는 정합한다.
+                    # 집게 된다.
+                    # ⚠️ 실전 전환 blocker: 이 경로는 페이퍼 모드에선 pending_orders
+                    # 자체가 비어 휴면이라 무해하나, 실전 모드에선
+                    # liquidation_handler._force_complete_failed_stocks(is_virtual
+                    # 게이트 없음)가 owner 지정 제거를 하므로 여기서 등록한
+                    # owner=None 엔트리가 영구 잔류할 수 있다. 실전 전환 전에
+                    # 주문→소유 전략 연결을 만들어 owner 를 전달해야 한다.
                     self.fund_manager.add_position(order.stock_code)
                 elif order.order_type == OrderType.SELL:
                     sell_amount = actual_amount

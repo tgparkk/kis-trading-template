@@ -6,8 +6,15 @@
     FundManager.current_position_codes 가 stock_code 단독 키 Set 이라,
     두 전략이 같은 종목을 보유(037230 = book_pullback_ma5 1433주 +
     book_pullback_ma20 141주)하다가 한 전략이 매도하면 discard 가 코드를
-    통째로 제거했다. 남은 전략의 보유가 position_count / can_add_position 의
-    보유한도 enforcement 에서 사라졌다 (EOD 로그 보유종목=30 vs 실보유 31).
+    통째로 제거했다. 고친 증상은 이것이다 —
+    **다owner 보유 중 한 전략이 매도하면 잔여 전략의 보유가 레지스트리와
+    보유한도 체크(position_count·can_add_position)에서 소실(언더카운트)된다.**
+
+    ⚠️ "EOD 보유종목=30 vs 실보유 31" 격차는 이 수정의 대상이 아니다.
+    position_count 의 의미는 기존과 같은 distinct 종목 수로 유지하므로,
+    두 전략이 같은 종목을 동시 보유하는 동안에는 수정 후에도 30 vs 31 이
+    그대로 나타난다(정상). 다음 EOD 에서 그 격차를 보고 수정 실패로
+    오진하지 말 것.
 
     돈 원장(invested_funds)은 이 결함과 무관하며 정확했다.
 
