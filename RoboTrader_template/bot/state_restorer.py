@@ -251,6 +251,12 @@ class StateRestorer:
             vtm.restore_strategy_ledger_from_records(
                 VIRTUAL_CAPITAL_PER_STRATEGY, sums, restored_positions
             )
+            # 종목당 투자금액을 재구성된 현재 자본 기준으로 재산정 (진짜 복리,
+            # 2026-07-29 사장님 결재). 반드시 재구성 *뒤*여야 한다 — 이 시점에야
+            # _strategy_balances/_strategy_invested 가 매매기록 기반 실자본이다.
+            # 재산정 로직 자체는 원장 소유자인 vtm 이 갖는다(여기서는 호출만).
+            if hasattr(vtm, 'recalculate_investment_amounts'):
+                vtm.recalculate_investment_amounts()
             self._resync_fund_manager_to_ledger(vtm)
         except Exception as e:
             logger.error(f"[가상매매] 전략 원장 재구성 실패: {e}")

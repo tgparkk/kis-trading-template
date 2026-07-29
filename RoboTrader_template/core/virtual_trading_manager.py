@@ -63,7 +63,14 @@ class VirtualTradingManager:
         self._max_retries = 10
         # 전략별 종목당 투자금액 오버라이드 (yaml risk_management.paper_investment_per_stock).
         # 미설정 전략은 기존 virtual_investment_amount(가상 100만) 기본값 — 기존 전략 무영향.
+        # recalculate_investment_amounts 가 기동마다 현재 자본 기준으로 덮어쓰는 *현행값*.
         self._strategy_investment_amounts: Dict[str, float] = {}
+        # 전략별 종목당 투자금액의 *최초 설정값*(K분할 amount/K 또는 yaml 오버라이드).
+        # ⚠️ 2026-07-29: 복리 재산정(recalculate_investment_amounts)은 반드시 이 base 에서
+        # 계산해야 한다. 어제 축소된 _strategy_investment_amounts 에 다시 비율을 곱하면
+        # 기동마다 (capital/initial)^n 로 기하급수 축소돼 며칠 만에 매수 불가가 된다.
+        # base 는 재산정이 절대 변경하지 않는다 (자본 회복 시 원래 크기로 복귀 가능).
+        self._strategy_investment_base: Dict[str, float] = {}
         self._fallback_path = os.path.join("logs", "pending_sells_fallback.json")
         self._last_retry_time: Optional[datetime] = None
         self._last_pending_log_time: Optional[datetime] = None
@@ -234,7 +241,10 @@ class VirtualTradingManager:
         self._strategy_positions.setdefault(strategy_name, [])
         self._strategy_initial[strategy_name] = amount
         if max_positions and int(max_positions) > 0:
-            self._strategy_investment_amounts[strategy_name] = amount / int(max_positions)
+            per_stock = amount / int(max_positions)
+            self._strategy_investment_amounts[strategy_name] = per_stock
+            # 복리 재산정의 기준점 보존 (2026-07-29) — 상세는 __init__ 주석 참조.
+            self._strategy_investment_base[strategy_name] = per_stock
         self._sync_aggregate_from_strategies()
         self.logger.info(
             f"전략 자금 할당: {strategy_name} {amount:,.0f}원 "
@@ -251,9 +261,79 @@ class VirtualTradingManager:
         if not strategy_name or amount is None or float(amount) <= 0:
             return
         self._strategy_investment_amounts[strategy_name] = float(amount)
+        # yaml 오버라이드가 K분할 기본값을 덮으면 복리 재산정의 기준점도 함께 갱신한다.
+        # (allocate → set 순서이므로 base 는 최종적으로 yaml 값이 된다, 2026-07-29)
+        self._strategy_investment_base[strategy_name] = float(amount)
         self.logger.info(
             f"전략 종목당 투자금액 설정: {strategy_name} {float(amount):,.0f}원"
         )
+
+    def recalculate_investment_amounts(self) -> None:
+        """전략별 종목당 투자금액을 현재 자본 기준으로 재산정 (진짜 복리, 2026-07-29).
+
+        결함 배경: allocate_strategy_capital 이 기동 시 per_stock = 10,000,000/K 를
+        한 번 설정한 뒤 다시는 갱신되지 않았다. get_max_quantity 는
+        min(per_stock, 전략 잔여 현금) 이라 *총예산*은 손실을 반영했지만 *건당
+        매수 크기*는 첫날 값 그대로였다 = 부분적 복리 미작동. 누적 −35% 인 전략도
+        여전히 200만원씩 샀다.
+
+        산식 (사장님 결재 2026-07-29 — 바닥값·상한 없음):
+            current_capital = _strategy_balances + _strategy_invested   # 현금 + 포지션 원가
+            per_stock       = configured_base × (current_capital / initial_capital)
+
+        ⚠️ 왜 base 에서 계산하나 (누적 축소 방지):
+            현행 _strategy_investment_amounts 에 비율을 곱하면 기동마다
+            (capital/initial)^n 로 곱해져 며칠 만에 사실상 매수 불가가 된다.
+            _strategy_investment_base(최초 설정값)는 재산정이 건드리지 않으므로
+            자본이 회복되면 per_stock 도 원래 크기로 돌아온다.
+
+        ⚠️ 왜 capital/K 를 직접 쓰지 않나 (yaml 튜닝 보존):
+            K분할 전략은 base = initial/K 이므로 base×(capital/initial) 은
+            capital/K 와 항상 동일하다(사장님 지시와 일치). 반면 yaml
+            risk_management.paper_investment_per_stock 로 튜닝된 전략
+            (예: deep_mr_dev20)은 base ≠ initial/K 이므로, capital/K 를 직접 쓰면
+            검증된 튜닝값이 조용히 파괴된다. 비율 방식은 양쪽을 모두 만족한다.
+
+        가드:
+            - 원장 미활성(레거시·단일전략·실전)이면 전체 no-op.
+            - configured_base 가 없는 전략(K 미지정·원장 재구성이 새로 만든 키)은
+              skip → 기존 virtual_investment_amount 폴백 동작 보존.
+            - initial_capital <= 0 또는 current_capital <= 0 이면 skip + WARNING
+              (기존 값 유지).
+        """
+        if not self._strategy_balances:
+            return
+
+        for name in sorted(self._strategy_investment_base):
+            base = float(self._strategy_investment_base[name])
+            if name not in self._strategy_balances:
+                continue
+
+            initial = float(self._strategy_initial.get(name, 0.0))
+            if initial <= 0:
+                self.logger.warning(
+                    f"종목당 투자금액 재산정 스킵: {name} 초기자본 무효({initial:,.0f}원) "
+                    f"— 기존 {self._strategy_investment_amounts.get(name, base):,.0f}원 유지"
+                )
+                continue
+
+            current = (float(self._strategy_balances.get(name, 0.0))
+                       + float(self._strategy_invested.get(name, 0.0)))
+            if current <= 0:
+                self.logger.warning(
+                    f"종목당 투자금액 재산정 스킵: {name} 현재자본 무효({current:,.0f}원) "
+                    f"— 기존 {self._strategy_investment_amounts.get(name, base):,.0f}원 유지"
+                )
+                continue
+
+            ratio = current / initial
+            old = float(self._strategy_investment_amounts.get(name, base))
+            new = base * ratio
+            self._strategy_investment_amounts[name] = new
+            self.logger.info(
+                f"종목당 투자금액 재산정: {name} {old:,.0f}원 → {new:,.0f}원 "
+                f"(자본 {current:,.0f}/{initial:,.0f} = {ratio:.4f}, 기준 {base:,.0f}원)"
+            )
 
     def restore_strategy_ledger_from_records(
         self,
