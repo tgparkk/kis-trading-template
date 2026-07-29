@@ -55,18 +55,28 @@ class BotInitializer:
         VirtualTradingManager 전략별 자금 격리 원장을 활성화한다.
         - 키는 self.bot.strategies의 폴더키 — TradingContext._strategy_key와 동일하게 매칭됨.
         - 할당이 1건이라도 있으면 집계 virtual_balance = 전략 잔고 합계로 동기화됨.
-        - 실전 모드이거나 전략이 없으면 아무것도 하지 않음(레거시 단일 잔고 보존).
+        - 실전 모드이거나 전략이 없으면 자금 할당은 하지 않음(레거시 단일 잔고 보존).
+
+        부수 책임(2026-07-29): 같은 순회에서 읽은 전략별 K를 합산해
+        fund_manager.max_position_count를 정정한다(_apply_total_k_position_limit).
+        자금 할당은 가상 전용이지만 **한도 정정은 모드 무관**이므로, 순회를 가상
+        게이트 바깥으로 끌어내고 할당 호출만 게이트 안에 둔다.
         """
         try:
-            if not self.bot.strategies:
-                return
-            vtm = getattr(self.bot.decision_engine, 'virtual_trading', None)
-            is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
-            if not is_virtual or vtm is None:
-                return
-            if not hasattr(vtm, 'allocate_strategy_capital'):
-                return
-            for key, strat in self.bot.strategies.items():
+            strategies = getattr(self.bot, 'strategies', None) or {}
+            engine = getattr(self.bot, 'decision_engine', None)
+            vtm = getattr(engine, 'virtual_trading', None)
+            is_virtual = getattr(engine, 'is_virtual_mode', False)
+            # 자금 할당 가능 여부(= 기존 조기 return 조건들과 동치).
+            can_allocate = bool(
+                strategies and is_virtual and vtm is not None
+                and hasattr(vtm, 'allocate_strategy_capital')
+            )
+
+            k_by_strategy: dict = {}   # 유효 K가 확인된 전략만
+            unknown_k: list = []       # K 미상 — 합계에서 제외(조용히 0으로 세지 않음)
+
+            for key, strat in strategies.items():
                 # 종목당 기본 예산 = 초기자본/K 균등분할 (A안, 2026-06-11 결재 —
                 # 백테스트 균등복리 K분할 정합. Elder K20→50만/종목 등).
                 # K는 yaml config에서 직접 읽는다 — _max_positions 속성은 각 전략
@@ -75,6 +85,20 @@ class BotInitializer:
                 risk = ((getattr(strat, "config", None) or {})
                         .get("risk_management", {}) or {})
                 k = risk.get("max_positions") or getattr(strat, '_max_positions', None)
+
+                # 같은 K를 한도 합산에도 재사용 (별도 순회를 만들지 않는다).
+                try:
+                    k_int = int(k)
+                except (TypeError, ValueError):
+                    k_int = 0
+                if k_int > 0:
+                    k_by_strategy[key] = k_int
+                else:
+                    unknown_k.append(key)
+
+                if not can_allocate:
+                    continue
+
                 vtm.allocate_strategy_capital(
                     key, VIRTUAL_CAPITAL_PER_STRATEGY, max_positions=k)
                 # 전략별 종목당 투자금액 (yaml risk_management.paper_investment_per_stock).
@@ -87,13 +111,76 @@ class BotInitializer:
                         vtm.set_strategy_investment_amount(key, float(per_stock))
                 except Exception as e:
                     self.logger.warning(f"전략 종목당 투자금액 설정 실패({key}): {e}")
-            self.logger.info(
-                f"전략별 가상 자금 할당 완료: {list(self.bot.strategies.keys())} "
-                f"(전략당 {VIRTUAL_CAPITAL_PER_STRATEGY:,.0f}원, "
-                f"총 {vtm.get_virtual_balance():,.0f}원)"
-            )
+
+            if can_allocate:
+                self.logger.info(
+                    f"전략별 가상 자금 할당 완료: {list(strategies.keys())} "
+                    f"(전략당 {VIRTUAL_CAPITAL_PER_STRATEGY:,.0f}원, "
+                    f"총 {vtm.get_virtual_balance():,.0f}원)"
+                )
         except Exception as e:
             self.logger.warning(f"전략별 가상 자금 할당 실패 (단일 잔고 사용): {e}")
+            return
+
+        self._apply_total_k_position_limit(k_by_strategy, unknown_k)
+
+    def _apply_total_k_position_limit(self, k_by_strategy: dict,
+                                      unknown_k: list) -> None:
+        """전략별 K 합계로 fund_manager.max_position_count를 정정 (2026-07-29).
+
+        왜 필요한가 — main.py는 ``FundManager(max_daily_loss_ratio=...)``로만 생성해
+        동시 보유 한도가 기본값 **20**이었다. 이 20은 **단일전략 시절의 레거시**다.
+        현재는 8전략 독립 운영이라 전략별 K 합계가 58이고, 07-29 실보유는 40종목
+        (한도 2배)이었다. 실전 전환 시 20에서 매수가 막히는 사고를 예방하는 것이 목적.
+
+        ⚠️ 이 값을 페이퍼 매수 경로에 결선하지 말 것 — 한도를 실제로 강제하는
+        fund_manager.can_add_position()은 core/trading/order_execution.py의 **실주문
+        경로에만** 결선돼 있고, 그대로 두는 것이 사장님 결정(2026-07-29)이다. 전역
+        한도는 2026-06-16 채택한 *전략별 완전독립 포지션(B안)* 설계와 충돌한다 —
+        먼저 채운 전략이 나머지 전략을 굶기는 교차 간섭이 생긴다. 여기서 하는 일은
+        **한도값 정정뿐이며 페이퍼 동작은 완전 불변**이다.
+
+        가드:
+        - K 미상 전략은 합계에서 제외하고 WARNING (조용히 0으로 세지 않는다).
+        - max(기존값, ΣK) — 바닥을 둬서 어떤 경우에도 한도가 좁아지지 않게 한다.
+          이 작업은 완화 방향이지 조임 방향이 아니다.
+        - 전략이 없거나 ΣK<=0이면 기존값 유지 + WARNING.
+        - 가상/실전 모드 무관 적용(실전에서 정확한 값이 필요한 게 목적).
+        """
+        try:
+            fund_manager = getattr(self.bot, 'fund_manager', None)
+            if fund_manager is None:
+                self.logger.warning(
+                    "동시 보유 한도 ΣK 정정 스킵: fund_manager 미연결")
+                return
+
+            if unknown_k:
+                self.logger.warning(
+                    f"동시 보유 한도 ΣK 합산에서 제외 (K 미상 = "
+                    f"risk_management.max_positions·_max_positions 모두 부재/무효): "
+                    f"{unknown_k}"
+                )
+
+            total_k = sum(k_by_strategy.values())
+            current = int(getattr(fund_manager, 'max_position_count', 0) or 0)
+
+            if total_k <= 0:
+                self.logger.warning(
+                    f"동시 보유 한도 ΣK 산출 불가 (유효 K 전략 0개) — "
+                    f"기존 한도 {current}종목 유지"
+                )
+                return
+
+            new_limit = max(current, total_k)
+            breakdown = ", ".join(f"{k}={v}" for k, v in k_by_strategy.items())
+            fund_manager.max_position_count = new_limit
+            self.logger.info(
+                f"동시 보유 한도 정정(ΣK): {breakdown} → 합계 {total_k}종목 / "
+                f"기존 {current} → 적용 {new_limit}종목 "
+                f"(max(기존, ΣK) — 한도는 좁아지지 않음)"
+            )
+        except Exception as e:
+            self.logger.warning(f"동시 보유 한도 ΣK 정정 실패 (기존값 유지): {e}")
 
     async def initialize_system(self) -> bool:
         """시스템 초기화 (비동기)"""
