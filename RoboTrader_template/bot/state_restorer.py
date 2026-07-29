@@ -350,10 +350,17 @@ class StateRestorer:
         )
 
         # 포지션 수 제한 초과 경고
+        # 근거(2026-07-29 EOD): 이 한도를 실제로 강제하는 fund_manager.can_add_position()은
+        # core/trading/order_execution.py의 실주문 경로에서만 호출된다. 페이퍼(가상) 매수는
+        # strategy.*Strategy 로거 경로로 체결되어 이 게이트를 거치지 않으므로 신규 매수가
+        # 차단되지 않는다(07-29 07:40 경고 발화 직후 24건 정상 체결로 실증). 문구를 "차단됩니다"로
+        # 되돌리지 말 것 — 실전 모드에서만 사실이다.
         if position_count > max_positions:
             logger.warning(
                 f"보유 종목 수({position_count})가 최대 한도({max_positions})를 "
-                f"초과합니다. 기존 보유분이므로 모두 유지하지만, 신규 매수는 차단됩니다."
+                f"초과합니다. 기존 보유분이므로 모두 유지합니다. 이 한도는 실주문 경로"
+                f"(order_execution.can_add_position)에서만 강제되므로, 페이퍼 매매에서는 "
+                f"신규 매수가 차단되지 않고 실전 모드에서만 차단됩니다."
             )
 
         # 자금 정합성 검증
