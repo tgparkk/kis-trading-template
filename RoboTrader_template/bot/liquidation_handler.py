@@ -8,7 +8,7 @@ EOD 청산 실패 복구:
 - 최종 실패 시 강제 COMPLETED 처리 + 자금 회수 + CRITICAL 텔레그램 알림
 """
 import asyncio
-from typing import TYPE_CHECKING, Set
+from typing import TYPE_CHECKING, List, Optional, Set, Tuple
 
 from core.models import StockState
 from utils.logger import setup_logger
@@ -24,6 +24,24 @@ if TYPE_CHECKING:
 EOD_LIQUIDATION_MAX_RETRIES = 3
 EOD_LIQUIDATION_RETRY_DELAY = 10  # 초
 
+# EOD 청산 실패 항목의 키. **반드시 (종목코드, owner) 쌍이어야 한다.**
+#
+# 왜 쌍인가 (2026-07-29 독립 감사):
+#   전략별 독립 포지션(B안, 2026-06-16) 이후 같은 종목을 2개 이상의 전략이
+#   동시에 보유할 수 있다. 실패 추적을 stock_code 문자열로만 키잉하면
+#   두 전략이 같은 종목의 청산에 실패했을 때 집합이 **한 항목으로 병합**되어
+#   한쪽 소유자의 포지션이 강제완료·자금회수에서 통째로 누락된다.
+#
+# 왜 owner 를 슬롯 객체(owner_strategy_name)에서 읽는가:
+#   owner 표기가 경로·상태별로 폴더키/클래스명으로 갈린 이력이 있다(01d336e).
+#   문자열을 재구성하면 매칭이 깨지므로, 슬롯 객체가 들고 있는 값을 그대로
+#   실어 보내고 그대로 비교한다(표기-불변 매칭).
+#
+# 동일 결함 클래스 이력: f4c3683(_position_owner) · 0eb4a5e(보유종목 레지스트리)
+#   — 셋 다 "돈이 걸린 자료구조를 stock_code 단독으로 키잉"한 같은 실수다.
+#   이 주석을 지우고 Set[str] 로 되돌리지 말 것.
+EodFailedEntry = Tuple[str, Optional[str]]
+
 
 class LiquidationHandler:
     """장 마감 청산 담당 클래스"""
@@ -32,9 +50,109 @@ class LiquidationHandler:
         self.bot = bot
         self.logger = setup_logger(__name__)
         self._last_eod_liquidation_date = None
-        self._eod_failed_stocks: Set[str] = set()  # 청산 실패 종목 추적
+        # (종목코드, owner) 쌍 집합 — 다중 소유 종목의 실패를 병합하지 않는다.
+        self._eod_failed_stocks: Set[EodFailedEntry] = set()
         self._eod_retry_count: int = 0
         self._snapshot_done_date = None  # 스크리너 스냅샷 중복 호출 방지
+
+    # -----------------------------------------------------------------
+    # EOD 실패 항목 헬퍼 (owner 인지)
+    # -----------------------------------------------------------------
+
+    @staticmethod
+    def _slot_owner(trading_stock) -> Optional[str]:
+        """슬롯 객체가 들고 있는 owner 표기를 그대로 읽는다(표기-불변).
+
+        문자열을 재구성하지 않는다 — 폴더키/클래스명 분열 이력(01d336e).
+
+        ⚠️ **3값을 구분해 보존한다. `or` 로 뭉개지 말 것**(2026-07-29 리뷰 HIGH):
+          - named  : 전략 표기 문자열
+          - 무기명 : ""   ← 버릴 정보가 아니다. `_find_by_code(code, "")` 는
+                          **무기명 슬롯만** 정확 매칭하는 가장 정밀한 키다.
+          - 미상   : None ← 속성 자체가 없을 때만. 필터가 해제되어 남의 슬롯이
+                          후보에 들어오므로 폴백 경로로만 써야 한다.
+        `or None` 을 쓰면 "" 가 None 으로 뭉개져, 무기명 슬롯의 실패 항목이
+        삽입순 첫 슬롯(대개 남의 named 슬롯)을 집어 **정상 포지션을 파괴**한다.
+        """
+        owner = getattr(trading_stock, 'owner_strategy_name', None)
+        if owner is None:
+            return None
+        return owner  # "" 포함, 있는 그대로
+
+    @staticmethod
+    def _normalize_failed_entry(item) -> EodFailedEntry:
+        """실패 항목을 (종목코드, owner) 쌍으로 정규화.
+
+        owner 의 3값(named/""/None)을 그대로 보존한다 — 여기서 뭉개면
+        `_slot_owner` 를 고친 의미가 없다.
+        구버전 표현(문자열 단독)만 owner=None(미상) 쌍으로 승격한다.
+        """
+        if isinstance(item, tuple):
+            code, owner = item
+            return (code, owner)
+        return (item, None)
+
+    def _normalized_failed_entries(self) -> List[EodFailedEntry]:
+        """현재 실패 집합의 스냅샷을 쌍 리스트로 반환(순회 중 변경 대비)."""
+        return [self._normalize_failed_entry(e) for e in list(self._eod_failed_stocks)]
+
+    def _count_positioned(self, stock_code: str) -> Optional[int]:
+        """POSITIONED 기준 동일 종목 슬롯 수(경고 문구용 진단값).
+
+        진단 목적이므로 어떤 이유로든 실패하면 None 을 돌려주고 흐름을 막지 않는다
+        — 자금 회수 경로가 로그 보조값 때문에 죽으면 안 된다.
+        """
+        try:
+            positioned = self.bot.trading_manager.get_stocks_by_state(StockState.POSITIONED)
+            return len([s for s in positioned if s.stock_code == stock_code])
+        except Exception:
+            return None
+
+    def _warn_unknown_owner(self, stock_code: str, context: str,
+                            candidate_count: Optional[int]) -> None:
+        """owner 미상(None) 폴백 경고. 후보가 2개 이상이면 오귀속은 확정이다."""
+        if candidate_count is None:
+            severity = "후보 수 미상"
+        elif candidate_count >= 2:
+            severity = (
+                f"후보 {candidate_count}개 = 다중 소유 확정 — 임의 슬롯 선택은 "
+                f"오귀속이 **확정적이며 남의 정상 포지션을 파괴한다**"
+            )
+        else:
+            severity = f"후보 {candidate_count}개 — 현재는 단일 소유라 오귀속 없음"
+        self.logger.warning(
+            f"[EOD소유미상] {stock_code} {context}: 실패 항목의 owner 가 미상(None)이라 "
+            f"종목코드 단독으로 조회합니다. {severity}. "
+            f"무기명 슬롯('')은 정확 매칭되므로 이 경로는 owner 정보 자체가 유실된 "
+            f"경우다 — 항목 적재 경로를 확인할 것"
+        )
+
+    def _match_owned_slot(self, stocks, stock_code: str, owner: Optional[str]):
+        """실패 항목의 owner 로 슬롯을 특정한다.
+
+        owner 가 **미상(None)일 때만** 종목코드 단독 매칭으로 폴백한다.
+        무기명("")은 `_slot_owner(slot) == ""` 로 정확 매칭되므로 폴백이 필요 없다.
+        """
+        candidates = [s for s in stocks if s.stock_code == stock_code]
+        if not candidates:
+            return None
+
+        if owner is None:
+            self._warn_unknown_owner(stock_code, "재시도 조회", len(candidates))
+            return candidates[0]
+
+        for slot in candidates:
+            if self._slot_owner(slot) == owner:
+                return slot
+
+        # owner 슬롯이 POSITIONED 에 없다. 남의 슬롯을 대신 집지 않는다(fail-closed).
+        # ⚠️ "이미 청산됨"이라고 단정하지 말 것 — 예외 경로가 SELL_CANDIDATE 등
+        #    다른 상태의 슬롯에 대한 쌍을 적재할 수 있고, 이 루프는 POSITIONED 만 뒤진다.
+        self.logger.info(
+            f"EOD 실패 항목 {stock_code}(owner={owner!r}) 슬롯이 POSITIONED 에 없음 "
+            f"— 재시도 대상에서 제외(청산 완료 또는 다른 상태). 상태 확인 필요"
+        )
+        return None
 
     async def liquidate_all_positions_end_of_day(self) -> None:
         """장 마감 직전 보유 포지션 전량 시장가 일괄 청산"""
@@ -139,6 +257,8 @@ class LiquidationHandler:
                             continue
 
                         stock_code = trading_stock.stock_code
+                        # 실패 추적 키에 실을 owner — 슬롯 객체 필드를 그대로 읽는다.
+                        owner_name = self._slot_owner(trading_stock)
 
                         # trading_stock의 owner_strategy 우선 참조
                         owner = getattr(trading_stock, 'owner_strategy', None)
@@ -180,18 +300,17 @@ class LiquidationHandler:
                                 self.logger.warning(
                                     f"{stock_code} 가상매도 실패 - 재시도 대상에 추가"
                                 )
-                                failed_stocks.append(stock_code)
+                                failed_stocks.append((stock_code, owner_name))
                         else:
                             # 실매매 - 기존 실매도 로직
-                            _owner = trading_stock.owner_strategy_name or None
                             moved = self.bot.trading_manager.move_to_sell_candidate(
-                                stock_code, f"{time_label} 시장가 일괄매도", strategy=_owner
+                                stock_code, f"{time_label} 시장가 일괄매도", strategy=owner_name
                             )
                             if moved:
                                 await self.bot.trading_manager.execute_sell_order(
                                     stock_code, quantity, current_price,
                                     f"{time_label} 시장가 일괄매도", market=True,
-                                    force=True, strategy=_owner
+                                    force=True, strategy=owner_name
                                 )
                                 self.logger.info(
                                     f"{time_label} 시장가 매도: "
@@ -201,13 +320,16 @@ class LiquidationHandler:
                                 self.logger.warning(
                                     f"{stock_code} 매도 후보 전환 실패 - 재시도 대상에 추가"
                                 )
-                                failed_stocks.append(stock_code)
+                                failed_stocks.append((stock_code, owner_name))
 
                     except Exception as se:
                         self.logger.error(
                             f"{time_label} 시장가 매도 개별 처리 오류({trading_stock.stock_code}): {se}"
                         )
-                        failed_stocks.append(trading_stock.stock_code)
+                        # 예외 경로에서도 owner 를 잃지 않는다(병합 방지).
+                        failed_stocks.append(
+                            (trading_stock.stock_code, self._slot_owner(trading_stock))
+                        )
 
                 self._eod_failed_stocks = set(failed_stocks)
 
@@ -251,13 +373,19 @@ class LiquidationHandler:
         )
 
         still_failed = []
-        for stock_code in list(self._eod_failed_stocks):
+        for stock_code, owner_name in self._normalized_failed_entries():
+            # 슬롯을 특정하면 그 슬롯의 owner 로 승격해 둔다. 이후 재적재(성공/실패/
+            # 예외)는 전부 이 값을 쓴다 — 미상(None)으로 들어온 레거시 항목이
+            # 1회 재시도만에 정확한 쌍으로 회복된다.
+            resolved_owner = owner_name
             try:
                 positioned_stocks = self.bot.trading_manager.get_stocks_by_state(StockState.POSITIONED)
-                target = next((s for s in positioned_stocks if s.stock_code == stock_code), None)
+                # 쌍으로 조회 — 종목코드 단독 매칭은 남의 슬롯을 집는다.
+                target = self._match_owned_slot(positioned_stocks, stock_code, owner_name)
                 if not target or not target.position or target.position.quantity <= 0:
-                    continue  # 이미 청산됨
+                    continue  # 청산 완료 또는 POSITIONED 아님 (위 조회 로그 참조)
 
+                resolved_owner = self._slot_owner(target)
                 quantity = int(target.position.quantity)
                 # 가상/실전 모드 분기
                 is_virtual = getattr(self.bot.decision_engine, 'is_virtual_mode', False)
@@ -283,28 +411,29 @@ class LiquidationHandler:
                         self.logger.warning(
                             f"EOD 가상매도 재시도 실패: {stock_code} - 재시도 대상 유지"
                         )
-                        still_failed.append(stock_code)
+                        still_failed.append((stock_code, resolved_owner))
                 else:
                     # 실매매 - 기존 실매도 로직
-                    _owner = target.owner_strategy_name or None
                     moved = self.bot.trading_manager.move_to_sell_candidate(
-                        stock_code, f"EOD 청산 재시도 #{self._eod_retry_count}", strategy=_owner
+                        stock_code, f"EOD 청산 재시도 #{self._eod_retry_count}",
+                        strategy=resolved_owner
                     )
                     if moved:
                         await self.bot.trading_manager.execute_sell_order(
                             stock_code, quantity, 0.0,
                             f"EOD 청산 재시도 #{self._eod_retry_count}", market=True,
-                            force=True, strategy=_owner
+                            force=True, strategy=resolved_owner
                         )
                         self.logger.info(f"EOD 재시도 성공: {stock_code} {quantity}주")
                     else:
                         self.logger.warning(
                             f"EOD 재시도 매도 후보 전환 실패: {stock_code} - 재시도 대상 유지"
                         )
-                        still_failed.append(stock_code)
+                        still_failed.append((stock_code, resolved_owner))
             except Exception as e:
                 self.logger.error(f"EOD 재시도 실패 ({stock_code}): {e}")
-                still_failed.append(stock_code)
+                # 예외 경로도 승격된 owner 를 쓴다(다른 재적재 지점과 일관).
+                still_failed.append((stock_code, resolved_owner))
 
         self._eod_failed_stocks = set(still_failed)
         return len(still_failed) == 0
@@ -317,12 +446,33 @@ class LiquidationHandler:
         """
         # {stock_code: {name, quantity, avg_price, invested}} 수동 매도용 정보 수집
         force_completed_details = []
-        for stock_code in list(self._eod_failed_stocks):
+        for stock_code, owner_name in self._normalized_failed_entries():
             try:
-                trading_stock = self.bot.trading_manager.get_trading_stock(stock_code)
+                # 쌍으로 조회한다. owner 없이 조회하면 삽입순 첫 슬롯이 잡혀
+                # 남의 슬롯 원가를 남의 소유자에게서 회수하게 된다(2026-07-29 감사).
+                # ⚠️ `is not None` 이어야 한다. 무기명("")도 strategy="" 로 정확
+                #    매칭되므로 폴백 대상이 아니다 — truthiness 로 쓰면 "" 가
+                #    폴백을 타서 남의 named 슬롯을 파괴한다(2026-07-29 리뷰 HIGH).
+                if owner_name is not None:
+                    trading_stock = self.bot.trading_manager.get_trading_stock(
+                        stock_code, strategy=owner_name
+                    )
+                else:
+                    self._warn_unknown_owner(
+                        stock_code, "강제완료 조회", self._count_positioned(stock_code)
+                    )
+                    trading_stock = self.bot.trading_manager.get_trading_stock(stock_code)
+
                 if not trading_stock:
+                    # fail-closed: 남의 슬롯으로 대체 회수하지 않는다. 강제완료는
+                    # DB 부작용이 0이고 invested_funds 는 영속되지 않으므로,
+                    # 건너뛰어도 다음 기동 재구성 결과는 동일하다(2026-07-29 리뷰 실측).
+                    # ⚠️ 여기에 `get_trading_stock(stock_code)` 코드 단독 폴백을
+                    #    되살리지 말 것 — 남의 원가를 회수하고 정상 포지션을 파괴한다.
+                    #    TestForceCompleteFailsClosed 가 이 금지를 고정한다.
                     self.logger.warning(
-                        f"EOD 강제완료: {stock_code} - trading_stock 없음 (이미 처리됨)"
+                        f"EOD 강제완료 건너뜀: {stock_code}(owner={owner_name!r}) "
+                        f"소유 슬롯 없음 — 자금 회수/상태 전환 없음(남의 슬롯 보호)"
                     )
                     continue
 
@@ -336,9 +486,9 @@ class LiquidationHandler:
                     buy_cost = avg_price * quantity
 
                 # 1. FundManager 자금 회수 (PnL 0 - 실제 매도 없으므로 손익 불확정)
-                #    owner 는 슬롯 객체에서 읽는다(표기-불변) — 다중 소유 종목에서
-                #    남의 보유 엔트리를 지우지 않기 위함.
-                fm_owner = trading_stock.owner_strategy_name or None
+                #    owner 는 (재구성하지 않고) 조회로 특정된 슬롯 객체에서 읽는다
+                #    (표기-불변) — 다중 소유 종목에서 남의 보유 엔트리를 지우지 않기 위함.
+                fm_owner = self._slot_owner(trading_stock)
                 if buy_cost > 0:
                     self.bot.fund_manager.release_investment(
                         buy_cost, stock_code=stock_code, owner=fm_owner
@@ -346,6 +496,9 @@ class LiquidationHandler:
                 self.bot.fund_manager.remove_position(stock_code, fm_owner)
 
                 # 2. 상태 강제 전환 → COMPLETED
+                #    여기는 원시값을 그대로 넘긴다. 상태 매니저는 owner 문자열을
+                #    정확히 비교하므로 무기명 슬롯의 ""(빈 문자열)이 None 보다 정밀하다
+                #    (None 은 필터 해제 = 남의 슬롯까지 후보에 들어온다).
                 self.bot.trading_manager._change_stock_state(
                     stock_code, StockState.COMPLETED,
                     f"EOD 청산 {EOD_LIQUIDATION_MAX_RETRIES}회 실패 - 강제 완료",

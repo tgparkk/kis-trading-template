@@ -58,9 +58,16 @@ def _make_bot(
     stocks = positioned_stocks if positioned_stocks is not None else []
 
     bot.trading_manager.get_stocks_by_state.return_value = stocks
-    bot.trading_manager.get_trading_stock.side_effect = lambda code: next(
-        (s for s in stocks if s.stock_code == code), None
-    )
+
+    def _get_trading_stock(code, strategy=None):
+        # 실제 StockStateManager._find_by_code 와 동일한 규약:
+        # strategy 지정 시 owner 정확일치 필터, 미지정 시 종목코드 단독 매칭.
+        matches = [s for s in stocks if s.stock_code == code]
+        if strategy is not None:
+            matches = [s for s in matches if s.owner_strategy_name == strategy]
+        return matches[0] if matches else None
+
+    bot.trading_manager.get_trading_stock.side_effect = _get_trading_stock
     bot.trading_manager.move_to_sell_candidate.return_value = move_result
     bot.trading_manager.execute_sell_order = AsyncMock()
     bot.trading_manager._change_stock_state = Mock()
@@ -220,7 +227,10 @@ class TestExecuteEndOfDayLiquidation:
             }
             await handler.execute_end_of_day_liquidation()
 
-        assert "005930" in handler._eod_failed_stocks
+        # 실패 항목은 (종목코드, owner) 쌍 — 무기명 슬롯이므로 owner=""
+        # ("" 는 None 으로 뭉개지 않는다: _find_by_code(code, "") 가 무기명 슬롯만
+        #  정확 매칭하는 가장 정밀한 키다. 2026-07-29 리뷰 HIGH)
+        assert ("005930", "") in handler._eod_failed_stocks
 
     @pytest.mark.asyncio
     async def test_does_not_add_to_failed_when_virtual_sell_succeeds(self):
@@ -236,7 +246,8 @@ class TestExecuteEndOfDayLiquidation:
             }
             await handler.execute_end_of_day_liquidation()
 
-        assert "005930" not in handler._eod_failed_stocks
+        assert ("005930", "") not in handler._eod_failed_stocks
+        assert len(handler._eod_failed_stocks) == 0
 
     @pytest.mark.asyncio
     async def test_adds_to_failed_when_individual_exception_occurs(self):
@@ -253,7 +264,7 @@ class TestExecuteEndOfDayLiquidation:
             }
             await handler.execute_end_of_day_liquidation()
 
-        assert "005930" in handler._eod_failed_stocks
+        assert ("005930", "") in handler._eod_failed_stocks
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +318,8 @@ class TestRetryFailedEodLiquidation:
         result = await handler.retry_failed_eod_liquidation()
 
         assert result is False
-        assert "005930" in handler._eod_failed_stocks
+        # 레거시 문자열 항목이 재시도에서 슬롯 owner("")로 승격된다
+        assert ("005930", "") in handler._eod_failed_stocks
 
     @pytest.mark.asyncio
     async def test_triggers_force_complete_when_retry_count_exceeds_max(self):
