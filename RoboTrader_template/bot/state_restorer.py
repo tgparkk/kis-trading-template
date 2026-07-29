@@ -229,6 +229,82 @@ class StateRestorer:
         except Exception as e:
             logger.error(f"VirtualTradingManager 잔고 동기화 오류: {e}")
 
+    def _reconstruct_strategy_ledger(self, restored_positions: list) -> None:
+        """전략 원장을 매매기록에서 재구성하고 FundManager 를 재동기화.
+
+        보유 0건(flat boot)과 보유 N건 경로가 **같은 코드**를 타야 한다. 재구성은
+        매매기록의 순수 함수라 보유 유무와 무관하게 실행되어야 누적손익이 승계된다.
+
+        Args:
+            restored_positions: 복원된 미청산 포지션 목록. flat boot 이면 빈 리스트.
+
+        가드: 전략 원장 미활성(_strategy_balances 공집합 = 레거시·단일전략·실전)이면
+        no-op. 실전은 allocate_strategy_capital 을 호출하지 않으므로 자동 스킵된다.
+        """
+        vtm = self.virtual_trading_manager
+        if not (vtm and getattr(vtm, '_strategy_balances', None)):
+            return
+
+        try:
+            from config.constants import VIRTUAL_CAPITAL_PER_STRATEGY
+            sums = self.db_manager.get_strategy_trade_sums()
+            vtm.restore_strategy_ledger_from_records(
+                VIRTUAL_CAPITAL_PER_STRATEGY, sums, restored_positions
+            )
+            self._resync_fund_manager_to_ledger(vtm)
+        except Exception as e:
+            logger.error(f"[가상매매] 전략 원장 재구성 실패: {e}")
+
+    def _resync_fund_manager_to_ledger(self, vtm) -> None:
+        """전략 원장 재구성 결과에 맞춰 FundManager 자금 장부를 재동기화.
+
+        기동 순서상 initializer._initialize_fund_manager 가 원장 *재구성 전에*
+        실행되어 allocate_strategy_capital 직후의 집계(8전략×10M = 80,000,000)를
+        total_funds 로 받는다. 그 뒤 restore_strategy_ledger_from_records 가
+        매매기록에서 전략 현금을 재구성해 집계가 34,892,123 이 되지만 FundManager
+        에는 반영되지 않아 가용자금이 1,694만원 과대표시됐다(2026-07-29 라이브:
+        총자금 80,000,000 → 교정 후 63,059,833).
+
+        invested_funds 는 건드리지 않는다. vtm 의 _strategy_invested 는
+        qty*price*(1+COMMISSION_RATE) 기준이지만 FundManager.invested_funds 는
+        순수 매수원가 기준이라(f22e16c) 섞으면 정합성 등식이 다시 깨진다.
+        available 만 원장 현금에 맞추고 total 을 역산하면
+        total == available + reserved + invested 가 구성상 보존된다.
+        """
+        fm = self.fund_manager
+        if fm is None or vtm is None:
+            return
+
+        try:
+            ledger_cash = vtm.get_virtual_balance()
+            if ledger_cash is None or float(ledger_cash) <= 0:
+                logger.warning(
+                    f"[가상매매] 전략 원장 현금이 무효({ledger_cash}) - "
+                    f"FundManager 재동기화 스킵 (총자금 {fm.total_funds:,.0f}원 유지)"
+                )
+                return
+
+            ledger_cash = float(ledger_cash)
+            # reserved/invested 읽기와 total 갱신을 한 임계구역에 묶는다. 읽은 뒤
+            # update_total_funds 가 락을 다시 잡는 사이에 다른 스레드가 예약/체결을
+            # 끼워넣으면 new_total 이 낡은 값으로 계산된다. _lock 은 RLock 이라
+            # update_total_funds 의 중첩 획득은 안전하다(기능 변화 없음).
+            with fm._lock:
+                reserved = fm.reserved_funds
+                invested = fm.invested_funds
+                old_total = fm.total_funds
+                new_total = ledger_cash + reserved + invested
+                fm.update_total_funds(new_total)
+
+            logger.info(
+                f"[가상매매] FundManager 원장 재동기화: "
+                f"총자금 {old_total:,.0f}원 → {new_total:,.0f}원 "
+                f"(원장 현금 {ledger_cash:,.0f}원 + 예약 {reserved:,.0f}원 "
+                f"+ 투자 {invested:,.0f}원)"
+            )
+        except Exception as e:
+            logger.error(f"[가상매매] FundManager 원장 재동기화 실패: {e}")
+
     def _apply_stale_position_check(
         self, trading_stock, buy_time, target_profit_rate: float, stop_loss_rate: float
     ) -> tuple:
@@ -436,6 +512,14 @@ class StateRestorer:
                 holdings = self.db_manager.get_real_open_positions()
             if holdings.empty:
                 logger.info("[가상매매] 보유 종목 없음")
+                # 보유 0건이어도 원장 재구성은 반드시 실행한다. 여기서 그냥 return 하면
+                # allocate_strategy_capital 이 쓴 8×10M 이 그대로 확정되어 누적손익이
+                # fund_manager·vtm 양쪽에서 통째로 소멸한다(실현손실 −5,053,250 이면
+                # 원장 현금 74,946,750 이어야 하는데 80,000,000 이 남는다).
+                # 드문 경로가 아니다 — 세션 로그 100개 중 40개가 flat boot 이다.
+                # 빈 포지션 목록으로 재구성하면 매매기록만으로 cash 를 승계하고
+                # invested=0 / positions=[] 인 flat 상태가 정확히 표현된다.
+                self._reconstruct_strategy_ledger([])
                 return
 
             logger.info(f"[가상매매] 보유 종목 {len(holdings)}개 복원 시작")
@@ -591,16 +675,7 @@ class StateRestorer:
             self._sync_strategy_positions(by_owner)
 
             # 전략 원장 활성 시: 매매기록에서 전략별 현금/포지션 재구성 (재시작 영속화)
-            vtm = self.virtual_trading_manager
-            if vtm and getattr(vtm, '_strategy_balances', None):
-                try:
-                    from config.constants import VIRTUAL_CAPITAL_PER_STRATEGY
-                    sums = self.db_manager.get_strategy_trade_sums()
-                    vtm.restore_strategy_ledger_from_records(
-                        VIRTUAL_CAPITAL_PER_STRATEGY, sums, restored_positions
-                    )
-                except Exception as e:
-                    logger.error(f"[가상매매] 전략 원장 재구성 실패: {e}")
+            self._reconstruct_strategy_ledger(restored_positions)
 
             logger.info(f"[가상매매] 보유 종목 {holding_restored}/{len(holdings)}개 복원 완료")
             self._log_fund_sync_summary(holding_restored, total_invested, "가상매매")
