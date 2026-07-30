@@ -305,6 +305,14 @@ class TradingRepository(BaseRepository):
                     # 종목 단위 평균으로 근사한다 — 다중소유 시 오염 가능성이
                     # 남지만, buy_record_id 가 이미 주어지는 정상 매도 경로는
                     # 위 분기에서 처리되므로 여기는 도달 자체가 이례적이다.
+                    # 성공하더라도 반드시 WARNING 을 남긴다 — 이 행은
+                    # buy_record_id=NULL 로 저장되어 virtual_trading_manager
+                    # 의 INNER JOIN 집계에서 탈락(오염이 아니라 소멸)하므로,
+                    # 사후 정합식 감사로도 못 잡는다. 관측 가능성이 유일한 방어선.
+                    self.logger.warning(
+                        f"{stock_code} buy_record_id 없음 — 종목단위 평균 원가로 근사 "
+                        f"(다중소유 시 손익 오염 가능, qty={quantity})"
+                    )
                     cursor.execute('''
                         SELECT SUM(b.quantity * b.price) / NULLIF(SUM(b.quantity), 0)
                         FROM virtual_trading_records b
