@@ -280,27 +280,45 @@ class TradingRepository(BaseRepository):
                         self.logger.warning(f"{stock_code} 중복 매도 방지")
                         return False
 
-                # 평균 매수가 계산
-                cursor.execute('''
-                    SELECT SUM(b.quantity * b.price) / NULLIF(SUM(b.quantity), 0)
-                    FROM virtual_trading_records b
-                    WHERE b.stock_code = %s AND b.action = 'BUY' AND b.is_test = true
-                      AND b.source = %s
-                      AND NOT EXISTS (
-                          SELECT 1 FROM virtual_trading_records s
-                          WHERE s.buy_record_id = b.id AND s.action = 'SELL'
-                      )
-                ''', (stock_code, self.SOURCE_KIS_TEMPLATE))
-
-                avg_result = cursor.fetchone()
-                if not avg_result or avg_result[0] is None:
+                # 매수 원가 조회: buy_record_id 로 정확한 슬롯의 매수단가를 직접 쓴다.
+                # (2026-07-30 실측 감사: 매도 505건 전수 중 buy_record_id 미연결 0건·
+                #  매도수량≠매수수량 0건·매도 strategy≠매수 strategy 0건 — 매도는 항상
+                #  매수 1건에 1:1 완전 대응하므로 buy_record_id 의 price 가 곧 정확한
+                #  슬롯 원가다.) 종목 단위 평균은 같은 종목을 다른 전략이 동시 보유할
+                #  때 상대 전략의 매수단가를 섞어 profit_loss 를 오염시킨다 — 900100
+                #  실증: daytrading 매도인데 rs_leader 의 매수단가가 평균에 섞여
+                #  들어가 손익이 −342,113.26(오염) vs −318,750(정답)으로 어긋났다.
+                buy_price = None
+                if buy_record_id is not None:
                     cursor.execute('SELECT price FROM virtual_trading_records WHERE id = %s', (buy_record_id,))
                     buy_result = cursor.fetchone()
-                    if not buy_result:
+                    if buy_result:
+                        buy_price = float(buy_result[0])
+                    else:
                         self.logger.error(f"매수 기록을 찾을 수 없음: ID {buy_record_id}")
                         return False
-                    buy_price = float(buy_result[0])
-                else:
+
+                if buy_price is None:
+                    # buy_record_id 가 없는 경로의 안전망(예: 리밸런싱 매도에서
+                    # get_last_open_virtual_buy 가 미매칭 매수를 찾지 못한 경우).
+                    # 이 경로는 어느 슬롯을 청산하는지 특정할 정보가 없으므로
+                    # 종목 단위 평균으로 근사한다 — 다중소유 시 오염 가능성이
+                    # 남지만, buy_record_id 가 이미 주어지는 정상 매도 경로는
+                    # 위 분기에서 처리되므로 여기는 도달 자체가 이례적이다.
+                    cursor.execute('''
+                        SELECT SUM(b.quantity * b.price) / NULLIF(SUM(b.quantity), 0)
+                        FROM virtual_trading_records b
+                        WHERE b.stock_code = %s AND b.action = 'BUY' AND b.is_test = true
+                          AND b.source = %s
+                          AND NOT EXISTS (
+                              SELECT 1 FROM virtual_trading_records s
+                              WHERE s.buy_record_id = b.id AND s.action = 'SELL'
+                          )
+                    ''', (stock_code, self.SOURCE_KIS_TEMPLATE))
+                    avg_result = cursor.fetchone()
+                    if not avg_result or avg_result[0] is None:
+                        self.logger.error(f"{stock_code} 매수 기록을 찾을 수 없음 (buy_record_id 없음)")
+                        return False
                     buy_price = float(avg_result[0])
 
                 profit_loss = (price - buy_price) * quantity

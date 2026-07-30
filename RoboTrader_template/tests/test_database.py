@@ -498,6 +498,100 @@ class TestTradingRepositoryVirtualSell:
 
         assert result is False
 
+    @patch('db.repositories.base.DatabaseConnection')
+    @patch('db.repositories.trading.now_kst')
+    def test_save_virtual_sell_multi_owner_uses_own_slot_price(self, mock_now, mock_db_conn):
+        """다중소유 매도 — profit_loss 는 자기 slot(buy_record_id) 단가만 써야 하며,
+        종목 단위 평균에 상대 전략의 매수단가가 섞이면 안 된다.
+
+        실사례(2026-07-30, 900100): rs_leader 가 301주@3,315 를 보유한 채로
+        daytrading 이 625주@3,200 을 보유 → daytrading 이 625주를 2,690 에 매도.
+          - 정답: (2690-3200)*625 = -318750.00
+          - 오염(종목 단위 가중평균을 원가로 쓸 때):
+            (301*3315 + 625*3200)/926 ≈ 3237.38 → (2690-3237.38)*625 ≈ -342,113
+            (라이브 DB 에 실제로 남아있던 오염값과 일치)
+
+        cursor.execute() 에 전달되는 SQL 문자열로 "종목 단위 평균" 쿼리와
+        "buy_record_id 단건조회" 쿼리를 구분해 서로 다른 값을 반환하게 만든다.
+        즉 실제 계산에 어느 쿼리 결과가 쓰였는지가 profit_loss 값으로 드러난다
+        (mock 이 항상 같은 값을 리턴하는 공허참 방지).
+        """
+        from db.repositories.trading import TradingRepository
+
+        mock_now.return_value = datetime(2026, 7, 30, 9, 5, 3,
+                                         tzinfo=timezone(timedelta(hours=9)))
+
+        OWN_BUY_ID = 555          # daytrading 슬롯의 buy_record_id
+        OWN_BUY_PRICE = 3200.0    # daytrading 자기 매수단가
+        CONTAMINATED_AVG = (301 * 3315 + 625 * 3200) / 926  # rs_leader+daytrading 가중평균
+
+        def fake_execute(sql, params=None):
+            normalized = " ".join(sql.split())
+            if normalized.startswith("SELECT id FROM virtual_trading_records"):
+                fake_execute.last = None  # 중복 매도 없음
+            elif normalized.startswith("SELECT price FROM virtual_trading_records WHERE id"):
+                assert params == (OWN_BUY_ID,), "buy_record_id 단건조회에 다른 id 가 전달됨"
+                fake_execute.last = (OWN_BUY_PRICE,)
+            elif "SUM(b.quantity * b.price)" in normalized:
+                # 종목 단위 평균 쿼리 — buy_record_id 가 있는 정상 경로에서는
+                # 아예 실행되지 않아야 한다(오염 원인). 실행되더라도 판별력을
+                # 위해 오염값을 리턴한다.
+                fake_execute.last = (CONTAMINATED_AVG,)
+            elif normalized.startswith("INSERT INTO virtual_trading_records"):
+                fake_execute.last = None
+            else:
+                raise AssertionError(f"예기치 않은 쿼리: {normalized}")
+
+        mock_cursor = Mock()
+        mock_cursor.execute.side_effect = fake_execute
+        mock_cursor.fetchone.side_effect = lambda: fake_execute.last
+
+        mock_conn = Mock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        @contextmanager
+        def fake_get_conn():
+            yield mock_conn
+
+        mock_db_conn.get_connection = fake_get_conn
+
+        repo = TradingRepository()
+        result = repo.save_virtual_sell(
+            stock_code="900100",
+            stock_name="테스트종목",
+            price=2690,
+            quantity=625,
+            strategy="daytrading_3methods_breakout",
+            reason="장중 청산",
+            buy_record_id=OWN_BUY_ID,
+        )
+
+        assert result is True
+
+        insert_call = next(
+            c for c in mock_cursor.execute.call_args_list
+            if " ".join(c.args[0].split()).startswith("INSERT INTO virtual_trading_records")
+        )
+        inserted_params = insert_call.args[1]
+        # (stock_code, stock_name, quantity, price, timestamp_str, strategy, reason,
+        #  profit_loss, profit_rate, buy_record_id, created_at_str, source)
+        profit_loss = inserted_params[7]
+        profit_rate = inserted_params[8]
+
+        expected_profit_loss = (2690 - OWN_BUY_PRICE) * 625
+        assert profit_loss == pytest.approx(expected_profit_loss)
+        assert profit_loss == pytest.approx(-318750.0)
+        # 오염값(가중평균 사용 시 결과)과는 확실히 달라야 한다
+        assert profit_loss != pytest.approx(-342113.26, abs=1.0)
+        assert profit_rate == pytest.approx((2690 - OWN_BUY_PRICE) / OWN_BUY_PRICE)
+
+        # buy_record_id 가 있는데 종목 단위 평균 쿼리가 실행됐다면 그 자체가 회귀다.
+        avg_query_executed = any(
+            "SUM(b.quantity * b.price)" in " ".join(c.args[0].split())
+            for c in mock_cursor.execute.call_args_list
+        )
+        assert not avg_query_executed, "buy_record_id 가 있는데도 종목 단위 평균 쿼리가 실행됨"
+
 
 class TestTradingRepositoryOpenPositions:
     """미체결 포지션 조회 테스트"""
