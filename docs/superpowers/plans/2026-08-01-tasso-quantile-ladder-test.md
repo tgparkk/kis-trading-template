@@ -19,6 +19,8 @@
 - **`daily_prices.date` 는 text 타입** (`YYYY-MM-DD`). PK = `(stock_code, date)`.
 - **왕복비용 0.21%** (거래세 0.18% + 수수료 0.015% 양방향) 를 모든 수익률에 반영.
 - **사전등록(Task 1)을 커밋하기 전에는 어떤 백테스트 수치도 산출하지 않는다.** 이 순서가 이 검정의 유일한 방어선이다.
+- **실행 환경(실측 확인됨)**: Python **3.9.13** (`C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_64\python.exe`), pandas 2.2.3 · numpy 2.0.2 · scipy 1.13.1 · psycopg2 2.9.11 · pyarrow 21.0.0 · pytest 8.4.2. 프로젝트 venv 는 없다.
+- ⚠️ **Python 3.9 이므로 모든 모듈 첫 줄(독스트링 다음)에 `from __future__ import annotations` 를 넣는다.** 없으면 `float | None` 같은 표기가 런타임에 죽는다. import 는 파일 상단에 모은다(`ruff check` E402).
 - 설계 원문: `docs/superpowers/specs/2026-08-01-tasso-quantile-ladder-design.md`
 - 캡처 원본: `D:\tmp\tasso\224364189017\slice_01~27.png`, `D:\tmp\tasso\224361924061\slice_01~19.png`
 
@@ -1059,27 +1061,42 @@ import numpy as np
 from lab.stats import delta_t, mde, white_reality_check
 
 
+def _panel(n_cells: int, n_codes: int, edge_cell: str | None = None, seed: int = 0):
+    """셀 × 종목코드 패널. 같은 코드가 모든 셀에 등장해 블록 구조를 만든다."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i in range(n_cells):
+        cell = f"c{i}"
+        mu = 0.04 if cell == edge_cell else 0.0
+        for k in range(n_codes):
+            for _ in range(4):
+                rows.append({"cell": cell, "code": f"S{k:03d}", "d": rng.normal(mu, 0.05)})
+    return pd.DataFrame(rows)
+
+
 def test_reality_check_false_positive_rate_across_seeds():
-    """엣지 0인 셀 50개를 8개 시드로 던져 거짓양성이 없어야 한다.
+    """귀무 하에서 거짓양성이 없어야 한다.
 
     단일 시드로 p>0.10 을 단언하면 안 된다 — 귀무 하에서 p 는 분포를 갖는다.
-    실측(b=300, seed 100~107): p = 0.462 0.847 0.412 0.322 0.246 0.332 0.571 0.322
     """
-    ps = []
-    for s in range(8):
-        rng = np.random.default_rng(s)
-        cells = {f"c{i}": rng.normal(0.0, 0.05, 400) for i in range(50)}
-        ps.append(white_reality_check(cells, b=300, seed=s + 100))
+    ps = [white_reality_check(_panel(20, 100, seed=s), b=200, seed=s + 100) for s in range(5)]
     assert sum(p < 0.05 for p in ps) == 0, ps
 
 
 def test_reality_check_detects_a_genuinely_strong_cell():
-    """실측 p = 0.0033."""
-    rng = np.random.default_rng(7)
-    cells = {f"c{i}": rng.normal(0.0, 0.05, 400) for i in range(49)}
-    cells["winner"] = rng.normal(0.04, 0.05, 400)
-    p = white_reality_check(cells, b=300, seed=1)
+    p = white_reality_check(_panel(20, 100, edge_cell="c7", seed=7), b=200, seed=1)
     assert p < 0.05, p
+
+
+def test_reality_check_requires_a_code_column():
+    """행 단위 리샘플링이면 유효표본을 거래 수로 착각한다 — 블록이어야 한다.
+
+    code 컬럼을 요구하는 API 자체가 호출부에서 블록 구조를 강제한다.
+    """
+    import inspect
+    assert "df" in inspect.signature(white_reality_check).parameters
+    with pytest.raises(KeyError):
+        white_reality_check(pd.DataFrame({"cell": ["a"], "d": [0.1]}), b=5)
 
 
 def test_mde_shrinks_as_sample_grows():
@@ -1114,31 +1131,49 @@ def delta_t(strategy: np.ndarray, control: np.ndarray) -> tuple[float, float]:
     return d, t
 
 
-def white_reality_check(cell_deltas: dict[str, np.ndarray], b: int = 1000,
-                        seed: int = 20260801) -> float:
-    """max-t 부트스트랩. 셀별 (전략-대조) 차이 벡터를 받는다.
+def white_reality_check(df: pd.DataFrame, b: int = 1000, seed: int = 20260801) -> float:
+    """max-t **종목코드 블록** 부트스트랩.
 
+    입력 df 컬럼: `cell`, `code`, `d`(= 전략 수익률 − 대조군 수익률).
     귀무: 모든 셀의 기대 초과수익 = 0.
-    관측 max 통계량이 중심화 부트스트랩 분포에서 차지하는 위치가 p.
+
+    ⚠️ 행 단위 독립 리샘플링을 쓰지 말 것. 같은 종목·같은 시기의 거래가
+       셀 간에 겹치므로 유효표본은 거래 수가 아니라 **종목 수**다.
+       1~3차도 종목코드 블록을 썼다 — 방법론이 달라지면 계열 비교가 깨진다.
+       (참고: 상관 있는 귀무 구성 6회에서 두 방식 모두 거짓양성 0이었다.
+        블록을 채택하는 근거는 거짓양성 실측이 아니라 계열 일관성이다.)
+
+    부트스트랩 1회 = 종목코드를 복원추출로 뽑아 **모든 셀에 같은 코드 집합을
+    적용**한다. 이래야 셀 간 의존구조가 보존된다.
     """
     rng = np.random.default_rng(seed)
-    names = list(cell_deltas)
-    obs = []
-    for k in names:
-        x = np.asarray(cell_deltas[k], dtype=float)
+    codes = df["code"].unique()
+    cells = list(df["cell"].unique())
+    # 셀 → 종목코드 → d 배열 (부트스트랩 루프에서 재계산하지 않도록 미리 접는다)
+    per = {c: {k: g["d"].to_numpy() for k, g in df[df["cell"] == c].groupby("code")}
+           for c in cells}
+    full = {c: np.concatenate(list(per[c].values())) for c in cells}
+
+    def _t(x: np.ndarray) -> float:
+        if len(x) < 2:
+            return 0.0
         se = np.std(x, ddof=1) / np.sqrt(len(x))
-        obs.append(np.mean(x) / se if se > 0 else 0.0)
-    obs_max = float(np.max(obs))
+        return float(np.mean(x) / se) if se > 0 else 0.0
+
+    obs_max = max(_t(full[c]) for c in cells)
 
     boot_max = np.empty(b)
     for j in range(b):
+        pick = rng.choice(codes, size=len(codes), replace=True)   # 셀 전체에 같은 코드 집합
         stat = []
-        for k in names:
-            x = np.asarray(cell_deltas[k], dtype=float)
-            idx = rng.integers(0, len(x), len(x))
-            s = x[idx]
-            se = np.std(s, ddof=1) / np.sqrt(len(s))
-            stat.append((np.mean(s) - np.mean(x)) / se if se > 0 else 0.0)
+        for c in cells:
+            parts = [per[c][k] for k in pick if k in per[c]]
+            if not parts:
+                stat.append(0.0)
+                continue
+            s = np.concatenate(parts)
+            se = np.std(s, ddof=1) / np.sqrt(len(s)) if len(s) > 1 else 0.0
+            stat.append((np.mean(s) - np.mean(full[c])) / se if se > 0 else 0.0)
         boot_max[j] = max(stat)
     return float((np.sum(boot_max >= obs_max) + 1) / (b + 1))
 
@@ -1361,11 +1396,11 @@ def main() -> None:
     df.to_parquet(out / "trades.parquet")
     df["d"] = df["ret_s"] - df["ret_c"]
 
-    cells, cell_rows = {}, []
+    cell_rows = []
     for cell, grp in df.groupby("cell"):
         delta, t = delta_t(grp["ret_s"].to_numpy(), grp["ret_c"].to_numpy())
-        cells[cell] = grp["d"].to_numpy()
-        cell_rows.append({"cell": cell, "n": len(grp), "delta": delta, "t": t,
+        cell_rows.append({"cell": cell, "n": len(grp), "n_codes": grp["code"].nunique(),
+                          "delta": delta, "t": t,
                           "mean_s": grp["ret_s"].mean(), "mean_c": grp["ret_c"].mean()})
     pd.DataFrame(cell_rows).to_csv(out / "cells.csv", index=False)
 
@@ -1376,9 +1411,10 @@ def main() -> None:
         control_trades=("ret_c", "size"), control_truncated=("trunc_c", "sum"),
     ).reset_index().to_csv(out / "truncation.csv", index=False)
 
-    p = white_reality_check(cells, b=1000, seed=SEED)
+    p = white_reality_check(df[["cell", "code", "d"]], b=1000, seed=SEED)
     sd = float(df["ret_s"].std(ddof=1))
-    verdict = {"p": p, "n_trades": int(len(df)), "n_cells": len(cells), "sd": sd,
+    verdict = {"p": p, "n_trades": int(len(df)), "n_codes": int(df["code"].nunique()),
+               "n_cells": int(df["cell"].nunique()), "sd": sd,
                "mde": mde(len(df), sd), "seed": SEED,
                "verdict": "PASS" if p < 0.05 else "FAIL"}
     (out / "verdict.json").write_text(json.dumps(verdict, indent=2, ensure_ascii=False), encoding="utf-8")
