@@ -903,7 +903,7 @@ cd LAB && git add lab/calibrate.py lab/calibrate_run.py tests/test_calibrate.py 
 - Produces:
   - `Trade` dataclass — `code, entry_date, avg_cost, exit_date, exit_px, ret_net, filled_n, truncated: bool`
   - `simulate(bars: pd.DataFrame, levels: list[float], hold_days: int = 20, cost: float = 0.0021) -> Trade | None`
-  - `control_levels(bars_on_entry_day: pd.Series, rng) -> list[float]`
+  - `control_levels(peak: float, low_bound: float, rng, n: int = 5) -> list[float]`
 
 - [ ] **Step 1: 실패 테스트 작성**
 
@@ -911,6 +911,7 @@ cd LAB && git add lab/calibrate.py lab/calibrate_run.py tests/test_calibrate.py 
 ```python
 import numpy as np
 import pandas as pd
+from lab.control import control_levels
 from lab.sim import simulate
 
 
@@ -941,6 +942,32 @@ def test_cost_is_deducted_from_the_return():
     t = simulate(bars, levels=[90.0], hold_days=20, cost=0.0021)
     gross = 100.0 / 90.0 - 1.0
     assert abs(t.ret_net - (gross - 0.0021)) < 1e-9
+
+
+def test_partial_fill_is_reported_so_asymmetry_is_visible():
+    """전략은 2개만 체결되고 대조군은 5개 다 체결되는 상황이 실제로 생긴다.
+
+    3차를 뒤집은 절단 비대칭과 같은 클래스이므로 filled_n 을 반드시 기록한다.
+    """
+    bars = _bars([["2026-01-02", 100, 101, 95, 97]] + [["2026-01-%02d" % d, 97, 98, 96, 97] for d in range(3, 25)])
+    t = simulate(bars, levels=[99.0, 96.0, 90.0], hold_days=20)
+    assert t.filled_n == 2, t.filled_n
+
+
+def test_control_levels_are_descending_and_inside_the_band():
+    """대조군은 진입 '가격'만 무작위다 — 개수·순서 규약은 전략과 같아야 한다."""
+    rng = np.random.default_rng(0)
+    lv = control_levels(peak=5100.0, low_bound=4126.0, rng=rng, n=5)
+    assert len(lv) == 5
+    assert lv == sorted(lv, reverse=True)          # 1차가 최고가 — ladder 와 같은 규약
+    assert all(4126.0 <= x <= 5100.0 for x in lv)
+
+
+def test_control_levels_are_reproducible_for_the_same_seed():
+    """재현 불가능한 대조군은 증거가 못 된다."""
+    a = control_levels(5100.0, 4126.0, np.random.default_rng(42))
+    b = control_levels(5100.0, 4126.0, np.random.default_rng(42))
+    assert a == b
 ```
 
 - [ ] **Step 2: 실패 확인**
@@ -1043,7 +1070,7 @@ def control_levels(peak: float, low_bound: float, rng: np.random.Generator, n: i
 - [ ] **Step 4: 통과 확인**
 
 Run: `cd LAB && python -m pytest tests/test_sim.py -v`
-Expected: 4 passed
+Expected: **7 passed** (체결 4건 + 부분체결 대칭 1건 + 대조군 2건)
 
 - [ ] **Step 5: 커밋**
 
@@ -1062,7 +1089,7 @@ cd LAB && git add lab/sim.py lab/control.py tests/test_sim.py && git commit -q -
 **Interfaces:**
 - Produces:
   - `delta_t(strategy: np.ndarray, control: np.ndarray) -> tuple[float, float]`
-  - `white_reality_check(cell_deltas: dict[str, np.ndarray], b: int = 1000, seed: int = 20260801) -> float`
+  - `white_reality_check(df: pd.DataFrame, b: int = 1000, seed: int = 20260801) -> float` — `df` 컬럼은 `cell`, `code`, `d`
   - `mde(n: int, sd: float, alpha: float = 0.05, power: float = 0.8) -> float`
 
 - [ ] **Step 1: 실패 테스트 작성**
@@ -1200,7 +1227,9 @@ def mde(n: int, sd: float, alpha: float = 0.05, power: float = 0.8) -> float:
 - [ ] **Step 4: 통과 확인**
 
 Run: `cd LAB && python -m pytest tests/test_stats.py -v`
-Expected: 4 passed
+Expected: **5 passed**. 실측 확인됨 — 귀무 5시드 p = 0.8856 / 0.7662 / 0.2040 / 0.8060 / 0.1045 (거짓양성 0), 엣지 셀 p = 0.004975, MDE(sd 0.20) n=400 → 3.9620%p · n=1,000 → 2.5058%p · n=4,000 → 1.2529%p.
+
+테스트 파일 상단 import 는 다음이 모두 필요하다: `from __future__ import annotations`, `import numpy as np`, `import pandas as pd`, `import pytest`.
 
 - [ ] **Step 5: MDE 를 산출하고 표본 게이트를 통과시킨다**
 
@@ -1292,8 +1321,8 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'lab.run'`
 from __future__ import annotations
 
 TRUNCATION_COLUMNS = (
-    "cell", "strategy_trades", "strategy_truncated",
-    "control_trades", "control_truncated",
+    "cell", "strategy_trades", "strategy_truncated", "strategy_mean_fills",
+    "control_trades", "control_truncated", "control_mean_fills",
 )
 
 
@@ -1399,6 +1428,7 @@ def main() -> None:
                         "gain": seg.gain,
                         "ret_s": t_s.ret_net, "ret_c": t_c.ret_net,
                         "trunc_s": t_s.truncated, "trunc_c": t_c.truncated,
+                        "fill_s": t_s.filled_n, "fill_c": t_c.filled_n,
                     })
 
             realized = 1.0 - float(window["low"].min()) / seg.peak_px
@@ -1420,7 +1450,9 @@ def main() -> None:
     df.groupby("bucket")["d"].agg(["count", "mean"]).to_csv(out / "by_bucket.csv")
     df.groupby("cell").agg(
         strategy_trades=("ret_s", "size"), strategy_truncated=("trunc_s", "sum"),
+        strategy_mean_fills=("fill_s", "mean"),
         control_trades=("ret_c", "size"), control_truncated=("trunc_c", "sum"),
+        control_mean_fills=("fill_c", "mean"),
     ).reset_index().to_csv(out / "truncation.csv", index=False)
 
     p = white_reality_check(df[["cell", "code", "d"]], b=1000, seed=SEED)
