@@ -304,6 +304,12 @@ class TradingStock:
 @dataclass
 class DataCollectionConfig:
     """데이터 수집 설정"""
+    # 죽은 설정(확인 2026-07-31): 이 값의 유일한 소비자는
+    # core/data_collector.py RealTimeDataCollector.start_collection() 인데, 그
+    # 메서드의 호출부가 코드베이스 전체에 0건이다. 라이브 경로는 main.py 의
+    # _main_trading_loop() → collect_once() 이며, 그 주기는 start_collection()과
+    # 무관하게 main.py LOOP_INTERVAL(현재 3초)이 결정한다. 즉 trading_config.json의
+    # data_collection.interval_seconds 를 바꿔도 라이브 동작에 아무 효과가 없다.
     interval_seconds: int = 30
     candidate_stocks: List[str] = field(default_factory=list)
 

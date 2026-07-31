@@ -74,7 +74,16 @@ class RealTimeDataCollector:
             self.logger.debug(f"후보 종목 제거: {stock_code}")
     
     async def start_collection(self) -> None:
-        """데이터 수집 시작"""
+        """데이터 수집 시작
+
+        죽은 경로(확인 2026-07-31): 이 메서드의 호출부가 코드베이스 전체에
+        0건이다. 라이브 데이터 수집은 main.py 의 _main_trading_loop() 이
+        매 반복(LOOP_INTERVAL, 현재 3초)마다 같은 인스턴스의 collect_once()를
+        (start_collection() 을 거치지 않고) 직접 호출하는 경로로 이루어진다.
+        즉 아래 self.config.data_collection.interval_seconds 는 라이브 주기에
+        반영되지 않는다 — 실제 주기를 바꾸려면 main.py 의 LOOP_INTERVAL 을
+        수정해야 한다.
+        """
         self.is_running = True
         self.logger.info("실시간 데이터 수집 시작")
         
