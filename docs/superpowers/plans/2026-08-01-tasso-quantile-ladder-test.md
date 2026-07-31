@@ -954,6 +954,20 @@ def test_partial_fill_is_reported_so_asymmetry_is_visible():
     assert t.filled_n == 2, t.filled_n
 
 
+def test_fills_stop_at_the_validity_window():
+    """유효기간 D 는 진입 창이지 보유 창이 아니다.
+
+    제한이 없으면 보유기간 구간에서까지 체결이 일어나 청산이 창 밖으로 밀리고
+    절단율이 구조적으로 부풀려진다(제한 없이 실측했을 때 54%).
+    """
+    bars = _bars([["2026-01-%02d" % d, 100, 101, 99, 100] for d in range(2, 10)]
+                 + [["2026-01-%02d" % d, 100, 101, 80, 85] for d in range(10, 30)])
+    t = simulate(bars, levels=[90.0], hold_days=5, max_fill_bars=5)
+    assert t is None, "유효기간 밖 체결이 새어 들어왔다"
+    t2 = simulate(bars, levels=[90.0], hold_days=5, max_fill_bars=20)
+    assert t2 is not None and t2.filled_n == 1
+
+
 def test_control_levels_are_descending_and_inside_the_band():
     """대조군은 진입 '가격'만 무작위다 — 개수·순서 규약은 전략과 같아야 한다."""
     rng = np.random.default_rng(0)
@@ -1002,16 +1016,23 @@ class Trade:
 
 
 def simulate(bars: pd.DataFrame, levels, hold_days: int = 20,
-             cost: float = 0.0021, code: str = "") -> Trade | None:
+             cost: float = 0.0021, code: str = "",
+             max_fill_bars: int | None = None) -> Trade | None:
     """레벨을 순서대로 체결하고, 마지막 체결일 + hold_days 종가에 청산한다.
 
     ⚠️ 기산점(마지막 체결일)은 전략·대조군이 동일해야 한다.
        달리 잡으면 3차의 기한 비대칭이 재발한다.
+
+    ⚠️ `max_fill_bars` 는 사전등록의 **유효기간 D** 다. 이걸 주지 않으면
+       보유기간용 구간에서까지 체결이 일어나 청산이 창 밖으로 밀리고,
+       절단율이 구조적으로 부풀려진다(실측 54%). 유효기간은 진입 창이지
+       보유 창이 아니다.
     """
     w = WEIGHTS[: len(levels)]
     fills: list[tuple[float, float]] = []
     last_pos = None
-    for pos in range(len(bars)):
+    fill_limit = len(bars) if max_fill_bars is None else min(max_fill_bars, len(bars))
+    for pos in range(fill_limit):
         row = bars.iloc[pos]
         for i, lv in enumerate(levels):
             if i < len(fills):
@@ -1413,12 +1434,13 @@ def main() -> None:
                     continue
                 for c in C_GRID:
                     levels = ladder(seg.peak_px, q[0], q[1], c)
-                    t_s = simulate(window, levels, HOLD, COST, seg.code)
+                    t_s = simulate(window, levels, HOLD, COST, seg.code,
+                                   max_fill_bars=d["valid_days"])
                     if t_s is None:
                         continue
                     rng = np.random.default_rng(_seed(seg.code, seg.peak_date, version, c))
                     t_c = simulate(window, control_levels(seg.peak_px, min(levels), rng),
-                                   HOLD, COST, seg.code)
+                                   HOLD, COST, seg.code, max_fill_bars=d["valid_days"])
                     if t_c is None:
                         continue
                     rows.append({
