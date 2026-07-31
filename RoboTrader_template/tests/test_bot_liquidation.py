@@ -591,3 +591,44 @@ class TestScreenerSnapshotHook:
             await handler.run_screener_snapshot_hook()
 
         mock_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_hook_detects_save_failure_from_run_once_ok_false(self):
+        """run_once() 요약에 ok=False 가 하나라도 있으면 훅이 실제로 실패를 감지해 WARNING 을 남긴다.
+
+        run_once() 의 summaries.append 가 "ok": True 를 하드코딩하던 결함이 있었을 때는
+        이 경로가 절대 발화하지 않았다(2026-07-31 HIGH). ok=False 를 소비자까지
+        전달하는지 고정한다.
+        """
+        from datetime import datetime
+        bot = _make_bot(positioned_stocks=[])
+        bot.config = None
+        bot.telegram = None
+        handler = _make_handler(bot)
+        handler._snapshot_done_date = None
+        handler.logger = Mock()
+
+        def _fake_run_once(strategies, scan_date, max_candidates, dry_run,
+                           broker=None, db_manager=None, config=None):
+            return [
+                {"strategy": "ok_strategy", "count": 5, "elapsed": 0.1,
+                 "params_hash": "abc", "ok": True},
+                {"strategy": "failed_strategy", "count": 3, "elapsed": 0.1,
+                 "params_hash": "def", "ok": False},
+            ]
+
+        with patch('bot.liquidation_handler.SCREENER_SNAPSHOT_ENABLED', True), \
+             patch('bot.liquidation_handler.now_kst',
+                   return_value=datetime(2026, 6, 8, 8, 0)), \
+             patch('runners.screener_snapshot_collector.run_once',
+                   side_effect=_fake_run_once):
+            await handler.run_screener_snapshot_hook()
+
+        handler.logger.warning.assert_called_once()
+        warn_args = handler.logger.warning.call_args.args
+        assert "failed_strategy" in warn_args[1], (
+            f"실패한 전략(failed_strategy)이 WARNING 인자에 없음: {warn_args}"
+        )
+        assert "ok_strategy" not in warn_args[1], (
+            f"성공한 전략(ok_strategy)까지 실패로 잡힘: {warn_args}"
+        )

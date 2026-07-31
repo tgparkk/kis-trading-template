@@ -124,6 +124,11 @@ def run_once(
             count = len(candidates)
 
             if dry_run:
+                # dry-run 은 DB 저장을 시도하지 않았을 뿐 실패가 아니다 — ok=True.
+                # (2026-07-31 HIGH 수정: 과거엔 이 분기에서 ok 가 아예 정의되지
+                # 않았고 summaries.append 의 "ok": True 하드코딩에 가려져 있었다.
+                # 하드코딩을 걷어내면서 여기서 명시적으로 정의해야 한다.)
+                ok = True
                 print(f"[스냅샷] {name} - {count}건 (dry-run, DB 저장 안 함, {elapsed:.1f}초)")
                 for c in candidates:
                     print(f"  {c.code}  {c.name}  score={c.score}  {c.reason}")
@@ -147,7 +152,13 @@ def run_once(
                 "count": count,
                 "elapsed": elapsed,
                 "params_hash": params_hash,
-                "ok": True,
+                # 계산된 ok 를 그대로 전달한다. 과거엔 여기서 True 를 하드코딩해
+                # DB 저장 실패(위 else 분기의 ok=False)가 소비자(예:
+                # liquidation_handler._verify 의 failed 판정, 텔레그램 "저장
+                # 완료" 알림)에 영원히 전달되지 않는 거짓 안심이었다
+                # (2026-07-31 HIGH, _verify_screener_snapshot 날짜기준 수정과
+                # 같은 클래스의 결함, 한 층 아래).
+                "ok": ok,
             })
 
         except Exception as e:
