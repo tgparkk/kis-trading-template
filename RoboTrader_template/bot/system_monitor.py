@@ -6,7 +6,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from utils.logger import setup_logger
-from utils.korean_time import now_kst, is_market_open
+from utils.korean_time import now_kst, is_market_open, get_previous_trading_day
 from utils.korean_holidays import is_holiday, get_holiday_name
 from config.market_hours import MarketHours
 from tools.daily_trading_summary import print_today_trading_summary
@@ -513,7 +513,11 @@ class SystemMonitor:
         """EOD 스크리너 스냅샷 실행 여부 검증 (D6)
 
         run_screener_snapshot_hook()이 오늘 실행됐는지를 1차 확인한다.
-        실행됐으면 DB 행 수와 무관하게 정상 (후보 0건은 정상 결과).
+        실행됐으면 훅과 동일 기준(D-1 거래일)으로 DB 행 수를 조회해 로깅한다.
+        0건은 이제 정상 결과로 간주하지 않는다(WARNING) — 날짜 기준이 훅과
+        일치하는 이상 실제 이상 신호이기 때문이다(2026-07-31 정정, 과거
+        "0건은 후보 없음" 문구는 CURRENT_DATE/D-1 날짜 불일치로 인한 구조적
+        0건을 정상으로 위장시켰다).
         실행 기록이 없으면 WARNING.
         """
         from config.constants import SCREENER_SNAPSHOT_ENABLED
@@ -526,19 +530,39 @@ class SystemMonitor:
         lh = getattr(self.bot, 'liquidation_handler', None)
         snapshot_done_date = getattr(lh, '_snapshot_done_date', None) if lh else None
         if snapshot_done_date == today:
-            # 훅이 오늘 실행됨 — DB 행 수도 참고로 로깅
+            # 훅이 오늘 실행됨 — DB 행 수도 참고로 로깅.
+            # 훅(run_screener_snapshot_hook, liquidation_handler.py:595)은
+            # scan_date=get_previous_trading_day(now_kst()).date() (D-1 거래일)로
+            # 저장한다(당일 일봉은 quant 에 ~15:35 적재되므로 당일 키를 쓰면 빈
+            # 유니버스가 됨). 검증도 동일 기준으로 조회해야 한다 — CURRENT_DATE로
+            # 조회하면 훅이 정상 저장해도 구조적으로 항상 0건이 나와 거짓 안심을
+            # 준다(2026-07-31 발견: 훅은 8전략 저장 성공, 검증은 0건 보고).
             try:
+                scan_date = get_previous_trading_day(now_kst()).date()
                 from db.connection import DatabaseConnection
                 with DatabaseConnection.get_connection() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            "SELECT COUNT(*) FROM screener_snapshots WHERE scan_date = CURRENT_DATE"
+                            "SELECT COUNT(*) FROM screener_snapshots WHERE scan_date = %s",
+                            (scan_date,)
                         )
                         row = cur.fetchone()
                         count = row[0] if row else 0
-                self.logger.info(f"EOD 스크리너 스냅샷 실행 완료 (DB 저장 {count}건, 0건은 후보 없음)")
+                if count == 0:
+                    # 날짜 기준이 훅과 일치하는 이상 0건은 정상 결과가 아니라
+                    # 이상 신호다(과거 "0건은 후보 없음" 문구는 날짜 불일치로 인한
+                    # 구조적 0건을 정상으로 위장시켰다).
+                    self.logger.warning(
+                        f"EOD 스크리너 스냅샷 실행 완료했으나 DB 저장 0건 (D-1={scan_date}) — 이상 신호"
+                    )
+                else:
+                    self.logger.info(f"EOD 스크리너 스냅샷 실행 완료 (D-1={scan_date}, DB 저장 {count}건)")
             except Exception as e:
-                self.logger.info(f"EOD 스크리너 스냅샷 실행 완료 (DB 조회 오류: {e})")
+                # scan_date 계산(get_previous_trading_day) 또는 DB 조회 실패 —
+                # "실행 완료"가 아니라 검증 자체가 불가능한 상태이므로 INFO로
+                # 조용히 넘기면 안 된다(2026-07-31 리뷰 지적: 이 핸들러가 삼키는
+                # 범위에 scan_date 계산까지 포함되도록 넓어졌으므로 더더욱).
+                self.logger.warning(f"EOD 스크리너 스냅샷 DB 조회 실패 — 검증 불가: {e}")
             return
 
         # 2차: 훅 미실행 → WARNING
