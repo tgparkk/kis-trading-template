@@ -158,9 +158,15 @@ def test_drop_bad_ohlc_removes_zero_open_even_when_close_is_valid():
     assert list(out["stock_code"]) == ["B"]
 
 
-def test_loader_never_reads_adj_factor():
-    import inspect
-    assert "adj_factor" not in inspect.getsource(load_daily)
+def test_loader_sql_never_selects_adj_factor():
+    """가격에 adj_factor 를 곱하면 분할일 가짜 절벽이 생겨 거짓 MaxDD 를 만든다.
+
+    ⚠️ SQL 상수만 검사한다. 소스 전문(`inspect.getsource`)을 검사하면
+       독스트링·주석에서 adj_factor 를 '언급'하는 것까지 막아 문서화를
+       처벌하고, 반대로 컬럼명을 동적으로 조립하면 못 잡는다.
+    """
+    from lab.data import DAILY_SQL
+    assert "adj_factor" not in DAILY_SQL
 ```
 
 - [ ] **Step 2: 실패 확인**
@@ -208,17 +214,23 @@ def drop_bad_ohlc(df: pd.DataFrame) -> pd.DataFrame:
     return df.loc[~bad].reset_index(drop=True)
 
 
+DAILY_SQL = """
+    select stock_code, date, open, high, low, close,
+           volume, trading_value, market_cap
+    from daily_prices
+    where date >= %s and date <= %s
+    order by stock_code, date
+"""
+
+
 def load_daily(start: str, end: str) -> pd.DataFrame:
-    """일봉 로딩. adj_factor 는 읽지 않는다(곱하면 분할일 가짜 절벽)."""
-    sql = """
-        select stock_code, date, open, high, low, close,
-               volume, trading_value, market_cap
-        from daily_prices
-        where date >= %s and date <= %s
-        order by stock_code, date
+    """일봉 로딩.
+
+    ⚠️ `adj_factor` 는 읽지도 곱하지도 않는다. close 는 이미 분할조정
+       연속시세라, 곱하면 분할일에 가짜 절벽이 생겨 거짓 MaxDD 를 만든다.
     """
     with _conn() as conn:
-        df = pd.read_sql(sql, conn, params=(start, end))
+        df = pd.read_sql(DAILY_SQL, conn, params=(start, end))
     return drop_bad_ohlc(df)
 ```
 
