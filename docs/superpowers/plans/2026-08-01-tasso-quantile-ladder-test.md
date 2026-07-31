@@ -287,7 +287,23 @@ Expected: 가드 적용 후 행수가 2,850,450 보다 **작아야** 한다(18,1
 
 ⚠️ 판독 불가(라벨 잘림·화질)한 항목은 **추측해서 채우지 말고** `null` 로 두고 `"note"` 에 사유를 적는다. 채점에서 제외된다.
 
-- [ ] **Step 3: 라벨 정합성 테스트 작성**
+- [ ] **Step 3: 종목명 → 종목코드 매핑**
+
+`daily_prices` 에는 종목명 컬럼이 없다. 아래 15건은 DB(`screener_snapshots` ∪ `candidate_stocks` ∪ `virtual_trading_records`)에서 **실측 확인된 매핑**이므로 그대로 쓴다.
+
+| 종목명 | 코드 | 종목명 | 코드 | 종목명 | 코드 |
+|---|---|---|---|---|---|
+| 가온칩스 | 399720 | 금호전기 | 001210 | 다날 | 064260 |
+| 다스코 | 058730 | 데이타솔루션 | 263800 | 마키나락스 | 477850 |
+| 모나미 | 005360 | 삼기 | 122350 | 씨피시스템 | 413630 |
+| 지엔씨에너지 | 119850 | 코스모로보틱스 | 439960 | 티엑스알로보틱스 | 484810 |
+| 한성기업 | 003680 | 한성크린텍 | 066980 | 현대약품 | 004310 |
+
+나머지 7건(**금호건설·남화토건·동신건설·삼호개발·삼화전자·셀바스AI·에스폴리텍**)은 우리 봇이 스크리닝한 적이 없어 DB에 없다. `finance.naver.com` 종목 검색으로 코드를 확인해 채운다.
+
+⚠️ **코드를 추측해서 넣지 말 것.** 확인 못 한 종목은 `"code": null` 로 두고 `"note": "코드 미확인"` 을 적는다. 채점에서 제외되며, 제외 건수를 `calibration_scores.csv` 옆에 기록한다. 잘못된 코드는 엉뚱한 종목의 가격으로 채점해 정의 선정을 통째로 오염시킨다.
+
+- [ ] **Step 4: 라벨 정합성 테스트 작성**
 
 `LAB/tests/test_labels.py`:
 ```python
@@ -322,17 +338,19 @@ def test_reported_returns_are_net_of_cost():
     assert 0.15 < sum(gaps) / len(gaps) < 0.40, sum(gaps) / len(gaps)
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [ ] **Step 5: 통과 확인**
 
 Run: `cd LAB && python -m pytest tests/test_labels.py -v`
 Expected: 3 passed. `test_reported_returns_are_net_of_cost` 가 실패하면 판독 오류이므로 해당 종목을 다시 연다.
 
-- [ ] **Step 5: 커밋**
+- [ ] **Step 6: 커밋**
 
 ```bash
-cd LAB && git init -q 2>NUL & git add . && git commit -q -m "labels: 태쏘 캡처 판독 라벨 1급 2건 + 2급 N종목"
+cd "$LAB"
+[ -d .git ] || git init -q
+git add . && git commit -q -m "labels: 태쏘 캡처 판독 라벨 1급 2건 + 2급 N종목"
 ```
-(LAB 은 독립 저장소다. 라이브 트리 저장소에 커밋하지 않는다.)
+LAB 은 독립 저장소다. 라이브 트리 저장소에 커밋하지 않는다.
 
 ---
 
@@ -361,38 +379,28 @@ def _frame(rows):
     return pd.DataFrame(rows, columns=["stock_code", "date", "open", "high", "low", "close", "volume"])
 
 
+_RALLY = [
+    ["A", "2026-01-02", 100, 105, 95, 100, 1000],
+    ["A", "2026-01-05", 100, 104, 90, 96, 1000],   # 최저 90
+    ["A", "2026-01-06", 96, 150, 96, 148, 9000],   # 급등봉 (시가 96, 직전봉 종가 96)
+    ["A", "2026-01-07", 148, 200, 145, 195, 5000], # 최고 200 — 오늘이 창 최고
+]
+
+
 def test_low_variant_uses_the_lowest_low_as_start():
-    df = _frame([
-        ["A", "2026-01-02", 100, 105, 95, 100, 1000],
-        ["A", "2026-01-05", 100, 104, 90, 96, 1000],   # 최저 90
-        ["A", "2026-01-06", 96, 150, 96, 148, 9000],   # 급등봉
-        ["A", "2026-01-07", 148, 200, 145, 195, 5000], # 최고 200
-    ])
-    segs = find_segments(df, variant="low", lookback=60, min_gain=0.30)
+    segs = find_segments(_frame(_RALLY), variant="low", lookback=3, min_gain=0.30)
     assert len(segs) == 1
     assert segs[0].start_px == 90
     assert segs[0].peak_px == 200
 
 
 def test_surge_open_variant_starts_at_the_surge_bar_open():
-    df = _frame([
-        ["A", "2026-01-02", 100, 105, 95, 100, 1000],
-        ["A", "2026-01-05", 100, 104, 90, 96, 1000],
-        ["A", "2026-01-06", 96, 150, 96, 148, 9000],   # 급등봉 시가 96
-        ["A", "2026-01-07", 148, 200, 145, 195, 5000],
-    ])
-    segs = find_segments(df, variant="surge_open", lookback=60, min_gain=0.30)
+    segs = find_segments(_frame(_RALLY), variant="surge_open", lookback=3, min_gain=0.30)
     assert segs[0].start_px == 96
 
 
 def test_prev_close_variant_starts_at_the_bar_before_the_surge():
-    df = _frame([
-        ["A", "2026-01-02", 100, 105, 95, 100, 1000],
-        ["A", "2026-01-05", 100, 104, 90, 96, 1000],   # 직전봉 종가 96
-        ["A", "2026-01-06", 96, 150, 96, 148, 9000],
-        ["A", "2026-01-07", 148, 200, 145, 195, 5000],
-    ])
-    segs = find_segments(df, variant="prev_close", lookback=60, min_gain=0.30)
+    segs = find_segments(_frame(_RALLY), variant="prev_close", lookback=3, min_gain=0.30)
     assert segs[0].start_px == 96
 
 
@@ -400,8 +408,31 @@ def test_segment_is_dropped_when_gain_below_activation():
     df = _frame([
         ["A", "2026-01-02", 100, 105, 95, 100, 1000],
         ["A", "2026-01-05", 100, 110, 99, 108, 3000],
+        ["A", "2026-01-06", 108, 112, 107, 110, 3000],
     ])
-    assert find_segments(df, variant="low", lookback=60, min_gain=0.30) == []
+    assert find_segments(df, variant="low", lookback=2, min_gain=0.30) == []
+
+
+def test_no_segment_emitted_on_a_day_that_is_not_a_window_high():
+    """구간은 '새 고점을 찍은 날'에만 발생한다 — 하락 중에는 안 생긴다."""
+    rows = _RALLY + [["A", "2026-01-08", 195, 196, 180, 182, 4000]]
+    segs = find_segments(_frame(rows), variant="low", lookback=3, min_gain=0.30)
+    assert all(s.peak_date != "2026-01-08" for s in segs)
+
+
+def test_many_segments_across_a_long_history():
+    """종목당 1건만 나오면 5.6년 백테스트 표본이 붕괴한다."""
+    rows = []
+    for cycle in range(5):
+        base = 100 + cycle
+        rows += [
+            ["A", f"2026-{cycle+1:02d}-02", base, base + 5, base - 5, base, 1000],
+            ["A", f"2026-{cycle+1:02d}-05", base, base + 4, base - 10, base - 4, 1000],
+            ["A", f"2026-{cycle+1:02d}-06", base - 4, base + 50, base - 4, base + 48, 9000],
+            ["A", f"2026-{cycle+1:02d}-07", base + 48, base + 100, base + 45, base + 95, 5000],
+        ]
+    segs = find_segments(_frame(rows), variant="low", lookback=3, min_gain=0.30)
+    assert len(segs) >= 4, len(segs)
 ```
 
 - [ ] **Step 2: 실패 확인**
@@ -445,44 +476,59 @@ def _surge_idx(g: pd.DataFrame, low_pos: int) -> int | None:
     return None
 
 
+def _start_price(w: pd.DataFrame, low_pos: int, variant: str) -> float | None:
+    if variant == "low":
+        return float(w["low"].iat[low_pos])
+    s = _surge_idx(w, low_pos)
+    if s is None or s == 0:
+        return None
+    return float(w["open"].iat[s]) if variant == "surge_open" else float(w["close"].iat[s - 1])
+
+
 def find_segments(df: pd.DataFrame, variant: str, lookback: int, min_gain: float) -> list[Segment]:
+    """시간축을 훑으며 '새 고점을 찍은 날'마다 상승구간을 발생시킨다.
+
+    ⚠️ 종목당 마지막 창 하나만 보면 5.6년 백테스트 표본이 종목당 1건으로
+       붕괴해 MDE 게이트를 통과할 수 없다. 반드시 전 기간을 스캔한다.
+    같은 (종목, 시작일) 조합은 최고 peak 하나로 접는다.
+    """
     if variant not in VARIANTS:
         raise ValueError(f"unknown variant: {variant}")
     out: list[Segment] = []
     for code, g in df.groupby("stock_code", sort=False):
         g = g.reset_index(drop=True)
-        window = g.tail(lookback).reset_index(drop=True) if lookback < len(g) else g
-        low_pos = int(window["low"].idxmin())
-        peak_slice = window.iloc[low_pos:]
-        peak_pos = int(peak_slice["high"].idxmax())
-        if variant == "low":
-            start_px = float(window["low"].iat[low_pos])
-        else:
-            s = _surge_idx(window, low_pos)
-            if s is None:
+        best: dict[tuple[str, str], Segment] = {}
+        for t in range(lookback, len(g)):
+            w = g.iloc[t - lookback : t + 1].reset_index(drop=True)
+            if float(w["high"].iat[-1]) < float(w["high"].max()):
+                continue                      # 오늘이 창 최고가가 아니면 발생시키지 않는다
+            low_pos = int(w["low"].iloc[:-1].idxmin())
+            start_px = _start_price(w, low_pos, variant)
+            if start_px is None or start_px <= 0:
                 continue
-            start_px = float(window["open"].iat[s]) if variant == "surge_open" else float(window["close"].iat[s - 1])
-        peak_px = float(window["high"].iat[peak_pos])
-        if start_px <= 0:
-            continue
-        gain = peak_px / start_px - 1.0
-        if gain < min_gain:
-            continue
-        out.append(Segment(
-            code=str(code),
-            start_date=str(window["date"].iat[low_pos]),
-            start_px=start_px,
-            peak_date=str(window["date"].iat[peak_pos]),
-            peak_px=peak_px,
-            gain=gain,
-        ))
+            peak_px = float(w["high"].iat[-1])
+            gain = peak_px / start_px - 1.0
+            if gain < min_gain:
+                continue
+            seg = Segment(
+                code=str(code),
+                start_date=str(w["date"].iat[low_pos]),
+                start_px=start_px,
+                peak_date=str(w["date"].iat[-1]),
+                peak_px=peak_px,
+                gain=gain,
+            )
+            key = (seg.code, seg.start_date)
+            if key not in best or seg.peak_px > best[key].peak_px:
+                best[key] = seg
+        out.extend(best.values())
     return out
 ```
 
 - [ ] **Step 4: 통과 확인**
 
 Run: `cd LAB && python -m pytest tests/test_segments.py -v`
-Expected: 4 passed
+Expected: **6 passed**. (구현·테스트 모두 실측 확인됨: low→90, surge_open→96, prev_close→96, 미달구간→[], 하락일 미발생, 다구간 5건 검출.)
 
 - [ ] **Step 5: 커밋**
 
@@ -735,9 +781,93 @@ Expected: 2 passed
 
 - [ ] **Step 5: 전 격자 채점 실행 → 상위 정의 1~3개 선정**
 
+`LAB/lab/calibrate_run.py` 를 만든다:
+```python
+"""정의 격자를 라벨에 맞춰 채점하고 상위 3개를 고른다."""
+from __future__ import annotations
+
+import itertools
+import json
+from pathlib import Path
+
+import pandas as pd
+
+from lab.bands import exogenous_quantiles, ladder
+from lab.calibrate import score_grade1, score_grade2
+from lab.data import load_daily
+from lab.segments import find_segments
+
+VARIANTS = ("low", "surge_open", "prev_close")
+LOOKBACKS = (60, 120, 250)
+MIN_GAINS = (0.30, 0.50, 1.00)
+VALID_DAYS = 20
+
+
+def main() -> None:
+    out = Path("out")
+    out.mkdir(exist_ok=True)
+    labels = json.loads(Path("labels/labels.json").read_text(encoding="utf-8"))
+    bars = load_daily("2021-01-04", "2026-07-31")
+
+    codes = {s["code"] for s in labels["grade1"] + labels["grade2"] if s.get("code")}
+    sub = bars[bars["stock_code"].isin(codes)]
+    skipped = [s["name"] for s in labels["grade2"] if not s.get("code")]
+
+    rows = []
+    for variant, lb, mg in itertools.product(VARIANTS, LOOKBACKS, MIN_GAINS):
+        segs = find_segments(sub, variant, lb, mg)
+        by_code: dict[str, list] = {}
+        for s in segs:
+            by_code.setdefault(s.code, []).append(s)
+
+        g1 = [min(score_grade1(s, lab) for s in by_code[lab["code"]])
+              for lab in labels["grade1"]
+              if lab.get("code") and lab["code"] in by_code]
+
+        g2 = []
+        for lab in labels["grade2"]:
+            code, fills = lab.get("code"), lab.get("fills") or []
+            if not code or code not in by_code or not fills:
+                continue
+            best = float("inf")
+            for s in by_code[code]:
+                q1, q3 = exogenous_quantiles(s.gain)
+                best = min(best, score_grade2(ladder(s.peak_px, q1, q3, 0.8), fills))
+            g2.append(best)
+
+        rows.append({"variant": variant, "lookback": lb, "min_gain": mg,
+                     "n_segments": len(segs),
+                     "g1_n": len(g1), "g1_err": sum(g1) / len(g1) if g1 else None,
+                     "g2_n": len(g2), "g2_err": sum(g2) / len(g2) if g2 else None})
+
+    df = pd.DataFrame(rows)
+    df.to_csv(out / "calibration_scores.csv", index=False)
+
+    ranked = (df.dropna(subset=["g1_err", "g2_err"])
+                .assign(score=lambda x: x["g1_err"].rank() + x["g2_err"].rank())
+                .sort_values("score").head(3))
+    selected = [{"name": f"{r.variant}-lb{r.lookback}-mg{r.min_gain}",
+                 "variant": r.variant, "lookback": int(r.lookback),
+                 "min_gain": float(r.min_gain), "valid_days": VALID_DAYS}
+                for r in ranked.itertuples()]
+    (out / "selected_definitions.json").write_text(
+        json.dumps(selected, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    print(df.to_string(index=False))
+    print("\n코드 미확인으로 채점 제외:", skipped or "없음")
+    print("selected:", json.dumps(selected, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
+```
+
 Run: `cd LAB && python -m lab.calibrate_run`
-(이 스크립트는 `variant × lookback × min_gain` 격자로 `find_segments` 를 돌려 grade1 2건·grade2 전 종목 점수를 표로 낸다.)
-결과를 `LAB/out/calibration_scores.csv` 에 쓰고, **상위 1~3개 정의만** 사전등록 문서 §1에 추가 기록한다.
+Expected: `out/calibration_scores.csv` 27행(3×3×3), `out/selected_definitions.json` 3건, 그리고 채점 제외 종목 목록이 출력된다.
+
+⚠️ `g1_n` 이 0이면 1급 라벨이 한 건도 안 걸린 것이다. 그 상태로 진행하면 정의 선정이 2급 라벨만으로 이뤄지므로, 멈추고 lookback·min_gain 범위를 사전등록에 기록한 뒤 넓힌다.
+
+**상위 1~3개 정의만** 사전등록 문서 §1에 추가 기록한다.
 
 ⚠️ 여기서 정의를 고른 뒤에는 **다시 바꾸지 않는다.** 본검정 결과를 보고 정의를 갈아끼우면 검정이 무효다.
 
@@ -1077,6 +1207,28 @@ def test_truncation_is_reported_for_both_arms():
     from lab.run import TRUNCATION_COLUMNS
     assert "strategy_truncated" in TRUNCATION_COLUMNS
     assert "control_truncated" in TRUNCATION_COLUMNS
+
+
+def test_pit_gate_keeps_open_windows_out_of_history():
+    """아직 창이 안 닫힌 표본이 분포에 새면 그게 look-ahead 다."""
+    from lab.run import flush_pending
+    pending = [("2026-03-01", 0.5, 0.2), ("2026-09-01", 0.6, 0.3)]
+    ready, still = flush_pending(pending, as_of="2026-06-01")
+    assert ready == [(0.5, 0.2)]
+    assert still == [("2026-09-01", 0.6, 0.3)]
+
+
+def test_pit_gate_is_inclusive_on_the_boundary_date():
+    from lab.run import flush_pending
+    ready, still = flush_pending([("2026-06-01", 0.5, 0.2)], as_of="2026-06-01")
+    assert ready == [(0.5, 0.2)] and still == []
+
+
+def test_control_seed_is_reproducible_across_processes():
+    """내장 hash() 를 쓰면 실행마다 대조군이 달라져 증거가 못 된다."""
+    from lab.run import _seed
+    assert _seed("064260", "2026-07-23", "pit", 0.8) == _seed("064260", "2026-07-23", "pit", 0.8)
+    assert _seed("064260", "2026-07-23", "pit", 0.8) != _seed("064260", "2026-07-23", "exo", 0.8)
 ```
 
 - [ ] **Step 2: 실패 확인**
@@ -1106,23 +1258,140 @@ def required_outputs() -> tuple[str, ...]:
     )
 
 
+import json
+import zlib
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from lab.bands import BUCKETS, exogenous_quantiles, ladder, pit_quantiles
+from lab.control import control_levels
+from lab.data import load_daily
+from lab.segments import find_segments
+from lab.sim import simulate
+from lab.stats import delta_t, mde, white_reality_check
+
+START, END = "2021-01-04", "2026-07-31"
+HOLD, COST = 20, 0.0021
+C_GRID = (0.6, 0.8, 1.0)
+SEED = 20260801
+
+
+def _seed(*parts) -> int:
+    """재현 가능한 시드. 내장 hash() 는 실행마다 달라져 대조군이 재현되지 않는다."""
+    return zlib.crc32("|".join(str(p) for p in parts).encode()) ^ SEED
+
+
+def _bucket_name(gain: float) -> str:
+    lo = 0.0
+    for b in BUCKETS:
+        if gain >= b:
+            lo = b
+    return f">={lo:.2f}"
+
+
+def flush_pending(pending, as_of: str):
+    """창이 닫힌 표본만 history 로 내보낸다. (ready, still_pending) 반환.
+
+    ⚠️ 이 게이트가 PIT 판본의 전부다. 아직 창이 열려 있는 구간의
+       실현 하락폭을 분포에 넣으면 미래를 보고 밴드를 그리는 것이 된다.
+    """
+    ready, still = [], []
+    for end_date, gain, realized in pending:
+        (ready.append((gain, realized)) if end_date <= as_of
+         else still.append((end_date, gain, realized)))
+    return ready, still
+
+
 def main() -> None:
-    # 1. load_daily(2021-01-04, 2026-07-31)
-    # 2. 선정된 정의별로 find_segments
-    # 3. 각 segment 에 대해
-    #    - PIT 판본: 그 시점 이전 segment 들의 (gain, 실현 하락폭) 으로 pit_quantiles
-    #    - 외생 판본: exogenous_quantiles(gain)
-    #    - ladder(peak, q1, q3, c) 로 레벨 5개
-    #    - simulate(...) 로 전략 거래
-    #    - control_levels(...) 로 같은 구간에서 대조군 거래 (seed 고정)
-    # 4. 셀별로 delta_t, 전체에 white_reality_check
-    # 5. 산출물 6종 + verdict.json 기록
-    ...
+    out = Path("out")
+    out.mkdir(exist_ok=True)
+    bars = load_daily(START, END)
+    by_code = {c: g.reset_index(drop=True) for c, g in bars.groupby("stock_code", sort=False)}
+    selected = json.loads((out / "selected_definitions.json").read_text(encoding="utf-8"))
+
+    rows = []
+    for d in selected:
+        segs = sorted(find_segments(bars, d["variant"], d["lookback"], d["min_gain"]),
+                      key=lambda s: s.peak_date)
+        history: list[tuple[float, float]] = []
+        pending: list[tuple[str, float, float]] = []   # (창 종료일, gain, 실현 하락폭)
+
+        for seg in segs:
+            ready, pending = flush_pending(pending, as_of=seg.peak_date)   # PIT 게이트
+            history.extend(ready)
+
+            g = by_code[seg.code]
+            idx = g.index[g["date"] == seg.peak_date]
+            if len(idx) == 0:
+                continue
+            i_peak = int(idx[0])
+            window = g.iloc[i_peak + 1: i_peak + 1 + d["valid_days"] + HOLD].reset_index(drop=True)
+            if window.empty:
+                continue
+
+            for version in ("pit", "exo"):
+                q = pit_quantiles(history, seg.gain) if version == "pit" else exogenous_quantiles(seg.gain)
+                if q is None:                     # PIT 표본 부족 → 진입 금지
+                    continue
+                for c in C_GRID:
+                    levels = ladder(seg.peak_px, q[0], q[1], c)
+                    t_s = simulate(window, levels, HOLD, COST, seg.code)
+                    if t_s is None:
+                        continue
+                    rng = np.random.default_rng(_seed(seg.code, seg.peak_date, version, c))
+                    t_c = simulate(window, control_levels(seg.peak_px, min(levels), rng),
+                                   HOLD, COST, seg.code)
+                    if t_c is None:
+                        continue
+                    rows.append({
+                        "cell": f'{d["name"]}|{version}|c{c}',
+                        "code": seg.code, "peak_date": seg.peak_date,
+                        "year": seg.peak_date[:4], "bucket": _bucket_name(seg.gain),
+                        "gain": seg.gain,
+                        "ret_s": t_s.ret_net, "ret_c": t_c.ret_net,
+                        "trunc_s": t_s.truncated, "trunc_c": t_c.truncated,
+                    })
+
+            realized = 1.0 - float(window["low"].min()) / seg.peak_px
+            pending.append((str(window["date"].iat[-1]), seg.gain, realized))
+
+    df = pd.DataFrame(rows)
+    df.to_parquet(out / "trades.parquet")
+    df["d"] = df["ret_s"] - df["ret_c"]
+
+    cells, cell_rows = {}, []
+    for cell, grp in df.groupby("cell"):
+        delta, t = delta_t(grp["ret_s"].to_numpy(), grp["ret_c"].to_numpy())
+        cells[cell] = grp["d"].to_numpy()
+        cell_rows.append({"cell": cell, "n": len(grp), "delta": delta, "t": t,
+                          "mean_s": grp["ret_s"].mean(), "mean_c": grp["ret_c"].mean()})
+    pd.DataFrame(cell_rows).to_csv(out / "cells.csv", index=False)
+
+    df.groupby("year")["d"].agg(["count", "mean"]).to_csv(out / "by_year.csv")
+    df.groupby("bucket")["d"].agg(["count", "mean"]).to_csv(out / "by_bucket.csv")
+    df.groupby("cell").agg(
+        strategy_trades=("ret_s", "size"), strategy_truncated=("trunc_s", "sum"),
+        control_trades=("ret_c", "size"), control_truncated=("trunc_c", "sum"),
+    ).reset_index().to_csv(out / "truncation.csv", index=False)
+
+    p = white_reality_check(cells, b=1000, seed=SEED)
+    sd = float(df["ret_s"].std(ddof=1))
+    verdict = {"p": p, "n_trades": int(len(df)), "n_cells": len(cells), "sd": sd,
+               "mde": mde(len(df), sd), "seed": SEED,
+               "verdict": "PASS" if p < 0.05 else "FAIL"}
+    (out / "verdict.json").write_text(json.dumps(verdict, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps(verdict, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
 ```
 
-⚠️ PIT 판본에서 "그 시점 이전 segment" 는 **최고점 날짜가 판정일보다 앞선 것만** 쓴다. 최고점 이후 실현 하락폭을 쓰면 look-ahead 다.
+⚠️ **PIT 게이트가 이 파일의 핵심이다.** `pending` → `history` 이동 조건이 `end_date <= seg.peak_date` 인 이유는, 아직 창이 열려 있는 구간의 실현 하락폭을 분포에 넣으면 미래를 보고 밴드를 그리는 것이 되기 때문이다. 이 조건을 `True` 로 바꾸면 결과가 좋아질 텐데, **그건 결함이지 개선이 아니다.**
 
-⚠️ 대조군 `rng` seed 는 셀마다 고정하고 `verdict.json` 에 기록한다. 재현 불가능한 대조군은 증거가 못 된다.
+⚠️ 대조군 시드는 `_seed()` 로 결정된다. 파이썬 내장 `hash()` 는 문자열에 대해 실행마다 달라져 대조군이 재현되지 않는다 — 재현 불가능한 대조군은 증거가 못 된다.
 
 - [ ] **Step 4: 통과 확인**
 
