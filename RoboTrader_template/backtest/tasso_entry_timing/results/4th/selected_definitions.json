@@ -1,0 +1,23 @@
+[
+  {
+    "name": "low-lb60-mg0.3",
+    "variant": "low",
+    "lookback": 60,
+    "min_gain": 0.3,
+    "valid_days": 20
+  },
+  {
+    "name": "low-lb60-mg0.5",
+    "variant": "low",
+    "lookback": 60,
+    "min_gain": 0.5,
+    "valid_days": 20
+  },
+  {
+    "name": "low-lb120-mg0.3",
+    "variant": "low",
+    "lookback": 120,
+    "min_gain": 0.3,
+    "valid_days": 20
+  }
+]

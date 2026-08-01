@@ -145,6 +145,11 @@ data/
 # (2026-07-10 lib/ 사건 726febf 과 동일 유형)
 !multiverse/data/
 *.csv
+# 예외: backtest/**/results/ 의 CSV 는 사전등록 검정의 **결론 근거 산출물**이다.
+# 위 *.csv 패턴이 이것을 삼켜, 저장소에는 결론만 남고 근거는 없는 상태가 될 뻔했다(2026-08-01).
+# 파일 단위 제외라 부모 디렉토리는 살아 있으므로 파일 재포함으로 해소된다.
+# (lib/ 726febf · multiverse/data/ 와 동일 유형 — 자체 산출물을 삼키는 범용 ignore 패턴, 3번째)
+!backtest/**/results/**/*.csv
 *.xlsx
 *.json.bak
 

@@ -1,0 +1,48 @@
+{
+  "gate_a": {
+    "c1": {
+      "n": 362052,
+      "max_abs_delta": 0.002146107461248632,
+      "p": 0.07492507492507493,
+      "pass": true
+    },
+    "c2": {
+      "n": 362052,
+      "max_abs_delta": 0.0011954453358185145,
+      "p": 0.8591408591408591,
+      "pass": true
+    }
+  },
+  "gate_b": {
+    "max_abs_want_gap_c1": 0.0010324924744827824,
+    "max_abs_want_gap_c2": 0.0,
+    "threshold": 0.005,
+    "signed_range_c1": [
+      -0.0009902134609444668,
+      0.0010324924744827824
+    ],
+    "c1_pass": true,
+    "c2_pass": true
+  },
+  "drops": {
+    "events": 61986,
+    "pool_too_small": 0,
+    "no_band_s": 3212,
+    "band_none_c1": 0
+  },
+  "n_rows": 362052,
+  "n_codes": 2531,
+  "n_cells": 18,
+  "seed": 20260803,
+  "cash_share_s": 0.4344375945996708,
+  "cash_share_c1": 0.46470948924463884,
+  "best_cell": "low-lb60-mg0.3|exo|c0.8",
+  "p_relative": 0.000999000999000999,
+  "p_absolute": 0.21678321678321677,
+  "delta_best": 0.005663639777889085,
+  "mean_ret_s_best": 0.0009509911691718917,
+  "n_paired": 362052,
+  "sd_d": 0.11387042312755896,
+  "mde": 0.0007497980284135603,
+  "verdict": "FAIL"
+}
