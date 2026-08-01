@@ -150,6 +150,11 @@ data/
 # 파일 단위 제외라 부모 디렉토리는 살아 있으므로 파일 재포함으로 해소된다.
 # (lib/ 726febf · multiverse/data/ 와 동일 유형 — 자체 산출물을 삼키는 범용 ignore 패턴, 3번째)
 !backtest/**/results/**/*.csv
+# 예외 2: backtest/tasso_labels/ 의 CSV 는 **라벨 데이터셋 자체**다(검정 결론이 아니라 입력).
+# results/ 아래가 아니라 위 패턴에 안 걸렸다. 같은 유형 4번째 재발이므로 경로를 좁게 명시한다.
+# ⚠️ 재사용 규칙: 범용 ignore 패턴(*.csv, data/, lib/)은 우리 산출물을 조용히 삼킨다.
+#    커밋 전 `git status` 가 아니라 **`git diff --cached --name-only` 로 실제 스테이징 목록**을 확인할 것.
+!backtest/tasso_labels/*.csv
 *.xlsx
 *.json.bak
 
