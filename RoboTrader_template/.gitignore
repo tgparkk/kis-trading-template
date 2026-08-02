@@ -155,6 +155,11 @@ data/
 # ⚠️ 재사용 규칙: 범용 ignore 패턴(*.csv, data/, lib/)은 우리 산출물을 조용히 삼킨다.
 #    커밋 전 `git status` 가 아니라 **`git diff --cached --name-only` 로 실제 스테이징 목록**을 확인할 것.
 !backtest/tasso_labels/*.csv
+# 🔴 반대 방향의 규칙: 태쏘 수집기의 원문 캐시는 **절대 커밋 금지**(타인 저작물).
+#    커밋 대상은 파생 사실(날짜·종목·체제·프리셋)뿐이며 원문 HTML·본문 텍스트는 로컬에만 둔다.
+#    위 `!backtest/tasso_labels/*.csv` 는 최상위 CSV 만 되살리므로 harvest/ 하위는 영향받지 않는다.
+backtest/tasso_labels/harvest/posts/
+backtest/tasso_labels/harvest/text/
 *.xlsx
 *.json.bak
 
