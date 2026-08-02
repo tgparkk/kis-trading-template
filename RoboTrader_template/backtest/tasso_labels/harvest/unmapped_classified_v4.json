@@ -1,0 +1,5407 @@
+{
+ "CJ씨푸트": {
+  "cls": "A",
+  "code": "011150",
+  "cand": "CJ씨푸드",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "CJ씨푸드",
+    "011150",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "CJ씨푸드",
+    "011150",
+    "master"
+   ],
+   [
+    "A-typo",
+    "CJ씨푸드",
+    "011150",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "CJ씨푸드",
+    "011150",
+    "census"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2022-04-25": [
+    29,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "HLB테라퓨스": {
+  "cls": "A",
+  "code": "115450",
+  "cand": "HLB테라퓨틱스",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "HLB테라퓨틱스",
+    "115450",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "HLB테라퓨틱스",
+    "115450",
+    "census"
+   ],
+   [
+    "A-typo",
+    "HLB테라퓨틱스",
+    "115450",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2024-03-25": [
+    21,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "HSD엔진": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 4건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 4,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "ITX엠투엠": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "KG ETS": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 6건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 6,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "KG동부제철": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 6건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 6,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "KG모빌리언스": {
+  "cls": "A",
+  "code": "003620",
+  "cand": "KG모빌리티",
+  "why": "A-typo2(localdb)",
+  "evidence": [
+   [
+    "A-typo2",
+    "KG모빌리티",
+    "003620",
+    "localdb"
+   ],
+   [
+    "A-typo2",
+    "KG모빌리티",
+    "003620",
+    "master"
+   ],
+   [
+    "A-typo2",
+    "KG모빌리티",
+    "003620",
+    "probe"
+   ],
+   [
+    "A-typo2",
+    "KG모빌리티",
+    "003620",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-02-22": [
+    27,
+    28
+   ],
+   "2021-12-07": [
+    29,
+    27
+   ],
+   "2023-06-29": [
+    27,
+    28
+   ]
+  },
+  "recoverable_rows": 3
+ },
+ "KH E&T": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "KMH": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "KMH하이텍": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "KPX생명과학": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.5714285714285714,
+    4,
+    "코오롱생명과학",
+    "102940"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "진원생명과학",
+    "011000"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "지에프씨생명과학",
+    "388610"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "엔지켐생명과학",
+    "183490"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "KTH": {
+  "cls": "A",
+  "code": "030200",
+  "cand": "KT",
+  "why": "A-typo(census)",
+  "evidence": [
+   [
+    "A-typo",
+    "KT",
+    "030200",
+    "census"
+   ],
+   [
+    "A-typo",
+    "KT",
+    "030200",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "KT",
+    "030200",
+    "master"
+   ],
+   [
+    "A-typo",
+    "KT",
+    "030200",
+    "probe"
+   ]
+  ],
+  "probe_cand": 7,
+  "probe_saturated": false,
+  "bars": {
+   "2021-03-25": [
+    28,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "KT서브마린": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 7건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 7,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "LG헬로지번": {
+  "cls": "A",
+  "code": "037560",
+  "cand": "LG헬로비전",
+  "why": "A-typo2(probe)",
+  "evidence": [
+   [
+    "A-typo2",
+    "LG헬로비전",
+    "037560",
+    "probe"
+   ],
+   [
+    "A-typo2",
+    "LG헬로비전",
+    "037560",
+    "census"
+   ],
+   [
+    "A-typo2",
+    "LG헬로비전",
+    "037560",
+    "master"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-01-15": [
+    4,
+    26
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "LS머티리얼즈": {
+  "cls": "A",
+  "code": "417200",
+  "cand": "LS머트리얼즈",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "LS머트리얼즈",
+    "417200",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "LS머트리얼즈",
+    "417200",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "LS머트리얼즈",
+    "417200",
+    "census"
+   ],
+   [
+    "A-typo",
+    "LS머트리얼즈",
+    "417200",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2023-12-18": [
+    5,
+    26
+   ],
+   "2023-12-19": [
+    6,
+    25
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "LS전서아시아": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 9건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 9,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "LS전선아시아": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 9건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 9,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "MP한강": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "SCI평가정보": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.5714285714285714,
+    4,
+    "서울평가정보",
+    "036120"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "NICE평가정보",
+    "030190"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "SG충방": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 7건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 7,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "SK바이오랜드 외 6개": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 9건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 9,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.5,
+    5,
+    "현대바이오랜드",
+    "052260"
+   ],
+   [
+    0.5,
+    5,
+    "SK바이오팜",
+    "326030"
+   ],
+   [
+    0.5,
+    5,
+    "SK바이오사이언스",
+    "302440"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "SM Life": {
+  "cls": "AB",
+  "code": "063440",
+  "cand": "SMLifeDesign",
+  "why": "AB-abbr(census)",
+  "evidence": [
+   [
+    "AB-abbr",
+    "SMLifeDesign",
+    "063440",
+    "census"
+   ],
+   [
+    "AB-abbr",
+    "SMLifeDesign",
+    "063440",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-12-11": [
+    0,
+    7
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "SV.인베스트먼트": {
+  "cls": "A",
+  "code": "289080",
+  "cand": "SV인베스트먼트",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "SV인베스트먼트",
+    "289080",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "SV인베스트먼트",
+    "289080",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "SV인베스트먼트",
+    "289080",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "SV인베스트먼트",
+    "289080",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-10-05": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "TCC": {
+  "cls": "A",
+  "code": "002710",
+  "cand": "TCC스틸",
+  "why": "A-abbr(master)",
+  "evidence": [
+   [
+    "A-abbr",
+    "TCC스틸",
+    "002710",
+    "master"
+   ],
+   [
+    "A-abbr",
+    "TCC스틸",
+    "002710",
+    "probe"
+   ],
+   [
+    "A-abbr",
+    "TCC스틸",
+    "002710",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2023-07-24": [
+    29,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "WI": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "YG플러스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "가온미디어": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 3건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 3,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "강스템바이오": {
+  "cls": "A",
+  "code": "217730",
+  "cand": "강스템바이오텍",
+  "why": "A-typo(census)",
+  "evidence": [
+   [
+    "A-typo",
+    "강스템바이오텍",
+    "217730",
+    "census"
+   ],
+   [
+    "A-typo",
+    "강스템바이오텍",
+    "217730",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-12-23": [
+    0,
+    15
+   ],
+   "2021-01-27": [
+    12,
+    25
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "갤럭시아너미트리": {
+  "cls": "A",
+  "code": "094480",
+  "cand": "갤럭시아머니트리",
+  "why": "A-typo2(census)",
+  "evidence": [
+   [
+    "A-typo2",
+    "갤럭시아머니트리",
+    "094480",
+    "census"
+   ],
+   [
+    "A-typo2",
+    "갤럭시아머니트리",
+    "094480",
+    "probe"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2022-07-14": [
+    28,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "갤럭이사에스엠": {
+  "cls": "A",
+  "code": "011420",
+  "cand": "갤럭시아에스엠",
+  "why": "A-typo2(master)",
+  "evidence": [
+   [
+    "A-typo2",
+    "갤럭시아에스엠",
+    "011420",
+    "master"
+   ],
+   [
+    "A-typo2",
+    "갤럭시아에스엠",
+    "011420",
+    "probe"
+   ],
+   [
+    "A-typo2",
+    "갤럭시아에스엠",
+    "011420",
+    "census"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2019-07-24": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "게임빌": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "고려시멘트": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 5건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 5,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "골든센츄리": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "골프존뉴딘홀딩스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "공구우먼": {
+  "cls": "A",
+  "code": "366030",
+  "cand": "공구우먼",
+  "why": "EXACT(localdb)",
+  "evidence": [
+   [
+    "EXACT",
+    "공구우먼",
+    "366030",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "bars": {
+   "2022-05-27": [
+    29,
+    26
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "광림": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "금호석유": {
+  "cls": "A",
+  "code": "011780",
+  "cand": "금호석유화학",
+  "why": "A-abbr(probe)",
+  "evidence": [
+   [
+    "A-abbr",
+    "금호석유화학",
+    "011780",
+    "probe"
+   ],
+   [
+    "A-abbr",
+    "금호석유화학",
+    "011780",
+    "localdb"
+   ],
+   [
+    "A-abbr",
+    "금호석유화학",
+    "011780",
+    "master"
+   ],
+   [
+    "A-abbr",
+    "금호석유화학",
+    "011780",
+    "census"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2021-01-26": [
+    11,
+    25
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "까뮤이엔씨": {
+  "cls": "A",
+  "code": "013700",
+  "cand": "까뮤이앤씨",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "까뮤이앤씨",
+    "013700",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "까뮤이앤씨",
+    "013700",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "까뮤이앤씨",
+    "013700",
+    "census"
+   ],
+   [
+    "A-typo",
+    "까뮤이앤씨",
+    "013700",
+    "master"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-10-30": [
+    0,
+    0
+   ],
+   "2020-12-24": [
+    0,
+    16
+   ],
+   "2022-07-11": [
+    27,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "까뮤이엔이씨": {
+  "cls": "A",
+  "code": "013700",
+  "cand": "까뮤이앤씨",
+  "why": "A-typo2(probe)",
+  "evidence": [
+   [
+    "A-typo2",
+    "까뮤이앤씨",
+    "013700",
+    "probe"
+   ],
+   [
+    "A-typo2",
+    "까뮤이앤씨",
+    "013700",
+    "census"
+   ],
+   [
+    "A-typo2",
+    "까뮤이앤씨",
+    "013700",
+    "master"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-10-30": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "까스텔바작": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "나라엠엔디": {
+  "cls": "A",
+  "code": "051490",
+  "cand": "나라엠앤디",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "나라엠앤디",
+    "051490",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "나라엠앤디",
+    "051490",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "나라엠앤디",
+    "051490",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-10-30": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "네온테크": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "넥스턴바이오": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 7건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 7,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "넥스트BT": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 3건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 3,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "넥스트사이언스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 7건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 7,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.5714285714285714,
+    4,
+    "한미사이언스",
+    "008930"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "팜젠사이언스",
+    "004720"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "테라사이언스",
+    "073640"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "테고사이언스",
+    "191420"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "넥슨지티": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "넷게임즈": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "노터스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "녹십자랩셀": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 5건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 5,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "녹십자렙셀": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 5건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 5,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "뉴파워프리즈마": {
+  "cls": "A",
+  "code": "144960",
+  "cand": "뉴파워프라즈마",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "뉴파워프라즈마",
+    "144960",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "뉴파워프라즈마",
+    "144960",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "뉴파워프라즈마",
+    "144960",
+    "census"
+   ],
+   [
+    "A-typo",
+    "뉴파워프라즈마",
+    "144960",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2019-12-24": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "다믈멀티미디어": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "다올인베스트먼트": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.75,
+    6,
+    "스틱인베스트먼트",
+    "026890"
+   ],
+   [
+    0.75,
+    6,
+    "TS인베스트먼트",
+    "246690"
+   ],
+   [
+    0.75,
+    6,
+    "SV인베스트먼트",
+    "289080"
+   ],
+   [
+    0.75,
+    6,
+    "SBI인베스트먼트",
+    "019550"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "대림B&Co": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 3건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 3,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "대보마그네틱스": {
+  "cls": "A",
+  "code": "290670",
+  "cand": "대보마그네틱",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "대보마그네틱",
+    "290670",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "대보마그네틱",
+    "290670",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "대보마그네틱",
+    "290670",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2022-01-13": [
+    28,
+    25
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "대성엘텍": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 6건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 6,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "대성차투": {
+  "cls": "A",
+  "code": "027830",
+  "cand": "대성창투",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "대성창투",
+    "027830",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "대성창투",
+    "027830",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "대성창투",
+    "027830",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2022-11-15": [
+    28,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "대아이티아이": {
+  "cls": "A",
+  "code": "045390",
+  "cand": "대아티아이",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "대아티아이",
+    "045390",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "대아티아이",
+    "045390",
+    "census"
+   ],
+   [
+    "A-typo",
+    "대아티아이",
+    "045390",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-09-25": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "대우부품": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 10건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "대유": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "대한뉴": {
+  "cls": "A",
+  "code": "054670",
+  "cand": "대한뉴팜",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "대한뉴팜",
+    "054670",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "대한뉴팜",
+    "054670",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "대한뉴팜",
+    "054670",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2024-07-19": [
+    30,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "덕신하우징": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "덕양산업": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "데일리블록체인": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "동성화이텍": {
+  "cls": "A",
+  "code": "033500",
+  "cand": "동성화인텍",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "동성화인텍",
+    "033500",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "동성화인텍",
+    "033500",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "동성화인텍",
+    "033500",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-03-29": [
+    28,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "동아기업": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 4건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 4,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "동아화성": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 4건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 4,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "두산중공업": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 10건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "디딤": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "디스플레이텍": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.8333333333333334,
+    5,
+    "LG디스플레이",
+    "034220"
+   ],
+   [
+    0.6666666666666666,
+    4,
+    "인지디스플레",
+    "037330"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "라이브파이낸셜": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.5714285714285714,
+    4,
+    "헥토파이낸셜",
+    "234340"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "KG파이낸셜",
+    "046440"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "라이브플렉스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "라이프시멘틱스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "래몽래인": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "램테크놀로지": {
+  "cls": "A",
+  "code": "171010",
+  "cand": "램테크놀러지",
+  "why": "A-typo(probe)",
+  "evidence": [
+   [
+    "A-typo",
+    "램테크놀러지",
+    "171010",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "램테크놀러지",
+    "171010",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2022-04-22": [
+    30,
+    26
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "레고켐바이오": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.6666666666666666,
+    4,
+    "리가켐바이오",
+    "141080"
+   ],
+   [
+    0.6666666666666666,
+    4,
+    "듀켐바이오",
+    "176750"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "레이저셀": {
+  "cls": "A",
+  "code": "412350",
+  "cand": "레이저쎌",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "레이저쎌",
+    "412350",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "레이저쎌",
+    "412350",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "레이저쎌",
+    "412350",
+    "census"
+   ],
+   [
+    "A-typo",
+    "레이저쎌",
+    "412350",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2022-08-16": [
+    28,
+    26
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "레이크머티리얼": {
+  "cls": "A",
+  "code": "281740",
+  "cand": "레이크머티리얼즈",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "레이크머티리얼즈",
+    "281740",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "레이크머티리얼즈",
+    "281740",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "레이크머티리얼즈",
+    "281740",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "레이크머티리얼즈",
+    "281740",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-12-04": [
+    0,
+    2
+   ],
+   "2023-03-28": [
+    28,
+    26
+   ],
+   "2023-03-27": [
+    28,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "레인보우틱스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.6666666666666666,
+    4,
+    "레인보우로보틱스",
+    "277810"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "레코켐바이오": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.6666666666666666,
+    4,
+    "리가켐바이오",
+    "141080"
+   ],
+   [
+    0.6666666666666666,
+    4,
+    "듀켐바이오",
+    "176750"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "루트로닉": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "룽투코리아": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "리노스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "리더스 기술투자": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.5714285714285714,
+    4,
+    "우리기술투자",
+    "041190"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "리더스 기슬투자": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "링크제네시스": {
+  "cls": "A",
+  "code": "219420",
+  "cand": "링크제니시스",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "링크제니시스",
+    "219420",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "링크제니시스",
+    "219420",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "링크제니시스",
+    "219420",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-10-21": [
+    0,
+    0
+   ],
+   "2021-08-03": [
+    29,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "마니커에프엔지": {
+  "cls": "A",
+  "code": "195500",
+  "cand": "마니커에프앤지",
+  "why": "A-typo(census)",
+  "evidence": [
+   [
+    "A-typo",
+    "마니커에프앤지",
+    "195500",
+    "census"
+   ],
+   [
+    "A-typo",
+    "마니커에프앤지",
+    "195500",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2024-06-18": [
+    27,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "마인즈랩": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "맘스터치": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "매디아나": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "맥스트": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "메디온": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 5건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 5,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "메이슨케피탈": {
+  "cls": "A",
+  "code": "021880",
+  "cand": "메이슨캐피탈",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "메이슨캐피탈",
+    "021880",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "메이슨캐피탈",
+    "021880",
+    "census"
+   ],
+   [
+    "A-typo",
+    "메이슨캐피탈",
+    "021880",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2019-12-04": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "멕스로텍": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "멕스트": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "멕아이씨": {
+  "cls": "A",
+  "code": "058110",
+  "cand": "멕아이씨에스",
+  "why": "A-abbr(census)",
+  "evidence": [
+   [
+    "A-abbr",
+    "멕아이씨에스",
+    "058110",
+    "census"
+   ],
+   [
+    "A-abbr",
+    "멕아이씨에스",
+    "058110",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2023-11-28": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "모바일어플라이어스": {
+  "cls": "A",
+  "code": "087260",
+  "cand": "모바일어플라이언스",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "모바일어플라이언스",
+    "087260",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "모바일어플라이언스",
+    "087260",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "모바일어플라이언스",
+    "087260",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2024-04-24": [
+    28,
+    25
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "모아데이터": {
+  "cls": "A",
+  "code": "288980",
+  "cand": "모아데이타",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "모아데이타",
+    "288980",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "모아데이타",
+    "288980",
+    "census"
+   ],
+   [
+    "A-typo",
+    "모아데이타",
+    "288980",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2022-11-18": [
+    0,
+    0
+   ],
+   "2023-02-24": [
+    0,
+    0
+   ],
+   "2023-03-03": [
+    0,
+    0
+   ],
+   "2023-09-21": [
+    0,
+    0
+   ],
+   "2024-04-02": [
+    15,
+    25
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "미래에셋밴처투자": {
+  "cls": "A",
+  "code": "100790",
+  "cand": "미래에셋벤처투자",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "미래에셋벤처투자",
+    "100790",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "미래에셋벤처투자",
+    "100790",
+    "census"
+   ],
+   [
+    "A-typo",
+    "미래에셋벤처투자",
+    "100790",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 11,
+  "probe_saturated": true,
+  "bars": {
+   "2021-03-03": [
+    26,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "미코바이오메드": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.7142857142857143,
+    5,
+    "한스바이오메드",
+    "042520"
+   ],
+   [
+    0.7142857142857143,
+    5,
+    "메타바이오메드",
+    "059210"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "유니온바이오메트릭스",
+    "203450"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "에스바이오메딕스",
+    "304360"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "바닥주": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "바올": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "바이로그디바이스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 10건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "near": [
+   [
+    0.5,
+    4,
+    "엠디바이스",
+    "226590"
+   ],
+   [
+    0.5,
+    4,
+    "아이언디바이스",
+    "464500"
+   ],
+   [
+    0.5,
+    4,
+    "디바이스",
+    "187870"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "바이오로그디바이스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 12건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 12,
+  "probe_saturated": true,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "바이오리더스": {
+  "cls": "A",
+  "code": "099430",
+  "cand": "바이오플러스",
+  "why": "A-typo2(localdb)",
+  "evidence": [
+   [
+    "A-typo2",
+    "바이오플러스",
+    "099430",
+    "localdb"
+   ],
+   [
+    "A-typo2",
+    "바이오플러스",
+    "099430",
+    "probe"
+   ],
+   [
+    "A-typo2",
+    "바이오플러스",
+    "099430",
+    "census"
+   ]
+  ],
+  "probe_cand": 11,
+  "probe_saturated": true,
+  "bars": {
+   "2021-07-07": [
+    0,
+    0
+   ],
+   "2021-09-17": [
+    0,
+    21
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "바이오톡스": {
+  "cls": "A",
+  "code": "086040",
+  "cand": "바이오톡스텍",
+  "why": "A-typo(census)",
+  "evidence": [
+   [
+    "A-typo",
+    "바이오톡스텍",
+    "086040",
+    "census"
+   ],
+   [
+    "A-typo",
+    "바이오톡스텍",
+    "086040",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-11-19": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "백광산업": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "보광산업": {
+  "cls": "B",
+  "code": "225530",
+  "cand": "HC보광산업",
+  "why": "B-pre(census)",
+  "evidence": [
+   [
+    "B-pre",
+    "HC보광산업",
+    "225530",
+    "census"
+   ]
+  ],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "bars": {
+   "2021-09-07": [
+    28,
+    23
+   ],
+   "2022-08-03": [
+    29,
+    25
+   ]
+  },
+  "recoverable_rows": 2
+ },
+ "브랜드엑스코퍼레이션": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.6,
+    6,
+    "제이에스코퍼레이션",
+    "194370"
+   ],
+   [
+    0.5,
+    5,
+    "화승코퍼레이션",
+    "013520"
+   ],
+   [
+    0.5,
+    5,
+    "현대코퍼레이션홀딩스",
+    "227840"
+   ],
+   [
+    0.5,
+    5,
+    "현대코퍼레이션",
+    "011760"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "비올": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "비케이탑스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "비트나인": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 3건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 3,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "사조씨푸트": {
+  "cls": "A",
+  "code": "014710",
+  "cand": "사조씨푸드",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "사조씨푸드",
+    "014710",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "사조씨푸드",
+    "014710",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "사조씨푸드",
+    "014710",
+    "census"
+   ],
+   [
+    "A-typo",
+    "사조씨푸드",
+    "014710",
+    "master"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2022-04-25": [
+    29,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "삼기이브이": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "삼본전자": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "삼포판지": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "서플글로스벌": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "서플러스그로벌": {
+  "cls": "A",
+  "code": "140070",
+  "cand": "서플러스글로벌",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "서플러스글로벌",
+    "140070",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "서플러스글로벌",
+    "140070",
+    "census"
+   ],
+   [
+    "A-typo",
+    "서플러스글로벌",
+    "140070",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-02-02": [
+    16,
+    25
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "세원": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "세틀뱅크": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "센트랄모텍": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "셀렉믹스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "셀리버리": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "소니드": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "소룩스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "소리바다": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "수산중공업": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 3건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 3,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "슈어소프트": {
+  "cls": "A",
+  "code": "298830",
+  "cand": "슈어소프트테크",
+  "why": "A-abbr(probe)",
+  "evidence": [
+   [
+    "A-abbr",
+    "슈어소프트테크",
+    "298830",
+    "probe"
+   ],
+   [
+    "A-abbr",
+    "슈어소프트테크",
+    "298830",
+    "localdb"
+   ],
+   [
+    "A-abbr",
+    "슈어소프트테크",
+    "298830",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2023-05-15": [
+    10,
+    27
+   ],
+   "2024-05-30": [
+    26,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "스톤브릿지": {
+  "cls": "AB",
+  "code": "330730",
+  "cand": "스톤브릿지벤처스",
+  "why": "AB-abbr(census)",
+  "evidence": [
+   [
+    "AB-abbr",
+    "스톤브릿지벤처스",
+    "330730",
+    "census"
+   ],
+   [
+    "AB-abbr",
+    "스톤브릿지벤처스",
+    "330730",
+    "localdb"
+   ],
+   [
+    "AB-abbr",
+    "스톤브릿지벤처스",
+    "330730",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2023-12-20": [
+    29,
+    25
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "신풍제지": {
+  "cls": "A",
+  "code": "019170",
+  "cand": "신풍제약",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "신풍제약",
+    "019170",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "신풍제약",
+    "019170",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "신풍제약",
+    "019170",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "신풍제약",
+    "019170",
+    "census"
+   ],
+   [
+    "A-typo",
+    "신풍제약",
+    "019170",
+    "master"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2020-12-14": [
+    0,
+    9
+   ],
+   "2020-12-17": [
+    0,
+    11
+   ],
+   "2021-03-23": [
+    26,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "쌍용정보통신": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.6666666666666666,
+    4,
+    "한국정보통신",
+    "025770"
+   ],
+   [
+    0.6666666666666666,
+    4,
+    "대신정보통신",
+    "020180"
+   ],
+   [
+    0.6666666666666666,
+    4,
+    "나이스정보통신",
+    "036800"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "쎄미시스코": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "씨엠에스에듀": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.6666666666666666,
+    4,
+    "나노씨엠에스",
+    "247660"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "아스폴로": {
+  "cls": "A",
+  "code": "159010",
+  "cand": "아스플로",
+  "why": "A-typo(probe)",
+  "evidence": [
+   [
+    "A-typo",
+    "아스플로",
+    "159010",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "아스플로",
+    "159010",
+    "census"
+   ]
+  ],
+  "probe_cand": 4,
+  "probe_saturated": false,
+  "bars": {
+   "2021-10-19": [
+    8,
+    28
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "아이엔스": {
+  "cls": "A",
+  "code": "099190",
+  "cand": "아이센스",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "아이센스",
+    "099190",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "아이센스",
+    "099190",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "아이센스",
+    "099190",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "아이센스",
+    "099190",
+    "census"
+   ],
+   [
+    "A-typo",
+    "아이디스",
+    "143160",
+    "census"
+   ]
+  ],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "bars": {
+   "2023-07-19": [
+    29,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "아이원": {
+  "cls": "D",
+  "code": null,
+  "cand": null,
+  "why": "동급 후보 2개 경합: 아이윈(090150), 아이진(185490)",
+  "evidence": [
+   [
+    "A-self",
+    "아이윈",
+    "090150",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-self",
+    "아이진",
+    "185490",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "아이윈",
+    "090150",
+    "census"
+   ],
+   [
+    "A-typo",
+    "아이텍",
+    "119830",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "아이텍",
+    "119830",
+    "census"
+   ],
+   [
+    "A-typo",
+    "아이진",
+    "185490",
+    "census"
+   ],
+   [
+    "A-typo",
+    "아이엘",
+    "307180",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "아이엘",
+    "307180",
+    "census"
+   ]
+  ],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "아이티센": {
+  "cls": "A",
+  "code": "010280",
+  "cand": "아이티센엔텍",
+  "why": "A-abbr(census)",
+  "evidence": [
+   [
+    "A-abbr",
+    "아이티센엔텍",
+    "010280",
+    "census"
+   ],
+   [
+    "A-abbr",
+    "아이티센엔텍",
+    "010280",
+    "probe"
+   ],
+   [
+    "AB-abbr",
+    "아이티센글로벌",
+    "124500",
+    "probe"
+   ],
+   [
+    "AB-abbr",
+    "아이티센글로벌",
+    "124500",
+    "localdb"
+   ],
+   [
+    "AB-abbr",
+    "아이티센글로벌",
+    "124500",
+    "census"
+   ],
+   [
+    "AB-abbr",
+    "아이티센씨티에스",
+    "031820",
+    "master"
+   ],
+   [
+    "AB-abbr",
+    "아이티센씨티에스",
+    "031820",
+    "probe"
+   ],
+   [
+    "AB-abbr",
+    "아이티센씨티에스",
+    "031820",
+    "census"
+   ]
+  ],
+  "probe_cand": 4,
+  "probe_saturated": false,
+  "bars": {
+   "2023-12-15": [
+    30,
+    25
+   ],
+   "2023-12-19": [
+    29,
+    25
+   ]
+  },
+  "recoverable_rows": 2
+ },
+ "아즈텍": {
+  "cls": "A",
+  "code": "032080",
+  "cand": "아즈텍WB",
+  "why": "A-abbr(probe)",
+  "evidence": [
+   [
+    "A-abbr",
+    "아즈텍WB",
+    "032080",
+    "probe"
+   ],
+   [
+    "A-abbr",
+    "아즈텍WB",
+    "032080",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-07-30": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "아직엑스텍": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "알로이스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "애경케미컬": {
+  "cls": "A",
+  "code": "161000",
+  "cand": "애경케미칼",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "애경케미칼",
+    "161000",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "애경케미칼",
+    "161000",
+    "master"
+   ],
+   [
+    "A-typo",
+    "애경케미칼",
+    "161000",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "애경케미칼",
+    "161000",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2023-06-19": [
+    27,
+    29
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "애머릿지": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "애켱케미컬": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "어반리튬": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "에스에이티이엔지": {
+  "cls": "B",
+  "code": "060540",
+  "cand": "에스에이티",
+  "why": "B-trunc(census)",
+  "evidence": [
+   [
+    "B-trunc",
+    "에스에이티",
+    "060540",
+    "census"
+   ],
+   [
+    "B-trunc",
+    "에스에이티",
+    "060540",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2022-12-05": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "에스와이패널": {
+  "cls": "B",
+  "code": "109610",
+  "cand": "에스와이",
+  "why": "B-trunc(census)",
+  "evidence": [
+   [
+    "B-trunc",
+    "에스와이",
+    "109610",
+    "census"
+   ],
+   [
+    "B-trunc",
+    "에스와이",
+    "109610",
+    "probe"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2024-08-21": [
+    28,
+    25
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "에스텍파마": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "에스피시템스": {
+  "cls": "A",
+  "code": "317830",
+  "cand": "에스피시스템스",
+  "why": "A-typo(probe)",
+  "evidence": [
+   [
+    "A-typo",
+    "에스피시스템스",
+    "317830",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "에스피시스템스",
+    "317830",
+    "census"
+   ],
+   [
+    "A-typo",
+    "에스피시스템스",
+    "317830",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2024-07-12": [
+    29,
+    27
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "에이치엘비": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 10건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "near": [
+   [
+    0.8,
+    4,
+    "에이치엘지노믹스",
+    "0156T0"
+   ],
+   [
+    0.8,
+    4,
+    "에이치엘사이언스",
+    "239610"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "에이치엘비파워": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 19건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 19,
+  "probe_saturated": true,
+  "near": [
+   [
+    0.5714285714285714,
+    4,
+    "에이치엘지노믹스",
+    "0156T0"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "에이치엘사이언스",
+    "239610"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "에이텍티앤": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "에이텍티엔": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "에이트원": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 10건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "에이프로젠 KIC": {
+  "cls": "D",
+  "code": null,
+  "cand": null,
+  "why": "동급 후보 2개 경합: 에이프로(262260), 에이프로젠(007460), 에이프로젠(007460), 에이프로젠(007460), 에이프로젠(007460)",
+  "evidence": [
+   [
+    "B-trunc",
+    "에이프로",
+    "262260",
+    "census"
+   ],
+   [
+    "B-trunc",
+    "에이프로젠",
+    "007460",
+    "census"
+   ],
+   [
+    "B-trunc",
+    "에이프로젠",
+    "007460",
+    "localdb"
+   ],
+   [
+    "B-trunc",
+    "에이프로젠",
+    "007460",
+    "master"
+   ],
+   [
+    "B-trunc",
+    "에이프로젠",
+    "007460",
+    "probe"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.625,
+    5,
+    "에이프로젠바이오로직스",
+    "003060"
+   ],
+   [
+    0.625,
+    5,
+    "에이프로젠",
+    "007460"
+   ],
+   [
+    0.5,
+    4,
+    "에이프로",
+    "262260"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "에치에프": {
+  "cls": "A",
+  "code": "230240",
+  "cand": "에치에프알",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "에치에프알",
+    "230240",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "에치에프알",
+    "230240",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "에치에프알",
+    "230240",
+    "census"
+   ],
+   [
+    "A-typo",
+    "에치에프알",
+    "230240",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2026-03-20": [
+    26,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "에코바이오": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 9건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 9,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "엔브에이치코리아": {
+  "cls": "A",
+  "code": "067570",
+  "cand": "엔브이에이치코리아",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "엔브이에이치코리아",
+    "067570",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "엔브이에이치코리아",
+    "067570",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "엔브이에이치코리아",
+    "067570",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-03-02": [
+    26,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "엔케이물산": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "예스티팜": {
+  "cls": "A",
+  "code": "122640",
+  "cand": "예스티",
+  "why": "A-typo(census)",
+  "evidence": [
+   [
+    "A-typo",
+    "예스티",
+    "122640",
+    "census"
+   ],
+   [
+    "A-typo",
+    "예스티",
+    "122640",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "예스티",
+    "122640",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2024-08-26": [
+    28,
+    24
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "오성첨산소재": {
+  "cls": "A",
+  "code": "052420",
+  "cand": "오성첨단소재",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "오성첨단소재",
+    "052420",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "오성첨단소재",
+    "052420",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "오성첨단소재",
+    "052420",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "오성첨단소재",
+    "052420",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-11-02": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "오스템임플란드": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "오스템임플란트": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "오하임아이엔티": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "와이아비오로직스": {
+  "cls": "A",
+  "code": "338840",
+  "cand": "와이바이오로직스",
+  "why": "A-typo2(probe)",
+  "evidence": [
+   [
+    "A-typo2",
+    "와이바이오로직스",
+    "338840",
+    "probe"
+   ],
+   [
+    "A-typo2",
+    "와이바이오로직스",
+    "338840",
+    "census"
+   ],
+   [
+    "A-typo2",
+    "와이바이오로직스",
+    "338840",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "bars": {
+   "2023-12-08": [
+    4,
+    25
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "와이제이엠게임즈": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 10건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "near": [
+   [
+    0.5,
+    4,
+    "와이제이링크",
+    "209640"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "와이팜": {
+  "cls": "D",
+  "code": null,
+  "cand": null,
+  "why": "동급 후보 2개 경합: 와이랩(432430), 와이씨(232140)",
+  "evidence": [
+   [
+    "A-self",
+    "와이랩",
+    "432430",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-self",
+    "와이씨",
+    "232140",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "와이엠",
+    "007530",
+    "census"
+   ],
+   [
+    "A-typo",
+    "와이솔",
+    "122990",
+    "census"
+   ],
+   [
+    "A-typo",
+    "와이솔",
+    "122990",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "와이씨",
+    "232140",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "와이씨",
+    "232140",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "와이씨",
+    "232140",
+    "census"
+   ]
+  ],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "우리손에프엔지": {
+  "cls": "A",
+  "code": "073560",
+  "cand": "우리손에프앤지",
+  "why": "A-typo(probe)",
+  "evidence": [
+   [
+    "A-typo",
+    "우리손에프앤지",
+    "073560",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "우리손에프앤지",
+    "073560",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2022-05-27": [
+    29,
+    26
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "웰크로론한텍": {
+  "cls": "A",
+  "code": "076080",
+  "cand": "웰크론한텍",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "웰크론한텍",
+    "076080",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "웰크론한텍",
+    "076080",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "웰크론한텍",
+    "076080",
+    "census"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2022-07-27": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "위너스제약": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "유니온커뮤니티": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 3건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 3,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "유니트론": {
+  "cls": "A",
+  "code": "142210",
+  "cand": "유니트론텍",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "유니트론텍",
+    "142210",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "유니트론텍",
+    "142210",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "유니트론텍",
+    "142210",
+    "census"
+   ],
+   [
+    "A-typo",
+    "유니트론텍",
+    "142210",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2022-11-10": [
+    27,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "유비케어": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 4건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 4,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "유앤아이": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "윤성에프엔씨": {
+  "cls": "A",
+  "code": "372170",
+  "cand": "윤성에프앤씨",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "윤성에프앤씨",
+    "372170",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "윤성에프앤씨",
+    "372170",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "윤성에프앤씨",
+    "372170",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2023-04-12": [
+    29,
+    26
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "이디티": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "이렌텍": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "이루다": {
+  "cls": "A",
+  "code": "065440",
+  "cand": "이루온",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "이루온",
+    "065440",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "이루온",
+    "065440",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "이루온",
+    "065440",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "이루온",
+    "065440",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-07-27": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "이삭엔지니어랑": {
+  "cls": "A",
+  "code": "351330",
+  "cand": "이삭엔지니어링",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "이삭엔지니어링",
+    "351330",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "이삭엔지니어링",
+    "351330",
+    "census"
+   ],
+   [
+    "A-typo",
+    "이삭엔지니어링",
+    "351330",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "이삭엔지니어링",
+    "351330",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2024-05-29": [
+    26,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "이수페타시": {
+  "cls": "A",
+  "code": "007660",
+  "cand": "이수페타시스",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "이수페타시스",
+    "007660",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "이수페타시스",
+    "007660",
+    "master"
+   ],
+   [
+    "A-typo",
+    "이수페타시스",
+    "007660",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "이수페타시스",
+    "007660",
+    "census"
+   ],
+   [
+    "A-typo",
+    "이수페타시스",
+    "007660",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2024-06-18": [
+    27,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "이엔코퍼레이션": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 3건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 3,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.7142857142857143,
+    5,
+    "화승코퍼레이션",
+    "013520"
+   ],
+   [
+    0.7142857142857143,
+    5,
+    "현대코퍼레이션홀딩스",
+    "227840"
+   ],
+   [
+    0.7142857142857143,
+    5,
+    "현대코퍼레이션",
+    "011760"
+   ],
+   [
+    0.7142857142857143,
+    5,
+    "핸즈코퍼레이션",
+    "143210"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "이트론": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "인터파크": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 4건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 4,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "인트로메딕": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "일진머티리얼즈": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 6건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 6,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.7142857142857143,
+    5,
+    "하나머티리얼즈",
+    "166090"
+   ],
+   [
+    0.7142857142857143,
+    5,
+    "티씨머티리얼즈",
+    "125020"
+   ],
+   [
+    0.7142857142857143,
+    5,
+    "롯데에너지머티리얼즈",
+    "020150"
+   ],
+   [
+    0.7142857142857143,
+    5,
+    "레이크머티리얼즈",
+    "281740"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "자안": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "자이언스텝": {
+  "cls": "A",
+  "code": "289220",
+  "cand": "자이언트스텝",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "자이언트스텝",
+    "289220",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "자이언트스텝",
+    "289220",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "자이언트스텝",
+    "289220",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-11-17": [
+    28,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "장원테크": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "제넨바이오": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "제노포커스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 3건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 3,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "제이엔케이히터": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 12건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 12,
+  "probe_saturated": true,
+  "near": [
+   [
+    0.7142857142857143,
+    5,
+    "제이엔케이글로벌",
+    "126880"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "제주맥주": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 3건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 3,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "제주은헹": {
+  "cls": "A",
+  "code": "006220",
+  "cand": "제주은행",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "제주은행",
+    "006220",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "제주은행",
+    "006220",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "제주은행",
+    "006220",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "제주은행",
+    "006220",
+    "census"
+   ],
+   [
+    "A-typo",
+    "제주은행",
+    "006220",
+    "master"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2022-09-26": [
+    27,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "젬백스지오": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "줌인터넷": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "지니뮤직": {
+  "cls": "B",
+  "code": "043610",
+  "cand": "KT지니뮤직",
+  "why": "B-pre(census)",
+  "evidence": [
+   [
+    "B-pre",
+    "KT지니뮤직",
+    "043610",
+    "census"
+   ],
+   [
+    "B-pre",
+    "KT지니뮤직",
+    "043610",
+    "probe"
+   ]
+  ],
+  "probe_cand": 3,
+  "probe_saturated": false,
+  "bars": {
+   "2021-03-04": [
+    26,
+    28
+   ],
+   "2021-03-11": [
+    26,
+    28
+   ],
+   "2022-03-21": [
+    27,
+    29
+   ]
+  },
+  "recoverable_rows": 3
+ },
+ "지엔원에너지": {
+  "cls": "A",
+  "code": "119850",
+  "cand": "지엔씨에너지",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "지엔씨에너지",
+    "119850",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "지엔씨에너지",
+    "119850",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "지엔씨에너지",
+    "119850",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "지엔씨에너지",
+    "119850",
+    "census"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2021-01-29": [
+    14,
+    25
+   ],
+   "2021-02-02": [
+    16,
+    25
+   ],
+   "2023-03-02": [
+    26,
+    28
+   ],
+   "2023-03-30": [
+    28,
+    26
+   ]
+  },
+  "recoverable_rows": 3
+ },
+ "직전고 돌파, 신고가": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "진메트릭스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.8,
+    4,
+    "유니온바이오메트릭스",
+    "203450"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "차백신연구소": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "청담러닝": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "카나리아바이오": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "컬러에이": {
+  "cls": "A",
+  "code": "900310",
+  "cand": "컬러레이",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "컬러레이",
+    "900310",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "컬러레이",
+    "900310",
+    "census"
+   ],
+   [
+    "A-typo",
+    "컬러레이",
+    "900310",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-11-10": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "케이알피앤이": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 11건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 11,
+  "probe_saturated": true,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "켐온": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "코리아센터": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 7건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 7,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "코리아에스이": {
+  "cls": "A",
+  "code": "123410",
+  "cand": "코리아에프티",
+  "why": "A-typo2(probe)",
+  "evidence": [
+   [
+    "A-typo2",
+    "코리아에프티",
+    "123410",
+    "probe"
+   ],
+   [
+    "A-typo2",
+    "코리아에프티",
+    "123410",
+    "localdb"
+   ],
+   [
+    "A-typo2",
+    "코리아에프티",
+    "123410",
+    "census"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2022-09-29": [
+    27,
+    26
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "코어라인소스": {
+  "cls": "A",
+  "code": "384470",
+  "cand": "코어라인소프트",
+  "why": "A-typo2(census)",
+  "evidence": [
+   [
+    "A-typo2",
+    "코어라인소프트",
+    "384470",
+    "census"
+   ],
+   [
+    "A-typo2",
+    "코어라인소프트",
+    "384470",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2023-11-29": [
+    29,
+    25
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "코오롱머티리얼": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 8건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 8,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.5714285714285714,
+    4,
+    "하나머티리얼즈",
+    "166090"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "티씨머티리얼즈",
+    "125020"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "탑머티리얼",
+    "360070"
+   ],
+   [
+    0.5714285714285714,
+    4,
+    "유니온머티리얼",
+    "047400"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "코오롱플라스틱": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 8건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 8,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.5714285714285714,
+    4,
+    "에코플라스틱",
+    "038110"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "코프라": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "콤텍시스템": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "클라우드에어": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "클리노믹스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "클릭스노믹스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "태경케미칼": {
+  "cls": "A",
+  "code": "006890",
+  "cand": "태경케미컬",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "태경케미컬",
+    "006890",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "태경케미컬",
+    "006890",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "태경케미컬",
+    "006890",
+    "master"
+   ],
+   [
+    "A-typo",
+    "태경케미컬",
+    "006890",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2020-11-13": [
+    0,
+    0
+   ],
+   "2021-06-16": [
+    28,
+    28
+   ],
+   "2020-12-08": [
+    0,
+    4
+   ],
+   "2022-05-16": [
+    28,
+    27
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "태평양물산": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "티플렉스": {
+  "cls": "A",
+  "code": "081150",
+  "cand": "티플랙스",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "티플랙스",
+    "081150",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "티플랙스",
+    "081150",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "티플랙스",
+    "081150",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-06-11": [
+    28,
+    28
+   ],
+   "2021-11-03": [
+    27,
+    28
+   ],
+   "2021-11-11": [
+    27,
+    28
+   ],
+   "2023-08-21": [
+    28,
+    27
+   ],
+   "2021-03-04": [
+    26,
+    28
+   ]
+  },
+  "recoverable_rows": 4
+ },
+ "펜스타엔터프라이즈": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.8888888888888888,
+    8,
+    "팬스타엔터프라이즈",
+    "054300"
+   ],
+   [
+    0.6666666666666666,
+    6,
+    "화승엔터프라이즈",
+    "241590"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "포스코 ICT": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 7건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 7,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "퓨닛": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "퓨처스트림네트웍스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "퓨처켐": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "플로리스AI": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.6666666666666666,
+    4,
+    "폴라리스AI핸디",
+    "220180"
+   ],
+   [
+    0.6666666666666666,
+    4,
+    "폴라리스AI파마",
+    "041910"
+   ],
+   [
+    0.6666666666666666,
+    4,
+    "폴라리스AI",
+    "039980"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "피비파마": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "피에이치씨": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [
+   [
+    0.8,
+    4,
+    "피에이치에이",
+    "043370"
+   ]
+  ],
+  "recoverable_rows": 0
+ },
+ "하이젠알엔엠": {
+  "cls": "A",
+  "code": "160190",
+  "cand": "하이젠알앤엠",
+  "why": "A-typo(probe)",
+  "evidence": [
+   [
+    "A-typo",
+    "하이젠알앤엠",
+    "160190",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "하이젠알앤엠",
+    "160190",
+    "census"
+   ],
+   [
+    "A-typo",
+    "하이젠알앤엠",
+    "160190",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2024-08-08": [
+    29,
+    25
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "하이트론": {
+  "cls": "B",
+  "code": "019490",
+  "cand": "엑시큐어하이트론",
+  "why": "B-pre(census)",
+  "evidence": [
+   [
+    "B-pre",
+    "엑시큐어하이트론",
+    "019490",
+    "census"
+   ],
+   [
+    "B-pre",
+    "엑시큐어하이트론",
+    "019490",
+    "master"
+   ]
+  ],
+  "probe_cand": 4,
+  "probe_saturated": false,
+  "bars": {
+   "2021-03-12": [
+    0,
+    0
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "하인크코리아": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "한국비앤씨": {
+  "cls": "A",
+  "code": "256840",
+  "cand": "한국비엔씨",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "한국비엔씨",
+    "256840",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "한국비엔씨",
+    "256840",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "한국비엔씨",
+    "256840",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "한국비엔씨",
+    "256840",
+    "census"
+   ]
+  ],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "bars": {
+   "2021-12-20": [
+    29,
+    28
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "한국프랜지": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 10건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 10,
+  "probe_saturated": true,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "한라": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 2건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 2,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "한솔로지틱스": {
+  "cls": "A",
+  "code": "009180",
+  "cand": "한솔로지스틱스",
+  "why": "A-typo(probe)",
+  "evidence": [
+   [
+    "A-typo",
+    "한솔로지스틱스",
+    "009180",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "한솔로지스틱스",
+    "009180",
+    "master"
+   ],
+   [
+    "A-typo",
+    "한솔로지스틱스",
+    "009180",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-03-18": [
+    26,
+    28
+   ],
+   "2022-03-30": [
+    27,
+    27
+   ]
+  },
+  "recoverable_rows": 2
+ },
+ "한송네오텍": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "해성티피씨": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 5건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 5,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "현대에너지솔루션": {
+  "cls": "B",
+  "code": "322000",
+  "cand": "HD현대에너지솔루션",
+  "why": "B-pre(census)",
+  "evidence": [
+   [
+    "B-pre",
+    "HD현대에너지솔루션",
+    "322000",
+    "census"
+   ],
+   [
+    "B-pre",
+    "HD현대에너지솔루션",
+    "322000",
+    "master"
+   ],
+   [
+    "B-pre",
+    "HD현대에너지솔루션",
+    "322000",
+    "localdb"
+   ]
+  ],
+  "probe_cand": 13,
+  "probe_saturated": true,
+  "bars": {
+   "2022-09-14": [
+    26,
+    26
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "현성바이탈": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "홈센타홀딩스": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "화성산업": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 1건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "화승알엔에이": {
+  "cls": "A",
+  "code": "378850",
+  "cand": "화승알앤에이",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "화승알앤에이",
+    "378850",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "화승알앤에이",
+    "378850",
+    "census"
+   ],
+   [
+    "A-typo",
+    "화승알앤에이",
+    "378850",
+    "master"
+   ],
+   [
+    "A-typo",
+    "화승알앤에이",
+    "378850",
+    "probe"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-02-05": [
+    0,
+    3
+   ]
+  },
+  "recoverable_rows": 0
+ },
+ "효성중고업": {
+  "cls": "A",
+  "code": "298040",
+  "cand": "효성중공업",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "효성중공업",
+    "298040",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "효성중공업",
+    "298040",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "효성중공업",
+    "298040",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "효성중공업",
+    "298040",
+    "master"
+   ],
+   [
+    "A-typo",
+    "효성중공업",
+    "298040",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2021-02-08": [
+    20,
+    26
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "효성첨단소재": {
+  "cls": "B",
+  "code": "298050",
+  "cand": "HS효성첨단소재",
+  "why": "B-pre(probe)",
+  "evidence": [
+   [
+    "B-pre",
+    "HS효성첨단소재",
+    "298050",
+    "probe"
+   ],
+   [
+    "B-pre",
+    "HS효성첨단소재",
+    "298050",
+    "localdb"
+   ],
+   [
+    "B-pre",
+    "HS효성첨단소재",
+    "298050",
+    "master"
+   ],
+   [
+    "B-pre",
+    "HS효성첨단소재",
+    "298050",
+    "census"
+   ]
+  ],
+  "probe_cand": 6,
+  "probe_saturated": false,
+  "bars": {
+   "2021-01-25": [
+    10,
+    26
+   ],
+   "2021-02-01": [
+    15,
+    26
+   ]
+  },
+  "recoverable_rows": 1
+ },
+ "휘닉스소재": {
+  "cls": "C",
+  "code": null,
+  "cand": null,
+  "why": "접두 후보 0건 · 현재이름 유사 0건",
+  "evidence": [],
+  "probe_cand": 0,
+  "probe_saturated": false,
+  "near": [],
+  "recoverable_rows": 0
+ },
+ "흥아해훈": {
+  "cls": "A",
+  "code": "003280",
+  "cand": "흥아해운",
+  "why": "A-self(저자가 다른 라벨에 올바로 씀(편집거리 1))",
+  "evidence": [
+   [
+    "A-self",
+    "흥아해운",
+    "003280",
+    "저자가 다른 라벨에 올바로 씀(편집거리 1)"
+   ],
+   [
+    "A-typo",
+    "흥아해운",
+    "003280",
+    "localdb"
+   ],
+   [
+    "A-typo",
+    "흥아해운",
+    "003280",
+    "master"
+   ],
+   [
+    "A-typo",
+    "흥아해운",
+    "003280",
+    "probe"
+   ],
+   [
+    "A-typo",
+    "흥아해운",
+    "003280",
+    "census"
+   ]
+  ],
+  "probe_cand": 1,
+  "probe_saturated": false,
+  "bars": {
+   "2023-11-30": [
+    29,
+    25
+   ]
+  },
+  "recoverable_rows": 1
+ }
+}

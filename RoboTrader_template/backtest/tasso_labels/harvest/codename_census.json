@@ -1,0 +1,13032 @@
+{
+"000020": {
+"listed": true,
+"name": "동화약품",
+"market": "코스피"
+},
+"000040": {
+"listed": true,
+"name": "KR모터스",
+"market": "코스피"
+},
+"000050": {
+"listed": true,
+"name": "경방",
+"market": "코스피"
+},
+"000070": {
+"listed": true,
+"name": "삼양홀딩스",
+"market": "코스피"
+},
+"000080": {
+"listed": true,
+"name": "하이트진로",
+"market": "코스피"
+},
+"000100": {
+"listed": true,
+"name": "유한양행",
+"market": "코스피"
+},
+"000105": {
+"listed": true,
+"name": "유한양행우",
+"market": "코스피"
+},
+"000120": {
+"listed": true,
+"name": "CJ대한통운",
+"market": "코스피"
+},
+"000140": {
+"listed": true,
+"name": "하이트진로홀딩스",
+"market": "코스피"
+},
+"000150": {
+"listed": true,
+"name": "두산",
+"market": "코스피"
+},
+"000155": {
+"listed": true,
+"name": "두산우",
+"market": "코스피"
+},
+"000157": {
+"listed": true,
+"name": "두산2우B",
+"market": "코스피"
+},
+"000180": {
+"listed": true,
+"name": "성창기업지주",
+"market": "코스피"
+},
+"000210": {
+"listed": true,
+"name": "DL",
+"market": "코스피"
+},
+"000220": {
+"listed": true,
+"name": "유유제약",
+"market": "코스피"
+},
+"000230": {
+"listed": true,
+"name": "일동홀딩스",
+"market": "코스피"
+},
+"000240": {
+"listed": true,
+"name": "한국앤컴퍼니",
+"market": "코스피"
+},
+"000250": {
+"listed": true,
+"name": "삼천당제약",
+"market": "코스닥"
+},
+"000270": {
+"listed": true,
+"name": "기아",
+"market": "코스피"
+},
+"000300": {
+"listed": true,
+"name": "DH오토넥스",
+"market": "코스피"
+},
+"000320": {
+"listed": true,
+"name": "노루홀딩스",
+"market": "코스피"
+},
+"000370": {
+"listed": true,
+"name": "한화손해보험",
+"market": "코스피"
+},
+"000390": {
+"listed": true,
+"name": "SP삼화",
+"market": "코스피"
+},
+"000400": {
+"listed": true,
+"name": "롯데손해보험",
+"market": "코스피"
+},
+"000430": {
+"listed": true,
+"name": "대원강업",
+"market": "코스피"
+},
+"000440": {
+"listed": true,
+"name": "중앙에너비스",
+"market": "코스닥"
+},
+"000480": {
+"listed": true,
+"name": "CR홀딩스",
+"market": "코스피"
+},
+"000490": {
+"listed": true,
+"name": "대동",
+"market": "코스피"
+},
+"000500": {
+"listed": true,
+"name": "가온전선",
+"market": "코스피"
+},
+"000520": {
+"listed": true,
+"name": "삼일제약",
+"market": "코스피"
+},
+"000540": {
+"listed": true,
+"name": "흥국화재",
+"market": "코스피"
+},
+"000590": {
+"listed": true,
+"name": "CS홀딩스",
+"market": "코스피"
+},
+"000640": {
+"listed": true,
+"name": "동아쏘시오홀딩스",
+"market": "코스피"
+},
+"000650": {
+"listed": true,
+"name": "천일고속",
+"market": "코스피"
+},
+"000660": {
+"listed": true,
+"name": "SK하이닉스",
+"market": "코스피"
+},
+"000670": {
+"listed": true,
+"name": "영풍",
+"market": "코스피"
+},
+"000680": {
+"listed": true,
+"name": "LS네트웍스",
+"market": "코스피"
+},
+"000700": {
+"listed": true,
+"name": "유수홀딩스",
+"market": "코스피"
+},
+"000720": {
+"listed": true,
+"name": "현대건설",
+"market": "코스피"
+},
+"000725": {
+"listed": true,
+"name": "현대건설우",
+"market": "코스피"
+},
+"000760": {
+"listed": true,
+"name": "이화산업",
+"market": "코스피"
+},
+"000810": {
+"listed": true,
+"name": "삼성화재",
+"market": "코스피"
+},
+"000815": {
+"listed": true,
+"name": "삼성화재우",
+"market": "코스피"
+},
+"000850": {
+"listed": true,
+"name": "화천기공",
+"market": "코스피"
+},
+"000860": {
+"listed": true,
+"name": "강남제비스코",
+"market": "코스피"
+},
+"000880": {
+"listed": true,
+"name": "한화",
+"market": "코스피"
+},
+"00088K": {
+"listed": true,
+"name": "한화3우B",
+"market": "코스피"
+},
+"000890": {
+"listed": true,
+"name": "보해양조",
+"market": "코스피"
+},
+"000910": {
+"listed": true,
+"name": "유니온",
+"market": "코스피"
+},
+"000950": {
+"listed": true,
+"name": "전방",
+"market": "코스피"
+},
+"000970": {
+"listed": true,
+"name": "한국주철관",
+"market": "코스피"
+},
+"000990": {
+"listed": true,
+"name": "DB하이텍",
+"market": "코스피"
+},
+"001000": {
+"listed": true,
+"name": "신라섬유",
+"market": "코스닥"
+},
+"001020": {
+"listed": true,
+"name": "페이퍼코리아",
+"market": "코스피"
+},
+"001040": {
+"listed": true,
+"name": "CJ",
+"market": "코스피"
+},
+"001045": {
+"listed": true,
+"name": "CJ우",
+"market": "코스피"
+},
+"00104K": {
+"listed": true,
+"name": "CJ4우(전환)",
+"market": "코스피"
+},
+"001060": {
+"listed": true,
+"name": "JW중외제약",
+"market": "코스피"
+},
+"001070": {
+"listed": true,
+"name": "대한방직",
+"market": "코스피"
+},
+"001080": {
+"listed": true,
+"name": "만호제강",
+"market": "코스피"
+},
+"001120": {
+"listed": true,
+"name": "LX인터내셔널",
+"market": "코스피"
+},
+"001130": {
+"listed": true,
+"name": "대한제분",
+"market": "코스피"
+},
+"001200": {
+"listed": true,
+"name": "유진투자증권",
+"market": "코스피"
+},
+"001210": {
+"listed": true,
+"name": "금호전기",
+"market": "코스피"
+},
+"001230": {
+"listed": true,
+"name": "동국홀딩스",
+"market": "코스피"
+},
+"001250": {
+"listed": true,
+"name": "GS글로벌",
+"market": "코스피"
+},
+"001260": {
+"listed": true,
+"name": "남광토건",
+"market": "코스피"
+},
+"001270": {
+"listed": true,
+"name": "부국증권",
+"market": "코스피"
+},
+"001275": {
+"listed": true,
+"name": "부국증권우",
+"market": "코스피"
+},
+"001290": {
+"listed": true,
+"name": "상상인증권",
+"market": "코스피"
+},
+"001340": {
+"listed": true,
+"name": "PKC",
+"market": "코스피"
+},
+"001360": {
+"listed": true,
+"name": "삼성제약",
+"market": "코스피"
+},
+"001380": {
+"listed": true,
+"name": "SG글로벌",
+"market": "코스피"
+},
+"001390": {
+"listed": true,
+"name": "KG케미칼",
+"market": "코스피"
+},
+"001420": {
+"listed": true,
+"name": "태원물산",
+"market": "코스피"
+},
+"001430": {
+"listed": true,
+"name": "세아베스틸지주",
+"market": "코스피"
+},
+"001440": {
+"listed": true,
+"name": "대한전선",
+"market": "코스피"
+},
+"001450": {
+"listed": true,
+"name": "현대해상",
+"market": "코스피"
+},
+"001460": {
+"listed": true,
+"name": "BYC",
+"market": "코스피"
+},
+"001465": {
+"listed": true,
+"name": "BYC우",
+"market": "코스피"
+},
+"001470": {
+"listed": true,
+"name": "삼부토건",
+"market": "코스피"
+},
+"001500": {
+"listed": true,
+"name": "현대차증권",
+"market": "코스피"
+},
+"001510": {
+"listed": true,
+"name": "SK증권",
+"market": "코스피"
+},
+"001520": {
+"listed": true,
+"name": "동양",
+"market": "코스피"
+},
+"001530": {
+"listed": true,
+"name": "DI동일",
+"market": "코스피"
+},
+"001540": {
+"listed": true,
+"name": "안국약품",
+"market": "코스닥"
+},
+"001550": {
+"listed": true,
+"name": "조비",
+"market": "코스피"
+},
+"001560": {
+"listed": true,
+"name": "제일연마",
+"market": "코스피"
+},
+"001570": {
+"listed": true,
+"name": "금양",
+"market": "코스피"
+},
+"001620": {
+"listed": true,
+"name": "케이비아이동국실업",
+"market": "코스피"
+},
+"001630": {
+"listed": true,
+"name": "종근당홀딩스",
+"market": "코스피"
+},
+"001680": {
+"listed": true,
+"name": "대상",
+"market": "코스피"
+},
+"001720": {
+"listed": true,
+"name": "신영증권",
+"market": "코스피"
+},
+"001740": {
+"listed": true,
+"name": "SK네트웍스",
+"market": "코스피"
+},
+"001750": {
+"listed": true,
+"name": "한양증권",
+"market": "코스피"
+},
+"001770": {
+"listed": true,
+"name": "SHD",
+"market": "코스피"
+},
+"001780": {
+"listed": true,
+"name": "알루코",
+"market": "코스피"
+},
+"001790": {
+"listed": true,
+"name": "대한제당",
+"market": "코스피"
+},
+"001800": {
+"listed": true,
+"name": "오리온홀딩스",
+"market": "코스피"
+},
+"001810": {
+"listed": true,
+"name": "무림SP",
+"market": "코스닥"
+},
+"001820": {
+"listed": true,
+"name": "삼화콘덴서",
+"market": "코스피"
+},
+"001840": {
+"listed": true,
+"name": "이화공영",
+"market": "코스닥"
+},
+"001940": {
+"listed": true,
+"name": "KISCO홀딩스",
+"market": "코스피"
+},
+"002020": {
+"listed": true,
+"name": "코오롱",
+"market": "코스피"
+},
+"002030": {
+"listed": true,
+"name": "아세아",
+"market": "코스피"
+},
+"002070": {
+"listed": true,
+"name": "비비안",
+"market": "코스피"
+},
+"002100": {
+"listed": true,
+"name": "경농",
+"market": "코스피"
+},
+"002140": {
+"listed": true,
+"name": "고려산업",
+"market": "코스피"
+},
+"002150": {
+"listed": true,
+"name": "도화엔지니어링",
+"market": "코스피"
+},
+"002170": {
+"listed": true,
+"name": "SYTS",
+"market": "코스피"
+},
+"002200": {
+"listed": true,
+"name": "한국수출포장",
+"market": "코스피"
+},
+"002210": {
+"listed": true,
+"name": "동성제약",
+"market": "코스피"
+},
+"002220": {
+"listed": true,
+"name": "한일철강",
+"market": "코스피"
+},
+"002230": {
+"listed": true,
+"name": "피에스텍",
+"market": "코스닥"
+},
+"002240": {
+"listed": true,
+"name": "고려제강",
+"market": "코스피"
+},
+"002290": {
+"listed": true,
+"name": "삼일기업공사",
+"market": "코스닥"
+},
+"002310": {
+"listed": true,
+"name": "아세아제지",
+"market": "코스피"
+},
+"002320": {
+"listed": true,
+"name": "한진",
+"market": "코스피"
+},
+"002350": {
+"listed": true,
+"name": "넥센타이어",
+"market": "코스피"
+},
+"002360": {
+"listed": true,
+"name": "SH에너지화학",
+"market": "코스피"
+},
+"002380": {
+"listed": true,
+"name": "KCC",
+"market": "코스피"
+},
+"002390": {
+"listed": true,
+"name": "한독",
+"market": "코스피"
+},
+"002410": {
+"listed": true,
+"name": "범양건영",
+"market": "코스피"
+},
+"002420": {
+"listed": true,
+"name": "세기상사",
+"market": "코스피"
+},
+"002450": {
+"listed": true,
+"name": "삼익악기",
+"market": "코스피"
+},
+"002460": {
+"listed": true,
+"name": "HS화성",
+"market": "코스피"
+},
+"002600": {
+"listed": true,
+"name": "조흥",
+"market": "코스피"
+},
+"002620": {
+"listed": true,
+"name": "제일파마홀딩스",
+"market": "코스피"
+},
+"002630": {
+"listed": true,
+"name": "오리엔트바이오",
+"market": "코스피"
+},
+"002680": {
+"listed": true,
+"name": "한탑",
+"market": "코스닥"
+},
+"002690": {
+"listed": true,
+"name": "동일제강",
+"market": "코스피"
+},
+"002700": {
+"listed": true,
+"name": "신일전자",
+"market": "코스피"
+},
+"002710": {
+"listed": true,
+"name": "TCC스틸",
+"market": "코스피"
+},
+"002720": {
+"listed": true,
+"name": "국제약품",
+"market": "코스피"
+},
+"002760": {
+"listed": true,
+"name": "보락",
+"market": "코스피"
+},
+"002780": {
+"listed": true,
+"name": "진흥기업",
+"market": "코스피"
+},
+"002790": {
+"listed": true,
+"name": "아모레퍼시픽홀딩스",
+"market": "코스피"
+},
+"002795": {
+"listed": true,
+"name": "아모레퍼시픽홀딩스우",
+"market": "코스피"
+},
+"00279K": {
+"listed": true,
+"name": "아모레퍼시픽홀딩스3우C",
+"market": "코스피"
+},
+"002800": {
+"listed": true,
+"name": "신신제약",
+"market": "코스닥"
+},
+"002810": {
+"listed": true,
+"name": "삼영무역",
+"market": "코스피"
+},
+"002820": {
+"listed": true,
+"name": "SUN&L",
+"market": "코스피"
+},
+"002840": {
+"listed": true,
+"name": "미원상사",
+"market": "코스피"
+},
+"002870": {
+"listed": true,
+"name": "신풍",
+"market": "코스피"
+},
+"002880": {
+"listed": true,
+"name": "디와이에이",
+"market": "코스피"
+},
+"002900": {
+"listed": true,
+"name": "TYM",
+"market": "코스피"
+},
+"002920": {
+"listed": true,
+"name": "유성기업",
+"market": "코스피"
+},
+"002960": {
+"listed": true,
+"name": "한국쉘석유",
+"market": "코스피"
+},
+"002990": {
+"listed": true,
+"name": "금호건설",
+"market": "코스피"
+},
+"003000": {
+"listed": true,
+"name": "부광약품",
+"market": "코스피"
+},
+"003010": {
+"listed": true,
+"name": "혜인",
+"market": "코스피"
+},
+"003030": {
+"listed": true,
+"name": "세아제강지주",
+"market": "코스피"
+},
+"003060": {
+"listed": true,
+"name": "에이프로젠바이오로직스",
+"market": "코스피"
+},
+"003070": {
+"listed": true,
+"name": "코오롱글로벌",
+"market": "코스피"
+},
+"003080": {
+"listed": true,
+"name": "SB성보",
+"market": "코스피"
+},
+"003090": {
+"listed": true,
+"name": "대웅",
+"market": "코스피"
+},
+"003100": {
+"listed": true,
+"name": "선광",
+"market": "코스닥"
+},
+"003120": {
+"listed": true,
+"name": "일성아이에스",
+"market": "코스피"
+},
+"003160": {
+"listed": true,
+"name": "디아이",
+"market": "코스피"
+},
+"003200": {
+"listed": true,
+"name": "일신방직",
+"market": "코스피"
+},
+"003220": {
+"listed": true,
+"name": "대원제약",
+"market": "코스피"
+},
+"003230": {
+"listed": true,
+"name": "삼양식품",
+"market": "코스피"
+},
+"003240": {
+"listed": true,
+"name": "태광산업",
+"market": "코스피"
+},
+"003280": {
+"listed": true,
+"name": "흥아해운",
+"market": "코스피"
+},
+"003300": {
+"listed": true,
+"name": "한일홀딩스",
+"market": "코스피"
+},
+"003310": {
+"listed": true,
+"name": "대주산업",
+"market": "코스닥"
+},
+"003350": {
+"listed": true,
+"name": "한국화장품제조",
+"market": "코스피"
+},
+"003380": {
+"listed": true,
+"name": "하림지주",
+"market": "코스닥"
+},
+"003460": {
+"listed": true,
+"name": "유화증권",
+"market": "코스피"
+},
+"003470": {
+"listed": true,
+"name": "유안타증권",
+"market": "코스피"
+},
+"003475": {
+"listed": true,
+"name": "유안타증권우",
+"market": "코스피"
+},
+"003480": {
+"listed": true,
+"name": "한진중공업홀딩스",
+"market": "코스피"
+},
+"003490": {
+"listed": true,
+"name": "대한항공",
+"market": "코스피"
+},
+"003520": {
+"listed": true,
+"name": "영진약품",
+"market": "코스피"
+},
+"003530": {
+"listed": true,
+"name": "한화투자증권",
+"market": "코스피"
+},
+"003540": {
+"listed": true,
+"name": "대신증권",
+"market": "코스피"
+},
+"003545": {
+"listed": true,
+"name": "대신증권우",
+"market": "코스피"
+},
+"003547": {
+"listed": true,
+"name": "대신증권2우B",
+"market": "코스피"
+},
+"003550": {
+"listed": true,
+"name": "LG",
+"market": "코스피"
+},
+"003555": {
+"listed": true,
+"name": "LG우",
+"market": "코스피"
+},
+"003570": {
+"listed": true,
+"name": "SNT다이내믹스",
+"market": "코스피"
+},
+"003580": {
+"listed": true,
+"name": "HLB글로벌",
+"market": "코스피"
+},
+"003610": {
+"listed": true,
+"name": "방림",
+"market": "코스피"
+},
+"003620": {
+"listed": true,
+"name": "KG모빌리티",
+"market": "코스피"
+},
+"003650": {
+"listed": true,
+"name": "미창석유",
+"market": "코스피"
+},
+"003670": {
+"listed": true,
+"name": "포스코퓨처엠",
+"market": "코스피"
+},
+"003680": {
+"listed": true,
+"name": "한성기업",
+"market": "코스피"
+},
+"003690": {
+"listed": true,
+"name": "코리안리",
+"market": "코스피"
+},
+"003720": {
+"listed": true,
+"name": "삼영",
+"market": "코스피"
+},
+"003780": {
+"listed": true,
+"name": "진양산업",
+"market": "코스피"
+},
+"003800": {
+"listed": true,
+"name": "에이스침대",
+"market": "코스닥"
+},
+"003830": {
+"listed": true,
+"name": "대한화섬",
+"market": "코스피"
+},
+"003850": {
+"listed": true,
+"name": "보령",
+"market": "코스피"
+},
+"003920": {
+"listed": true,
+"name": "남양유업",
+"market": "코스피"
+},
+"003925": {
+"listed": true,
+"name": "남양유업우",
+"market": "코스피"
+},
+"003960": {
+"listed": true,
+"name": "사조대림",
+"market": "코스피"
+},
+"004000": {
+"listed": true,
+"name": "롯데정밀화학",
+"market": "코스피"
+},
+"004020": {
+"listed": true,
+"name": "현대제철",
+"market": "코스피"
+},
+"004060": {
+"listed": true,
+"name": "SG세계물산",
+"market": "코스피"
+},
+"004080": {
+"listed": true,
+"name": "신흥",
+"market": "코스피"
+},
+"004090": {
+"listed": true,
+"name": "한국석유",
+"market": "코스피"
+},
+"004100": {
+"listed": true,
+"name": "태양금속",
+"market": "코스피"
+},
+"004140": {
+"listed": true,
+"name": "동방",
+"market": "코스피"
+},
+"004150": {
+"listed": true,
+"name": "한솔홀딩스",
+"market": "코스피"
+},
+"004170": {
+"listed": true,
+"name": "신세계",
+"market": "코스피"
+},
+"004250": {
+"listed": true,
+"name": "NPC",
+"market": "코스피"
+},
+"004270": {
+"listed": true,
+"name": "남성",
+"market": "코스피"
+},
+"004310": {
+"listed": true,
+"name": "현대약품",
+"market": "코스피"
+},
+"004360": {
+"listed": true,
+"name": "세방",
+"market": "코스피"
+},
+"004370": {
+"listed": true,
+"name": "농심",
+"market": "코스피"
+},
+"004380": {
+"listed": true,
+"name": "삼익THK",
+"market": "코스피"
+},
+"004410": {
+"listed": true,
+"name": "서울식품",
+"market": "코스피"
+},
+"004430": {
+"listed": true,
+"name": "송원산업",
+"market": "코스피"
+},
+"004440": {
+"listed": true,
+"name": "삼일씨엔에스",
+"market": "코스피"
+},
+"004450": {
+"listed": true,
+"name": "삼화왕관",
+"market": "코스피"
+},
+"004490": {
+"listed": true,
+"name": "세방전지",
+"market": "코스피"
+},
+"004540": {
+"listed": true,
+"name": "깨끗한나라",
+"market": "코스피"
+},
+"004560": {
+"listed": true,
+"name": "현대비앤지스틸",
+"market": "코스피"
+},
+"004590": {
+"listed": true,
+"name": "한국가구",
+"market": "코스닥"
+},
+"004650": {
+"listed": true,
+"name": "창해에탄올",
+"market": "코스닥"
+},
+"004690": {
+"listed": true,
+"name": "삼천리",
+"market": "코스피"
+},
+"004700": {
+"listed": true,
+"name": "조광피혁",
+"market": "코스피"
+},
+"004710": {
+"listed": true,
+"name": "한솔테크닉스",
+"market": "코스피"
+},
+"004720": {
+"listed": true,
+"name": "팜젠사이언스",
+"market": "코스피"
+},
+"004770": {
+"listed": true,
+"name": "써니전자",
+"market": "코스피"
+},
+"004780": {
+"listed": true,
+"name": "대륙제관",
+"market": "코스닥"
+},
+"004800": {
+"listed": true,
+"name": "효성",
+"market": "코스피"
+},
+"004830": {
+"listed": true,
+"name": "덕성",
+"market": "코스피"
+},
+"004840": {
+"listed": true,
+"name": "DRB동일",
+"market": "코스피"
+},
+"004870": {
+"listed": true,
+"name": "티웨이홀딩스",
+"market": "코스피"
+},
+"004890": {
+"listed": true,
+"name": "동일산업",
+"market": "코스피"
+},
+"004910": {
+"listed": true,
+"name": "조광페인트",
+"market": "코스피"
+},
+"004920": {
+"listed": true,
+"name": "씨아이테크",
+"market": "코스피"
+},
+"004960": {
+"listed": true,
+"name": "한신공영",
+"market": "코스피"
+},
+"004970": {
+"listed": true,
+"name": "신라교역",
+"market": "코스피"
+},
+"004980": {
+"listed": true,
+"name": "성신양회",
+"market": "코스피"
+},
+"004990": {
+"listed": true,
+"name": "롯데지주",
+"market": "코스피"
+},
+"005010": {
+"listed": true,
+"name": "휴스틸",
+"market": "코스피"
+},
+"005030": {
+"listed": true,
+"name": "부산주공",
+"market": "코스피"
+},
+"005070": {
+"listed": true,
+"name": "코스모신소재",
+"market": "코스피"
+},
+"005090": {
+"listed": true,
+"name": "SGC에너지",
+"market": "코스피"
+},
+"005110": {
+"listed": true,
+"name": "한창",
+"market": "코스피"
+},
+"005160": {
+"listed": true,
+"name": "동국산업",
+"market": "코스닥"
+},
+"005180": {
+"listed": true,
+"name": "빙그레",
+"market": "코스피"
+},
+"005250": {
+"listed": true,
+"name": "녹십자홀딩스",
+"market": "코스피"
+},
+"005290": {
+"listed": true,
+"name": "동진쎄미켐",
+"market": "코스닥"
+},
+"005300": {
+"listed": true,
+"name": "롯데칠성",
+"market": "코스피"
+},
+"005305": {
+"listed": true,
+"name": "롯데칠성우",
+"market": "코스피"
+},
+"005320": {
+"listed": true,
+"name": "온타이드",
+"market": "코스피"
+},
+"005360": {
+"listed": true,
+"name": "모나미",
+"market": "코스피"
+},
+"005380": {
+"listed": true,
+"name": "현대차",
+"market": "코스피"
+},
+"005385": {
+"listed": true,
+"name": "현대차우",
+"market": "코스피"
+},
+"005387": {
+"listed": true,
+"name": "현대차2우B",
+"market": "코스피"
+},
+"005389": {
+"listed": true,
+"name": "현대차3우B",
+"market": "코스피"
+},
+"005420": {
+"listed": true,
+"name": "코스모화학",
+"market": "코스피"
+},
+"005430": {
+"listed": true,
+"name": "한국공항",
+"market": "코스피"
+},
+"005440": {
+"listed": true,
+"name": "현대지에프홀딩스",
+"market": "코스피"
+},
+"005490": {
+"listed": true,
+"name": "POSCO홀딩스",
+"market": "코스피"
+},
+"005500": {
+"listed": true,
+"name": "삼진제약",
+"market": "코스피"
+},
+"005610": {
+"listed": true,
+"name": "삼립",
+"market": "코스피"
+},
+"005670": {
+"listed": true,
+"name": "푸드웰",
+"market": "코스닥"
+},
+"005680": {
+"listed": true,
+"name": "삼영전자",
+"market": "코스피"
+},
+"005690": {
+"listed": true,
+"name": "파미셀",
+"market": "코스피"
+},
+"005710": {
+"listed": true,
+"name": "대원산업",
+"market": "코스닥"
+},
+"005720": {
+"listed": true,
+"name": "넥센",
+"market": "코스피"
+},
+"005740": {
+"listed": true,
+"name": "크라운해태홀딩스",
+"market": "코스피"
+},
+"005750": {
+"listed": true,
+"name": "대림바스",
+"market": "코스피"
+},
+"005800": {
+"listed": true,
+"name": "신영와코루",
+"market": "코스피"
+},
+"005810": {
+"listed": true,
+"name": "풍산홀딩스",
+"market": "코스피"
+},
+"005820": {
+"listed": true,
+"name": "원림",
+"market": "코스피"
+},
+"005830": {
+"listed": true,
+"name": "DB손해보험",
+"market": "코스피"
+},
+"005850": {
+"listed": true,
+"name": "에스엘",
+"market": "코스피"
+},
+"005860": {
+"listed": true,
+"name": "한일사료",
+"market": "코스닥"
+},
+"005870": {
+"listed": true,
+"name": "휴니드",
+"market": "코스피"
+},
+"005880": {
+"listed": true,
+"name": "대한해운",
+"market": "코스피"
+},
+"005930": {
+"listed": true,
+"name": "삼성전자",
+"market": "코스피"
+},
+"005935": {
+"listed": true,
+"name": "삼성전자우",
+"market": "코스피"
+},
+"005940": {
+"listed": true,
+"name": "NH투자증권",
+"market": "코스피"
+},
+"005945": {
+"listed": true,
+"name": "NH투자증권우",
+"market": "코스피"
+},
+"005950": {
+"listed": true,
+"name": "이수화학",
+"market": "코스피"
+},
+"005960": {
+"listed": true,
+"name": "동부건설",
+"market": "코스피"
+},
+"005990": {
+"listed": true,
+"name": "매일홀딩스",
+"market": "코스닥"
+},
+"006040": {
+"listed": true,
+"name": "동원산업",
+"market": "코스피"
+},
+"006050": {
+"listed": true,
+"name": "국영지앤엠",
+"market": "코스닥"
+},
+"006060": {
+"listed": true,
+"name": "화승인더",
+"market": "코스피"
+},
+"006090": {
+"listed": true,
+"name": "사조오양",
+"market": "코스피"
+},
+"006110": {
+"listed": true,
+"name": "삼아알미늄",
+"market": "코스피"
+},
+"006120": {
+"listed": true,
+"name": "SK디스커버리",
+"market": "코스피"
+},
+"006125": {
+"listed": true,
+"name": "SK디스커버리우",
+"market": "코스피"
+},
+"006140": {
+"listed": true,
+"name": "피제이전자",
+"market": "코스닥"
+},
+"006200": {
+"listed": true,
+"name": "한국전자홀딩스",
+"market": "코스피"
+},
+"006220": {
+"listed": true,
+"name": "제주은행",
+"market": "코스피"
+},
+"006260": {
+"listed": true,
+"name": "LS",
+"market": "코스피"
+},
+"006280": {
+"listed": true,
+"name": "녹십자",
+"market": "코스피"
+},
+"006340": {
+"listed": true,
+"name": "대원전선",
+"market": "코스피"
+},
+"006360": {
+"listed": true,
+"name": "GS건설",
+"market": "코스피"
+},
+"006370": {
+"listed": true,
+"name": "대구백화점",
+"market": "코스피"
+},
+"006380": {
+"listed": true,
+"name": "카프로",
+"market": "코스피"
+},
+"006400": {
+"listed": true,
+"name": "삼성SDI",
+"market": "코스피"
+},
+"006405": {
+"listed": true,
+"name": "삼성SDI우",
+"market": "코스피"
+},
+"006490": {
+"listed": true,
+"name": "프리티",
+"market": "코스피"
+},
+"006570": {
+"listed": true,
+"name": "대림통상",
+"market": "코스피"
+},
+"006620": {
+"listed": true,
+"name": "동구바이오제약",
+"market": "코스닥"
+},
+"006650": {
+"listed": true,
+"name": "대한유화",
+"market": "코스피"
+},
+"006660": {
+"listed": true,
+"name": "삼성공조",
+"market": "코스피"
+},
+"006730": {
+"listed": true,
+"name": "서부T&D",
+"market": "코스닥"
+},
+"006740": {
+"listed": true,
+"name": "블루산업개발",
+"market": "코스피"
+},
+"006800": {
+"listed": true,
+"name": "미래에셋증권",
+"market": "코스피"
+},
+"006805": {
+"listed": true,
+"name": "미래에셋증권우",
+"market": "코스피"
+},
+"00680K": {
+"listed": true,
+"name": "미래에셋증권2우B",
+"market": "코스피"
+},
+"006840": {
+"listed": true,
+"name": "AK홀딩스",
+"market": "코스피"
+},
+"006880": {
+"listed": true,
+"name": "신송홀딩스",
+"market": "코스피"
+},
+"006890": {
+"listed": true,
+"name": "태경케미컬",
+"market": "코스피"
+},
+"006910": {
+"listed": true,
+"name": "보성파워텍",
+"market": "코스닥"
+},
+"006920": {
+"listed": true,
+"name": "모헨즈",
+"market": "코스닥"
+},
+"006980": {
+"listed": true,
+"name": "우성",
+"market": "코스피"
+},
+"007070": {
+"listed": true,
+"name": "GS리테일",
+"market": "코스피"
+},
+"007110": {
+"listed": true,
+"name": "일신석재",
+"market": "코스피"
+},
+"007120": {
+"listed": true,
+"name": "미래아이앤지",
+"market": "코스피"
+},
+"007160": {
+"listed": true,
+"name": "사조산업",
+"market": "코스피"
+},
+"007210": {
+"listed": true,
+"name": "벽산",
+"market": "코스피"
+},
+"007280": {
+"listed": true,
+"name": "한국특강",
+"market": "코스피"
+},
+"007310": {
+"listed": true,
+"name": "오뚜기",
+"market": "코스피"
+},
+"007330": {
+"listed": true,
+"name": "푸른저축은행",
+"market": "코스닥"
+},
+"007340": {
+"listed": true,
+"name": "DN오토모티브",
+"market": "코스피"
+},
+"007370": {
+"listed": true,
+"name": "진양제약",
+"market": "코스닥"
+},
+"007390": {
+"listed": true,
+"name": "네이처셀",
+"market": "코스닥"
+},
+"007460": {
+"listed": true,
+"name": "에이프로젠",
+"market": "코스피"
+},
+"007530": {
+"listed": true,
+"name": "와이엠",
+"market": "코스닥"
+},
+"007540": {
+"listed": true,
+"name": "샘표",
+"market": "코스피"
+},
+"007570": {
+"listed": true,
+"name": "일양약품",
+"market": "코스피"
+},
+"007590": {
+"listed": true,
+"name": "동방아그로",
+"market": "코스피"
+},
+"007610": {
+"listed": true,
+"name": "선도전기",
+"market": "코스피"
+},
+"007660": {
+"listed": true,
+"name": "이수페타시스",
+"market": "코스피"
+},
+"007680": {
+"listed": true,
+"name": "대원",
+"market": "코스닥"
+},
+"007690": {
+"listed": true,
+"name": "국도화학",
+"market": "코스피"
+},
+"007700": {
+"listed": true,
+"name": "F&F홀딩스",
+"market": "코스피"
+},
+"007720": {
+"listed": true,
+"name": "소노스퀘어",
+"market": "코스닥"
+},
+"007770": {
+"listed": true,
+"name": "한일화학",
+"market": "코스닥"
+},
+"007810": {
+"listed": true,
+"name": "코리아써키트",
+"market": "코스피"
+},
+"007820": {
+"listed": true,
+"name": "엠엑스로보틱스",
+"market": "코스닥"
+},
+"007860": {
+"listed": true,
+"name": "서연",
+"market": "코스피"
+},
+"007980": {
+"listed": true,
+"name": "TP",
+"market": "코스피"
+},
+"008040": {
+"listed": true,
+"name": "사조동아원",
+"market": "코스피"
+},
+"008060": {
+"listed": true,
+"name": "대덕",
+"market": "코스피"
+},
+"008110": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"008250": {
+"listed": true,
+"name": "이건산업",
+"market": "코스피"
+},
+"008260": {
+"listed": true,
+"name": "NI스틸",
+"market": "코스피"
+},
+"008290": {
+"listed": true,
+"name": "원풍물산",
+"market": "코스닥"
+},
+"008350": {
+"listed": true,
+"name": "남선알미늄",
+"market": "코스피"
+},
+"008370": {
+"listed": true,
+"name": "원풍",
+"market": "코스닥"
+},
+"008420": {
+"listed": true,
+"name": "문배철강",
+"market": "코스피"
+},
+"008470": {
+"listed": true,
+"name": "부스타",
+"market": "코스닥"
+},
+"008490": {
+"listed": true,
+"name": "서흥",
+"market": "코스피"
+},
+"008500": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"008600": {
+"listed": true,
+"name": "윌비스",
+"market": "코스피"
+},
+"008700": {
+"listed": true,
+"name": "아남전자",
+"market": "코스피"
+},
+"008730": {
+"listed": true,
+"name": "율촌화학",
+"market": "코스피"
+},
+"008770": {
+"listed": true,
+"name": "호텔신라",
+"market": "코스피"
+},
+"008830": {
+"listed": true,
+"name": "대동기어",
+"market": "코스닥"
+},
+"008870": {
+"listed": true,
+"name": "금비",
+"market": "코스피"
+},
+"008930": {
+"listed": true,
+"name": "한미사이언스",
+"market": "코스피"
+},
+"008970": {
+"listed": true,
+"name": "KBI동양철관",
+"market": "코스피"
+},
+"009070": {
+"listed": true,
+"name": "KCTC",
+"market": "코스피"
+},
+"009140": {
+"listed": true,
+"name": "경인전자",
+"market": "코스피"
+},
+"009150": {
+"listed": true,
+"name": "삼성전기",
+"market": "코스피"
+},
+"009155": {
+"listed": true,
+"name": "삼성전기우",
+"market": "코스피"
+},
+"009160": {
+"listed": true,
+"name": "SIMPAC",
+"market": "코스피"
+},
+"009180": {
+"listed": true,
+"name": "한솔로지스틱스",
+"market": "코스피"
+},
+"009190": {
+"listed": true,
+"name": "대양금속",
+"market": "코스피"
+},
+"009200": {
+"listed": true,
+"name": "무림페이퍼",
+"market": "코스피"
+},
+"009240": {
+"listed": true,
+"name": "한샘",
+"market": "코스피"
+},
+"009270": {
+"listed": true,
+"name": "신원",
+"market": "코스피"
+},
+"009290": {
+"listed": true,
+"name": "광동제약",
+"market": "코스피"
+},
+"009300": {
+"listed": true,
+"name": "삼아제약",
+"market": "코스닥"
+},
+"009310": {
+"listed": true,
+"name": "참엔지니어링",
+"market": "코스피"
+},
+"009320": {
+"listed": true,
+"name": "아진전자부품",
+"market": "코스피"
+},
+"009410": {
+"listed": true,
+"name": "태영건설",
+"market": "코스피"
+},
+"009420": {
+"listed": true,
+"name": "한올바이오파마",
+"market": "코스피"
+},
+"009440": {
+"listed": true,
+"name": "KC그린홀딩스",
+"market": "코스피"
+},
+"009450": {
+"listed": true,
+"name": "경동나비엔",
+"market": "코스피"
+},
+"009460": {
+"listed": true,
+"name": "한창제지",
+"market": "코스피"
+},
+"009470": {
+"listed": true,
+"name": "삼화전기",
+"market": "코스피"
+},
+"009520": {
+"listed": true,
+"name": "포스코엠텍",
+"market": "코스닥"
+},
+"009540": {
+"listed": true,
+"name": "HD한국조선해양",
+"market": "코스피"
+},
+"009580": {
+"listed": true,
+"name": "무림P&P",
+"market": "코스피"
+},
+"009620": {
+"listed": true,
+"name": "삼보산업",
+"market": "코스닥"
+},
+"009680": {
+"listed": true,
+"name": "모토닉",
+"market": "코스피"
+},
+"009730": {
+"listed": true,
+"name": "이렘",
+"market": "코스닥"
+},
+"009770": {
+"listed": true,
+"name": "삼정펄프",
+"market": "코스피"
+},
+"009780": {
+"listed": true,
+"name": "엠에스씨",
+"market": "코스닥"
+},
+"009810": {
+"listed": true,
+"name": "플레이그램",
+"market": "코스피"
+},
+"009830": {
+"listed": true,
+"name": "한화솔루션",
+"market": "코스피"
+},
+"009835": {
+"listed": true,
+"name": "한화솔루션우",
+"market": "코스피"
+},
+"009900": {
+"listed": true,
+"name": "명신산업",
+"market": "코스피"
+},
+"009970": {
+"listed": true,
+"name": "영원무역홀딩스",
+"market": "코스피"
+},
+"010040": {
+"listed": true,
+"name": "한국내화",
+"market": "코스피"
+},
+"010060": {
+"listed": true,
+"name": "OCI홀딩스",
+"market": "코스피"
+},
+"010100": {
+"listed": true,
+"name": "한국무브넥스",
+"market": "코스피"
+},
+"010120": {
+"listed": true,
+"name": "LS ELECTRIC",
+"market": "코스피"
+},
+"010130": {
+"listed": true,
+"name": "고려아연",
+"market": "코스피"
+},
+"010140": {
+"listed": true,
+"name": "삼성중공업",
+"market": "코스피"
+},
+"010170": {
+"listed": true,
+"name": "대한광통신",
+"market": "코스닥"
+},
+"010240": {
+"listed": true,
+"name": "흥국",
+"market": "코스닥"
+},
+"010280": {
+"listed": true,
+"name": "아이티센엔텍",
+"market": "코스닥"
+},
+"010470": {
+"listed": true,
+"name": "오리콤",
+"market": "코스닥"
+},
+"010580": {
+"listed": true,
+"name": "에스엠벡셀",
+"market": "코스피"
+},
+"010640": {
+"listed": true,
+"name": "진양폴리",
+"market": "코스피"
+},
+"010660": {
+"listed": true,
+"name": "화천기계",
+"market": "코스피"
+},
+"010690": {
+"listed": true,
+"name": "화신",
+"market": "코스피"
+},
+"010770": {
+"listed": true,
+"name": "평화홀딩스",
+"market": "코스피"
+},
+"010780": {
+"listed": true,
+"name": "아이에스동서",
+"market": "코스피"
+},
+"010820": {
+"listed": true,
+"name": "퍼스텍",
+"market": "코스피"
+},
+"010950": {
+"listed": true,
+"name": "S-Oil",
+"market": "코스피"
+},
+"010955": {
+"listed": true,
+"name": "S-Oil우",
+"market": "코스피"
+},
+"010960": {
+"listed": true,
+"name": "삼호개발",
+"market": "코스피"
+},
+"011000": {
+"listed": true,
+"name": "진원생명과학",
+"market": "코스피"
+},
+"011040": {
+"listed": true,
+"name": "경동제약",
+"market": "코스닥"
+},
+"011070": {
+"listed": true,
+"name": "LG이노텍",
+"market": "코스피"
+},
+"011080": {
+"listed": true,
+"name": "형지I&C",
+"market": "코스닥"
+},
+"011090": {
+"listed": true,
+"name": "에넥스",
+"market": "코스피"
+},
+"011150": {
+"listed": true,
+"name": "CJ씨푸드",
+"market": "코스피"
+},
+"011170": {
+"listed": true,
+"name": "롯데케미칼",
+"market": "코스피"
+},
+"011200": {
+"listed": true,
+"name": "HMM",
+"market": "코스피"
+},
+"011210": {
+"listed": true,
+"name": "현대위아",
+"market": "코스피"
+},
+"011230": {
+"listed": true,
+"name": "삼화전자",
+"market": "코스피"
+},
+"011280": {
+"listed": true,
+"name": "태림포장",
+"market": "코스피"
+},
+"011300": {
+"listed": true,
+"name": "우성머티리얼스",
+"market": "코스피"
+},
+"011320": {
+"listed": true,
+"name": "유니크",
+"market": "코스닥"
+},
+"011330": {
+"listed": true,
+"name": "유니켐",
+"market": "코스피"
+},
+"011370": {
+"listed": true,
+"name": "서한",
+"market": "코스닥"
+},
+"011390": {
+"listed": true,
+"name": "부산산업",
+"market": "코스피"
+},
+"011420": {
+"listed": true,
+"name": "갤럭시아에스엠",
+"market": "코스피"
+},
+"011500": {
+"listed": true,
+"name": "한농화성",
+"market": "코스피"
+},
+"011560": {
+"listed": true,
+"name": "세보엠이씨",
+"market": "코스닥"
+},
+"011690": {
+"listed": true,
+"name": "와이투솔루션",
+"market": "코스피"
+},
+"011700": {
+"listed": true,
+"name": "한신기계",
+"market": "코스피"
+},
+"011760": {
+"listed": true,
+"name": "현대코퍼레이션",
+"market": "코스피"
+},
+"011780": {
+"listed": true,
+"name": "금호석유화학",
+"market": "코스피"
+},
+"011785": {
+"listed": true,
+"name": "금호석유화학우",
+"market": "코스피"
+},
+"011790": {
+"listed": true,
+"name": "SKC",
+"market": "코스피"
+},
+"011810": {
+"listed": true,
+"name": "STX",
+"market": "코스피"
+},
+"011930": {
+"listed": true,
+"name": "신성이엔지",
+"market": "코스피"
+},
+"012030": {
+"listed": true,
+"name": "DB",
+"market": "코스피"
+},
+"012160": {
+"listed": true,
+"name": "영흥",
+"market": "코스피"
+},
+"012170": {
+"listed": true,
+"name": "아센디오",
+"market": "코스피"
+},
+"012200": {
+"listed": true,
+"name": "계양전기",
+"market": "코스피"
+},
+"012210": {
+"listed": true,
+"name": "삼미금속",
+"market": "코스닥"
+},
+"012280": {
+"listed": true,
+"name": "영화금속",
+"market": "코스피"
+},
+"012320": {
+"listed": true,
+"name": "경동인베스트",
+"market": "코스피"
+},
+"012330": {
+"listed": true,
+"name": "현대모비스",
+"market": "코스피"
+},
+"012340": {
+"listed": true,
+"name": "뉴인텍",
+"market": "코스닥"
+},
+"012450": {
+"listed": true,
+"name": "한화에어로스페이스",
+"market": "코스피"
+},
+"012510": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"012610": {
+"listed": true,
+"name": "경인양행",
+"market": "코스피"
+},
+"012620": {
+"listed": true,
+"name": "원일특강",
+"market": "코스닥"
+},
+"012630": {
+"listed": true,
+"name": "HDC",
+"market": "코스피"
+},
+"012690": {
+"listed": true,
+"name": "모나리자",
+"market": "코스피"
+},
+"012700": {
+"listed": true,
+"name": "리드코프",
+"market": "코스닥"
+},
+"012750": {
+"listed": true,
+"name": "에스원",
+"market": "코스피"
+},
+"012790": {
+"listed": true,
+"name": "신일제약",
+"market": "코스닥"
+},
+"012800": {
+"listed": true,
+"name": "대창",
+"market": "코스피"
+},
+"012860": {
+"listed": true,
+"name": "모베이스전자",
+"market": "코스닥"
+},
+"013030": {
+"listed": true,
+"name": "하이록코리아",
+"market": "코스닥"
+},
+"013120": {
+"listed": true,
+"name": "동원개발",
+"market": "코스닥"
+},
+"013310": {
+"listed": true,
+"name": "아진산업",
+"market": "코스닥"
+},
+"013360": {
+"listed": true,
+"name": "일성건설",
+"market": "코스피"
+},
+"013520": {
+"listed": true,
+"name": "화승코퍼레이션",
+"market": "코스피"
+},
+"013570": {
+"listed": true,
+"name": "디와이",
+"market": "코스피"
+},
+"013580": {
+"listed": true,
+"name": "계룡건설",
+"market": "코스피"
+},
+"013700": {
+"listed": true,
+"name": "까뮤이앤씨",
+"market": "코스피"
+},
+"013720": {
+"listed": true,
+"name": "청보",
+"market": "코스닥"
+},
+"013810": {
+"listed": true,
+"name": "스페코",
+"market": "코스닥"
+},
+"013870": {
+"listed": true,
+"name": "지엠비코리아",
+"market": "코스피"
+},
+"013890": {
+"listed": true,
+"name": "지누스",
+"market": "코스피"
+},
+"013990": {
+"listed": true,
+"name": "아가방컴퍼니",
+"market": "코스닥"
+},
+"014100": {
+"listed": true,
+"name": "메디앙스",
+"market": "코스닥"
+},
+"014130": {
+"listed": true,
+"name": "한익스프레스",
+"market": "코스피"
+},
+"014160": {
+"listed": true,
+"name": "대영포장",
+"market": "코스피"
+},
+"014190": {
+"listed": true,
+"name": "원익큐브",
+"market": "코스닥"
+},
+"014280": {
+"listed": true,
+"name": "금강공업",
+"market": "코스피"
+},
+"014440": {
+"listed": true,
+"name": "영보화학",
+"market": "코스피"
+},
+"014470": {
+"listed": true,
+"name": "부방",
+"market": "코스닥"
+},
+"014530": {
+"listed": true,
+"name": "극동유화",
+"market": "코스피"
+},
+"014570": {
+"listed": true,
+"name": "고려제약",
+"market": "코스닥"
+},
+"014580": {
+"listed": true,
+"name": "태경비케이",
+"market": "코스피"
+},
+"014620": {
+"listed": true,
+"name": "성광벤드",
+"market": "코스닥"
+},
+"014680": {
+"listed": true,
+"name": "한솔케미칼",
+"market": "코스피"
+},
+"014710": {
+"listed": true,
+"name": "사조씨푸드",
+"market": "코스피"
+},
+"014790": {
+"listed": true,
+"name": "HL D&I",
+"market": "코스피"
+},
+"014820": {
+"listed": true,
+"name": "동원시스템즈",
+"market": "코스피"
+},
+"014830": {
+"listed": true,
+"name": "유니드",
+"market": "코스피"
+},
+"014910": {
+"listed": true,
+"name": "성문전자",
+"market": "코스피"
+},
+"014940": {
+"listed": true,
+"name": "오리엔탈정공",
+"market": "코스닥"
+},
+"014950": {
+"listed": true,
+"name": "삼익제약",
+"market": "코스닥"
+},
+"014970": {
+"listed": true,
+"name": "삼륭물산",
+"market": "코스닥"
+},
+"014990": {
+"listed": true,
+"name": "인디에프",
+"market": "코스피"
+},
+"015020": {
+"listed": true,
+"name": "이스타코",
+"market": "코스피"
+},
+"015230": {
+"listed": true,
+"name": "대창단조",
+"market": "코스피"
+},
+"015260": {
+"listed": true,
+"name": "에이엔피",
+"market": "코스피"
+},
+"015360": {
+"listed": true,
+"name": "INVENI",
+"market": "코스피"
+},
+"015590": {
+"listed": true,
+"name": "DKME",
+"market": "코스피"
+},
+"015710": {
+"listed": true,
+"name": "코콤",
+"market": "코스닥"
+},
+"015750": {
+"listed": true,
+"name": "성우하이텍",
+"market": "코스닥"
+},
+"015760": {
+"listed": true,
+"name": "한국전력",
+"market": "코스피"
+},
+"015860": {
+"listed": true,
+"name": "일진홀딩스",
+"market": "코스피"
+},
+"015890": {
+"listed": true,
+"name": "태경산업",
+"market": "코스피"
+},
+"016090": {
+"listed": true,
+"name": "대현",
+"market": "코스피"
+},
+"016100": {
+"listed": true,
+"name": "리더스코스메틱",
+"market": "코스닥"
+},
+"016250": {
+"listed": true,
+"name": "SGC E&C",
+"market": "코스닥"
+},
+"016360": {
+"listed": true,
+"name": "삼성증권",
+"market": "코스피"
+},
+"016380": {
+"listed": true,
+"name": "KG스틸",
+"market": "코스피"
+},
+"016450": {
+"listed": true,
+"name": "한세예스24홀딩스",
+"market": "코스피"
+},
+"016580": {
+"listed": true,
+"name": "환인제약",
+"market": "코스피"
+},
+"016590": {
+"listed": true,
+"name": "신대양제지",
+"market": "코스피"
+},
+"016600": {
+"listed": true,
+"name": "큐캐피탈",
+"market": "코스닥"
+},
+"016610": {
+"listed": true,
+"name": "DB증권",
+"market": "코스피"
+},
+"016670": {
+"listed": true,
+"name": "디모아",
+"market": "코스닥"
+},
+"016710": {
+"listed": true,
+"name": "대성홀딩스",
+"market": "코스피"
+},
+"016740": {
+"listed": true,
+"name": "두올",
+"market": "코스피"
+},
+"016790": {
+"listed": true,
+"name": "현대사료",
+"market": "코스닥"
+},
+"016800": {
+"listed": true,
+"name": "퍼시스",
+"market": "코스피"
+},
+"016880": {
+"listed": true,
+"name": "웅진",
+"market": "코스피"
+},
+"016920": {
+"listed": true,
+"name": "카스",
+"market": "코스닥"
+},
+"017000": {
+"listed": true,
+"name": "신원종합개발",
+"market": "코스닥"
+},
+"017040": {
+"listed": true,
+"name": "광명전기",
+"market": "코스피"
+},
+"017180": {
+"listed": true,
+"name": "명문제약",
+"market": "코스피"
+},
+"017250": {
+"listed": true,
+"name": "인터엠",
+"market": "코스닥"
+},
+"017370": {
+"listed": true,
+"name": "우신시스템",
+"market": "코스피"
+},
+"017390": {
+"listed": true,
+"name": "서울가스",
+"market": "코스피"
+},
+"017480": {
+"listed": true,
+"name": "삼현철강",
+"market": "코스닥"
+},
+"017510": {
+"listed": true,
+"name": "세명전기",
+"market": "코스닥"
+},
+"017550": {
+"listed": true,
+"name": "수산세보틱스",
+"market": "코스피"
+},
+"017650": {
+"listed": true,
+"name": "대림제지",
+"market": "코스닥"
+},
+"017670": {
+"listed": true,
+"name": "SK텔레콤",
+"market": "코스피"
+},
+"017800": {
+"listed": true,
+"name": "현대엘리베이터",
+"market": "코스피"
+},
+"017810": {
+"listed": true,
+"name": "풀무원",
+"market": "코스피"
+},
+"017860": {
+"listed": true,
+"name": "DS단석",
+"market": "코스피"
+},
+"017890": {
+"listed": true,
+"name": "한국알콜",
+"market": "코스닥"
+},
+"017900": {
+"listed": true,
+"name": "광전자",
+"market": "코스피"
+},
+"017940": {
+"listed": true,
+"name": "E1",
+"market": "코스피"
+},
+"017960": {
+"listed": true,
+"name": "한국카본",
+"market": "코스피"
+},
+"018000": {
+"listed": true,
+"name": "유니슨",
+"market": "코스닥"
+},
+"018120": {
+"listed": true,
+"name": "진로발효",
+"market": "코스닥"
+},
+"018250": {
+"listed": true,
+"name": "애경산업",
+"market": "코스피"
+},
+"018260": {
+"listed": true,
+"name": "삼성에스디에스",
+"market": "코스피"
+},
+"018290": {
+"listed": true,
+"name": "브이티",
+"market": "코스닥"
+},
+"018310": {
+"listed": true,
+"name": "삼목에스폼",
+"market": "코스닥"
+},
+"018470": {
+"listed": true,
+"name": "조일알미늄",
+"market": "코스피"
+},
+"018500": {
+"listed": true,
+"name": "동원모빌리티",
+"market": "코스피"
+},
+"018670": {
+"listed": true,
+"name": "SK가스",
+"market": "코스피"
+},
+"018680": {
+"listed": true,
+"name": "서울제약",
+"market": "코스닥"
+},
+"018700": {
+"listed": true,
+"name": "졸스",
+"market": "코스닥"
+},
+"018880": {
+"listed": true,
+"name": "한온시스템",
+"market": "코스피"
+},
+"019010": {
+"listed": true,
+"name": "베뉴지",
+"market": "코스닥"
+},
+"019170": {
+"listed": true,
+"name": "신풍제약",
+"market": "코스피"
+},
+"019180": {
+"listed": true,
+"name": "티에이치엔",
+"market": "코스피"
+},
+"019210": {
+"listed": true,
+"name": "와이지-원",
+"market": "코스닥"
+},
+"019440": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"019490": {
+"listed": true,
+"name": "엑시큐어하이트론",
+"market": "코스피"
+},
+"019540": {
+"listed": true,
+"name": "일지테크",
+"market": "코스닥"
+},
+"019550": {
+"listed": true,
+"name": "SBI인베스트먼트",
+"market": "코스닥"
+},
+"019570": {
+"listed": true,
+"name": "GMI벤처",
+"market": "코스닥"
+},
+"019660": {
+"listed": true,
+"name": "글로본",
+"market": "코스닥"
+},
+"019680": {
+"listed": true,
+"name": "대교",
+"market": "코스피"
+},
+"019770": {
+"listed": true,
+"name": "서연탑메탈",
+"market": "코스닥"
+},
+"019990": {
+"listed": true,
+"name": "에너토크",
+"market": "코스닥"
+},
+"020000": {
+"listed": true,
+"name": "한섬",
+"market": "코스피"
+},
+"020120": {
+"listed": true,
+"name": "키다리스튜디오",
+"market": "코스피"
+},
+"020150": {
+"listed": true,
+"name": "롯데에너지머티리얼즈",
+"market": "코스피"
+},
+"020180": {
+"listed": true,
+"name": "대신정보통신",
+"market": "코스닥"
+},
+"020400": {
+"listed": true,
+"name": "대동금속",
+"market": "코스닥"
+},
+"020560": {
+"listed": true,
+"name": "아시아나항공",
+"market": "코스피"
+},
+"020710": {
+"listed": true,
+"name": "시공테크",
+"market": "코스닥"
+},
+"020760": {
+"listed": true,
+"name": "일진디스플",
+"market": "코스피"
+},
+"021040": {
+"listed": true,
+"name": "대호특수강",
+"market": "코스닥"
+},
+"021050": {
+"listed": true,
+"name": "서원",
+"market": "코스피"
+},
+"021080": {
+"listed": true,
+"name": "에이티넘인베스트",
+"market": "코스닥"
+},
+"021240": {
+"listed": true,
+"name": "코웨이",
+"market": "코스피"
+},
+"021320": {
+"listed": true,
+"name": "KCC건설",
+"market": "코스닥"
+},
+"021650": {
+"listed": true,
+"name": "한국큐빅",
+"market": "코스닥"
+},
+"021820": {
+"listed": true,
+"name": "세원정공",
+"market": "코스피"
+},
+"021880": {
+"listed": true,
+"name": "메이슨캐피탈",
+"market": "코스닥"
+},
+"022100": {
+"listed": true,
+"name": "포스코DX",
+"market": "코스피"
+},
+"022220": {
+"listed": true,
+"name": "티케이지애강",
+"market": "코스닥"
+},
+"023000": {
+"listed": true,
+"name": "삼원강재",
+"market": "코스피"
+},
+"023150": {
+"listed": true,
+"name": "MH에탄올",
+"market": "코스피"
+},
+"023160": {
+"listed": true,
+"name": "태광",
+"market": "코스닥"
+},
+"023350": {
+"listed": true,
+"name": "한국종합기술",
+"market": "코스피"
+},
+"023410": {
+"listed": true,
+"name": "유진기업",
+"market": "코스닥"
+},
+"023440": {
+"listed": true,
+"name": "제이스코홀딩스",
+"market": "코스닥"
+},
+"023450": {
+"listed": true,
+"name": "동남합성",
+"market": "코스피"
+},
+"023530": {
+"listed": true,
+"name": "롯데쇼핑",
+"market": "코스피"
+},
+"023590": {
+"listed": true,
+"name": "다우기술",
+"market": "코스피"
+},
+"023600": {
+"listed": true,
+"name": "삼보판지",
+"market": "코스닥"
+},
+"023760": {
+"listed": true,
+"name": "한국캐피탈",
+"market": "코스닥"
+},
+"023770": {
+"listed": true,
+"name": "플레이위드",
+"market": "코스닥"
+},
+"023790": {
+"listed": true,
+"name": "동일스틸럭스",
+"market": "코스닥"
+},
+"023800": {
+"listed": true,
+"name": "인지컨트롤스",
+"market": "코스피"
+},
+"023810": {
+"listed": true,
+"name": "인팩",
+"market": "코스피"
+},
+"023900": {
+"listed": true,
+"name": "풍국주정",
+"market": "코스닥"
+},
+"023910": {
+"listed": true,
+"name": "대한약품",
+"market": "코스닥"
+},
+"023960": {
+"listed": true,
+"name": "에쓰씨엔지니어링",
+"market": "코스피"
+},
+"024060": {
+"listed": true,
+"name": "흥구석유",
+"market": "코스닥"
+},
+"024070": {
+"listed": true,
+"name": "WISCOM",
+"market": "코스피"
+},
+"024090": {
+"listed": true,
+"name": "디씨엠",
+"market": "코스피"
+},
+"024110": {
+"listed": true,
+"name": "기업은행",
+"market": "코스피"
+},
+"024120": {
+"listed": true,
+"name": "KB오토시스",
+"market": "코스닥"
+},
+"024720": {
+"listed": true,
+"name": "콜마홀딩스",
+"market": "코스피"
+},
+"024740": {
+"listed": true,
+"name": "한일단조",
+"market": "코스닥"
+},
+"024800": {
+"listed": true,
+"name": "유성티엔에스",
+"market": "코스닥"
+},
+"024830": {
+"listed": true,
+"name": "세원물산",
+"market": "코스닥"
+},
+"024840": {
+"listed": true,
+"name": "KBI메탈",
+"market": "코스닥"
+},
+"024850": {
+"listed": true,
+"name": "HLB이노베이션",
+"market": "코스닥"
+},
+"024880": {
+"listed": true,
+"name": "케이피에프",
+"market": "코스닥"
+},
+"024890": {
+"listed": true,
+"name": "대원화성",
+"market": "코스피"
+},
+"024900": {
+"listed": true,
+"name": "디와이덕양",
+"market": "코스피"
+},
+"024910": {
+"listed": true,
+"name": "경창산업",
+"market": "코스닥"
+},
+"024940": {
+"listed": true,
+"name": "PN풍년",
+"market": "코스닥"
+},
+"024950": {
+"listed": true,
+"name": "삼천리자전거",
+"market": "코스닥"
+},
+"025000": {
+"listed": true,
+"name": "KPX케미칼",
+"market": "코스피"
+},
+"025320": {
+"listed": true,
+"name": "시노펙스",
+"market": "코스닥"
+},
+"025440": {
+"listed": true,
+"name": "DH오토웨어",
+"market": "코스닥"
+},
+"025530": {
+"listed": true,
+"name": "SJM홀딩스",
+"market": "코스피"
+},
+"025540": {
+"listed": true,
+"name": "한국단자",
+"market": "코스피"
+},
+"025550": {
+"listed": true,
+"name": "한국선재",
+"market": "코스닥"
+},
+"025560": {
+"listed": true,
+"name": "미래산업",
+"market": "코스피"
+},
+"025620": {
+"listed": true,
+"name": "차AI헬스케어",
+"market": "코스피"
+},
+"025750": {
+"listed": true,
+"name": "한솔홈데코",
+"market": "코스피"
+},
+"025770": {
+"listed": true,
+"name": "한국정보통신",
+"market": "코스닥"
+},
+"025820": {
+"listed": true,
+"name": "이구산업",
+"market": "코스피"
+},
+"025860": {
+"listed": true,
+"name": "남해화학",
+"market": "코스피"
+},
+"025870": {
+"listed": true,
+"name": "신라에스지",
+"market": "코스닥"
+},
+"025880": {
+"listed": true,
+"name": "케이씨피드",
+"market": "코스닥"
+},
+"025890": {
+"listed": true,
+"name": "한국주강",
+"market": "코스피"
+},
+"025900": {
+"listed": true,
+"name": "동화기업",
+"market": "코스닥"
+},
+"025950": {
+"listed": true,
+"name": "동신건설",
+"market": "코스닥"
+},
+"025980": {
+"listed": true,
+"name": "아난티",
+"market": "코스닥"
+},
+"026040": {
+"listed": true,
+"name": "제이에스티나",
+"market": "코스닥"
+},
+"026150": {
+"listed": true,
+"name": "특수건설",
+"market": "코스닥"
+},
+"026890": {
+"listed": true,
+"name": "스틱인베스트먼트",
+"market": "코스피"
+},
+"026910": {
+"listed": true,
+"name": "광진실업",
+"market": "코스닥"
+},
+"026940": {
+"listed": true,
+"name": "부국철강",
+"market": "코스피"
+},
+"026960": {
+"listed": true,
+"name": "동서",
+"market": "코스피"
+},
+"027040": {
+"listed": true,
+"name": "서울전자통신",
+"market": "코스닥"
+},
+"027050": {
+"listed": true,
+"name": "코리아나",
+"market": "코스닥"
+},
+"027360": {
+"listed": true,
+"name": "아주IB투자",
+"market": "코스닥"
+},
+"027410": {
+"listed": true,
+"name": "BGF",
+"market": "코스피"
+},
+"027580": {
+"listed": true,
+"name": "상보",
+"market": "코스닥"
+},
+"027710": {
+"listed": true,
+"name": "팜스토리",
+"market": "코스닥"
+},
+"027740": {
+"listed": true,
+"name": "마니커",
+"market": "코스피"
+},
+"027830": {
+"listed": true,
+"name": "대성창투",
+"market": "코스닥"
+},
+"027970": {
+"listed": true,
+"name": "한국제지",
+"market": "코스피"
+},
+"028050": {
+"listed": true,
+"name": "삼성E&A",
+"market": "코스피"
+},
+"028080": {
+"listed": true,
+"name": "휴맥스홀딩스",
+"market": "코스닥"
+},
+"028100": {
+"listed": true,
+"name": "동아지질",
+"market": "코스피"
+},
+"028260": {
+"listed": true,
+"name": "삼성물산",
+"market": "코스피"
+},
+"02826K": {
+"listed": true,
+"name": "삼성물산우B",
+"market": "코스피"
+},
+"028300": {
+"listed": true,
+"name": "HLB",
+"market": "코스닥"
+},
+"028670": {
+"listed": true,
+"name": "팬오션",
+"market": "코스피"
+},
+"029460": {
+"listed": true,
+"name": "케이씨",
+"market": "코스피"
+},
+"029480": {
+"listed": true,
+"name": "광무",
+"market": "코스닥"
+},
+"029530": {
+"listed": true,
+"name": "신도리코",
+"market": "코스피"
+},
+"029780": {
+"listed": true,
+"name": "삼성카드",
+"market": "코스피"
+},
+"030000": {
+"listed": true,
+"name": "제일기획",
+"market": "코스피"
+},
+"030190": {
+"listed": true,
+"name": "NICE평가정보",
+"market": "코스피"
+},
+"030200": {
+"listed": true,
+"name": "KT",
+"market": "코스피"
+},
+"030210": {
+"listed": true,
+"name": "다올투자증권",
+"market": "코스피"
+},
+"030350": {
+"listed": true,
+"name": "드래곤플라이",
+"market": "코스닥"
+},
+"030520": {
+"listed": true,
+"name": "한컴",
+"market": "코스닥"
+},
+"030530": {
+"listed": true,
+"name": "원익홀딩스",
+"market": "코스닥"
+},
+"030610": {
+"listed": true,
+"name": "교보증권",
+"market": "코스피"
+},
+"030720": {
+"listed": true,
+"name": "동원수산",
+"market": "코스피"
+},
+"030960": {
+"listed": true,
+"name": "양지사",
+"market": "코스닥"
+},
+"031210": {
+"listed": true,
+"name": "서울보증보험",
+"market": "코스피"
+},
+"031310": {
+"listed": true,
+"name": "아이즈비전",
+"market": "코스닥"
+},
+"031330": {
+"listed": true,
+"name": "에스에이엠티",
+"market": "코스닥"
+},
+"031430": {
+"listed": true,
+"name": "신세계인터내셔날",
+"market": "코스피"
+},
+"031440": {
+"listed": true,
+"name": "신세계푸드",
+"market": "코스피"
+},
+"031510": {
+"listed": true,
+"name": "오스템",
+"market": "코스닥"
+},
+"031820": {
+"listed": true,
+"name": "아이티센씨티에스",
+"market": "코스피"
+},
+"031860": {
+"listed": true,
+"name": "디에이치엑스컴퍼니",
+"market": "코스닥"
+},
+"031980": {
+"listed": true,
+"name": "피에스케이홀딩스",
+"market": "코스닥"
+},
+"032080": {
+"listed": true,
+"name": "아즈텍WB",
+"market": "코스닥"
+},
+"032190": {
+"listed": true,
+"name": "다우데이타",
+"market": "코스닥"
+},
+"032280": {
+"listed": true,
+"name": "삼일",
+"market": "코스닥"
+},
+"032300": {
+"listed": true,
+"name": "한국파마",
+"market": "코스닥"
+},
+"032350": {
+"listed": true,
+"name": "롯데관광개발",
+"market": "코스피"
+},
+"032500": {
+"listed": true,
+"name": "케이엠더블유",
+"market": "코스닥"
+},
+"032540": {
+"listed": true,
+"name": "TJ미디어",
+"market": "코스닥"
+},
+"032560": {
+"listed": true,
+"name": "황금에스티",
+"market": "코스피"
+},
+"032580": {
+"listed": true,
+"name": "피델릭스",
+"market": "코스닥"
+},
+"032620": {
+"listed": true,
+"name": "GC메디아이",
+"market": "코스닥"
+},
+"032640": {
+"listed": true,
+"name": "LG유플러스",
+"market": "코스피"
+},
+"032680": {
+"listed": true,
+"name": "소프트센",
+"market": "코스닥"
+},
+"032750": {
+"listed": true,
+"name": "삼진",
+"market": "코스닥"
+},
+"032790": {
+"listed": true,
+"name": "엠젠솔루션",
+"market": "코스닥"
+},
+"032800": {
+"listed": true,
+"name": "판타지오",
+"market": "코스닥"
+},
+"032820": {
+"listed": true,
+"name": "우리기술",
+"market": "코스닥"
+},
+"032830": {
+"listed": true,
+"name": "삼성생명",
+"market": "코스피"
+},
+"032850": {
+"listed": true,
+"name": "비트컴퓨터",
+"market": "코스닥"
+},
+"032860": {
+"listed": true,
+"name": "더라미",
+"market": "코스닥"
+},
+"032940": {
+"listed": true,
+"name": "원익",
+"market": "코스닥"
+},
+"032960": {
+"listed": true,
+"name": "동일기연",
+"market": "코스닥"
+},
+"032980": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"033050": {
+"listed": true,
+"name": "제이엠아이",
+"market": "코스닥"
+},
+"033100": {
+"listed": true,
+"name": "제룡전기",
+"market": "코스닥"
+},
+"033130": {
+"listed": true,
+"name": "디지틀조선",
+"market": "코스닥"
+},
+"033160": {
+"listed": true,
+"name": "엠케이전자",
+"market": "코스닥"
+},
+"033170": {
+"listed": true,
+"name": "시그네틱스",
+"market": "코스닥"
+},
+"033200": {
+"listed": true,
+"name": "모아텍",
+"market": "코스닥"
+},
+"033230": {
+"listed": true,
+"name": "인성정보",
+"market": "코스닥"
+},
+"033240": {
+"listed": true,
+"name": "자화전자",
+"market": "코스피"
+},
+"033250": {
+"listed": true,
+"name": "체시스",
+"market": "코스피"
+},
+"033270": {
+"listed": true,
+"name": "유나이티드제약",
+"market": "코스피"
+},
+"033290": {
+"listed": true,
+"name": "로젠",
+"market": "코스닥"
+},
+"033310": {
+"listed": true,
+"name": "엠투엔",
+"market": "코스닥"
+},
+"033320": {
+"listed": true,
+"name": "제이씨현시스템",
+"market": "코스닥"
+},
+"033340": {
+"listed": true,
+"name": "좋은사람들",
+"market": "코스닥"
+},
+"033500": {
+"listed": true,
+"name": "동성화인텍",
+"market": "코스닥"
+},
+"033530": {
+"listed": true,
+"name": "SJG세종",
+"market": "코스피"
+},
+"033540": {
+"listed": true,
+"name": "파라텍",
+"market": "코스닥"
+},
+"033560": {
+"listed": true,
+"name": "블루콤",
+"market": "코스닥"
+},
+"033640": {
+"listed": true,
+"name": "네패스",
+"market": "코스닥"
+},
+"033780": {
+"listed": true,
+"name": "KT&G",
+"market": "코스피"
+},
+"033790": {
+"listed": true,
+"name": "피노",
+"market": "코스닥"
+},
+"033830": {
+"listed": true,
+"name": "티비씨",
+"market": "코스닥"
+},
+"033920": {
+"listed": true,
+"name": "무학",
+"market": "코스피"
+},
+"034020": {
+"listed": true,
+"name": "두산에너빌리티",
+"market": "코스피"
+},
+"034120": {
+"listed": true,
+"name": "SBS",
+"market": "코스피"
+},
+"034220": {
+"listed": true,
+"name": "LG디스플레이",
+"market": "코스피"
+},
+"034230": {
+"listed": true,
+"name": "파라다이스",
+"market": "코스피"
+},
+"034310": {
+"listed": true,
+"name": "NICE",
+"market": "코스피"
+},
+"034590": {
+"listed": true,
+"name": "인천도시가스",
+"market": "코스피"
+},
+"034730": {
+"listed": true,
+"name": "SK",
+"market": "코스피"
+},
+"03473K": {
+"listed": true,
+"name": "SK우",
+"market": "코스피"
+},
+"034810": {
+"listed": true,
+"name": "해성산업",
+"market": "코스닥"
+},
+"034830": {
+"listed": true,
+"name": "한국토지신탁",
+"market": "코스피"
+},
+"034940": {
+"listed": true,
+"name": "조아제약",
+"market": "코스닥"
+},
+"034950": {
+"listed": true,
+"name": "한국기업평가",
+"market": "코스닥"
+},
+"035000": {
+"listed": true,
+"name": "HS애드",
+"market": "코스피"
+},
+"035080": {
+"listed": true,
+"name": "그래디언트",
+"market": "코스닥"
+},
+"035150": {
+"listed": true,
+"name": "백산",
+"market": "코스피"
+},
+"035200": {
+"listed": true,
+"name": "프럼파스트",
+"market": "코스닥"
+},
+"035250": {
+"listed": true,
+"name": "강원랜드",
+"market": "코스피"
+},
+"035290": {
+"listed": true,
+"name": "골드앤에스",
+"market": "코스닥"
+},
+"035420": {
+"listed": true,
+"name": "NAVER",
+"market": "코스피"
+},
+"035460": {
+"listed": true,
+"name": "기산텔레콤",
+"market": "코스닥"
+},
+"035510": {
+"listed": true,
+"name": "신세계 I&C",
+"market": "코스피"
+},
+"035600": {
+"listed": true,
+"name": "KG이니시스",
+"market": "코스닥"
+},
+"035610": {
+"listed": true,
+"name": "솔본",
+"market": "코스닥"
+},
+"035620": {
+"listed": true,
+"name": "바른손이앤에이",
+"market": "코스닥"
+},
+"035720": {
+"listed": true,
+"name": "카카오",
+"market": "코스피"
+},
+"035760": {
+"listed": true,
+"name": "CJ ENM",
+"market": "코스닥"
+},
+"035810": {
+"listed": true,
+"name": "이지홀딩스",
+"market": "코스닥"
+},
+"035890": {
+"listed": true,
+"name": "서희건설",
+"market": "코스닥"
+},
+"035900": {
+"listed": true,
+"name": "JYP Ent.",
+"market": "코스닥"
+},
+"036000": {
+"listed": true,
+"name": "예림당",
+"market": "코스닥"
+},
+"036010": {
+"listed": true,
+"name": "아비코전자",
+"market": "코스닥"
+},
+"036030": {
+"listed": true,
+"name": "케이티알파",
+"market": "코스닥"
+},
+"036090": {
+"listed": true,
+"name": "위지트",
+"market": "코스닥"
+},
+"036120": {
+"listed": true,
+"name": "서울평가정보",
+"market": "코스닥"
+},
+"036170": {
+"listed": true,
+"name": "에이치엠넥스",
+"market": "코스닥"
+},
+"036180": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"036190": {
+"listed": true,
+"name": "금화피에스시",
+"market": "코스닥"
+},
+"036200": {
+"listed": true,
+"name": "유니셈",
+"market": "코스닥"
+},
+"036220": {
+"listed": true,
+"name": "오상헬스케어",
+"market": "코스닥"
+},
+"036420": {
+"listed": true,
+"name": "콘텐트리중앙",
+"market": "코스피"
+},
+"036460": {
+"listed": true,
+"name": "한국가스공사",
+"market": "코스피"
+},
+"036480": {
+"listed": true,
+"name": "대성미생물",
+"market": "코스닥"
+},
+"036530": {
+"listed": true,
+"name": "SNT홀딩스",
+"market": "코스피"
+},
+"036540": {
+"listed": true,
+"name": "SFA반도체",
+"market": "코스닥"
+},
+"036560": {
+"listed": true,
+"name": "KZ정밀",
+"market": "코스닥"
+},
+"036570": {
+"listed": true,
+"name": "NC",
+"market": "코스피"
+},
+"036580": {
+"listed": true,
+"name": "팜스코",
+"market": "코스피"
+},
+"036620": {
+"listed": true,
+"name": "감성코퍼레이션",
+"market": "코스닥"
+},
+"036630": {
+"listed": true,
+"name": "세종텔레콤",
+"market": "코스닥"
+},
+"036640": {
+"listed": true,
+"name": "HRS",
+"market": "코스닥"
+},
+"036670": {
+"listed": true,
+"name": "삼양케이씨아이",
+"market": "코스닥"
+},
+"036690": {
+"listed": true,
+"name": "코맥스",
+"market": "코스닥"
+},
+"036710": {
+"listed": true,
+"name": "심텍홀딩스",
+"market": "코스닥"
+},
+"036800": {
+"listed": true,
+"name": "나이스정보통신",
+"market": "코스닥"
+},
+"036810": {
+"listed": true,
+"name": "에프에스티",
+"market": "코스닥"
+},
+"036830": {
+"listed": true,
+"name": "솔브레인홀딩스",
+"market": "코스닥"
+},
+"036890": {
+"listed": true,
+"name": "진성티이씨",
+"market": "코스닥"
+},
+"036930": {
+"listed": true,
+"name": "주성엔지니어링",
+"market": "코스닥"
+},
+"037030": {
+"listed": true,
+"name": "파워넷",
+"market": "코스닥"
+},
+"037070": {
+"listed": true,
+"name": "파세코",
+"market": "코스닥"
+},
+"037230": {
+"listed": true,
+"name": "한국팩키지",
+"market": "코스닥"
+},
+"037270": {
+"listed": true,
+"name": "YG PLUS",
+"market": "코스피"
+},
+"037330": {
+"listed": true,
+"name": "인지디스플레",
+"market": "코스닥"
+},
+"037350": {
+"listed": true,
+"name": "성도이엔지",
+"market": "코스닥"
+},
+"037370": {
+"listed": true,
+"name": "EG",
+"market": "코스닥"
+},
+"037440": {
+"listed": true,
+"name": "희림",
+"market": "코스닥"
+},
+"037460": {
+"listed": true,
+"name": "삼지전자",
+"market": "코스닥"
+},
+"037560": {
+"listed": true,
+"name": "LG헬로비전",
+"market": "코스피"
+},
+"037710": {
+"listed": true,
+"name": "광주신세계",
+"market": "코스피"
+},
+"037760": {
+"listed": true,
+"name": "쎄니트",
+"market": "코스닥"
+},
+"037950": {
+"listed": true,
+"name": "엘컴텍",
+"market": "코스닥"
+},
+"038010": {
+"listed": true,
+"name": "제일테크노스",
+"market": "코스닥"
+},
+"038060": {
+"listed": true,
+"name": "루멘스",
+"market": "코스닥"
+},
+"038070": {
+"listed": true,
+"name": "서린바이오",
+"market": "코스닥"
+},
+"038110": {
+"listed": true,
+"name": "에코플라스틱",
+"market": "코스닥"
+},
+"038290": {
+"listed": true,
+"name": "마크로젠",
+"market": "코스닥"
+},
+"038390": {
+"listed": true,
+"name": "레드캡투어",
+"market": "코스닥"
+},
+"038460": {
+"listed": true,
+"name": "바이오스마트",
+"market": "코스닥"
+},
+"038500": {
+"listed": true,
+"name": "삼표시멘트",
+"market": "코스닥"
+},
+"038530": {
+"listed": true,
+"name": "케이바이오랩스",
+"market": "코스닥"
+},
+"038540": {
+"listed": true,
+"name": "상상인",
+"market": "코스닥"
+},
+"038620": {
+"listed": true,
+"name": "위즈코프",
+"market": "코스닥"
+},
+"038680": {
+"listed": true,
+"name": "에스넷",
+"market": "코스닥"
+},
+"038870": {
+"listed": true,
+"name": "에코심플렉스",
+"market": "코스닥"
+},
+"038880": {
+"listed": true,
+"name": "아이에이",
+"market": "코스닥"
+},
+"038950": {
+"listed": true,
+"name": "파인디지털",
+"market": "코스닥"
+},
+"039010": {
+"listed": true,
+"name": "현대에이치티",
+"market": "코스닥"
+},
+"039020": {
+"listed": true,
+"name": "이건홀딩스",
+"market": "코스닥"
+},
+"039030": {
+"listed": true,
+"name": "이오테크닉스",
+"market": "코스닥"
+},
+"039130": {
+"listed": true,
+"name": "하나투어",
+"market": "코스피"
+},
+"039200": {
+"listed": true,
+"name": "오스코텍",
+"market": "코스닥"
+},
+"039240": {
+"listed": true,
+"name": "경남스틸",
+"market": "코스닥"
+},
+"039290": {
+"listed": true,
+"name": "인포뱅크",
+"market": "코스닥"
+},
+"039310": {
+"listed": true,
+"name": "세중",
+"market": "코스닥"
+},
+"039340": {
+"listed": true,
+"name": "한국경제TV",
+"market": "코스닥"
+},
+"039420": {
+"listed": true,
+"name": "케이엘넷",
+"market": "코스닥"
+},
+"039440": {
+"listed": true,
+"name": "에스티아이",
+"market": "코스닥"
+},
+"039490": {
+"listed": true,
+"name": "키움증권",
+"market": "코스피"
+},
+"039560": {
+"listed": true,
+"name": "다산네트웍스",
+"market": "코스닥"
+},
+"039570": {
+"listed": true,
+"name": "HDC랩스",
+"market": "코스피"
+},
+"039610": {
+"listed": true,
+"name": "화성밸브",
+"market": "코스닥"
+},
+"039740": {
+"listed": true,
+"name": "한국정보공학",
+"market": "코스닥"
+},
+"039830": {
+"listed": true,
+"name": "오로라",
+"market": "코스닥"
+},
+"039840": {
+"listed": true,
+"name": "디오",
+"market": "코스닥"
+},
+"039860": {
+"listed": true,
+"name": "나노엔텍",
+"market": "코스닥"
+},
+"039980": {
+"listed": true,
+"name": "폴라리스AI",
+"market": "코스닥"
+},
+"040160": {
+"listed": true,
+"name": "누리플렉스",
+"market": "코스닥"
+},
+"040300": {
+"listed": true,
+"name": "YTN",
+"market": "코스닥"
+},
+"040350": {
+"listed": true,
+"name": "크레오에스지",
+"market": "코스닥"
+},
+"040420": {
+"listed": true,
+"name": "정상제이엘에스",
+"market": "코스닥"
+},
+"040610": {
+"listed": true,
+"name": "SG&G",
+"market": "코스닥"
+},
+"040910": {
+"listed": true,
+"name": "아이씨디",
+"market": "코스닥"
+},
+"041020": {
+"listed": true,
+"name": "폴라리스오피스",
+"market": "코스닥"
+},
+"041190": {
+"listed": true,
+"name": "우리기술투자",
+"market": "코스닥"
+},
+"041440": {
+"listed": true,
+"name": "현대에버다임",
+"market": "코스닥"
+},
+"041460": {
+"listed": true,
+"name": "한국전자인증",
+"market": "코스닥"
+},
+"041510": {
+"listed": true,
+"name": "에스엠",
+"market": "코스닥"
+},
+"041520": {
+"listed": true,
+"name": "이엘씨",
+"market": "코스닥"
+},
+"041590": {
+"listed": true,
+"name": "플래스크",
+"market": "코스닥"
+},
+"041650": {
+"listed": true,
+"name": "상신브레이크",
+"market": "코스피"
+},
+"041830": {
+"listed": true,
+"name": "인바디",
+"market": "코스닥"
+},
+"041910": {
+"listed": true,
+"name": "폴라리스AI파마",
+"market": "코스닥"
+},
+"041920": {
+"listed": true,
+"name": "메디아나",
+"market": "코스닥"
+},
+"041930": {
+"listed": true,
+"name": "SY동아",
+"market": "코스닥"
+},
+"041960": {
+"listed": true,
+"name": "코미팜",
+"market": "코스닥"
+},
+"042000": {
+"listed": true,
+"name": "카페24",
+"market": "코스닥"
+},
+"042040": {
+"listed": true,
+"name": "케이피엠테크",
+"market": "코스닥"
+},
+"042110": {
+"listed": true,
+"name": "에스씨디",
+"market": "코스닥"
+},
+"042370": {
+"listed": true,
+"name": "비츠로테크",
+"market": "코스닥"
+},
+"042420": {
+"listed": true,
+"name": "네오위즈홀딩스",
+"market": "코스닥"
+},
+"042500": {
+"listed": true,
+"name": "링네트",
+"market": "코스닥"
+},
+"042510": {
+"listed": true,
+"name": "라온시큐어",
+"market": "코스닥"
+},
+"042520": {
+"listed": true,
+"name": "한스바이오메드",
+"market": "코스닥"
+},
+"042600": {
+"listed": true,
+"name": "새로닉스",
+"market": "코스닥"
+},
+"042660": {
+"listed": true,
+"name": "한화오션",
+"market": "코스피"
+},
+"042670": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"042700": {
+"listed": true,
+"name": "한미반도체",
+"market": "코스피"
+},
+"042940": {
+"listed": true,
+"name": "상지건설",
+"market": "코스닥"
+},
+"043090": {
+"listed": true,
+"name": "더테크놀로지",
+"market": "코스닥"
+},
+"043100": {
+"listed": true,
+"name": "알파AI",
+"market": "코스닥"
+},
+"043150": {
+"listed": true,
+"name": "바텍",
+"market": "코스닥"
+},
+"043200": {
+"listed": true,
+"name": "파루",
+"market": "코스닥"
+},
+"043220": {
+"listed": true,
+"name": "티에스넥스젠",
+"market": "코스닥"
+},
+"043260": {
+"listed": true,
+"name": "성호전자",
+"market": "코스닥"
+},
+"043340": {
+"listed": true,
+"name": "에쎈테크",
+"market": "코스닥"
+},
+"043360": {
+"listed": true,
+"name": "디지아이",
+"market": "코스닥"
+},
+"043370": {
+"listed": true,
+"name": "피에이치에이",
+"market": "코스닥"
+},
+"043590": {
+"listed": true,
+"name": "웰킵스하이텍",
+"market": "코스닥"
+},
+"043610": {
+"listed": true,
+"name": "KT지니뮤직",
+"market": "코스닥"
+},
+"043650": {
+"listed": true,
+"name": "국순당",
+"market": "코스닥"
+},
+"043710": {
+"listed": true,
+"name": "코스리거글로벌",
+"market": "코스닥"
+},
+"043910": {
+"listed": true,
+"name": "자연과환경",
+"market": "코스닥"
+},
+"044180": {
+"listed": true,
+"name": "KD",
+"market": "코스닥"
+},
+"044340": {
+"listed": true,
+"name": "위닉스",
+"market": "코스닥"
+},
+"044380": {
+"listed": true,
+"name": "주연테크",
+"market": "코스피"
+},
+"044450": {
+"listed": true,
+"name": "KSS해운",
+"market": "코스피"
+},
+"044480": {
+"listed": true,
+"name": "빌리언스",
+"market": "코스닥"
+},
+"044490": {
+"listed": true,
+"name": "태웅",
+"market": "코스닥"
+},
+"044780": {
+"listed": true,
+"name": "에이치케이",
+"market": "코스닥"
+},
+"044820": {
+"listed": true,
+"name": "코스맥스비티아이",
+"market": "코스피"
+},
+"044960": {
+"listed": true,
+"name": "이글벳",
+"market": "코스닥"
+},
+"044990": {
+"listed": true,
+"name": "에이치엔에스하이텍",
+"market": "코스닥"
+},
+"045060": {
+"listed": true,
+"name": "오공",
+"market": "코스닥"
+},
+"045100": {
+"listed": true,
+"name": "한양이엔지",
+"market": "코스닥"
+},
+"045340": {
+"listed": true,
+"name": "토탈소프트",
+"market": "코스닥"
+},
+"045390": {
+"listed": true,
+"name": "대아티아이",
+"market": "코스닥"
+},
+"045510": {
+"listed": true,
+"name": "정원엔시스",
+"market": "코스닥"
+},
+"045520": {
+"listed": true,
+"name": "크린앤사이언스",
+"market": "코스닥"
+},
+"045660": {
+"listed": true,
+"name": "에이텍",
+"market": "코스닥"
+},
+"045970": {
+"listed": true,
+"name": "코아시아",
+"market": "코스닥"
+},
+"046070": {
+"listed": true,
+"name": "코다코",
+"market": "코스닥"
+},
+"046120": {
+"listed": true,
+"name": "오르비텍",
+"market": "코스닥"
+},
+"046210": {
+"listed": true,
+"name": "HLB파나진",
+"market": "코스닥"
+},
+"046310": {
+"listed": true,
+"name": "백금T&A",
+"market": "코스닥"
+},
+"046390": {
+"listed": true,
+"name": "삼화네트웍스",
+"market": "코스닥"
+},
+"046440": {
+"listed": true,
+"name": "KG파이낸셜",
+"market": "코스닥"
+},
+"046890": {
+"listed": true,
+"name": "서울반도체",
+"market": "코스닥"
+},
+"046940": {
+"listed": true,
+"name": "우원개발",
+"market": "코스닥"
+},
+"046970": {
+"listed": true,
+"name": "우리로",
+"market": "코스닥"
+},
+"047040": {
+"listed": true,
+"name": "대우건설",
+"market": "코스피"
+},
+"047050": {
+"listed": true,
+"name": "포스코인터내셔널",
+"market": "코스피"
+},
+"047080": {
+"listed": true,
+"name": "한빛소프트",
+"market": "코스닥"
+},
+"047310": {
+"listed": true,
+"name": "파워로직스",
+"market": "코스닥"
+},
+"047400": {
+"listed": true,
+"name": "유니온머티리얼",
+"market": "코스피"
+},
+"047560": {
+"listed": true,
+"name": "이스트소프트",
+"market": "코스닥"
+},
+"047770": {
+"listed": true,
+"name": "코데즈컴바인",
+"market": "코스닥"
+},
+"047810": {
+"listed": true,
+"name": "한국항공우주",
+"market": "코스피"
+},
+"047820": {
+"listed": true,
+"name": "초록뱀미디어",
+"market": "코스닥"
+},
+"047920": {
+"listed": true,
+"name": "HLB제약",
+"market": "코스닥"
+},
+"048410": {
+"listed": true,
+"name": "현대바이오",
+"market": "코스닥"
+},
+"048430": {
+"listed": true,
+"name": "유라테크",
+"market": "코스닥"
+},
+"048470": {
+"listed": true,
+"name": "대동스틸",
+"market": "코스닥"
+},
+"048530": {
+"listed": true,
+"name": "인트론바이오",
+"market": "코스닥"
+},
+"048550": {
+"listed": true,
+"name": "SM C&C",
+"market": "코스닥"
+},
+"048770": {
+"listed": true,
+"name": "TPC로보틱스",
+"market": "코스닥"
+},
+"048830": {
+"listed": true,
+"name": "엔피케이",
+"market": "코스닥"
+},
+"048870": {
+"listed": true,
+"name": "시너지이노베이션",
+"market": "코스닥"
+},
+"048910": {
+"listed": true,
+"name": "대원미디어",
+"market": "코스닥"
+},
+"049070": {
+"listed": true,
+"name": "인탑스",
+"market": "코스닥"
+},
+"049080": {
+"listed": true,
+"name": "기가레인",
+"market": "코스닥"
+},
+"049120": {
+"listed": true,
+"name": "파인디앤씨",
+"market": "코스닥"
+},
+"049180": {
+"listed": true,
+"name": "셀루메드",
+"market": "코스닥"
+},
+"049430": {
+"listed": true,
+"name": "코메론",
+"market": "코스닥"
+},
+"049470": {
+"listed": true,
+"name": "비트플래닛",
+"market": "코스닥"
+},
+"049480": {
+"listed": true,
+"name": "오픈베이스",
+"market": "코스닥"
+},
+"049520": {
+"listed": true,
+"name": "유아이엘",
+"market": "코스닥"
+},
+"049550": {
+"listed": true,
+"name": "잉크테크",
+"market": "코스닥"
+},
+"049630": {
+"listed": true,
+"name": "재영솔루텍",
+"market": "코스닥"
+},
+"049720": {
+"listed": true,
+"name": "고려신용정보",
+"market": "코스닥"
+},
+"049800": {
+"listed": true,
+"name": "우진플라임",
+"market": "코스피"
+},
+"049830": {
+"listed": true,
+"name": "승일",
+"market": "코스닥"
+},
+"049950": {
+"listed": true,
+"name": "미래컴퍼니",
+"market": "코스닥"
+},
+"049960": {
+"listed": true,
+"name": "쎌바이오텍",
+"market": "코스닥"
+},
+"050090": {
+"listed": true,
+"name": "비케이홀딩스",
+"market": "코스닥"
+},
+"050110": {
+"listed": true,
+"name": "캠시스",
+"market": "코스닥"
+},
+"050120": {
+"listed": true,
+"name": "ES큐브",
+"market": "코스닥"
+},
+"050760": {
+"listed": true,
+"name": "에스폴리텍",
+"market": "코스닥"
+},
+"050860": {
+"listed": true,
+"name": "아세아텍",
+"market": "코스닥"
+},
+"050890": {
+"listed": true,
+"name": "쏠리드",
+"market": "코스닥"
+},
+"050960": {
+"listed": true,
+"name": "수산아이앤티",
+"market": "코스닥"
+},
+"051160": {
+"listed": true,
+"name": "지어소프트",
+"market": "코스닥"
+},
+"051360": {
+"listed": true,
+"name": "토비스",
+"market": "코스닥"
+},
+"051370": {
+"listed": true,
+"name": "인터플렉스",
+"market": "코스닥"
+},
+"051380": {
+"listed": true,
+"name": "피씨디렉트",
+"market": "코스닥"
+},
+"051390": {
+"listed": true,
+"name": "YW",
+"market": "코스닥"
+},
+"051490": {
+"listed": true,
+"name": "나라엠앤디",
+"market": "코스닥"
+},
+"051500": {
+"listed": true,
+"name": "CJ프레시웨이",
+"market": "코스닥"
+},
+"051600": {
+"listed": true,
+"name": "한전KPS",
+"market": "코스피"
+},
+"051630": {
+"listed": true,
+"name": "진양화학",
+"market": "코스피"
+},
+"051780": {
+"listed": true,
+"name": "큐로홀딩스",
+"market": "코스닥"
+},
+"051900": {
+"listed": true,
+"name": "LG생활건강",
+"market": "코스피"
+},
+"051905": {
+"listed": true,
+"name": "LG생활건강우",
+"market": "코스피"
+},
+"051910": {
+"listed": true,
+"name": "LG화학",
+"market": "코스피"
+},
+"051915": {
+"listed": true,
+"name": "LG화학우",
+"market": "코스피"
+},
+"051980": {
+"listed": true,
+"name": "중앙첨단소재",
+"market": "코스닥"
+},
+"052020": {
+"listed": true,
+"name": "에스티큐브",
+"market": "코스닥"
+},
+"052220": {
+"listed": true,
+"name": "iMBC",
+"market": "코스닥"
+},
+"052260": {
+"listed": true,
+"name": "현대바이오랜드",
+"market": "코스닥"
+},
+"052300": {
+"listed": true,
+"name": "오션인더블유",
+"market": "코스닥"
+},
+"052330": {
+"listed": true,
+"name": "코텍",
+"market": "코스닥"
+},
+"052400": {
+"listed": true,
+"name": "코나아이",
+"market": "코스닥"
+},
+"052420": {
+"listed": true,
+"name": "오성첨단소재",
+"market": "코스닥"
+},
+"052460": {
+"listed": true,
+"name": "아이크래프트",
+"market": "코스닥"
+},
+"052600": {
+"listed": true,
+"name": "한네트",
+"market": "코스닥"
+},
+"052690": {
+"listed": true,
+"name": "한전기술",
+"market": "코스피"
+},
+"052710": {
+"listed": true,
+"name": "아모텍",
+"market": "코스닥"
+},
+"052770": {
+"listed": true,
+"name": "아이톡시",
+"market": "코스닥"
+},
+"052790": {
+"listed": true,
+"name": "액토즈소프트",
+"market": "코스닥"
+},
+"052860": {
+"listed": true,
+"name": "아이앤씨",
+"market": "코스닥"
+},
+"052900": {
+"listed": true,
+"name": "KX하이텍",
+"market": "코스닥"
+},
+"053030": {
+"listed": true,
+"name": "바이넥스",
+"market": "코스닥"
+},
+"053050": {
+"listed": true,
+"name": "지에스이",
+"market": "코스닥"
+},
+"053060": {
+"listed": true,
+"name": "세동",
+"market": "코스닥"
+},
+"053080": {
+"listed": true,
+"name": "케이엔솔",
+"market": "코스닥"
+},
+"053160": {
+"listed": true,
+"name": "프리엠스",
+"market": "코스닥"
+},
+"053210": {
+"listed": true,
+"name": "스카이라이프",
+"market": "코스피"
+},
+"053260": {
+"listed": true,
+"name": "금강철강",
+"market": "코스닥"
+},
+"053270": {
+"listed": true,
+"name": "구영테크",
+"market": "코스닥"
+},
+"053280": {
+"listed": true,
+"name": "예스24",
+"market": "코스닥"
+},
+"053290": {
+"listed": true,
+"name": "NE능률",
+"market": "코스닥"
+},
+"053300": {
+"listed": true,
+"name": "한국정보인증",
+"market": "코스닥"
+},
+"053350": {
+"listed": true,
+"name": "이니텍",
+"market": "코스닥"
+},
+"053450": {
+"listed": true,
+"name": "세코닉스",
+"market": "코스닥"
+},
+"053580": {
+"listed": true,
+"name": "웹케시",
+"market": "코스닥"
+},
+"053610": {
+"listed": true,
+"name": "프로텍",
+"market": "코스닥"
+},
+"053620": {
+"listed": true,
+"name": "태양",
+"market": "코스닥"
+},
+"053690": {
+"listed": true,
+"name": "한미글로벌",
+"market": "코스피"
+},
+"053700": {
+"listed": true,
+"name": "삼보모터스",
+"market": "코스닥"
+},
+"053800": {
+"listed": true,
+"name": "안랩",
+"market": "코스닥"
+},
+"053950": {
+"listed": true,
+"name": "경남제약",
+"market": "코스닥"
+},
+"053980": {
+"listed": true,
+"name": "오상자이엘",
+"market": "코스닥"
+},
+"054040": {
+"listed": true,
+"name": "한국컴퓨터",
+"market": "코스닥"
+},
+"054050": {
+"listed": true,
+"name": "NH농우바이오",
+"market": "코스닥"
+},
+"054090": {
+"listed": true,
+"name": "삼진엘앤디",
+"market": "코스닥"
+},
+"054180": {
+"listed": true,
+"name": "메디콕스",
+"market": "코스닥"
+},
+"054210": {
+"listed": true,
+"name": "이랜텍",
+"market": "코스닥"
+},
+"054220": {
+"listed": true,
+"name": "비츠로시스",
+"market": "코스닥"
+},
+"054300": {
+"listed": true,
+"name": "팬스타엔터프라이즈",
+"market": "코스닥"
+},
+"054410": {
+"listed": true,
+"name": "케이피티유",
+"market": "코스닥"
+},
+"054450": {
+"listed": true,
+"name": "텔레칩스",
+"market": "코스닥"
+},
+"054540": {
+"listed": true,
+"name": "삼영엠텍",
+"market": "코스닥"
+},
+"054620": {
+"listed": true,
+"name": "APS",
+"market": "코스닥"
+},
+"054670": {
+"listed": true,
+"name": "대한뉴팜",
+"market": "코스닥"
+},
+"054780": {
+"listed": true,
+"name": "키이스트",
+"market": "코스닥"
+},
+"054800": {
+"listed": true,
+"name": "아이디스홀딩스",
+"market": "코스닥"
+},
+"054920": {
+"listed": true,
+"name": "한컴위드",
+"market": "코스닥"
+},
+"054930": {
+"listed": true,
+"name": "유신",
+"market": "코스닥"
+},
+"054940": {
+"listed": true,
+"name": "엑사이엔씨",
+"market": "코스닥"
+},
+"054950": {
+"listed": true,
+"name": "제이브이엠",
+"market": "코스닥"
+},
+"055490": {
+"listed": true,
+"name": "테이팩스",
+"market": "코스피"
+},
+"055550": {
+"listed": true,
+"name": "신한지주",
+"market": "코스피"
+},
+"056080": {
+"listed": true,
+"name": "유진로봇",
+"market": "코스닥"
+},
+"056090": {
+"listed": true,
+"name": "시지메드텍",
+"market": "코스닥"
+},
+"056190": {
+"listed": true,
+"name": "SFA",
+"market": "코스닥"
+},
+"056360": {
+"listed": true,
+"name": "코위버",
+"market": "코스닥"
+},
+"056700": {
+"listed": true,
+"name": "신화인터텍",
+"market": "코스닥"
+},
+"056730": {
+"listed": true,
+"name": "CNT85",
+"market": "코스닥"
+},
+"057030": {
+"listed": true,
+"name": "YBM넷",
+"market": "코스닥"
+},
+"057050": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"057540": {
+"listed": true,
+"name": "옴니시스템",
+"market": "코스닥"
+},
+"057680": {
+"listed": true,
+"name": "티사이언티픽",
+"market": "코스닥"
+},
+"058110": {
+"listed": true,
+"name": "멕아이씨에스",
+"market": "코스닥"
+},
+"058400": {
+"listed": true,
+"name": "KNN",
+"market": "코스닥"
+},
+"058430": {
+"listed": true,
+"name": "포스코스틸리온",
+"market": "코스피"
+},
+"058450": {
+"listed": true,
+"name": "한주에이알티",
+"market": "코스닥"
+},
+"058470": {
+"listed": true,
+"name": "리노공업",
+"market": "코스닥"
+},
+"058610": {
+"listed": true,
+"name": "에스피지",
+"market": "코스닥"
+},
+"058630": {
+"listed": true,
+"name": "엠게임",
+"market": "코스닥"
+},
+"058650": {
+"listed": true,
+"name": "세아홀딩스",
+"market": "코스피"
+},
+"058730": {
+"listed": true,
+"name": "다스코",
+"market": "코스피"
+},
+"058820": {
+"listed": true,
+"name": "CMG제약",
+"market": "코스닥"
+},
+"058850": {
+"listed": true,
+"name": "KTcs",
+"market": "코스피"
+},
+"058860": {
+"listed": true,
+"name": "KTis",
+"market": "코스피"
+},
+"058970": {
+"listed": true,
+"name": "엠로",
+"market": "코스닥"
+},
+"059090": {
+"listed": true,
+"name": "미코",
+"market": "코스닥"
+},
+"059100": {
+"listed": true,
+"name": "아이컴포넌트",
+"market": "코스닥"
+},
+"059120": {
+"listed": true,
+"name": "아진엑스텍",
+"market": "코스닥"
+},
+"059210": {
+"listed": true,
+"name": "메타바이오메드",
+"market": "코스닥"
+},
+"059270": {
+"listed": true,
+"name": "해성에어로보틱스",
+"market": "코스닥"
+},
+"060150": {
+"listed": true,
+"name": "인선이엔티",
+"market": "코스닥"
+},
+"060230": {
+"listed": true,
+"name": "제이케이시냅스",
+"market": "코스닥"
+},
+"060240": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"060250": {
+"listed": true,
+"name": "NHN KCP",
+"market": "코스닥"
+},
+"060260": {
+"listed": true,
+"name": "뉴보텍",
+"market": "코스닥"
+},
+"060280": {
+"listed": true,
+"name": "큐렉소",
+"market": "코스닥"
+},
+"060310": {
+"listed": true,
+"name": "3S",
+"market": "코스닥"
+},
+"060370": {
+"listed": true,
+"name": "LS마린솔루션",
+"market": "코스닥"
+},
+"060380": {
+"listed": true,
+"name": "동양에스텍",
+"market": "코스닥"
+},
+"060480": {
+"listed": true,
+"name": "국일신동",
+"market": "코스닥"
+},
+"060540": {
+"listed": true,
+"name": "에스에이티",
+"market": "코스닥"
+},
+"060560": {
+"listed": true,
+"name": "HC홈센타",
+"market": "코스닥"
+},
+"060570": {
+"listed": true,
+"name": "드림어스컴퍼니",
+"market": "코스닥"
+},
+"060590": {
+"listed": true,
+"name": "씨티씨바이오",
+"market": "코스닥"
+},
+"060720": {
+"listed": true,
+"name": "KH바텍",
+"market": "코스닥"
+},
+"060850": {
+"listed": true,
+"name": "영림원소프트랩",
+"market": "코스닥"
+},
+"060900": {
+"listed": true,
+"name": "에이전트AI",
+"market": "코스닥"
+},
+"060980": {
+"listed": true,
+"name": "HL홀딩스",
+"market": "코스피"
+},
+"061040": {
+"listed": true,
+"name": "알에프텍",
+"market": "코스닥"
+},
+"061090": {
+"listed": true,
+"name": "세나테크놀로지",
+"market": "코스닥"
+},
+"061250": {
+"listed": true,
+"name": "화일약품",
+"market": "코스닥"
+},
+"061970": {
+"listed": true,
+"name": "LB세미콘",
+"market": "코스닥"
+},
+"062040": {
+"listed": true,
+"name": "산일전기",
+"market": "코스피"
+},
+"062970": {
+"listed": true,
+"name": "한국첨단소재",
+"market": "코스닥"
+},
+"063080": {
+"listed": true,
+"name": "컴투스홀딩스",
+"market": "코스닥"
+},
+"063160": {
+"listed": true,
+"name": "종근당바이오",
+"market": "코스피"
+},
+"063170": {
+"listed": true,
+"name": "서울옥션",
+"market": "코스닥"
+},
+"063440": {
+"listed": true,
+"name": "SM Life Design",
+"market": "코스닥"
+},
+"063570": {
+"listed": true,
+"name": "NICE인프라",
+"market": "코스닥"
+},
+"063760": {
+"listed": true,
+"name": "이엘피",
+"market": "코스닥"
+},
+"064090": {
+"listed": true,
+"name": "인크레더블버즈",
+"market": "코스닥"
+},
+"064240": {
+"listed": true,
+"name": "홈캐스트",
+"market": "코스닥"
+},
+"064260": {
+"listed": true,
+"name": "다날",
+"market": "코스닥"
+},
+"064290": {
+"listed": true,
+"name": "인텍플러스",
+"market": "코스닥"
+},
+"064350": {
+"listed": true,
+"name": "현대로템",
+"market": "코스피"
+},
+"064400": {
+"listed": true,
+"name": "LG씨엔에스",
+"market": "코스피"
+},
+"064480": {
+"listed": true,
+"name": "브리지텍",
+"market": "코스닥"
+},
+"064520": {
+"listed": true,
+"name": "테크엘",
+"market": "코스닥"
+},
+"064550": {
+"listed": true,
+"name": "바이오니아",
+"market": "코스닥"
+},
+"064760": {
+"listed": true,
+"name": "티씨케이",
+"market": "코스닥"
+},
+"064800": {
+"listed": true,
+"name": "포니링크",
+"market": "코스닥"
+},
+"064820": {
+"listed": true,
+"name": "케이프",
+"market": "코스닥"
+},
+"064850": {
+"listed": true,
+"name": "에프앤가이드",
+"market": "코스닥"
+},
+"064960": {
+"listed": true,
+"name": "SNT모티브",
+"market": "코스피"
+},
+"065060": {
+"listed": true,
+"name": "지엔코",
+"market": "코스닥"
+},
+"065130": {
+"listed": true,
+"name": "탑엔지니어링",
+"market": "코스닥"
+},
+"065150": {
+"listed": true,
+"name": "대산F&B",
+"market": "코스닥"
+},
+"065170": {
+"listed": true,
+"name": "비엘팜텍",
+"market": "코스닥"
+},
+"065350": {
+"listed": true,
+"name": "신성델타테크",
+"market": "코스닥"
+},
+"065370": {
+"listed": true,
+"name": "위세아이텍",
+"market": "코스닥"
+},
+"065420": {
+"listed": true,
+"name": "에스아이리소스",
+"market": "코스닥"
+},
+"065440": {
+"listed": true,
+"name": "이루온",
+"market": "코스닥"
+},
+"065450": {
+"listed": true,
+"name": "빅텍",
+"market": "코스닥"
+},
+"065500": {
+"listed": true,
+"name": "오리엔트정공",
+"market": "코스닥"
+},
+"065510": {
+"listed": true,
+"name": "휴비츠",
+"market": "코스닥"
+},
+"065530": {
+"listed": true,
+"name": "와이어블",
+"market": "코스닥"
+},
+"065570": {
+"listed": true,
+"name": "삼영이엔씨",
+"market": "코스닥"
+},
+"065650": {
+"listed": true,
+"name": "하이퍼코퍼레이션",
+"market": "코스닥"
+},
+"065660": {
+"listed": true,
+"name": "안트로젠",
+"market": "코스닥"
+},
+"065680": {
+"listed": true,
+"name": "우주일렉트로",
+"market": "코스닥"
+},
+"065690": {
+"listed": true,
+"name": "파커스",
+"market": "코스닥"
+},
+"065710": {
+"listed": true,
+"name": "서호전기",
+"market": "코스닥"
+},
+"065770": {
+"listed": true,
+"name": "CS",
+"market": "코스닥"
+},
+"065950": {
+"listed": true,
+"name": "웰크론",
+"market": "코스닥"
+},
+"066130": {
+"listed": true,
+"name": "하츠",
+"market": "코스닥"
+},
+"066310": {
+"listed": true,
+"name": "큐에스아이",
+"market": "코스닥"
+},
+"066360": {
+"listed": true,
+"name": "체리부로",
+"market": "코스닥"
+},
+"066410": {
+"listed": true,
+"name": "버킷스튜디오",
+"market": "코스닥"
+},
+"066430": {
+"listed": true,
+"name": "아이로보틱스",
+"market": "코스닥"
+},
+"066570": {
+"listed": true,
+"name": "LG전자",
+"market": "코스피"
+},
+"066575": {
+"listed": true,
+"name": "LG전자우",
+"market": "코스피"
+},
+"066590": {
+"listed": true,
+"name": "스모트로닉",
+"market": "코스닥"
+},
+"066620": {
+"listed": true,
+"name": "국보디자인",
+"market": "코스닥"
+},
+"066670": {
+"listed": true,
+"name": "디티씨",
+"market": "코스닥"
+},
+"066700": {
+"listed": true,
+"name": "테라젠이텍스",
+"market": "코스닥"
+},
+"066790": {
+"listed": true,
+"name": "씨씨에스",
+"market": "코스닥"
+},
+"066900": {
+"listed": true,
+"name": "디에이피",
+"market": "코스닥"
+},
+"066910": {
+"listed": true,
+"name": "손오공",
+"market": "코스닥"
+},
+"066970": {
+"listed": true,
+"name": "엘앤에프",
+"market": "코스피"
+},
+"066980": {
+"listed": true,
+"name": "한성크린텍",
+"market": "코스닥"
+},
+"067000": {
+"listed": true,
+"name": "조이시티",
+"market": "코스닥"
+},
+"067010": {
+"listed": true,
+"name": "이씨에스",
+"market": "코스닥"
+},
+"067080": {
+"listed": true,
+"name": "대화제약",
+"market": "코스닥"
+},
+"067160": {
+"listed": true,
+"name": "SOOP",
+"market": "코스닥"
+},
+"067170": {
+"listed": true,
+"name": "오텍",
+"market": "코스닥"
+},
+"067280": {
+"listed": true,
+"name": "멀티캠퍼스",
+"market": "코스닥"
+},
+"067290": {
+"listed": true,
+"name": "JW신약",
+"market": "코스닥"
+},
+"067310": {
+"listed": true,
+"name": "하나마이크론",
+"market": "코스닥"
+},
+"067370": {
+"listed": true,
+"name": "선바이오",
+"market": "코스닥"
+},
+"067390": {
+"listed": true,
+"name": "아스트",
+"market": "코스닥"
+},
+"067570": {
+"listed": true,
+"name": "엔브이에이치코리아",
+"market": "코스닥"
+},
+"067630": {
+"listed": true,
+"name": "HLB생명과학",
+"market": "코스닥"
+},
+"067730": {
+"listed": true,
+"name": "로지시스",
+"market": "코스닥"
+},
+"067770": {
+"listed": true,
+"name": "세진티에스",
+"market": "코스닥"
+},
+"067830": {
+"listed": true,
+"name": "세이브존I&C",
+"market": "코스피"
+},
+"067900": {
+"listed": true,
+"name": "와이엔텍",
+"market": "코스닥"
+},
+"067920": {
+"listed": true,
+"name": "이글루",
+"market": "코스닥"
+},
+"067990": {
+"listed": true,
+"name": "도이치모터스",
+"market": "코스닥"
+},
+"068050": {
+"listed": true,
+"name": "팬엔터테인먼트",
+"market": "코스닥"
+},
+"068100": {
+"listed": true,
+"name": "케이웨더",
+"market": "코스닥"
+},
+"068240": {
+"listed": true,
+"name": "다원시스",
+"market": "코스닥"
+},
+"068270": {
+"listed": true,
+"name": "셀트리온",
+"market": "코스피"
+},
+"068290": {
+"listed": true,
+"name": "삼성출판사",
+"market": "코스피"
+},
+"068330": {
+"listed": true,
+"name": "일신바이오",
+"market": "코스닥"
+},
+"068760": {
+"listed": true,
+"name": "셀트리온제약",
+"market": "코스닥"
+},
+"068790": {
+"listed": true,
+"name": "DMS",
+"market": "코스닥"
+},
+"068930": {
+"listed": true,
+"name": "디지털대성",
+"market": "코스닥"
+},
+"068940": {
+"listed": true,
+"name": "셀피글로벌",
+"market": "코스닥"
+},
+"069080": {
+"listed": true,
+"name": "웹젠",
+"market": "코스닥"
+},
+"069140": {
+"listed": true,
+"name": "누리플랜",
+"market": "코스닥"
+},
+"069260": {
+"listed": true,
+"name": "TKG휴켐스",
+"market": "코스피"
+},
+"069330": {
+"listed": true,
+"name": "유아이디",
+"market": "코스닥"
+},
+"069410": {
+"listed": true,
+"name": "엔텔스",
+"market": "코스닥"
+},
+"069460": {
+"listed": true,
+"name": "대호에이엘",
+"market": "코스피"
+},
+"069510": {
+"listed": true,
+"name": "에스텍",
+"market": "코스닥"
+},
+"069540": {
+"listed": true,
+"name": "빛과전자",
+"market": "코스닥"
+},
+"069620": {
+"listed": true,
+"name": "대웅제약",
+"market": "코스피"
+},
+"069640": {
+"listed": true,
+"name": "한세엠케이",
+"market": "코스피"
+},
+"069730": {
+"listed": true,
+"name": "DSR제강",
+"market": "코스피"
+},
+"069920": {
+"listed": true,
+"name": "엑시온그룹",
+"market": "코스닥"
+},
+"069960": {
+"listed": true,
+"name": "현대백화점",
+"market": "코스피"
+},
+"070300": {
+"listed": true,
+"name": "엑스큐어",
+"market": "코스닥"
+},
+"070590": {
+"listed": true,
+"name": "인티큐브",
+"market": "코스닥"
+},
+"070960": {
+"listed": true,
+"name": "모나용평",
+"market": "코스피"
+},
+"071050": {
+"listed": true,
+"name": "한국금융지주",
+"market": "코스피"
+},
+"071055": {
+"listed": true,
+"name": "한국금융지주우",
+"market": "코스피"
+},
+"071090": {
+"listed": true,
+"name": "하이스틸",
+"market": "코스피"
+},
+"071200": {
+"listed": true,
+"name": "인피니트헬스케어",
+"market": "코스닥"
+},
+"071280": {
+"listed": true,
+"name": "로체시스템즈",
+"market": "코스닥"
+},
+"071320": {
+"listed": true,
+"name": "지역난방공사",
+"market": "코스피"
+},
+"071670": {
+"listed": true,
+"name": "에이테크솔루션",
+"market": "코스닥"
+},
+"071840": {
+"listed": true,
+"name": "롯데하이마트",
+"market": "코스피"
+},
+"071850": {
+"listed": true,
+"name": "캐스텍코리아",
+"market": "코스닥"
+},
+"071950": {
+"listed": true,
+"name": "코아스",
+"market": "코스피"
+},
+"071970": {
+"listed": true,
+"name": "HD현대마린엔진",
+"market": "코스피"
+},
+"072020": {
+"listed": true,
+"name": "중앙백신",
+"market": "코스닥"
+},
+"072130": {
+"listed": true,
+"name": "유엔젤",
+"market": "코스피"
+},
+"072470": {
+"listed": true,
+"name": "우리산업홀딩스",
+"market": "코스닥"
+},
+"072710": {
+"listed": true,
+"name": "농심홀딩스",
+"market": "코스피"
+},
+"072770": {
+"listed": true,
+"name": "멤레이비티",
+"market": "코스닥"
+},
+"072870": {
+"listed": true,
+"name": "메가스터디",
+"market": "코스닥"
+},
+"072950": {
+"listed": true,
+"name": "빛샘전자",
+"market": "코스닥"
+},
+"072990": {
+"listed": true,
+"name": "에이치시티",
+"market": "코스닥"
+},
+"073010": {
+"listed": true,
+"name": "케이에스피",
+"market": "코스닥"
+},
+"073110": {
+"listed": true,
+"name": "엘엠에스",
+"market": "코스닥"
+},
+"073190": {
+"listed": true,
+"name": "듀오백",
+"market": "코스닥"
+},
+"073240": {
+"listed": true,
+"name": "금호타이어",
+"market": "코스피"
+},
+"073490": {
+"listed": true,
+"name": "LIG아큐버",
+"market": "코스닥"
+},
+"073540": {
+"listed": true,
+"name": "에프알텍",
+"market": "코스닥"
+},
+"073560": {
+"listed": true,
+"name": "우리손에프앤지",
+"market": "코스닥"
+},
+"073570": {
+"listed": true,
+"name": "리튬포어스",
+"market": "코스닥"
+},
+"073640": {
+"listed": true,
+"name": "테라사이언스",
+"market": "코스닥"
+},
+"074430": {
+"listed": true,
+"name": "아미노로직스",
+"market": "코스닥"
+},
+"074600": {
+"listed": true,
+"name": "원익QnC",
+"market": "코스닥"
+},
+"074610": {
+"listed": true,
+"name": "이엔플러스",
+"market": "코스피"
+},
+"075130": {
+"listed": true,
+"name": "플랜티넷",
+"market": "코스닥"
+},
+"075180": {
+"listed": true,
+"name": "새론오토모티브",
+"market": "코스피"
+},
+"075580": {
+"listed": true,
+"name": "세진중공업",
+"market": "코스피"
+},
+"075970": {
+"listed": true,
+"name": "동국알앤에스",
+"market": "코스닥"
+},
+"076080": {
+"listed": true,
+"name": "웰크론한텍",
+"market": "코스닥"
+},
+"076610": {
+"listed": true,
+"name": "해성옵틱스",
+"market": "코스닥"
+},
+"077360": {
+"listed": true,
+"name": "덕산하이메탈",
+"market": "코스닥"
+},
+"077500": {
+"listed": true,
+"name": "유니퀘스트",
+"market": "코스피"
+},
+"077970": {
+"listed": true,
+"name": "STX엔진",
+"market": "코스피"
+},
+"078000": {
+"listed": true,
+"name": "텔코웨어",
+"market": "코스피"
+},
+"078020": {
+"listed": true,
+"name": "LS증권",
+"market": "코스닥"
+},
+"078070": {
+"listed": true,
+"name": "유비쿼스홀딩스",
+"market": "코스닥"
+},
+"078130": {
+"listed": true,
+"name": "국일제지",
+"market": "코스닥"
+},
+"078140": {
+"listed": true,
+"name": "대봉엘에스",
+"market": "코스닥"
+},
+"078150": {
+"listed": true,
+"name": "HB테크놀러지",
+"market": "코스닥"
+},
+"078160": {
+"listed": true,
+"name": "메디포스트",
+"market": "코스닥"
+},
+"078340": {
+"listed": true,
+"name": "컴투스",
+"market": "코스닥"
+},
+"078350": {
+"listed": true,
+"name": "한양디지텍",
+"market": "코스닥"
+},
+"078520": {
+"listed": true,
+"name": "에이블씨엔씨",
+"market": "코스피"
+},
+"078590": {
+"listed": true,
+"name": "휴림에이텍",
+"market": "코스닥"
+},
+"078600": {
+"listed": true,
+"name": "대주전자재료",
+"market": "코스닥"
+},
+"078860": {
+"listed": true,
+"name": "아이오케이이엔엠",
+"market": "코스닥"
+},
+"078890": {
+"listed": true,
+"name": "가온그룹",
+"market": "코스닥"
+},
+"078930": {
+"listed": true,
+"name": "GS",
+"market": "코스피"
+},
+"078935": {
+"listed": true,
+"name": "GS우",
+"market": "코스피"
+},
+"079000": {
+"listed": true,
+"name": "와토스코리아",
+"market": "코스닥"
+},
+"079160": {
+"listed": true,
+"name": "CJ CGV",
+"market": "코스피"
+},
+"079170": {
+"listed": true,
+"name": "한창산업",
+"market": "코스닥"
+},
+"079190": {
+"listed": true,
+"name": "케스피온",
+"market": "코스닥"
+},
+"079370": {
+"listed": true,
+"name": "제우스",
+"market": "코스닥"
+},
+"079430": {
+"listed": true,
+"name": "현대리바트",
+"market": "코스피"
+},
+"079550": {
+"listed": true,
+"name": "LIG디펜스앤에어로스페이스",
+"market": "코스피"
+},
+"079650": {
+"listed": true,
+"name": "서산",
+"market": "코스닥"
+},
+"079810": {
+"listed": true,
+"name": "APS이노베이션",
+"market": "코스닥"
+},
+"079900": {
+"listed": true,
+"name": "전진건설로봇",
+"market": "코스피"
+},
+"079940": {
+"listed": true,
+"name": "가비아",
+"market": "코스닥"
+},
+"079950": {
+"listed": true,
+"name": "인베니아",
+"market": "코스닥"
+},
+"079960": {
+"listed": true,
+"name": "동양이엔피",
+"market": "코스닥"
+},
+"079970": {
+"listed": true,
+"name": "투비소프트",
+"market": "코스닥"
+},
+"079980": {
+"listed": true,
+"name": "휴비스",
+"market": "코스피"
+},
+"080010": {
+"listed": true,
+"name": "이상네트웍스",
+"market": "코스닥"
+},
+"080160": {
+"listed": true,
+"name": "모두투어",
+"market": "코스닥"
+},
+"080220": {
+"listed": true,
+"name": "제주반도체",
+"market": "코스닥"
+},
+"080420": {
+"listed": true,
+"name": "모다이노칩",
+"market": "코스닥"
+},
+"080470": {
+"listed": true,
+"name": "성창오토텍",
+"market": "코스닥"
+},
+"080520": {
+"listed": true,
+"name": "오디텍",
+"market": "코스닥"
+},
+"080530": {
+"listed": true,
+"name": "코디",
+"market": "코스닥"
+},
+"080580": {
+"listed": true,
+"name": "오킨스전자",
+"market": "코스닥"
+},
+"080720": {
+"listed": true,
+"name": "한국유니온제약",
+"market": "코스닥"
+},
+"081000": {
+"listed": true,
+"name": "일진다이아",
+"market": "코스피"
+},
+"081150": {
+"listed": true,
+"name": "티플랙스",
+"market": "코스닥"
+},
+"081180": {
+"listed": true,
+"name": "쎄크",
+"market": "코스닥"
+},
+"081660": {
+"listed": true,
+"name": "미스토홀딩스",
+"market": "코스피"
+},
+"082210": {
+"listed": true,
+"name": "옵트론텍",
+"market": "코스닥"
+},
+"082270": {
+"listed": true,
+"name": "젬백스",
+"market": "코스닥"
+},
+"082640": {
+"listed": true,
+"name": "동양생명",
+"market": "코스피"
+},
+"082660": {
+"listed": true,
+"name": "코스나인",
+"market": "코스닥"
+},
+"082740": {
+"listed": true,
+"name": "한화엔진",
+"market": "코스피"
+},
+"082800": {
+"listed": true,
+"name": "비보존 제약",
+"market": "코스닥"
+},
+"082850": {
+"listed": true,
+"name": "우리바이오",
+"market": "코스닥"
+},
+"082920": {
+"listed": true,
+"name": "비츠로셀",
+"market": "코스닥"
+},
+"083310": {
+"listed": true,
+"name": "엘오티베큠",
+"market": "코스닥"
+},
+"083420": {
+"listed": true,
+"name": "그린케미칼",
+"market": "코스피"
+},
+"083450": {
+"listed": true,
+"name": "GST",
+"market": "코스닥"
+},
+"083470": {
+"listed": true,
+"name": "이엠앤아이",
+"market": "코스닥"
+},
+"083500": {
+"listed": true,
+"name": "에프엔에스테크",
+"market": "코스닥"
+},
+"083550": {
+"listed": true,
+"name": "케이엠",
+"market": "코스닥"
+},
+"083640": {
+"listed": true,
+"name": "인콘",
+"market": "코스닥"
+},
+"083650": {
+"listed": true,
+"name": "비에이치아이",
+"market": "코스닥"
+},
+"083660": {
+"listed": true,
+"name": "CSA 코스믹",
+"market": "코스닥"
+},
+"083790": {
+"listed": true,
+"name": "CG인바이츠",
+"market": "코스닥"
+},
+"083930": {
+"listed": true,
+"name": "아바코",
+"market": "코스닥"
+},
+"084010": {
+"listed": true,
+"name": "대한제강",
+"market": "코스피"
+},
+"084110": {
+"listed": true,
+"name": "휴온스글로벌",
+"market": "코스닥"
+},
+"084180": {
+"listed": true,
+"name": "수성웹툰",
+"market": "코스닥"
+},
+"084370": {
+"listed": true,
+"name": "유진테크",
+"market": "코스닥"
+},
+"084440": {
+"listed": true,
+"name": "유비온",
+"market": "코스닥"
+},
+"084650": {
+"listed": true,
+"name": "랩지노믹스",
+"market": "코스닥"
+},
+"084670": {
+"listed": true,
+"name": "동양고속",
+"market": "코스피"
+},
+"084680": {
+"listed": true,
+"name": "이월드",
+"market": "코스피"
+},
+"084690": {
+"listed": true,
+"name": "대상홀딩스",
+"market": "코스피"
+},
+"084730": {
+"listed": true,
+"name": "팅크웨어",
+"market": "코스닥"
+},
+"084850": {
+"listed": true,
+"name": "아이티엠반도체",
+"market": "코스닥"
+},
+"084870": {
+"listed": true,
+"name": "TBH글로벌",
+"market": "코스피"
+},
+"084990": {
+"listed": true,
+"name": "헬릭스미스",
+"market": "코스닥"
+},
+"085310": {
+"listed": true,
+"name": "엔케이",
+"market": "코스피"
+},
+"085620": {
+"listed": true,
+"name": "미래에셋생명",
+"market": "코스피"
+},
+"085660": {
+"listed": true,
+"name": "차바이오텍",
+"market": "코스닥"
+},
+"085670": {
+"listed": true,
+"name": "뉴프렉스",
+"market": "코스닥"
+},
+"085810": {
+"listed": true,
+"name": "알티캐스트",
+"market": "코스닥"
+},
+"085910": {
+"listed": true,
+"name": "네오티스",
+"market": "코스닥"
+},
+"086040": {
+"listed": true,
+"name": "바이오톡스텍",
+"market": "코스닥"
+},
+"086060": {
+"listed": true,
+"name": "진바이오텍",
+"market": "코스닥"
+},
+"086280": {
+"listed": true,
+"name": "현대글로비스",
+"market": "코스피"
+},
+"086390": {
+"listed": true,
+"name": "유니테스트",
+"market": "코스닥"
+},
+"086450": {
+"listed": true,
+"name": "동국제약",
+"market": "코스닥"
+},
+"086520": {
+"listed": true,
+"name": "에코프로",
+"market": "코스닥"
+},
+"086670": {
+"listed": true,
+"name": "비엠티",
+"market": "코스닥"
+},
+"086710": {
+"listed": true,
+"name": "선진뷰티사이언스",
+"market": "코스닥"
+},
+"086790": {
+"listed": true,
+"name": "하나금융지주",
+"market": "코스피"
+},
+"086820": {
+"listed": true,
+"name": "바이오솔루션",
+"market": "코스닥"
+},
+"086890": {
+"listed": true,
+"name": "이수앱지스",
+"market": "코스닥"
+},
+"086900": {
+"listed": true,
+"name": "메디톡스",
+"market": "코스닥"
+},
+"086960": {
+"listed": true,
+"name": "MDS테크",
+"market": "코스닥"
+},
+"086980": {
+"listed": true,
+"name": "쇼박스",
+"market": "코스닥"
+},
+"087010": {
+"listed": true,
+"name": "펩트론",
+"market": "코스닥"
+},
+"087260": {
+"listed": true,
+"name": "모바일어플라이언스",
+"market": "코스닥"
+},
+"087600": {
+"listed": true,
+"name": "픽셀플러스",
+"market": "코스닥"
+},
+"088130": {
+"listed": true,
+"name": "동아엘텍",
+"market": "코스닥"
+},
+"088260": {
+"listed": true,
+"name": "이리츠코크렙",
+"market": "코스피"
+},
+"088280": {
+"listed": true,
+"name": "쏘닉스",
+"market": "코스닥"
+},
+"088290": {
+"listed": true,
+"name": "이원컴포텍",
+"market": "코스닥"
+},
+"088340": {
+"listed": true,
+"name": "유라클",
+"market": "코스닥"
+},
+"088350": {
+"listed": true,
+"name": "한화생명",
+"market": "코스피"
+},
+"088390": {
+"listed": true,
+"name": "이녹스",
+"market": "코스닥"
+},
+"088790": {
+"listed": true,
+"name": "진도",
+"market": "코스피"
+},
+"088800": {
+"listed": true,
+"name": "에이스테크",
+"market": "코스닥"
+},
+"088910": {
+"listed": true,
+"name": "동우팜투테이블",
+"market": "코스닥"
+},
+"088980": {
+"listed": true,
+"name": "맥쿼리인프라",
+"market": "코스피"
+},
+"089010": {
+"listed": true,
+"name": "켐트로닉스",
+"market": "코스닥"
+},
+"089030": {
+"listed": true,
+"name": "테크윙",
+"market": "코스닥"
+},
+"089140": {
+"listed": true,
+"name": "넥스턴앤롤코리아",
+"market": "코스닥"
+},
+"089150": {
+"listed": true,
+"name": "케이씨티",
+"market": "코스닥"
+},
+"089230": {
+"listed": true,
+"name": "THE E&M",
+"market": "코스닥"
+},
+"089470": {
+"listed": true,
+"name": "HDC현대EP",
+"market": "코스피"
+},
+"089590": {
+"listed": true,
+"name": "제주항공",
+"market": "코스피"
+},
+"089600": {
+"listed": true,
+"name": "KT나스미디어",
+"market": "코스닥"
+},
+"089790": {
+"listed": true,
+"name": "제이티",
+"market": "코스닥"
+},
+"089850": {
+"listed": true,
+"name": "유비벨록스",
+"market": "코스닥"
+},
+"089860": {
+"listed": true,
+"name": "롯데렌탈",
+"market": "코스피"
+},
+"089890": {
+"listed": true,
+"name": "코세스",
+"market": "코스닥"
+},
+"089970": {
+"listed": true,
+"name": "브이엠",
+"market": "코스닥"
+},
+"089980": {
+"listed": true,
+"name": "상아프론테크",
+"market": "코스닥"
+},
+"090080": {
+"listed": true,
+"name": "평화산업",
+"market": "코스피"
+},
+"090150": {
+"listed": true,
+"name": "아이윈",
+"market": "코스닥"
+},
+"090350": {
+"listed": true,
+"name": "노루페인트",
+"market": "코스피"
+},
+"090360": {
+"listed": true,
+"name": "로보스타",
+"market": "코스닥"
+},
+"090370": {
+"listed": true,
+"name": "메타랩스",
+"market": "코스피"
+},
+"090410": {
+"listed": true,
+"name": "덕신이피씨",
+"market": "코스닥"
+},
+"090430": {
+"listed": true,
+"name": "아모레퍼시픽",
+"market": "코스피"
+},
+"090435": {
+"listed": true,
+"name": "아모레퍼시픽우",
+"market": "코스피"
+},
+"090460": {
+"listed": true,
+"name": "비에이치",
+"market": "코스피"
+},
+"090470": {
+"listed": true,
+"name": "제이스로보틱스",
+"market": "코스닥"
+},
+"090710": {
+"listed": true,
+"name": "휴림로봇",
+"market": "코스닥"
+},
+"090850": {
+"listed": true,
+"name": "현대이지웰",
+"market": "코스닥"
+},
+"091120": {
+"listed": true,
+"name": "이엠텍",
+"market": "코스닥"
+},
+"091340": {
+"listed": true,
+"name": "S&K폴리텍",
+"market": "코스닥"
+},
+"091440": {
+"listed": true,
+"name": "한울소재과학",
+"market": "코스닥"
+},
+"091580": {
+"listed": true,
+"name": "상신이디피",
+"market": "코스닥"
+},
+"091590": {
+"listed": true,
+"name": "남화토건",
+"market": "코스닥"
+},
+"091700": {
+"listed": true,
+"name": "파트론",
+"market": "코스닥"
+},
+"091810": {
+"listed": true,
+"name": "트리니티항공",
+"market": "코스피"
+},
+"091970": {
+"listed": true,
+"name": "LSK아이로봇",
+"market": "코스닥"
+},
+"092040": {
+"listed": true,
+"name": "아미코젠",
+"market": "코스닥"
+},
+"092070": {
+"listed": true,
+"name": "디엔에프",
+"market": "코스닥"
+},
+"092130": {
+"listed": true,
+"name": "이크레더블",
+"market": "코스닥"
+},
+"092190": {
+"listed": true,
+"name": "서울바이오시스",
+"market": "코스닥"
+},
+"092200": {
+"listed": true,
+"name": "디아이씨",
+"market": "코스피"
+},
+"092220": {
+"listed": true,
+"name": "KEC",
+"market": "코스피"
+},
+"092230": {
+"listed": true,
+"name": "KPX홀딩스",
+"market": "코스피"
+},
+"092300": {
+"listed": true,
+"name": "현우산업",
+"market": "코스닥"
+},
+"092440": {
+"listed": true,
+"name": "기신정기",
+"market": "코스피"
+},
+"092460": {
+"listed": true,
+"name": "한라IMS",
+"market": "코스닥"
+},
+"092600": {
+"listed": true,
+"name": "앤씨앤",
+"market": "코스닥"
+},
+"092730": {
+"listed": true,
+"name": "네오팜",
+"market": "코스닥"
+},
+"092780": {
+"listed": true,
+"name": "DYP",
+"market": "코스피"
+},
+"092790": {
+"listed": true,
+"name": "넥스틸",
+"market": "코스피"
+},
+"092870": {
+"listed": true,
+"name": "엑시콘",
+"market": "코스닥"
+},
+"093050": {
+"listed": true,
+"name": "LF",
+"market": "코스피"
+},
+"093190": {
+"listed": true,
+"name": "빅솔론",
+"market": "코스닥"
+},
+"093240": {
+"listed": true,
+"name": "형지엘리트",
+"market": "코스피"
+},
+"093320": {
+"listed": true,
+"name": "케이아이엔엑스",
+"market": "코스닥"
+},
+"093370": {
+"listed": true,
+"name": "후성",
+"market": "코스피"
+},
+"093380": {
+"listed": true,
+"name": "풍강",
+"market": "코스닥"
+},
+"093520": {
+"listed": true,
+"name": "매커스",
+"market": "코스닥"
+},
+"093640": {
+"listed": true,
+"name": "케이알엠",
+"market": "코스닥"
+},
+"093920": {
+"listed": true,
+"name": "서원인텍",
+"market": "코스닥"
+},
+"094170": {
+"listed": true,
+"name": "동운아나텍",
+"market": "코스닥"
+},
+"094280": {
+"listed": true,
+"name": "효성ITX",
+"market": "코스피"
+},
+"094360": {
+"listed": true,
+"name": "칩스앤미디어",
+"market": "코스닥"
+},
+"094480": {
+"listed": true,
+"name": "갤럭시아머니트리",
+"market": "코스닥"
+},
+"094800": {
+"listed": true,
+"name": "맵스리얼티",
+"market": "코스피"
+},
+"094820": {
+"listed": true,
+"name": "일진파워",
+"market": "코스닥"
+},
+"094840": {
+"listed": true,
+"name": "슈프리마에이치큐",
+"market": "코스닥"
+},
+"094850": {
+"listed": true,
+"name": "참좋은여행",
+"market": "코스닥"
+},
+"094860": {
+"listed": true,
+"name": "네오리진",
+"market": "코스닥"
+},
+"094940": {
+"listed": true,
+"name": "푸른로보틱스",
+"market": "코스닥"
+},
+"094970": {
+"listed": true,
+"name": "제이엠티",
+"market": "코스닥"
+},
+"095190": {
+"listed": true,
+"name": "신화프리텍",
+"market": "코스닥"
+},
+"095270": {
+"listed": true,
+"name": "웨이브일렉트로",
+"market": "코스닥"
+},
+"095340": {
+"listed": true,
+"name": "ISC",
+"market": "코스닥"
+},
+"095500": {
+"listed": true,
+"name": "미래나노텍",
+"market": "코스닥"
+},
+"095570": {
+"listed": true,
+"name": "AJ네트웍스",
+"market": "코스피"
+},
+"095610": {
+"listed": true,
+"name": "테스",
+"market": "코스닥"
+},
+"095660": {
+"listed": true,
+"name": "네오위즈",
+"market": "코스닥"
+},
+"095700": {
+"listed": true,
+"name": "제넥신",
+"market": "코스닥"
+},
+"095720": {
+"listed": true,
+"name": "웅진씽크빅",
+"market": "코스피"
+},
+"095910": {
+"listed": true,
+"name": "에스에너지",
+"market": "코스닥"
+},
+"096240": {
+"listed": true,
+"name": "크레버스",
+"market": "코스닥"
+},
+"096250": {
+"listed": true,
+"name": "와이즈넛",
+"market": "코스닥"
+},
+"096350": {
+"listed": true,
+"name": "대창솔루션",
+"market": "코스닥"
+},
+"096530": {
+"listed": true,
+"name": "씨젠",
+"market": "코스닥"
+},
+"096610": {
+"listed": true,
+"name": "알에프세미",
+"market": "코스닥"
+},
+"096630": {
+"listed": true,
+"name": "에스코넥",
+"market": "코스닥"
+},
+"096690": {
+"listed": true,
+"name": "에이루트",
+"market": "코스닥"
+},
+"096760": {
+"listed": true,
+"name": "JW홀딩스",
+"market": "코스피"
+},
+"096770": {
+"listed": true,
+"name": "SK이노베이션",
+"market": "코스피"
+},
+"096775": {
+"listed": true,
+"name": "SK이노베이션우",
+"market": "코스피"
+},
+"096870": {
+"listed": true,
+"name": "엘디티",
+"market": "코스닥"
+},
+"097230": {
+"listed": true,
+"name": "HJ중공업",
+"market": "코스피"
+},
+"097520": {
+"listed": true,
+"name": "엠씨넥스",
+"market": "코스피"
+},
+"097780": {
+"listed": true,
+"name": "에코볼트",
+"market": "코스닥"
+},
+"097800": {
+"listed": true,
+"name": "윈팩",
+"market": "코스닥"
+},
+"097870": {
+"listed": true,
+"name": "효성오앤비",
+"market": "코스닥"
+},
+"097950": {
+"listed": true,
+"name": "CJ제일제당",
+"market": "코스피"
+},
+"097955": {
+"listed": true,
+"name": "CJ제일제당 우",
+"market": "코스피"
+},
+"098070": {
+"listed": true,
+"name": "한텍",
+"market": "코스닥"
+},
+"098120": {
+"listed": true,
+"name": "마이크로컨텍솔",
+"market": "코스닥"
+},
+"098460": {
+"listed": true,
+"name": "고영",
+"market": "코스닥"
+},
+"098660": {
+"listed": true,
+"name": "에스티오",
+"market": "코스닥"
+},
+"099190": {
+"listed": true,
+"name": "아이센스",
+"market": "코스닥"
+},
+"099220": {
+"listed": true,
+"name": "SDN",
+"market": "코스닥"
+},
+"099320": {
+"listed": true,
+"name": "쎄트렉아이",
+"market": "코스닥"
+},
+"099390": {
+"listed": true,
+"name": "브레인즈컴퍼니",
+"market": "코스닥"
+},
+"099410": {
+"listed": true,
+"name": "동방선기",
+"market": "코스닥"
+},
+"099430": {
+"listed": true,
+"name": "바이오플러스",
+"market": "코스닥"
+},
+"099440": {
+"listed": true,
+"name": "스맥",
+"market": "코스닥"
+},
+"099520": {
+"listed": true,
+"name": "DGI",
+"market": "코스닥"
+},
+"099750": {
+"listed": true,
+"name": "이지케어텍",
+"market": "코스닥"
+},
+"100030": {
+"listed": true,
+"name": "인지소프트",
+"market": "코스닥"
+},
+"100090": {
+"listed": true,
+"name": "SK오션플랜트",
+"market": "코스피"
+},
+"100120": {
+"listed": true,
+"name": "뷰웍스",
+"market": "코스닥"
+},
+"100130": {
+"listed": true,
+"name": "동국S&C",
+"market": "코스닥"
+},
+"100220": {
+"listed": true,
+"name": "비상교육",
+"market": "코스피"
+},
+"100250": {
+"listed": true,
+"name": "진양홀딩스",
+"market": "코스피"
+},
+"100590": {
+"listed": true,
+"name": "머큐리",
+"market": "코스닥"
+},
+"100660": {
+"listed": true,
+"name": "서암기계공업",
+"market": "코스닥"
+},
+"100700": {
+"listed": true,
+"name": "세운메디칼",
+"market": "코스닥"
+},
+"100790": {
+"listed": true,
+"name": "미래에셋벤처투자",
+"market": "코스닥"
+},
+"100840": {
+"listed": true,
+"name": "SNT에너지",
+"market": "코스피"
+},
+"101000": {
+"listed": true,
+"name": "KS인더스트리",
+"market": "코스닥"
+},
+"101140": {
+"listed": true,
+"name": "인바이오젠",
+"market": "코스피"
+},
+"101160": {
+"listed": true,
+"name": "월덱스",
+"market": "코스닥"
+},
+"101170": {
+"listed": true,
+"name": "우림피티에스",
+"market": "코스닥"
+},
+"101240": {
+"listed": true,
+"name": "씨큐브",
+"market": "코스닥"
+},
+"101330": {
+"listed": true,
+"name": "모베이스",
+"market": "코스닥"
+},
+"101360": {
+"listed": true,
+"name": "에코앤드림",
+"market": "코스닥"
+},
+"101390": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"101400": {
+"listed": true,
+"name": "엔시트론",
+"market": "코스닥"
+},
+"101490": {
+"listed": true,
+"name": "에스앤에스텍",
+"market": "코스닥"
+},
+"101530": {
+"listed": true,
+"name": "해태제과식품",
+"market": "코스피"
+},
+"101670": {
+"listed": true,
+"name": "하이드로리튬",
+"market": "코스닥"
+},
+"101680": {
+"listed": true,
+"name": "한국정밀기계",
+"market": "코스닥"
+},
+"101730": {
+"listed": true,
+"name": "위메이드맥스",
+"market": "코스닥"
+},
+"101930": {
+"listed": true,
+"name": "인화정공",
+"market": "코스닥"
+},
+"102120": {
+"listed": true,
+"name": "어보브반도체",
+"market": "코스닥"
+},
+"102260": {
+"listed": true,
+"name": "동성케미컬",
+"market": "코스피"
+},
+"102370": {
+"listed": true,
+"name": "케이옥션",
+"market": "코스닥"
+},
+"102460": {
+"listed": true,
+"name": "이연제약",
+"market": "코스피"
+},
+"102710": {
+"listed": true,
+"name": "이엔에프테크놀로지",
+"market": "코스닥"
+},
+"102940": {
+"listed": true,
+"name": "코오롱생명과학",
+"market": "코스닥"
+},
+"103140": {
+"listed": true,
+"name": "풍산",
+"market": "코스피"
+},
+"103230": {
+"listed": true,
+"name": "에스앤더블류",
+"market": "코스닥"
+},
+"103590": {
+"listed": true,
+"name": "일진전기",
+"market": "코스피"
+},
+"103840": {
+"listed": true,
+"name": "우양",
+"market": "코스닥"
+},
+"104040": {
+"listed": true,
+"name": "디에스엠",
+"market": "코스닥"
+},
+"104200": {
+"listed": true,
+"name": "NHN벅스",
+"market": "코스닥"
+},
+"104460": {
+"listed": true,
+"name": "디와이피엔에프",
+"market": "코스닥"
+},
+"104480": {
+"listed": true,
+"name": "티케이케미칼",
+"market": "코스닥"
+},
+"104540": {
+"listed": true,
+"name": "코렌텍",
+"market": "코스닥"
+},
+"104620": {
+"listed": true,
+"name": "노랑풍선",
+"market": "코스닥"
+},
+"104700": {
+"listed": true,
+"name": "한국철강",
+"market": "코스피"
+},
+"104830": {
+"listed": true,
+"name": "원익머트리얼즈",
+"market": "코스닥"
+},
+"105330": {
+"listed": true,
+"name": "케이엔더블유",
+"market": "코스닥"
+},
+"105550": {
+"listed": true,
+"name": "엣지파운드리",
+"market": "코스닥"
+},
+"105560": {
+"listed": true,
+"name": "KB금융",
+"market": "코스피"
+},
+"105630": {
+"listed": true,
+"name": "한세실업",
+"market": "코스피"
+},
+"105740": {
+"listed": true,
+"name": "디케이락",
+"market": "코스닥"
+},
+"105760": {
+"listed": true,
+"name": "포스뱅크",
+"market": "코스닥"
+},
+"105840": {
+"listed": true,
+"name": "우진",
+"market": "코스피"
+},
+"106080": {
+"listed": true,
+"name": "케이이엠텍",
+"market": "코스닥"
+},
+"106190": {
+"listed": true,
+"name": "하이텍팜",
+"market": "코스닥"
+},
+"106240": {
+"listed": true,
+"name": "파인테크닉스",
+"market": "코스닥"
+},
+"106520": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"107590": {
+"listed": true,
+"name": "미원홀딩스",
+"market": "코스피"
+},
+"107600": {
+"listed": true,
+"name": "새빗켐",
+"market": "코스닥"
+},
+"107640": {
+"listed": true,
+"name": "한중엔시에스",
+"market": "코스닥"
+},
+"108230": {
+"listed": true,
+"name": "톱텍",
+"market": "코스닥"
+},
+"108320": {
+"listed": true,
+"name": "LX세미콘",
+"market": "코스피"
+},
+"108380": {
+"listed": true,
+"name": "대양전기공업",
+"market": "코스닥"
+},
+"108490": {
+"listed": true,
+"name": "로보티즈",
+"market": "코스닥"
+},
+"108670": {
+"listed": true,
+"name": "LX하우시스",
+"market": "코스피"
+},
+"108860": {
+"listed": true,
+"name": "셀바스AI",
+"market": "코스닥"
+},
+"109070": {
+"listed": true,
+"name": "주성코퍼레이션",
+"market": "코스피"
+},
+"109080": {
+"listed": true,
+"name": "옵티시스",
+"market": "코스닥"
+},
+"109610": {
+"listed": true,
+"name": "에스와이",
+"market": "코스닥"
+},
+"109670": {
+"listed": true,
+"name": "씨싸이트",
+"market": "코스닥"
+},
+"109740": {
+"listed": true,
+"name": "디에스케이",
+"market": "코스닥"
+},
+"109820": {
+"listed": true,
+"name": "진매트릭스",
+"market": "코스닥"
+},
+"109860": {
+"listed": true,
+"name": "동일금속",
+"market": "코스닥"
+},
+"109960": {
+"listed": true,
+"name": "앱토크롬",
+"market": "코스닥"
+},
+"110020": {
+"listed": true,
+"name": "전진바이오팜",
+"market": "코스닥"
+},
+"110790": {
+"listed": true,
+"name": "크리스에프앤씨",
+"market": "코스닥"
+},
+"110990": {
+"listed": true,
+"name": "디아이티",
+"market": "코스닥"
+},
+"111110": {
+"listed": true,
+"name": "호전실업",
+"market": "코스피"
+},
+"111380": {
+"listed": true,
+"name": "동인기연",
+"market": "코스피"
+},
+"111710": {
+"listed": true,
+"name": "남화산업",
+"market": "코스닥"
+},
+"111770": {
+"listed": true,
+"name": "영원무역",
+"market": "코스피"
+},
+"112040": {
+"listed": true,
+"name": "위메이드",
+"market": "코스닥"
+},
+"112290": {
+"listed": true,
+"name": "와이씨켐",
+"market": "코스닥"
+},
+"112610": {
+"listed": true,
+"name": "씨에스윈드",
+"market": "코스피"
+},
+"113810": {
+"listed": true,
+"name": "디젠스",
+"market": "코스닥"
+},
+"114090": {
+"listed": true,
+"name": "GKL",
+"market": "코스피"
+},
+"114190": {
+"listed": true,
+"name": "강원에너지",
+"market": "코스닥"
+},
+"114450": {
+"listed": true,
+"name": "그린생명과학",
+"market": "코스닥"
+},
+"114810": {
+"listed": true,
+"name": "한솔아이원스",
+"market": "코스닥"
+},
+"114840": {
+"listed": true,
+"name": "아이패밀리에스씨",
+"market": "코스닥"
+},
+"115160": {
+"listed": true,
+"name": "휴맥스",
+"market": "코스닥"
+},
+"115180": {
+"listed": true,
+"name": "큐리언트",
+"market": "코스닥"
+},
+"115310": {
+"listed": true,
+"name": "인포바인",
+"market": "코스닥"
+},
+"115440": {
+"listed": true,
+"name": "우리넷",
+"market": "코스닥"
+},
+"115450": {
+"listed": true,
+"name": "HLB테라퓨틱스",
+"market": "코스닥"
+},
+"115480": {
+"listed": true,
+"name": "씨유메디칼",
+"market": "코스닥"
+},
+"115500": {
+"listed": true,
+"name": "케이씨에스",
+"market": "코스닥"
+},
+"115530": {
+"listed": true,
+"name": "씨엔플러스",
+"market": "코스닥"
+},
+"115570": {
+"listed": true,
+"name": "스타플렉스",
+"market": "코스닥"
+},
+"115610": {
+"listed": true,
+"name": "이미지스",
+"market": "코스닥"
+},
+"117580": {
+"listed": true,
+"name": "대성에너지",
+"market": "코스피"
+},
+"117670": {
+"listed": true,
+"name": "알파칩스",
+"market": "코스닥"
+},
+"117730": {
+"listed": true,
+"name": "티로보틱스",
+"market": "코스닥"
+},
+"118000": {
+"listed": true,
+"name": "메타케어",
+"market": "코스피"
+},
+"118990": {
+"listed": true,
+"name": "모트렉스",
+"market": "코스닥"
+},
+"119500": {
+"listed": true,
+"name": "포메탈",
+"market": "코스닥"
+},
+"119610": {
+"listed": true,
+"name": "인터로조",
+"market": "코스닥"
+},
+"119650": {
+"listed": true,
+"name": "KC코트렐",
+"market": "코스피"
+},
+"119830": {
+"listed": true,
+"name": "아이텍",
+"market": "코스닥"
+},
+"119850": {
+"listed": true,
+"name": "지엔씨에너지",
+"market": "코스닥"
+},
+"120030": {
+"listed": true,
+"name": "조선선재",
+"market": "코스피"
+},
+"120110": {
+"listed": true,
+"name": "코오롱인더",
+"market": "코스피"
+},
+"120115": {
+"listed": true,
+"name": "코오롱인더우",
+"market": "코스피"
+},
+"120240": {
+"listed": true,
+"name": "대정화금",
+"market": "코스닥"
+},
+"121440": {
+"listed": true,
+"name": "골프존홀딩스",
+"market": "코스닥"
+},
+"121600": {
+"listed": true,
+"name": "나노신소재",
+"market": "코스닥"
+},
+"121800": {
+"listed": true,
+"name": "비덴트",
+"market": "코스닥"
+},
+"121850": {
+"listed": true,
+"name": "코이즈",
+"market": "코스닥"
+},
+"121890": {
+"listed": true,
+"name": "에스디시스템",
+"market": "코스닥"
+},
+"122310": {
+"listed": true,
+"name": "제노레이",
+"market": "코스닥"
+},
+"122350": {
+"listed": true,
+"name": "삼기",
+"market": "코스닥"
+},
+"122450": {
+"listed": true,
+"name": "KX",
+"market": "코스닥"
+},
+"122640": {
+"listed": true,
+"name": "예스티",
+"market": "코스닥"
+},
+"122690": {
+"listed": true,
+"name": "서진오토모티브",
+"market": "코스닥"
+},
+"122870": {
+"listed": true,
+"name": "와이지엔터테인먼트",
+"market": "코스닥"
+},
+"122900": {
+"listed": true,
+"name": "아이마켓코리아",
+"market": "코스피"
+},
+"122990": {
+"listed": true,
+"name": "와이솔",
+"market": "코스닥"
+},
+"123010": {
+"listed": true,
+"name": "알엔티엑스",
+"market": "코스닥"
+},
+"123040": {
+"listed": true,
+"name": "엠에스오토텍",
+"market": "코스닥"
+},
+"123330": {
+"listed": true,
+"name": "제닉",
+"market": "코스닥"
+},
+"123410": {
+"listed": true,
+"name": "코리아에프티",
+"market": "코스닥"
+},
+"123420": {
+"listed": true,
+"name": "위메이드플레이",
+"market": "코스닥"
+},
+"123570": {
+"listed": true,
+"name": "이엠넷",
+"market": "코스닥"
+},
+"123690": {
+"listed": true,
+"name": "한국화장품",
+"market": "코스피"
+},
+"123700": {
+"listed": true,
+"name": "SJM",
+"market": "코스피"
+},
+"123750": {
+"listed": true,
+"name": "알톤",
+"market": "코스닥"
+},
+"123840": {
+"listed": true,
+"name": "뉴온",
+"market": "코스닥"
+},
+"123860": {
+"listed": true,
+"name": "아나패스",
+"market": "코스닥"
+},
+"123890": {
+"listed": true,
+"name": "한국자산신탁",
+"market": "코스피"
+},
+"124500": {
+"listed": true,
+"name": "아이티센글로벌",
+"market": "코스닥"
+},
+"124560": {
+"listed": true,
+"name": "태웅로직스",
+"market": "코스닥"
+},
+"125020": {
+"listed": true,
+"name": "티씨머티리얼즈",
+"market": "코스닥"
+},
+"125210": {
+"listed": true,
+"name": "아모그린텍",
+"market": "코스닥"
+},
+"125490": {
+"listed": true,
+"name": "한라캐스트",
+"market": "코스닥"
+},
+"126340": {
+"listed": true,
+"name": "비나텍",
+"market": "코스닥"
+},
+"126560": {
+"listed": true,
+"name": "현대퓨처넷",
+"market": "코스피"
+},
+"126600": {
+"listed": true,
+"name": "BGF에코머티리얼즈",
+"market": "코스닥"
+},
+"126640": {
+"listed": true,
+"name": "화신정공",
+"market": "코스닥"
+},
+"126700": {
+"listed": true,
+"name": "하이비젼시스템",
+"market": "코스닥"
+},
+"126720": {
+"listed": true,
+"name": "수산인더스트리",
+"market": "코스피"
+},
+"126730": {
+"listed": true,
+"name": "코칩",
+"market": "코스닥"
+},
+"126880": {
+"listed": true,
+"name": "제이엔케이글로벌",
+"market": "코스닥"
+},
+"127120": {
+"listed": true,
+"name": "제이에스링크",
+"market": "코스닥"
+},
+"127710": {
+"listed": true,
+"name": "아시아경제",
+"market": "코스닥"
+},
+"127980": {
+"listed": true,
+"name": "화인써키트",
+"market": "코스닥"
+},
+"128540": {
+"listed": true,
+"name": "에코캡",
+"market": "코스닥"
+},
+"128660": {
+"listed": true,
+"name": "피제이메탈",
+"market": "코스닥"
+},
+"128820": {
+"listed": true,
+"name": "대성산업",
+"market": "코스피"
+},
+"128940": {
+"listed": true,
+"name": "한미약품",
+"market": "코스피"
+},
+"129260": {
+"listed": true,
+"name": "인터지스",
+"market": "코스피"
+},
+"129890": {
+"listed": true,
+"name": "앱코",
+"market": "코스닥"
+},
+"129920": {
+"listed": true,
+"name": "대성하이텍",
+"market": "코스닥"
+},
+"130500": {
+"listed": true,
+"name": "GH신소재",
+"market": "코스닥"
+},
+"130580": {
+"listed": true,
+"name": "나이스디앤비",
+"market": "코스닥"
+},
+"130660": {
+"listed": true,
+"name": "한전산업",
+"market": "코스피"
+},
+"130740": {
+"listed": true,
+"name": "티피씨글로벌",
+"market": "코스닥"
+},
+"131030": {
+"listed": true,
+"name": "옵투스제약",
+"market": "코스닥"
+},
+"131090": {
+"listed": true,
+"name": "시큐브",
+"market": "코스닥"
+},
+"131100": {
+"listed": true,
+"name": "티엔엔터테인먼트",
+"market": "코스닥"
+},
+"131180": {
+"listed": true,
+"name": "딜리",
+"market": "코스닥"
+},
+"131220": {
+"listed": true,
+"name": "대한과학",
+"market": "코스닥"
+},
+"131290": {
+"listed": true,
+"name": "티에스이",
+"market": "코스닥"
+},
+"131370": {
+"listed": true,
+"name": "알서포트",
+"market": "코스닥"
+},
+"131400": {
+"listed": true,
+"name": "이브이첨단소재",
+"market": "코스닥"
+},
+"131760": {
+"listed": true,
+"name": "파인텍",
+"market": "코스닥"
+},
+"131970": {
+"listed": true,
+"name": "두산테스나",
+"market": "코스닥"
+},
+"133750": {
+"listed": true,
+"name": "메가엠디",
+"market": "코스닥"
+},
+"133820": {
+"listed": true,
+"name": "화인베스틸",
+"market": "코스피"
+},
+"134060": {
+"listed": true,
+"name": "이퓨쳐",
+"market": "코스닥"
+},
+"134380": {
+"listed": true,
+"name": "미원화학",
+"market": "코스피"
+},
+"134580": {
+"listed": true,
+"name": "탑코미디어",
+"market": "코스닥"
+},
+"134790": {
+"listed": true,
+"name": "시디즈",
+"market": "코스피"
+},
+"136150": {
+"listed": true,
+"name": "원일티엔아이",
+"market": "코스닥"
+},
+"136410": {
+"listed": true,
+"name": "아셈스",
+"market": "코스닥"
+},
+"136480": {
+"listed": true,
+"name": "하림",
+"market": "코스닥"
+},
+"136490": {
+"listed": true,
+"name": "선진",
+"market": "코스피"
+},
+"136540": {
+"listed": true,
+"name": "윈스테크넷",
+"market": "코스닥"
+},
+"137080": {
+"listed": true,
+"name": "나래나노텍",
+"market": "코스닥"
+},
+"137310": {
+"listed": true,
+"name": "에스디바이오센서",
+"market": "코스피"
+},
+"137400": {
+"listed": true,
+"name": "피엔티",
+"market": "코스닥"
+},
+"137940": {
+"listed": true,
+"name": "넥스트아이",
+"market": "코스닥"
+},
+"137950": {
+"listed": true,
+"name": "제이씨케미칼",
+"market": "코스닥"
+},
+"138040": {
+"listed": true,
+"name": "메리츠금융지주",
+"market": "코스피"
+},
+"138070": {
+"listed": true,
+"name": "신진에스엠",
+"market": "코스닥"
+},
+"138080": {
+"listed": true,
+"name": "오이솔루션",
+"market": "코스닥"
+},
+"138360": {
+"listed": true,
+"name": "앤로보틱스",
+"market": "코스닥"
+},
+"138490": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"138610": {
+"listed": true,
+"name": "나이벡",
+"market": "코스닥"
+},
+"138930": {
+"listed": true,
+"name": "BNK금융지주",
+"market": "코스피"
+},
+"139050": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"139130": {
+"listed": true,
+"name": "iM금융지주",
+"market": "코스피"
+},
+"139480": {
+"listed": true,
+"name": "이마트",
+"market": "코스피"
+},
+"139670": {
+"listed": true,
+"name": "키네마스터",
+"market": "코스닥"
+},
+"139990": {
+"listed": true,
+"name": "아주스틸",
+"market": "코스피"
+},
+"140070": {
+"listed": true,
+"name": "서플러스글로벌",
+"market": "코스닥"
+},
+"140410": {
+"listed": true,
+"name": "메지온",
+"market": "코스닥"
+},
+"140430": {
+"listed": true,
+"name": "카티스",
+"market": "코스닥"
+},
+"140520": {
+"listed": true,
+"name": "대창스틸",
+"market": "코스닥"
+},
+"140670": {
+"listed": true,
+"name": "알에스오토메이션",
+"market": "코스닥"
+},
+"140860": {
+"listed": true,
+"name": "파크시스템스",
+"market": "코스닥"
+},
+"141000": {
+"listed": true,
+"name": "비아트론",
+"market": "코스닥"
+},
+"141080": {
+"listed": true,
+"name": "리가켐바이오",
+"market": "코스닥"
+},
+"142210": {
+"listed": true,
+"name": "유니트론텍",
+"market": "코스닥"
+},
+"142280": {
+"listed": true,
+"name": "녹십자엠에스",
+"market": "코스닥"
+},
+"142760": {
+"listed": true,
+"name": "모아라이프플러스",
+"market": "코스닥"
+},
+"143160": {
+"listed": true,
+"name": "아이디스",
+"market": "코스닥"
+},
+"143210": {
+"listed": true,
+"name": "핸즈코퍼레이션",
+"market": "코스피"
+},
+"143240": {
+"listed": true,
+"name": "사람인",
+"market": "코스닥"
+},
+"144510": {
+"listed": true,
+"name": "지씨셀",
+"market": "코스닥"
+},
+"144960": {
+"listed": true,
+"name": "뉴파워프라즈마",
+"market": "코스닥"
+},
+"145020": {
+"listed": true,
+"name": "휴젤",
+"market": "코스닥"
+},
+"145170": {
+"listed": true,
+"name": "노브랜드",
+"market": "코스닥"
+},
+"145210": {
+"listed": true,
+"name": "다이나믹디자인",
+"market": "코스피"
+},
+"145720": {
+"listed": true,
+"name": "덴티움",
+"market": "코스피"
+},
+"145990": {
+"listed": true,
+"name": "삼양사",
+"market": "코스피"
+},
+"146060": {
+"listed": true,
+"name": "율촌",
+"market": "코스닥"
+},
+"146320": {
+"listed": true,
+"name": "비씨엔씨",
+"market": "코스닥"
+},
+"147760": {
+"listed": true,
+"name": "피엠티",
+"market": "코스닥"
+},
+"147830": {
+"listed": true,
+"name": "제룡산업",
+"market": "코스닥"
+},
+"148150": {
+"listed": true,
+"name": "세경하이테크",
+"market": "코스닥"
+},
+"148250": {
+"listed": true,
+"name": "알엔투테크놀로지",
+"market": "코스닥"
+},
+"148780": {
+"listed": true,
+"name": "비큐AI",
+"market": "코스닥"
+},
+"148930": {
+"listed": true,
+"name": "에이치와이티씨",
+"market": "코스닥"
+},
+"149950": {
+"listed": true,
+"name": "아바텍",
+"market": "코스닥"
+},
+"149980": {
+"listed": true,
+"name": "하이로닉",
+"market": "코스닥"
+},
+"150900": {
+"listed": true,
+"name": "파수AI",
+"market": "코스닥"
+},
+"151860": {
+"listed": true,
+"name": "KG에코솔루션",
+"market": "코스닥"
+},
+"152550": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"153460": {
+"listed": true,
+"name": "네이블",
+"market": "코스닥"
+},
+"153710": {
+"listed": true,
+"name": "옵티팜",
+"market": "코스닥"
+},
+"153890": {
+"listed": true,
+"name": "져스텍",
+"market": "코스닥"
+},
+"154030": {
+"listed": true,
+"name": "아시아종묘",
+"market": "코스닥"
+},
+"154040": {
+"listed": true,
+"name": "다산솔루에타",
+"market": "코스닥"
+},
+"155650": {
+"listed": true,
+"name": "와이엠씨",
+"market": "코스닥"
+},
+"155660": {
+"listed": true,
+"name": "DSR",
+"market": "코스피"
+},
+"156100": {
+"listed": true,
+"name": "엘앤케이바이오",
+"market": "코스닥"
+},
+"158430": {
+"listed": true,
+"name": "아톤",
+"market": "코스닥"
+},
+"159010": {
+"listed": true,
+"name": "아스플로",
+"market": "코스닥"
+},
+"159580": {
+"listed": true,
+"name": "제로투세븐",
+"market": "코스닥"
+},
+"160190": {
+"listed": true,
+"name": "하이젠알앤엠",
+"market": "코스닥"
+},
+"160550": {
+"listed": true,
+"name": "NEW",
+"market": "코스닥"
+},
+"160980": {
+"listed": true,
+"name": "싸이맥스",
+"market": "코스닥"
+},
+"161000": {
+"listed": true,
+"name": "애경케미칼",
+"market": "코스피"
+},
+"161390": {
+"listed": true,
+"name": "한국타이어앤테크놀로지",
+"market": "코스피"
+},
+"161580": {
+"listed": true,
+"name": "필옵틱스",
+"market": "코스닥"
+},
+"161890": {
+"listed": true,
+"name": "한국콜마",
+"market": "코스피"
+},
+"162300": {
+"listed": true,
+"name": "신스틸",
+"market": "코스닥"
+},
+"163280": {
+"listed": true,
+"name": "에어레인",
+"market": "코스닥"
+},
+"163560": {
+"listed": true,
+"name": "동일고무벨트",
+"market": "코스피"
+},
+"163730": {
+"listed": true,
+"name": "핑거",
+"market": "코스닥"
+},
+"166090": {
+"listed": true,
+"name": "하나머티리얼즈",
+"market": "코스닥"
+},
+"166480": {
+"listed": true,
+"name": "코아스템켐온",
+"market": "코스닥"
+},
+"168330": {
+"listed": true,
+"name": "내츄럴엔도텍",
+"market": "코스닥"
+},
+"168360": {
+"listed": true,
+"name": "펨트론",
+"market": "코스닥"
+},
+"169330": {
+"listed": true,
+"name": "엠브레인",
+"market": "코스닥"
+},
+"170030": {
+"listed": true,
+"name": "현대공업",
+"market": "코스닥"
+},
+"170790": {
+"listed": true,
+"name": "파이오링크",
+"market": "코스닥"
+},
+"170900": {
+"listed": true,
+"name": "동아에스티",
+"market": "코스피"
+},
+"170920": {
+"listed": true,
+"name": "엘티씨",
+"market": "코스닥"
+},
+"171010": {
+"listed": true,
+"name": "램테크놀러지",
+"market": "코스닥"
+},
+"171090": {
+"listed": true,
+"name": "선익시스템",
+"market": "코스닥"
+},
+"171120": {
+"listed": true,
+"name": "라이온켐텍",
+"market": "코스닥"
+},
+"172670": {
+"listed": true,
+"name": "에이엘티",
+"market": "코스닥"
+},
+"173130": {
+"listed": true,
+"name": "오파스넷",
+"market": "코스닥"
+},
+"173940": {
+"listed": true,
+"name": "에프엔씨엔터",
+"market": "코스닥"
+},
+"174900": {
+"listed": true,
+"name": "앱클론",
+"market": "코스닥"
+},
+"175140": {
+"listed": true,
+"name": "아고스",
+"market": "코스닥"
+},
+"175250": {
+"listed": true,
+"name": "아이큐어",
+"market": "코스닥"
+},
+"175330": {
+"listed": true,
+"name": "JB금융지주",
+"market": "코스피"
+},
+"176750": {
+"listed": true,
+"name": "듀켐바이오",
+"market": "코스닥"
+},
+"177350": {
+"listed": true,
+"name": "베셀",
+"market": "코스닥"
+},
+"177830": {
+"listed": true,
+"name": "파버나인",
+"market": "코스닥"
+},
+"177900": {
+"listed": true,
+"name": "쓰리에이로직스",
+"market": "코스닥"
+},
+"178320": {
+"listed": true,
+"name": "서진시스템",
+"market": "코스닥"
+},
+"178780": {
+"listed": true,
+"name": "일월지엠엘",
+"market": "코스닥"
+},
+"178920": {
+"listed": true,
+"name": "PI첨단소재",
+"market": "코스피"
+},
+"179290": {
+"listed": true,
+"name": "엠아이텍",
+"market": "코스닥"
+},
+"179530": {
+"listed": true,
+"name": "애드바이오텍",
+"market": "코스닥"
+},
+"179900": {
+"listed": true,
+"name": "유티아이",
+"market": "코스닥"
+},
+"180400": {
+"listed": true,
+"name": "DXVX",
+"market": "코스닥"
+},
+"180640": {
+"listed": true,
+"name": "한진칼",
+"market": "코스피"
+},
+"181710": {
+"listed": true,
+"name": "NHN",
+"market": "코스피"
+},
+"182360": {
+"listed": true,
+"name": "큐브엔터",
+"market": "코스닥"
+},
+"182400": {
+"listed": true,
+"name": "엔케이젠바이오텍코리아",
+"market": "코스닥"
+},
+"183190": {
+"listed": true,
+"name": "아세아시멘트",
+"market": "코스피"
+},
+"183300": {
+"listed": true,
+"name": "코미코",
+"market": "코스닥"
+},
+"183490": {
+"listed": true,
+"name": "엔지켐생명과학",
+"market": "코스닥"
+},
+"184230": {
+"listed": true,
+"name": "SGA솔루션즈",
+"market": "코스닥"
+},
+"185490": {
+"listed": true,
+"name": "아이진",
+"market": "코스닥"
+},
+"185750": {
+"listed": true,
+"name": "종근당",
+"market": "코스피"
+},
+"186230": {
+"listed": true,
+"name": "그린플러스",
+"market": "코스닥"
+},
+"187220": {
+"listed": true,
+"name": "디티앤씨",
+"market": "코스닥"
+},
+"187270": {
+"listed": true,
+"name": "신화콘텍",
+"market": "코스닥"
+},
+"187420": {
+"listed": true,
+"name": "HLB제넥스",
+"market": "코스닥"
+},
+"187660": {
+"listed": true,
+"name": "페니트리움바이오",
+"market": "코스닥"
+},
+"187790": {
+"listed": true,
+"name": "나노",
+"market": "코스닥"
+},
+"187870": {
+"listed": true,
+"name": "디바이스",
+"market": "코스닥"
+},
+"188040": {
+"listed": true,
+"name": "바이오포트",
+"market": "코스닥"
+},
+"188260": {
+"listed": true,
+"name": "세니젠",
+"market": "코스닥"
+},
+"189300": {
+"listed": true,
+"name": "인텔리안테크",
+"market": "코스닥"
+},
+"189330": {
+"listed": true,
+"name": "씨이랩",
+"market": "코스닥"
+},
+"189690": {
+"listed": true,
+"name": "포시에스",
+"market": "코스닥"
+},
+"189860": {
+"listed": true,
+"name": "서전기전",
+"market": "코스닥"
+},
+"189980": {
+"listed": true,
+"name": "흥국에프엔비",
+"market": "코스닥"
+},
+"190510": {
+"listed": true,
+"name": "나무가",
+"market": "코스닥"
+},
+"190650": {
+"listed": true,
+"name": "코리아에셋투자증권",
+"market": "코스닥"
+},
+"191410": {
+"listed": true,
+"name": "육일씨엔에쓰",
+"market": "코스닥"
+},
+"191420": {
+"listed": true,
+"name": "테고사이언스",
+"market": "코스닥"
+},
+"192080": {
+"listed": true,
+"name": "더블유게임즈",
+"market": "코스피"
+},
+"192250": {
+"listed": true,
+"name": "케이사인",
+"market": "코스닥"
+},
+"192390": {
+"listed": true,
+"name": "윈하이텍",
+"market": "코스닥"
+},
+"192400": {
+"listed": true,
+"name": "쿠쿠홀딩스",
+"market": "코스피"
+},
+"192410": {
+"listed": true,
+"name": "오늘이엔엠",
+"market": "코스닥"
+},
+"192440": {
+"listed": true,
+"name": "슈피겐코리아",
+"market": "코스닥"
+},
+"192650": {
+"listed": true,
+"name": "드림텍",
+"market": "코스피"
+},
+"192820": {
+"listed": true,
+"name": "코스맥스",
+"market": "코스피"
+},
+"193250": {
+"listed": true,
+"name": "링크드",
+"market": "코스닥"
+},
+"194370": {
+"listed": true,
+"name": "제이에스코퍼레이션",
+"market": "코스피"
+},
+"194480": {
+"listed": true,
+"name": "데브시스터즈",
+"market": "코스닥"
+},
+"194700": {
+"listed": true,
+"name": "노바렉스",
+"market": "코스닥"
+},
+"195500": {
+"listed": true,
+"name": "마니커에프앤지",
+"market": "코스닥"
+},
+"195870": {
+"listed": true,
+"name": "해성디에스",
+"market": "코스피"
+},
+"195940": {
+"listed": true,
+"name": "HK이노엔",
+"market": "코스닥"
+},
+"195990": {
+"listed": true,
+"name": "루트K",
+"market": "코스닥"
+},
+"196170": {
+"listed": true,
+"name": "알테오젠",
+"market": "코스닥"
+},
+"196300": {
+"listed": true,
+"name": "HLB펩",
+"market": "코스닥"
+},
+"196450": {
+"listed": true,
+"name": "코아시아씨엠",
+"market": "코스닥"
+},
+"196490": {
+"listed": true,
+"name": "디에이테크놀로지",
+"market": "코스닥"
+},
+"196700": {
+"listed": true,
+"name": "웹스",
+"market": "코스닥"
+},
+"197140": {
+"listed": true,
+"name": "디지캡",
+"market": "코스닥"
+},
+"198080": {
+"listed": true,
+"name": "캐프",
+"market": "코스닥"
+},
+"198440": {
+"listed": true,
+"name": "강동씨앤엘",
+"market": "코스닥"
+},
+"198940": {
+"listed": true,
+"name": "한주라이트메탈",
+"market": "코스닥"
+},
+"199430": {
+"listed": true,
+"name": "케이엔알시스템",
+"market": "코스닥"
+},
+"199480": {
+"listed": true,
+"name": "뱅크웨어글로벌",
+"market": "코스닥"
+},
+"199550": {
+"listed": true,
+"name": "레이저옵텍",
+"market": "코스닥"
+},
+"199730": {
+"listed": true,
+"name": "바이오인프라",
+"market": "코스닥"
+},
+"199800": {
+"listed": true,
+"name": "툴젠",
+"market": "코스닥"
+},
+"199820": {
+"listed": true,
+"name": "제일일렉트릭",
+"market": "코스닥"
+},
+"200130": {
+"listed": true,
+"name": "콜마비앤에이치",
+"market": "코스닥"
+},
+"200230": {
+"listed": true,
+"name": "텔콘RF제약",
+"market": "코스닥"
+},
+"200350": {
+"listed": true,
+"name": "아티스트스튜디오",
+"market": "코스닥"
+},
+"200470": {
+"listed": true,
+"name": "에이팩트",
+"market": "코스닥"
+},
+"200670": {
+"listed": true,
+"name": "휴메딕스",
+"market": "코스닥"
+},
+"200710": {
+"listed": true,
+"name": "에이디테크놀로지",
+"market": "코스닥"
+},
+"200780": {
+"listed": true,
+"name": "비씨월드제약",
+"market": "코스닥"
+},
+"200880": {
+"listed": true,
+"name": "서연이화",
+"market": "코스피"
+},
+"201490": {
+"listed": true,
+"name": "미투온",
+"market": "코스닥"
+},
+"203400": {
+"listed": true,
+"name": "에이비온",
+"market": "코스닥"
+},
+"203450": {
+"listed": true,
+"name": "유니온바이오메트릭스",
+"market": "코스닥"
+},
+"203650": {
+"listed": true,
+"name": "드림시큐리티",
+"market": "코스닥"
+},
+"203690": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"204020": {
+"listed": true,
+"name": "그리티",
+"market": "코스닥"
+},
+"204270": {
+"listed": true,
+"name": "제이앤티씨",
+"market": "코스닥"
+},
+"204320": {
+"listed": true,
+"name": "HL만도",
+"market": "코스피"
+},
+"204610": {
+"listed": true,
+"name": "티쓰리",
+"market": "코스닥"
+},
+"204620": {
+"listed": true,
+"name": "글로벌텍스프리",
+"market": "코스닥"
+},
+"204630": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"204840": {
+"listed": true,
+"name": "지엘팜텍",
+"market": "코스닥"
+},
+"205100": {
+"listed": true,
+"name": "엑셈",
+"market": "코스닥"
+},
+"205470": {
+"listed": true,
+"name": "휴마시스",
+"market": "코스닥"
+},
+"205500": {
+"listed": true,
+"name": "넥써쓰",
+"market": "코스닥"
+},
+"206400": {
+"listed": true,
+"name": "베노티앤알",
+"market": "코스닥"
+},
+"206560": {
+"listed": true,
+"name": "덱스터",
+"market": "코스닥"
+},
+"206640": {
+"listed": true,
+"name": "바디텍메드",
+"market": "코스닥"
+},
+"206650": {
+"listed": true,
+"name": "유바이오로직스",
+"market": "코스닥"
+},
+"207760": {
+"listed": true,
+"name": "미스터블루",
+"market": "코스닥"
+},
+"207940": {
+"listed": true,
+"name": "삼성바이오로직스",
+"market": "코스피"
+},
+"208140": {
+"listed": true,
+"name": "정다운",
+"market": "코스닥"
+},
+"208350": {
+"listed": true,
+"name": "지란지교시큐리티",
+"market": "코스닥"
+},
+"208370": {
+"listed": true,
+"name": "셀바스헬스케어",
+"market": "코스닥"
+},
+"208640": {
+"listed": true,
+"name": "썸에이지",
+"market": "코스닥"
+},
+"208710": {
+"listed": true,
+"name": "포톤",
+"market": "코스닥"
+},
+"208860": {
+"listed": true,
+"name": "다산디엠씨",
+"market": "코스닥"
+},
+"209640": {
+"listed": true,
+"name": "와이제이링크",
+"market": "코스닥"
+},
+"210120": {
+"listed": true,
+"name": "캔버스엔",
+"market": "코스닥"
+},
+"210540": {
+"listed": true,
+"name": "디와이파워",
+"market": "코스피"
+},
+"210980": {
+"listed": true,
+"name": "SK디앤디",
+"market": "코스피"
+},
+"211050": {
+"listed": true,
+"name": "인카금융서비스",
+"market": "코스닥"
+},
+"211270": {
+"listed": true,
+"name": "AP위성",
+"market": "코스닥"
+},
+"212560": {
+"listed": true,
+"name": "네오오토",
+"market": "코스닥"
+},
+"212710": {
+"listed": true,
+"name": "아이에스티이",
+"market": "코스닥"
+},
+"213420": {
+"listed": true,
+"name": "덕산네오룩스",
+"market": "코스닥"
+},
+"213500": {
+"listed": true,
+"name": "한솔제지",
+"market": "코스피"
+},
+"214150": {
+"listed": true,
+"name": "클래시스",
+"market": "코스닥"
+},
+"214180": {
+"listed": true,
+"name": "헥토이노베이션",
+"market": "코스닥"
+},
+"214260": {
+"listed": true,
+"name": "라파스",
+"market": "코스닥"
+},
+"214270": {
+"listed": true,
+"name": "FSN",
+"market": "코스닥"
+},
+"214320": {
+"listed": true,
+"name": "이노션",
+"market": "코스피"
+},
+"214330": {
+"listed": true,
+"name": "금호에이치티",
+"market": "코스피"
+},
+"214370": {
+"listed": true,
+"name": "케어젠",
+"market": "코스닥"
+},
+"214390": {
+"listed": true,
+"name": "경보제약",
+"market": "코스피"
+},
+"214420": {
+"listed": true,
+"name": "토니모리",
+"market": "코스피"
+},
+"214430": {
+"listed": true,
+"name": "아이쓰리시스템",
+"market": "코스닥"
+},
+"214450": {
+"listed": true,
+"name": "파마리서치",
+"market": "코스닥"
+},
+"214610": {
+"listed": true,
+"name": "롤링스톤",
+"market": "코스닥"
+},
+"214680": {
+"listed": true,
+"name": "디알텍",
+"market": "코스닥"
+},
+"215000": {
+"listed": true,
+"name": "골프존",
+"market": "코스닥"
+},
+"215090": {
+"listed": true,
+"name": "솔디펜스",
+"market": "코스닥"
+},
+"215100": {
+"listed": true,
+"name": "로보로보",
+"market": "코스닥"
+},
+"215200": {
+"listed": true,
+"name": "메가스터디교육",
+"market": "코스닥"
+},
+"215360": {
+"listed": true,
+"name": "우리산업",
+"market": "코스닥"
+},
+"215480": {
+"listed": true,
+"name": "토박스코리아",
+"market": "코스닥"
+},
+"215600": {
+"listed": true,
+"name": "신라젠",
+"market": "코스닥"
+},
+"215790": {
+"listed": true,
+"name": "이노인스트루먼트",
+"market": "코스닥"
+},
+"216050": {
+"listed": true,
+"name": "인크로스",
+"market": "코스닥"
+},
+"216080": {
+"listed": true,
+"name": "제테마",
+"market": "코스닥"
+},
+"217190": {
+"listed": true,
+"name": "제너셈",
+"market": "코스닥"
+},
+"217270": {
+"listed": true,
+"name": "넵튠",
+"market": "코스닥"
+},
+"217330": {
+"listed": true,
+"name": "싸이토젠",
+"market": "코스닥"
+},
+"217480": {
+"listed": true,
+"name": "에스디생명공학",
+"market": "코스닥"
+},
+"217500": {
+"listed": true,
+"name": "러셀",
+"market": "코스닥"
+},
+"217590": {
+"listed": true,
+"name": "티엠씨",
+"market": "코스피"
+},
+"217620": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"217730": {
+"listed": true,
+"name": "강스템바이오텍",
+"market": "코스닥"
+},
+"217820": {
+"listed": true,
+"name": "원익피앤이",
+"market": "코스닥"
+},
+"218150": {
+"listed": true,
+"name": "미래생명자원",
+"market": "코스닥"
+},
+"218410": {
+"listed": true,
+"name": "RFHIC",
+"market": "코스닥"
+},
+"219130": {
+"listed": true,
+"name": "타이거일렉",
+"market": "코스닥"
+},
+"219420": {
+"listed": true,
+"name": "링크제니시스",
+"market": "코스닥"
+},
+"219550": {
+"listed": true,
+"name": "디와이디",
+"market": "코스닥"
+},
+"219750": {
+"listed": true,
+"name": "한국비티비",
+"market": "코스닥"
+},
+"220100": {
+"listed": true,
+"name": "퓨쳐켐",
+"market": "코스닥"
+},
+"220180": {
+"listed": true,
+"name": "폴라리스AI핸디",
+"market": "코스닥"
+},
+"220260": {
+"listed": true,
+"name": "켐트로스",
+"market": "코스닥"
+},
+"221800": {
+"listed": true,
+"name": "지구홀딩스",
+"market": "코스닥"
+},
+"221840": {
+"listed": true,
+"name": "하이즈항공",
+"market": "코스닥"
+},
+"221980": {
+"listed": true,
+"name": "케이디켐",
+"market": "코스닥"
+},
+"222040": {
+"listed": true,
+"name": "코스맥스엔비티",
+"market": "코스닥"
+},
+"222080": {
+"listed": true,
+"name": "SFA넥셀",
+"market": "코스닥"
+},
+"222110": {
+"listed": true,
+"name": "팬젠",
+"market": "코스닥"
+},
+"222160": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"222420": {
+"listed": true,
+"name": "쎄노텍",
+"market": "코스닥"
+},
+"222800": {
+"listed": true,
+"name": "심텍",
+"market": "코스닥"
+},
+"222810": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"222980": {
+"listed": true,
+"name": "한국맥널티",
+"market": "코스닥"
+},
+"223250": {
+"listed": true,
+"name": "드림씨아이에스",
+"market": "코스닥"
+},
+"223310": {
+"listed": true,
+"name": "사토시홀딩스",
+"market": "코스닥"
+},
+"224060": {
+"listed": true,
+"name": "더코디",
+"market": "코스닥"
+},
+"224110": {
+"listed": true,
+"name": "에이텍모빌리티",
+"market": "코스닥"
+},
+"225190": {
+"listed": true,
+"name": "LK삼양",
+"market": "코스닥"
+},
+"225220": {
+"listed": true,
+"name": "제놀루션",
+"market": "코스닥"
+},
+"225430": {
+"listed": true,
+"name": "케이엠제약",
+"market": "코스닥"
+},
+"225530": {
+"listed": true,
+"name": "HC보광산업",
+"market": "코스닥"
+},
+"225570": {
+"listed": true,
+"name": "넥슨게임즈",
+"market": "코스닥"
+},
+"225590": {
+"listed": true,
+"name": "패션플랫폼",
+"market": "코스닥"
+},
+"226320": {
+"listed": true,
+"name": "잇츠한불",
+"market": "코스피"
+},
+"226330": {
+"listed": true,
+"name": "신테카바이오",
+"market": "코스닥"
+},
+"226340": {
+"listed": true,
+"name": "본느",
+"market": "코스닥"
+},
+"226400": {
+"listed": true,
+"name": "오스테오닉",
+"market": "코스닥"
+},
+"226590": {
+"listed": true,
+"name": "엠디바이스",
+"market": "코스닥"
+},
+"226950": {
+"listed": true,
+"name": "올릭스",
+"market": "코스닥"
+},
+"227100": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"227840": {
+"listed": true,
+"name": "현대코퍼레이션홀딩스",
+"market": "코스피"
+},
+"227950": {
+"listed": true,
+"name": "엔투텍",
+"market": "코스닥"
+},
+"228340": {
+"listed": true,
+"name": "동양파일",
+"market": "코스닥"
+},
+"228670": {
+"listed": true,
+"name": "레이",
+"market": "코스닥"
+},
+"228760": {
+"listed": true,
+"name": "지노믹트리",
+"market": "코스닥"
+},
+"228850": {
+"listed": true,
+"name": "레이언스",
+"market": "코스닥"
+},
+"229000": {
+"listed": true,
+"name": "젠큐릭스",
+"market": "코스닥"
+},
+"229640": {
+"listed": true,
+"name": "LS에코에너지",
+"market": "코스피"
+},
+"230240": {
+"listed": true,
+"name": "에치에프알",
+"market": "코스닥"
+},
+"230360": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"230980": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"232140": {
+"listed": true,
+"name": "와이씨",
+"market": "코스닥"
+},
+"232680": {
+"listed": true,
+"name": "라온로보틱스",
+"market": "코스닥"
+},
+"232830": {
+"listed": true,
+"name": "아이티센피엔에스",
+"market": "코스닥"
+},
+"234030": {
+"listed": true,
+"name": "싸이닉솔루션",
+"market": "코스닥"
+},
+"234080": {
+"listed": true,
+"name": "JW생명과학",
+"market": "코스피"
+},
+"234100": {
+"listed": true,
+"name": "폴라리스세원",
+"market": "코스닥"
+},
+"234300": {
+"listed": true,
+"name": "에스트래픽",
+"market": "코스닥"
+},
+"234340": {
+"listed": true,
+"name": "헥토파이낸셜",
+"market": "코스닥"
+},
+"234690": {
+"listed": true,
+"name": "녹십자웰빙",
+"market": "코스닥"
+},
+"234920": {
+"listed": true,
+"name": "자이글",
+"market": "코스닥"
+},
+"235980": {
+"listed": true,
+"name": "메드팩토",
+"market": "코스닥"
+},
+"236200": {
+"listed": true,
+"name": "슈프리마",
+"market": "코스닥"
+},
+"236810": {
+"listed": true,
+"name": "엔비티",
+"market": "코스닥"
+},
+"237690": {
+"listed": true,
+"name": "에스티팜",
+"market": "코스닥"
+},
+"237750": {
+"listed": true,
+"name": "피앤씨테크",
+"market": "코스닥"
+},
+"237820": {
+"listed": true,
+"name": "플레이디",
+"market": "코스닥"
+},
+"237880": {
+"listed": true,
+"name": "클리오",
+"market": "코스닥"
+},
+"238090": {
+"listed": true,
+"name": "앤디포스",
+"market": "코스닥"
+},
+"238120": {
+"listed": true,
+"name": "얼라인드",
+"market": "코스닥"
+},
+"238200": {
+"listed": true,
+"name": "비피도",
+"market": "코스닥"
+},
+"238490": {
+"listed": true,
+"name": "힘스",
+"market": "코스닥"
+},
+"239340": {
+"listed": true,
+"name": "이스트에이드",
+"market": "코스닥"
+},
+"239610": {
+"listed": true,
+"name": "에이치엘사이언스",
+"market": "코스닥"
+},
+"239890": {
+"listed": true,
+"name": "피엔에이치테크",
+"market": "코스닥"
+},
+"240550": {
+"listed": true,
+"name": "동방메디컬",
+"market": "코스닥"
+},
+"240600": {
+"listed": true,
+"name": "유진테크놀로지",
+"market": "코스닥"
+},
+"240810": {
+"listed": true,
+"name": "원익IPS",
+"market": "코스닥"
+},
+"241520": {
+"listed": true,
+"name": "DSC인베스트먼트",
+"market": "코스닥"
+},
+"241560": {
+"listed": true,
+"name": "두산밥캣",
+"market": "코스피"
+},
+"241590": {
+"listed": true,
+"name": "화승엔터프라이즈",
+"market": "코스피"
+},
+"241690": {
+"listed": true,
+"name": "유니테크노",
+"market": "코스닥"
+},
+"241710": {
+"listed": true,
+"name": "코스메카코리아",
+"market": "코스닥"
+},
+"241770": {
+"listed": true,
+"name": "메카로",
+"market": "코스닥"
+},
+"241790": {
+"listed": true,
+"name": "티이엠씨씨엔에스",
+"market": "코스닥"
+},
+"241820": {
+"listed": true,
+"name": "피씨엘",
+"market": "코스닥"
+},
+"241840": {
+"listed": true,
+"name": "에이스토리",
+"market": "코스닥"
+},
+"242040": {
+"listed": true,
+"name": "나무에이엑스",
+"market": "코스닥"
+},
+"243070": {
+"listed": true,
+"name": "휴온스",
+"market": "코스닥"
+},
+"243840": {
+"listed": true,
+"name": "신흥에스이씨",
+"market": "코스닥"
+},
+"244460": {
+"listed": true,
+"name": "올리패스",
+"market": "코스닥"
+},
+"244920": {
+"listed": true,
+"name": "에이플러스에셋",
+"market": "코스피"
+},
+"245620": {
+"listed": true,
+"name": "EDGC",
+"market": "코스닥"
+},
+"246250": {
+"listed": true,
+"name": "에스엘에스바이오",
+"market": "코스닥"
+},
+"246690": {
+"listed": true,
+"name": "TS인베스트먼트",
+"market": "코스닥"
+},
+"246710": {
+"listed": true,
+"name": "티앤알바이오팹",
+"market": "코스닥"
+},
+"246720": {
+"listed": true,
+"name": "아스타",
+"market": "코스닥"
+},
+"246960": {
+"listed": true,
+"name": "SCL사이언스",
+"market": "코스닥"
+},
+"247540": {
+"listed": true,
+"name": "에코프로비엠",
+"market": "코스닥"
+},
+"247660": {
+"listed": true,
+"name": "나노씨엠에스",
+"market": "코스닥"
+},
+"248070": {
+"listed": true,
+"name": "솔루엠",
+"market": "코스피"
+},
+"248170": {
+"listed": true,
+"name": "샘표식품",
+"market": "코스피"
+},
+"249420": {
+"listed": true,
+"name": "일동제약",
+"market": "코스피"
+},
+"250000": {
+"listed": true,
+"name": "보라티알",
+"market": "코스닥"
+},
+"250060": {
+"listed": true,
+"name": "모비스",
+"market": "코스닥"
+},
+"250930": {
+"listed": true,
+"name": "예선테크",
+"market": "코스닥"
+},
+"251120": {
+"listed": true,
+"name": "바이오에프디엔씨",
+"market": "코스닥"
+},
+"251270": {
+"listed": true,
+"name": "넷마블",
+"market": "코스피"
+},
+"251370": {
+"listed": true,
+"name": "와이엠티",
+"market": "코스닥"
+},
+"251630": {
+"listed": true,
+"name": "브이원텍",
+"market": "코스닥"
+},
+"251970": {
+"listed": true,
+"name": "펌텍코리아",
+"market": "코스닥"
+},
+"252500": {
+"listed": true,
+"name": "세화피앤씨",
+"market": "코스닥"
+},
+"252990": {
+"listed": true,
+"name": "샘씨엔에스",
+"market": "코스닥"
+},
+"253450": {
+"listed": true,
+"name": "스튜디오드래곤",
+"market": "코스닥"
+},
+"253590": {
+"listed": true,
+"name": "네오셈",
+"market": "코스닥"
+},
+"253840": {
+"listed": true,
+"name": "수젠텍",
+"market": "코스닥"
+},
+"254120": {
+"listed": true,
+"name": "자비스",
+"market": "코스닥"
+},
+"254490": {
+"listed": true,
+"name": "미래반도체",
+"market": "코스닥"
+},
+"255220": {
+"listed": true,
+"name": "SG",
+"market": "코스닥"
+},
+"255440": {
+"listed": true,
+"name": "야스",
+"market": "코스닥"
+},
+"256150": {
+"listed": true,
+"name": "한독크린텍",
+"market": "코스닥"
+},
+"256630": {
+"listed": true,
+"name": "포인트엔지니어링",
+"market": "코스닥"
+},
+"256840": {
+"listed": true,
+"name": "한국비엔씨",
+"market": "코스닥"
+},
+"256940": {
+"listed": true,
+"name": "킵스파마",
+"market": "코스닥"
+},
+"257370": {
+"listed": true,
+"name": "피엔티엠에스",
+"market": "코스닥"
+},
+"257720": {
+"listed": true,
+"name": "실리콘투",
+"market": "코스닥"
+},
+"258610": {
+"listed": true,
+"name": "케일럼",
+"market": "코스닥"
+},
+"258790": {
+"listed": true,
+"name": "소프트캠프",
+"market": "코스닥"
+},
+"258830": {
+"listed": true,
+"name": "세종메디칼",
+"market": "코스닥"
+},
+"259630": {
+"listed": true,
+"name": "엠플러스",
+"market": "코스닥"
+},
+"259960": {
+"listed": true,
+"name": "크래프톤",
+"market": "코스피"
+},
+"260660": {
+"listed": true,
+"name": "알리코제약",
+"market": "코스닥"
+},
+"260930": {
+"listed": true,
+"name": "씨티케이",
+"market": "코스닥"
+},
+"260970": {
+"listed": true,
+"name": "에스앤디",
+"market": "코스닥"
+},
+"261200": {
+"listed": true,
+"name": "덴티스",
+"market": "코스닥"
+},
+"261520": {
+"listed": true,
+"name": "이지스",
+"market": "코스닥"
+},
+"261780": {
+"listed": true,
+"name": "아리바이오랩",
+"market": "코스닥"
+},
+"262260": {
+"listed": true,
+"name": "에이프로",
+"market": "코스닥"
+},
+"262840": {
+"listed": true,
+"name": "아이퀘스트",
+"market": "코스닥"
+},
+"263020": {
+"listed": true,
+"name": "디케이앤디",
+"market": "코스닥"
+},
+"263050": {
+"listed": true,
+"name": "유틸렉스",
+"market": "코스닥"
+},
+"263600": {
+"listed": true,
+"name": "덕우전자",
+"market": "코스닥"
+},
+"263690": {
+"listed": true,
+"name": "디알젬",
+"market": "코스닥"
+},
+"263700": {
+"listed": true,
+"name": "케어랩스",
+"market": "코스닥"
+},
+"263720": {
+"listed": true,
+"name": "디앤씨미디어",
+"market": "코스닥"
+},
+"263750": {
+"listed": true,
+"name": "펄어비스",
+"market": "코스닥"
+},
+"263770": {
+"listed": true,
+"name": "유에스티",
+"market": "코스닥"
+},
+"263800": {
+"listed": true,
+"name": "데이타솔루션",
+"market": "코스닥"
+},
+"263810": {
+"listed": true,
+"name": "상신전자",
+"market": "코스닥"
+},
+"263860": {
+"listed": true,
+"name": "지니언스",
+"market": "코스닥"
+},
+"263920": {
+"listed": true,
+"name": "휴엠앤씨",
+"market": "코스닥"
+},
+"264450": {
+"listed": true,
+"name": "유비쿼스",
+"market": "코스닥"
+},
+"264660": {
+"listed": true,
+"name": "씨앤지하이테크",
+"market": "코스닥"
+},
+"264850": {
+"listed": true,
+"name": "이랜시스",
+"market": "코스닥"
+},
+"264900": {
+"listed": true,
+"name": "크라운제과",
+"market": "코스피"
+},
+"265520": {
+"listed": true,
+"name": "AP시스템",
+"market": "코스닥"
+},
+"265560": {
+"listed": true,
+"name": "영화테크",
+"market": "코스닥"
+},
+"265740": {
+"listed": true,
+"name": "엔에프씨",
+"market": "코스닥"
+},
+"267250": {
+"listed": true,
+"name": "HD현대",
+"market": "코스피"
+},
+"267260": {
+"listed": true,
+"name": "HD현대일렉트릭",
+"market": "코스피"
+},
+"267270": {
+"listed": true,
+"name": "HD건설기계",
+"market": "코스피"
+},
+"267290": {
+"listed": true,
+"name": "경동도시가스",
+"market": "코스피"
+},
+"267320": {
+"listed": true,
+"name": "나인테크",
+"market": "코스닥"
+},
+"267790": {
+"listed": true,
+"name": "배럴",
+"market": "코스닥"
+},
+"267850": {
+"listed": true,
+"name": "아시아나IDT",
+"market": "코스피"
+},
+"267980": {
+"listed": true,
+"name": "매일유업",
+"market": "코스닥"
+},
+"268280": {
+"listed": true,
+"name": "미원에스씨",
+"market": "코스피"
+},
+"269620": {
+"listed": true,
+"name": "시스웍",
+"market": "코스닥"
+},
+"270520": {
+"listed": true,
+"name": "앱튼",
+"market": "코스닥"
+},
+"270660": {
+"listed": true,
+"name": "에브리봇",
+"market": "코스닥"
+},
+"270870": {
+"listed": true,
+"name": "뉴트리",
+"market": "코스닥"
+},
+"271560": {
+"listed": true,
+"name": "오리온",
+"market": "코스피"
+},
+"271830": {
+"listed": true,
+"name": "팸텍",
+"market": "코스닥"
+},
+"271940": {
+"listed": true,
+"name": "일진하이솔루스",
+"market": "코스피"
+},
+"271980": {
+"listed": true,
+"name": "제일약품",
+"market": "코스피"
+},
+"272110": {
+"listed": true,
+"name": "케이엔제이",
+"market": "코스닥"
+},
+"272210": {
+"listed": true,
+"name": "한화시스템",
+"market": "코스피"
+},
+"272290": {
+"listed": true,
+"name": "이녹스첨단소재",
+"market": "코스닥"
+},
+"272450": {
+"listed": true,
+"name": "진에어",
+"market": "코스피"
+},
+"272550": {
+"listed": true,
+"name": "삼양패키징",
+"market": "코스피"
+},
+"273060": {
+"listed": true,
+"name": "와이즈버즈",
+"market": "코스닥"
+},
+"273640": {
+"listed": true,
+"name": "와이엠텍",
+"market": "코스닥"
+},
+"274090": {
+"listed": true,
+"name": "켄코아에어로스페이스",
+"market": "코스닥"
+},
+"274400": {
+"listed": true,
+"name": "이노시뮬레이션",
+"market": "코스닥"
+},
+"275630": {
+"listed": true,
+"name": "에스에스알",
+"market": "코스닥"
+},
+"276040": {
+"listed": true,
+"name": "스코넥",
+"market": "코스닥"
+},
+"276730": {
+"listed": true,
+"name": "한울앤제주",
+"market": "코스닥"
+},
+"277070": {
+"listed": true,
+"name": "린드먼아시아",
+"market": "코스닥"
+},
+"277410": {
+"listed": true,
+"name": "인산가",
+"market": "코스닥"
+},
+"277810": {
+"listed": true,
+"name": "레인보우로보틱스",
+"market": "코스닥"
+},
+"277880": {
+"listed": true,
+"name": "티에스아이",
+"market": "코스닥"
+},
+"278280": {
+"listed": true,
+"name": "천보",
+"market": "코스닥"
+},
+"278470": {
+"listed": true,
+"name": "에이피알",
+"market": "코스피"
+},
+"278650": {
+"listed": true,
+"name": "HLB바이오스텝",
+"market": "코스닥"
+},
+"279570": {
+"listed": true,
+"name": "케이뱅크",
+"market": "코스피"
+},
+"279600": {
+"listed": true,
+"name": "미디어젠",
+"market": "코스닥"
+},
+"280360": {
+"listed": true,
+"name": "롯데웰푸드",
+"market": "코스피"
+},
+"281740": {
+"listed": true,
+"name": "레이크머티리얼즈",
+"market": "코스닥"
+},
+"281820": {
+"listed": true,
+"name": "케이씨텍",
+"market": "코스피"
+},
+"282330": {
+"listed": true,
+"name": "BGF리테일",
+"market": "코스피"
+},
+"282720": {
+"listed": true,
+"name": "금양그린파워",
+"market": "코스닥"
+},
+"282880": {
+"listed": true,
+"name": "코윈테크",
+"market": "코스닥"
+},
+"284620": {
+"listed": true,
+"name": "카이노스메드",
+"market": "코스닥"
+},
+"284740": {
+"listed": true,
+"name": "쿠쿠홈시스",
+"market": "코스피"
+},
+"285130": {
+"listed": true,
+"name": "SK케미칼",
+"market": "코스피"
+},
+"28513K": {
+"listed": true,
+"name": "SK케미칼우",
+"market": "코스피"
+},
+"285490": {
+"listed": true,
+"name": "노바텍",
+"market": "코스닥"
+},
+"285800": {
+"listed": true,
+"name": "진영",
+"market": "코스닥"
+},
+"286750": {
+"listed": true,
+"name": "나노실리칸첨단소재",
+"market": "코스닥"
+},
+"286940": {
+"listed": true,
+"name": "롯데이노베이트",
+"market": "코스피"
+},
+"287840": {
+"listed": true,
+"name": "인투셀",
+"market": "코스닥"
+},
+"288180": {
+"listed": true,
+"name": "케이피항공산업",
+"market": "코스닥"
+},
+"288330": {
+"listed": true,
+"name": "파라택시스코리아",
+"market": "코스닥"
+},
+"288620": {
+"listed": true,
+"name": "에스프리즘",
+"market": "코스닥"
+},
+"288980": {
+"listed": true,
+"name": "모아데이타",
+"market": "코스닥"
+},
+"289010": {
+"listed": true,
+"name": "아이스크림에듀",
+"market": "코스닥"
+},
+"289080": {
+"listed": true,
+"name": "SV인베스트먼트",
+"market": "코스닥"
+},
+"289220": {
+"listed": true,
+"name": "자이언트스텝",
+"market": "코스닥"
+},
+"289930": {
+"listed": true,
+"name": "웨이비스",
+"market": "코스닥"
+},
+"290090": {
+"listed": true,
+"name": "트윔",
+"market": "코스닥"
+},
+"290120": {
+"listed": true,
+"name": "DH오토리드",
+"market": "코스닥"
+},
+"290270": {
+"listed": true,
+"name": "휴네시온",
+"market": "코스닥"
+},
+"290520": {
+"listed": true,
+"name": "신도기연",
+"market": "코스닥"
+},
+"290550": {
+"listed": true,
+"name": "디케이티",
+"market": "코스닥"
+},
+"290560": {
+"listed": true,
+"name": "파라택시스이더리움",
+"market": "코스닥"
+},
+"290650": {
+"listed": true,
+"name": "엘앤씨바이오",
+"market": "코스닥"
+},
+"290660": {
+"listed": true,
+"name": "다이나믹솔루션",
+"market": "코스닥"
+},
+"290670": {
+"listed": true,
+"name": "대보마그네틱",
+"market": "코스닥"
+},
+"290690": {
+"listed": true,
+"name": "아리바이오홀딩스",
+"market": "코스닥"
+},
+"290720": {
+"listed": true,
+"name": "푸드나무",
+"market": "코스닥"
+},
+"290740": {
+"listed": true,
+"name": "액트로",
+"market": "코스닥"
+},
+"291230": {
+"listed": true,
+"name": "엔피",
+"market": "코스닥"
+},
+"291650": {
+"listed": true,
+"name": "압타머사이언스",
+"market": "코스닥"
+},
+"291810": {
+"listed": true,
+"name": "핀텔",
+"market": "코스닥"
+},
+"293480": {
+"listed": true,
+"name": "하나제약",
+"market": "코스피"
+},
+"293490": {
+"listed": true,
+"name": "카카오게임즈",
+"market": "코스닥"
+},
+"293580": {
+"listed": true,
+"name": "나우IB",
+"market": "코스닥"
+},
+"293780": {
+"listed": true,
+"name": "압타바이오",
+"market": "코스닥"
+},
+"293940": {
+"listed": true,
+"name": "신한알파리츠",
+"market": "코스피"
+},
+"294090": {
+"listed": true,
+"name": "이오플로우",
+"market": "코스닥"
+},
+"294140": {
+"listed": true,
+"name": "레몬",
+"market": "코스닥"
+},
+"294570": {
+"listed": true,
+"name": "쿠콘",
+"market": "코스닥"
+},
+"294630": {
+"listed": true,
+"name": "서남",
+"market": "코스닥"
+},
+"294870": {
+"listed": true,
+"name": "IPARK현대산업개발",
+"market": "코스피"
+},
+"295310": {
+"listed": true,
+"name": "에이치브이엠",
+"market": "코스닥"
+},
+"296640": {
+"listed": true,
+"name": "이노에이엑스",
+"market": "코스닥"
+},
+"297090": {
+"listed": true,
+"name": "씨에스베어링",
+"market": "코스닥"
+},
+"297570": {
+"listed": true,
+"name": "아틀라스링크",
+"market": "코스닥"
+},
+"297890": {
+"listed": true,
+"name": "HB솔루션",
+"market": "코스닥"
+},
+"298000": {
+"listed": true,
+"name": "효성화학",
+"market": "코스피"
+},
+"298020": {
+"listed": true,
+"name": "효성티앤씨",
+"market": "코스피"
+},
+"298040": {
+"listed": true,
+"name": "효성중공업",
+"market": "코스피"
+},
+"298050": {
+"listed": true,
+"name": "HS효성첨단소재",
+"market": "코스피"
+},
+"298060": {
+"listed": true,
+"name": "풍전약품",
+"market": "코스닥"
+},
+"298380": {
+"listed": true,
+"name": "에이비엘바이오",
+"market": "코스닥"
+},
+"298540": {
+"listed": true,
+"name": "더네이쳐홀딩스",
+"market": "코스닥"
+},
+"298690": {
+"listed": true,
+"name": "에어부산",
+"market": "코스피"
+},
+"298830": {
+"listed": true,
+"name": "슈어소프트테크",
+"market": "코스닥"
+},
+"299030": {
+"listed": true,
+"name": "하나기술",
+"market": "코스닥"
+},
+"299170": {
+"listed": true,
+"name": "더블유에스아이",
+"market": "코스닥"
+},
+"299660": {
+"listed": true,
+"name": "셀리드",
+"market": "코스닥"
+},
+"299900": {
+"listed": true,
+"name": "위지윅스튜디오",
+"market": "코스닥"
+},
+"300080": {
+"listed": true,
+"name": "플리토",
+"market": "코스닥"
+},
+"300120": {
+"listed": true,
+"name": "라온피플",
+"market": "코스닥"
+},
+"300720": {
+"listed": true,
+"name": "한일시멘트",
+"market": "코스피"
+},
+"301300": {
+"listed": true,
+"name": "바이브컴퍼니",
+"market": "코스닥"
+},
+"302430": {
+"listed": true,
+"name": "이노메트리",
+"market": "코스닥"
+},
+"302440": {
+"listed": true,
+"name": "SK바이오사이언스",
+"market": "코스피"
+},
+"302550": {
+"listed": true,
+"name": "리메드",
+"market": "코스닥"
+},
+"303030": {
+"listed": true,
+"name": "지니틱스",
+"market": "코스닥"
+},
+"303360": {
+"listed": true,
+"name": "프로티아",
+"market": "코스닥"
+},
+"303530": {
+"listed": true,
+"name": "이노뎁",
+"market": "코스닥"
+},
+"303810": {
+"listed": true,
+"name": "동국생명과학",
+"market": "코스닥"
+},
+"304100": {
+"listed": true,
+"name": "솔트룩스",
+"market": "코스닥"
+},
+"304360": {
+"listed": true,
+"name": "에스바이오메딕스",
+"market": "코스닥"
+},
+"304840": {
+"listed": true,
+"name": "피플바이오",
+"market": "코스닥"
+},
+"305090": {
+"listed": true,
+"name": "마이크로디지탈",
+"market": "코스닥"
+},
+"306040": {
+"listed": true,
+"name": "에스제이그룹",
+"market": "코스닥"
+},
+"306200": {
+"listed": true,
+"name": "세아제강",
+"market": "코스피"
+},
+"306620": {
+"listed": true,
+"name": "지아이에스",
+"market": "코스닥"
+},
+"307180": {
+"listed": true,
+"name": "아이엘",
+"market": "코스닥"
+},
+"307280": {
+"listed": true,
+"name": "원바이오젠",
+"market": "코스닥"
+},
+"307750": {
+"listed": true,
+"name": "국전",
+"market": "코스닥"
+},
+"307870": {
+"listed": true,
+"name": "비투엔",
+"market": "코스닥"
+},
+"307930": {
+"listed": true,
+"name": "컴퍼니케이",
+"market": "코스닥"
+},
+"307950": {
+"listed": true,
+"name": "현대오토에버",
+"market": "코스피"
+},
+"308080": {
+"listed": true,
+"name": "바이젠셀",
+"market": "코스닥"
+},
+"308100": {
+"listed": true,
+"name": "형지글로벌",
+"market": "코스닥"
+},
+"308170": {
+"listed": true,
+"name": "씨티알모빌리티",
+"market": "코스피"
+},
+"308430": {
+"listed": true,
+"name": "셀비온",
+"market": "코스닥"
+},
+"309710": {
+"listed": true,
+"name": "아이티켐",
+"market": "코스닥"
+},
+"309930": {
+"listed": true,
+"name": "조이웍스앤코",
+"market": "코스닥"
+},
+"309960": {
+"listed": true,
+"name": "LB인베스트먼트",
+"market": "코스닥"
+},
+"310200": {
+"listed": true,
+"name": "애니플러스",
+"market": "코스닥"
+},
+"310210": {
+"listed": true,
+"name": "보로노이",
+"market": "코스닥"
+},
+"310870": {
+"listed": true,
+"name": "디와이씨",
+"market": "코스닥"
+},
+"311320": {
+"listed": true,
+"name": "지오엘리먼트",
+"market": "코스닥"
+},
+"311390": {
+"listed": true,
+"name": "네오크레마",
+"market": "코스닥"
+},
+"311690": {
+"listed": true,
+"name": "CJ 바이오사이언스",
+"market": "코스닥"
+},
+"312610": {
+"listed": true,
+"name": "에이에프더블류",
+"market": "코스닥"
+},
+"313760": {
+"listed": true,
+"name": "캐리",
+"market": "코스닥"
+},
+"314130": {
+"listed": true,
+"name": "지놈앤컴퍼니",
+"market": "코스닥"
+},
+"314140": {
+"listed": true,
+"name": "알피바이오",
+"market": "코스닥"
+},
+"314930": {
+"listed": true,
+"name": "바이오다인",
+"market": "코스닥"
+},
+"315640": {
+"listed": true,
+"name": "딥노이드",
+"market": "코스닥"
+},
+"316140": {
+"listed": true,
+"name": "우리금융지주",
+"market": "코스피"
+},
+"317120": {
+"listed": true,
+"name": "라닉스",
+"market": "코스닥"
+},
+"317240": {
+"listed": true,
+"name": "TS트릴리온",
+"market": "코스닥"
+},
+"317330": {
+"listed": true,
+"name": "덕산테코피아",
+"market": "코스닥"
+},
+"317400": {
+"listed": true,
+"name": "자이에스앤디",
+"market": "코스피"
+},
+"317450": {
+"listed": true,
+"name": "명인제약",
+"market": "코스피"
+},
+"317530": {
+"listed": true,
+"name": "에피소드컴퍼니",
+"market": "코스닥"
+},
+"317690": {
+"listed": true,
+"name": "퀀타매트릭스",
+"market": "코스닥"
+},
+"317770": {
+"listed": true,
+"name": "엑스페릭스",
+"market": "코스닥"
+},
+"317830": {
+"listed": true,
+"name": "에스피시스템스",
+"market": "코스닥"
+},
+"317850": {
+"listed": true,
+"name": "대모",
+"market": "코스닥"
+},
+"317870": {
+"listed": true,
+"name": "엔바이오니아",
+"market": "코스닥"
+},
+"318000": {
+"listed": true,
+"name": "KBG",
+"market": "코스닥"
+},
+"318010": {
+"listed": true,
+"name": "팜스빌",
+"market": "코스닥"
+},
+"318020": {
+"listed": true,
+"name": "포인트모바일",
+"market": "코스닥"
+},
+"318060": {
+"listed": true,
+"name": "그래피",
+"market": "코스닥"
+},
+"318160": {
+"listed": true,
+"name": "셀바이오휴먼텍",
+"market": "코스닥"
+},
+"318410": {
+"listed": true,
+"name": "비비씨",
+"market": "코스닥"
+},
+"319400": {
+"listed": true,
+"name": "현대무벡스",
+"market": "코스닥"
+},
+"319660": {
+"listed": true,
+"name": "피에스케이",
+"market": "코스닥"
+},
+"320000": {
+"listed": true,
+"name": "한울반도체",
+"market": "코스닥"
+},
+"321260": {
+"listed": true,
+"name": "프로이천",
+"market": "코스닥"
+},
+"321370": {
+"listed": true,
+"name": "센서뷰",
+"market": "코스닥"
+},
+"321550": {
+"listed": true,
+"name": "티움바이오",
+"market": "코스닥"
+},
+"321820": {
+"listed": true,
+"name": "아티스트컴퍼니",
+"market": "코스닥"
+},
+"322000": {
+"listed": true,
+"name": "HD현대에너지솔루션",
+"market": "코스피"
+},
+"322180": {
+"listed": true,
+"name": "LS티라유텍",
+"market": "코스닥"
+},
+"322310": {
+"listed": true,
+"name": "오로스테크놀로지",
+"market": "코스닥"
+},
+"322510": {
+"listed": true,
+"name": "제이엘케이",
+"market": "코스닥"
+},
+"322780": {
+"listed": true,
+"name": "코퍼스코리아",
+"market": "코스닥"
+},
+"323280": {
+"listed": true,
+"name": "태성",
+"market": "코스닥"
+},
+"323350": {
+"listed": true,
+"name": "다원넥스뷰",
+"market": "코스닥"
+},
+"323410": {
+"listed": true,
+"name": "카카오뱅크",
+"market": "코스피"
+},
+"323990": {
+"listed": true,
+"name": "박셀바이오",
+"market": "코스닥"
+},
+"326030": {
+"listed": true,
+"name": "SK바이오팜",
+"market": "코스피"
+},
+"327260": {
+"listed": true,
+"name": "RF머트리얼즈",
+"market": "코스닥"
+},
+"328130": {
+"listed": true,
+"name": "루닛",
+"market": "코스닥"
+},
+"328380": {
+"listed": true,
+"name": "솔트웨어",
+"market": "코스닥"
+},
+"329180": {
+"listed": true,
+"name": "HD현대중공업",
+"market": "코스피"
+},
+"330350": {
+"listed": true,
+"name": "위더스제약",
+"market": "코스닥"
+},
+"330590": {
+"listed": true,
+"name": "롯데리츠",
+"market": "코스피"
+},
+"330730": {
+"listed": true,
+"name": "스톤브릿지벤처스",
+"market": "코스닥"
+},
+"330860": {
+"listed": true,
+"name": "네패스아크",
+"market": "코스닥"
+},
+"331380": {
+"listed": true,
+"name": "포커스에이아이",
+"market": "코스닥"
+},
+"331520": {
+"listed": true,
+"name": "밸로프",
+"market": "코스닥"
+},
+"331920": {
+"listed": true,
+"name": "셀레믹스",
+"market": "코스닥"
+},
+"332290": {
+"listed": true,
+"name": "누보",
+"market": "코스닥"
+},
+"332370": {
+"listed": true,
+"name": "아이디피",
+"market": "코스닥"
+},
+"332570": {
+"listed": true,
+"name": "PS일렉트로닉스",
+"market": "코스닥"
+},
+"333050": {
+"listed": true,
+"name": "이노테나",
+"market": "코스닥"
+},
+"333430": {
+"listed": true,
+"name": "일승",
+"market": "코스닥"
+},
+"333620": {
+"listed": true,
+"name": "엔시스",
+"market": "코스닥"
+},
+"334890": {
+"listed": true,
+"name": "이지스밸류플러스리츠",
+"market": "코스피"
+},
+"334970": {
+"listed": true,
+"name": "프레스티지바이오로직스",
+"market": "코스닥"
+},
+"335810": {
+"listed": true,
+"name": "프리시젼바이오",
+"market": "코스닥"
+},
+"335870": {
+"listed": true,
+"name": "윙스풋",
+"market": "코스닥"
+},
+"336060": {
+"listed": true,
+"name": "웨이버스",
+"market": "코스닥"
+},
+"336260": {
+"listed": true,
+"name": "두산퓨얼셀",
+"market": "코스피"
+},
+"33626K": {
+"listed": true,
+"name": "두산퓨얼셀1우",
+"market": "코스피"
+},
+"336370": {
+"listed": true,
+"name": "솔루스첨단소재",
+"market": "코스피"
+},
+"336570": {
+"listed": true,
+"name": "원텍",
+"market": "코스닥"
+},
+"336680": {
+"listed": true,
+"name": "탑런토탈솔루션",
+"market": "코스닥"
+},
+"337930": {
+"listed": true,
+"name": "젝시믹스",
+"market": "코스닥"
+},
+"338100": {
+"listed": true,
+"name": "NH프라임리츠",
+"market": "코스피"
+},
+"338220": {
+"listed": true,
+"name": "뷰노",
+"market": "코스닥"
+},
+"338840": {
+"listed": true,
+"name": "와이바이오로직스",
+"market": "코스닥"
+},
+"339770": {
+"listed": true,
+"name": "교촌에프앤비",
+"market": "코스피"
+},
+"339950": {
+"listed": true,
+"name": "아이비김영",
+"market": "코스닥"
+},
+"340360": {
+"listed": true,
+"name": "다보링크",
+"market": "코스닥"
+},
+"340440": {
+"listed": true,
+"name": "세림B&G",
+"market": "코스닥"
+},
+"340450": {
+"listed": true,
+"name": "지씨지놈",
+"market": "코스닥"
+},
+"340570": {
+"listed": true,
+"name": "티앤엘",
+"market": "코스닥"
+},
+"340810": {
+"listed": true,
+"name": "시선AI",
+"market": "코스닥"
+},
+"340930": {
+"listed": true,
+"name": "성원에너텍",
+"market": "코스닥"
+},
+"342870": {
+"listed": true,
+"name": "오아",
+"market": "코스닥"
+},
+"344820": {
+"listed": true,
+"name": "KCC글라스",
+"market": "코스피"
+},
+"344860": {
+"listed": true,
+"name": "이노진",
+"market": "코스닥"
+},
+"347000": {
+"listed": true,
+"name": "센코",
+"market": "코스닥"
+},
+"347700": {
+"listed": true,
+"name": "스피어",
+"market": "코스닥"
+},
+"347740": {
+"listed": true,
+"name": "피엔케이피부임상연구센타",
+"market": "코스닥"
+},
+"347770": {
+"listed": true,
+"name": "핌스",
+"market": "코스닥"
+},
+"347850": {
+"listed": true,
+"name": "디앤디파마텍",
+"market": "코스닥"
+},
+"347860": {
+"listed": true,
+"name": "알체라",
+"market": "코스닥"
+},
+"347890": {
+"listed": true,
+"name": "엠엑스온",
+"market": "코스닥"
+},
+"348030": {
+"listed": true,
+"name": "모비릭스",
+"market": "코스닥"
+},
+"348080": {
+"listed": true,
+"name": "큐라티스",
+"market": "코스닥"
+},
+"348150": {
+"listed": true,
+"name": "고바이오랩",
+"market": "코스닥"
+},
+"348210": {
+"listed": true,
+"name": "넥스틴",
+"market": "코스닥"
+},
+"348340": {
+"listed": true,
+"name": "뉴로메카",
+"market": "코스닥"
+},
+"348350": {
+"listed": true,
+"name": "위드텍",
+"market": "코스닥"
+},
+"348370": {
+"listed": true,
+"name": "엔켐",
+"market": "코스닥"
+},
+"348950": {
+"listed": true,
+"name": "제이알글로벌리츠",
+"market": "코스피"
+},
+"350520": {
+"listed": true,
+"name": "이지스레지던스리츠",
+"market": "코스피"
+},
+"351320": {
+"listed": true,
+"name": "넥사다이내믹스",
+"market": "코스닥"
+},
+"351330": {
+"listed": true,
+"name": "이삭엔지니어링",
+"market": "코스닥"
+},
+"351870": {
+"listed": true,
+"name": "차이커뮤니케이션",
+"market": "코스닥"
+},
+"352090": {
+"listed": true,
+"name": "스톰테크",
+"market": "코스닥"
+},
+"352480": {
+"listed": true,
+"name": "씨앤씨인터내셔널",
+"market": "코스닥"
+},
+"352700": {
+"listed": true,
+"name": "씨앤투스",
+"market": "코스닥"
+},
+"352770": {
+"listed": true,
+"name": "셀레스트라",
+"market": "코스닥"
+},
+"352820": {
+"listed": true,
+"name": "하이브",
+"market": "코스피"
+},
+"352910": {
+"listed": true,
+"name": "오비고",
+"market": "코스닥"
+},
+"352940": {
+"listed": true,
+"name": "인바이오",
+"market": "코스닥"
+},
+"353190": {
+"listed": true,
+"name": "휴럼",
+"market": "코스닥"
+},
+"353200": {
+"listed": true,
+"name": "대덕전자",
+"market": "코스피"
+},
+"353590": {
+"listed": true,
+"name": "오토앤",
+"market": "코스닥"
+},
+"353810": {
+"listed": true,
+"name": "이지바이오",
+"market": "코스닥"
+},
+"354200": {
+"listed": true,
+"name": "엔젠바이오",
+"market": "코스닥"
+},
+"354320": {
+"listed": true,
+"name": "알멕",
+"market": "코스닥"
+},
+"355150": {
+"listed": true,
+"name": "코스텍시스",
+"market": "코스닥"
+},
+"355690": {
+"listed": true,
+"name": "에이텀",
+"market": "코스닥"
+},
+"356680": {
+"listed": true,
+"name": "엑스게이트",
+"market": "코스닥"
+},
+"356860": {
+"listed": true,
+"name": "티엘비",
+"market": "코스닥"
+},
+"356890": {
+"listed": true,
+"name": "싸이버원",
+"market": "코스닥"
+},
+"357120": {
+"listed": true,
+"name": "코람코라이프인프라리츠",
+"market": "코스피"
+},
+"357230": {
+"listed": true,
+"name": "에이치피오",
+"market": "코스닥"
+},
+"357250": {
+"listed": true,
+"name": "미래에셋맵스리츠",
+"market": "코스피"
+},
+"357550": {
+"listed": true,
+"name": "석경에이티",
+"market": "코스닥"
+},
+"357580": {
+"listed": true,
+"name": "아모센스",
+"market": "코스닥"
+},
+"357780": {
+"listed": true,
+"name": "솔브레인",
+"market": "코스닥"
+},
+"357880": {
+"listed": true,
+"name": "SKAI",
+"market": "코스닥"
+},
+"358570": {
+"listed": true,
+"name": "지아이이노베이션",
+"market": "코스닥"
+},
+"359090": {
+"listed": true,
+"name": "씨엔알리서치",
+"market": "코스닥"
+},
+"360070": {
+"listed": true,
+"name": "탑머티리얼",
+"market": "코스닥"
+},
+"360350": {
+"listed": true,
+"name": "코셈",
+"market": "코스닥"
+},
+"361390": {
+"listed": true,
+"name": "제노코",
+"market": "코스닥"
+},
+"361570": {
+"listed": true,
+"name": "알비더블유",
+"market": "코스닥"
+},
+"361610": {
+"listed": true,
+"name": "SK아이이테크놀로지",
+"market": "코스피"
+},
+"361670": {
+"listed": true,
+"name": "삼영에스앤씨",
+"market": "코스닥"
+},
+"362320": {
+"listed": true,
+"name": "청담글로벌",
+"market": "코스닥"
+},
+"362990": {
+"listed": true,
+"name": "드림인사이트",
+"market": "코스닥"
+},
+"363250": {
+"listed": true,
+"name": "진시스템",
+"market": "코스닥"
+},
+"363260": {
+"listed": true,
+"name": "모비데이즈",
+"market": "코스닥"
+},
+"363280": {
+"listed": true,
+"name": "티와이홀딩스",
+"market": "코스피"
+},
+"364950": {
+"listed": true,
+"name": "에이아이코리아",
+"market": "코스닥"
+},
+"365270": {
+"listed": true,
+"name": "큐라클",
+"market": "코스닥"
+},
+"365330": {
+"listed": true,
+"name": "에스와이스틸텍",
+"market": "코스닥"
+},
+"365340": {
+"listed": true,
+"name": "성일하이텍",
+"market": "코스닥"
+},
+"365550": {
+"listed": true,
+"name": "ESR켄달스퀘어리츠",
+"market": "코스피"
+},
+"365590": {
+"listed": true,
+"name": "하이딥",
+"market": "코스닥"
+},
+"365660": {
+"listed": true,
+"name": "레몬헬스케어",
+"market": "코스닥"
+},
+"365900": {
+"listed": true,
+"name": "브이씨",
+"market": "코스닥"
+},
+"366030": {
+"listed": true,
+"name": "나인앤컴퍼니",
+"market": "코스닥"
+},
+"367000": {
+"listed": true,
+"name": "플래티어",
+"market": "코스닥"
+},
+"368600": {
+"listed": true,
+"name": "아이씨에이치",
+"market": "코스닥"
+},
+"368770": {
+"listed": true,
+"name": "파이버프로",
+"market": "코스닥"
+},
+"368970": {
+"listed": true,
+"name": "오에스피",
+"market": "코스닥"
+},
+"369370": {
+"listed": true,
+"name": "블리츠웨이엔터테인먼트",
+"market": "코스닥"
+},
+"370090": {
+"listed": true,
+"name": "퓨런티어",
+"market": "코스닥"
+},
+"371950": {
+"listed": true,
+"name": "풍원정밀",
+"market": "코스닥"
+},
+"372170": {
+"listed": true,
+"name": "윤성에프앤씨",
+"market": "코스닥"
+},
+"372320": {
+"listed": true,
+"name": "큐로셀",
+"market": "코스닥"
+},
+"372800": {
+"listed": true,
+"name": "아이티아이즈",
+"market": "코스닥"
+},
+"372910": {
+"listed": true,
+"name": "한컴라이프케어",
+"market": "코스피"
+},
+"373110": {
+"listed": true,
+"name": "엑셀세라퓨틱스",
+"market": "코스닥"
+},
+"373160": {
+"listed": true,
+"name": "데이원컴퍼니",
+"market": "코스닥"
+},
+"373170": {
+"listed": true,
+"name": "엠아이큐브솔루션",
+"market": "코스닥"
+},
+"373200": {
+"listed": true,
+"name": "엑스플러스",
+"market": "코스닥"
+},
+"373220": {
+"listed": true,
+"name": "LG에너지솔루션",
+"market": "코스피"
+},
+"375500": {
+"listed": true,
+"name": "DL이앤씨",
+"market": "코스피"
+},
+"37550K": {
+"listed": true,
+"name": "DL이앤씨우",
+"market": "코스피"
+},
+"37550L": {
+"listed": true,
+"name": "DL이앤씨2우(전환)",
+"market": "코스피"
+},
+"376180": {
+"listed": true,
+"name": "피코그램",
+"market": "코스닥"
+},
+"376270": {
+"listed": true,
+"name": "HEM파마",
+"market": "코스닥"
+},
+"376290": {
+"listed": true,
+"name": "씨유테크",
+"market": "코스닥"
+},
+"376300": {
+"listed": true,
+"name": "디어유",
+"market": "코스닥"
+},
+"376900": {
+"listed": true,
+"name": "로킷헬스케어",
+"market": "코스닥"
+},
+"376930": {
+"listed": true,
+"name": "노을",
+"market": "코스닥"
+},
+"376980": {
+"listed": true,
+"name": "원티드랩",
+"market": "코스닥"
+},
+"377030": {
+"listed": true,
+"name": "비트맥스",
+"market": "코스닥"
+},
+"377190": {
+"listed": true,
+"name": "디앤디플랫폼리츠",
+"market": "코스피"
+},
+"377220": {
+"listed": true,
+"name": "프롬바이오",
+"market": "코스닥"
+},
+"377300": {
+"listed": true,
+"name": "카카오페이",
+"market": "코스피"
+},
+"377330": {
+"listed": true,
+"name": "이지트로닉스",
+"market": "코스닥"
+},
+"377450": {
+"listed": true,
+"name": "리파인",
+"market": "코스닥"
+},
+"377460": {
+"listed": true,
+"name": "큐에이드",
+"market": "코스닥"
+},
+"377480": {
+"listed": true,
+"name": "마음AI",
+"market": "코스닥"
+},
+"377740": {
+"listed": true,
+"name": "바이오노트",
+"market": "코스피"
+},
+"378340": {
+"listed": true,
+"name": "필에너지",
+"market": "코스닥"
+},
+"378800": {
+"listed": true,
+"name": "샤페론",
+"market": "코스닥"
+},
+"378850": {
+"listed": true,
+"name": "화승알앤에이",
+"market": "코스피"
+},
+"380540": {
+"listed": true,
+"name": "옵티코어",
+"market": "코스닥"
+},
+"380550": {
+"listed": true,
+"name": "뉴로핏",
+"market": "코스닥"
+},
+"381620": {
+"listed": true,
+"name": "제닉스로보틱스",
+"market": "코스닥"
+},
+"381970": {
+"listed": true,
+"name": "케이카",
+"market": "코스피"
+},
+"382150": {
+"listed": true,
+"name": "온코크로스",
+"market": "코스닥"
+},
+"382480": {
+"listed": true,
+"name": "지아이텍",
+"market": "코스닥"
+},
+"382800": {
+"listed": true,
+"name": "지앤비에스 에코",
+"market": "코스닥"
+},
+"382840": {
+"listed": true,
+"name": "원준",
+"market": "코스닥"
+},
+"382900": {
+"listed": true,
+"name": "범한퓨얼셀",
+"market": "코스닥"
+},
+"383220": {
+"listed": true,
+"name": "F&F",
+"market": "코스피"
+},
+"383310": {
+"listed": true,
+"name": "에코프로에이치엔",
+"market": "코스닥"
+},
+"383800": {
+"listed": true,
+"name": "LX홀딩스",
+"market": "코스피"
+},
+"383930": {
+"listed": true,
+"name": "디티앤씨알오",
+"market": "코스닥"
+},
+"384470": {
+"listed": true,
+"name": "코어라인소프트",
+"market": "코스닥"
+},
+"387570": {
+"listed": true,
+"name": "파인메딕스",
+"market": "코스닥"
+},
+"388050": {
+"listed": true,
+"name": "지투파워",
+"market": "코스닥"
+},
+"388210": {
+"listed": true,
+"name": "씨엠티엑스",
+"market": "코스닥"
+},
+"388610": {
+"listed": true,
+"name": "지에프씨생명과학",
+"market": "코스닥"
+},
+"388720": {
+"listed": true,
+"name": "유일로보틱스",
+"market": "코스닥"
+},
+"388790": {
+"listed": true,
+"name": "라이콤",
+"market": "코스닥"
+},
+"388870": {
+"listed": true,
+"name": "파로스아이바이오",
+"market": "코스닥"
+},
+"389020": {
+"listed": true,
+"name": "자람테크놀로지",
+"market": "코스닥"
+},
+"389030": {
+"listed": true,
+"name": "지니너스",
+"market": "코스닥"
+},
+"389140": {
+"listed": true,
+"name": "포바이포",
+"market": "코스닥"
+},
+"389260": {
+"listed": true,
+"name": "대명에너지",
+"market": "코스닥"
+},
+"389470": {
+"listed": true,
+"name": "인벤티지랩",
+"market": "코스닥"
+},
+"389500": {
+"listed": true,
+"name": "에스비비테크",
+"market": "코스닥"
+},
+"389650": {
+"listed": true,
+"name": "넥스트바이오메디컬",
+"market": "코스닥"
+},
+"389680": {
+"listed": true,
+"name": "유디엠텍",
+"market": "코스닥"
+},
+"391710": {
+"listed": true,
+"name": "코닉오토메이션",
+"market": "코스닥"
+},
+"393210": {
+"listed": true,
+"name": "토마토시스템",
+"market": "코스닥"
+},
+"393890": {
+"listed": true,
+"name": "더블유씨피",
+"market": "코스닥"
+},
+"393970": {
+"listed": true,
+"name": "대진첨단소재",
+"market": "코스닥"
+},
+"394280": {
+"listed": true,
+"name": "오픈엣지테크놀로지",
+"market": "코스닥"
+},
+"394420": {
+"listed": true,
+"name": "리센스메디컬",
+"market": "코스닥"
+},
+"394800": {
+"listed": true,
+"name": "쓰리빌리언",
+"market": "코스닥"
+},
+"395400": {
+"listed": true,
+"name": "SK리츠",
+"market": "코스피"
+},
+"396270": {
+"listed": true,
+"name": "넥스트칩",
+"market": "코스닥"
+},
+"396300": {
+"listed": true,
+"name": "세아메카닉스",
+"market": "코스닥"
+},
+"396470": {
+"listed": true,
+"name": "워트",
+"market": "코스닥"
+},
+"396690": {
+"listed": true,
+"name": "미래에셋글로벌리츠",
+"market": "코스피"
+},
+"397030": {
+"listed": true,
+"name": "에이프릴바이오",
+"market": "코스닥"
+},
+"397810": {
+"listed": true,
+"name": "애드포러스",
+"market": "코스닥"
+},
+"398120": {
+"listed": true,
+"name": "에스지헬스케어",
+"market": "코스닥"
+},
+"399720": {
+"listed": true,
+"name": "가온칩스",
+"market": "코스닥"
+},
+"400760": {
+"listed": true,
+"name": "NH올원리츠",
+"market": "코스피"
+},
+"402030": {
+"listed": true,
+"name": "코난테크놀로지",
+"market": "코스닥"
+},
+"402340": {
+"listed": true,
+"name": "SK스퀘어",
+"market": "코스피"
+},
+"402490": {
+"listed": true,
+"name": "그린리소스",
+"market": "코스닥"
+},
+"403490": {
+"listed": true,
+"name": "우듬지팜",
+"market": "코스닥"
+},
+"403550": {
+"listed": true,
+"name": "쏘카",
+"market": "코스피"
+},
+"403850": {
+"listed": true,
+"name": "더핑크퐁컴퍼니",
+"market": "코스닥"
+},
+"403870": {
+"listed": true,
+"name": "HPSP",
+"market": "코스닥"
+},
+"404990": {
+"listed": true,
+"name": "신한서부티엔디리츠",
+"market": "코스피"
+},
+"405000": {
+"listed": true,
+"name": "플라즈맵",
+"market": "코스닥"
+},
+"405100": {
+"listed": true,
+"name": "큐알티",
+"market": "코스닥"
+},
+"405920": {
+"listed": true,
+"name": "나라셀라",
+"market": "코스닥"
+},
+"406820": {
+"listed": true,
+"name": "뷰티스킨",
+"market": "코스닥"
+},
+"407400": {
+"listed": true,
+"name": "꿈비",
+"market": "코스닥"
+},
+"408470": {
+"listed": true,
+"name": "한패스",
+"market": "코스닥"
+},
+"408900": {
+"listed": true,
+"name": "스튜디오미르",
+"market": "코스닥"
+},
+"408920": {
+"listed": true,
+"name": "메쎄이상",
+"market": "코스닥"
+},
+"411080": {
+"listed": true,
+"name": "샌즈랩",
+"market": "코스닥"
+},
+"412350": {
+"listed": true,
+"name": "레이저쎌",
+"market": "코스닥"
+},
+"412540": {
+"listed": true,
+"name": "제일엠앤에스",
+"market": "코스닥"
+},
+"413390": {
+"listed": true,
+"name": "엠오티",
+"market": "코스닥"
+},
+"413630": {
+"listed": true,
+"name": "씨피시스템",
+"market": "코스닥"
+},
+"413640": {
+"listed": true,
+"name": "비아이매트릭스",
+"market": "코스닥"
+},
+"415380": {
+"listed": true,
+"name": "스튜디오삼익",
+"market": "코스닥"
+},
+"415640": {
+"listed": true,
+"name": "KB발해인프라",
+"market": "코스피"
+},
+"416180": {
+"listed": true,
+"name": "신성에스티",
+"market": "코스닥"
+},
+"417010": {
+"listed": true,
+"name": "나노팀",
+"market": "코스닥"
+},
+"417180": {
+"listed": true,
+"name": "핑거스토리",
+"market": "코스닥"
+},
+"417200": {
+"listed": true,
+"name": "LS머트리얼즈",
+"market": "코스닥"
+},
+"417310": {
+"listed": true,
+"name": "코람코더원리츠",
+"market": "코스피"
+},
+"417500": {
+"listed": true,
+"name": "제이아이테크",
+"market": "코스닥"
+},
+"417790": {
+"listed": true,
+"name": "트루엔",
+"market": "코스닥"
+},
+"417840": {
+"listed": true,
+"name": "저스템",
+"market": "코스닥"
+},
+"417860": {
+"listed": true,
+"name": "오브젠",
+"market": "코스닥"
+},
+"417970": {
+"listed": true,
+"name": "모델솔루션",
+"market": "코스닥"
+},
+"418250": {
+"listed": true,
+"name": "시큐레터",
+"market": "코스닥"
+},
+"418420": {
+"listed": true,
+"name": "라온텍",
+"market": "코스닥"
+},
+"418470": {
+"listed": true,
+"name": "KT밀리의서재",
+"market": "코스닥"
+},
+"418550": {
+"listed": true,
+"name": "제이오",
+"market": "코스닥"
+},
+"418620": {
+"listed": true,
+"name": "E8",
+"market": "코스닥"
+},
+"419050": {
+"listed": true,
+"name": "삼기에너지솔루션즈",
+"market": "코스닥"
+},
+"419080": {
+"listed": true,
+"name": "엔젯",
+"market": "코스닥"
+},
+"419120": {
+"listed": true,
+"name": "산돌",
+"market": "코스닥"
+},
+"419530": {
+"listed": true,
+"name": "SAMG엔터",
+"market": "코스닥"
+},
+"419540": {
+"listed": true,
+"name": "비스토스",
+"market": "코스닥"
+},
+"420570": {
+"listed": true,
+"name": "제이투케이바이오",
+"market": "코스닥"
+},
+"420770": {
+"listed": true,
+"name": "기가비스",
+"market": "코스닥"
+},
+"424760": {
+"listed": true,
+"name": "벨로크",
+"market": "코스닥"
+},
+"424870": {
+"listed": true,
+"name": "이뮨온시아",
+"market": "코스닥"
+},
+"424960": {
+"listed": true,
+"name": "스마트레이더시스템",
+"market": "코스닥"
+},
+"424980": {
+"listed": true,
+"name": "마이크로투나노",
+"market": "코스닥"
+},
+"425040": {
+"listed": true,
+"name": "티이엠씨",
+"market": "코스닥"
+},
+"425420": {
+"listed": true,
+"name": "티에프이",
+"market": "코스닥"
+},
+"429270": {
+"listed": true,
+"name": "시지트로닉스",
+"market": "코스닥"
+},
+"430690": {
+"listed": true,
+"name": "한싹",
+"market": "코스닥"
+},
+"431190": {
+"listed": true,
+"name": "케이쓰리아이",
+"market": "코스닥"
+},
+"432320": {
+"listed": true,
+"name": "KB스타리츠",
+"market": "코스피"
+},
+"432430": {
+"listed": true,
+"name": "와이랩",
+"market": "코스닥"
+},
+"432470": {
+"listed": true,
+"name": "케이엔에스",
+"market": "코스닥"
+},
+"432720": {
+"listed": true,
+"name": "퀄리타스반도체",
+"market": "코스닥"
+},
+"432980": {
+"listed": true,
+"name": "엠에프씨",
+"market": "코스닥"
+},
+"434480": {
+"listed": true,
+"name": "모니터랩",
+"market": "코스닥"
+},
+"435570": {
+"listed": true,
+"name": "에르코스",
+"market": "코스닥"
+},
+"437730": {
+"listed": true,
+"name": "삼현",
+"market": "코스닥"
+},
+"438700": {
+"listed": true,
+"name": "버넥트",
+"market": "코스닥"
+},
+"439090": {
+"listed": true,
+"name": "마녀공장",
+"market": "코스닥"
+},
+"439260": {
+"listed": true,
+"name": "대한조선",
+"market": "코스피"
+},
+"439580": {
+"listed": true,
+"name": "블루엠텍",
+"market": "코스닥"
+},
+"439960": {
+"listed": true,
+"name": "코스모로보틱스",
+"market": "코스닥"
+},
+"440110": {
+"listed": true,
+"name": "파두",
+"market": "코스닥"
+},
+"440290": {
+"listed": true,
+"name": "HB인베스트먼트",
+"market": "코스닥"
+},
+"440320": {
+"listed": true,
+"name": "오픈놀",
+"market": "코스닥"
+},
+"441270": {
+"listed": true,
+"name": "파인엠텍",
+"market": "코스닥"
+},
+"443060": {
+"listed": true,
+"name": "HD현대마린솔루션",
+"market": "코스피"
+},
+"443250": {
+"listed": true,
+"name": "레뷰코퍼레이션",
+"market": "코스닥"
+},
+"443670": {
+"listed": true,
+"name": "에스피소프트",
+"market": "코스닥"
+},
+"444530": {
+"listed": true,
+"name": "심플랫폼",
+"market": "코스닥"
+},
+"445090": {
+"listed": true,
+"name": "에이직랜드",
+"market": "코스닥"
+},
+"445180": {
+"listed": true,
+"name": "퓨릿",
+"market": "코스닥"
+},
+"445680": {
+"listed": true,
+"name": "큐리옥스바이오시스템즈",
+"market": "코스닥"
+},
+"446070": {
+"listed": true,
+"name": "유니드비티플러스",
+"market": "코스피"
+},
+"446540": {
+"listed": true,
+"name": "메가터치",
+"market": "코스닥"
+},
+"446840": {
+"listed": true,
+"name": "지슨",
+"market": "코스닥"
+},
+"448280": {
+"listed": true,
+"name": "에코아이",
+"market": "코스닥"
+},
+"448710": {
+"listed": true,
+"name": "코츠테크놀로지",
+"market": "코스닥"
+},
+"448730": {
+"listed": true,
+"name": "삼성FN리츠",
+"market": "코스피"
+},
+"448900": {
+"listed": true,
+"name": "한국피아이엠",
+"market": "코스닥"
+},
+"450080": {
+"listed": true,
+"name": "에코프로머티",
+"market": "코스피"
+},
+"450140": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"450330": {
+"listed": true,
+"name": "하스",
+"market": "코스닥"
+},
+"450520": {
+"listed": true,
+"name": "인스웨이브",
+"market": "코스닥"
+},
+"450950": {
+"listed": true,
+"name": "아스테라시스",
+"market": "코스닥"
+},
+"451220": {
+"listed": true,
+"name": "아이엠티",
+"market": "코스닥"
+},
+"451250": {
+"listed": true,
+"name": "삐아",
+"market": "코스닥"
+},
+"451760": {
+"listed": true,
+"name": "컨텍",
+"market": "코스닥"
+},
+"451800": {
+"listed": true,
+"name": "한화리츠",
+"market": "코스피"
+},
+"452160": {
+"listed": true,
+"name": "제이엔비",
+"market": "코스닥"
+},
+"452190": {
+"listed": true,
+"name": "한빛레이저",
+"market": "코스닥"
+},
+"452200": {
+"listed": true,
+"name": "민테크",
+"market": "코스닥"
+},
+"452260": {
+"listed": true,
+"name": "한화갤러리아",
+"market": "코스피"
+},
+"452280": {
+"listed": true,
+"name": "한선엔지니어링",
+"market": "코스닥"
+},
+"452300": {
+"listed": true,
+"name": "캡스톤파트너스",
+"market": "코스닥"
+},
+"452400": {
+"listed": true,
+"name": "이닉스",
+"market": "코스닥"
+},
+"452430": {
+"listed": true,
+"name": "사피엔반도체",
+"market": "코스닥"
+},
+"452450": {
+"listed": true,
+"name": "피아이이",
+"market": "코스닥"
+},
+"453340": {
+"listed": true,
+"name": "현대그린푸드",
+"market": "코스피"
+},
+"453450": {
+"listed": true,
+"name": "그리드위즈",
+"market": "코스닥"
+},
+"453860": {
+"listed": true,
+"name": "에이에스텍",
+"market": "코스닥"
+},
+"454910": {
+"listed": true,
+"name": "두산로보틱스",
+"market": "코스피"
+},
+"455180": {
+"listed": true,
+"name": "케이지에이",
+"market": "코스닥"
+},
+"455900": {
+"listed": true,
+"name": "엔젤로보틱스",
+"market": "코스닥"
+},
+"456010": {
+"listed": true,
+"name": "아이씨티케이",
+"market": "코스닥"
+},
+"456040": {
+"listed": true,
+"name": "OCI",
+"market": "코스피"
+},
+"456070": {
+"listed": true,
+"name": "이엔셀",
+"market": "코스닥"
+},
+"456160": {
+"listed": true,
+"name": "지투지바이오",
+"market": "코스닥"
+},
+"457190": {
+"listed": true,
+"name": "이수스페셜티케미컬",
+"market": "코스피"
+},
+"457370": {
+"listed": true,
+"name": "한켐",
+"market": "코스닥"
+},
+"457550": {
+"listed": true,
+"name": "우진엔텍",
+"market": "코스닥"
+},
+"457600": {
+"listed": true,
+"name": "벡트",
+"market": "코스닥"
+},
+"458350": {
+"listed": true,
+"name": "에스팀",
+"market": "코스닥"
+},
+"458870": {
+"listed": true,
+"name": "씨어스",
+"market": "코스닥"
+},
+"459100": {
+"listed": true,
+"name": "위츠",
+"market": "코스닥"
+},
+"459550": {
+"listed": true,
+"name": "알트",
+"market": "코스닥"
+},
+"460470": {
+"listed": true,
+"name": "아이빔테크놀로지",
+"market": "코스닥"
+},
+"460850": {
+"listed": true,
+"name": "동국씨엠",
+"market": "코스피"
+},
+"460860": {
+"listed": true,
+"name": "동국제강",
+"market": "코스피"
+},
+"460870": {
+"listed": true,
+"name": "에스엠씨지",
+"market": "코스닥"
+},
+"460930": {
+"listed": true,
+"name": "현대힘스",
+"market": "코스닥"
+},
+"460940": {
+"listed": true,
+"name": "피앤에스로보틱스",
+"market": "코스닥"
+},
+"461030": {
+"listed": true,
+"name": "아이엠비디엑스",
+"market": "코스닥"
+},
+"461300": {
+"listed": true,
+"name": "아이스크림미디어",
+"market": "코스닥"
+},
+"462310": {
+"listed": true,
+"name": "뉴키즈온",
+"market": "코스닥"
+},
+"462350": {
+"listed": true,
+"name": "이노스페이스",
+"market": "코스닥"
+},
+"462510": {
+"listed": true,
+"name": "라메디텍",
+"market": "코스닥"
+},
+"462520": {
+"listed": true,
+"name": "조선내화",
+"market": "코스피"
+},
+"462860": {
+"listed": true,
+"name": "더즌",
+"market": "코스닥"
+},
+"462870": {
+"listed": true,
+"name": "시프트업",
+"market": "코스피"
+},
+"462980": {
+"listed": true,
+"name": "아이지넷",
+"market": "코스닥"
+},
+"463020": {
+"listed": true,
+"name": "뉴엔AI",
+"market": "코스닥"
+},
+"463480": {
+"listed": true,
+"name": "모티브링크",
+"market": "코스닥"
+},
+"464080": {
+"listed": true,
+"name": "에스오에스랩",
+"market": "코스닥"
+},
+"464280": {
+"listed": true,
+"name": "티디에스팜",
+"market": "코스닥"
+},
+"464490": {
+"listed": true,
+"name": "쿼드메디슨",
+"market": "코스닥"
+},
+"464500": {
+"listed": true,
+"name": "아이언디바이스",
+"market": "코스닥"
+},
+"464580": {
+"listed": true,
+"name": "닷밀",
+"market": "코스닥"
+},
+"465480": {
+"listed": true,
+"name": "인스피언",
+"market": "코스닥"
+},
+"465770": {
+"listed": true,
+"name": "STX그린로지스",
+"market": "코스피"
+},
+"466100": {
+"listed": true,
+"name": "클로봇",
+"market": "코스닥"
+},
+"466410": {
+"listed": true,
+"name": "사이냅소프트",
+"market": "코스닥"
+},
+"468530": {
+"listed": true,
+"name": "프로티나",
+"market": "코스닥"
+},
+"469610": {
+"listed": true,
+"name": "이노테크",
+"market": "코스닥"
+},
+"469750": {
+"listed": true,
+"name": "아이비젼웍스",
+"market": "코스닥"
+},
+"471820": {
+"listed": true,
+"name": "셀로맥스사이언스",
+"market": "코스닥"
+},
+"472850": {
+"listed": true,
+"name": "폰드그룹",
+"market": "코스닥"
+},
+"473980": {
+"listed": true,
+"name": "노머스",
+"market": "코스닥"
+},
+"474170": {
+"listed": true,
+"name": "루미르",
+"market": "코스닥"
+},
+"474610": {
+"listed": true,
+"name": "RF시스템즈",
+"market": "코스닥"
+},
+"474650": {
+"listed": true,
+"name": "링크솔루션",
+"market": "코스닥"
+},
+"475040": {
+"listed": true,
+"name": "스트라드비젼",
+"market": "코스닥"
+},
+"475150": {
+"listed": true,
+"name": "SK이터닉스",
+"market": "코스피"
+},
+"475230": {
+"listed": true,
+"name": "엔알비",
+"market": "코스닥"
+},
+"475400": {
+"listed": true,
+"name": "씨메스로보틱스",
+"market": "코스닥"
+},
+"475430": {
+"listed": true,
+"name": "키스트론",
+"market": "코스닥"
+},
+"475460": {
+"listed": true,
+"name": "미트박스",
+"market": "코스닥"
+},
+"475560": {
+"listed": true,
+"name": "더본코리아",
+"market": "코스피"
+},
+"475580": {
+"listed": true,
+"name": "에이럭스",
+"market": "코스닥"
+},
+"475660": {
+"listed": true,
+"name": "에스켐",
+"market": "코스닥"
+},
+"475830": {
+"listed": true,
+"name": "오름테라퓨틱",
+"market": "코스닥"
+},
+"475960": {
+"listed": true,
+"name": "토모큐브",
+"market": "코스닥"
+},
+"476040": {
+"listed": true,
+"name": "오가노이드사이언스",
+"market": "코스닥"
+},
+"476060": {
+"listed": true,
+"name": "온코닉테라퓨틱스",
+"market": "코스닥"
+},
+"476080": {
+"listed": true,
+"name": "M83",
+"market": "코스닥"
+},
+"476830": {
+"listed": true,
+"name": "알지노믹스",
+"market": "코스닥"
+},
+"477850": {
+"listed": true,
+"name": "마키나락스",
+"market": "코스닥"
+},
+"478340": {
+"listed": true,
+"name": "나라스페이스테크놀로지",
+"market": "코스닥"
+},
+"478560": {
+"listed": true,
+"name": "블랙야크아이앤씨",
+"market": "코스닥"
+},
+"479960": {
+"listed": true,
+"name": "위너스일렉",
+"market": "코스닥"
+},
+"480370": {
+"listed": true,
+"name": "씨케이솔루션",
+"market": "코스피"
+},
+"481070": {
+"listed": true,
+"name": "에이유브랜즈",
+"market": "코스닥"
+},
+"482630": {
+"listed": true,
+"name": "삼양엔씨켐",
+"market": "코스닥"
+},
+"483650": {
+"listed": true,
+"name": "달바글로벌",
+"market": "코스피"
+},
+"484590": {
+"listed": true,
+"name": "삼양컴텍",
+"market": "코스닥"
+},
+"484810": {
+"listed": true,
+"name": "티엑스알로보틱스",
+"market": "코스닥"
+},
+"484870": {
+"listed": true,
+"name": "엠앤씨솔루션",
+"market": "코스피"
+},
+"486990": {
+"listed": true,
+"name": "노타",
+"market": "코스닥"
+},
+"487570": {
+"listed": true,
+"name": "HS효성",
+"market": "코스피"
+},
+"487580": {
+"listed": true,
+"name": "폴레드",
+"market": "코스닥"
+},
+"488280": {
+"listed": true,
+"name": "에스투더블유",
+"market": "코스닥"
+},
+"488900": {
+"listed": true,
+"name": "비츠로넥스텍",
+"market": "코스닥"
+},
+"489460": {
+"listed": true,
+"name": "바이오비쥬",
+"market": "코스닥"
+},
+"489500": {
+"listed": true,
+"name": "엘케이켐",
+"market": "코스닥"
+},
+"489790": {
+"listed": true,
+"name": "한화비전",
+"market": "코스피"
+},
+"490470": {
+"listed": true,
+"name": "세미파이브",
+"market": "코스닥"
+},
+"491000": {
+"listed": true,
+"name": "리브스메드",
+"market": "코스닥"
+},
+"493280": {
+"listed": true,
+"name": "아이엠바이오로직스",
+"market": "코스닥"
+},
+"493330": {
+"listed": true,
+"name": "지에프아이",
+"market": "코스닥"
+},
+"494120": {
+"listed": true,
+"name": "큐리오시스",
+"market": "코스닥"
+},
+"499790": {
+"listed": true,
+"name": "GS피앤엘",
+"market": "코스피"
+},
+"900070": {
+"listed": true,
+"name": "글로벌에스엠",
+"market": "코스닥"
+},
+"900100": {
+"listed": true,
+"name": "파이온엑스",
+"market": "코스닥"
+},
+"900110": {
+"listed": true,
+"name": "딥커머스",
+"market": "코스닥"
+},
+"900120": {
+"listed": true,
+"name": "씨엑스아이",
+"market": "코스닥"
+},
+"900140": {
+"listed": true,
+"name": "엘브이엠씨홀딩스",
+"market": "코스피"
+},
+"900250": {
+"listed": true,
+"name": "크리스탈신소재",
+"market": "코스닥"
+},
+"900260": {
+"listed": true,
+"name": "로스웰",
+"market": "코스닥"
+},
+"900270": {
+"listed": true,
+"name": "헝셩그룹",
+"market": "코스닥"
+},
+"900290": {
+"listed": true,
+"name": "GRT",
+"market": "코스닥"
+},
+"900300": {
+"listed": true,
+"name": "오가닉티코스메틱",
+"market": "코스닥"
+},
+"900310": {
+"listed": true,
+"name": "컬러레이",
+"market": "코스닥"
+},
+"900340": {
+"listed": true,
+"name": "윙입푸드",
+"market": "코스닥"
+},
+"950130": {
+"listed": true,
+"name": "엑세스바이오",
+"market": "코스닥"
+},
+"950140": {
+"listed": true,
+"name": "잉글우드랩",
+"market": "코스닥"
+},
+"950160": {
+"listed": true,
+"name": "코오롱티슈진",
+"market": "코스닥"
+},
+"950170": {
+"listed": true,
+"name": "JTC",
+"market": "코스닥"
+},
+"950190": {
+"listed": true,
+"name": "고스트스튜디오",
+"market": "코스닥"
+},
+"950200": {
+"listed": true,
+"name": "소마젠",
+"market": "코스닥"
+},
+"950210": {
+"listed": true,
+"name": "프레스티지바이오파마",
+"market": "코스피"
+},
+"950220": {
+"listed": true,
+"name": "네오이뮨텍",
+"market": "코스닥"
+},
+"950250": {
+"listed": true,
+"name": "테라뷰",
+"market": "코스닥"
+},
+"KOSDAQ": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"KOSPI": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"KQ11": {
+"listed": false,
+"name": "",
+"market": ""
+},
+"KS11": {
+"listed": false,
+"name": "",
+"market": ""
+}
+}

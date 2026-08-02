@@ -1,0 +1,657 @@
+{
+ "DSR 제강": {
+  "code": "069730",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "HK이노엔": {
+  "code": "195940",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "HLB": {
+  "code": "028300",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "KBG": {
+  "code": "318000",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "KG스틸": {
+  "code": "016380",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "NE능률": {
+  "code": "053290",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "SG&G": {
+  "code": "040610",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "SG글로벌": {
+  "code": "001380",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "TCC스틸": {
+  "code": "002710",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "YBM넷": {
+  "code": "057030",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "가온칩스": {
+  "code": "399720",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "경남스틸": {
+  "code": "039240",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "그리드위즈": {
+  "code": "453450",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "그린케미칼": {
+  "code": "083420",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "금강철강": {
+  "code": "053260",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "금양": {
+  "code": "001570",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "나인테크": {
+  "code": "267320",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "네오오토": {
+  "code": "212560",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "네오위즈": {
+  "code": "095660",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "네오크레마": {
+  "code": "311390",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "넥스트칩": {
+  "code": "396270",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "다날": {
+  "code": "064260",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "대동기어": {
+  "code": "008830",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "대상홀딩스": {
+  "code": "084690",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "대원미디어": {
+  "code": "048910",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "대원전선": {
+  "code": "006340",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "대한전선": {
+  "code": "001440",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "대한해운": {
+  "code": "005880",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "동구바이오제약": {
+  "code": "006620",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "동국S&C": {
+  "code": "100130",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "두산밥캣": {
+  "code": "241560",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "디어유": {
+  "code": "376300",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "디와이디": {
+  "code": "219550",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "로보로보": {
+  "code": "215100",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "메디콕스": {
+  "code": "054180",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "메이슨캐피탈": {
+  "code": "021880",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "멕아이씨에스": {
+  "code": "058110",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "모나미": {
+  "code": "005360",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "모비스": {
+  "code": "250060",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "미래컴퍼니": {
+  "code": "049950",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "미투온": {
+  "code": "201490",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "바이넥스": {
+  "code": "053030",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "바이오니아": {
+  "code": "064550",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "브이씨": {
+  "code": "365900",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "브이티": {
+  "code": "018290",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "삼성에스디에스": {
+  "code": "018260",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "삼진엘앤디": {
+  "code": "054090",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "삼천당제약": {
+  "code": "000250",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "삼화네트웍스": {
+  "code": "046390",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "서연이화": {
+  "code": "200880",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "성도이엔지": {
+  "code": "037350",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "성문전자": {
+  "code": "014910",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "성우하이텍": {
+  "code": "015750",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "솔루엠": {
+  "code": "248070",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "솔본": {
+  "code": "035610",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "솔브레인홀딩스": {
+  "code": "036830",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "수젠텍": {
+  "code": "253840",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "신성델타테크": {
+  "code": "065350",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "신성이엔지": {
+  "code": "011930",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "신풍제약": {
+  "code": "019170",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "씨씨에스": {
+  "code": "066790",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "아난티": {
+  "code": "025980",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "아비코전자": {
+  "code": "036010",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "아톤": {
+  "code": "158430",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "압타바이오": {
+  "code": "293780",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "양지사": {
+  "code": "030960",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "어보브반도체": {
+  "code": "102120",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "에브리봇": {
+  "code": "270660",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "에스티아이": {
+  "code": "039440",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "에코캡": {
+  "code": "128540",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "에코플라스틱": {
+  "code": "038110",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "엔켐": {
+  "code": "348370",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "엘컴텍": {
+  "code": "037950",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "영화테크": {
+  "code": "265560",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "오텍": {
+  "code": "067170",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "오토앤": {
+  "code": "353590",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "와이씨": {
+  "code": "232140",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "우림피티에스": {
+  "code": "101170",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "우양": {
+  "code": "103840",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "우진": {
+  "code": "105840",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "원익": {
+  "code": "032940",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "원준": {
+  "code": "382840",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "위더스제약": {
+  "code": "330350",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "위메이드맥스": {
+  "code": "101730",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "유니온": {
+  "code": "000910",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "윤성에프앤씨": {
+  "code": "372170",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "이구산업": {
+  "code": "025820",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "이글벳": {
+  "code": "044960",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "인탑스": {
+  "code": "049070",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "인포바인": {
+  "code": "115310",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "일동홀딩스": {
+  "code": "000230",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "저스템": {
+  "code": "417840",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "제룡전기": {
+  "code": "033100",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "제이오": {
+  "code": "418550",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "제일약품": {
+  "code": "271980",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "조일알미늄": {
+  "code": "018470",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "주성엔지니어링": {
+  "code": "036930",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "지노믹트리": {
+  "code": "228760",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "지아이텍": {
+  "code": "382480",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "지투파워": {
+  "code": "388050",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "청담글로벌": {
+  "code": "362320",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "컬러레이": {
+  "code": "900310",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "케이씨에스": {
+  "code": "115500",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "케이엔제이": {
+  "code": "272110",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "켐트로스": {
+  "code": "220260",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "코리아에프티": {
+  "code": "123410",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "코오롱글로벌": {
+  "code": "003070",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "큐라클": {
+  "code": "365270",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "태경비케이": {
+  "code": "014580",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "태성": {
+  "code": "323280",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "티로보틱스": {
+  "code": "117730",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "파워로직스": {
+  "code": "047310",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "퍼스텍": {
+  "code": "010820",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "포바이포": {
+  "code": "389140",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "포스코DX": {
+  "code": "022100",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "풍산": {
+  "code": "103140",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "퓨런티어": {
+  "code": "370090",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "하이비젼시스템": {
+  "code": "126700",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "하이스틸": {
+  "code": "071090",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "한네트": {
+  "code": "052600",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "한미반도체": {
+  "code": "042700",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "한신기계": {
+  "code": "011700",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "한양이엔지": {
+  "code": "045100",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "한일사료": {
+  "code": "005860",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "한탑": {
+  "code": "002680",
+  "market": "코스닥",
+  "src": "naver"
+ },
+ "한화솔루션": {
+  "code": "009830",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "한화투자증권": {
+  "code": "003530",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "현대약품": {
+  "code": "004310",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "화천기계": {
+  "code": "010660",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "후성": {
+  "code": "093370",
+  "market": "코스피",
+  "src": "naver"
+ },
+ "희림": {
+  "code": "037440",
+  "market": "코스닥",
+  "src": "naver"
+ }
+}

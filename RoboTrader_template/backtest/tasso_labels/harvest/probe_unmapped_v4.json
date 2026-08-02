@@ -1,0 +1,10585 @@
+{
+ "줌인터넷": {
+  "name": "줌인터넷",
+  "levels": [
+   {
+    "prefix": "줌인터넷",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "줌인터",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "줌인",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "모아데이터": {
+  "name": "모아데이터",
+  "levels": [
+   {
+    "prefix": "모아데이터",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "모아데이",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "모아데이타",
+    "code": "288980",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "모아데이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "SCI평가정보": {
+  "name": "SCI평가정보",
+  "levels": [
+   {
+    "prefix": "SCI평가정보",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SCI평가정",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SCI평가",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SCI평",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SCI",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SC",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "SCL사이언스",
+    "code": "246960",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "SC"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "수산중공업": {
+  "name": "수산중공업",
+  "levels": [
+   {
+    "prefix": "수산중공업",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "수산중공",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "수산중",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "수산",
+    "n": 3,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "수산인더스트리",
+    "code": "126720",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "수산"
+   },
+   {
+    "name": "수산세보틱스",
+    "code": "017550",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "수산"
+   },
+   {
+    "name": "수산아이앤티",
+    "code": "050960",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "수산"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "KG ETS": {
+  "name": "KG ETS",
+  "levels": [
+   {
+    "prefix": "KG ETS",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KG ET",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KG E",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KG ",
+    "n": 6,
+    "saturated": false
+   },
+   {
+    "prefix": "KG",
+    "n": 6,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "KG모빌리티",
+    "code": "003620",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "KG "
+   },
+   {
+    "name": "KG스틸",
+    "code": "016380",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "KG "
+   },
+   {
+    "name": "KG케미칼",
+    "code": "001390",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "KG "
+   },
+   {
+    "name": "KG이니시스",
+    "code": "035600",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "KG "
+   },
+   {
+    "name": "KG에코솔루션",
+    "code": "151860",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "KG "
+   },
+   {
+    "name": "KG파이낸셜",
+    "code": "046440",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "KG "
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "동아화성": {
+  "name": "동아화성",
+  "levels": [
+   {
+    "prefix": "동아화성",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "동아화",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "동아",
+    "n": 4,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "동아쏘시오홀딩스",
+    "code": "000640",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "동아"
+   },
+   {
+    "name": "동아에스티",
+    "code": "170900",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "동아"
+   },
+   {
+    "name": "동아지질",
+    "code": "028100",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "동아"
+   },
+   {
+    "name": "동아엘텍",
+    "code": "088130",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "동아"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "지엔원에너지": {
+  "name": "지엔원에너지",
+  "levels": [
+   {
+    "prefix": "지엔원에너지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "지엔원에너",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "지엔원에",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "지엔원",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "지엔",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "지엔씨에너지",
+    "code": "119850",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "지엔"
+   },
+   {
+    "name": "지엔코",
+    "code": "065060",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "지엔"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "티플렉스": {
+  "name": "티플렉스",
+  "levels": [
+   {
+    "prefix": "티플렉스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "티플렉",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "티플",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "티플랙스",
+    "code": "081150",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "티플"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "넥스턴바이오": {
+  "name": "넥스턴바이오",
+  "levels": [
+   {
+    "prefix": "넥스턴바이오",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스턴바이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스턴바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스턴",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스",
+    "n": 7,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "넥스턴앤롤코리아",
+    "code": "089140",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "넥스턴"
+   },
+   {
+    "name": "넥스틸",
+    "code": "092790",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "넥스"
+   },
+   {
+    "name": "넥슨게임즈",
+    "code": "225570",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "넥스"
+   },
+   {
+    "name": "넥스틴",
+    "code": "348210",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "넥스"
+   },
+   {
+    "name": "넥스트바이오메디컬",
+    "code": "389650",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "넥스"
+   },
+   {
+    "name": "넥스트칩",
+    "code": "396270",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "넥스"
+   },
+   {
+    "name": "넥스트아이",
+    "code": "137940",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "넥스"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "노터스": {
+  "name": "노터스",
+  "levels": [
+   {
+    "prefix": "노터스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "노터",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "백광산업": {
+  "name": "백광산업",
+  "levels": [
+   {
+    "prefix": "백광산업",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "백광산",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "백광",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "까뮤이엔씨": {
+  "name": "까뮤이엔씨",
+  "levels": [
+   {
+    "prefix": "까뮤이엔씨",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "까뮤이엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "까뮤이",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "까뮤이앤씨",
+    "code": "013700",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "까뮤이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "신풍제지": {
+  "name": "신풍제지",
+  "levels": [
+   {
+    "prefix": "신풍제지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "신풍제",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "신풍제약",
+    "code": "019170",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "신풍제"
+   },
+   {
+    "name": "신풍제약우",
+    "code": "019175",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "신풍제"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "미코바이오메드": {
+  "name": "미코바이오메드",
+  "levels": [
+   {
+    "prefix": "미코바이오메드",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "미코바이오메",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "미코바이오",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "미코바이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "미코바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "미코",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "미코",
+    "code": "059090",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "미코"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "켐온": {
+  "name": "켐온",
+  "levels": [
+   {
+    "prefix": "켐온",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "인터파크": {
+  "name": "인터파크",
+  "levels": [
+   {
+    "prefix": "인터파크",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "인터파",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "인터",
+    "n": 4,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "인터지스",
+    "code": "129260",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "인터"
+   },
+   {
+    "name": "인터로조",
+    "code": "119610",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "인터"
+   },
+   {
+    "name": "인터플렉스",
+    "code": "051370",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "인터"
+   },
+   {
+    "name": "인터엠",
+    "code": "017250",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "인터"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "KG모빌리언스": {
+  "name": "KG모빌리언스",
+  "levels": [
+   {
+    "prefix": "KG모빌리언스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KG모빌리언",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KG모빌리",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "KG모빌리티",
+    "code": "003620",
+    "market": "코스피",
+    "level": 5,
+    "prefix": "KG모빌리"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "지니뮤직": {
+  "name": "지니뮤직",
+  "levels": [
+   {
+    "prefix": "지니뮤직",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "지니뮤",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "지니",
+    "n": 3,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "지니언스",
+    "code": "263860",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "지니"
+   },
+   {
+    "name": "지니너스",
+    "code": "389030",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "지니"
+   },
+   {
+    "name": "지니틱스",
+    "code": "303030",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "지니"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "알로이스": {
+  "name": "알로이스",
+  "levels": [
+   {
+    "prefix": "알로이스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "알로이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "알로",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "WI": {
+  "name": "WI",
+  "levels": [
+   {
+    "prefix": "WI",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "WISCOM",
+    "code": "024070",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "WI"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "피에이치씨": {
+  "name": "피에이치씨",
+  "levels": [
+   {
+    "prefix": "피에이치씨",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "피에이치",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "피에이치에이",
+    "code": "043370",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "피에이치"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "인트로메딕": {
+  "name": "인트로메딕",
+  "levels": [
+   {
+    "prefix": "인트로메딕",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "인트로메",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "인트로",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "인트",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "인트론바이오",
+    "code": "048530",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "인트로"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "디스플레이텍": {
+  "name": "디스플레이텍",
+  "levels": [
+   {
+    "prefix": "디스플레이텍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "디스플레이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "디스플레",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "디스플",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "디스",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "넷게임즈": {
+  "name": "넷게임즈",
+  "levels": [
+   {
+    "prefix": "넷게임즈",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넷게임",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넷게",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "넥슨지티": {
+  "name": "넥슨지티",
+  "levels": [
+   {
+    "prefix": "넥슨지티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥슨지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥슨",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "넥슨게임즈",
+    "code": "225570",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "넥슨"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "비올": {
+  "name": "비올",
+  "levels": [
+   {
+    "prefix": "비올",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "광림": {
+  "name": "광림",
+  "levels": [
+   {
+    "prefix": "광림",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "에코바이오": {
+  "name": "에코바이오",
+  "levels": [
+   {
+    "prefix": "에코바이오",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에코바이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에코바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에코",
+    "n": 9,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에코프로머티",
+    "code": "450080",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에코"
+   },
+   {
+    "name": "에코프로",
+    "code": "086520",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에코"
+   },
+   {
+    "name": "에코프로비엠",
+    "code": "247540",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에코"
+   },
+   {
+    "name": "에코프로에이치엔",
+    "code": "383310",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에코"
+   },
+   {
+    "name": "에코아이",
+    "code": "448280",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에코"
+   },
+   {
+    "name": "에코앤드림",
+    "code": "101360",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에코"
+   },
+   {
+    "name": "에코플라스틱",
+    "code": "038110",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에코"
+   },
+   {
+    "name": "에코글로우",
+    "code": "159910",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에코"
+   },
+   {
+    "name": "에코캡",
+    "code": "128540",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에코"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "LS전선아시아": {
+  "name": "LS전선아시아",
+  "levels": [
+   {
+    "prefix": "LS전선아시아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS전선아시",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS전선아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS전선",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS전",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS",
+    "n": 9,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "LS",
+    "code": "006260",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS ELECTRIC",
+    "code": "010120",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS에코에너지",
+    "code": "229640",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS네트웍스",
+    "code": "000680",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS마린솔루션",
+    "code": "060370",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS머트리얼즈",
+    "code": "417200",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS증권",
+    "code": "078020",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS티라유텍",
+    "code": "322180",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LSK아이로봇",
+    "code": "091970",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "LS"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "디딤": {
+  "name": "디딤",
+  "levels": [
+   {
+    "prefix": "디딤",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "링크제네시스": {
+  "name": "링크제네시스",
+  "levels": [
+   {
+    "prefix": "링크제네시스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "링크제네시",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "링크제네",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "링크제",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "링크제니시스",
+    "code": "219420",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "링크제"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "센트랄모텍": {
+  "name": "센트랄모텍",
+  "levels": [
+   {
+    "prefix": "센트랄모텍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "센트랄모",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "센트랄",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "센트",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "녹십자랩셀": {
+  "name": "녹십자랩셀",
+  "levels": [
+   {
+    "prefix": "녹십자랩셀",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "녹십자랩",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "녹십자",
+    "n": 5,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "녹십자",
+    "code": "006280",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "녹십자"
+   },
+   {
+    "name": "녹십자홀딩스",
+    "code": "005250",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "녹십자"
+   },
+   {
+    "name": "녹십자홀딩스2우",
+    "code": "005257",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "녹십자"
+   },
+   {
+    "name": "녹십자웰빙",
+    "code": "234690",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "녹십자"
+   },
+   {
+    "name": "녹십자엠에스",
+    "code": "142280",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "녹십자"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "태경케미칼": {
+  "name": "태경케미칼",
+  "levels": [
+   {
+    "prefix": "태경케미칼",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "태경케미",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "태경케미컬",
+    "code": "006890",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "태경케미"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "소룩스": {
+  "name": "소룩스",
+  "levels": [
+   {
+    "prefix": "소룩스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "소룩",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "레이크머티리얼": {
+  "name": "레이크머티리얼",
+  "levels": [
+   {
+    "prefix": "레이크머티리얼",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "레이크머티리얼즈",
+    "code": "281740",
+    "market": "코스닥",
+    "level": 7,
+    "prefix": "레이크머티리얼"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 7,
+  "saturated_any": false
+ },
+ "에이텍티엔": {
+  "name": "에이텍티엔",
+  "levels": [
+   {
+    "prefix": "에이텍티엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이텍티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이텍",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에이텍",
+    "code": "045660",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이텍"
+   },
+   {
+    "name": "에이텍모빌리티",
+    "code": "224110",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이텍"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "KPX생명과학": {
+  "name": "KPX생명과학",
+  "levels": [
+   {
+    "prefix": "KPX생명과학",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KPX생명과",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KPX생명",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KPX생",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KPX",
+    "n": 2,
+    "saturated": false
+   },
+   {
+    "prefix": "KP",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "KPX홀딩스",
+    "code": "092230",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "KPX"
+   },
+   {
+    "name": "KPX케미칼",
+    "code": "025000",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "KPX"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "클리노믹스": {
+  "name": "클리노믹스",
+  "levels": [
+   {
+    "prefix": "클리노믹스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클리노믹",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클리노",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클리",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "클리오",
+    "code": "237880",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "클리"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "까스텔바작": {
+  "name": "까스텔바작",
+  "levels": [
+   {
+    "prefix": "까스텔바작",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "까스텔바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "까스텔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "까스",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "가온미디어": {
+  "name": "가온미디어",
+  "levels": [
+   {
+    "prefix": "가온미디어",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "가온미디",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "가온미",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "가온",
+    "n": 3,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "가온전선",
+    "code": "000500",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "가온"
+   },
+   {
+    "name": "가온칩스",
+    "code": "399720",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "가온"
+   },
+   {
+    "name": "가온그룹",
+    "code": "078890",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "가온"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "코프라": {
+  "name": "코프라",
+  "levels": [
+   {
+    "prefix": "코프라",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코프",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "효성첨단소재": {
+  "name": "효성첨단소재",
+  "levels": [
+   {
+    "prefix": "효성첨단소재",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "효성첨단소",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "효성첨단",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "효성첨",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "효성",
+    "n": 6,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "효성",
+    "code": "004800",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "효성"
+   },
+   {
+    "name": "효성중공업",
+    "code": "298040",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "효성"
+   },
+   {
+    "name": "효성티앤씨",
+    "code": "298020",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "효성"
+   },
+   {
+    "name": "효성화학",
+    "code": "298000",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "효성"
+   },
+   {
+    "name": "효성ITX",
+    "code": "094280",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "효성"
+   },
+   {
+    "name": "효성오앤비",
+    "code": "097870",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "효성"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "골든센츄리": {
+  "name": "골든센츄리",
+  "levels": [
+   {
+    "prefix": "골든센츄리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "골든센츄",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "골든센",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "골든",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "한솔로지틱스": {
+  "name": "한솔로지틱스",
+  "levels": [
+   {
+    "prefix": "한솔로지틱스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "한솔로지틱",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "한솔로지",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "한솔로지스틱스",
+    "code": "009180",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "한솔로지"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "바이오리더스": {
+  "name": "바이오리더스",
+  "levels": [
+   {
+    "prefix": "바이오리더스",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "바이오리더",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이오리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이오",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "모아라이프플러스",
+    "code": "142760",
+    "market": "코스닥",
+    "level": 6,
+    "prefix": "바이오리더스"
+   },
+   {
+    "name": "바이오노트",
+    "code": "377740",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오다인",
+    "code": "314930",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오플러스",
+    "code": "099430",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오니아",
+    "code": "064550",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오비쥬",
+    "code": "489460",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오솔루션",
+    "code": "086820",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오스마트",
+    "code": "038460",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오에프디엔씨",
+    "code": "251120",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오톡스텍",
+    "code": "086040",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오포트",
+    "code": "188040",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 6,
+  "saturated_any": true
+ },
+ "덕신하우징": {
+  "name": "덕신하우징",
+  "levels": [
+   {
+    "prefix": "덕신하우징",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "덕신하우",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "덕신하",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "덕신",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "덕신이피씨",
+    "code": "090410",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "덕신"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "와이제이엠게임즈": {
+  "name": "와이제이엠게임즈",
+  "levels": [
+   {
+    "prefix": "와이제이엠게임즈",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이제이엠게임",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이제이엠게",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이제이엠",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이제이",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "와이제",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "와이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "와이제이링크",
+    "code": "209640",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "와이제이"
+   },
+   {
+    "name": "와이투솔루션",
+    "code": "011690",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이지엔터테인먼트",
+    "code": "122870",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이씨",
+    "code": "232140",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이지-원",
+    "code": "019210",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이씨켐",
+    "code": "112290",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이솔",
+    "code": "122990",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이엠티",
+    "code": "251370",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이바이오로직스",
+    "code": "338840",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이엔텍",
+    "code": "067900",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": true
+ },
+ "일진머티리얼즈": {
+  "name": "일진머티리얼즈",
+  "levels": [
+   {
+    "prefix": "일진머티리얼즈",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "일진머티리얼",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "일진머티리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "일진머티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "일진머",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "일진",
+    "n": 6,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "일진전기",
+    "code": "103590",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "일진"
+   },
+   {
+    "name": "일진하이솔루스",
+    "code": "271940",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "일진"
+   },
+   {
+    "name": "일진홀딩스",
+    "code": "015860",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "일진"
+   },
+   {
+    "name": "일진다이아",
+    "code": "081000",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "일진"
+   },
+   {
+    "name": "일진디스플",
+    "code": "020760",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "일진"
+   },
+   {
+    "name": "일진파워",
+    "code": "094820",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "일진"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "한송네오텍": {
+  "name": "한송네오텍",
+  "levels": [
+   {
+    "prefix": "한송네오텍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "한송네오",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "한송네",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "한송",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "보광산업": {
+  "name": "보광산업",
+  "levels": [
+   {
+    "prefix": "보광산업",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "보광산",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "보광",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "게임빌": {
+  "name": "게임빌",
+  "levels": [
+   {
+    "prefix": "게임빌",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "게임",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "맥스트": {
+  "name": "맥스트",
+  "levels": [
+   {
+    "prefix": "맥스트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "맥스",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "젬백스지오": {
+  "name": "젬백스지오",
+  "levels": [
+   {
+    "prefix": "젬백스지오",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "젬백스지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "젬백스",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "플래스크",
+    "code": "041590",
+    "market": "코스닥",
+    "level": 5,
+    "prefix": "젬백스지오"
+   },
+   {
+    "name": "젬백스",
+    "code": "082270",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "젬백스"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "마인즈랩": {
+  "name": "마인즈랩",
+  "levels": [
+   {
+    "prefix": "마인즈랩",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "마인즈",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "마인",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "룽투코리아": {
+  "name": "룽투코리아",
+  "levels": [
+   {
+    "prefix": "룽투코리아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "룽투코리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "룽투코",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "룽투",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "대유": {
+  "name": "대유",
+  "levels": [
+   {
+    "prefix": "대유",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "하인크코리아": {
+  "name": "하인크코리아",
+  "levels": [
+   {
+    "prefix": "하인크코리아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "하인크코리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "하인크코",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "하인크",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "하인",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "카나리아바이오": {
+  "name": "카나리아바이오",
+  "levels": [
+   {
+    "prefix": "카나리아바이오",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "카나리아바이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "카나리아바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "카나리아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "카나리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "카나",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "카나프테라퓨틱스",
+    "code": "0082N0",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "카나"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "다올인베스트먼트": {
+  "name": "다올인베스트먼트",
+  "levels": [
+   {
+    "prefix": "다올인베스트먼트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다올인베스트먼",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다올인베스트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다올인베스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다올인베",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다올인",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다올",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "다올투자증권",
+    "code": "030210",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "다올"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "래몽래인": {
+  "name": "래몽래인",
+  "levels": [
+   {
+    "prefix": "래몽래인",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "래몽래",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "래몽",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "아티스트스튜디오",
+    "code": "200350",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "래몽래인"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "소니드": {
+  "name": "소니드",
+  "levels": [
+   {
+    "prefix": "소니드",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "소니",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "덕양산업": {
+  "name": "덕양산업",
+  "levels": [
+   {
+    "prefix": "덕양산업",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "덕양산",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "덕양",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "덕양에너젠",
+    "code": "0001A0",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "덕양"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "슈어소프트": {
+  "name": "슈어소프트",
+  "levels": [
+   {
+    "prefix": "슈어소프트",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "슈어소프트테크",
+    "code": "298830",
+    "market": "코스닥",
+    "level": 5,
+    "prefix": "슈어소프트"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "아이티센": {
+  "name": "아이티센",
+  "levels": [
+   {
+    "prefix": "아이티센",
+    "n": 4,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "아이티센씨티에스",
+    "code": "031820",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "아이티센"
+   },
+   {
+    "name": "아이티센글로벌",
+    "code": "124500",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "아이티센"
+   },
+   {
+    "name": "아이티센엔텍",
+    "code": "010280",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "아이티센"
+   },
+   {
+    "name": "아이티센피엔에스",
+    "code": "232830",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "아이티센"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "LS머티리얼즈": {
+  "name": "LS머티리얼즈",
+  "levels": [
+   {
+    "prefix": "LS머티리얼즈",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS머티리얼",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS머티리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS머티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS머",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "LS머트리얼즈",
+    "code": "417200",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "LS머"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "오스템임플란드": {
+  "name": "오스템임플란드",
+  "levels": [
+   {
+    "prefix": "오스템임플란드",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오스템임플란",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오스템임플",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오스템임",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오스템",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "오스템",
+    "code": "031510",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "오스템"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "오스템임플란트": {
+  "name": "오스템임플란트",
+  "levels": [
+   {
+    "prefix": "오스템임플란트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오스템임플란",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오스템임플",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오스템임",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오스템",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "오스템",
+    "code": "031510",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "오스템"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "케이알피앤이": {
+  "name": "케이알피앤이",
+  "levels": [
+   {
+    "prefix": "케이알피앤이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "케이알피앤",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "케이알피",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "케이알",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "케이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "케이알엠",
+    "code": "093640",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "케이알"
+   },
+   {
+    "name": "케이뱅크",
+    "code": "279570",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "케이"
+   },
+   {
+    "name": "케이씨텍",
+    "code": "281820",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "케이"
+   },
+   {
+    "name": "케이카",
+    "code": "381970",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "케이"
+   },
+   {
+    "name": "케이씨",
+    "code": "029460",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "케이"
+   },
+   {
+    "name": "케이비아이동국실업",
+    "code": "001620",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "케이"
+   },
+   {
+    "name": "케이탑리츠",
+    "code": "145270",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "케이"
+   },
+   {
+    "name": "케이아이엔엑스",
+    "code": "093320",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "케이"
+   },
+   {
+    "name": "케이엠더블유",
+    "code": "032500",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "케이"
+   },
+   {
+    "name": "케이프",
+    "code": "064820",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "케이"
+   },
+   {
+    "name": "케이티알파",
+    "code": "036030",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "케이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": true
+ },
+ "갤럭이사에스엠": {
+  "name": "갤럭이사에스엠",
+  "levels": [
+   {
+    "prefix": "갤럭이사에스엠",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "갤럭이사에스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "갤럭이사에",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "갤럭이사",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "갤럭이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "갤럭",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "갤럭시아에스엠",
+    "code": "011420",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "갤럭"
+   },
+   {
+    "name": "갤럭시아머니트리",
+    "code": "094480",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "갤럭"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "장원테크": {
+  "name": "장원테크",
+  "levels": [
+   {
+    "prefix": "장원테크",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "장원테",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "장원",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "현성바이탈": {
+  "name": "현성바이탈",
+  "levels": [
+   {
+    "prefix": "현성바이탈",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "현성바이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "현성바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "현성",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "제넨바이오": {
+  "name": "제넨바이오",
+  "levels": [
+   {
+    "prefix": "제넨바이오",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제넨바이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제넨바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제넨",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "콤텍시스템": {
+  "name": "콤텍시스템",
+  "levels": [
+   {
+    "prefix": "콤텍시스템",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "콤텍시스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "콤텍시",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "콤텍",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "ITX엠투엠": {
+  "name": "ITX엠투엠",
+  "levels": [
+   {
+    "prefix": "ITX엠투엠",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "ITX엠투",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "ITX엠",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "ITX",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "IT",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "데일리블록체인": {
+  "name": "데일리블록체인",
+  "levels": [
+   {
+    "prefix": "데일리블록체인",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "데일리블록체",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "데일리블록",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "데일리블",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "데일리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "데일",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "라이브플렉스": {
+  "name": "라이브플렉스",
+  "levels": [
+   {
+    "prefix": "라이브플렉스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이브플렉",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이브플",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이브",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "라이콤",
+    "code": "388790",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "라이"
+   },
+   {
+    "name": "라이온켐텍",
+    "code": "171120",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "라이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "메이슨케피탈": {
+  "name": "메이슨케피탈",
+  "levels": [
+   {
+    "prefix": "메이슨케피탈",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "메이슨케피",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "메이슨케",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "메이슨",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "메이슨캐피탈",
+    "code": "021880",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "메이슨"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "SK바이오랜드 외 6개": {
+  "name": "SK바이오랜드 외 6개",
+  "levels": [
+   {
+    "prefix": "SK바이오랜드 외 6개",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SK바이오랜드 외 6",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SK바이오랜드 외 ",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SK바이오랜드 외",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SK바이오랜드 ",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SK바이오랜드",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SK바이오랜",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SK바이오",
+    "n": 2,
+    "saturated": false
+   },
+   {
+    "prefix": "SK바이",
+    "n": 2,
+    "saturated": false
+   },
+   {
+    "prefix": "SK바",
+    "n": 2,
+    "saturated": false
+   },
+   {
+    "prefix": "SK",
+    "n": 9,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "SK바이오팜",
+    "code": "326030",
+    "market": "코스피",
+    "level": 5,
+    "prefix": "SK바이오"
+   },
+   {
+    "name": "SK바이오사이언스",
+    "code": "302440",
+    "market": "코스피",
+    "level": 5,
+    "prefix": "SK바이오"
+   },
+   {
+    "name": "SK",
+    "code": "034730",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "SK"
+   },
+   {
+    "name": "SK하이닉스",
+    "code": "000660",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "SK"
+   },
+   {
+    "name": "SK스퀘어",
+    "code": "402340",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "SK"
+   },
+   {
+    "name": "SK이터닉스",
+    "code": "475150",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "SK"
+   },
+   {
+    "name": "SK이노베이션",
+    "code": "096770",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "SK"
+   },
+   {
+    "name": "SK텔레콤",
+    "code": "017670",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "SK"
+   },
+   {
+    "name": "SKC",
+    "code": "011790",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "SK"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "뉴파워프리즈마": {
+  "name": "뉴파워프리즈마",
+  "levels": [
+   {
+    "prefix": "뉴파워프리즈마",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "뉴파워프리즈",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "뉴파워프리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "뉴파워프",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "뉴파워프라즈마",
+    "code": "144960",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "뉴파워프"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "대성엘텍": {
+  "name": "대성엘텍",
+  "levels": [
+   {
+    "prefix": "대성엘텍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대성엘",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대성",
+    "n": 6,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "대성에너지",
+    "code": "117580",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대성"
+   },
+   {
+    "name": "대성산업",
+    "code": "128820",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대성"
+   },
+   {
+    "name": "대성홀딩스",
+    "code": "016710",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대성"
+   },
+   {
+    "name": "대성하이텍",
+    "code": "129920",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "대성"
+   },
+   {
+    "name": "대성창투",
+    "code": "027830",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "대성"
+   },
+   {
+    "name": "대성미생물",
+    "code": "036480",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "대성"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "제노포커스": {
+  "name": "제노포커스",
+  "levels": [
+   {
+    "prefix": "제노포커스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제노포커",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제노포",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제노",
+    "n": 3,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "제노코",
+    "code": "361390",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "제노"
+   },
+   {
+    "name": "제노레이",
+    "code": "122310",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "제노"
+   },
+   {
+    "name": "제놀루션",
+    "code": "225220",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "제노"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "진메트릭스": {
+  "name": "진메트릭스",
+  "levels": [
+   {
+    "prefix": "진메트릭스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "진메트릭",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "진메트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "진메",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "대아이티아이": {
+  "name": "대아이티아이",
+  "levels": [
+   {
+    "prefix": "대아이티아이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대아이티아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대아이티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대아이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대아",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "대아티아이",
+    "code": "045390",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "대아"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "SV.인베스트먼트": {
+  "name": "SV.인베스트먼트",
+  "levels": [
+   {
+    "prefix": "SV.인베스트먼트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SV.인베스트먼",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SV.인베스트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SV.인베스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SV.인베",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SV.인",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SV.",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SV",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "SV인베스트먼트",
+    "code": "289080",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "SV"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "KT서브마린": {
+  "name": "KT서브마린",
+  "levels": [
+   {
+    "prefix": "KT서브마린",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KT서브마",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KT서브",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KT서",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KT",
+    "n": 7,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "KT",
+    "code": "030200",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KT&G",
+    "code": "033780",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KTcs",
+    "code": "058850",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KTis",
+    "code": "058860",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KT나스미디어",
+    "code": "089600",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KT밀리의서재",
+    "code": "418470",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KT지니뮤직",
+    "code": "043610",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "KT"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "KMH": {
+  "name": "KMH",
+  "levels": [
+   {
+    "prefix": "KMH",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KM",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "MP한강": {
+  "name": "MP한강",
+  "levels": [
+   {
+    "prefix": "MP한강",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "MP한",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "MP",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "삼본전자": {
+  "name": "삼본전자",
+  "levels": [
+   {
+    "prefix": "삼본전자",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "삼본전",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "삼본",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "퓨처스트림네트웍스": {
+  "name": "퓨처스트림네트웍스",
+  "levels": [
+   {
+    "prefix": "퓨처스트림네트웍스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "퓨처스트림네트웍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "퓨처스트림네트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "퓨처스트림네",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "퓨처스트림",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "퓨처스트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "퓨처스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "퓨처",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "까뮤이엔이씨": {
+  "name": "까뮤이엔이씨",
+  "levels": [
+   {
+    "prefix": "까뮤이엔이씨",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "까뮤이엔이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "까뮤이엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "까뮤이",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "까뮤이앤씨",
+    "code": "013700",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "까뮤이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "나라엠엔디": {
+  "name": "나라엠엔디",
+  "levels": [
+   {
+    "prefix": "나라엠엔디",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "나라엠엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "나라엠",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "나라엠앤디",
+    "code": "051490",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "나라엠"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "오성첨산소재": {
+  "name": "오성첨산소재",
+  "levels": [
+   {
+    "prefix": "오성첨산소재",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오성첨산소",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오성첨산",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오성첨",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "오성첨단소재",
+    "code": "052420",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "오성첨"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "셀리버리": {
+  "name": "셀리버리",
+  "levels": [
+   {
+    "prefix": "셀리버리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "셀리버",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "셀리",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "셀리드",
+    "code": "299660",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "셀리"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "컬러에이": {
+  "name": "컬러에이",
+  "levels": [
+   {
+    "prefix": "컬러에이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "컬러에",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "컬러",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "컬러레이",
+    "code": "900310",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "컬러"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "녹십자렙셀": {
+  "name": "녹십자렙셀",
+  "levels": [
+   {
+    "prefix": "녹십자렙셀",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "녹십자렙",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "녹십자",
+    "n": 5,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "녹십자",
+    "code": "006280",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "녹십자"
+   },
+   {
+    "name": "녹십자홀딩스",
+    "code": "005250",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "녹십자"
+   },
+   {
+    "name": "녹십자홀딩스2우",
+    "code": "005257",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "녹십자"
+   },
+   {
+    "name": "녹십자웰빙",
+    "code": "234690",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "녹십자"
+   },
+   {
+    "name": "녹십자엠에스",
+    "code": "142280",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "녹십자"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "네온테크": {
+  "name": "네온테크",
+  "levels": [
+   {
+    "prefix": "네온테크",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "네온테",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "네온",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "루트로닉": {
+  "name": "루트로닉",
+  "levels": [
+   {
+    "prefix": "루트로닉",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "루트로",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "루트",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "루트K",
+    "code": "195990",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "루트"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "바이오톡스": {
+  "name": "바이오톡스",
+  "levels": [
+   {
+    "prefix": "바이오톡스",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "바이오톡스텍",
+    "code": "086040",
+    "market": "코스닥",
+    "level": 5,
+    "prefix": "바이오톡스"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "셀렉믹스": {
+  "name": "셀렉믹스",
+  "levels": [
+   {
+    "prefix": "셀렉믹스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "셀렉믹",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "셀렉",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "삼포판지": {
+  "name": "삼포판지",
+  "levels": [
+   {
+    "prefix": "삼포판지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "삼포판",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "삼포",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "HSD엔진": {
+  "name": "HSD엔진",
+  "levels": [
+   {
+    "prefix": "HSD엔진",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "HSD엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "HSD",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "HS",
+    "n": 4,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "HS효성첨단소재",
+    "code": "298050",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "HS"
+   },
+   {
+    "name": "HS효성",
+    "code": "487570",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "HS"
+   },
+   {
+    "name": "HS화성",
+    "code": "002460",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "HS"
+   },
+   {
+    "name": "HS애드",
+    "code": "035000",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "HS"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "자안": {
+  "name": "자안",
+  "levels": [
+   {
+    "prefix": "자안",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "SM Life": {
+  "name": "SM Life",
+  "levels": [
+   {
+    "prefix": "SM Life",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "SM Life Design",
+    "code": "063440",
+    "market": "코스닥",
+    "level": 7,
+    "prefix": "SM Life"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 7,
+  "saturated_any": false
+ },
+ "라이브파이낸셜": {
+  "name": "라이브파이낸셜",
+  "levels": [
+   {
+    "prefix": "라이브파이낸셜",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이브파이낸",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이브파이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이브파",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이브",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "라이콤",
+    "code": "388790",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "라이"
+   },
+   {
+    "name": "라이온켐텍",
+    "code": "171120",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "라이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "KMH하이텍": {
+  "name": "KMH하이텍",
+  "levels": [
+   {
+    "prefix": "KMH하이텍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KMH하이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KMH하",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KMH",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KM",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "리노스": {
+  "name": "리노스",
+  "levels": [
+   {
+    "prefix": "리노스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "리노",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "리노공업",
+    "code": "058470",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "리노"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "강스템바이오": {
+  "name": "강스템바이오",
+  "levels": [
+   {
+    "prefix": "강스템바이오",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "강스템바이오텍",
+    "code": "217730",
+    "market": "코스닥",
+    "level": 6,
+    "prefix": "강스템바이오"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 6,
+  "saturated_any": false
+ },
+ "세원": {
+  "name": "세원",
+  "levels": [
+   {
+    "prefix": "세원",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "세원정공",
+    "code": "021820",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "세원"
+   },
+   {
+    "name": "세원물산",
+    "code": "024830",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "세원"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "SG충방": {
+  "name": "SG충방",
+  "levels": [
+   {
+    "prefix": "SG충방",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SG충",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "SG",
+    "n": 7,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "SG",
+    "code": "255220",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "SG"
+   },
+   {
+    "name": "SGC에너지",
+    "code": "005090",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "SG"
+   },
+   {
+    "name": "SG세계물산",
+    "code": "004060",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "SG"
+   },
+   {
+    "name": "SG글로벌",
+    "code": "001380",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "SG"
+   },
+   {
+    "name": "SGC E&C",
+    "code": "016250",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "SG"
+   },
+   {
+    "name": "SG&G",
+    "code": "040610",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "SG"
+   },
+   {
+    "name": "SGA솔루션즈",
+    "code": "184230",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "SG"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "제이엔케이히터": {
+  "name": "제이엔케이히터",
+  "levels": [
+   {
+    "prefix": "제이엔케이히터",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제이엔케이히",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제이엔케이",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "제이엔케",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "제이엔",
+    "n": 2,
+    "saturated": false
+   },
+   {
+    "prefix": "제이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "제이엔케이글로벌",
+    "code": "126880",
+    "market": "코스닥",
+    "level": 5,
+    "prefix": "제이엔케이"
+   },
+   {
+    "name": "제이엔비",
+    "code": "452160",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "제이엔"
+   },
+   {
+    "name": "제일기획",
+    "code": "030000",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "제이"
+   },
+   {
+    "name": "제이에스코퍼레이션",
+    "code": "194370",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "제이"
+   },
+   {
+    "name": "제이알글로벌리츠",
+    "code": "348950",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "제이"
+   },
+   {
+    "name": "제일약품",
+    "code": "271980",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "제이"
+   },
+   {
+    "name": "제일파마홀딩스",
+    "code": "002620",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "제이"
+   },
+   {
+    "name": "제일연마",
+    "code": "001560",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "제이"
+   },
+   {
+    "name": "제이에스링크",
+    "code": "127120",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "제이"
+   },
+   {
+    "name": "제이앤티씨",
+    "code": "204270",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "제이"
+   },
+   {
+    "name": "제이브이엠",
+    "code": "054950",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "제이"
+   },
+   {
+    "name": "제일일렉트릭",
+    "code": "199820",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "제이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": true
+ },
+ "LG헬로지번": {
+  "name": "LG헬로지번",
+  "levels": [
+   {
+    "prefix": "LG헬로지번",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LG헬로지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LG헬로",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "LG헬로비전",
+    "code": "037560",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "LG헬로"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "대우부품": {
+  "name": "대우부품",
+  "levels": [
+   {
+    "prefix": "대우부품",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대우부",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대우",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "대우건설",
+    "code": "047040",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대우"
+   },
+   {
+    "name": "대원전선",
+    "code": "006340",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대우"
+   },
+   {
+    "name": "대웅제약",
+    "code": "069620",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대우"
+   },
+   {
+    "name": "대웅",
+    "code": "003090",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대우"
+   },
+   {
+    "name": "대원강업",
+    "code": "000430",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대우"
+   },
+   {
+    "name": "대원제약",
+    "code": "003220",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대우"
+   },
+   {
+    "name": "대원전선우",
+    "code": "006345",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대우"
+   },
+   {
+    "name": "대원화성",
+    "code": "024890",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대우"
+   },
+   {
+    "name": "대원산업",
+    "code": "005710",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "대우"
+   },
+   {
+    "name": "대원미디어",
+    "code": "048910",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "대우"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": true
+ },
+ "동아기업": {
+  "name": "동아기업",
+  "levels": [
+   {
+    "prefix": "동아기업",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "동아기",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "동아",
+    "n": 4,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "동아쏘시오홀딩스",
+    "code": "000640",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "동아"
+   },
+   {
+    "name": "동아에스티",
+    "code": "170900",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "동아"
+   },
+   {
+    "name": "동아지질",
+    "code": "028100",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "동아"
+   },
+   {
+    "name": "동아엘텍",
+    "code": "088130",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "동아"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "한국프랜지": {
+  "name": "한국프랜지",
+  "levels": [
+   {
+    "prefix": "한국프랜지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "한국프랜",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "한국프",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "한국",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "한국전력",
+    "code": "015760",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "한국"
+   },
+   {
+    "name": "한국항공우주",
+    "code": "047810",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "한국"
+   },
+   {
+    "name": "한국카본",
+    "code": "017960",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "한국"
+   },
+   {
+    "name": "한국금융지주",
+    "code": "071050",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "한국"
+   },
+   {
+    "name": "한국타이어앤테크놀로지",
+    "code": "161390",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "한국"
+   },
+   {
+    "name": "한국가스공사",
+    "code": "036460",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "한국"
+   },
+   {
+    "name": "한국앤컴퍼니",
+    "code": "000240",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "한국"
+   },
+   {
+    "name": "한국콜마",
+    "code": "161890",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "한국"
+   },
+   {
+    "name": "한국금융지주우",
+    "code": "071055",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "한국"
+   },
+   {
+    "name": "한국쉘석유",
+    "code": "002960",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "한국"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": true
+ },
+ "서플러스그로벌": {
+  "name": "서플러스그로벌",
+  "levels": [
+   {
+    "prefix": "서플러스그로벌",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "서플러스그로",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "서플러스그",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "서플러스글로벌",
+    "code": "140070",
+    "market": "코스닥",
+    "level": 5,
+    "prefix": "서플러스그"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "쌍용정보통신": {
+  "name": "쌍용정보통신",
+  "levels": [
+   {
+    "prefix": "쌍용정보통신",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "쌍용정보통",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "쌍용정보",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "쌍용정",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "쌍용",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "코오롱머티리얼": {
+  "name": "코오롱머티리얼",
+  "levels": [
+   {
+    "prefix": "코오롱머티리얼",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코오롱머티리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코오롱머티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코오롱머",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코오롱",
+    "n": 8,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "코오롱",
+    "code": "002020",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱인더",
+    "code": "120110",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱글로벌",
+    "code": "003070",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱인더우",
+    "code": "120115",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱우",
+    "code": "002025",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱글로벌우",
+    "code": "003075",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱티슈진",
+    "code": "950160",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱생명과학",
+    "code": "102940",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "코오롱"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "화승알엔에이": {
+  "name": "화승알엔에이",
+  "levels": [
+   {
+    "prefix": "화승알엔에이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "화승알엔에",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "화승알엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "화승알",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "화승알앤에이",
+    "code": "378850",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "화승알"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "효성중고업": {
+  "name": "효성중고업",
+  "levels": [
+   {
+    "prefix": "효성중고업",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "효성중고",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "효성중공업",
+    "code": "298040",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "효성중고"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "세틀뱅크": {
+  "name": "세틀뱅크",
+  "levels": [
+   {
+    "prefix": "세틀뱅크",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "세틀뱅",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "세틀",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "엔브에이치코리아": {
+  "name": "엔브에이치코리아",
+  "levels": [
+   {
+    "prefix": "엔브에이치코리아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "엔브에이치코리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "엔브에이치코",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "엔브에이치",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "엔브에이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "엔브에",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "엔브",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "엔브이에이치코리아",
+    "code": "067570",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "엔브"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "미래에셋밴처투자": {
+  "name": "미래에셋밴처투자",
+  "levels": [
+   {
+    "prefix": "미래에셋밴처투자",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "미래에셋밴처투",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "미래에셋밴처",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "미래에셋밴",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "미래에셋",
+    "n": 10,
+    "saturated": true
+   },
+   {
+    "prefix": "미래에",
+    "n": 10,
+    "saturated": true
+   },
+   {
+    "prefix": "미래",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "미래에셋증권",
+    "code": "006800",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "미래에셋"
+   },
+   {
+    "name": "미래에셋생명",
+    "code": "085620",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "미래에셋"
+   },
+   {
+    "name": "미래에셋증권2우B",
+    "code": "00680K",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "미래에셋"
+   },
+   {
+    "name": "미래에셋 레버리지 코스피200 선물 ETN",
+    "code": "520054",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "미래에셋"
+   },
+   {
+    "name": "미래에셋 CD금리 플러스 ETN",
+    "code": "520094",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "미래에셋"
+   },
+   {
+    "name": "미래에셋증권우",
+    "code": "006805",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "미래에셋"
+   },
+   {
+    "name": "미래에셋 레버리지 반도체 ETN",
+    "code": "520098",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "미래에셋"
+   },
+   {
+    "name": "미래에셋 KRX금현물 Auto-KO-C 2810-01 ETN",
+    "code": "520066",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "미래에셋"
+   },
+   {
+    "name": "미래에셋 인버스 2X 코스닥150 선물 ETN",
+    "code": "520057",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "미래에셋"
+   },
+   {
+    "name": "미래에셋 미국 테크&반도체 TOP3 ETN",
+    "code": "520080",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "미래에셋"
+   },
+   {
+    "name": "미래산업",
+    "code": "025560",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "미래"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": true
+ },
+ "리더스 기술투자": {
+  "name": "리더스 기술투자",
+  "levels": [
+   {
+    "prefix": "리더스 기술투자",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "리더스 기술투",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "리더스 기술",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "리더스 기",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "리더스 ",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "리더스",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "리더",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "리더스코스메틱",
+    "code": "016100",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "리더스 "
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "리더스 기슬투자": {
+  "name": "리더스 기슬투자",
+  "levels": [
+   {
+    "prefix": "리더스 기슬투자",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "리더스 기슬투",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "리더스 기슬",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "리더스 기",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "리더스 ",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "리더스",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "리더",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "리더스코스메틱",
+    "code": "016100",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "리더스 "
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "에이텍티앤": {
+  "name": "에이텍티앤",
+  "levels": [
+   {
+    "prefix": "에이텍티앤",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이텍티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이텍",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에이텍",
+    "code": "045660",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이텍"
+   },
+   {
+    "name": "에이텍모빌리티",
+    "code": "224110",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이텍"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "하이트론": {
+  "name": "하이트론",
+  "levels": [
+   {
+    "prefix": "하이트론",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "하이트",
+    "n": 4,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "하이트진로",
+    "code": "000080",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "하이트"
+   },
+   {
+    "name": "하이트진로홀딩스",
+    "code": "000140",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "하이트"
+   },
+   {
+    "name": "하이트진로2우B",
+    "code": "000087",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "하이트"
+   },
+   {
+    "name": "하이트진로홀딩스우",
+    "code": "000145",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "하이트"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "서플글로스벌": {
+  "name": "서플글로스벌",
+  "levels": [
+   {
+    "prefix": "서플글로스벌",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "서플글로스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "서플글로",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "서플글",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "서플",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "서플러스글로벌",
+    "code": "140070",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "서플"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "KTH": {
+  "name": "KTH",
+  "levels": [
+   {
+    "prefix": "KTH",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KT",
+    "n": 7,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "KT",
+    "code": "030200",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KT&G",
+    "code": "033780",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KTcs",
+    "code": "058850",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KTis",
+    "code": "058860",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KT나스미디어",
+    "code": "089600",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KT밀리의서재",
+    "code": "418470",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "KT"
+   },
+   {
+    "name": "KT지니뮤직",
+    "code": "043610",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "KT"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "씨엠에스에듀": {
+  "name": "씨엠에스에듀",
+  "levels": [
+   {
+    "prefix": "씨엠에스에듀",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "씨엠에스에",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "씨엠에스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "씨엠에",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "씨엠",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "씨엠티엑스",
+    "code": "388210",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "씨엠"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "바이로그디바이스": {
+  "name": "바이로그디바이스",
+  "levels": [
+   {
+    "prefix": "바이로그디바이스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이로그디바이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이로그디바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이로그디",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이로그",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이로",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "바이오노트",
+    "code": "377740",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "바이"
+   },
+   {
+    "name": "바이오다인",
+    "code": "314930",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   },
+   {
+    "name": "바이오플러스",
+    "code": "099430",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   },
+   {
+    "name": "바이넥스",
+    "code": "053030",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   },
+   {
+    "name": "바이오니아",
+    "code": "064550",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   },
+   {
+    "name": "바이오비쥬",
+    "code": "489460",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   },
+   {
+    "name": "바이오솔루션",
+    "code": "086820",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   },
+   {
+    "name": "바이젠셀",
+    "code": "308080",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   },
+   {
+    "name": "바이오스마트",
+    "code": "038460",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   },
+   {
+    "name": "바이오에프디엔씨",
+    "code": "251120",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": true
+ },
+ "바이오로그디바이스": {
+  "name": "바이오로그디바이스",
+  "levels": [
+   {
+    "prefix": "바이오로그디바이스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이오로그디바이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이오로그디바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이오로그디",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이오로그",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이오로",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바이오",
+    "n": 10,
+    "saturated": true
+   },
+   {
+    "prefix": "바이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "바이오노트",
+    "code": "377740",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오다인",
+    "code": "314930",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오플러스",
+    "code": "099430",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오니아",
+    "code": "064550",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오비쥬",
+    "code": "489460",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오솔루션",
+    "code": "086820",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오스마트",
+    "code": "038460",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오에프디엔씨",
+    "code": "251120",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오톡스텍",
+    "code": "086040",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이오포트",
+    "code": "188040",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "바이오"
+   },
+   {
+    "name": "바이넥스",
+    "code": "053030",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   },
+   {
+    "name": "바이젠셀",
+    "code": "308080",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "바이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": true
+ },
+ "소리바다": {
+  "name": "소리바다",
+  "levels": [
+   {
+    "prefix": "소리바다",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "소리바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "소리",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "동성화이텍": {
+  "name": "동성화이텍",
+  "levels": [
+   {
+    "prefix": "동성화이텍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "동성화이",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "동성화인텍",
+    "code": "033500",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "동성화이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "바닥주": {
+  "name": "바닥주",
+  "levels": [
+   {
+    "prefix": "바닥주",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "바닥",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "KH E&T": {
+  "name": "KH E&T",
+  "levels": [
+   {
+    "prefix": "KH E&T",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KH E&",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KH E",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KH ",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "KH",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "KH바텍",
+    "code": "060720",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "KH "
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "에이프로젠 KIC": {
+  "name": "에이프로젠 KIC",
+  "levels": [
+   {
+    "prefix": "에이프로젠 KIC",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이프로젠 KI",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이프로젠 K",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이프로젠 ",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에이프로젠",
+    "code": "007460",
+    "market": "코스피",
+    "level": 6,
+    "prefix": "에이프로젠 "
+   },
+   {
+    "name": "에이프로젠바이오로직스",
+    "code": "003060",
+    "market": "코스피",
+    "level": 6,
+    "prefix": "에이프로젠 "
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 6,
+  "saturated_any": false
+ },
+ "펜스타엔터프라이즈": {
+  "name": "펜스타엔터프라이즈",
+  "levels": [
+   {
+    "prefix": "펜스타엔터프라이즈",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "펜스타엔터프라이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "펜스타엔터프라",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "펜스타엔터프",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "펜스타엔터",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "펜스타엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "펜스타",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "펜스",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "휘닉스소재": {
+  "name": "휘닉스소재",
+  "levels": [
+   {
+    "prefix": "휘닉스소재",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "휘닉스소",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "휘닉스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "휘닉",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "클라우드에어": {
+  "name": "클라우드에어",
+  "levels": [
+   {
+    "prefix": "클라우드에어",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클라우드에",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클라우드",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클라우",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클라",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "대림B&Co": {
+  "name": "대림B&Co",
+  "levels": [
+   {
+    "prefix": "대림B&Co",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대림B&C",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대림B&",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대림B",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대림",
+    "n": 3,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "대림바스",
+    "code": "005750",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대림"
+   },
+   {
+    "name": "대림통상",
+    "code": "006570",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "대림"
+   },
+   {
+    "name": "대림제지",
+    "code": "017650",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "대림"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "직전고 돌파, 신고가": {
+  "name": "직전고 돌파, 신고가",
+  "levels": [
+   {
+    "prefix": "직전고 돌파, 신고가",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "직전고 돌파, 신고",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "직전고 돌파, 신",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "직전고 돌파, ",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "직전고 돌파,",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "직전고 돌파",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "직전고 돌",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "직전고 ",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "직전고",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "직전",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "맘스터치": {
+  "name": "맘스터치",
+  "levels": [
+   {
+    "prefix": "맘스터치",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "맘스터",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "맘스",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "에이치엘비파워": {
+  "name": "에이치엘비파워",
+  "levels": [
+   {
+    "prefix": "에이치엘비파워",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이치엘비파",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이치엘비",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이치엘",
+    "n": 2,
+    "saturated": false
+   },
+   {
+    "prefix": "에이치",
+    "n": 10,
+    "saturated": true
+   },
+   {
+    "prefix": "에이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에이치엘지노믹스",
+    "code": "0156T0",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "에이치엘"
+   },
+   {
+    "name": "에이치엘사이언스",
+    "code": "239610",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "에이치엘"
+   },
+   {
+    "name": "에이치브이엠",
+    "code": "295310",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치엠넥스",
+    "code": "036170",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치피오",
+    "code": "357230",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치엔에스하이텍",
+    "code": "044990",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치시티",
+    "code": "072990",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치와이티씨",
+    "code": "148930",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치케이",
+    "code": "044780",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치엠씨제7호스팩",
+    "code": "477340",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이피알",
+    "code": "278470",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이블씨엔씨",
+    "code": "078520",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이플러스에셋",
+    "code": "244920",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이프로젠",
+    "code": "007460",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이프로젠바이오로직스",
+    "code": "003060",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이엔피",
+    "code": "015260",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이비엘바이오",
+    "code": "298380",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에임드바이오",
+    "code": "0009K0",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이프릴바이오",
+    "code": "397030",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": true
+ },
+ "이루다": {
+  "name": "이루다",
+  "levels": [
+   {
+    "prefix": "이루다",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "이루",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "이루온",
+    "code": "065440",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "이루"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "에이트원": {
+  "name": "에이트원",
+  "levels": [
+   {
+    "prefix": "에이트원",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에이피알",
+    "code": "278470",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이블씨엔씨",
+    "code": "078520",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이플러스에셋",
+    "code": "244920",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이프로젠",
+    "code": "007460",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이프로젠바이오로직스",
+    "code": "003060",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이엔피",
+    "code": "015260",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이비엘바이오",
+    "code": "298380",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에임드바이오",
+    "code": "0009K0",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이프릴바이오",
+    "code": "397030",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에이"
+   },
+   {
+    "name": "에이치브이엠",
+    "code": "295310",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "에이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": true
+ },
+ "라이프시멘틱스": {
+  "name": "라이프시멘틱스",
+  "levels": [
+   {
+    "prefix": "라이프시멘틱스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이프시멘틱",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이프시멘",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이프시",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이프",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "라이",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "라이콤",
+    "code": "388790",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "라이"
+   },
+   {
+    "name": "라이온켐텍",
+    "code": "171120",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "라이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "다믈멀티미디어": {
+  "name": "다믈멀티미디어",
+  "levels": [
+   {
+    "prefix": "다믈멀티미디어",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다믈멀티미디",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다믈멀티미",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다믈멀티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다믈멀",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "다믈",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "이디티": {
+  "name": "이디티",
+  "levels": [
+   {
+    "prefix": "이디티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "이디",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "넥스트사이언스": {
+  "name": "넥스트사이언스",
+  "levels": [
+   {
+    "prefix": "넥스트사이언스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스트사이언",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스트사이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스트사",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스트",
+    "n": 3,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스",
+    "n": 7,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "넥스트바이오메디컬",
+    "code": "389650",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "넥스트"
+   },
+   {
+    "name": "넥스트칩",
+    "code": "396270",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "넥스트"
+   },
+   {
+    "name": "넥스트아이",
+    "code": "137940",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "넥스트"
+   },
+   {
+    "name": "넥스틸",
+    "code": "092790",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "넥스"
+   },
+   {
+    "name": "넥슨게임즈",
+    "code": "225570",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "넥스"
+   },
+   {
+    "name": "넥스틴",
+    "code": "348210",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "넥스"
+   },
+   {
+    "name": "넥스턴앤롤코리아",
+    "code": "089140",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "넥스"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "오하임아이엔티": {
+  "name": "오하임아이엔티",
+  "levels": [
+   {
+    "prefix": "오하임아이엔티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오하임아이엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오하임아이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오하임아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오하임",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "오하",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "홈센타홀딩스": {
+  "name": "홈센타홀딩스",
+  "levels": [
+   {
+    "prefix": "홈센타홀딩스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "홈센타홀딩",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "홈센타홀",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "홈센타",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "홈센",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "에이치엘비": {
+  "name": "에이치엘비",
+  "levels": [
+   {
+    "prefix": "에이치엘비",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에이치엘",
+    "n": 2,
+    "saturated": false
+   },
+   {
+    "prefix": "에이치",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에이치엘지노믹스",
+    "code": "0156T0",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "에이치엘"
+   },
+   {
+    "name": "에이치엘사이언스",
+    "code": "239610",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "에이치엘"
+   },
+   {
+    "name": "에이치브이엠",
+    "code": "295310",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치엠넥스",
+    "code": "036170",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치피오",
+    "code": "357230",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치엔에스하이텍",
+    "code": "044990",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치시티",
+    "code": "072990",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치와이티씨",
+    "code": "148930",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치케이",
+    "code": "044780",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   },
+   {
+    "name": "에이치엠씨제7호스팩",
+    "code": "477340",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에이치"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": true
+ },
+ "화성산업": {
+  "name": "화성산업",
+  "levels": [
+   {
+    "prefix": "화성산업",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "화성산",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "화성",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "화성밸브",
+    "code": "039610",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "화성"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "한라": {
+  "name": "한라",
+  "levels": [
+   {
+    "prefix": "한라",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "한라IMS",
+    "code": "092460",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "한라"
+   },
+   {
+    "name": "한라캐스트",
+    "code": "125490",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "한라"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "엔케이물산": {
+  "name": "엔케이물산",
+  "levels": [
+   {
+    "prefix": "엔케이물산",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "엔케이물",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "엔케이",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "엔케이",
+    "code": "085310",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "엔케이"
+   },
+   {
+    "name": "엔케이젠바이오텍코리아",
+    "code": "182400",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "엔케이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "코오롱플라스틱": {
+  "name": "코오롱플라스틱",
+  "levels": [
+   {
+    "prefix": "코오롱플라스틱",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코오롱플라스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코오롱플라",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코오롱플",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코오롱",
+    "n": 8,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "코오롱",
+    "code": "002020",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱인더",
+    "code": "120110",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱글로벌",
+    "code": "003070",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱인더우",
+    "code": "120115",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱우",
+    "code": "002025",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱글로벌우",
+    "code": "003075",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱티슈진",
+    "code": "950160",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "코오롱"
+   },
+   {
+    "name": "코오롱생명과학",
+    "code": "102940",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "코오롱"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "넥스트BT": {
+  "name": "넥스트BT",
+  "levels": [
+   {
+    "prefix": "넥스트BT",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스트B",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "넥스트",
+    "n": 3,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "넥스트바이오메디컬",
+    "code": "389650",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "넥스트"
+   },
+   {
+    "name": "넥스트칩",
+    "code": "396270",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "넥스트"
+   },
+   {
+    "name": "넥스트아이",
+    "code": "137940",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "넥스트"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "아스폴로": {
+  "name": "아스폴로",
+  "levels": [
+   {
+    "prefix": "아스폴로",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "아스폴",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "아스",
+    "n": 4,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "아스테라시스",
+    "code": "450950",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아스"
+   },
+   {
+    "name": "아스플로",
+    "code": "159010",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아스"
+   },
+   {
+    "name": "아스트",
+    "code": "067390",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아스"
+   },
+   {
+    "name": "아스타",
+    "code": "246720",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아스"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "이트론": {
+  "name": "이트론",
+  "levels": [
+   {
+    "prefix": "이트론",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "이트",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "쎄미시스코": {
+  "name": "쎄미시스코",
+  "levels": [
+   {
+    "prefix": "쎄미시스코",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "쎄미시스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "쎄미시",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "쎄미",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "청담러닝": {
+  "name": "청담러닝",
+  "levels": [
+   {
+    "prefix": "청담러닝",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "청담러",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "청담",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "청담글로벌",
+    "code": "362320",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "청담"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "자이언스텝": {
+  "name": "자이언스텝",
+  "levels": [
+   {
+    "prefix": "자이언스텝",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "자이언스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "자이언",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "자이언트스텝",
+    "code": "289220",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "자이언"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "유비케어": {
+  "name": "유비케어",
+  "levels": [
+   {
+    "prefix": "유비케어",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "유비케",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "유비",
+    "n": 4,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "유비쿼스홀딩스",
+    "code": "078070",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "유비"
+   },
+   {
+    "name": "유비쿼스",
+    "code": "264450",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "유비"
+   },
+   {
+    "name": "유비벨록스",
+    "code": "089850",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "유비"
+   },
+   {
+    "name": "유비온",
+    "code": "084440",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "유비"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "한국비앤씨": {
+  "name": "한국비앤씨",
+  "levels": [
+   {
+    "prefix": "한국비앤씨",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "한국비앤",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "한국비",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "한국비엔씨",
+    "code": "256840",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "한국비"
+   },
+   {
+    "name": "한국비티비",
+    "code": "219750",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "한국비"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "비케이탑스": {
+  "name": "비케이탑스",
+  "levels": [
+   {
+    "prefix": "비케이탑스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "비케이탑",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "비케이",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "비케이홀딩스",
+    "code": "050090",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "비케이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "대보마그네틱스": {
+  "name": "대보마그네틱스",
+  "levels": [
+   {
+    "prefix": "대보마그네틱스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대보마그네틱",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "대보마그네틱",
+    "code": "290670",
+    "market": "코스닥",
+    "level": 6,
+    "prefix": "대보마그네틱"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 6,
+  "saturated_any": false
+ },
+ "고려시멘트": {
+  "name": "고려시멘트",
+  "levels": [
+   {
+    "prefix": "고려시멘트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "고려시멘",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "고려시",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "고려",
+    "n": 5,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "고려신용정보",
+    "code": "049720",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "고려시"
+   },
+   {
+    "name": "고려아연",
+    "code": "010130",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "고려"
+   },
+   {
+    "name": "고려제강",
+    "code": "002240",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "고려"
+   },
+   {
+    "name": "고려산업",
+    "code": "002140",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "고려"
+   },
+   {
+    "name": "고려제약",
+    "code": "014570",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "고려"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "비트나인": {
+  "name": "비트나인",
+  "levels": [
+   {
+    "prefix": "비트나인",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "비트나",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "비트",
+    "n": 3,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "비트컴퓨터",
+    "code": "032850",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "비트"
+   },
+   {
+    "name": "비트플래닛",
+    "code": "049470",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "비트"
+   },
+   {
+    "name": "비트맥스",
+    "code": "377030",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "비트"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "유앤아이": {
+  "name": "유앤아이",
+  "levels": [
+   {
+    "prefix": "유앤아이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "유앤아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "유앤",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "바올": {
+  "name": "바올",
+  "levels": [
+   {
+    "prefix": "바올",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "코리아센터": {
+  "name": "코리아센터",
+  "levels": [
+   {
+    "prefix": "코리아센터",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코리아센",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코리아",
+    "n": 7,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "코리안리",
+    "code": "003690",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코리아"
+   },
+   {
+    "name": "코리아써키트",
+    "code": "007810",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코리아"
+   },
+   {
+    "name": "코리아써우",
+    "code": "007815",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코리아"
+   },
+   {
+    "name": "코리아써키트2우B",
+    "code": "00781K",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "코리아"
+   },
+   {
+    "name": "코리아에프티",
+    "code": "123410",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "코리아"
+   },
+   {
+    "name": "코리아나",
+    "code": "027050",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "코리아"
+   },
+   {
+    "name": "코리아에셋투자증권",
+    "code": "190650",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "코리아"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "KG동부제철": {
+  "name": "KG동부제철",
+  "levels": [
+   {
+    "prefix": "KG동부제철",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KG동부제",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KG동부",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KG동",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "KG",
+    "n": 6,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "KG모빌리티",
+    "code": "003620",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KG"
+   },
+   {
+    "name": "KG스틸",
+    "code": "016380",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KG"
+   },
+   {
+    "name": "KG케미칼",
+    "code": "001390",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "KG"
+   },
+   {
+    "name": "KG이니시스",
+    "code": "035600",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "KG"
+   },
+   {
+    "name": "KG에코솔루션",
+    "code": "151860",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "KG"
+   },
+   {
+    "name": "KG파이낸셜",
+    "code": "046440",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "KG"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "램테크놀로지": {
+  "name": "램테크놀로지",
+  "levels": [
+   {
+    "prefix": "램테크놀로지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "램테크놀로",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "램테크놀",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "램테크놀러지",
+    "code": "171010",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "램테크놀"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "CJ씨푸트": {
+  "name": "CJ씨푸트",
+  "levels": [
+   {
+    "prefix": "CJ씨푸트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "CJ씨푸",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "CJ씨푸드",
+    "code": "011150",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "CJ씨푸"
+   },
+   {
+    "name": "CJ씨푸드1우",
+    "code": "011155",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "CJ씨푸"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "사조씨푸트": {
+  "name": "사조씨푸트",
+  "levels": [
+   {
+    "prefix": "사조씨푸트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "사조씨푸",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "사조씨푸드",
+    "code": "014710",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "사조씨푸"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "우리손에프엔지": {
+  "name": "우리손에프엔지",
+  "levels": [
+   {
+    "prefix": "우리손에프엔지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "우리손에프엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "우리손에프",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "우리손에프앤지",
+    "code": "073560",
+    "market": "코스닥",
+    "level": 5,
+    "prefix": "우리손에프"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "갤럭시아너미트리": {
+  "name": "갤럭시아너미트리",
+  "levels": [
+   {
+    "prefix": "갤럭시아너미트리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "갤럭시아너미트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "갤럭시아너미",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "갤럭시아너",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "갤럭시아",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "갤럭시아에스엠",
+    "code": "011420",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "갤럭시아"
+   },
+   {
+    "name": "갤럭시아머니트리",
+    "code": "094480",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "갤럭시아"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "멕스트": {
+  "name": "멕스트",
+  "levels": [
+   {
+    "prefix": "멕스트",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "멕스",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "웰크로론한텍": {
+  "name": "웰크로론한텍",
+  "levels": [
+   {
+    "prefix": "웰크로론한텍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "웰크로론한",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "웰크로론",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "웰크로",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "웰크론",
+    "code": "065950",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "웰크로"
+   },
+   {
+    "name": "웰크론한텍",
+    "code": "076080",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "웰크로"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "레이저셀": {
+  "name": "레이저셀",
+  "levels": [
+   {
+    "prefix": "레이저셀",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "레이저",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "레이저쎌",
+    "code": "412350",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "레이저"
+   },
+   {
+    "name": "레이저옵텍",
+    "code": "199550",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "레이저"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "골프존뉴딘홀딩스": {
+  "name": "골프존뉴딘홀딩스",
+  "levels": [
+   {
+    "prefix": "골프존뉴딘홀딩스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "골프존뉴딘홀딩",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "골프존뉴딘홀",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "골프존뉴딘",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "골프존뉴",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "골프존",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "골프존",
+    "code": "215000",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "골프존"
+   },
+   {
+    "name": "골프존홀딩스",
+    "code": "121440",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "골프존"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "이엔코퍼레이션": {
+  "name": "이엔코퍼레이션",
+  "levels": [
+   {
+    "prefix": "이엔코퍼레이션",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "이엔코퍼레이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "이엔코퍼레",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "이엔코퍼",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "이엔코",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "이엔",
+    "n": 3,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "이엔플러스",
+    "code": "074610",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "이엔"
+   },
+   {
+    "name": "이엔에프테크놀로지",
+    "code": "102710",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "이엔"
+   },
+   {
+    "name": "이엔셀",
+    "code": "456070",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "이엔"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "현대에너지솔루션": {
+  "name": "현대에너지솔루션",
+  "levels": [
+   {
+    "prefix": "현대에너지솔루션",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "현대에너지솔루",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "현대에너지솔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "현대에너지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "현대에너",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "현대에",
+    "n": 3,
+    "saturated": false
+   },
+   {
+    "prefix": "현대",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "현대엘리베이터",
+    "code": "017800",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "현대에"
+   },
+   {
+    "name": "현대에버다임",
+    "code": "041440",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "현대에"
+   },
+   {
+    "name": "현대에이치티",
+    "code": "039010",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "현대에"
+   },
+   {
+    "name": "현대차",
+    "code": "005380",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "현대"
+   },
+   {
+    "name": "현대모비스",
+    "code": "012330",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "현대"
+   },
+   {
+    "name": "현대로템",
+    "code": "064350",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "현대"
+   },
+   {
+    "name": "현대건설",
+    "code": "000720",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "현대"
+   },
+   {
+    "name": "현대오토에버",
+    "code": "307950",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "현대"
+   },
+   {
+    "name": "현대글로비스",
+    "code": "086280",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "현대"
+   },
+   {
+    "name": "현대차2우B",
+    "code": "005387",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "현대"
+   },
+   {
+    "name": "현대차우",
+    "code": "005385",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "현대"
+   },
+   {
+    "name": "현대제철",
+    "code": "004020",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "현대"
+   },
+   {
+    "name": "현대해상",
+    "code": "001450",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "현대"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": true
+ },
+ "해성티피씨": {
+  "name": "해성티피씨",
+  "levels": [
+   {
+    "prefix": "해성티피씨",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "해성티피",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "해성티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "해성",
+    "n": 5,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "해성디에스",
+    "code": "195870",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "해성"
+   },
+   {
+    "name": "해성산업",
+    "code": "034810",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "해성"
+   },
+   {
+    "name": "해성옵틱스",
+    "code": "076610",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "해성"
+   },
+   {
+    "name": "해성에어로보틱스",
+    "code": "059270",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "해성"
+   },
+   {
+    "name": "해성산업1우",
+    "code": "03481K",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "해성"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "제주은헹": {
+  "name": "제주은헹",
+  "levels": [
+   {
+    "prefix": "제주은헹",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제주은",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "제주은행",
+    "code": "006220",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "제주은"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "코리아에스이": {
+  "name": "코리아에스이",
+  "levels": [
+   {
+    "prefix": "코리아에스이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코리아에스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코리아에",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "코리아에프티",
+    "code": "123410",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "코리아에"
+   },
+   {
+    "name": "코리아에셋투자증권",
+    "code": "190650",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "코리아에"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "유니트론": {
+  "name": "유니트론",
+  "levels": [
+   {
+    "prefix": "유니트론",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "유니트론텍",
+    "code": "142210",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "유니트론"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "대성차투": {
+  "name": "대성차투",
+  "levels": [
+   {
+    "prefix": "대성차투",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "대성차",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "대성창투",
+    "code": "027830",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "대성차"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "태평양물산": {
+  "name": "태평양물산",
+  "levels": [
+   {
+    "prefix": "태평양물산",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "태평양물",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "태평양",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "태평",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "TP",
+    "code": "007980",
+    "market": "코스피",
+    "level": 5,
+    "prefix": "태평양물산"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "에스에이티이엔지": {
+  "name": "에스에이티이엔지",
+  "levels": [
+   {
+    "prefix": "에스에이티이엔지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에스에이티이엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에스에이티이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에스에이티",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에스에이티",
+    "code": "060540",
+    "market": "코스닥",
+    "level": 5,
+    "prefix": "에스에이티"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "YG플러스": {
+  "name": "YG플러스",
+  "levels": [
+   {
+    "prefix": "YG플러스",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "YG플러",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "YG플",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "YG",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "YG PLUS",
+    "code": "037270",
+    "market": "코스피",
+    "level": 5,
+    "prefix": "YG플러스"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "어반리튬": {
+  "name": "어반리튬",
+  "levels": [
+   {
+    "prefix": "어반리튬",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "어반리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "어반",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "포스코 ICT": {
+  "name": "포스코 ICT",
+  "levels": [
+   {
+    "prefix": "포스코 ICT",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "포스코 IC",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "포스코 I",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "포스코 ",
+    "n": 6,
+    "saturated": false
+   },
+   {
+    "prefix": "포스코",
+    "n": 6,
+    "saturated": false
+   },
+   {
+    "prefix": "포스",
+    "n": 6,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "POSCO홀딩스",
+    "code": "005490",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "포스코 "
+   },
+   {
+    "name": "포스코퓨처엠",
+    "code": "003670",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "포스코 "
+   },
+   {
+    "name": "포스코인터내셔널",
+    "code": "047050",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "포스코 "
+   },
+   {
+    "name": "포스코DX",
+    "code": "022100",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "포스코 "
+   },
+   {
+    "name": "포스코스틸리온",
+    "code": "058430",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "포스코 "
+   },
+   {
+    "name": "포스코엠텍",
+    "code": "009520",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "포스코 "
+   },
+   {
+    "name": "포스뱅크",
+    "code": "105760",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "포스"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "클릭스노믹스": {
+  "name": "클릭스노믹스",
+  "levels": [
+   {
+    "prefix": "클릭스노믹스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클릭스노믹",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클릭스노",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클릭스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "클릭",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "와이팜": {
+  "name": "와이팜",
+  "levels": [
+   {
+    "prefix": "와이팜",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "와이투솔루션",
+    "code": "011690",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이지엔터테인먼트",
+    "code": "122870",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이지-원",
+    "code": "019210",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이씨",
+    "code": "232140",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이씨켐",
+    "code": "112290",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이솔",
+    "code": "122990",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이엠티",
+    "code": "251370",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이바이오로직스",
+    "code": "338840",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이엔텍",
+    "code": "067900",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이제이링크",
+    "code": "209640",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": true
+ },
+ "애경케미컬": {
+  "name": "애경케미컬",
+  "levels": [
+   {
+    "prefix": "애경케미컬",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "애경케미",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "애경케미칼",
+    "code": "161000",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "애경케미"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "애켱케미컬": {
+  "name": "애켱케미컬",
+  "levels": [
+   {
+    "prefix": "애켱케미컬",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "애켱케미",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "애켱케",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "애켱",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "메디온": {
+  "name": "메디온",
+  "levels": [
+   {
+    "prefix": "메디온",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "메디",
+    "n": 5,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "메디톡스",
+    "code": "086900",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "메디"
+   },
+   {
+    "name": "메디포스트",
+    "code": "078160",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "메디"
+   },
+   {
+    "name": "메디아나",
+    "code": "041920",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "메디"
+   },
+   {
+    "name": "메디앙스",
+    "code": "014100",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "메디"
+   },
+   {
+    "name": "메디콕스",
+    "code": "054180",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "메디"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "아이엔스": {
+  "name": "아이엔스",
+  "levels": [
+   {
+    "prefix": "아이엔스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "아이엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "아이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "아이에스동서",
+    "code": "010780",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이마켓코리아",
+    "code": "122900",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이엠에셋 200",
+    "code": "0007N0",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이티센씨티에스",
+    "code": "031820",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이티센글로벌",
+    "code": "124500",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이센스",
+    "code": "099190",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이쓰리시스템",
+    "code": "214430",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이티켐",
+    "code": "309710",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이엠바이오로직스",
+    "code": "493280",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이스크림미디어",
+    "code": "461300",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": true
+ },
+ "TCC": {
+  "name": "TCC",
+  "levels": [
+   {
+    "prefix": "TCC",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "TCC스틸",
+    "code": "002710",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "TCC"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "삼기이브이": {
+  "name": "삼기이브이",
+  "levels": [
+   {
+    "prefix": "삼기이브이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "삼기이브",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "삼기이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "삼기",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "삼기",
+    "code": "122350",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "삼기"
+   },
+   {
+    "name": "삼기에너지솔루션즈",
+    "code": "419050",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "삼기"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "위너스제약": {
+  "name": "위너스제약",
+  "levels": [
+   {
+    "prefix": "위너스제약",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "위너스제",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "위너스",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "위너스일렉",
+    "code": "479960",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "위너스"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "퓨닛": {
+  "name": "퓨닛",
+  "levels": [
+   {
+    "prefix": "퓨닛",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "아직엑스텍": {
+  "name": "아직엑스텍",
+  "levels": [
+   {
+    "prefix": "아직엑스텍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "아직엑스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "아직엑",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "아직",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "코어라인소스": {
+  "name": "코어라인소스",
+  "levels": [
+   {
+    "prefix": "코어라인소스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "코어라인소",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "코어라인소프트",
+    "code": "384470",
+    "market": "코스닥",
+    "level": 5,
+    "prefix": "코어라인소"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "흥아해훈": {
+  "name": "흥아해훈",
+  "levels": [
+   {
+    "prefix": "흥아해훈",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "흥아해",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "흥아해운",
+    "code": "003280",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "흥아해"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "와이아비오로직스": {
+  "name": "와이아비오로직스",
+  "levels": [
+   {
+    "prefix": "와이아비오로직스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이아비오로직",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이아비오로",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이아비오",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이아비",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "와이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "와이투솔루션",
+    "code": "011690",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이지엔터테인먼트",
+    "code": "122870",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이지-원",
+    "code": "019210",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이씨",
+    "code": "232140",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이씨켐",
+    "code": "112290",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이솔",
+    "code": "122990",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이엠티",
+    "code": "251370",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이바이오로직스",
+    "code": "338840",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이엔텍",
+    "code": "067900",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   },
+   {
+    "name": "와이제이링크",
+    "code": "209640",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "와이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": true
+ },
+ "LS전서아시아": {
+  "name": "LS전서아시아",
+  "levels": [
+   {
+    "prefix": "LS전서아시아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS전서아시",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS전서아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS전서",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS전",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "LS",
+    "n": 9,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "LS",
+    "code": "006260",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS ELECTRIC",
+    "code": "010120",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS에코에너지",
+    "code": "229640",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS네트웍스",
+    "code": "000680",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS머트리얼즈",
+    "code": "417200",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS마린솔루션",
+    "code": "060370",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS증권",
+    "code": "078020",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LS티라유텍",
+    "code": "322180",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "LS"
+   },
+   {
+    "name": "LSK아이로봇",
+    "code": "091970",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "LS"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "레고켐바이오": {
+  "name": "레고켐바이오",
+  "levels": [
+   {
+    "prefix": "레고켐바이오",
+    "n": 1,
+    "saturated": false
+   },
+   {
+    "prefix": "레고켐바이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "레고켐바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "레고켐",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "레고",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "리가켐바이오",
+    "code": "141080",
+    "market": "코스닥",
+    "level": 6,
+    "prefix": "레고켐바이오"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 6,
+  "saturated_any": false
+ },
+ "레코켐바이오": {
+  "name": "레코켐바이오",
+  "levels": [
+   {
+    "prefix": "레코켐바이오",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "레코켐바이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "레코켐바",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "레코켐",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "레코",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "플로리스AI": {
+  "name": "플로리스AI",
+  "levels": [
+   {
+    "prefix": "플로리스AI",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "플로리스A",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "플로리스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "플로리",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "플로",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "에스텍파마": {
+  "name": "에스텍파마",
+  "levels": [
+   {
+    "prefix": "에스텍파마",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에스텍파",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에스텍",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에스텍",
+    "code": "069510",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "에스텍"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "HLB테라퓨스": {
+  "name": "HLB테라퓨스",
+  "levels": [
+   {
+    "prefix": "HLB테라퓨스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "HLB테라퓨",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "HLB테라퓨틱스",
+    "code": "115450",
+    "market": "코스닥",
+    "level": 6,
+    "prefix": "HLB테라퓨"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 6,
+  "saturated_any": false
+ },
+ "모바일어플라이어스": {
+  "name": "모바일어플라이어스",
+  "levels": [
+   {
+    "prefix": "모바일어플라이어스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "모바일어플라이어",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "모바일어플라이언스",
+    "code": "087260",
+    "market": "코스닥",
+    "level": 8,
+    "prefix": "모바일어플라이어"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 8,
+  "saturated_any": false
+ },
+ "이삭엔지니어랑": {
+  "name": "이삭엔지니어랑",
+  "levels": [
+   {
+    "prefix": "이삭엔지니어랑",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "이삭엔지니어",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "이삭엔지니어링",
+    "code": "351330",
+    "market": "코스닥",
+    "level": 6,
+    "prefix": "이삭엔지니어"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 6,
+  "saturated_any": false
+ },
+ "마니커에프엔지": {
+  "name": "마니커에프엔지",
+  "levels": [
+   {
+    "prefix": "마니커에프엔지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "마니커에프엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "마니커에프",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "마니커에프앤지",
+    "code": "195500",
+    "market": "코스닥",
+    "level": 5,
+    "prefix": "마니커에프"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "이수페타시": {
+  "name": "이수페타시",
+  "levels": [
+   {
+    "prefix": "이수페타시",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "이수페타시스",
+    "code": "007660",
+    "market": "코스피",
+    "level": 5,
+    "prefix": "이수페타시"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "이렌텍": {
+  "name": "이렌텍",
+  "levels": [
+   {
+    "prefix": "이렌텍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "이렌",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "대한뉴": {
+  "name": "대한뉴",
+  "levels": [
+   {
+    "prefix": "대한뉴",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "대한뉴팜",
+    "code": "054670",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "대한뉴"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "애머릿지": {
+  "name": "애머릿지",
+  "levels": [
+   {
+    "prefix": "애머릿지",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "애머릿",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "애머",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "브랜드엑스코퍼레이션": {
+  "name": "브랜드엑스코퍼레이션",
+  "levels": [
+   {
+    "prefix": "브랜드엑스코퍼레이션",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "브랜드엑스코퍼레이",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "브랜드엑스코퍼레",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "브랜드엑스코퍼",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "브랜드엑스코",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "브랜드엑스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "브랜드엑",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "브랜드",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "브랜",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "차백신연구소": {
+  "name": "차백신연구소",
+  "levels": [
+   {
+    "prefix": "차백신연구소",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "차백신연구",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "차백신연",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "차백신",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "차백",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "에스와이패널": {
+  "name": "에스와이패널",
+  "levels": [
+   {
+    "prefix": "에스와이패널",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에스와이패",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에스와이",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에스와이",
+    "code": "109610",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "에스와이"
+   },
+   {
+    "name": "에스와이스틸텍",
+    "code": "365330",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "에스와이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "예스티팜": {
+  "name": "예스티팜",
+  "levels": [
+   {
+    "prefix": "예스티팜",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "예스티",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "예스티",
+    "code": "122640",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "예스티"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "퓨처켐": {
+  "name": "퓨처켐",
+  "levels": [
+   {
+    "prefix": "퓨처켐",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "퓨처",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "에치에프": {
+  "name": "에치에프",
+  "levels": [
+   {
+    "prefix": "에치에프",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에치에프알",
+    "code": "230240",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "에치에프"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "멕스로텍": {
+  "name": "멕스로텍",
+  "levels": [
+   {
+    "prefix": "멕스로텍",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "멕스로",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "멕스",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "유니온커뮤니티": {
+  "name": "유니온커뮤니티",
+  "levels": [
+   {
+    "prefix": "유니온커뮤니티",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "유니온커뮤니",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "유니온커뮤",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "유니온커",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "유니온",
+    "n": 3,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "유니온",
+    "code": "000910",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "유니온"
+   },
+   {
+    "name": "유니온머티리얼",
+    "code": "047400",
+    "market": "코스피",
+    "level": 3,
+    "prefix": "유니온"
+   },
+   {
+    "name": "유니온바이오메트릭스",
+    "code": "203450",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "유니온"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "금호석유": {
+  "name": "금호석유",
+  "levels": [
+   {
+    "prefix": "금호석유",
+    "n": 2,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "금호석유화학",
+    "code": "011780",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "금호석유"
+   },
+   {
+    "name": "금호석유화학우",
+    "code": "011785",
+    "market": "코스피",
+    "level": 4,
+    "prefix": "금호석유"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "레인보우틱스": {
+  "name": "레인보우틱스",
+  "levels": [
+   {
+    "prefix": "레인보우틱스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "레인보우틱",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "레인보우",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "레인보우로보틱스",
+    "code": "277810",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "레인보우"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "피비파마": {
+  "name": "피비파마",
+  "levels": [
+   {
+    "prefix": "피비파마",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "피비파",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "피비",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "아즈텍": {
+  "name": "아즈텍",
+  "levels": [
+   {
+    "prefix": "아즈텍",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "아즈텍WB",
+    "code": "032080",
+    "market": "코스닥",
+    "level": 3,
+    "prefix": "아즈텍"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 3,
+  "saturated_any": false
+ },
+ "두산중공업": {
+  "name": "두산중공업",
+  "levels": [
+   {
+    "prefix": "두산중공업",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "두산중공",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "두산중",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "두산",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "두산",
+    "code": "000150",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "두산"
+   },
+   {
+    "name": "두산에너빌리티",
+    "code": "034020",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "두산"
+   },
+   {
+    "name": "두산로보틱스",
+    "code": "454910",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "두산"
+   },
+   {
+    "name": "두산퓨얼셀",
+    "code": "336260",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "두산"
+   },
+   {
+    "name": "두산밥캣",
+    "code": "241560",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "두산"
+   },
+   {
+    "name": "두산우",
+    "code": "000155",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "두산"
+   },
+   {
+    "name": "두산2우B",
+    "code": "000157",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "두산"
+   },
+   {
+    "name": "두산퓨얼셀1우",
+    "code": "33626K",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "두산"
+   },
+   {
+    "name": "두산퓨얼셀2우B",
+    "code": "33626L",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "두산"
+   },
+   {
+    "name": "두산테스나",
+    "code": "131970",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "두산"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": true
+ },
+ "제주맥주": {
+  "name": "제주맥주",
+  "levels": [
+   {
+    "prefix": "제주맥주",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제주맥",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "제주",
+    "n": 3,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "제주항공",
+    "code": "089590",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "제주"
+   },
+   {
+    "name": "제주은행",
+    "code": "006220",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "제주"
+   },
+   {
+    "name": "제주반도체",
+    "code": "080220",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "제주"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": false
+ },
+ "공구우먼": {
+  "name": "공구우먼",
+  "levels": [
+   {
+    "prefix": "공구우먼",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "공구우",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "공구",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "매디아나": {
+  "name": "매디아나",
+  "levels": [
+   {
+    "prefix": "매디아나",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "매디아",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "매디",
+    "n": 0,
+    "saturated": false
+   }
+  ],
+  "candidates": [],
+  "request_failed": false,
+  "hit_level": null,
+  "saturated_any": false
+ },
+ "아이원": {
+  "name": "아이원",
+  "levels": [
+   {
+    "prefix": "아이원",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "아이",
+    "n": 10,
+    "saturated": true
+   }
+  ],
+  "candidates": [
+   {
+    "name": "아이에스동서",
+    "code": "010780",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이마켓코리아",
+    "code": "122900",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이엠에셋 200",
+    "code": "0007N0",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이티센씨티에스",
+    "code": "031820",
+    "market": "코스피",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이티센글로벌",
+    "code": "124500",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이센스",
+    "code": "099190",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이쓰리시스템",
+    "code": "214430",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이티켐",
+    "code": "309710",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이엠바이오로직스",
+    "code": "493280",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   },
+   {
+    "name": "아이스크림미디어",
+    "code": "461300",
+    "market": "코스닥",
+    "level": 2,
+    "prefix": "아이"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 2,
+  "saturated_any": true
+ },
+ "윤성에프엔씨": {
+  "name": "윤성에프엔씨",
+  "levels": [
+   {
+    "prefix": "윤성에프엔씨",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "윤성에프엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "윤성에프",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "윤성에프앤씨",
+    "code": "372170",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "윤성에프"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "멕아이씨": {
+  "name": "멕아이씨",
+  "levels": [
+   {
+    "prefix": "멕아이씨",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "멕아이씨에스",
+    "code": "058110",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "멕아이씨"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "스톤브릿지": {
+  "name": "스톤브릿지",
+  "levels": [
+   {
+    "prefix": "스톤브릿지",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "스톤브릿지벤처스",
+    "code": "330730",
+    "market": "코스닥",
+    "level": 5,
+    "prefix": "스톤브릿지"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 5,
+  "saturated_any": false
+ },
+ "에스피시템스": {
+  "name": "에스피시템스",
+  "levels": [
+   {
+    "prefix": "에스피시템스",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에스피시템",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "에스피시",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "에스피시스템스",
+    "code": "317830",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "에스피시"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ },
+ "하이젠알엔엠": {
+  "name": "하이젠알엔엠",
+  "levels": [
+   {
+    "prefix": "하이젠알엔엠",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "하이젠알엔",
+    "n": 0,
+    "saturated": false
+   },
+   {
+    "prefix": "하이젠알",
+    "n": 1,
+    "saturated": false
+   }
+  ],
+  "candidates": [
+   {
+    "name": "하이젠알앤엠",
+    "code": "160190",
+    "market": "코스닥",
+    "level": 4,
+    "prefix": "하이젠알"
+   }
+  ],
+  "request_failed": false,
+  "hit_level": 4,
+  "saturated_any": false
+ }
+}

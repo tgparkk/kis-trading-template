@@ -160,6 +160,24 @@ data/
 #    위 `!backtest/tasso_labels/*.csv` 는 최상위 CSV 만 되살리므로 harvest/ 하위는 영향받지 않는다.
 backtest/tasso_labels/harvest/posts/
 backtest/tasso_labels/harvest/text/
+# 예외 3: 태쏘 라벨 트랙 **종결 산출물**(2026-08-02 · backtest/tasso_labels/CLOSING.md).
+#   위 `!backtest/tasso_labels/*.csv` 는 **최상위만** 되살려서, 실제 판정 근거인
+#   harvest/(매핑·산문 편입 판정) 과 power/(MDE = 종결 사유) 하위 CSV 는 그대로 삼켜지고 있었다.
+#   **같은 유형 5번째 재발** (lib/ 726febf → multiverse/data/ → backtest/**/results/ → tasso_labels/*.csv → 여기).
+#   🔑 재사용 규칙: 커밋 전 `git status` 가 아니라 **`git status --ignored` 로
+#      「무엇이 안 보이고 있는가」** 를 먼저 볼 것. 범용 패턴은 경고 없이 삼킨다.
+!backtest/tasso_labels/harvest/*.csv
+!backtest/tasso_labels/power/*.csv
+# 🔴 단, 산문 **문장 원문**이 컬럼에 들어간 파일은 타인 저작물이므로 되살리지 않는다(재차단).
+#    같은 판정의 결과는 harvest/prose_incorporation.csv 에 **날짜·종목·분류만** 남는 형태로 가공돼 있다.
+backtest/tasso_labels/harvest/prose_only_candidates.csv
+# 종결 근거 로그 2본만 `*.log` 차단의 예외 — 둘 다 **순수 수치표**이고 원문 인용이 없다.
+#   survivorship_recount.log = 생존편향 대정정(보고 42.4% → 진짜 상폐 2.9%)의 유일한 근거
+#   c_rate_by_year.log       = 연도 층화 근거를 깎은 부트스트랩 CI 의 유일한 근거
+!backtest/tasso_labels/harvest/survivorship_recount.log
+!backtest/tasso_labels/harvest/c_rate_by_year.log
+# 🔴 가격 wide 캐시(32MB)는 DB 에서 power/step1_freeze_and_data.py 로 재생성되는 중간물 — 커밋 금지.
+backtest/tasso_labels/power/*.npz
 *.xlsx
 *.json.bak
 
