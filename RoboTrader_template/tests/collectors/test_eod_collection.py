@@ -29,6 +29,7 @@ def test_stage_exception_is_isolated(monkeypatch):
     monkeypatch.setattr(eod, "collect_daily", lambda d=None: (_ for _ in ()).throw(RuntimeError("boom")))
     monkeypatch.setattr(eod, "collect_minute", lambda d=None: {"rows": 2})
     monkeypatch.setattr(eod, "collect_index", lambda s=None: {"KOSPI": 1})
+    monkeypatch.setattr(eod, "collect_stock_market", lambda: {"KOSPI": 1, "KOSDAQ": 1})
     monkeypatch.setattr(eod, "collect_foreign_flow", lambda d=None: {"rows": 3})
     monkeypatch.setattr(eod, "collect_corp_events", lambda d=None: {"rows": 4})
     monkeypatch.setattr(eod, "reconcile_daily", lambda td: {"verdict": "PASS"})
@@ -49,6 +50,7 @@ def test_foreign_flow_stage_exception_is_isolated(monkeypatch):
     monkeypatch.setattr(eod, "collect_daily", lambda d=None: {"rows": 1})
     monkeypatch.setattr(eod, "collect_minute", lambda d=None: {"rows": 2})
     monkeypatch.setattr(eod, "collect_index", lambda s=None: {"KOSPI": 1})
+    monkeypatch.setattr(eod, "collect_stock_market", lambda: {"KOSPI": 1, "KOSDAQ": 1})
     monkeypatch.setattr(
         eod, "collect_foreign_flow",
         lambda d=None: (_ for _ in ()).throw(RuntimeError("naver blocked")))
@@ -65,6 +67,7 @@ def test_run_data_collection_reconcile_includes_index_key(monkeypatch):
     monkeypatch.setattr(eod, "collect_daily", lambda d=None: {"rows": 0})
     monkeypatch.setattr(eod, "collect_minute", lambda d=None: {"rows": 0})
     monkeypatch.setattr(eod, "collect_index", lambda s=None: {})
+    monkeypatch.setattr(eod, "collect_stock_market", lambda: {"KOSPI": 1, "KOSDAQ": 1})
     monkeypatch.setattr(eod, "collect_foreign_flow", lambda d=None: {"rows": 0})
     monkeypatch.setattr(eod, "collect_corp_events", lambda d=None: {"rows": 0})
     monkeypatch.setattr(eod, "reconcile_daily", lambda td: {"verdict": "PASS"})
