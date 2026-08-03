@@ -33,8 +33,13 @@ def load_top_volume_universe(start: str, end: str, top_n: int = 50) -> List[str]
 
 
 def load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, pd.DataFrame]:
-    """종목별 daily_prices 로드 (adj_factor 수정주가 적용 + OHLC 결손 보정). 30봉 미만 종목 제외."""
-    # run_elder_triple_screen.py:61-101 그대로 복제 (adj_factor 적용 + OHLC 결손 보정)
+    """종목별 daily_prices 로드 (close 그대로 + OHLC 결손 보정). 30봉 미만 종목 제외.
+
+    ★ adj_factor 를 곱하지 않는다 — daily_prices.close 는 이미 분할조정된 연속
+      시세다. 곱하면 분할일에 가짜 절벽이 생겨 MaxDD 가 거짓으로 부풀려진다
+      (실측 2026-08-03, top-50 유니버스: 5종목 1,896행 / 전환 5건 -51.9%~-89.4%).
+    """
+    # run_elder_triple_screen.py:68-105 에서 복제 (OHLC 결손 보정 로직)
     from db.connection import DatabaseConnection
     out: Dict[str, pd.DataFrame] = {}
     with DatabaseConnection.get_connection() as conn:
@@ -51,11 +56,11 @@ def load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, pd
                 continue
             df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume", "adj_factor"])
             df["date"] = pd.to_datetime(df["date"])
-            for col in ["open", "high", "low", "close", "volume", "adj_factor"]:
+            for col in ["open", "high", "low", "close", "volume"]:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-            df["adj_factor"] = df["adj_factor"].fillna(1.0)
-            for col in ["open", "high", "low", "close"]:
-                df[col] = df[col] * df["adj_factor"]
+            # close 는 이미 분할조정된 연속 시세 → adj_factor 곱하지 않음(곱하면 분할일 가짜 절벽).
+            # 이 파일은 5d6ac09(Gen-1 러너 7종 곱셈 제거)에서 누락됐다 — db596bb 때
+            # run_elder_triple_screen.py 의 수정 전 판본을 복제했기 때문. 2026-08-03 정정.
             drop_mask = df["close"].isna() | (df["close"] <= 0)
             df = df[~drop_mask].copy()
             for col in ["open", "high", "low"]:

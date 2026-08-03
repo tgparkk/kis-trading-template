@@ -243,27 +243,28 @@ def evaluate_exit_cell(
 def build_prices_pivot(prices: pd.DataFrame) -> dict:
     """
     {stock_code: DataFrame} — date를 index, adj OHLC 컬럼.
-    adj_factor 없으면 원본 사용.
+
+    ★ adj_factor 로 나누지도 곱하지도 않는다 — daily_prices.close 는 이미
+      분할조정된 연속 시세이므로 어느 방향이든 틀린다. 실측(2026-08-03, 035720
+      2021-04-15 분할일 일간수익률): 정상 +7.6% / 곱하면 -78.5% / 나누면 +437.9%.
+      규약 `adj_close = raw_close / adj_factor` 의 입력은 **raw_close** 인데
+      daily_prices 는 raw 를 저장하지 않는다. → 컬럼명 adj_* 는 하위호환 유지.
+
+    2026-08-03 정정: 옛 `has_adj` 분기는 load_data() 가 adj_factor 를 SELECT 하지
+    않아 실행된 적이 없는 죽은 가지였으나(따라서 산출물은 무영향), SELECT 한 줄만
+    늘면 되살아나는 지뢰라 제거했다.
     """
     print("  prices_pivot 빌드 중...")
     t0 = time.time()
     needed = ["stock_code", "date", "open", "high", "low", "close"]
-    has_adj = "adj_factor" in prices.columns
 
     pivot = {}
     for sc, grp in prices.groupby("stock_code", sort=False):
         grp = grp.sort_values("date").set_index("date")
-        if has_adj:
-            af = grp["adj_factor"].replace(0, np.nan).fillna(1.0)
-            grp["adj_open"]  = grp["open"]  / af
-            grp["adj_high"]  = grp["high"]  / af
-            grp["adj_low"]   = grp["low"]   / af
-            grp["adj_close"] = grp["close"] / af
-        else:
-            grp["adj_open"]  = grp["open"]
-            grp["adj_high"]  = grp["high"]
-            grp["adj_low"]   = grp["low"]
-            grp["adj_close"] = grp["close"]
+        grp["adj_open"]  = grp["open"]
+        grp["adj_high"]  = grp["high"]
+        grp["adj_low"]   = grp["low"]
+        grp["adj_close"] = grp["close"]
         pivot[sc] = grp[["adj_open", "adj_high", "adj_low", "adj_close"]]
     print(f"  prices_pivot 완료: {len(pivot)}개 종목 ({time.time()-t0:.1f}s)")
     return pivot

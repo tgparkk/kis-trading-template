@@ -276,7 +276,7 @@ def test_pit_reader_source_has_no_adj_factor_multiplication():
     from pathlib import Path
     from multiverse.data import pit_reader
     text = Path(pit_reader.__file__).read_text(encoding="utf-8")
-    assert "* COALESCE(adj_factor" not in text, (
+    assert "* COALESCE(adj_factor" not in text, (  # adj-factor-lint: ignore (가드 자신의 단언 리터럴)
         "adj_factor 곱셈 금지 규약 위반 — close 는 이미 분할조정된 연속 시세"
     )
 

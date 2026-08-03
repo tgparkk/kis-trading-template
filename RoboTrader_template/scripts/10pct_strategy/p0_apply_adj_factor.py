@@ -46,6 +46,14 @@ BATCH_SIZE = 100
 # ---------------------------------------------------------------------------
 # Step 1: Load split events from corp_events
 # ---------------------------------------------------------------------------
+def _directional_factor(split_factor: float, direction) -> float:
+    """meta.split_factor(항상 >1) + meta.direction → adj_factor 규약 계수.
+    collectors/daily_adj._directional_factor 와 동일 규칙(연구 경로 미러)."""
+    if direction == "merge" and split_factor > 0:
+        return 1.0 / split_factor
+    return split_factor
+
+
 def load_split_events() -> dict:
     """
     Load split events that have split_factor (pykrx source, effective date).
@@ -59,7 +67,8 @@ def load_split_events() -> dict:
     with conn.cursor() as cur:
         cur.execute("""
             SELECT stock_code, event_date,
-                   (meta->>'split_factor')::float AS split_factor
+                   (meta->>'split_factor')::float AS split_factor,
+                   meta->>'direction' AS direction
             FROM corp_events
             WHERE event_type = 'split'
               AND meta->>'split_factor' IS NOT NULL
@@ -68,8 +77,12 @@ def load_split_events() -> dict:
         rows = cur.fetchall()
 
     split_count = len(rows)
-    for stock_code, event_date, split_factor in rows:
-        events[stock_code].append((event_date, float(split_factor)))
+    for stock_code, event_date, split_factor, direction in rows:
+        # compute_adj_factors 규약: adj_close = raw_close / adj_factor.
+        # 액면병합은 가격이 *오르므로* 계수가 뒤집힌다 — meta.split_factor 는 병합에도
+        # >1 이라 그대로 쓰면 부호가 반대다(2026-08-03, collectors/adj_factors 참조).
+        events[stock_code].append(
+            (event_date, _directional_factor(float(split_factor), direction)))
 
     # bonus_issue: no ratio in meta, try pykrx price comparison
     with conn.cursor() as cur:

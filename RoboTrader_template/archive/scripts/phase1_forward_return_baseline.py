@@ -90,6 +90,11 @@ def build_forward_returns() -> pd.DataFrame:
             stock_code,
             date::date                                   AS date,
             CASE
+                -- 🔴 폐기된 계산 (2026-08-03 감사) — 규약 `adj_close = raw_close /
+                --    adj_factor` 의 입력은 raw_close 인데 daily_prices.close 는 raw 가
+                --    아니라 **이미 조정된** 연속 시세다. 나누면 이중조정되어 분할일에
+                --    가짜 급등(실측 035720 2021-04-15: 정상 +7.6% → 나누면 +437.9%).
+                --    ⚠️ 복사 금지. archive 보존 원칙상 코드는 유지한다.
                 WHEN adj_factor IS NOT NULL AND adj_factor <> 0
                 THEN close::float / adj_factor::float
                 ELSE close::float

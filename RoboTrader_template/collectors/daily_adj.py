@@ -24,18 +24,38 @@ def load_split_events(conn) -> dict:
         cur.execute(
             "SELECT stock_code, "
             "COALESCE((meta->>'effective_date')::date, event_date) AS eff_date, "
-            "(meta->>'split_factor')::float "
+            "(meta->>'split_factor')::float, "
+            "meta->>'direction' "
             "FROM corp_events "
             "WHERE event_type = 'split' AND meta->>'split_factor' IS NOT NULL "
             "ORDER BY stock_code, eff_date"
         )
-        for stock_code, eff_date, sf in cur.fetchall():
+        for stock_code, eff_date, sf, direction in cur.fetchall():
             key = (stock_code, eff_date)
             if key in seen:
                 continue
             seen.add(key)
-            events[stock_code].append((eff_date, float(sf)))
+            events[stock_code].append((eff_date, _directional_factor(float(sf), direction)))
     return dict(events)
+
+
+def _directional_factor(split_factor: float, direction) -> float:
+    """meta.split_factor(항상 >1) + meta.direction → compute_adj_factors 규약 계수.
+
+    규약은 adj_close = raw_close / adj_factor 이므로
+      direction='merge'(액면병합, 병합 후 가격 상승) → 1/split_factor
+      그 외(정방향 분할 / direction 미상)            → split_factor
+
+    ⚠️ direction 이 NULL 인 레거시 행은 정방향으로 해석한다. 2026-08-03 실측 기준
+    corp_events 의 split 142건 중 direction 보유는 pykrx 백필 105건뿐이고, 나머지
+    37건(opendart)은 전부 report_nm='주식분할결정' 계열이라 정방향이 맞다. 앞으로
+    수집되는 행은 corp_events_collector 가 direction 을 항상 채운다.
+    """
+    if direction == "merge":
+        if split_factor <= 0:
+            return 1.0
+        return 1.0 / split_factor
+    return split_factor
 
 
 def load_stock_dates(conn, stock_codes) -> dict:

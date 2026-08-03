@@ -1,4 +1,12 @@
-"""connect 비용 vs 쿼리 비용 재측정 — 연결 재사용 패턴 확인."""
+"""connect 비용 vs 쿼리 비용 재측정 — 연결 재사용 패턴 확인.
+
+🔴 2026-08-03 감사: 이 스크립트는 **이미 실행 불가**다 — 호출하는
+   pit_reader._has_adj_factor 가 제거됐다(multiverse/data/pit_reader.py:215).
+   내부 SQL 의 `open * COALESCE(adj_factor, 1.0)` 도 폐기된 계산이다: open/close 는
+   이미 분할조정된 연속 시세라 곱하면 분할일에 가짜 절벽이 생긴다. 다만 이 파일의
+   산출물은 가격이 아니라 **소요 시간**이라 과거 결론에는 영향이 없었다.
+   ⚠️ 이 SQL 패턴을 복사하지 말 것. archive 보존 원칙상 코드는 고치지 않는다.
+"""
 import time
 import psycopg2
 import psycopg2.extras

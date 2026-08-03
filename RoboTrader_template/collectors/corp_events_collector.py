@@ -29,18 +29,40 @@ from utils.logger import setup_logger  # noqa: E402
 logger = setup_logger(__name__)
 
 DART_BASE = "https://opendart.fss.or.kr/api"
-DART_PBLNTF_TY = "B"  # 발행공시 (분할/증자류)
+# 조회할 공시유형. 2026-08-03 실측으로 "B" 단독이 결함임이 확인돼 "I" 를 추가했다.
+#   B = 주요사항보고  → 유상증자결정·무상증자결정 (기존 동작, 유지)
+#   I = 거래소공시    → 주식분할결정·주식병합결정
+# 실측(opendart list.json, corp_code 지정 단건 조회):
+#   011930 '주식병합결정'(20260220): pblntf_ty=B → status 013(무자료) / I → HIT
+#   101930 '주식분할결정'(20260326): pblntf_ty=B → status 013(무자료) / I → HIT
+# 즉 B 로만 돌던 이 수집기는 분할·병합을 **한 건도** 잡은 적이 없다. DB 가 그대로
+# 증언한다 — rights_issue 최신 rcept_dt=20260803(당일)인데 split 은 20260316 에서
+# 멈춰 있고, 그 split 행들의 출처는 전부 백필 스크립트(pblntf_ty 미지정)다.
+DART_PBLNTF_TYPES = ("B", "I")
 _MAX_WINDOW_DAYS = 90
-_MAX_PAGES = 20
+# I(거래소공시)는 B 보다 훨씬 촘촘하다 — 실측 7일 창 기준 B 211건(3p) vs I 1,334건(14p).
+# 기본 lookback 7일이면 여유가 있으나 --lookback 을 늘리면 옛 상한(20p)에 조용히
+# 잘렸다. 상한을 올리고, 그래도 남으면 WARNING 을 남긴다(무징후 절단 금지).
+_MAX_PAGES = 100
 _PAGE_COUNT = 100
 _BACKOFF_START = 0.5
 _BACKOFF_CAP = 8.0
 
-# report_nm 키워드 → event_type (scripts DART_EVENT_MAP 미러, import 금지)
+# report_nm 키워드 → (event_type, direction)
+#   direction 은 corp_events.meta.direction 으로 저장돼 daily_adj 가 계수 부호를
+#   해석하는 근거가 된다(액면병합은 가격이 *오르므로* 계수가 뒤집힌다).
+#   병합도 event_type 은 'split' 이다 — pykrx 백필 53건이 그 규약이고 daily_adj 가
+#   'split'만 소비하므로 새 타입을 만들면 병합이 조용히 무시된다.
+#   키워드는 실측 공시명 기준: '주식병합결정' / '[기재정정]주식병합결정'
+#   (2026-08-03 opendart 확인, 011930·039980·115160·004410·380540·131760·086960·
+#    049470·001510 등 9종목에서 동일 표기).
+#   '주식분할' 을 먼저 검사한다. '회사분할합병결정' 같은 합병(合倂) 공시는 '주식분할'
+#   에도 '주식병합'('병합' 순서가 반대)에도 걸리지 않아 오분류되지 않는다.
 DART_EVENT_MAP = [
-    (["주식분할", "액면분할"], "split"),
-    (["무상증자"], "bonus_issue"),
-    (["유상증자"], "rights_issue"),
+    (["주식분할", "액면분할"], "split", "split"),
+    (["주식병합", "액면병합"], "split", "merge"),
+    (["무상증자"], "bonus_issue", None),
+    (["유상증자"], "rights_issue", None),
 ]
 
 
@@ -77,22 +99,24 @@ def _load_dart_key() -> str:
 
 
 def _classify(report_nm: str):
-    for keywords, etype in DART_EVENT_MAP:
+    """report_nm → (event_type, direction) | (None, None)."""
+    for keywords, etype, direction in DART_EVENT_MAP:
         if any(kw in report_nm for kw in keywords):
-            return etype
-    return None
+            return etype, direction
+    return None, None
 
 
 def _to_compact(d: str) -> str:
     return d.replace("-", "") if d else d
 
 
-def _dart_list_page(key: str, bgn_de: str, end_de: str, page_no: int) -> dict:
+def _dart_list_page(key: str, bgn_de: str, end_de: str, page_no: int,
+                    pblntf_ty: str) -> dict:
     params = {
         "crtfc_key": key,
         "bgn_de": bgn_de,
         "end_de": end_de,
-        "pblntf_ty": DART_PBLNTF_TY,
+        "pblntf_ty": pblntf_ty,
         "page_count": _PAGE_COUNT,
         "page_no": page_no,
     }
@@ -101,19 +125,15 @@ def _dart_list_page(key: str, bgn_de: str, end_de: str, page_no: int) -> dict:
     return resp.json()
 
 
-def fetch_dart_events(key: str, bgn_de: str, end_de: str):
-    """DART list.json 전체 페이지 수집. 반환 (items, last_status).
-
-    status=='020'(사용한도/요청과다) → 지수 백오프 재시도(하드코딩 일일한도 없음).
-    status=='013'(데이터 없음) → 정상 종료. '000' → 성공. 그 외 → 중단(last_status 보존).
-    """
+def _fetch_one_type(key: str, bgn_de: str, end_de: str, pblntf_ty: str):
+    """단일 공시유형 전체 페이지 수집 → (items, status)."""
     items = []
     status = None
     page = 1
     total_page = 1
     backoff = _BACKOFF_START
     while page <= total_page and page <= _MAX_PAGES:
-        data = _dart_list_page(key, bgn_de, end_de, page)
+        data = _dart_list_page(key, bgn_de, end_de, page, pblntf_ty)
         status = data.get("status")
         if status == "020":  # rate limited → 백오프 후 같은 페이지 재시도
             if backoff > _BACKOFF_CAP:
@@ -124,11 +144,41 @@ def fetch_dart_events(key: str, bgn_de: str, end_de: str):
         if status == "013":  # 조회 데이터 없음
             break
         if status != "000":
-            logger.warning("[DART] list.json status=%s msg=%s", status, data.get("message"))
+            logger.warning("[DART] list.json ty=%s status=%s msg=%s",
+                           pblntf_ty, status, data.get("message"))
             break
         total_page = int(data.get("total_page") or 1)
         items.extend(data.get("list") or [])
         page += 1
+    # 페이지 상한에 걸려 남은 공시를 못 읽었으면 반드시 소리를 낸다 — 조용한 절단은
+    # "경보가 조용함"이 곧 정상이라는 착각을 만든다.
+    if total_page > _MAX_PAGES:
+        logger.warning(
+            "[DART] ty=%s 페이지 절단: total_page=%d > _MAX_PAGES=%d — 창을 좁히거나 "
+            "상한을 올릴 것(누락 발생)", pblntf_ty, total_page, _MAX_PAGES)
+    return items, status
+
+
+def fetch_dart_events(key: str, bgn_de: str, end_de: str):
+    """DART list.json 을 DART_PBLNTF_TYPES 전체에 대해 수집. 반환 (items, status).
+
+    status=='020'(사용한도/요청과다) → 지수 백오프 재시도(하드코딩 일일한도 없음).
+    status=='013'(데이터 없음) → 정상 종료. '000' → 성공. 그 외 → 중단(status 보존).
+
+    반환 status 는 **첫 비정상 값**이다(전부 정상이면 마지막 정상값). 한 유형만 실패해도
+    reconcile 이 FAIL 을 내도록 하기 위함 — I 유형만 조용히 죽으면 분할·병합 탐지가
+    통째로 사라지는데 B 가 살아 있다는 이유로 PASS 가 나면 그게 거짓안심이다.
+    """
+    items = []
+    status = None
+    for ty in DART_PBLNTF_TYPES:
+        ty_items, ty_status = _fetch_one_type(key, bgn_de, end_de, ty)
+        items.extend(ty_items)
+        if status is None or status in ("000", "013"):
+            if ty_status not in ("000", "013"):
+                status = ty_status
+            elif status is None:
+                status = ty_status
     return items, status
 
 
@@ -140,7 +190,7 @@ def _rows_from_items(items: list) -> list:
         if not (len(code) == 6 and code.isdigit()):
             continue
         report_nm = it.get("report_nm", "")
-        etype = _classify(report_nm)
+        etype, direction = _classify(report_nm)
         if not etype:
             continue
         rcept_dt = (it.get("rcept_dt") or "").strip()
@@ -153,6 +203,8 @@ def _rows_from_items(items: list) -> list:
             "report_nm": report_nm,
             "rcept_dt": rcept_dt,
         }
+        if direction is not None:
+            meta["direction"] = direction
         rows.append((code, etype, event_date_iso, meta))
     return rows
 

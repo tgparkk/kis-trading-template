@@ -39,7 +39,7 @@ class _RawCorpEventsCursor:
                     continue
                 eff_iso = meta.get("effective_date")
                 eff_date = date.fromisoformat(eff_iso) if eff_iso else event_date
-                out.append((stock_code, eff_date, float(sf)))
+                out.append((stock_code, eff_date, float(sf), meta.get("direction")))
             out.sort(key=lambda r: (r[0], r[1]))
             self._rows = out
         elif "FROM DAILY_PRICES" in s:
@@ -169,6 +169,56 @@ def test_update_adj_factors_self_heals_when_event_corrected(monkeypatch):
     assert (5.0, "BAD1", "2024-06-01") in run2
     assert (1.0, "BAD1", "2024-12-01") in run2  # 자가치유: 1.0 으로 원복
     assert n1 == 3 and n2 == 3  # 전체 상태 재기록(1.0 포함) — stock_dates 개수와 동일
+
+
+# ── 2026-08-03: 액면병합 방향 부호 ───────────────────────────────────────────
+
+def test_directional_factor_inverts_merge_but_not_split():
+    """meta.split_factor 는 병합에도 >1 이다(실측: 011930 1:10 병합 sf=10.0 ==
+    058430 10:1 분할 sf=10.0). 규약 adj_close = raw_close / adj_factor 에서
+    병합은 계수가 뒤집혀야 한다 — 안 뒤집으면 과거 가격이 정반대로 sf**2 만큼 틀어진다."""
+    assert dadj._directional_factor(10.0, "split") == 10.0
+    assert dadj._directional_factor(10.0, None) == 10.0      # 레거시 = 정방향 해석
+    assert dadj._directional_factor(10.0, "merge") == 0.1
+    assert dadj._directional_factor(2.5, "merge") == 0.4
+
+
+def test_directional_factor_guards_nonpositive():
+    assert dadj._directional_factor(0.0, "merge") == 1.0
+
+
+def test_load_split_events_inverts_merge_factor():
+    """011930 실사례(2026-05-15 1:10 액면병합, 정지 동결가 3,995 → 재개 39,950).
+    병합 전 원시가를 현재 스케일로 올리려면 계수는 0.1 이어야 한다(3,995/0.1=39,950)."""
+    conn = _RawConn(raw_events=[
+        ("011930", "split", date(2026, 5, 15),
+         {"split_factor": 10, "direction": "merge"}),
+    ])
+    events = dadj.load_split_events(conn)
+    assert events["011930"] == [(date(2026, 5, 15), 0.1)]
+
+
+def test_merge_and_split_same_factor_produce_opposite_adjustment(monkeypatch):
+    """같은 sf=10 이라도 방향이 다르면 adj_factor 가 반대로 나와야 한다 —
+    이 대칭이 깨지면 병합 종목의 과거 시세가 100배(10**2) 틀어진다."""
+    captured = []
+    monkeypatch.setattr(
+        dadj.psycopg2.extras, "execute_batch",
+        lambda cur, sql, rows, page_size=1000: captured.append(list(rows)))
+
+    conn_split = _RawConn(
+        raw_events=[("AAA", "split", date(2026, 5, 15),
+                     {"split_factor": 10, "direction": "split"})],
+        stock_dates_rows=[("AAA", "2026-05-01")])
+    dadj.update_adj_factors(conn_split)
+    assert captured[-1] == [(10.0, "AAA", "2026-05-01")]
+
+    conn_merge = _RawConn(
+        raw_events=[("AAA", "split", date(2026, 5, 15),
+                     {"split_factor": 10, "direction": "merge"})],
+        stock_dates_rows=[("AAA", "2026-05-01")])
+    dadj.update_adj_factors(conn_merge)
+    assert captured[-1] == [(0.1, "AAA", "2026-05-01")]
 
 
 def test_update_adj_factors_returns_zero_and_untouched_when_no_events(monkeypatch):

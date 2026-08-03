@@ -19,6 +19,7 @@ from collectors.daily_writer import parse_kis_daily_row, upsert_daily_rows  # no
 from collectors.daily_derived import update_returns_volatility  # noqa: E402
 from collectors.split_factor_infer import infer_and_stamp_split_factors  # noqa: E402
 from collectors.daily_adj import update_adj_factors  # noqa: E402
+from collectors.corp_action_watch import scan_and_queue  # noqa: E402
 from api import kis_market_api  # noqa: E402
 from utils.logger import setup_logger  # noqa: E402
 
@@ -74,7 +75,17 @@ def collect_daily(target_date: str = None, limit: int = None) -> dict:
         # 배수를 daily_adj 가 같은 밤에 adj_factor 로 반영하도록.
         stamped = infer_and_stamp_split_factors(conn)
         adj = update_adj_factors(conn)
-    return {"codes": len(codes), "rows": total, "adj": adj, "split_factor_stamped": stamped}
+        # 기업행위 미조정 이력 탐지 → 재수집 '대상 목록'만 적재(재수집 실행 안 함).
+        # lookback_days=7 창으로는 정지 구간(중앙값 15봉)을 넘을 수 없어 증분 수집이
+        # 과거를 영영 못 고친다 — corp_action_watch 주석 참조.
+        # 예외 격리: 이 훅이 죽어도 일봉 수집은 이미 끝났으므로 EOD 를 막지 않는다.
+        try:
+            watch = scan_and_queue(conn)
+        except Exception as e:  # noqa: BLE001 — 탐지 실패가 수집을 멈추면 안 된다
+            logger.error("기업행위 탐지 훅 실패(수집은 정상 완료): %s", e)
+            watch = {"error": str(e)}
+    return {"codes": len(codes), "rows": total, "adj": adj,
+            "split_factor_stamped": stamped, "corp_action_watch": watch}
 
 
 def reconcile_verdict(real_rows: int, new_rows: int, value_match: int) -> dict:

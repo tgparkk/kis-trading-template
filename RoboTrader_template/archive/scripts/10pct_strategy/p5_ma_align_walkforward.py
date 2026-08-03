@@ -57,6 +57,10 @@ df['close'] = pd.to_numeric(df['close'], errors='coerce')
 df['adj_factor'] = pd.to_numeric(df['adj_factor'], errors='coerce').fillna(1.0)
 df['market_cap'] = pd.to_numeric(df['market_cap'], errors='coerce')
 df = df[df['close'].notna() & (df['close'] > 0)].sort_values(['stock_code','date']).reset_index(drop=True)
+# 🔴 폐기된 계산 (2026-08-03 감사) — 규약 `adj_close = raw_close / adj_factor` 의
+#    입력은 **raw_close** 인데 daily_prices.close 는 raw 가 아니라 **이미 조정된**
+#    연속 시세다. 나누면 이중조정되어 분할일에 가짜 급등이 생긴다(실측 035720
+#    2021-04-15: 정상 +7.6% → 나누면 +437.9%). ⚠️ 복사 금지. archive 보존상 코드 유지.
 df['adj_close'] = df['close'] / df['adj_factor']
 print(f'    {len(df):,} rows, {df["stock_code"].nunique():,} stocks')
 

@@ -119,6 +119,51 @@ def test_collect_classifies_and_upserts(monkeypatch):
     assert etypes["035420"] == "rights_issue"
 
 
+# ── 2026-08-03: 액면병합 분류 + direction ────────────────────────────────────
+
+def test_classify_recognizes_real_dart_merge_report_names():
+    """실측 공시명(2026-08-03 opendart 확인). 병합도 event_type 은 'split' 이고
+    구분은 direction 으로 한다 — daily_adj 가 'split'만 소비하므로 새 타입을 만들면
+    병합이 조용히 무시된다."""
+    assert cec._classify("주식병합결정") == ("split", "merge")
+    assert cec._classify("[기재정정]주식병합결정") == ("split", "merge")
+    assert cec._classify("주식분할결정") == ("split", "split")
+    assert cec._classify("[기재정정]주식분할결정") == ("split", "split")
+
+
+def test_classify_preserves_existing_matches_and_ignores_noise():
+    """기존 동작 보존 — 증자류 분류가 그대로여야 하고 direction 은 없어야 한다."""
+    assert cec._classify("무상증자결정") == ("bonus_issue", None)
+    assert cec._classify("유상증자결정") == ("rights_issue", None)
+    assert cec._classify("분기보고서") == (None, None)
+
+
+def test_classify_does_not_confuse_corporate_merger_with_share_merge():
+    """🔑 합병(合倂, 회사 결합)과 병합(倂合, 액면 병합)은 다른 사건이다.
+    '회사분할합병결정' 은 '주식분할'에도 '주식병합'에도 걸리지 않아야 한다 —
+    걸리면 회사 합병 공시가 가짜 액면병합으로 둔갑해 가격을 조정해 버린다."""
+    assert cec._classify("회사분할합병결정") == (None, None)
+    assert cec._classify("주요사항보고서(회사합병결정)") == (None, None)
+    assert cec._classify("주요사항보고서(회사분할결정)") == (None, None)
+
+
+def test_rows_from_items_carries_direction_into_meta():
+    items = [
+        {"stock_code": "011930", "rcept_dt": "20260220", "rcept_no": "1",
+         "report_nm": "주식병합결정"},
+        {"stock_code": "101930", "rcept_dt": "20260326", "rcept_no": "2",
+         "report_nm": "주식분할결정"},
+        {"stock_code": "035420", "rcept_dt": "20260703", "rcept_no": "3",
+         "report_nm": "유상증자결정"},
+    ]
+    rows = cec._rows_from_items(items)
+    meta_by_code = {c: m for c, _e, _d, m in rows}
+    assert meta_by_code["011930"]["direction"] == "merge"
+    assert meta_by_code["101930"]["direction"] == "split"
+    assert "direction" not in meta_by_code["035420"]   # 증자류는 방향 개념 없음
+    assert {c: e for c, e, _d, _m in rows}["011930"] == "split"
+
+
 def test_collect_calls_stamp_after_capture(monkeypatch):
     monkeypatch.setattr(cec, "_load_dart_key", lambda: "KEY")
     monkeypatch.setattr(cec, "fetch_dart_events", lambda k, b, e: ([], "013"))
@@ -158,25 +203,55 @@ def test_fetch_paginates_via_total_page(monkeypatch):
     calls = []
 
     def _get(url, params=None, timeout=None):
-        calls.append(params["page_no"])
+        calls.append((params["pblntf_ty"], params["page_no"]))
         return _Resp(pages[params["page_no"]])
 
     monkeypatch.setattr(cec.requests, "get", _get)
     items, status = cec.fetch_dart_events("KEY", "20260601", "20260630")
-    assert calls == [1, 2]
+    # 유형별로 전 페이지를 돈다
+    assert calls == [("B", 1), ("B", 2), ("I", 1), ("I", 2)]
     assert status == "000"
-    assert len(items) == 2
+    assert len(items) == 4
+
+
+def test_fetch_queries_both_b_and_i_types(monkeypatch):
+    """🔑 분할·병합 공시는 pblntf_ty='I'(거래소공시)에만 있다 — 실측(2026-08-03):
+    011930 '주식병합결정'·101930 '주식분할결정' 모두 B 로는 status 013(무자료).
+    B 만 돌던 옛 코드는 분할·병합을 한 건도 잡은 적이 없다."""
+    seen = []
+
+    def _get(url, params=None, timeout=None):
+        seen.append(params["pblntf_ty"])
+        return _Resp({"status": "013"})
+
+    monkeypatch.setattr(cec.requests, "get", _get)
+    cec.fetch_dart_events("KEY", "20260601", "20260630")
+    assert seen == ["B", "I"]
+
+
+def test_fetch_surfaces_failure_of_any_single_type(monkeypatch):
+    """한 유형만 죽어도 status 는 실패를 반환해야 한다 — I 가 조용히 죽었는데 B 가
+    살아 있다는 이유로 PASS 가 나면 분할 탐지 상실이 무징후로 지나간다."""
+    def _get(url, params=None, timeout=None):
+        if params["pblntf_ty"] == "I":
+            return _Resp({"status": "800", "message": "system error"})
+        return _Resp({"status": "000", "total_page": 1, "list": [{"a": 1}]})
+
+    monkeypatch.setattr(cec.requests, "get", _get)
+    items, status = cec.fetch_dart_events("KEY", "20260601", "20260630")
+    assert status == "800"
 
 
 def test_fetch_backoff_on_rate_limit_020(monkeypatch):
     seq = [
         {"status": "020", "message": "요청제한"},   # 1차: rate limited
         {"status": "000", "total_page": 1, "list": [{"a": 1}]},  # 재시도 성공
+        {"status": "013"},                                       # 두 번째 유형
     ]
     idx = {"i": 0}
 
     def _get(url, params=None, timeout=None):
-        r = _Resp(seq[idx["i"]])
+        r = _Resp(seq[min(idx["i"], len(seq) - 1)])
         idx["i"] += 1
         return r
 
@@ -193,6 +268,33 @@ def test_fetch_status_013_no_data(monkeypatch):
     items, status = cec.fetch_dart_events("KEY", "20260601", "20260630")
     assert status == "013"
     assert items == []
+
+
+def test_fetch_warns_on_page_truncation(monkeypatch):
+    """페이지 상한 절단은 반드시 소리를 내야 한다(무징후 누락 금지)."""
+    warnings = []
+    monkeypatch.setattr(cec.logger, "warning",
+                        lambda msg, *a, **kw: warnings.append(msg % a if a else msg))
+    monkeypatch.setattr(cec, "_MAX_PAGES", 2)
+    monkeypatch.setattr(
+        cec.requests, "get",
+        lambda url, params=None, timeout=None: _Resp(
+            {"status": "000", "total_page": 99, "list": [{"a": 1}]}))
+    cec.fetch_dart_events("KEY", "20260601", "20260630")
+    assert any("절단" in w for w in warnings), warnings
+
+
+def test_fetch_does_not_warn_when_no_truncation(monkeypatch):
+    """변이 대조 — 절단이 없으면 경고가 없어야 한다(경고가 항상 켜져 있으면 판별력 0)."""
+    warnings = []
+    monkeypatch.setattr(cec.logger, "warning",
+                        lambda msg, *a, **kw: warnings.append(msg % a if a else msg))
+    monkeypatch.setattr(
+        cec.requests, "get",
+        lambda url, params=None, timeout=None: _Resp(
+            {"status": "000", "total_page": 1, "list": [{"a": 1}]}))
+    cec.fetch_dart_events("KEY", "20260601", "20260630")
+    assert not any("절단" in w for w in warnings), warnings
 
 
 # ── reconcile_corp_events (Item 4) ───────────────────────────────────────────

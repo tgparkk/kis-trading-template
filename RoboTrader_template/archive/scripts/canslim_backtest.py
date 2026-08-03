@@ -43,7 +43,12 @@ def _load_prices(stock_codes: list, start: str, end: str) -> dict:
             df['open'] = pd.to_numeric(df['open'], errors='coerce')
             df['close'] = pd.to_numeric(df['close'], errors='coerce')
             df['adj_factor'] = pd.to_numeric(df['adj_factor'], errors='coerce').fillna(1.0)
-            # adj_factor 적용
+            # 🔴 폐기된 계산 (2026-08-03 감사) — adj_factor 를 close 에 곱한다.
+            #    daily_prices.close 는 이미 분할조정된 연속 시세라 곱하면 분할일에
+            #    가짜 절벽이 생긴다(실측 035720 2021-04-15: 정상 +7.6% → 곱하면 -78.5%).
+            #    ⚠️ 이 패턴을 복사하지 말 것 — scripts/exit_multiverse/data_loader.py 가
+            #    같은 패턴을 복제해 2026-08-03 까지 오염돼 있었다.
+            #    archive 는 산출 기록 보존소이므로 코드는 고치지 않는다(아래 수치 신뢰 불가).
             df['open_adj'] = df['open'] * df['adj_factor']
             df['close_adj'] = df['close'] * df['adj_factor']
             df = df.dropna(subset=['open_adj', 'close_adj'])

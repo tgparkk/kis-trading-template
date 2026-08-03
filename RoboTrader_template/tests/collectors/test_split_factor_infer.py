@@ -14,12 +14,12 @@ def test_first_clean_gap_detects_2for1_split():
         ("2026-05-07", 50.0),
         ("2026-05-08", 51.0),
     ]
-    assert sfi._first_clean_gap(prices) == ("2026-05-07", 2)
+    assert sfi._first_clean_gap(prices) == ("2026-05-07", 2.0, "split")
 
 
 def test_first_clean_gap_detects_5for1():
     prices = [("2026-05-04", 500.0), ("2026-05-07", 100.0)]
-    assert sfi._first_clean_gap(prices) == ("2026-05-07", 5)
+    assert sfi._first_clean_gap(prices) == ("2026-05-07", 5.0, "split")
 
 
 def test_first_clean_gap_rejects_normal_moves():
@@ -41,27 +41,116 @@ def test_first_clean_gap_takes_first_qualifying():
         ("2026-05-06", 33.0),   # ratio ~3.03 첫 갭
         ("2026-05-07", 16.0),   # 이후 갭은 무시
     ]
-    assert sfi._first_clean_gap(prices) == ("2026-05-06", 3)
+    assert sfi._first_clean_gap(prices) == ("2026-05-06", 3.0, "split")
+
+
+# ── 2026-08-03: 액면병합(역방향) 탐지 ────────────────────────────────────────
+
+def test_first_clean_gap_detects_merge_011930_real_case():
+    """011930 실사례(2026-05-15 1:10 액면병합). 정지 중 종가가 3,995 로 동결됐다가
+    재개일 39,950 — 옛 코드는 c_prev/c_cur(=0.1)만 봐서 이 갭을 통째로 흘렸다."""
+    prices = [
+        ("2026-05-13", 3995.0),
+        ("2026-05-14", 3995.0),   # 거래정지 마지막 날
+        ("2026-05-15", 39950.0),  # 재개 — 실측 갭
+        ("2026-05-18", 32800.0),
+    ]
+    assert sfi._first_clean_gap(prices) == ("2026-05-15", 10.0, "merge")
+
+
+def test_first_clean_gap_detects_merge_1for2():
+    prices = [("2026-05-04", 1000.0), ("2026-05-07", 2000.0)]
+    assert sfi._first_clean_gap(prices) == ("2026-05-07", 2.0, "merge")
+
+
+def test_first_clean_gap_rejects_limit_up_contaminated_merge_115160():
+    """🔑 115160 실사례(2026-04-30 1:10 병합): 재개일이 +30% 상한에 붙어
+    9,370/721 = 12.996 이 된다. round=13 이고 오차가 0.004 라 '정수 근처' 기준은
+    tol 을 0.01 로 조여도 뚫린다 — 그래서 배수 13 이라는 **틀린 값**을 조용히 스탬프한다.
+    액면가 비율 화이트리스트는 12.996 이 10 에서 30% 벗어났다고 보고 거부해야 한다.
+
+    (정답지 105건 실측: 정수근처 대칭확장 TP=6/FP=6, 화이트리스트 TP=4/FP=0)"""
+    prices = [("2026-04-29", 721.0), ("2026-04-30", 9370.0)]
+    assert sfi._first_clean_gap(prices) is None
+
+
+def test_first_clean_gap_rejects_limit_up_contaminated_merge_039980():
+    """039980(2026-04-29 1:5 병합) 재개일 +30% 상한 → 9,630/1,481 = 6.502.
+    5 도 7 도 아니므로 거부돼야 한다."""
+    prices = [("2026-04-28", 1481.0), ("2026-04-29", 9630.0)]
+    assert sfi._first_clean_gap(prices) is None
+
+
+def test_first_clean_gap_rejects_single_day_limit_moves_both_ways():
+    """급락 구분 1 — KRX 일일 제한이 ±30% 라 정상 하루 등락은 비율이 최대 1/0.7=1.43.
+    _RATIO_MIN=1.5 에 못 미쳐 양방향 모두 걸러진다."""
+    assert sfi._first_clean_gap([("2026-05-04", 100.0), ("2026-05-07", 70.0)]) is None   # 하한
+    assert sfi._first_clean_gap([("2026-05-04", 100.0), ("2026-05-07", 130.0)]) is None  # 상한
+
+
+def test_first_clean_gap_does_not_compound_consecutive_limit_days():
+    """급락 구분 2 — 연속 하한가는 *인접 쌍끼리만* 비교되므로 누적되지 않는다.
+    100→70→49 는 각 쌍이 1.4286 이라 둘 다 거부된다(1.5 미만)."""
+    prices = [("2026-05-04", 100.0), ("2026-05-07", 70.0), ("2026-05-08", 49.0)]
+    assert sfi._first_clean_gap(prices) is None
+
+
+def test_first_clean_gap_accepts_single_bar_move_too_large_for_price_limits():
+    """한 봉 만에 -50% 는 가격제한 아래선 불가능하다 — 정지 해제(기업행위)의 지문이다.
+    따라서 채택되는 것이 맞다.
+
+    ⚠️ 잔여 위험: 정리매매는 가격제한이 없어 하루 -80% 가 가능하고, 그 값이 우연히
+    액면비율(5.0)에 3% 이내로 붙으면 오탐이 된다. 현재는 스캔 모집단이
+    'corp_events 에 분할·병합 공시가 있는 종목의 공시일 +90일' 로 제한돼 있어
+    (=_load_events_needing_factor) 상장폐지만 진행 중인 종목은 스캔되지 않는다는
+    점이 완화책이다. 거래량 0(정지) 런을 추가 조건으로 요구하면 더 강해지지만
+    이번 범위에서는 넣지 않았다."""
+    prices = [("2026-05-04", 100.0), ("2026-05-07", 50.0)]
+    assert sfi._first_clean_gap(prices) == ("2026-05-07", 2.0, "split")
+
+
+def test_snap_to_face_ratio_boundary_is_relative_not_absolute():
+    """상대오차 3% 경계 — 절대오차(정수근처)와 달리 큰 배수에서도 같은 비율로 조인다."""
+    assert sfi._snap_to_face_ratio(10.0) == 10.0
+    assert sfi._snap_to_face_ratio(10.29) == 10.0    # 2.9% → 채택
+    assert sfi._snap_to_face_ratio(10.4) is None     # 4.0% → 거부
+    assert sfi._snap_to_face_ratio(12.996) is None   # 115160 오염값
+    assert sfi._snap_to_face_ratio(1.2) is None      # _RATIO_MIN 미만
 
 
 # ── R3: 캘린더 간격 가드 (거래정지 허용, 장기결측 거부) ─────────────────────────
 
-def test_first_clean_gap_accepts_001130_real_halt_across_weekend():
-    """실제 001130 사례(2026-07-06 라이브 DB 조회값): 4일 거래정지(거래량0, 종가동결)
-    후 금(05-15)→월(05-18) 재개 시 종가 156500→14300 (ratio~10.94→11). 캘린더 간격
-    3일(주말 포함)은 정상 거래재개 패턴이므로 반드시 허용돼야 한다(회귀 방지)."""
+def test_first_clean_gap_allows_weekend_halt_gap():
+    """캘린더 간격 가드 회귀 — 금→월(3일, 주말 포함) 재개는 반드시 허용돼야 한다.
+    (원래 001130 케이스가 지키던 성질. 배수 판정과 분리해 깨끗한 비율로 검증한다.)"""
     prices = [
-        ("2026-05-08", 156500.0),
-        ("2026-05-11", 156500.0),
-        ("2026-05-12", 156500.0),
-        ("2026-05-13", 156500.0),
+        ("2026-05-14", 100000.0),
+        ("2026-05-15", 100000.0),   # 거래정지 마지막 날(금)
+        ("2026-05-18", 10000.0),    # 재개(월) — 3일 간격, 정확히 10배
+    ]
+    assert sfi._first_clean_gap(prices) == ("2026-05-18", 10.0, "split")
+
+
+def test_first_clean_gap_refuses_001130_because_ratio_is_not_a_face_value_ratio():
+    """🔴 001130 은 이 추론기의 **생애 유일한 스탬프**였고, 그 값이 틀렸다.
+
+    실측(kis_template): 정지 중 156,500 동결 → 재개일(2026-05-18) 시가 15,400 / 종가 14,300.
+    DART report_nm='주식분할결정'. 10:1 분할이면 기준가는 15,650 이고 시가 15,400 은
+    거기서 -1.6% 다 — 즉 **진짜 배수는 10**이다. 그런데 옛 규칙은 종가로 재서
+    156,500/14,300 = 10.94 → round=11, |오차|=0.06 < 0.3 → **11 을 스탬프했다**.
+    그 값이 지금도 corp_events.meta.split_factor=11 로 남아 있다.
+
+    재개봉은 기준가에서 자유롭게 움직이므로(그날 종가는 기준가 대비 -8.6%) 종가비는
+    배수의 신뢰할 수 있는 추정치가 아니다. 화이트리스트는 10.94 가 10 에서 9.4%
+    벗어났다고 보고 **스탬프를 거부**한다 — 틀린 배수를 남기는 것보다 낫다.
+    (기존 DB 행은 이 변경으로 바뀌지 않는다: split_factor 가 이미 있으면 재추론 대상이 아니다.)
+    """
+    prices = [
         ("2026-05-14", 156500.0),
         ("2026-05-15", 156500.0),   # 거래정지 마지막 날(금)
-        ("2026-05-18", 14300.0),    # 재개(월) — 진짜 갭
-        ("2026-05-19", 13410.0),
-        ("2026-05-20", 12830.0),
+        ("2026-05-18", 14300.0),    # 재개(월) — 종가는 기준가 대비 -8.6%
     ]
-    assert sfi._first_clean_gap(prices) == ("2026-05-18", 11)
+    assert sfi._first_clean_gap(prices) is None
 
 
 def test_first_clean_gap_rejects_multiweek_hole():
@@ -79,7 +168,7 @@ def test_first_clean_gap_skips_rejected_hole_then_finds_valid_gap():
         ("2026-01-26", 50.0),   # ratio 1.0 — 갭 아님
         ("2026-01-27", 25.0),   # 1일 간격, ratio 2.0 — 채택
     ]
-    assert sfi._first_clean_gap(prices) == ("2026-01-27", 2)
+    assert sfi._first_clean_gap(prices) == ("2026-01-27", 2.0, "split")
 
 
 # ── infer_and_stamp_split_factors (mock DB) ──────────────────────────────────
@@ -160,42 +249,55 @@ def test_infer_stamps_factor_without_moving_event_date():
     assert patch["split_factor"] == 2
     assert patch["effective_date"] == "2026-05-21"   # 유효 권리락일은 meta 에만 기록
     assert patch["split_factor_inferred"] is True
+    assert patch["direction"] == "split"
     assert conn.committed == 1
 
 
-def test_infer_001130_real_case_stamps_11_event_date_preserved():
-    """001130 실사례 end-to-end 회귀(2026-07-06 code review 하드닝) — 원 공시일
-    (rcept_dt=2026-03-12)에서 출발해 +90일 창 안의 진짜 halt 갭(05-15→05-18, 실측
-    156500→14300)을 찾아 factor 11 을 스탬프하되, event_date(PK)는 공시일 그대로
-    보존해야 한다(이 회귀가 code review 에서 지적된 원인 — 과거엔 PK를 05-18 로
-    이동시켰음)."""
+def test_infer_merge_stamps_direction_and_preserves_event_date():
+    """액면병합 end-to-end — event_date(PK, 공시일)는 불변이고 meta 에
+    direction='merge' 가 반드시 실려야 한다. 이 필드가 없으면 daily_adj 가 정방향으로
+    오해석해 과거 시세를 sf**2 만큼 반대로 틀어 버린다."""
     conn = _Conn(
-        events=[("001130", "split", date(2026, 3, 12))],  # 실제 DART rcept_dt
+        events=[("011930", "split", date(2026, 2, 20))],  # 실제 DART rcept_dt
         prices={
-            "001130": [
-                ("2026-03-12", 156500.0),
-                ("2026-04-15", 156500.0),
-                ("2026-05-08", 156500.0),
-                ("2026-05-11", 156500.0),
-                ("2026-05-12", 156500.0),
-                ("2026-05-13", 156500.0),
-                ("2026-05-14", 156500.0),
-                ("2026-05-15", 156500.0),   # 거래정지 마지막 날(금)
-                ("2026-05-18", 14300.0),    # 재개(월) — 실측 갭
-                ("2026-05-19", 13410.0),
-                ("2026-05-20", 12830.0),
+            "011930": [
+                ("2026-02-20", 3995.0),
+                ("2026-05-13", 3995.0),
+                ("2026-05-14", 3995.0),   # 거래정지 마지막 날
+                ("2026-05-15", 39950.0),  # 재개 — 실측 1:10 병합 갭
+                ("2026-05-18", 32800.0),
             ]
         },
     )
     n = sfi.infer_and_stamp_split_factors(conn)
     assert n == 1
     meta_json, sc, etype, where_date = conn.updates[0]
-    assert where_date == date(2026, 3, 12)   # PK 불변 — 공시일 그대로
-    assert sc == "001130" and etype == "split"
+    assert where_date == date(2026, 2, 20)   # PK 불변 — 공시일 그대로
+    assert sc == "011930" and etype == "split"
     import json
     patch = json.loads(meta_json)
-    assert patch["split_factor"] == 11
-    assert patch["effective_date"] == "2026-05-18"
+    assert patch["split_factor"] == 10.0
+    assert patch["direction"] == "merge"
+    assert patch["effective_date"] == "2026-05-15"
+
+
+def test_infer_001130_no_longer_stamps_wrong_factor_11():
+    """회귀 방지 — 옛 규칙이 유일하게 남긴 스탬프가 틀린 값(11)이었다.
+    이제는 스탬프하지 않는다(근거는 _first_clean_gap 쪽 테스트 주석)."""
+    conn = _Conn(
+        events=[("001130", "split", date(2026, 3, 12))],
+        prices={
+            "001130": [
+                ("2026-03-12", 156500.0),
+                ("2026-05-14", 156500.0),
+                ("2026-05-15", 156500.0),
+                ("2026-05-18", 14300.0),
+                ("2026-05-19", 13410.0),
+            ]
+        },
+    )
+    assert sfi.infer_and_stamp_split_factors(conn) == 0
+    assert conn.updates == []
 
 
 def test_infer_skips_when_no_gap_yet_idempotent():

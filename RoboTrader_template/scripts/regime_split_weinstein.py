@@ -55,7 +55,11 @@ def _load_universe_close(start: str, end: str, top_n: int = 50) -> pd.DataFrame:
 
         placeholders = ",".join(["%s"] * len(codes))
         cur.execute(f"""
-            SELECT date, stock_code, close * COALESCE(adj_factor, 1.0) AS adj_close
+            -- ★ adj_factor 를 곱하지 않는다 — close 는 이미 분할조정된 연속 시세.
+            -- 곱하면 분할일에 가짜 절벽(-51.9%~-89.4% 실측)이 생겨 daily_ret →
+            -- n_stocks_up/down·median_ret 국면 라벨이 오염된다. 2026-08-03 정정
+            -- (5d6ac09 Gen-1 러너 곱셈 제거에서 누락됐던 자리).
+            SELECT date, stock_code, close AS adj_close
             FROM daily_prices
             WHERE stock_code IN ({placeholders})
               AND date >= %s AND date <= %s

@@ -43,6 +43,9 @@ prices_raw["close"]      = pd.to_numeric(prices_raw["close"],      errors="coerc
 prices_raw["volume"]     = pd.to_numeric(prices_raw["volume"],     errors="coerce")
 prices_raw["market_cap"] = pd.to_numeric(prices_raw["market_cap"], errors="coerce")
 prices_raw["adj_factor"] = pd.to_numeric(prices_raw["adj_factor"], errors="coerce").fillna(1.0)
+# 🔴 폐기된 계산 (2026-08-03 감사) — adj_factor 를 close 에 곱한다. close 는 이미
+#    분할조정된 연속 시세라 곱하면 분할일 가짜 절벽(실측 035720 2021-04-15:
+#    정상 +7.6% → 곱하면 -78.5%). ⚠️ 복사 금지. archive 보존 원칙상 코드는 유지.
 prices_raw["close_adj"]  = prices_raw["close"] * prices_raw["adj_factor"]
 prices_raw = prices_raw.sort_values(["stock_code","date"]).reset_index(drop=True)
 n_stocks = prices_raw["stock_code"].nunique()

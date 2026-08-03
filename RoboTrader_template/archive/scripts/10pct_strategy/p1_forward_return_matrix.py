@@ -82,6 +82,10 @@ print(f"    After quality filter: {len(df):,} rows")
 # Step 2: adj_close
 # ---------------------------------------------------------------------------
 print("[2/9] Computing adj_close ...")
+# 🔴 폐기된 계산 (2026-08-03 감사) — 규약 `adj_close = raw_close / adj_factor` 의
+#    입력은 **raw_close** 인데 daily_prices.close 는 raw 가 아니라 **이미 조정된**
+#    연속 시세다. 나누면 이중조정되어 분할일에 가짜 급등이 생긴다(실측 035720
+#    2021-04-15: 정상 +7.6% → 나누면 +437.9%). ⚠️ 복사 금지. archive 보존상 코드 유지.
 df["adj_close"] = df["close"] / df["adj_factor"]
 
 # ---------------------------------------------------------------------------
