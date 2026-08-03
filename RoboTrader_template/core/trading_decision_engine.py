@@ -316,8 +316,11 @@ class TradingDecisionEngine:
             code = trading_stock.stock_code
             empty = {'buy_price': 0, 'quantity': 0, 'max_buy_amount': 0}
 
-            # 시장 방향성 필터: 전략별 지수 급락 시 매수 차단
-            is_crashing, crash_reason = self.check_market_direction(regime_index=regime_index)
+            # 시장 방향성 필터: 종목 소속 시장의 지수 급락 시 매수 차단.
+            # regime_index="auto" 해석은 게이트 호출 전에 끝낸다(캐시 키 오염 방지).
+            from core.regime.market_classifier import resolve_regime_index
+            resolved_index = resolve_regime_index(regime_index, code)
+            is_crashing, crash_reason = self.check_market_direction(regime_index=resolved_index)
             if is_crashing:
                 return False, f"{code} 시장급락 매수차단 ({crash_reason})", empty
 

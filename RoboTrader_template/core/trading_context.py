@@ -337,9 +337,14 @@ class TradingContext:
             # 전략별 국면 설정 조회 (regime_index/regime_gate). 미설정 전략은 기본값(both/none).
             regime_index, regime_gate = self._get_strategy_regime_settings()
 
-            # 시장 방향성 필터: 전략별 지수 급락 시 매수 스킵
+            # regime_index="auto" 면 매수 대상 종목의 소속 시장으로 판정 지수를 정한다.
+            # 게이트 캐시 키가 regime_index 문자열이라 여기서 해석해 넘겨야 오염되지 않는다.
+            from core.regime.market_classifier import resolve_regime_index
+            resolved_index = resolve_regime_index(regime_index, stock_code)
+
+            # 시장 방향성 필터: 종목 소속 시장의 지수 급락 시 매수 스킵
             is_crashing, crash_reason = self._decision_engine.check_market_direction(
-                regime_index=regime_index
+                regime_index=resolved_index
             )
             if is_crashing:
                 self.logger.info(f"매수 판단 스킵: 시장급락 ({crash_reason})")
