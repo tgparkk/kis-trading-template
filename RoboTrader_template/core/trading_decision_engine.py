@@ -153,6 +153,14 @@ class TradingDecisionEngine:
         if idx == "none":
             return False, ""
 
+        # 인식 불가 값(오타 등)은 무음으로 checks=[] 가 돼 매수가 조용히 허용되던
+        # 결함(2026-08-03 리뷰 발견 1) — 경고를 남기고 보수적으로 both 로 폴백한다.
+        if idx not in ("both", "KOSPI", "KOSDAQ"):
+            self.logger.warning(
+                f"[시장방향성필터] 인식 불가 regime_index={idx!r} → both 폴백(양쪽 지수 모두 검사)"
+            )
+            idx = "both"
+
         # 캐시 확인 (지수별 60초). 캐시 키 = 정규화된 regime_index.
         now = time.monotonic()
         cached = self._market_direction_cache.get(idx)

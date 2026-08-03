@@ -107,3 +107,38 @@ class TestNoneIsExempt:
             is_crash, _ = engine.check_market_direction(regime_index="none")
         assert is_crash is False
         assert called == []                  # 면제 → 지수 조회 자체 없음
+
+
+class TestUnknownIndexFallsBackToBoth:
+    """2026-08-03 리뷰 발견 1: 인식 불가 regime_index는 무음 통과가 아니라
+    both 폴백 + 경고여야 한다. Task 6에서 config에 "auto"의 오타
+    (예: "Auto")가 들어가도 급락 보호가 조용히 꺼지지 않는지 고정한다.
+    """
+
+    def test_typo_value_still_checks_both_indices(self):
+        engine = _make_engine()
+        fn, called = _index_stub({"0001": -0.5, "1001": -0.5})
+        with patch.object(kis_market_api, "get_index_data", fn):
+            engine.check_market_direction(regime_index="Auto")
+        assert set(called) == {"0001", "1001"}   # checks=[] 가 아니라 both 상당으로 폴백
+        assert engine.logger.warning.called       # 무음이 아니라 경고 남김
+
+    def test_typo_value_blocks_on_crash(self):
+        """오타값이라도 급락이면 여전히 매수를 차단해야 한다(무음 허용 금지)."""
+        engine = _make_engine()
+        fn, _ = _index_stub({"0001": -2.6, "1001": -0.3})
+        with patch.object(kis_market_api, "get_index_data", fn):
+            is_crash, reason = engine.check_market_direction(regime_index="KOSPI2")
+        assert is_crash is True
+        assert "KOSPI" in reason
+        assert engine.logger.warning.called
+
+    def test_none_is_not_affected_by_fallback(self):
+        """면제("none")는 폴백 로직 이전에 조기 반환돼야 한다 — 경고도 없어야 한다."""
+        engine = _make_engine()
+        fn, called = _index_stub({"0001": -9.9, "1001": -9.9})
+        with patch.object(kis_market_api, "get_index_data", fn):
+            is_crash, _ = engine.check_market_direction(regime_index="none")
+        assert is_crash is False
+        assert called == []
+        assert not engine.logger.warning.called
