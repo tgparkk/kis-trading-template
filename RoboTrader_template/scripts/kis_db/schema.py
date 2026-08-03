@@ -13,6 +13,7 @@ EXPECTED_TABLES = {
     # 시장데이터 (기존)
     "minute_candles", "daily_prices", "index_daily",
     "corp_events", "collection_reconciliation", "foreign_flow",
+    "stock_market",
     # 운영 테이블 (Phase A — init-scripts 01/05)
     "virtual_trading_records", "real_trading_records",
     "paper_trading_state",
@@ -120,6 +121,14 @@ DDL_STATEMENTS = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS ix_foreign_flow_date ON foreign_flow(date)",
+    # 종목 소속 시장 (신규 — KOSPI/KOSDAQ, FDR 상장목록 SSOT)
+    """
+    CREATE TABLE IF NOT EXISTS stock_market (
+        stock_code   VARCHAR(10) PRIMARY KEY,
+        market       VARCHAR(10) NOT NULL,
+        updated_at   TIMESTAMPTZ DEFAULT now()
+    );
+    """,
     # 교차 DB 비교 결과 (신규)
     """
     CREATE TABLE IF NOT EXISTS collection_reconciliation (

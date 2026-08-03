@@ -5,6 +5,7 @@ def test_expected_tables_present():
     assert EXPECTED_TABLES == {
         "minute_candles", "daily_prices", "index_daily",
         "corp_events", "collection_reconciliation", "foreign_flow",
+        "stock_market",
         "virtual_trading_records", "real_trading_records",
         "paper_trading_state",
         "candidate_stocks", "screener_snapshots",
