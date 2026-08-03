@@ -30,15 +30,21 @@ OUT_PATH = OUT_DIR / "regime_breakdown.parquet"
 
 
 def _load_universe_close(start: str, end: str, top_n: int = 50) -> pd.DataFrame:
-    """daily_prices 거래대금 상위 N종목 종가 wide DataFrame 반환."""
+    """daily_prices 거래대금 상위 N종목 종가 wide DataFrame 반환.
+
+    🔴 이전 필터 `stock_code != 'KOSPI'` 는 **부분 필터라 더 위험했다** — 안전해
+    보이지만 `KS11`·`KQ11`·`KOSDAQ` 이 그대로 통과한다(실측: top-50 안에
+    KS11 4위·KQ11 5위 잔존). → lib/universe_filter.py
+    """
     from db.connection import DatabaseConnection
+    from lib.universe_filter import SQL_STOCK_ONLY
     with DatabaseConnection.get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(f"""
             SELECT stock_code, SUM(close * volume) AS turnover
             FROM daily_prices
             WHERE date >= %s AND date <= %s
-              AND stock_code != 'KOSPI'
+              AND {SQL_STOCK_ONLY}
             GROUP BY stock_code
             ORDER BY turnover DESC
             LIMIT %s

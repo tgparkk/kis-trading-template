@@ -4,19 +4,26 @@ import logging
 from typing import Dict, List
 import pandas as pd
 
+from lib.universe_filter import SQL_STOCK_ONLY
+
 LOG = logging.getLogger("exit_multiverse.data_loader")
 
 
 def load_top_volume_universe(start: str, end: str, top_n: int = 50) -> List[str]:
-    """daily_prices 거래대금(close*volume) 합계 상위 N종목 코드."""
+    """daily_prices 거래대금(close*volume) 합계 상위 N종목 코드.
+
+    🔴 SQL_STOCK_ONLY 필수 — 지수 행(KOSPI·KOSDAQ·KS11·KQ11)이 종목처럼 섞여 있고
+    필터 없이는 top-50 중 3자리를 지수가 가져간다. 상세 → lib/universe_filter.py
+    """
     # run_elder_triple_screen.py:44-58 그대로 복제
     from db.connection import DatabaseConnection
     with DatabaseConnection.get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(f"""
             SELECT stock_code, SUM(close * volume) AS turnover
             FROM daily_prices
             WHERE date >= %s AND date <= %s
+              AND {SQL_STOCK_ONLY}
             GROUP BY stock_code
             ORDER BY turnover DESC, stock_code ASC
             LIMIT %s
@@ -61,14 +68,19 @@ def load_daily_adj(stock_codes: List[str], start: str, end: str) -> Dict[str, pd
 
 
 def load_turnover_rank(start: str, end: str) -> Dict[str, float]:
-    """종목별 거래대금 합계 (진입 우선순위 정렬용)."""
+    """종목별 거래대금 합계 (진입 우선순위 정렬용).
+
+    🔴 SQL_STOCK_ONLY 필수 — 여기서 빠지면 지수(KOSPI)가 거래대금 1위라
+    **모든 진입 우선순위의 맨 앞**에 고정된다. 상세 → lib/universe_filter.py
+    """
     from db.connection import DatabaseConnection
     with DatabaseConnection.get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(f"""
             SELECT stock_code, SUM(close * volume) AS turnover
             FROM daily_prices
             WHERE date >= %s AND date <= %s
+              AND {SQL_STOCK_ONLY}
             GROUP BY stock_code
         """, (start, end))
         rows = cur.fetchall()
@@ -78,7 +90,11 @@ def load_turnover_rank(start: str, end: str) -> Dict[str, float]:
 
 
 def load_kospi_close(start: str, end: str) -> pd.Series:
-    """daily_prices 의 KOSPI 지수 종가 (국면 라벨용). regime_split_*.py 와 동일 소스."""
+    """daily_prices 의 KOSPI 지수 종가 (국면 라벨용). regime_split_*.py 와 동일 소스.
+
+    ✅ 여기서 stock_code='KOSPI' 를 읽는 것은 **의도된 지수 조회**다 — 유니버스
+    필터를 걸면 안 된다. 위 두 함수(유니버스·거래대금 랭크)와 목적이 반대다.
+    """
     from db.connection import DatabaseConnection
     with DatabaseConnection.get_connection() as conn:
         cur = conn.cursor()

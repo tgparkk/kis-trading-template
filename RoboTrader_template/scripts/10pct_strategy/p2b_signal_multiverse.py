@@ -37,6 +37,9 @@ warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
 
 # ── 경로 설정 ────────────────────────────────────────────────────────────────
 BASE_DIR   = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if BASE_DIR not in sys.path:          # 직접 실행 시 repo 루트 import 보장
+    sys.path.insert(0, BASE_DIR)
+from lib.universe_filter import SQL_STOCK_ONLY  # noqa: E402
 REPORT_DIR = os.path.join(BASE_DIR, "reports", "10pct_strategy")
 os.makedirs(REPORT_DIR, exist_ok=True)
 
@@ -97,11 +100,14 @@ def load_data():
         host="127.0.0.1", port=5433, dbname="robotrader_quant",
         user="robotrader", password="1234"
     )
+    # 🔴 전 패널 로드 — 지수 행(KOSPI·KOSDAQ·KS11·KQ11)이 섞이면 종목 수 과대집계에
+    #    더해 **횡단면 순위(퍼센타일·랭크)까지 오염**된다. → lib/universe_filter.py
     query = r"""
         SELECT stock_code, date::text AS date,
                open, high, low, close, volume, trading_value, market_cap
         FROM daily_prices
         WHERE close > 0
+          AND """ + SQL_STOCK_ONLY + r"""
           AND date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
         ORDER BY stock_code, date
     """

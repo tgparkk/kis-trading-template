@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from lib.universe_filter import SQL_STOCK_ONLY
 from strategies.books.elder_triple_screen.rules import ALL_RULES, ema, krx_tick, screen1_uptrend
 from strategies.books.elder_triple_screen.strategy import BOOK_META, build_strategy
 
@@ -42,14 +43,20 @@ VARIANT_PARAMS = {
 
 
 def _load_top_volume_universe(start: str, end: str, top_n: int = 50) -> List[str]:
-    """daily_prices의 (close*volume) 합계 상위 N종목."""
+    """daily_prices의 (close*volume) 합계 상위 N종목.
+
+    🔴 SQL_STOCK_ONLY 필수 — daily_prices 에는 지수 행(KOSPI·KOSDAQ·KS11·KQ11)이
+    종목처럼 섞여 있고 close*volume 이 압도적이라 필터 없이는 top-50 중 3자리
+    (KOSPI 1위·KS11 5위·KQ11 6위)를 지수가 차지한다. 상세 → lib/universe_filter.py
+    """
     from db.connection import DatabaseConnection
     with DatabaseConnection.get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(f"""
             SELECT stock_code, SUM(close * volume) AS turnover
             FROM daily_prices
             WHERE date >= %s AND date <= %s
+              AND {SQL_STOCK_ONLY}
             GROUP BY stock_code
             ORDER BY turnover DESC
             LIMIT %s

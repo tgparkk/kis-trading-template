@@ -33,6 +33,9 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 BASE_DIR   = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if BASE_DIR not in sys.path:          # 직접 실행 시 repo 루트 import 보장
+    sys.path.insert(0, BASE_DIR)
+from lib.universe_filter import SQL_STOCK_ONLY  # noqa: E402
 REPORT_DIR = os.path.join(BASE_DIR, "reports", "10pct_strategy")
 P5_DIR     = os.path.join(REPORT_DIR, "phase5_signals")
 os.makedirs(P5_DIR, exist_ok=True)
@@ -74,13 +77,17 @@ def load_data():
     print("[1/3] daily_prices ...")
     conn = psycopg2.connect(**DB_Q)
     cur = conn.cursor()
-    cur.execute("""
+    # 🔴 이전 필터 `NOT IN ('KS11','KQ11')` 은 부분 필터다 — `KOSPI`·`KOSDAQ` 통과.
+    #    이 스크립트의 DB(robotrader_quant, 2026-07-10 동결)엔 마침 그 두 행이 없어
+    #    결과는 같았으나, 소스를 kis_template 로 바꾸면 KOSPI 가 거래대금 1위로 섞인다.
+    #    전 패널 로드라 지수가 끼면 횡단면 순위(퍼센타일)까지 오염된다.
+    cur.execute(f"""
         SELECT stock_code, date::text AS date,
                open, high, low, close, volume, trading_value, market_cap
         FROM daily_prices
         WHERE close > 0 AND volume > 0
-          AND stock_code NOT IN ('KS11','KQ11')
-          AND date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          AND {SQL_STOCK_ONLY}
+          AND date ~ '^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}$'
         ORDER BY stock_code, date
     """)
     rows = cur.fetchall()

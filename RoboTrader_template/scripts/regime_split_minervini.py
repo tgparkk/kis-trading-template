@@ -26,15 +26,21 @@ OUT_PATH = OUT_DIR / "regime_breakdown.parquet"
 
 
 def _load_universe_close(start: str, end: str, top_n: int = 50) -> pd.DataFrame:
-    """daily_prices에서 거래대금 상위 N종목 종가 wide DataFrame 반환."""
+    """daily_prices에서 거래대금 상위 N종목 종가 wide DataFrame 반환.
+
+    🔴 SQL_STOCK_ONLY 필수 — 지수 행(KOSPI·KOSDAQ·KS11·KQ11)이 종목처럼 섞여 있고
+    필터 없이는 top-50 중 3자리를 지수가 가져간다. 상세 → lib/universe_filter.py
+    """
     from db.connection import DatabaseConnection
+    from lib.universe_filter import SQL_STOCK_ONLY
     with DatabaseConnection.get_connection() as conn:
         cur = conn.cursor()
         # 거래대금 상위 N 종목
-        cur.execute("""
+        cur.execute(f"""
             SELECT stock_code, SUM(close * volume) AS turnover
             FROM daily_prices
             WHERE date >= %s AND date <= %s
+              AND {SQL_STOCK_ONLY}
             GROUP BY stock_code
             ORDER BY turnover DESC
             LIMIT %s

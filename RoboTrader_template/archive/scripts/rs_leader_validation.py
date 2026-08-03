@@ -61,10 +61,16 @@ def load_universe_data(start: str, end: str, top_n: int, min_tv: float = 1e9):
     """
     look_start = (pd.Timestamp(start) - pd.Timedelta(days=400)).date().isoformat()
     conn = psycopg2.connect(**DB)
+    # 🔴 이전 필터 `NOT IN ('KS11','KQ11')` 은 부분 필터다 — `KOSPI`·`KOSDAQ` 이
+    #    그대로 통과한다(kis_template 실측: 그 필터만 걸면 KOSPI 가 거래대금 1위).
+    #    이 스크립트의 DB(robotrader_quant, 2026-07-10 동결)에는 마침 KOSPI/KOSDAQ
+    #    행이 없어 결과는 같았지만, 소스를 kis_template 로 바꾸는 순간 뚫린다.
+    #    이름 목록 대신 KRX 종목코드 형식으로 막는다. → lib/universe_filter.py
+    from lib.universe_filter import SQL_STOCK_ONLY
     try:
         df = pd.read_sql(
             "SELECT stock_code, date, open, high, low, close, volume, trading_value "
-            "FROM daily_prices WHERE stock_code NOT IN ('KS11','KQ11') "
+            f"FROM daily_prices WHERE {SQL_STOCK_ONLY} "
             "AND date >= %s AND date <= %s AND close > 0 ORDER BY stock_code, date",
             conn, params=(look_start, end),
         )

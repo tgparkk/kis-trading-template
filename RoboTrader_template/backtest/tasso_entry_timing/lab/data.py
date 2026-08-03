@@ -13,15 +13,20 @@ REPO = r"D:\GIT\kis-trading-template\RoboTrader_template"
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 from config.constants import resolve_daily_source_db  # noqa: E402
+from lib.universe_filter import SQL_STOCK_ONLY  # noqa: E402
 
 PG = dict(host="127.0.0.1", port=5433, user="robotrader", password="1234")
 OHLC = ("open", "high", "low", "close")
 
-DAILY_SQL = """
+# 🔴 SQL_STOCK_ONLY 필수 — daily_prices 에는 지수 행(KOSPI·KOSDAQ·KS11·KQ11)이
+#    종목처럼 섞여 있다. 전 패널을 그대로 로드하면 종목 수가 과대집계되고
+#    거래대금·수익률 횡단면 순위가 지수에 오염된다. → lib/universe_filter.py
+DAILY_SQL = f"""
     select stock_code, date, open, high, low, close,
            volume, trading_value, market_cap
     from daily_prices
     where date >= %s and date <= %s
+      and {SQL_STOCK_ONLY}
     order by stock_code, date
 """
 

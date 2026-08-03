@@ -23,6 +23,12 @@ import subprocess
 import sys
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if _REPO not in sys.path:             # 직접 실행 시 repo 루트 import 보장
+    sys.path.insert(0, _REPO)
+from lib.universe_filter import SQL_STOCK_ONLY  # noqa: E402
+
 PSQL = r"C:\Program Files\PostgreSQL\16\bin\psql.exe"
 MIN_BARS = 15
 YEARS = ["2021", "2022", "2023", "2024"]
@@ -35,11 +41,19 @@ def pct(a, b):
 def first_dates():
     """코드별 `daily_prices` 최초일. 🔴 이 DB 는 백필이 **두 파도**로 들어왔다:
     1,740 코드가 2021-01, **473 코드가 2024-03** 부터 시작한다.
-    ⇒ 「매핑O·그해 DB無」의 대부분은 상폐가 아니라 **백필 경계**다."""
+    ⇒ 「매핑O·그해 DB無」의 대부분은 상폐가 아니라 **백필 경계**다.
+
+    🔴 SQL_STOCK_ONLY 필수 — 지수 4종(KOSPI·KOSDAQ·KS11·KQ11)이 종목처럼 섞여
+    있어 필터 없이는 `len(firsts)` 가 종목 수를 4 과대집계한다(sibling
+    `codename_census.py` 가 상폐율 27/2606 을 23/2602 로 정정한 것과 같은 건).
+    ⚠️ 신형우선주(`00088K`·`37550L` 등 10종)는 **진짜 상장 종목**이라 남긴다 —
+    마지막 행이 2024-02-29 인 것은 상폐가 아니라 과거 백필 종료 경계다.
+    → lib/universe_filter.py"""
     env = dict(os.environ, PGPASSWORD="1234")
     r = subprocess.run([PSQL, "-h", "127.0.0.1", "-p", "5433", "-U", "robotrader",
                         "-d", "kis_template", "-tAF\t", "-c",
-                        "SELECT stock_code, min(date) FROM daily_prices GROUP BY 1;"],
+                        "SELECT stock_code, min(date) FROM daily_prices "
+                        f"WHERE {SQL_STOCK_ONLY} GROUP BY 1;"],
                        capture_output=True, env=env)
     out = {}
     for line in r.stdout.decode("utf-8", "replace").strip().split("\n"):

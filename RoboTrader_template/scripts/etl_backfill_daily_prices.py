@@ -100,16 +100,21 @@ ON CONFLICT (stock_code, date) DO NOTHING
 
 # SQL_UPDATE_RETURNS 는 운영 수집기가 소유 → collectors 로 승격 (2026-07-02 Phase1).
 from collectors.daily_derived import SQL_UPDATE_RETURNS  # noqa: E402
+from lib.universe_filter import SQL_STOCK_ONLY  # noqa: E402
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 검증 쿼리
 # ─────────────────────────────────────────────────────────────────────────────
-SQL_VERIFY_RANGE = """
+# 🔴 stock_count 는 지수 행을 빼고 센다 — daily_prices 에는 종목이 아닌 행
+#    (KOSPI·KOSDAQ·KS11·KQ11)이 섞여 있어 그냥 세면 종목 수가 과대집계된다.
+#    (이 ETL 의 타겟 robotrader_quant 에는 KS11·KQ11 2종이 있다.)
+#    total_rows 는 테이블 전체 행 수라 필터하지 않는다 — 목적이 다르다.
+SQL_VERIFY_RANGE = f"""
 SELECT
     MIN(date)   AS min_date,
     MAX(date)   AS max_date,
     COUNT(*)    AS total_rows,
-    COUNT(DISTINCT stock_code) AS stock_count
+    COUNT(DISTINCT stock_code) FILTER (WHERE {SQL_STOCK_ONLY}) AS stock_count
 FROM daily_prices
 """
 
@@ -251,8 +256,10 @@ def run_dry_run() -> None:
     tgt_conn = _connect(TARGET_DSN)
     tgt_cur = tgt_conn.cursor()
 
+    # 🔴 종목 수는 지수 행 제외 (→ lib/universe_filter.py)
     tgt_cur.execute(
-        "SELECT MIN(date), MAX(date), COUNT(*), COUNT(DISTINCT stock_code) FROM daily_prices"
+        "SELECT MIN(date), MAX(date), COUNT(*), "
+        f"COUNT(DISTINCT stock_code) FILTER (WHERE {SQL_STOCK_ONLY}) FROM daily_prices"
     )
     t_min, t_max, t_rows, t_stocks = tgt_cur.fetchone()
     logger.info(f"  현재 날짜 범위: {t_min} ~ {t_max}")

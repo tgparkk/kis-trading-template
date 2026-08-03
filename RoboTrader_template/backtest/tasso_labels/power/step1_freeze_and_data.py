@@ -9,6 +9,11 @@ import numpy as np, pandas as pd, psycopg2
 sys.stdout.reconfigure(encoding="utf-8")
 
 BASE = r"D:\GIT\kis-trading-template\RoboTrader_template\backtest\tasso_labels"
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if _REPO not in sys.path:             # 직접 실행 시 repo 루트 import 보장
+    sys.path.insert(0, _REPO)
+from lib.universe_filter import SQL_STOCK_ONLY  # noqa: E402
+
 OUT  = os.path.join(BASE, "power")
 os.makedirs(OUT, exist_ok=True)
 DSN = dict(host="127.0.0.1", port=5433, dbname="kis_template",
@@ -116,11 +121,15 @@ json.dump({"full": dict(sorted(collections.Counter(cnt_all).items())),
 
 # ---------------------------------------------------------------- 3. 가격 wide 행렬
 print("\n[DB] daily_prices 로드 (2020-11-01 ~ 2025-04-30) ...")
-px = pd.read_sql("""
+# 🔴 SQL_STOCK_ONLY 필수 — 지수 행(KOSPI·KOSDAQ·KS11·KQ11)이 종목처럼 섞여 있다.
+#    여기서 만드는 wide 행렬은 codes 축이 그대로 횡단면 모집단이 되므로,
+#    지수가 끼면 거래대금 랭크·퍼센타일이 통째로 오염된다. → lib/universe_filter.py
+px = pd.read_sql(f"""
     SELECT date, stock_code, open, high, low, close, trading_value
     FROM daily_prices
     WHERE date >= to_char(DATE '2020-11-01','YYYY-MM-DD')
       AND date <= to_char(DATE '2025-04-30','YYYY-MM-DD')
+      AND {SQL_STOCK_ONLY}
 """, conn)
 conn.close()
 px["date"] = px["date"].astype(str)

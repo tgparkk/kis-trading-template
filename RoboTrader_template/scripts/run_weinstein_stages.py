@@ -39,6 +39,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from lib.universe_filter import SQL_STOCK_ONLY
 from strategies.books.weinstein_stages.rules import (
     ALL_RULES,
     compute_ma30w_slope,
@@ -72,15 +73,21 @@ VARIANT_PARAMS = {
 # ---------------------------------------------------------------------------
 
 def _load_top_volume_universe(start: str, end: str, top_n: int = 50) -> List[str]:
-    """daily_prices 거래대금 상위 N종목 코드 리스트."""
+    """daily_prices 거래대금 상위 N종목 코드 리스트.
+
+    🔴 이전 필터 `stock_code != 'KOSPI'` 는 **부분 필터라 더 위험했다** — 안전해
+    보이지만 2024년 추가된 `KS11`·`KQ11` 와 2026-06 추가된 `KOSDAQ` 이 그대로
+    통과한다(실측: 이 필터만 걸면 top-50 안에 KS11 4위·KQ11 5위가 잔존).
+    이름 목록 대신 **KRX 종목코드 형식**으로 막는다. → lib/universe_filter.py
+    """
     from db.connection import DatabaseConnection
     with DatabaseConnection.get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(f"""
             SELECT stock_code, SUM(close * volume) AS turnover
             FROM daily_prices
             WHERE date >= %s AND date <= %s
-              AND stock_code != 'KOSPI'
+              AND {SQL_STOCK_ONLY}
             GROUP BY stock_code
             ORDER BY turnover DESC
             LIMIT %s
