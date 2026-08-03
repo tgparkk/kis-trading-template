@@ -130,9 +130,11 @@ def upsert_market_rows(conn, rows) -> int:
     return len(rows)
 ```
 
-- [ ] **Step 4: Add the table DDL**
+- [ ] **Step 4: Add the table DDL *and* register it in `EXPECTED_TABLES`**
 
-`scripts/kis_db/schema.py` — 다른 `CREATE TABLE IF NOT EXISTS` 블록과 같은 자리(`create_all`이 실행하는 DDL 목록)에 추가:
+`scripts/kis_db/schema.py`는 멱등 스키마 SSOT다(`usage: python -m scripts.kis_db.schema`). **두 곳을 모두 고쳐야 한다.**
+
+(a) `DDL_STATEMENTS` 목록에 추가:
 
 ```sql
     CREATE TABLE IF NOT EXISTS stock_market (
@@ -142,12 +144,36 @@ def upsert_market_rows(conn, rows) -> int:
     );
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+(b) `EXPECTED_TABLES` 집합에 `"stock_market"` 추가 — 시장데이터 그룹에 넣는다:
+
+```python
+    # 시장데이터 (기존)
+    "minute_candles", "daily_prices", "index_daily",
+    "corp_events", "collection_reconciliation", "foreign_flow",
+    "stock_market",
+```
+
+> ⚠️ (b)를 빠뜨리면 봇의 `_verify_tables`가 "누락된 테이블" 경고를 내고 라이브 수동추가를 유발한다 — 2026-07-08에 `quant_portfolio`·`financial_data`·`quant_factors`가 정확히 이 방식으로 새어나간 전례가 있다(파일 주석에 기록돼 있다).
+
+- [ ] **Step 5: Apply the schema and verify the table exists**
+
+`CREATE TABLE IF NOT EXISTS`뿐이라 기존 데이터에 무해하고, 다른 트랙의 `daily_prices` 복구와도 충돌하지 않는다.
+
+Run: `python -m scripts.kis_db.schema`
+Expected: `스키마 생성 완료: [...]` 출력에 `stock_market` 포함
+
+검증:
+```bash
+PGPASSWORD=1234 psql -h 127.0.0.1 -p 5433 -U robotrader -d kis_template -c "\d stock_market"
+```
+Expected: `stock_code`(PK) · `market` · `updated_at` 3컬럼
+
+- [ ] **Step 6: Run test to verify it passes**
 
 Run: `pytest tests/collectors/test_stock_market_writer.py -v`
 Expected: PASS (4 passed)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add scripts/kis_db/schema.py collectors/stock_market_writer.py tests/collectors/test_stock_market_writer.py
