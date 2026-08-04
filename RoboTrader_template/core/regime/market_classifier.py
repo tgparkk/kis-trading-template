@@ -23,9 +23,16 @@
 
   ⚠️ 이 모듈의 어떤 실패 경로도 무방비를 만들지 않는다 —
      `resolve_regime_index` 가 전부 "both"(양쪽 지수 검사)로 흡수한다.
+
+해석 집계(2026-08-04 활성화 선행조건 — 양성 증거):
+  auto 를 켠 뒤 "잘 돌아간다"의 근거가 「WARNING 이 안 뜬다」뿐이면 안 된다.
+  **경보의 침묵은 증거가 아니다.** 그래서 해석 결과를 (전략, configured,
+  resolved) 별로 세어 EOD 에 한 줄로 남긴다(`log_resolution_summary`).
+  카운터는 호출부가 아니라 이 함수 **안에** 둔다 — 호출부가 2곳이라 안에 두면
+  둘 다 자동으로 덮이고 유지보수 지점이 하나로 남는다.
 """
 import time
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 from utils.logger import setup_logger
 
@@ -147,7 +154,8 @@ def get_stock_market(stock_code: str) -> Optional[str]:
         return None
 
 
-def resolve_regime_index(configured: str, stock_code: str, market_lookup=None) -> str:
+def resolve_regime_index(configured: str, stock_code: str, market_lookup=None,
+                         strategy_name: str = None) -> str:
     """급락게이트에 넘길 지수 문자열을 정한다.
 
     configured != "auto"  → 그대로 통과 (기존 동작 100% 보존, 매핑 미조회)
@@ -155,16 +163,219 @@ def resolve_regime_index(configured: str, stock_code: str, market_lookup=None) -
 
     "both" 는 KOSPI·KOSDAQ 을 모두 검사하므로 결측은 **보호 과잉 쪽으로만**
     실패한다. 무방비 구간이 생기지 않는다.
+
+    Args:
+        strategy_name: 집계 귀속용 전략 폴더키. **선택**(기본 None) — 기존
+            호출부·테스트가 안 깨진다. 못 넘겨도 (configured, resolved) 축만으로
+            핵심 질문(auto 가 실제로 시장별로 갈리는가)은 답해진다.
+
+    반환값·의미는 집계 도입 전과 동일하다. 집계는 어떤 경우에도 반환에
+    개입하지 않는다(`_count_resolution` 이 예외를 밖으로 내지 않는다).
     """
     cfg = configured or "both"
-    if cfg != "auto":
-        return cfg
+    resolved = cfg
+    if cfg == "auto":
+        lookup = market_lookup or get_stock_market
+        try:
+            market = lookup(stock_code)
+        except Exception as e:
+            logger.warning(f"[시장매핑] {stock_code} 조회 예외(both 폴백): {e}")
+            market = None
+        resolved = market if market in VALID_MARKETS else "both"
 
-    lookup = market_lookup or get_stock_market
+    _count_resolution(strategy_name, cfg, resolved)
+    return resolved
+
+
+# =========================================================================
+# 해석 집계 — auto 활성화 판정용 양성 증거
+# =========================================================================
+# 이 블록이 답해야 하는 것:
+#   - configured="auto" 인 건이 KOSPI/KOSDAQ/both 로 각각 몇 건 갈렸는가
+#   - both 비율은 얼마인가 (높으면 매핑이 안 붙는다 = 보호 과잉이라 위험하진
+#     않으나 **auto 가 사실상 안 도는 상태**다)
+#   - non-auto 건은 configured == resolved 인가 (아니면 그 자체가 결함)
+#
+# ⚠️ 집계 단위는 「매수 평가」가 아니라 「해석 호출」이다. 매수 1건이 게이트를
+#    통과하면 TradingContext.buy → TradingAnalyzer → TradingDecisionEngine 로
+#    이어져 해석이 2회 일어난다(차단되면 1회). 건수를 평가 횟수로 읽지 말 것.
+
+RESOLUTION_LOG_TAG = "[게이트지수해석]"
+
+# 전략명 자리에 예상 밖 값(예: 종목코드)이 들어와도 메모리가 무한 증식하지
+# 않게 상한을 둔다. 이 모듈은 이미 「종목코드를 키로 넣어 캐시를 오염시킨」
+# 사고의 현장이다. 상한 초과분은 버리지 않고 넘침 버킷에 합산한다 —
+# 총 건수를 잃으면 「집계가 멈춘 것」과 구분되지 않는다.
+_MAX_RESOLUTION_KEYS = 200
+# 🔴 넘침 시 뭉개는 축은 **전략명 하나뿐**이다. configured/resolved 까지 뭉개면
+#    요약부의 `if cfg == "auto"` 분기를 절대 안 타서 **auto 해석이 non-auto 로
+#    계상**된다 — 총 건수는 보존되므로 아무도 못 알아채고, 헤드라인만
+#    `auto 0건` 이라고 거짓말한다(이 기능이 없애려던 바로 그 오독이다).
+_OVERFLOW_STRATEGY = "(키상한초과)"
+# configured 축까지 무한 증식하는 극단에 대비한 최종 버킷. 실전에서 configured
+# 는 설정값(전략 수만큼)이라 유계지만, 카디널리티 상한이 **다른 인자가 얌전하다는
+# 가정**에 의존하면 안 된다. 이 상수 덕에 키 수는 무조건 유계다.
+_HARD_MAX_RESOLUTION_KEYS = _MAX_RESOLUTION_KEYS + 64
+_OVERFLOW_KEY = (_OVERFLOW_STRATEGY, "(기타)", "(기타)")
+# 키가 unhashable 이거나 dict 가 터진 경우의 최후 버킷. 축은 잃어도 총 건수는
+# 지킨다 — 잃으면 「집계가 멈춘 것」과 구분되지 않는다.
+_UNCOUNTABLE_KEY = ("(집계불가)", "(기타)", "(기타)")
+_UNKNOWN_STRATEGY = "(미상)"
+
+# (전략, configured, resolved) → 건수. 프로세스 메모리에만 산다.
+_resolution_counts: Dict[Tuple[str, str, str], int] = {}
+# 집계 창 시작 표기(문자열). None 이면 아직 한 건도 안 셌다.
+_resolution_window_started: Optional[str] = None
+
+
+def _wall_now() -> str:
+    """집계 창 표기용 벽시계(KST). 테스트에서 교체 가능.
+
+    캐시 TTL 의 `_now`(단조시계)와 용도가 다르다 — 저건 시간 간격 계산용이라
+    벽시계를 쓰면 NTP 보정에 깨지고, 이건 사람이 읽을 시각이라 그 반대다.
+    """
+    from utils.korean_time import now_kst
+    return now_kst().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _safe_wall_now() -> str:
+    """시계가 터져도 요약 한 줄은 나와야 한다 — 시각만 포기한다."""
     try:
-        market = lookup(stock_code)
-    except Exception as e:
-        logger.warning(f"[시장매핑] {stock_code} 조회 예외(both 폴백): {e}")
-        return "both"
+        return _wall_now()
+    except Exception:  # noqa: BLE001
+        return "?"
 
-    return market if market in VALID_MARKETS else "both"
+
+def _count_resolution(strategy_name, configured: str, resolved: str) -> None:
+    """O(1) dict 증가. **호출당 로깅하지 않는다**(2,909회 = 2,909줄).
+
+    🔴 어떤 예외도 밖으로 내지 않는다 — 집계 실패가 매수 판단을 죽이면
+       주객이 전도된다. 증거를 남기려다 거래를 멈추는 건 최악이다.
+    """
+    global _resolution_window_started
+    try:
+        if _resolution_window_started is None:
+            # 🔴 `_wall_now()` 를 그대로 쓰면 안 된다 — 시계가 터지면 바깥
+            #    except 가 삼켜 **증가에 도달하지 못하고**, 그날 모든 호출이
+            #    통째로 미집계된다. 반환값은 정상이라 아무도 모르고, EOD 는
+            #    `총 0건` = 「auto 가 안 돈다」로 읽히는 **거짓 음성**이 된다.
+            #    시각은 포기해도(`"?"`) 집계는 죽이지 않는다.
+            _resolution_window_started = _safe_wall_now()
+        key = (strategy_name or _UNKNOWN_STRATEGY, configured, resolved)
+        if key not in _resolution_counts and len(_resolution_counts) >= _MAX_RESOLUTION_KEYS:
+            # 전략 축만 뭉갠다 — configured/resolved 는 살려야 auto 가 auto 로 센다.
+            key = (_OVERFLOW_STRATEGY, configured, resolved)
+            if (key not in _resolution_counts
+                    and len(_resolution_counts) >= _HARD_MAX_RESOLUTION_KEYS):
+                key = _OVERFLOW_KEY
+        _resolution_counts[key] = _resolution_counts.get(key, 0) + 1
+    except Exception:  # noqa: BLE001 — 집계는 절대 매수 경로를 막지 않는다
+        # 여기 오는 건 키가 unhashable 한 경우다(dict 자체가 터졌으면 아래도 터진다).
+        # 축은 잃어도 총 건수는 지킨다 — 조용한 0건을 만들지 않는다.
+        try:
+            _resolution_counts[_UNCOUNTABLE_KEY] = (
+                _resolution_counts.get(_UNCOUNTABLE_KEY, 0) + 1
+            )
+        except Exception:  # noqa: BLE001 — 두 번 실패하면 조용히 포기한다
+            pass
+
+
+def reset_resolution_counts() -> None:
+    """집계와 창을 비운다. `reset_cache()`(매핑 캐시)와는 별개다.
+
+    ⚠️ 매핑 캐시 리셋에 얹지 말 것 — `eod_collection` 이 수집 성공 직후
+       `reset_cache()` 를 부르므로, 얹으면 그날 증거가 출력 전에 증발한다.
+    """
+    global _resolution_counts, _resolution_window_started
+    _resolution_counts = {}
+    _resolution_window_started = None
+
+
+def get_resolution_counts() -> Dict[Tuple[str, str, str], int]:
+    """집계 사본. 원본을 주면 호출측 변이가 핫패스 상태를 오염시킨다."""
+    return dict(_resolution_counts)
+
+
+def format_resolution_summary() -> List[Tuple[str, str]]:
+    """(level, message) 목록. 순수 함수 — 리셋하지 않는다.
+
+    건수가 0이어도 반드시 한 줄은 낸다. 「0건이라 안 찍음」은 「배선이 끊겨
+    안 찍힘」과 로그상 구분되지 않는다.
+    """
+    counts = dict(_resolution_counts)
+    auto_by_market = {"KOSPI": 0, "KOSDAQ": 0, "both": 0, "기타": 0}
+    auto_total = 0
+    non_auto_total = 0
+    mismatched: List[Tuple[Tuple[str, str, str], int]] = []
+
+    for key, n in counts.items():
+        _strategy, cfg, res = key
+        if cfg == "auto":
+            auto_total += n
+            auto_by_market[res if res in auto_by_market else "기타"] += n
+        else:
+            non_auto_total += n
+            if cfg != res:
+                mismatched.append((key, n))
+
+    mismatch_total = sum(n for _, n in mismatched)
+    if auto_total > 0:
+        both_ratio = f"both비율 {auto_by_market['both'] / auto_total * 100:.1f}%"
+    else:
+        # auto 0건에 "0.0%" 를 찍으면 「매핑 완벽」으로 오독된다.
+        both_ratio = "both비율 n/a(auto 0건)"
+    etc = f"/기타 {auto_by_market['기타']}" if auto_by_market["기타"] else ""
+
+    started = _resolution_window_started or "(집계 없음)"
+    headline = (
+        # 🔴 「무엇을 세는지」가 줄 안에 있어야 한다. 이 수는 평가 횟수도 매수
+        #    건수도 아닌 **해석 호출** 수다(차단 1× + 통과매수 2×의 혼합량).
+        #    라벨이 없으면 EOD 를 grep 하는 사람이 「매수 평가 2,909회」와
+        #    나란히 놓고 반드시 오독한다 — 주석·docstring 은 로그에 안 찍힌다.
+        f"{RESOLUTION_LOG_TAG} 총 {auto_total + non_auto_total}건"
+        f"(해석호출 기준 · 통과매수는 2회 계상) · "
+        f"auto {auto_total}건(KOSPI {auto_by_market['KOSPI']}"
+        f"/KOSDAQ {auto_by_market['KOSDAQ']}"
+        f"/both {auto_by_market['both']}{etc}, {both_ratio}) · "
+        f"non-auto {non_auto_total}건(configured≠resolved {mismatch_total}건) · "
+        f"전략 {len({k[0] for k in counts})}개 · "
+        f"집계창 {started}~{_safe_wall_now()} "
+        f"(프로세스 메모리 — 장중 재기동 시 0부터 다시 센다)"
+    )
+
+    lines: List[Tuple[str, str]] = [("info", headline)]
+    for (strategy, cfg, res), n in sorted(counts.items(), key=lambda kv: -kv[1]):
+        lines.append(("info", f"{RESOLUTION_LOG_TAG} 상세 {strategy}: {cfg}→{res} {n}건"))
+
+    if mismatched:
+        detail = ", ".join(f"{s} {c}→{r} {n}건" for (s, c, r), n in mismatched)
+        lines.append(("warning", (
+            f"{RESOLUTION_LOG_TAG} 🔴 non-auto 인데 configured≠resolved "
+            f"{mismatch_total}건 — 해석 규칙 결함이다: {detail}"
+        )))
+    return lines
+
+
+def log_resolution_summary(log=None) -> Dict[Tuple[str, str, str], int]:
+    """EOD 1회 출력 + 리셋. 출력 직전 스냅샷을 반환한다(호출측 검증용).
+
+    리셋을 **출력 시점**에 두는 이유: 소유자가 하나뿐이라 유지보수 지점이
+    갈리지 않고, 출력된 줄이 정확히 창 [시작~지금] 과 일치한다. 거래일 시작에
+    리셋하면 훅이 하나 더 늘고 순서 의존이 생긴다. 출력이 아예 안 도는 날은
+    건수가 이월되지만, 창 시작 시각이 줄에 찍히므로 조용히 섞이지 않는다.
+    """
+    _log = log or logger
+    snapshot = dict(_resolution_counts)
+    try:
+        for level, message in format_resolution_summary():
+            getattr(_log, level, _log.info)(message)
+    except Exception as e:  # noqa: BLE001 — EOD 흐름을 막지 않는다
+        try:
+            _log.error(f"{RESOLUTION_LOG_TAG} 집계 출력 실패: {e}")
+        except Exception:  # noqa: BLE001
+            pass
+    finally:
+        # 출력이 실패해도 리셋한다 — 안 그러면 실패한 날의 건수가 계속 이월돼
+        # 다음날 줄이 조용히 부풀어 오른다.
+        reset_resolution_counts()
+    return snapshot

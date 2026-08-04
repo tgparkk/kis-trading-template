@@ -339,8 +339,13 @@ class TradingContext:
 
             # regime_index="auto" 면 매수 대상 종목의 소속 시장으로 판정 지수를 정한다.
             # 게이트 캐시 키가 regime_index 문자열이라 여기서 해석해 넘겨야 오염되지 않는다.
+            # strategy_name(폴더키)은 해석 집계 귀속용 — regime_index 설정을 읽은
+            # 키(_get_strategy_regime_settings 가 쓰는 _strategy_key)와 같아야
+            # EOD 요약에서 설정과 결과를 대조할 수 있다.
             from core.regime.market_classifier import resolve_regime_index
-            resolved_index = resolve_regime_index(regime_index, stock_code)
+            resolved_index = resolve_regime_index(
+                regime_index, stock_code, strategy_name=self._strategy_key
+            )
 
             # 시장 방향성 필터: 종목 소속 시장의 지수 급락 시 매수 스킵
             is_crashing, crash_reason = self._decision_engine.check_market_direction(

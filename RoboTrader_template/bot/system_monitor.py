@@ -33,6 +33,11 @@ class SystemMonitor:
         self.bot = bot
         self.logger = setup_logger(__name__)
         self._last_daily_report_date = None
+        # 게이트지수 해석 집계 전용 래치. **기존 래치와 독립이다** — 위 래치는
+        # print_today_trading_summary() 성공 후에만 세팅돼, 리포트가 예외를 내면
+        # 15:35~15:59 창에서 EOD 블록이 ~300회 재진입한다(_log_regime_index_resolution
+        # docstring 참조).
+        self._last_regime_index_summary_date = None
         # 주입 가능한 시계(테스트 결정론). 기본 실제 KST 시계.
         self._clock = now_kst
 
@@ -278,6 +283,21 @@ class SystemMonitor:
                 except Exception as verify_err:
                     self.logger.error(f"EOD 자금 정합성 검증 오류: {verify_err}")
 
+                # EOD 급락게이트 지수 해석 집계 (auto 활성화 판정용 양성 증거).
+                # 배치 근거:
+                #  ① 이 줄은 '오늘의 매매 판단이 어떻게 굴러갔나'에 관한 것이라
+                #     매매 리포트·자금 정합성과 같은 묶음이 맞다(데이터 수집은
+                #     '내일 쓸 입력'을 만드는 별개 관심사다).
+                #  ② 데이터 수집은 수분짜리 단계다 — 그 뒤에 두면 수집 중
+                #     프로세스가 죽는 날의 증거가 통째로 사라진다.
+                #  ③ run_data_collection 은 끝에서 매핑 캐시를 리셋한다. 그 뒤에
+                #     두면 '오늘의 게이트 동작'과 '내일 매핑 재적재'가 로그에서
+                #     붙어 읽는 사람이 인과를 뒤집기 쉽다.
+                try:
+                    self._log_regime_index_resolution(current_time)
+                except Exception as gi_err:
+                    self.logger.error(f"EOD 게이트지수 해석 집계 오류: {gi_err}")
+
                 # EOD 스크리너 스냅샷 저장 여부 검증 (D6)
                 try:
                     self._verify_screener_snapshot()
@@ -312,6 +332,41 @@ class SystemMonitor:
                     self._run_equity_snapshot()
                 except Exception as eq2_err:
                     self.logger.error(f"EOD equity 재스냅샷 적재 오류: {eq2_err}")
+
+    def _log_regime_index_resolution(self, current_time) -> None:
+        """급락게이트 지수 해석 집계를 거래일당 1회 남기고 리셋한다.
+
+        「WARNING 이 안 뜬다」는 auto 가 도는 증거가 아니다 — **이 줄이 양성
+        증거다.** 2026-08-03 EOD 때 "KOSPI 종목을 무보호로 매수했는가"를 판정
+        못 했던 상황을 다시 만들지 않기 위한 계층이다.
+
+        활성화 전(8전략 전부 non-auto)에도 유의미하다: 전 건이
+        configured==resolved 로 찍히는 것 자체가 **카운터가 살아 있다**는
+        증거다(활성화 첫날에 이 줄을 처음 보게 되면 검증된 줄이 아니다).
+
+        🔴 **자체 날짜 래치를 쓰는 이유** — 바깥 `_last_daily_report_date` 는
+           `print_today_trading_summary()` **성공 후에만** 세팅된다. 리포트가
+           예외를 내면 래치가 안 걸려 15:35~15:59 창(5초 루프)에서 이 블록이
+           ~300회 재진입한다. 그러면 첫 줄에 전량이 담기고 **나머지 299줄이
+           전부 `총 0건`**(출력 시점 리셋)이라, 증거가 사라지진 않아도 tail 로
+           읽는 사람은 「auto 가 안 돌았다」로 읽는다 — 이 계층이 없애려던
+           바로 그 거짓 음성이다.
+
+           ⚠️ 기존 래치를 고치는 쪽이 근본 수정이지만 그건 **별건**이다(equity·
+              수집 등 다른 EOD 단계의 재진입 동작까지 함께 바꾼다). 여기서는
+              이 카운터만 독립적으로 1회로 묶는다.
+
+           래치는 출력 **전에** 건다: `log_resolution_summary` 는 `finally` 에서
+           무조건 리셋하므로, 출력이 터진 뒤 재진입하면 어차피 `총 0건` 만
+           찍힌다. 그 줄이 바로 위 거짓 음성이므로 시도 자체를 1회로 묶는다.
+        """
+        today = current_time.date()
+        if self._last_regime_index_summary_date == today:
+            return
+        self._last_regime_index_summary_date = today
+
+        from core.regime.market_classifier import log_resolution_summary
+        log_resolution_summary(self.logger)
 
     def _run_equity_snapshot(self) -> None:
         """EOD 전략별 일별 equity 를 paper_strategy_equity 에 적재 (하루 1회).
