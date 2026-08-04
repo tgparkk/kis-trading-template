@@ -211,12 +211,38 @@ class BotInitializer:
             # 4. DB에서 오늘 날짜의 후보 종목 복원
             await self.bot.state_restoration_helper.restore_todays_candidates()
 
+            # 5. 급락게이트 auto 용 시장 매핑 프리로드 (기동 1회)
+            self._preload_market_mapping()
+
             self.logger.info("시스템 초기화 완료")
             return True
 
         except Exception as e:
             self.logger.error(f"시스템 초기화 실패: {e}")
             return False
+
+    def _preload_market_mapping(self) -> None:
+        """급락게이트 `regime_index="auto"` 용 시장 매핑을 기동 시 1회 적재한다.
+
+        여기에 두는 근거: 판정에 필요한 `regime_index` 는 StrategyLoader 가
+        전략 인스턴스 속성으로 심고(strategies/config.py:449-452), 그 로드는
+        `DayTradingBot.__init__`(main.py:134)에서 끝난다. `initialize_system()`
+        은 그 뒤(main.py:267)에 돌므로 `self.bot.strategies` 가 이미 채워져
+        있다 — `on_init()`(_initialize_strategy)을 기다릴 필요가 없다.
+
+        auto 전략이 하나도 없으면 DB 를 아예 건드리지 않는다(활성화 전 무해).
+        실패해도 기동을 막지 않는다 — 매핑 결측은 "both" 폴백으로 흡수된다.
+        """
+        try:
+            from core.regime.market_classifier import preload_market_mapping
+            strategies = getattr(self.bot, 'strategies', None) or {}
+            auto_active = any(
+                (getattr(s, "regime_index", "both") or "both") == "auto"
+                for s in strategies.values()
+            )
+            preload_market_mapping(auto_active=auto_active)
+        except Exception as e:
+            self.logger.warning(f"시장 매핑 프리로드 오류 (무시): {e}")
 
     async def _initialize_fund_manager(self) -> None:
         """자금 관리자 초기화"""
