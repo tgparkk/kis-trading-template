@@ -5,7 +5,7 @@
 import json
 import signal
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, get_market_status
@@ -15,6 +15,390 @@ from config.constants import VIRTUAL_CAPITAL_PER_STRATEGY
 
 if TYPE_CHECKING:
     from main import DayTradingBot
+
+
+# =========================================================================
+# 설정파일 ↔ 전략 인스턴스 `regime_index` 대조 (2026-08-04, 활성화 선행조건 A′)
+# =========================================================================
+# 닫으려는 결함은 **자기참조**다. auto 활성 여부를 말하는 신호가 둘 있는데
+# 둘 다 같은 곳(전략 인스턴스 속성)을 읽는다:
+#   · 기동 로그  `_preload_market_mapping` 의 `auto_active`
+#   · EOD 카운터 `market_classifier.resolve_regime_index(configured=...)`
+#
+# 그런데 인스턴스에 값이 심기는 곳은 **조건부**다
+# (strategies/config.py:449-450 — `if "regime_index" in spec`).
+# 설정파일이 `"auto"` 라고 선언했는데 그 spec 이 인스턴스에 안 닿으면
+# 인스턴스는 클래스 기본값 `"both"` 를 조용히 유지하고,
+# 🔴 **두 신호가 나란히 "non-auto" 라고 일치하면서 함께 틀린다.**
+#
+# 이 프로젝트가 반복해서 데인 클래스다 — 「경보가 조용함」은 증거가 아니다.
+# 유일한 탈출구는 설정파일을 **독립적으로 읽어** 대조하는 것뿐이다.
+#
+# -------------------------------------------------------------------------
+# ⚠️ **이 검사의 실제 사정거리** (2026-08-04 정정)
+# -------------------------------------------------------------------------
+# 이전 판본은 대상 실패모드로 `JSON 구조 변경` 을 그냥 나열했는데, 실제로는
+# **조건부로만** 잡는다. 주석이 구현보다 넓게 적혀 있으면 그 주석 자체가 또
+# 하나의 거짓 안심이다 — 「고쳤다고 적은 것」과 「고친 것」의 차이다. 그래서
+# 무엇을 잡고 무엇을 못 잡는지 여기에 정확히 적는다.
+#
+#   ✅ 전략명 불일치 / `enabled:true` 인데 인스턴스 없음  → 「로드실패」 WARNING
+#   ✅ 선언값 != 인스턴스 실효값                          → 「미반영」 WARNING
+#   ✅ 선언·실효가 **나란히 같은 오타**거나 JSON `null`   → 「인식불가」 WARNING
+#   ✅ 설정파일 부재 · JSON 파손                          → 대조 실패 WARNING
+#        (`read_declared_strategy_specs` 가 예외를 **일부러 밖으로 낸다** —
+#         삼키면 부재·파손이 🟡레거시 INFO 로 둔갑한다)
+#   ✅ 항목이 dict 가 아니거나 name 부재                  → 「구조이상」 WARNING
+#
+#   🟡 JSON 구조 변경(`strategies` 배열 자체가 사라짐) → **조건부**다.
+#      배열이 없으면 선언값이 통째로 없어 **대조가 성립하지 않는다**. 그래서
+#      `결함 0건`(= 「대조했더니 결함이 없다」로 읽힌다) 대신 `결함 판정불가` 를
+#      찍고, 아래 둘 중 하나라도 걸리면 WARNING 으로 승격한다:
+#        · 조건A  로더가 파일을 **정상 파싱**했는데(load_ok=True) 배열이 없다
+#        · 조건B  전략 인스턴스가 **2개 이상**인데 배열이 없다
+#                 (다중 전략은 그 배열에서만 나온다 — main.py:166-186)
+#      둘 다 아니면 INFO 로 남긴다. 진짜 레거시 단일전략 배포에서 매 기동
+#      경보를 내면 **사람이 무시하게 되고 그게 가드를 무력화**하기 때문이다.
+#      ⚠️ 이 WARNING 은 「구조가 깨졌다」는 단정이 아니라 「배열을 못 읽었다」는
+#         사실 통보다 — 판정 재료(읽은 파일·load_ok·인스턴스 수와 이름)를 함께
+#         찍어 읽는 사람이 결정하게 한다.
+#
+#   ❌ `enabled:false` 전략의 선언값 오타는 **판정 대상이 아니다**. 로더가
+#      건너뛰므로 게이트에 도달할 수 없다. 그 전략을 켜는 순간(= 문제가 실제로
+#      생기는 순간) 다음 기동에서 잡힌다 — 한 기동 늦는 것을 감수한 설계다.
+#   ❌ 전략 클래스 로드가 왜 실패했는지(모듈 부재·import 오류 등)는 구분하지
+#      않는다. 인스턴스가 없다는 사실만 「로드실패」로 드러낸다.
+CONFIG_CROSSCHECK_LOG_TAG = "[게이트설정대조]"
+
+# `BaseStrategy.regime_index` 클래스 기본값(strategies/base.py:322)과 같아야 한다.
+# 여기서 다른 값을 쓰면 「파일 미선언」건의 실효값을 잘못 보고한다.
+_CLASS_DEFAULT_REGIME_INDEX = "both"
+
+# 하류 소비자가 **실제로 분기하는** 값의 전체 집합. 하나라도 이 밖이면 「인식 불가」다.
+#
+# 🔴 근거는 소비자 코드를 직접 읽어 확정했다(2026-08-04). 값을 아는 곳은 둘이고
+#    서로 다른 값을 안다 — 그래서 이 집합은 두 곳의 **합집합**이다:
+#   · "auto"                          core/regime/market_classifier.py:177
+#       `if cfg == "auto":` — 종목 소속 시장으로 해석한다. 급락게이트는 이 값을
+#       모른다(해석이 게이트 호출 **전에** 끝나기 때문).
+#   · "none"                          core/trading_decision_engine.py:153
+#       `if idx == "none": return False, ""` — 급락게이트 면제.
+#   · "both"/"KOSPI"/"KOSDAQ"         core/trading_decision_engine.py:158
+#       `if idx not in ("both","KOSPI","KOSDAQ"):` — 이 밖이면 WARNING + both 폴백.
+#       "both" 는 strategies/base.py:322 의 클래스 기본값이기도 하다.
+#
+# 값이 인스턴스에 심기는 곳은 strategies/config.py:450 `str(spec["regime_index"])`
+# 하나뿐이다 ⇒ JSON `null` 은 문자열 `"None"` 으로 심긴다. 선언측도 같은 식으로
+# 문자열화되므로 **양쪽이 일치해 정상으로 보인다** — 이 집합 검사가 그걸 잡는다.
+#
+# ⚠️ 값을 늘리려면 위 소비자 중 어디가 그 값을 분기하는지 먼저 확인할 것.
+#    여기에만 추가하면 「대조는 통과하는데 게이트는 모르는 값」이 생긴다.
+KNOWN_REGIME_INDEX_VALUES = ("auto", "KOSPI", "KOSDAQ", "both", "none")
+
+
+def effective_regime_index(strategy) -> str:
+    """전략 인스턴스에 **실제로 심긴** 판정 지수.
+
+    속성 부재·None·"" 를 전부 클래스 기본값으로 흡수한다. 이 식이 곧
+    `_preload_market_mapping` 의 auto 판정식이다 — 두 곳이 갈리면
+    「프리로드는 돌았는데 대조는 안 돌았다」 같은 설명 불가능한 상태가 생기므로
+    **함수 하나만 둔다**.
+    """
+    return (getattr(strategy, "regime_index", _CLASS_DEFAULT_REGIME_INDEX)
+            or _CLASS_DEFAULT_REGIME_INDEX)
+
+
+def compute_effective_auto_count(strategies) -> int:
+    """실효 기준 auto 전략 수(= 인스턴스에 진짜 심긴 값 기준)."""
+    return sum(1 for s in (strategies or {}).values()
+               if effective_regime_index(s) == "auto")
+
+
+def read_declared_strategy_specs() -> Tuple[Optional[List[Any]], str, Optional[bool]]:
+    """**로더가 실제로 읽은** trading_config.json 을 다시 읽어 선언값을 얻는다.
+
+    Returns:
+        (strategies 배열 또는 None, 출처 표기 문자열, 로더 파싱 성공 여부)
+
+        세 번째 값 `load_ok` 는 `True`/`False`/`None`(= 로더 미실행이라 말할 수
+        없음)이다. 🔴 이 값을 호출측이 settings 에서 **따로 읽으면 안 된다** —
+        「어느 파일을 봤는가」와 「그 파일 파싱이 성공했는가」가 갈리는 순간
+        이 검사가 정확히 자기가 잡으려던 종류의 거짓말을 하게 된다. 그래서
+        같은 자리에서 함께 확정해 함께 돌려준다.
+
+    🔴 경로를 새로 하드코딩하면 안 된다. 로더와 **다른 파일**을 대조하면 검사가
+       거짓 경보나 거짓 안심을 내고, 그 순간 이 기능은 무의미해진다. 그래서
+       `config.settings.load_trading_config()` 이 열었던 경로를 그대로 따라간다
+       (`LAST_LOADED_TRADING_CONFIG_PATH`). 이 경로는 인스턴스 분리
+       (`KIS_INSTANCE_DIR`)까지 이미 반영된 값이라 별도 처리가 필요 없다.
+
+    로더가 아직 안 돈 경우에만 모듈 상수로 폴백하고, **어느 쪽을 썼는지 출처를
+    로그에 밝힌다** — 거짓 경보가 떴을 때 원인을 가릴 수 있어야 한다.
+    """
+    from config import settings
+
+    recorded = getattr(settings, "LAST_LOADED_TRADING_CONFIG_PATH", None)
+    if recorded is not None:
+        path = Path(recorded)
+        load_ok = bool(getattr(settings, "LAST_TRADING_CONFIG_LOAD_OK", False))
+        # load_ok=False = 파일은 지정됐는데 못 읽었다 ⇒ 로더는 기본 설정
+        # (strategies 없음)으로 갔다. 아래 대조가 전건 "로드실패"로 드러낸다.
+        origin = f"로더기록·load_ok={load_ok}"
+    else:
+        path = Path(settings.TRADING_CONFIG_FILE)
+        # 로더가 안 돌았다 = 파싱 성공 여부를 말할 수 없다. False 로 뭉개면
+        # 「파싱 실패」와 「미실행」이 섞여 조건A 판정이 조용히 틀어진다.
+        load_ok = None
+        origin = "모듈상수(로더 미실행)"
+
+    with open(path, 'r', encoding='utf-8') as f:
+        raw = json.load(f)
+
+    specs = raw.get('strategies') if isinstance(raw, dict) else None
+    return specs, f"{path} ({origin})", load_ok
+
+
+def format_regime_config_crosscheck(declared_specs, strategies, source: str,
+                                    load_ok: Optional[bool] = None
+                                    ) -> List[Tuple[str, str]]:
+    """선언값 ↔ 실효값 대조 결과를 (level, message) 목록으로. 순수 함수.
+
+    여섯 갈래:
+      🟢 정상          선언 == 실효 **이고 값이 알려진 값**
+      🔴 미반영        선언 != 실효 — **이게 잡으려는 결함이다**
+      🔴 로드실패      파일이 enabled 로 선언했는데 인스턴스가 없다
+      🔴 인식불가      선언·실효 중 하나라도 `KNOWN_REGIME_INDEX_VALUES` 밖 (F1)
+      🟡 파일미선언    파일에 키가 없어 클래스 기본값 유지(의도된 하위호환)
+      🟡 인스턴스에만  인스턴스에 있는데 파일엔 없다(레거시 단일전략 경로 등)
+
+    🔴 **인식불가가 없으면 이 검사는 거짓 안심의 자리만 옮긴다**(F1).
+       활성화 행위 자체가 바로 이 값을 편집하는 것이므로, 활성화가 만들 가장
+       흔한 실수(대소문자 오타 `"Auto"`·JSON `null`)는 **선언과 실효가 나란히
+       같은 오타**가 되어 「정상」으로 계상된다. 하류 안전망이 비대칭이라
+       이게 치명적이다 — 급락게이트는 WARNING + both 폴백(보호 과잉, 안전)이지만
+       일봉 국면게이트(trading_decision_engine.py:234)는 **무음으로 KOSPI 를
+       강제**한다.
+
+    ⚠️ 인식불가 판정 범위는 **enabled 선언값 + 전 인스턴스 실효값**이다.
+       `enabled:false` 의 선언값은 게이트에 도달할 수 없으므로 제외한다 —
+       활성화하는 순간(= 문제가 실제로 생기는 순간) 다음 기동에서 잡힌다.
+
+    ⚠️ `enabled:false` 는 로더가 **의도적으로** 건너뛴다(config.py:443-444).
+       이걸 로드실패로 세면 비활성 전략을 둘 때마다 WARNING 이 떠서 진짜
+       결함이 소음에 묻힌다 — 별도 정보 버킷으로 분리한다.
+
+    🔴 헤드라인은 **선언 기준 auto 수와 실효 기준 auto 수를 둘 다** 찍는다.
+       하나만 찍으면 자기참조 문제가 그대로 남는다. 두 수가 다르면 그 사실
+       자체가 결함이므로 별도 WARNING 을 낸다.
+
+    🔴 선언을 **못 읽었으면**(`declared_specs is None`) `결함 0건` 을 찍지
+       않는다(F2). 0 은 「대조했더니 결함이 없다」로 읽히는데 실제로는
+       「대조를 못 했다」다 — 검증자 실측에서 `strategies` 키 이름만 바꾸자
+       봇이 8전략에서 레거시 1전략으로 추락했는데도 `결함 0건 · WARNING 0건`
+       이 찍혔다. 「경보가 조용함」은 증거가 아니다.
+       거기에 더해 `load_ok=True`(조건A) 또는 인스턴스 2개 이상(조건B)이면
+       WARNING 으로 승격한다 — 상세 근거는 모듈 상단 「실제 사정거리」 참조.
+
+    ⚠️ `결함 N건` 의 정의: **버킷 합**이다. 한 전략이 두 버킷에 걸리면 2로
+       센다(예: 선언 `"Auto"` 가 인스턴스에 안 닿으면 미반영 1 + 인식불가 1).
+       전략 수가 아니라 결함 이벤트 수이며, 내역이 괄호 안에 함께 찍힌다.
+
+    건수가 전부 0이어도 반드시 한 줄은 낸다 — 「0건이라 안 찍음」은 「배선이
+    끊겨 안 찍힘」과 로그상 구분되지 않는다. 활성화 전 현행 설정에서는
+    `선언 0 · 실효 0 · 결함 0(…/인식불가 0) · 정상 8` 이 나오며, **그 줄 자체가
+    「검사가 동작한다」는 증거**다.
+    """
+    strategies = strategies or {}
+    effective: Dict[str, str] = {
+        name: effective_regime_index(s) for name, s in strategies.items()
+    }
+    effective_auto = sum(1 for v in effective.values() if v == "auto")
+
+    ok: List[str] = []
+    unplanted: List[Tuple[str, str, str]] = []   # (전략, 선언, 실효)
+    not_loaded: List[Tuple[str, Optional[str]]] = []
+    undeclared: List[Tuple[str, str]] = []
+    disabled: List[Tuple[str, Optional[str]]] = []
+    declared_enabled: List[Tuple[str, str]] = []  # (전략, 선언값) — enabled·키 있음만
+    malformed = 0
+    declared_auto = 0
+    declared_names = set()
+
+    legacy = declared_specs is None
+    for spec in (declared_specs or []):
+        if not isinstance(spec, dict):
+            malformed += 1
+            continue
+        name = spec.get('name')
+        if not isinstance(name, str) or not name:
+            malformed += 1
+            continue
+
+        declared_value = (str(spec['regime_index'])
+                          if 'regime_index' in spec else None)
+
+        if not spec.get('enabled', True):
+            # 로더가 건너뛰므로 인스턴스가 없는 것이 정상이다.
+            disabled.append((name, declared_value))
+            continue
+
+        declared_names.add(name)
+        if declared_value is not None:
+            declared_enabled.append((name, declared_value))
+        if declared_value == "auto":
+            declared_auto += 1
+
+        if name not in effective:
+            not_loaded.append((name, declared_value))
+        elif declared_value is None:
+            undeclared.append((name, effective[name]))
+        elif declared_value == effective[name]:
+            ok.append(name)
+        else:
+            unplanted.append((name, declared_value, effective[name]))
+
+    # ---- 인식 불가 값 (F1) ----
+    # 전략 단위로 모은다 — 선언·실효가 **같은 오타로 나란히 틀린** 게 정확히
+    # 기본 실패모드라, 건마다 세면 한 전략이 2건으로 부풀어 오독을 부른다.
+    unknown_sources: Dict[str, List[str]] = {}
+
+    def _flag_unknown(name: str, origin: str, value: str) -> None:
+        if value in KNOWN_REGIME_INDEX_VALUES:
+            return
+        unknown_sources.setdefault(name, []).append(f'{origin} "{value}"')
+
+    for name, value in declared_enabled:
+        _flag_unknown(name, "파일", value)
+    for name, value in effective.items():
+        _flag_unknown(name, "인스턴스", value)
+
+    # 🔴 인식 불가 값을 「정상」으로 셀 수 없다 — 그 숫자가 곧 거짓 안심이다.
+    ok = [n for n in ok if n not in unknown_sources]
+
+    instance_only = sorted(set(effective) - declared_names)
+    defects = len(unplanted) + len(not_loaded) + malformed + len(unknown_sources)
+    legacy_note = (" · 🟡레거시(파일에 strategies 배열 없음 = 선언 없음)"
+                   if legacy else "")
+
+    if legacy:
+        # F2: 대조를 **못 했다**. 0 을 찍으면 「결함이 없다」로 읽힌다.
+        defect_text = (f"결함 판정불가(선언 없음 — strategies 배열을 못 읽었다) · "
+                       f"인스턴스측 인식불가 {len(unknown_sources)}건")
+    else:
+        defect_text = (f"결함 {defects}건(미반영 {len(unplanted)}"
+                       f"/로드실패 {len(not_loaded)}/구조이상 {malformed}"
+                       f"/인식불가 {len(unknown_sources)})")
+
+    headline = (
+        f"{CONFIG_CROSSCHECK_LOG_TAG} "
+        f"선언 auto {declared_auto}건 · 실효 auto {effective_auto}건 · "
+        f"{defect_text} · "
+        f"정상 {len(ok)}건 · 파일미선언 {len(undeclared)}건 · "
+        f"비활성 {len(disabled)}건 · 인스턴스에만 {len(instance_only)}건"
+        f"{legacy_note} · 파일 {source}"
+    )
+    lines: List[Tuple[str, str]] = [("info", headline)]
+
+    if declared_auto != effective_auto:
+        lines.append(("warning", (
+            f"{CONFIG_CROSSCHECK_LOG_TAG} 🔴 선언 auto {declared_auto}건 ≠ "
+            f"실효 auto {effective_auto}건 — 설정이 전략 인스턴스에 닿지 않았다. "
+            f"기동 로그의 auto_active 와 EOD 해석 카운터는 **둘 다 인스턴스를 "
+            f"읽으므로 이 상태에서 나란히 침묵한다**(판별력 0)."
+        )))
+
+    if unplanted:
+        detail = ", ".join(f"{n}: 파일 \"{d}\" → 인스턴스 \"{e}\""
+                           for n, d, e in unplanted)
+        lines.append(("warning", (
+            f"{CONFIG_CROSSCHECK_LOG_TAG} 🔴 선언값 미반영 {len(unplanted)}건 — "
+            f"{detail}"
+        )))
+
+    if not_loaded:
+        detail = ", ".join(f"{n}(선언 \"{d}\")" if d else n
+                           for n, d in not_loaded)
+        lines.append(("warning", (
+            f"{CONFIG_CROSSCHECK_LOG_TAG} 🔴 파일이 enabled 로 선언했는데 전략 "
+            f"인스턴스가 없다 {len(not_loaded)}건 = 로드 실패 — {detail}"
+        )))
+
+    if malformed:
+        lines.append(("warning", (
+            f"{CONFIG_CROSSCHECK_LOG_TAG} 🔴 strategies 항목 구조 이상 "
+            f"{malformed}건(dict 아님 또는 name 부재) — 조용히 무시되면 그 전략의 "
+            f"설정 전체가 사라진다."
+        )))
+
+    if unknown_sources:
+        detail = ", ".join(f"{n}({' · '.join(v)})"
+                           for n, v in unknown_sources.items())
+        lines.append(("warning", (
+            f"{CONFIG_CROSSCHECK_LOG_TAG} 🔴 인식 불가 regime_index "
+            f"{len(unknown_sources)}건 — 알려진 값 "
+            f"{list(KNOWN_REGIME_INDEX_VALUES)} 밖이다: {detail}. "
+            f"하류 처리가 **비대칭**이라 조치가 갈린다 — 급락게이트"
+            f"(check_market_direction)는 WARNING 을 남기고 \"both\" 로 폴백하지만"
+            f"(양쪽 지수 검사 = 보호 과잉, 무방비 아님), 일봉 국면게이트"
+            f"(check_regime_gate, core/trading_decision_engine.py:234)는 **무음으로 "
+            f"KOSPI 를 강제**한다 ⇒ regime_gate != \"none\" 전략이면 일봉 판정축이 "
+            f"조용히 KOSPI 로 고정된다. 대소문자 오타(\"Auto\" != \"auto\")와 JSON "
+            f"null(로더가 strategies/config.py:450 에서 문자열 \"None\" 을 심는다)이 "
+            f"여기서 잡힌다."
+        )))
+
+    if legacy:
+        # 🔴 두 조건은 **서로 다른 상황**을 잡는다. 무조건 승격하면 진짜 레거시
+        #    단일전략 배포에서 매 기동 경보가 되고, 오경보가 잦으면 사람이 무시하게
+        #    되어 가드가 무력화된다 — 그래서 좁힌다. 어느 조건이 걸렸는지는 반드시
+        #    구분되게 찍는다(같은 문구로 뭉치면 원인 추적이 불가능해진다).
+        triggered = []
+        if load_ok is True:
+            triggered.append(
+                "조건A(로더가 파일을 정상 파싱했는데 strategies 배열이 없다)")
+        if len(instance_only) >= 2:
+            triggered.append(
+                f"조건B(전략 인스턴스가 {len(instance_only)}개 — 다중 전략은 "
+                f"strategies 배열에서만 나온다, main.py:166-186. "
+                f"이 조건은 「대조가 로더와 다른 파일을 보고 있다」도 함께 잡는다)")
+
+        if triggered:
+            lines.append(("warning", (
+                f"{CONFIG_CROSSCHECK_LOG_TAG} 🔴 선언을 못 읽었다 "
+                f"[{' + '.join(triggered)}] — ⚠️ **단정이 아니다**: 의도된 레거시 "
+                f"단일전략 배포라면 무해하고, 아니라면 다중 전략 설정이 로더에게 "
+                f"보이지 않아 전략이 {len(effective)}개로 추락한 상태다(이 경우 "
+                f"대조 자체가 무력화돼 auto 활성 여부를 말할 수 없다). "
+                f"판정 재료 — 읽은 파일 {source} · 로더 파싱 성공 {load_ok} · "
+                f"전략 인스턴스 {len(effective)}개 {sorted(effective)}."
+            )))
+
+    if undeclared:
+        detail = ", ".join(f"{n}→\"{e}\"" for n, e in undeclared)
+        lines.append(("info", (
+            f"{CONFIG_CROSSCHECK_LOG_TAG} 🟡 파일 미선언 {len(undeclared)}건 "
+            f"(클래스 기본값 유지 — 하위호환): {detail}"
+        )))
+
+    if disabled:
+        auto_disabled = [n for n, d in disabled if d == "auto"]
+        extra = (f" ⚠️ 이 중 \"auto\" 선언 {len(auto_disabled)}건은 "
+                 f"전략 자체가 꺼져 있어 효력이 없다: {auto_disabled}"
+                 if auto_disabled else "")
+        lines.append(("info", (
+            f"{CONFIG_CROSSCHECK_LOG_TAG} 🟡 비활성(enabled:false) "
+            f"{len(disabled)}건 — 로더가 건너뛰므로 인스턴스 부재가 정상: "
+            f"{[n for n, _ in disabled]}{extra}"
+        )))
+
+    if instance_only:
+        lines.append(("info", (
+            f"{CONFIG_CROSSCHECK_LOG_TAG} 🟡 인스턴스에만 존재 "
+            f"{len(instance_only)}건(파일 미선언 경로 — 레거시 단일전략 등): "
+            f"{instance_only}"
+        )))
+
+    return lines
 
 
 class BotInitializer:
@@ -211,7 +595,11 @@ class BotInitializer:
             # 4. DB에서 오늘 날짜의 후보 종목 복원
             await self.bot.state_restoration_helper.restore_todays_candidates()
 
-            # 5. 급락게이트 auto 용 시장 매핑 프리로드 (기동 1회)
+            # 5. 급락게이트 regime_index 설정 대조 (프리로드보다 **먼저** —
+            #    프리로드가 쓰는 실효 auto 수의 근거를 먼저 로그에 남긴다)
+            self._crosscheck_regime_index_config()
+
+            # 6. 급락게이트 auto 용 시장 매핑 프리로드 (기동 1회)
             self._preload_market_mapping()
 
             self.logger.info("시스템 초기화 완료")
@@ -236,13 +624,37 @@ class BotInitializer:
         try:
             from core.regime.market_classifier import preload_market_mapping
             strategies = getattr(self.bot, 'strategies', None) or {}
-            auto_active = any(
-                (getattr(s, "regime_index", "both") or "both") == "auto"
-                for s in strategies.values()
-            )
+            # 판정식은 `compute_effective_auto_count` 하나뿐이다 — 대조 검사와
+            # 같은 식을 써야 「프리로드는 돌았는데 대조는 안 돌았다」가 안 생긴다.
+            auto_active = compute_effective_auto_count(strategies) > 0
             preload_market_mapping(auto_active=auto_active)
         except Exception as e:
             self.logger.warning(f"시장 매핑 프리로드 오류 (무시): {e}")
+
+    def _crosscheck_regime_index_config(self) -> None:
+        """설정파일이 선언한 `regime_index` 가 전략 인스턴스에 실제로 심겼는지 대조.
+
+        여기에 두는 근거는 `_preload_market_mapping` 과 같다 — `self.bot.strategies`
+        가 이미 채워져 있고(main.py:134 → 267), 기동 시퀀스에 한 번만 돈다.
+
+        🔴 기동을 죽이지 않는다. 대조 실패가 그날 매매를 통째로 없애면 주객이
+           전도된다 — 전체를 try/except 로 감싸고, 실패해도 **태그가 붙은 줄
+           하나는 반드시 남긴다**(침묵하면 「검사가 없는 것」과 구분이 안 된다).
+
+        🔴 부작용은 설정 파일 읽기 하나뿐이다. 쓰기·네트워크·DB 접촉 없음.
+        """
+        try:
+            declared_specs, source, load_ok = read_declared_strategy_specs()
+            strategies = getattr(self.bot, 'strategies', None) or {}
+            for level, message in format_regime_config_crosscheck(
+                    declared_specs, strategies, source, load_ok):
+                getattr(self.logger, level, self.logger.info)(message)
+        except Exception as e:
+            self.logger.warning(
+                f"{CONFIG_CROSSCHECK_LOG_TAG} 🔴 대조 실패 (기동 계속): {e} — "
+                f"설정 선언값과 전략 인스턴스가 어긋나도 이번 기동에서는 "
+                f"드러나지 않는다."
+            )
 
     async def _initialize_fund_manager(self) -> None:
         """자금 관리자 초기화"""

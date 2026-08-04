@@ -196,6 +196,20 @@ def resolve_regime_index(configured: str, stock_code: str, market_lookup=None,
 #     않으나 **auto 가 사실상 안 도는 상태**다)
 #   - non-auto 건은 configured == resolved 인가 (아니면 그 자체가 결함)
 #
+# 🔑 `both비율` 기대치 = **0.0%** (관리자 실측 2026-08-04)
+#     오늘 유니버스(daily_prices, 구조적 종목 술어)  2,569종목
+#     그중 stock_market 매핑됨                        2,569  (100%)
+#     미매핑                                          0
+#     오늘 실제 거래 19종목                            전부 매핑됨
+#     stock_market 총                                 2,763
+#   ⇒ 활성화 후 `both` 가 0 이 아니면 **그 자체가 신호**다. 셋 중 하나다:
+#     ① 신규상장 직후 — 다음 EOD 수집 전이라 아직 매핑에 없다(정상, 소수)
+#     ② 매핑 stale  — 수집기가 며칠 안 돌아 신규분이 누락됐다
+#     ③ 조회 실패   — 위 `_remember_failure` WARNING 이 함께 떠 있어야 한다
+#   ⚠️ 문턱이 아니라 **기대치**다. 임계값으로 굳혀 자동 차단하지 말 것 —
+#      both 는 보호 과잉 쪽 실패라 그 자체로는 위험하지 않고, 여기서 원하는 건
+#      「기대와 다르면 사람이 원인을 셋 중에서 고르게 하는 것」이다.
+#
 # ⚠️ 집계 단위는 「매수 평가」가 아니라 「해석 호출」이다. 매수 1건이 게이트를
 #    통과하면 TradingContext.buy → TradingAnalyzer → TradingDecisionEngine 로
 #    이어져 해석이 2회 일어난다(차단되면 1회). 건수를 평가 횟수로 읽지 말 것.

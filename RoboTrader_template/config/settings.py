@@ -64,6 +64,23 @@ REAL_TRADING_TABLE = real_trading_table_name(INSTANCE_ID)
 TOKEN_FILE = token_file_name(INSTANCE_ID)
 LOG_DIR = log_dir_name(INSTANCE_ID)
 
+# ---------------------------------------------------------------------------
+# 로드 흔적 (2026-08-04) — `bot/initializer.py` 의 `regime_index` 설정 대조용.
+#
+# 왜 상수를 그냥 읽지 않는가: 대개는 `TRADING_CONFIG_FILE` 을 읽어도 같은 값이
+# 나오지만, 그건 「아무도 이 전역을 재대입하지 않는다」는 가정에 기댄다. 대조
+# 검사가 로더와 **다른 파일**을 보면 검사가 거짓 경보나 거짓 안심을 낸다 —
+# 검사 자체가 무의미해지는 실패라 가정에 기대면 안 된다. 그래서 로더가 실제로
+# 연 경로를 그 자리에서 남긴다.
+#
+# `LAST_TRADING_CONFIG_LOAD_OK=False` 는 **파일은 있는데 못 읽었다**는 뜻이고,
+# 이때 `TradingConfig()` 기본값(= strategies 없음)이 쓰인다. 이 경로가 정확히
+# 「파일은 auto 라 선언했는데 인스턴스엔 아무것도 안 닿는」 상황을 만든다.
+# ⚠️ 이름의 `LOADED` 는 「성공적으로 읽은」이 아니라 **「가장 최근에 읽으려고 시도한」**
+#    이다 — 실패해도 남는다(성공 여부는 `LAST_TRADING_CONFIG_LOAD_OK` 가 말한다).
+LAST_LOADED_TRADING_CONFIG_PATH = None   # Optional[Path] — 로더 미실행 시 None
+LAST_TRADING_CONFIG_LOAD_OK = False
+
 def load_config():
     """설정 파일을 로드하여 환경변수 설정"""
     if not CONFIG_FILE.exists():
@@ -85,17 +102,25 @@ def load_config():
 
 def load_trading_config() -> TradingConfig:
     """거래 설정 파일을 로드하여 TradingConfig 객체 반환"""
+    global LAST_LOADED_TRADING_CONFIG_PATH, LAST_TRADING_CONFIG_LOAD_OK
+    # 시도한 경로를 **읽기 전에** 기록한다 — 실패해도 "어느 파일을 보려 했는지"는
+    # 남아야 대조 검사가 같은 파일을 가리킬 수 있다.
+    LAST_LOADED_TRADING_CONFIG_PATH = TRADING_CONFIG_FILE
+    LAST_TRADING_CONFIG_LOAD_OK = False
+
     if not TRADING_CONFIG_FILE.exists():
         logger.warning("거래 설정 파일을 찾을 수 없습니다: %s", TRADING_CONFIG_FILE)
         logger.warning("기본 설정을 사용합니다.")
         return TradingConfig()
-    
+
     try:
         with open(TRADING_CONFIG_FILE, 'r', encoding='utf-8') as f:
             json_data = json.load(f)
-        
-        return TradingConfig.from_json(json_data)
-        
+
+        config = TradingConfig.from_json(json_data)
+        LAST_TRADING_CONFIG_LOAD_OK = True
+        return config
+
     except Exception as e:
         logger.warning("거래 설정 파일 로드 실패: %s", e)
         logger.warning("기본 설정을 사용합니다.")
