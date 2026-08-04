@@ -4,15 +4,24 @@ from collectors.stock_market_collector import collect_stock_market
 
 
 class FakeCursor:
-    def __init__(self, sink): self.sink = sink
+    """params 가 없는 execute 는 규모 조회(SELECT)다 — 쓰기 sink 에 넣지 않는다."""
+    def __init__(self, conn): self.conn = conn
     def __enter__(self): return self
     def __exit__(self, *a): return False
-    def execute(self, sql, params=None): self.sink.append(params)
+    def execute(self, sql, params=None):
+        if params is None:
+            self.conn.selected = True
+        else:
+            self.conn.rows.append(params)
+    def fetchall(self): return list(self.conn.existing.items())
 
 
 class FakeConn:
-    def __init__(self): self.rows = []; self.commits = 0
-    def cursor(self): return FakeCursor(self.rows)
+    """existing=기존 적재 행수. 기본값 {} = 빈 테이블 = 규모 하한 미적용."""
+    def __init__(self, existing=None):
+        self.existing = dict(existing or {})
+        self.rows = []; self.commits = 0; self.selected = False
+    def cursor(self): return FakeCursor(self)
     def commit(self): self.commits += 1
 
 

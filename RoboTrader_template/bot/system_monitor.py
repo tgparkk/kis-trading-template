@@ -499,12 +499,22 @@ class SystemMonitor:
         daily = result.get("daily", {})
         minute = result.get("minute", {})
         index = result.get("index", {})
+        market_map = result.get("stock_market", {})
         foreign = result.get("foreign_flow", {})
         rec = result.get("reconcile", {})
         self.logger.info(
-            f"EOD 데이터 수집 완료: 일봉 {daily} · 분봉 {minute} · 지수 {index} · 외국인수급 {foreign}"
+            f"EOD 데이터 수집 완료: 일봉 {daily} · 분봉 {minute} · 지수 {index}"
+            f" · 시장매핑 {market_map} · 외국인수급 {foreign}"
             + (f" · 교차비교 {rec}" if rec else " · (전환완료 비교생략)")
         )
+        # 시장 매핑 실패는 요약 INFO 에 묻히면 안 된다. eod_collection._safe 가
+        # 예외를 삼켜 {"error": ...} 로만 남기므로(:24-29), 여기서 ERROR 로
+        # 승격하지 않으면 규모 하한 거부가 조용히 지나간다 — 며칠째 거부 중인데
+        # 아무도 모르는 상태가 만들어진다. 조용한 거부는 조용한 오염만큼 나쁘다.
+        if isinstance(market_map, dict) and "error" in market_map:
+            self.logger.error(
+                f"EOD 시장매핑 수집 실패(기존 매핑 보존): {market_map['error']}"
+            )
         for ds, r in (rec or {}).items():
             if isinstance(r, dict) and r.get("verdict") not in ("PASS", "EMPTY", None):
                 self.logger.warning(f"EOD 교차비교 {ds} 불일치: {r}")

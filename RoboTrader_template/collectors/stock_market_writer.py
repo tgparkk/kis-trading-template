@@ -11,6 +11,19 @@ ON CONFLICT (stock_code) DO UPDATE SET
     market=EXCLUDED.market, updated_at=now()
 """
 
+_COUNT_BY_MARKET = "SELECT market, count(*) FROM stock_market GROUP BY market"
+
+
+def current_market_counts(conn) -> dict:
+    """현재 적재된 시장별 행수. 규모 하한 검증의 기준값이다.
+
+    테이블이 비어 있으면 빈 dict — 호출측이 "최초 수집"으로 판정해 하한을
+    적용하지 않는다(하한을 무조건 걸면 첫 수집이 영원히 불가능해진다).
+    """
+    with conn.cursor() as cur:
+        cur.execute(_COUNT_BY_MARKET)
+        return {str(m): int(n) for m, n in cur.fetchall()}
+
 
 def fdr_df_to_market_rows(market: str, df) -> list:
     if df is None or len(df) == 0:
