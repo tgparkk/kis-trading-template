@@ -24,6 +24,7 @@ CLAIMS_BATCH_DIR = HARVEST / "claims_batches"
 CATLIST_JSON = HARVEST / "catlist_28_29.json"
 POSTMETA_JSON = HARVEST / "postmeta_28_29.json"
 HARVEST_FAIL_JSON = HARVEST / "harvest_fail_28_29.json"
+IMAGE_FAIL_JSON = HARVEST / "image_fail_28_29.json"
 CLAIMS_PUBLIC_CSV = HARVEST / "claims_cat2829.csv"
 CLAIMS_QUOTED_CSV = HARVEST / "claims_cat2829_quoted.csv"
 VERIFY_LOG = HARVEST / "verify_cat2829.log"
@@ -232,16 +233,145 @@ def html_to_text(src):
 
 
 def count_images(src, body_only=False):
-    """페이지 전체(기본) 또는 **본문 안쪽**의 `<img>` 수.
+    """페이지 전체(기본) 또는 **본문 안쪽**의 `<img>` **태그** 수.
 
     ⚠️ 기본값이 페이지 전체인 것은 선행 메타와의 연속성 때문이다. `image_only`
        판정은 반드시 본문 안쪽을 봐야 한다 — 페이지 전체를 세면 UI 아이콘 때문에
        **어떤 응답이든 이미지가 있는 것처럼** 보여 판별력이 0 이 된다.
+
+    🔴 이 값은 「본문 그림 수」가 **아니다**. 재는 것은 `<img>` 태그 수뿐이고,
+       SE2 세대는 그림을 `<img>` 로 싣지 않는다(아래 `body_images` 참조).
+       실측: SE2 195글의 본문 `<img>` 는 183개인데 실제 그림 슬롯은 2,169개이고,
+       그중 **127글이 「0장」으로 찍혔다.** 그림을 세거나 내려받으려면
+       `body_images()` 를 쓸 것 — 이 함수는 선행 메타(postmeta 의 `img_count`·
+       `body_img_count`)의 정의를 고정하기 위해 그대로 둔 것이다.
     """
     if body_only:
         _, region = body_region(src)
         return len(IMG.findall(region or ""))
     return len(IMG.findall(src))
+
+
+# ── 본문 이미지 ───────────────────────────────────────────────────────────────
+# 🔴 2026-08-06 실측이 뒤집은 것: **`<img>` 만 세면 SE2 의 그림이 통째로 안 보인다.**
+#    이 블로그의 SE2 세대(195글, 2009-08-22~2018-12-01)는 그림을 `<img>` 가 아니라
+#    `<span>` 속성으로 싣는다:
+#        <span class="_img _inl fx" thumburl="https://mblogthumb-phinf…/조광페인트1.png?type=">
+#    그래서 SE2 195글 중 **127글이 「이미지 0장」**으로 찍혀 있었다. T9 에서
+#    `html_to_text` 가 SE4 문단 마크업만 읽어 197건이 조용히 0자가 된 것과 **같은 클래스**다.
+#
+# 🔑 그래서 이 함수는 **모르는 형태를 버리지 않는다.** 슬롯을 찾으면 전부 돌려주고
+#    정체는 `kind` 로 표시만 한다(무엇을 뺄지는 부르는 쪽이 정한다). 「내가 아는 것만
+#    남기는」 열거식 필터는 새 세대가 오면 또 조용히 0장을 만든다 — 이번이 그 실패다.
+#
+# 아래 슬롯·정체는 전부 저장된 433건에서 도출했다(추측 0건 · 슬롯 합 5,886):
+#   슬롯   span.thumburl 1,986(se2 전량) · img.data-lazy-src 2,623 · img.src 1,160
+#          video.data-gif-url 117 · video.poster(대체) 0
+#   정체   photo 4,627 · oglink 1,042 · gif 117 · spacer 84 · sticker 16
+#   세대   se2 195글 2,170슬롯(photo 2,004) · se3 2글 21(15) · se4 236글 3,695(2,608)
+IMG_TAG_ANY = re.compile(r"<(img|span|video)\b[^>]*>", re.I)
+TAG_ATTRS = re.compile(r'([-\w:]+)\s*=\s*"([^"]*)"')
+
+# 링크카드(오픈그래프 미리보기)는 저자의 그림이 아니라 **남의 사이트 썸네일**이다.
+# 🔴 호스트로는 못 가른다 — 2012년 SE2 글의 저자 차트도 같은 프록시(dthumb-phinf)로
+#    나온다(`<차트-1>` 캡션 바로 뒤, 17장 실측). 가르는 것은 **감싸는 컴포넌트**다.
+#    세대별 class 가 다르지만(se2 `og _oglink` · se3 `se_oglink` · se4 `se-oglink`)
+#    셋 다 `oglink` 를 포함한다 — 토큰을 열거하지 않고 그 사실만 쓴다.
+OGLINK_DIV = re.compile(r'<div[^>]*class="[^"]*oglink[^"]*"[^>]*>', re.I)
+
+# 레이아웃 스페이서(SE2 84장). 그림이 아니라 자리를 띄우는 1픽셀 gif 다.
+SPACER_NAME = "blank.gif"
+
+# `body_images` 가 낼 수 있는 정체 전부. 🔑 부르는 쪽의 필터가 이 목록을 검증에 쓴다 —
+# 오타(`"Photo"`)를 「해당 없음 0장」으로 조용히 통과시키지 않기 위해서다.
+IMAGE_KINDS = ("photo", "oglink", "sticker", "spacer", "gif")
+
+
+def normalize_image_url(url, type_param="w966"):
+    """썸네일 URL 의 `type` 파라미터만 **교체**한다. 나머지 쿼리는 그대로 둔다.
+
+    🔴 선행 코드(`extract_calc_images.py:43`)는 `re.sub(r"\\?type=w\\d+", "", url)
+       + "?type=w966"` 이었다. 두 형태에서 깨진다(둘 다 실측):
+         · SE2 는 값이 빈 `?type=` 라 정규식에 안 걸려 `…?type=?type=w966` 이 된다(1,986건)
+         · 링크카드는 `?src=%22…%22&type=ff120` 이라 `?` 가 두 번 붙는다(1,042건)
+    ⇒ 문자열로 쿼리를 다시 쓴다. `urlencode` 를 쓰면 안 된다 — `src=%22…%22` 의
+      퍼센트 인코딩을 **다시 인코딩**해 URL 이 달라진다.
+    """
+    base, _, query = url.partition("?")
+    kept = [p for p in query.split("&") if p and p.split("=", 1)[0] != "type"]
+    kept.append("type=" + type_param)
+    return base + "?" + "&".join(kept)
+
+
+def _oglink_spans(region):
+    """링크카드 컴포넌트가 차지하는 (시작, 끝) 구간들. `body_region` 과 같은 방식이다."""
+    spans = []
+    for m in OGLINK_DIV.finditer(region):
+        depth, end = 1, len(region)
+        for tok in DIV_TOKEN.finditer(region, m.end()):
+            depth += -1 if tok.group(0).lower().startswith("</") else 1
+            if depth == 0:
+                end = tok.end()
+                break
+        spans.append((m.start(), end))
+    return spans
+
+
+def _image_kind(url, cls, in_oglink):
+    """이 슬롯이 무엇인가. **버리지 않고 이름만 붙인다.**"""
+    if in_oglink or "oglink" in cls:
+        return "oglink"
+    if "sticker" in cls:
+        return "sticker"
+    if url.partition("?")[0].endswith(SPACER_NAME):
+        return "spacer"
+    return "photo"
+
+
+def body_images(src):
+    """**본문 안쪽**의 이미지 슬롯 전부를 **문서 등장 순서 그대로** 낸다.
+
+    반환: `[{"url": 정규화된 URL, "kind": ..., "slot": ...}, ...]` · 본문이 없으면 `[]`.
+
+    지키는 계약(전부 저장된 433건에서 도출):
+      ① 경계는 `body_region` 안쪽뿐이다. 페이지 전체를 훑으면 블로거 프로필 썸네일
+         (`blogpfthumb-phinf`)이 **글당 4장** 섞인다(433/433 균일 실측, 본문 안쪽 0장).
+      ② SE2 = `class` 에 `_img` 가 있는 `<span>` 의 `thumburl`.
+      ③ SE3/SE4 = `<img>`. **`data-lazy-src` 우선, 없으면 `src`** — `src` 는 흐림
+         placeholder 다(2,623/2,623 이 `?type=w80_blur`, lazy 는 `w800`/`w400`).
+      ④ GIF 는 `<video>` 로 온다(117건). `data-gif-url` 이 원본 GIF, `poster` 가 대체.
+      ⑤ URL 은 HTML 엔티티가 이스케이프돼 있다 — `&amp;` 961 · `&#x3D;` 955 ·
+         `&#61;` 6. 안 풀면 `?src&#x3D;%22…` 라는 **없는 주소**를 받는다.
+      ⑥ 순서는 정렬이 아니라 **한 번의 스캔**으로 보존한다. 슬롯 종류가 섞인 글이
+         67건 실재하므로(span+img 공존) 종류별로 모아 나중에 이으면 순서가 깨진다.
+    """
+    _, region = body_region(src)
+    if not region:
+        return []
+    spans = _oglink_spans(region)
+    out = []
+    for m in IMG_TAG_ANY.finditer(region):
+        tag = m.group(1).lower()
+        attrs = {k.lower(): v for k, v in TAG_ATTRS.findall(m.group(0))}
+        cls = attrs.get("class") or ""
+        if tag == "img":
+            names = ("data-lazy-src", "src")
+        elif tag == "video":
+            names = ("data-gif-url", "poster")
+        elif "_img" in cls.split():
+            names = ("thumburl",)
+        else:
+            continue
+        raw = next((attrs[n] for n in names if attrs.get(n)), None)
+        if not raw:
+            # 주소가 없는 슬롯은 내려받을 것이 없다. 조용히 버려도 되는 유일한 경우다.
+            continue
+        url = normalize_image_url(html.unescape(raw))
+        in_og = any(a <= m.start() < b for a, b in spans)
+        out.append({"url": url,
+                    "kind": "gif" if tag == "video" else _image_kind(url, cls, in_og),
+                    "slot": tag + "." + next(n for n in names if attrs.get(n))})
+    return out
 
 
 def norm_log_no(value):

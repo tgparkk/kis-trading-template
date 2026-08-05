@@ -1,0 +1,190 @@
+[
+ {
+  "stem": "28_20151210_220563934226",
+  "log_no": "220563934226",
+  "category": 28,
+  "post_date": "2015-12-10",
+  "n_photo": 38,
+  "signals": [
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20170316_220959961295",
+  "log_no": "220959961295",
+  "category": 28,
+  "post_date": "2017-03-16",
+  "n_photo": 7,
+  "signals": [
+   "filename",
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20251002_224029868106",
+  "log_no": "224029868106",
+  "category": 28,
+  "post_date": "2025-10-02",
+  "n_photo": 29,
+  "signals": [
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20251204_224098489956",
+  "log_no": "224098489956",
+  "category": 28,
+  "post_date": "2025-12-04",
+  "n_photo": 26,
+  "signals": [
+   "filename",
+   "caption",
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20260109_224140664340",
+  "log_no": "224140664340",
+  "category": 28,
+  "post_date": "2026-01-09",
+  "n_photo": 8,
+  "signals": [
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20260115_224147987492",
+  "log_no": "224147987492",
+  "category": 28,
+  "post_date": "2026-01-15",
+  "n_photo": 13,
+  "signals": [
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20260122_224156196445",
+  "log_no": "224156196445",
+  "category": 28,
+  "post_date": "2026-01-22",
+  "n_photo": 23,
+  "signals": [
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20260207_224175506626",
+  "log_no": "224175506626",
+  "category": 28,
+  "post_date": "2026-02-07",
+  "n_photo": 11,
+  "signals": [
+   "caption",
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20260306_224207160457",
+  "log_no": "224207160457",
+  "category": 28,
+  "post_date": "2026-03-06",
+  "n_photo": 32,
+  "signals": [
+   "caption",
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20260323_224226939493",
+  "log_no": "224226939493",
+  "category": 28,
+  "post_date": "2026-03-23",
+  "n_photo": 9,
+  "signals": [
+   "body"
+  ]
+ },
+ {
+  "stem": "29_20260326_224230350920",
+  "log_no": "224230350920",
+  "category": 29,
+  "post_date": "2026-03-26",
+  "n_photo": 13,
+  "signals": [
+   "body"
+  ]
+ },
+ {
+  "stem": "29_20260327_224231592865",
+  "log_no": "224231592865",
+  "category": 29,
+  "post_date": "2026-03-27",
+  "n_photo": 10,
+  "signals": [
+   "body"
+  ]
+ },
+ {
+  "stem": "29_20260331_224235686601",
+  "log_no": "224235686601",
+  "category": 29,
+  "post_date": "2026-03-31",
+  "n_photo": 6,
+  "signals": [
+   "body"
+  ]
+ },
+ {
+  "stem": "29_20260401_224237085662",
+  "log_no": "224237085662",
+  "category": 29,
+  "post_date": "2026-04-01",
+  "n_photo": 4,
+  "signals": [
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20260415_224253762854",
+  "log_no": "224253762854",
+  "category": 28,
+  "post_date": "2026-04-15",
+  "n_photo": 12,
+  "signals": [
+   "caption",
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20260709_224341470917",
+  "log_no": "224341470917",
+  "category": 28,
+  "post_date": "2026-07-09",
+  "n_photo": 20,
+  "signals": [
+   "caption",
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20260728_224359904250",
+  "log_no": "224359904250",
+  "category": 28,
+  "post_date": "2026-07-28",
+  "n_photo": 24,
+  "signals": [
+   "caption",
+   "body"
+  ]
+ },
+ {
+  "stem": "28_20260729_224361924061",
+  "log_no": "224361924061",
+  "category": 28,
+  "post_date": "2026-07-29",
+  "n_photo": 18,
+  "signals": [
+   "caption"
+  ]
+ }
+]

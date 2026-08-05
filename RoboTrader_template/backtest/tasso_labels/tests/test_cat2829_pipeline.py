@@ -2008,3 +2008,723 @@ def test_refetch_pc_fetches_only_targets_and_skips_existing(tmp_path, monkeypatc
     assert [f["log_no"] for f in failures] == ["3"]
     assert "PC_FETCH_FAILED" in failures[0]["error"]
     assert (r.C.POSTS_DIR / (r.H._stem(todo) + r.PC_SUFFIX)).exists()
+
+
+# ============================ Task 11: 본문 이미지 ============================
+#
+# 🔴 무엇이 틀렸었나 (2026-08-06 실측): `count_images()` 는 `<img>` 태그만 센다.
+#    이 블로그의 SE2 세대(195글)는 그림을 `<img>` 로 싣지 않고 `<span thumburl>` 로
+#    싣는다. 그 결과 **SE2 195글 중 127글이 「이미지 0장」**으로 찍혀 있었다.
+#    T9 에서 `html_to_text` 가 SE4 문단만 읽어 197건이 0자가 된 것과 **같은 클래스**다.
+#
+# 아래 픽스처는 전부 `posts28/` 실제 수집본 433건에서 **마크업 골격만** 옮긴 것이다
+# (타인의 그림·본문은 담지 않고 자산 이름은 자리표시자로 바꿨다).
+
+# SE2 — 그림 슬롯이 `<span>` 속성이다. `?type=` 는 **값이 비어 있다**(1,986/1,986).
+_SE2_SPAN = ('<span class="_img _inl fx" thumburl="https://mblogthumb-phinf.pstatic.net'
+             '/20090910_132/mbc3110_x/{n}.jpg?type=">')
+# SE2 저자 그림 — 외부(카페) 원본이라 dthumb 프록시로 나온다. `<차트-1>` 캡션 뒤 17장 실측.
+# 🔴 `=`·`&` 가 HTML 엔티티로 이스케이프돼 있다(`&#x3D;` 955 · `&amp;` 961 실측).
+_SE2_CONTENT_IMG = ('<img src="https://dthumb-phinf.pstatic.net/?src&#x3D;%22https%3A%2F%2F'
+                    'cafefiles.pstatic.net%2F{n}.jpg%22&amp;type&#x3D;w1" alt=""'
+                    ' class="fx _postImage">')
+# SE2 링크카드 — 감싸는 `og _oglink` 가 유일한 단서다(안쪽 `<img>` 에는 class 가 **없다**).
+_SE2_OGLINK = ('<div class="og _oglink"><div class="box"><div class="thumb b_size">'
+               '<a href="https://news.example/1"><img src="https://dthumb-phinf.pstatic.net'
+               '/?src=%22http%3A%2F%2Fimgnews.naver.net%2F{n}.jpg%22&type=f560_336"></a>'
+               '</div><div class="txt"><div class="ell tit">남의 기사 제목</div></div>'
+               '</div></div>')
+# SE2 레이아웃 스페이서 84장 — 그림이 아니라 자리를 띄우는 1픽셀 gif.
+_SE2_SPACER = '<img src="https://ssl.pstatic.net/static/blog/blank.gif" class="m20" alt="">'
+
+# SE4 — `src` 는 **흐림 placeholder**(2,623/2,623 이 `?type=w80_blur`), 진짜는 lazy.
+_SE4_IMG = ('<img src="https://mblogthumb-phinf.pstatic.net/{n}.png?type=w80_blur"'
+            ' data-lazy-src="https://mblogthumb-phinf.pstatic.net/{n}.png?type=w800"'
+            ' data-width="886" data-height="524" alt="" class="se-image-resource" />')
+_SE4_OGLINK = ('<div class="se-component se-oglink se-l-image" id="SE-{n}">'
+               '<div class="se-section se-section-oglink se-l-image se-section-align-">'
+               '<div class="se-module se-module-oglink"><a href="https://news.example/{n}">'
+               '<img src="https://dthumb-phinf.pstatic.net/?src&#x3D;%22https%3A%2F%2F'
+               'imgnews.pstatic.net%2F{n}.jpg%22&amp;type&#x3D;ff120"'
+               ' class="se-oglink-thumbnail-resource"></a></div></div></div>')
+_SE4_STICKER = ('<img src="https://storep-phinf.pstatic.net/ogq_{n}/original_22.png'
+                '?type=p100_100" alt="" class="se-sticker-image" />')
+# GIF 는 `<video>` 로 온다(117건). 원본 GIF 는 `data-gif-url` 에 있다.
+_SE4_VIDEO = ('<video src="https://mblogvideo-phinf.pstatic.net/{n}.gif?type=mp4w800"'
+              ' loop="loop" muted="muted" playsinline class="_gifmp4"'
+              ' data-gif-url="https://mblogthumb-phinf.pstatic.net/{n}.gif?type=w800"'
+              ' poster="https://mblogthumb-phinf.pstatic.net/{n}.gif?type=w80_blur">'
+              '</video>')
+
+
+def _se2_page(parts, pad=6000):
+    """SE2 본문에 조각들을 **준 순서 그대로** 넣는다."""
+    return _page('<div class="post_ct  " id="viewTypeSelector">'
+                 '<div style="font-size:10pt;" _foo="view">' + "".join(parts)
+                 + "</div></div>", 2, pad)
+
+
+def _se4_page(parts, pad=6000):
+    return _page('<div class="post_ct   wrap_rabbit " id="viewTypeSelector">'
+                 '<div class="se-viewer se-theme-default" lang="ko-KR">' + _SE4_CHROME
+                 + '<div class="se-main-container">' + "".join(parts)
+                 + "</div></div></div>", 4, pad)
+
+
+def _urls(items):
+    return [i["url"] for i in items]
+
+
+def _kinds(items):
+    return [i["kind"] for i in items]
+
+
+# ---- C1: 경계는 body_region 안쪽뿐이다 ----
+
+def test_body_images_ignore_everything_outside_the_body_region():
+    """🔴 페이지 전체를 훑으면 블로거 프로필 썸네일이 **글당 4장** 섞인다(433/433 실측).
+
+    계획서 초안(Task 11 Step 2)이 정확히 그 형태였다: `re.findall(r'<img[^>]+src="…"', src)`.
+    """
+    c = _load("cat2829_common")
+    src = _se4_page([_SE4_IMG.format(n="본문그림")]).replace(
+        "</body>",
+        '<img src="https://blogpfthumb-phinf.pstatic.net/프로필.jpg?type=s1">'
+        '<img src="https://ssl.pstatic.net/ui_icon.png"></body>')
+    items = c.body_images(src)
+    assert len(items) == 1, "본문 밖 이미지가 섞였다 — " + repr(_urls(items))
+    assert "blogpfthumb" not in items[0]["url"]
+    assert "본문그림" in items[0]["url"]
+
+
+def test_body_images_returns_empty_list_when_the_body_never_arrived():
+    """🔑 본문 컨테이너가 없으면 **빈 목록**이다 — 페이지 골격에서 주워 담지 않는다."""
+    c = _load("cat2829_common")
+    assert c.body_images(_body_missing_html()) == []
+
+
+# ---- C2: SE2 는 `<span thumburl>` 이다 ----
+
+def test_body_images_reads_se2_thumburl_spans():
+    """🔴 이번 결함의 **직접 재현** — `<img>` 가 0개인데 그림은 3장이다.
+
+    SE2 분기를 걷어내면 여기서 0장이 나와 실패한다.
+    """
+    c = _load("cat2829_common")
+    src = _se2_page([_SE2_SPAN.format(n="차트" + str(i)) for i in range(3)])
+    assert c.count_images(src, body_only=True) == 0, "픽스처 전제: <img> 가 없어야 재현이 된다"
+    items = c.body_images(src)
+    assert len(items) == 3, "🔴 SE2 그림이 또 0장이다"
+    assert _kinds(items) == ["photo"] * 3
+    assert [i["slot"] for i in items] == ["span.thumburl"] * 3
+    assert [("차트%d" % i) in items[i]["url"] for i in range(3)] == [True] * 3
+
+
+def test_body_images_ignores_spans_that_are_not_image_slots():
+    """🔑 반대 방향 — 본문의 평범한 `<span>`(SE2 는 문단마다 쓴다)을 그림으로 세면 안 된다."""
+    c = _load("cat2829_common")
+    src = _se2_page(['<p><span style="" _foo="FONT-FAMILY: 돋움">본문 한 줄</span></p>',
+                     _SE2_SPAN.format(n="진짜차트")])
+    items = c.body_images(src)
+    assert len(items) == 1 and "진짜차트" in items[0]["url"]
+
+
+# ---- C3: data-lazy-src 우선, 없으면 src ----
+
+def test_body_images_prefer_data_lazy_src_over_the_blur_placeholder():
+    """🔴 SE4 의 `src` 는 흐림 placeholder 다(`?type=w80_blur`, 2,623/2,623 실측).
+
+    우선순위를 뒤집으면 판독 에이전트가 **흐린 그림**을 보고 수치를 읽게 된다.
+    """
+    c = _load("cat2829_common")
+    items = c.body_images(_se4_page([_SE4_IMG.format(n="지표")]))
+    assert len(items) == 1
+    assert items[0]["slot"] == "img.data-lazy-src", "흐림 placeholder 를 골랐다"
+    assert "w80_blur" not in items[0]["url"]
+
+
+def test_body_images_fall_back_to_src_when_there_is_no_lazy_attribute():
+    """SE2 의 `<img>` 와 SE3 일부(6건)는 `data-lazy-src` 가 아예 없다."""
+    c = _load("cat2829_common")
+    items = c.body_images(_se2_page([_SE2_CONTENT_IMG.format(n="차트")]))
+    assert len(items) == 1
+    assert items[0]["slot"] == "img.src"
+
+
+def test_body_images_drops_an_img_tag_that_has_no_url_at_all():
+    """주소가 없는 슬롯은 내려받을 것이 없다 — 조용히 버려도 되는 유일한 경우다."""
+    c = _load("cat2829_common")
+    src = _se4_page(['<img alt="" class="se-image-resource" />', _SE4_IMG.format(n="진짜")])
+    items = c.body_images(src)
+    assert len(items) == 1 and "진짜" in items[0]["url"]
+
+
+# ---- C4: 문서 등장 순서 ----
+
+def test_body_images_preserve_document_order_across_mixed_slot_kinds():
+    """🔴 이 트랙에서 정렬·순서 계약이 T5·T6·T7·T8 **네 번 연속** 테스트 갭이었다.
+
+    원인은 매번 픽스처 원소가 1개거나 입력이 이미 정렬돼 있어 **순서가 관측되지
+    않은 것**이다. 여기서는 슬롯 종류를 일부러 **섞어** 넣는다 — 종류별로 모아
+    이어붙이는 구현(span 먼저 · img 나중 같은)이면 순서가 어긋나 실패한다.
+    한 글에 span 과 img 가 **둘 다** 있는 글이 67건 실재한다(실측).
+    """
+    c = _load("cat2829_common")
+    src = _se2_page([
+        _SE2_CONTENT_IMG.format(n="AAA"),      # img
+        _SE2_SPAN.format(n="BBB"),             # span
+        _SE2_SPACER,                           # img(스페이서)
+        _SE2_SPAN.format(n="DDD"),             # span
+        _SE2_CONTENT_IMG.format(n="EEE"),      # img
+    ])
+    items = c.body_images(src)
+    order = ["AAA", "BBB", "blank.gif", "DDD", "EEE"]
+    got = [next(t for t in order if t in i["url"]) for i in items]
+    assert got == order, "문서 등장 순서가 아니다 — " + repr(got)
+    assert _kinds(items) == ["photo", "photo", "spacer", "photo", "photo"]
+
+
+def test_body_images_order_is_preserved_in_se4_too():
+    """SE4 에서도 그림·링크카드·스티커·GIF 가 **섞인 순서 그대로** 나와야 한다."""
+    c = _load("cat2829_common")
+    src = _se4_page([_SE4_OGLINK.format(n="og1"), _SE4_IMG.format(n="p1"),
+                     _SE4_VIDEO.format(n="g1"), _SE4_STICKER.format(n="s1"),
+                     _SE4_IMG.format(n="p2")])
+    items = c.body_images(src)
+    assert _kinds(items) == ["oglink", "photo", "gif", "sticker", "photo"], repr(_kinds(items))
+    got = [next(t for t in ("og1", "p1", "g1", "s1", "p2") if t in i["url"]) for i in items]
+    assert got == ["og1", "p1", "g1", "s1", "p2"]
+
+
+# ---- C5: HTML 엔티티 이스케이프 ----
+
+@pytest.mark.parametrize("make,page", [
+    (_SE2_CONTENT_IMG, _se2_page), (_SE4_OGLINK, _se4_page)])
+def test_body_images_unescape_html_entities_in_urls(make, page):
+    """🔴 URL 이 HTML 엔티티로 이스케이프돼 있다 — `&amp;` 961 · `&#x3D;` 955 ·
+    `&#61;` 6 (전수 실측). 안 풀면 `?src&#x3D;%22…` 라는 **없는 주소**를 받는다.
+
+    ⚠️ `%22`·`%2F` 같은 퍼센트 인코딩은 **그대로 둬야** 한다 — 그건 URL 의 일부다.
+    """
+    c = _load("cat2829_common")
+    items = c.body_images(page([make.format(n="X")]))
+    url = items[0]["url"]
+    for bad in ("&amp;", "&#x3D;", "&#61;"):
+        assert bad not in url, "엔티티가 안 풀렸다: " + bad + " — " + url
+    assert "src=%22" in url and "%3A%2F%2F" in url, "퍼센트 인코딩이 훼손됐다 — " + url
+
+
+# ---- C6: type 파라미터만 교체 ----
+
+@pytest.mark.parametrize("raw,expect", [
+    # SE2 span — 값이 **빈** type. 선행 정규식(`\?type=w\d+`)이 못 잡던 형태다.
+    ("https://mblogthumb-phinf.pstatic.net/a/b.jpg?type=",
+     "https://mblogthumb-phinf.pstatic.net/a/b.jpg?type=w966"),
+    # SE4 lazy
+    ("https://mblogthumb-phinf.pstatic.net/a/b.png?type=w800",
+     "https://mblogthumb-phinf.pstatic.net/a/b.png?type=w966"),
+    # 링크카드 — type 앞에 다른 파라미터가 있다. 선행 코드는 `?` 를 두 번 붙였다.
+    ("https://dthumb-phinf.pstatic.net/?src=%22https%3A%2F%2Fx%2Fy.jpg%22&type=ff120",
+     "https://dthumb-phinf.pstatic.net/?src=%22https%3A%2F%2Fx%2Fy.jpg%22&type=w966"),
+    # 쿼리가 아예 없는 경우
+    ("https://ssl.pstatic.net/static/blog/blank.gif",
+     "https://ssl.pstatic.net/static/blog/blank.gif?type=w966"),
+])
+def test_normalize_image_url_replaces_only_the_type_parameter(raw, expect):
+    c = _load("cat2829_common")
+    assert c.normalize_image_url(raw) == expect
+
+
+def test_normalize_image_url_matches_the_prior_convention_for_plain_thumbnails():
+    """🔑 선행 코드(`extract_calc_images.py:43`)와 **같은 결과**를 내야 한다 —
+    그 코드가 실제로 처리하던 형태(`?type=w\\d+`)에서는 규약을 바꾸지 않는다.
+    """
+    c = _load("cat2829_common")
+    import re as _re
+    for raw in ("https://mblogthumb-phinf.pstatic.net/a/b.png?type=w800",
+                "https://mblogthumb-phinf.pstatic.net/a/b.png?type=w400"):
+        prior = _re.sub(r"\?type=w\d+", "", raw) + "?type=w966"
+        assert c.normalize_image_url(raw) == prior
+
+
+def test_normalize_image_url_is_idempotent():
+    """두 번 적용해도 같아야 한다 — 안 그러면 재실행마다 다른 파일을 받는다."""
+    c = _load("cat2829_common")
+    once = c.normalize_image_url("https://x/y.png?type=w800")
+    assert c.normalize_image_url(once) == once
+
+
+# ---- C7·C8·C9·C10: 정체 라벨 ----
+
+def test_body_images_label_link_cards_in_every_generation():
+    """🔴 링크카드는 저자의 그림이 아니라 **남의 사이트 썸네일**이다.
+
+    ⚠️ 호스트로는 못 가른다 — 2012년 SE2 글의 **저자 차트**도 같은 dthumb 프록시로
+       나온다(`<차트-1>` 캡션 뒤 17장 실측). 「dthumb 는 링크카드」로 구현하면
+       저자의 차트를 통째로 버린다. 가르는 것은 **감싸는 컴포넌트**다.
+    """
+    c = _load("cat2829_common")
+    se2 = c.body_images(_se2_page([_SE2_OGLINK.format(n="og"),
+                                   _SE2_CONTENT_IMG.format(n="저자차트")]))
+    assert _kinds(se2) == ["oglink", "photo"], repr(se2)
+    assert "dthumb" in se2[0]["url"] and "dthumb" in se2[1]["url"], (
+        "픽스처 전제: 둘 다 같은 호스트여야 「호스트로 가르는」 구현이 실패한다")
+    se4 = c.body_images(_se4_page([_SE4_OGLINK.format(n="og"), _SE4_IMG.format(n="차트")]))
+    assert _kinds(se4) == ["oglink", "photo"]
+
+
+def test_body_images_label_stickers_and_spacers_and_gifs():
+    """🔑 정체를 붙이되 **버리지는 않는다** — 무엇을 뺄지는 부르는 쪽이 정한다.
+
+    숨기면 다음 세대의 새 형태가 또 조용히 사라진다(이번이 그 실패다).
+    """
+    c = _load("cat2829_common")
+    items = c.body_images(_se4_page([_SE4_STICKER.format(n="s"), _SE4_VIDEO.format(n="g")]))
+    assert _kinds(items) == ["sticker", "gif"]
+    assert items[1]["slot"] == "video.data-gif-url", "mp4 를 골랐다 — 원본 GIF 가 아니다"
+    assert "mblogvideo" not in items[1]["url"]
+    spacer = c.body_images(_se2_page([_SE2_SPACER]))
+    assert _kinds(spacer) == ["spacer"]
+
+
+def test_body_images_fall_back_to_poster_when_the_gif_url_is_absent():
+    c = _load("cat2829_common")
+    tag = ('<video src="https://mblogvideo-phinf.pstatic.net/x.gif?type=mp4w800"'
+           ' poster="https://mblogthumb-phinf.pstatic.net/대체.gif?type=w800"></video>')
+    items = c.body_images(_se4_page([tag]))
+    assert [i["slot"] for i in items] == ["video.poster"]
+    assert "대체" in items[0]["url"]
+
+
+def test_every_kind_body_images_can_emit_is_declared():
+    """🔑 `IMAGE_KINDS` 는 `--kinds` 오타를 잡는 데 쓰인다. 목록이 실제와 어긋나면
+    그 검증이 거짓 안심이 된다 — 실물 코퍼스로 대조한다."""
+    c, _, files = _corpus()
+    seen = set()
+    for p in files:
+        seen |= {i["kind"] for i in c.body_images(p.read_text(encoding="utf-8"))}
+    assert seen <= set(c.IMAGE_KINDS), "선언에 없는 정체가 나왔다: " + repr(seen)
+    assert seen == set(c.IMAGE_KINDS), "선언에만 있고 실물에 없는 정체가 있다: " + repr(
+        set(c.IMAGE_KINDS) - seen)
+
+
+# ---- 실물 코퍼스 433건 회귀 ----
+
+def test_real_corpus_se2_posts_that_read_as_zero_images_actually_have_images():
+    """🔴 이번 결함의 **실물 회귀**. `count_images(body_only=True)==0` 인 SE2 글이
+    127건 있었는데, 그중 123건은 실제로 그림이 있다(전수 실측).
+
+    SE2 분기를 걷어내면 123건이 다시 0장이 되어 여기서 실패한다.
+    """
+    c, _, files = _corpus()
+    silent_zero, still_zero = 0, []
+    for p in files:
+        src = p.read_text(encoding="utf-8")
+        if c.count_images(src, body_only=True):
+            continue
+        photos = [i for i in c.body_images(src) if i["kind"] == "photo"]
+        if photos:
+            silent_zero += 1
+        else:
+            still_zero.append(p.name)
+    assert silent_zero == 123, "옛 계수기가 0으로 읽던 글의 회복 건수가 다르다: " + str(silent_zero)
+    assert len(still_zero) == 4, "진짜 그림 없는 글 수가 다르다: " + repr(still_zero)
+
+
+def test_real_corpus_image_totals_by_generation():
+    """🔑 「내 보고를 안 믿는 사람」이 재현할 수 있게 수치 자체를 고정한다(2026-08-06 실측)."""
+    c, _, files = _corpus()
+    total, photo, posts = {}, {}, {}
+    for p in files:
+        src = p.read_text(encoding="utf-8")
+        gen, _r = c.body_region(src)
+        items = c.body_images(src)
+        posts[gen] = posts.get(gen, 0) + 1
+        total[gen] = total.get(gen, 0) + len(items)
+        photo[gen] = photo.get(gen, 0) + sum(1 for i in items if i["kind"] == "photo")
+    assert posts == {"se2": 195, "se3": 2, "se4": 236}
+    assert total == {"se2": 2170, "se3": 21, "se4": 3695}, repr(total)
+    assert photo == {"se2": 2004, "se3": 15, "se4": 2608}, repr(photo)
+
+
+def test_real_corpus_image_urls_are_normalized_and_unescaped():
+    """모든 URL 이 `type=w966` 으로 끝나고 엔티티가 남아 있지 않아야 한다."""
+    c, _, files = _corpus()
+    bad = []
+    for p in files:
+        for i in c.body_images(p.read_text(encoding="utf-8")):
+            u = i["url"]
+            if not (u.endswith("?type=w966") or u.endswith("&type=w966")):
+                bad.append((p.name, u[:100]))
+            if "&amp;" in u or "&#x3D;" in u or "&#61;" in u:
+                bad.append((p.name, "ESCAPED " + u[:100]))
+            if "blogpfthumb" in u:
+                bad.append((p.name, "PROFILE " + u[:100]))
+    assert bad == [], repr(bad[:5])
+
+
+def test_real_corpus_link_card_labeling_agrees_with_the_independent_class_signal():
+    """🔑 판정을 **독립 신호 두 개**로 대조한다 — 감싸는 컴포넌트 구간(우리 판정 축)과
+    `<img>` 자신의 class(`se-oglink-thumbnail-resource`, SE4/SE3 에만 있다).
+    둘이 어긋나면 판정 근거가 흔들린 것이다. 실측 433건: 어긋남 0건.
+    """
+    import re as _re
+    c, _, files = _corpus()
+    mismatch = []
+    for p in files:
+        _gen, region = c.body_region(p.read_text(encoding="utf-8"))
+        spans = c._oglink_spans(region or "")
+        for m in _re.finditer(r"<img\b[^>]*>", region or "", _re.I):
+            cls = dict((k.lower(), v) for k, v in
+                       c.TAG_ATTRS.findall(m.group(0))).get("class") or ""
+            in_region = any(a <= m.start() < b for a, b in spans)
+            if "oglink" in cls and not in_region:
+                mismatch.append((p.name, cls))
+    assert mismatch == [], "class 는 링크카드라는데 컴포넌트 구간 밖이다: " + repr(mismatch[:5])
+
+
+# ================= Task 11: 이미지 다운로더 =================
+
+_PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 40
+_JPG = b"\xff\xd8\xff\xe0" + b"0" * 40
+_GIF = b"GIF89a" + b"0" * 40
+_HTML_ERROR = b"<html><head><title>404</title></head><body>none</body></html>"
+
+
+def _install_image_dirs(d, tmp_path, monkeypatch):
+    for name, sub in (("POSTS_DIR", "posts28"), ("TEXT_DIR", "text28"),
+                      ("IMAGES_DIR", "images28"), ("CLAIMS_BATCH_DIR", "claims_batches")):
+        monkeypatch.setattr(d.C, name, tmp_path / sub)
+    monkeypatch.setattr(d.C, "IMAGE_FAIL_JSON", tmp_path / "image_fail_28_29.json")
+    d.C.ensure_dirs()
+    return d
+
+
+def _dl(tmp_path, monkeypatch):
+    return _install_image_dirs(_load("download_images_28_29"), tmp_path, monkeypatch)
+
+
+@pytest.mark.parametrize("blob,ext", [
+    (_PNG, "png"), (_JPG, "jpg"), (_GIF, "gif"),
+    (b"BM" + b"0" * 20, "bmp"), (b"RIFF1234WEBP" + b"0" * 20, "webp"),
+])
+def test_image_ext_reads_the_format_from_the_bytes(blob, ext):
+    """⚠️ 확장자를 URL 이나 `.jpg` 하드코딩으로 정하면 안 된다 — 원본이 png/jpg 혼재이고
+    링크카드 URL 에는 경로 확장자가 아예 없다(104건 실측)."""
+    d = _load("download_images_28_29")
+    assert d.image_ext(blob) == ext
+
+
+@pytest.mark.parametrize("blob", [b"", _HTML_ERROR, b"not an image at all"])
+def test_image_ext_rejects_anything_that_is_not_an_image(blob):
+    """🔑 반대 방향 — HTML 오류응답·빈 응답을 이미지로 받아들이면 안 된다."""
+    d = _load("download_images_28_29")
+    assert d.image_ext(blob) is None
+
+
+def test_download_leaves_no_file_when_curl_exits_nonzero(tmp_path, monkeypatch):
+    """🔴 계획서 초안의 결함 ① — 종료코드를 안 보고 `-o` 로 직접 썼다.
+
+    실패했는데 파일이 남으면 재실행이 **영구히 스킵**한다. 파일이 없어야 재시도된다.
+    """
+    d = _dl(tmp_path, monkeypatch)
+    jobs = [{"stem": "28_20200101_1", "index": 0, "url": "https://x/a.png", "kind": "photo"}]
+    got, skipped, failures = d.download(
+        jobs, fetch=lambda u: (None, None, "CURL_EXIT:22"), sleep=lambda s: None)
+    assert (got, skipped) == (0, 0)
+    assert [f["error"] for f in failures] == ["CURL_EXIT:22"]
+    assert list(d.C.IMAGES_DIR.iterdir()) == [], "🔴 실패했는데 파일이 남았다"
+
+
+def test_download_leaves_no_file_when_the_response_is_not_an_image(tmp_path, monkeypatch):
+    """🔑 종료코드 0 + HTML 오류 본문 — curl 은 성공했다고 말한다. 매직바이트가 유일한 방어다."""
+    d = _dl(tmp_path, monkeypatch)
+
+    def fake_run(cmd, capture_output=False):
+        class R:
+            returncode = 0
+            stdout = _HTML_ERROR
+        return R()
+
+    monkeypatch.setattr(d.subprocess, "run", fake_run)
+    blob, ext, error = d.fetch_image("https://x/a.png")
+    assert (blob, ext) == (None, None)
+    assert error.startswith("NOT_AN_IMAGE"), error
+    got, _s, failures = d.download(
+        [{"stem": "s", "index": 0, "url": "https://x/a.png", "kind": "photo"}],
+        sleep=lambda s: None)
+    assert got == 0 and len(failures) == 1
+    assert list(d.C.IMAGES_DIR.iterdir()) == []
+
+
+def test_fetch_image_reports_the_curl_exit_code(tmp_path, monkeypatch):
+    d = _dl(tmp_path, monkeypatch)
+
+    def fake_run(cmd, capture_output=False):
+        class R:
+            returncode = 22
+            stdout = b""
+        return R()
+
+    monkeypatch.setattr(d.subprocess, "run", fake_run)
+    assert d.fetch_image("https://x/a.png")[2] == "CURL_EXIT:22"
+
+
+def test_fetch_image_uses_fail_and_referer_flags(tmp_path, monkeypatch):
+    """`-f` 가 없으면 404 페이지가 종료코드 0 으로 들어온다 — 방어가 매직바이트 하나만 남는다."""
+    d = _dl(tmp_path, monkeypatch)
+    seen = {}
+
+    def fake_run(cmd, capture_output=False):
+        seen["cmd"] = cmd
+
+        class R:
+            returncode = 0
+            stdout = _PNG
+        return R()
+
+    monkeypatch.setattr(d.subprocess, "run", fake_run)
+    d.fetch_image("https://x/a.png")
+    assert "-f" in seen["cmd"]
+    assert any(str(a).startswith("Referer: ") for a in seen["cmd"])
+    assert d.C.UA in seen["cmd"]
+
+
+def test_download_writes_the_extension_the_response_declares(tmp_path, monkeypatch):
+    """⚠️ `.jpg` 하드코딩 금지 — URL 이 `.png` 여도 응답이 정한다(그 반대도)."""
+    d = _dl(tmp_path, monkeypatch)
+    jobs = [{"stem": "st", "index": 0, "url": "https://x/a.png", "kind": "photo"},
+            {"stem": "st", "index": 1, "url": "https://x/b.jpg", "kind": "photo"}]
+    d.download(jobs, fetch=lambda u: ((_JPG, "jpg", None) if u.endswith("a.png")
+                                      else (_PNG, "png", None)), sleep=lambda s: None)
+    assert sorted(p.name for p in d.C.IMAGES_DIR.iterdir()) == ["st_000.jpg", "st_001.png"]
+
+
+def test_download_retries_a_zero_byte_leftover_and_replaces_it(tmp_path, monkeypatch):
+    """🔴 지금 저장소에 실제로 남아 있는 상태다(`images28/x.png` 0바이트).
+
+    「존재」로 스킵하면 그 글은 **영원히** 못 받는다.
+    """
+    d = _dl(tmp_path, monkeypatch)
+    (d.C.IMAGES_DIR / "st_000.png").write_bytes(b"")
+    calls = []
+    got, skipped, failures = d.download(
+        [{"stem": "st", "index": 0, "url": "https://x/a.png", "kind": "photo"}],
+        fetch=lambda u: calls.append(u) or (_PNG, "png", None), sleep=lambda s: None)
+    assert calls == ["https://x/a.png"], "0바이트 잔해를 「존재」로 보고 스킵했다"
+    assert (got, skipped, failures) == (1, 0, [])
+    assert (d.C.IMAGES_DIR / "st_000.png").read_bytes() == _PNG
+
+
+def test_download_retries_an_html_error_body_left_by_a_previous_run(tmp_path, monkeypatch):
+    d = _dl(tmp_path, monkeypatch)
+    (d.C.IMAGES_DIR / "st_000.jpg").write_bytes(_HTML_ERROR)
+    calls = []
+    d.download([{"stem": "st", "index": 0, "url": "https://x/a.png", "kind": "photo"}],
+               fetch=lambda u: calls.append(u) or (_PNG, "png", None), sleep=lambda s: None)
+    assert calls == ["https://x/a.png"]
+    assert not (d.C.IMAGES_DIR / "st_000.jpg").exists(), "무효한 잔해가 남아 다음 실행을 또 속인다"
+    assert (d.C.IMAGES_DIR / "st_000.png").exists()
+
+
+def test_download_skips_a_valid_file_without_requesting(tmp_path, monkeypatch):
+    """🔑 반대 방향 — 재개가 실제로 걸려야 한다. 안 걸면 매 실행이 전량 재요청이다."""
+    d = _dl(tmp_path, monkeypatch)
+    (d.C.IMAGES_DIR / "st_000.png").write_bytes(_PNG)
+    calls = []
+    got, skipped, failures = d.download(
+        [{"stem": "st", "index": 0, "url": "https://x/a.png", "kind": "photo"}],
+        fetch=lambda u: calls.append(u) or (_JPG, "jpg", None), sleep=lambda s: None)
+    assert calls == [], "이미 받아 둔 유효한 파일을 다시 요청했다"
+    assert (got, skipped) == (0, 1)
+    assert (d.C.IMAGES_DIR / "st_000.png").read_bytes() == _PNG
+
+
+def test_download_sleeps_once_per_request_and_never_for_a_skip(tmp_path, monkeypatch):
+    """🔴 계획서 초안의 결함 ② — sleep 이 없어 수백 연속 요청이었다.
+
+    ⚠️ 동시에 반대 방향도 고정한다: 스킵에도 쉬면 재개 실행이 아무 일도 안 하면서
+       몇 분씩 걸린다(433글 × 그림 수 만큼).
+    """
+    d = _dl(tmp_path, monkeypatch)
+    h = _load("harvest_cat28_29_full")
+    assert d.IMAGE_SLEEP == h.BODY_SLEEP, "본문 수집과 다른 간격을 쓴다"
+    (d.C.IMAGES_DIR / "st_000.png").write_bytes(_PNG)
+    naps = []
+    d.download([{"stem": "st", "index": 0, "url": "https://x/a.png", "kind": "photo"},
+                {"stem": "st", "index": 1, "url": "https://x/b.png", "kind": "photo"},
+                {"stem": "st", "index": 2, "url": "https://x/c.png", "kind": "photo"}],
+               fetch=lambda u: (_PNG, "png", None), sleep=naps.append)
+    assert naps == [d.IMAGE_SLEEP, d.IMAGE_SLEEP], "요청 수와 쉬는 횟수가 안 맞는다 — " + repr(naps)
+
+
+def test_download_writes_the_failure_list_and_overwrites_a_stale_one(tmp_path, monkeypatch):
+    """🔑 지난 실행의 실패 목록이 남아 이번 실행을 잘못 말하면 안 된다
+    (`harvest_bodies` 의 규약 승계 — 거짓 경보와 거짓 안심을 둘 다 막는다)."""
+    d = _dl(tmp_path, monkeypatch)
+    d.C.IMAGE_FAIL_JSON.write_text('[{"stem": "old"}]', encoding="utf-8")
+    d.download([{"stem": "st", "index": 0, "url": "https://x/a.png", "kind": "photo"}],
+               fetch=lambda u: (_PNG, "png", None), sleep=lambda s: None)
+    assert _json.loads(d.C.IMAGE_FAIL_JSON.read_text(encoding="utf-8")) == []
+
+    d.download([{"stem": "st", "index": 9, "url": "https://x/z.png", "kind": "photo"}],
+               fetch=lambda u: (None, None, "CURL_EXIT:6"), sleep=lambda s: None)
+    on_disk = _json.loads(d.C.IMAGE_FAIL_JSON.read_text(encoding="utf-8"))
+    assert [f["url"] for f in on_disk] == ["https://x/z.png"]
+    assert on_disk[0]["stem"] == "st" and on_disk[0]["index"] == 9
+
+
+def test_download_finishes_the_rest_after_one_failure(tmp_path, monkeypatch):
+    d = _dl(tmp_path, monkeypatch)
+    jobs = [{"stem": "st", "index": i, "url": "https://x/%d.png" % i, "kind": "photo"}
+            for i in range(3)]
+    got, _s, failures = d.download(
+        jobs, fetch=lambda u: ((None, None, "CURL_EXIT:28") if "1.png" in u
+                               else (_PNG, "png", None)), sleep=lambda s: None)
+    assert got == 2 and [f["index"] for f in failures] == [1]
+    assert sorted(p.name for p in d.C.IMAGES_DIR.iterdir()) == ["st_000.png", "st_002.png"]
+
+
+# ---- 대상 선정(plan_jobs) ----
+
+def test_plan_jobs_numbers_are_assigned_before_download_so_a_failure_shifts_nothing():
+    """🔴 판독 에이전트에게 **「몇 번째 그림」이 맥락**이다.
+
+    성공한 것만 세어 번호를 매기면 한 장이 실패했을 때 뒤가 전부 밀려 조용히 틀린
+    판독이 된다. 번호는 필터를 통과한 **순서**로 내려받기 전에 정해진다.
+    """
+    d = _load("download_images_28_29")
+    src = _se4_page([_SE4_IMG.format(n="p0"), _SE4_OGLINK.format(n="og"),
+                     _SE4_IMG.format(n="p1"), _SE4_IMG.format(n="p2")])
+    jobs, skipped, missing = d.plan_jobs(["st"], read=lambda s: src)
+    assert [j["index"] for j in jobs] == [0, 1, 2], "링크카드를 건너뛴 만큼 번호가 밀렸다"
+    assert [("p%d" % i) in jobs[i]["url"] for i in range(3)] == [True] * 3
+    assert skipped == {"oglink": 1}, "제외한 것을 조용히 삼켰다 — " + repr(skipped)
+    assert missing == []
+
+
+def test_plan_jobs_numbers_restart_per_post():
+    d = _load("download_images_28_29")
+    src = _se4_page([_SE4_IMG.format(n="a"), _SE4_IMG.format(n="b")])
+    jobs, _s, _m = d.plan_jobs(["one", "two"], read=lambda s: src)
+    assert [(j["stem"], j["index"]) for j in jobs] == [
+        ("one", 0), ("one", 1), ("two", 0), ("two", 1)]
+
+
+def test_plan_jobs_kind_filter_actually_selects():
+    """🔑 필터가 실제로 고른다는 것을 양방향으로 고정한다."""
+    d = _load("download_images_28_29")
+    src = _se4_page([_SE4_IMG.format(n="p"), _SE4_OGLINK.format(n="og"),
+                     _SE4_STICKER.format(n="s"), _SE4_VIDEO.format(n="g")])
+    photos, _s, _m = d.plan_jobs(["st"], kinds=("photo",), read=lambda s: src)
+    assert [j["kind"] for j in photos] == ["photo"]
+    both, skipped, _m = d.plan_jobs(["st"], kinds=("photo", "gif"), read=lambda s: src)
+    assert [j["kind"] for j in both] == ["photo", "gif"]
+    assert skipped == {"oglink": 1, "sticker": 1}
+
+
+def test_plan_jobs_reports_a_stem_whose_html_was_never_saved():
+    """🔑 없는 글을 조용히 0장으로 넘기면 「그림이 없는 글」과 구분되지 않는다."""
+    d = _load("download_images_28_29")
+
+    def read(stem):
+        if stem == "gone":
+            raise OSError("없다")
+        return _se4_page([_SE4_IMG.format(n="p")])
+
+    jobs, _s, missing = d.plan_jobs(["ok", "gone"], read=read)
+    assert missing == ["gone"]
+    assert [j["stem"] for j in jobs] == ["ok"]
+
+
+def test_plan_jobs_reads_the_saved_html_from_posts_dir(tmp_path, monkeypatch):
+    """기본 경로 배선 — 부품 테스트만으론 어느 디렉토리를 읽는지가 안 잡힌다."""
+    d = _dl(tmp_path, monkeypatch)
+    (d.C.POSTS_DIR / "28_20200101_9.html").write_text(
+        _se2_page([_SE2_SPAN.format(n="차트")]), encoding="utf-8")
+    jobs, _s, missing = d.plan_jobs(["28_20200101_9"])
+    assert missing == [] and len(jobs) == 1 and "차트" in jobs[0]["url"]
+
+
+# ---- main() 배선 ----
+
+def test_main_refuses_an_unknown_kind(tmp_path, monkeypatch, capsys):
+    """🔑 오타를 「해당 없음 0장」으로 통과시키지 않는다.
+
+    2026-08-04 급락게이트에서 독립검증이 잡은 결정적 결함이 정확히 이 형태였다
+    (`"Auto"` 를 「정상」으로 보고).
+    """
+    d = _dl(tmp_path, monkeypatch)
+    rc = d.main(["--stems", "st", "--kinds", "Photo"])
+    assert rc == 2
+    assert "알 수 없는 --kinds" in capsys.readouterr().out
+
+
+def test_main_refuses_to_run_without_an_explicit_target(tmp_path, monkeypatch, capsys):
+    """🔴 대상을 스스로 정하지 않는다 — 기본값이 「전부」면 무단 대량 요청이 된다."""
+    d = _dl(tmp_path, monkeypatch)
+    assert d.main([]) == 2
+    assert "대상이 없다" in capsys.readouterr().out
+
+
+def test_main_dry_run_makes_no_request_and_says_what_it_would_do(tmp_path, monkeypatch, capsys):
+    d = _dl(tmp_path, monkeypatch)
+    (d.C.POSTS_DIR / "28_20200101_9.html").write_text(
+        _se4_page([_SE4_IMG.format(n="p"), _SE4_OGLINK.format(n="og")]), encoding="utf-8")
+    monkeypatch.setattr(d, "fetch_image",
+                        lambda u, timeout=None: pytest.fail("dry-run 인데 요청했다"))
+    rc = d.main(["--stems", "28_20200101_9", "--dry-run"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "내려받을 1 장" in out
+    assert "제외한 슬롯 {'oglink': 1}" in out, "제외를 조용히 삼켰다 — " + out
+    assert list(d.C.IMAGES_DIR.iterdir()) == []
+
+
+def test_main_says_out_loud_when_limit_truncates(tmp_path, monkeypatch, capsys):
+    """계획서 Task 11 의 규칙 — 「줄이면 줄였다는 사실을 로그에 남긴다」."""
+    d = _dl(tmp_path, monkeypatch)
+    (d.C.POSTS_DIR / "28_20200101_9.html").write_text(
+        _se4_page([_SE4_IMG.format(n=str(i)) for i in range(5)]), encoding="utf-8")
+    d.main(["--stems", "28_20200101_9", "--limit", "2", "--dry-run"])
+    out = capsys.readouterr().out
+    assert "--limit 2 로 줄인다 — 3 장을 안 받는다" in out, out
+
+
+def test_main_returns_nonzero_when_a_download_fails(tmp_path, monkeypatch, capsys):
+    d = _dl(tmp_path, monkeypatch)
+    (d.C.POSTS_DIR / "28_20200101_9.html").write_text(
+        _se4_page([_SE4_IMG.format(n="p")]), encoding="utf-8")
+    monkeypatch.setattr(d.time, "sleep", lambda s: None)
+    monkeypatch.setattr(d, "fetch_image", lambda u, timeout=40: (None, None, "CURL_EXIT:6"))
+    rc = d.main(["--stems", "28_20200101_9"])
+    out = capsys.readouterr().out
+    assert rc == 1, "실패가 있는데 성공으로 보고했다"
+    assert "실패 1 장" in out and "CURL_EXIT:6" in out
+
+
+def test_main_returns_zero_and_saves_when_everything_succeeds(tmp_path, monkeypatch, capsys):
+    """🔑 반대 방향 — 정상 실행이 실패로 보고되면 게이트가 무의미해진다."""
+    d = _dl(tmp_path, monkeypatch)
+    (d.C.POSTS_DIR / "28_20200101_9.html").write_text(
+        _se2_page([_SE2_SPAN.format(n="a"), _SE2_SPAN.format(n="b")]), encoding="utf-8")
+    monkeypatch.setattr(d.time, "sleep", lambda s: None)
+    monkeypatch.setattr(d, "fetch_image", lambda u, timeout=40: (_PNG, "png", None))
+    rc = d.main(["--stems", "28_20200101_9"])
+    assert rc == 0, capsys.readouterr().out
+    assert sorted(p.name for p in d.C.IMAGES_DIR.iterdir()) == [
+        "28_20200101_9_000.png", "28_20200101_9_001.png"]
+
+
+def test_downloaded_image_files_are_gitignored():
+    """⚠️ 타인 저작물이다. 파일명이 달라져도 디렉토리 전체가 막혀 있어야 한다."""
+    assert _ignored("backtest/tasso_labels/harvest/images28/28_20090910_80090262097_000.png")
+    assert _ignored("backtest/tasso_labels/harvest/images28/x_012.jpg")
+
+
+def test_image_failure_list_is_tracked_evidence():
+    """🔑 반대 방향 — 실패 목록은 파생 근거라 추적돼야 한다
+    (`harvest_fail_28_29.json` 과 같은 규약). 범용 패턴이 우리 산출물을 삼킨 사례가
+    이 저장소에 6번 있었다.
+    """
+    assert not _ignored("backtest/tasso_labels/harvest/image_fail_28_29.json")
