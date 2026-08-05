@@ -1,0 +1,803 @@
+[
+ {
+  "log_no": "220069347199",
+  "text_file": "28_20140723_220069347199.txt",
+  "batch": 2,
+  "rows": [
+   {
+    "claim_id": "220069347199-1",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "220080409640",
+  "text_file": "29_20140803_220080409640.txt",
+  "batch": 8,
+  "rows": [
+   {
+    "claim_id": "220080409640-1",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "220133572428",
+  "text_file": "28_20140926_220133572428.txt",
+  "batch": 2,
+  "rows": [
+   {
+    "claim_id": "220133572428-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "220205598250",
+  "text_file": "28_20141210_220205598250.txt",
+  "batch": 2,
+  "rows": [
+   {
+    "claim_id": "220205598250-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "220210180931",
+  "text_file": "29_20141215_220210180931.txt",
+  "batch": 9,
+  "rows": [
+   {
+    "claim_id": "220210180931-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "220216353872",
+  "text_file": "29_20141221_220216353872.txt",
+  "batch": 9,
+  "rows": [
+   {
+    "claim_id": "220216353872-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "220267042987",
+  "text_file": "28_20150208_220267042987.txt",
+  "batch": 2,
+  "rows": [
+   {
+    "claim_id": "220267042987-1",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "220342440929",
+  "text_file": "28_20150427_220342440929.txt",
+  "batch": 2,
+  "rows": [
+   {
+    "claim_id": "220342440929-2",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "220451796278",
+  "text_file": "28_20150815_220451796278.txt",
+  "batch": 2,
+  "rows": [
+   {
+    "claim_id": "220451796278-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "220583444420",
+  "text_file": "28_20151231_220583444420.txt",
+  "batch": 2,
+  "rows": [
+   {
+    "claim_id": "220583444420-2",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "220626322210",
+  "text_file": "29_20160214_220626322210.txt",
+  "batch": 9,
+  "rows": [
+   {
+    "claim_id": "220626322210-4",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "220732330415",
+  "text_file": "28_20160610_220732330415.txt",
+  "batch": 2,
+  "rows": [
+   {
+    "claim_id": "220732330415-3",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "220994326328",
+  "text_file": "28_20170428_220994326328.txt",
+  "batch": 3,
+  "rows": [
+   {
+    "claim_id": "220994326328-5",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "221012556914",
+  "text_file": "28_20170523_221012556914.txt",
+  "batch": 3,
+  "rows": [
+   {
+    "claim_id": "221012556914-4",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "221081530312",
+  "text_file": "28_20170824_221081530312.txt",
+  "batch": 3,
+  "rows": [
+   {
+    "claim_id": "221081530312-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "221081530312-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "221081530312-3",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "221081530312-4",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "221117794131",
+  "text_file": "29_20171016_221117794131.txt",
+  "batch": 9,
+  "rows": [
+   {
+    "claim_id": "221117794131-1",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "221127968376",
+  "text_file": "29_20171029_221127968376.txt",
+  "batch": 9,
+  "rows": [
+   {
+    "claim_id": "221127968376-1",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "221138194103",
+  "text_file": "29_20171112_221138194103.txt",
+  "batch": 9,
+  "rows": [
+   {
+    "claim_id": "221138194103-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "221140901254",
+  "text_file": "28_20171115_221140901254.txt",
+  "batch": 3,
+  "rows": [
+   {
+    "claim_id": "221140901254-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "221140901254-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "221140901254-3",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "221140901254-4",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "221140901254-5",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "221172083069",
+  "text_file": "28_20171227_221172083069.txt",
+  "batch": 3,
+  "rows": [
+   {
+    "claim_id": "221172083069-1",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "221268802926",
+  "text_file": "29_20180505_221268802926.txt",
+  "batch": 11,
+  "rows": [
+   {
+    "claim_id": "221268802926-1",
+    "issue": "WRONG_IDX"
+   },
+   {
+    "claim_id": "221268802926-2",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "221274596794",
+  "text_file": "29_20180513_221274596794.txt",
+  "batch": 11,
+  "rows": [
+   {
+    "claim_id": "221274596794-1",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "221305191729",
+  "text_file": "29_20180623_221305191729.txt",
+  "batch": 11,
+  "rows": [
+   {
+    "claim_id": "221305191729-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "221309872072",
+  "text_file": "29_20180630_221309872072.txt",
+  "batch": 11,
+  "rows": [
+   {
+    "claim_id": "221309872072-1",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "221314436467",
+  "text_file": "29_20180707_221314436467.txt",
+  "batch": 11,
+  "rows": [
+   {
+    "claim_id": "221314436467-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "221314436467-2",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "221661437672",
+  "text_file": "28_20190927_221661437672.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "221661437672-2",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "221680824530",
+  "text_file": "28_20191017_221680824530.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "221680824530-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "221680824530-3",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "221779428063",
+  "text_file": "28_20200120_221779428063.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "221779428063-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "221796218340",
+  "text_file": "28_20200204_221796218340.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "221796218340-2",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "222023221183",
+  "text_file": "28_20200707_222023221183.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "222023221183-1",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "222060025092",
+  "text_file": "28_20200814_222060025092.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "222060025092-2",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "222082082715",
+  "text_file": "28_20200906_222082082715.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "222082082715-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "222082082715-2",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "222171294364",
+  "text_file": "28_20201212_222171294364.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "222171294364-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "222171294364-2",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "222178710704",
+  "text_file": "28_20201219_222178710704.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "222178710704-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "222343886333",
+  "text_file": "28_20210509_222343886333.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "222343886333-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "222343886333-3",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "222387193930",
+  "text_file": "28_20210606_222387193930.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "222387193930-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "222387193930-3",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "222401579265",
+  "text_file": "28_20210617_222401579265.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "222401579265-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "222423847739",
+  "text_file": "28_20210707_222423847739.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "222423847739-2",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "222434299282",
+  "text_file": "28_20210717_222434299282.txt",
+  "batch": 4,
+  "rows": [
+   {
+    "claim_id": "222434299282-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "222434299282-2",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "222677150894",
+  "text_file": "28_20220319_222677150894.txt",
+  "batch": 5,
+  "rows": [
+   {
+    "claim_id": "222677150894-2",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "222731607199",
+  "text_file": "28_20220513_222731607199.txt",
+  "batch": 5,
+  "rows": [
+   {
+    "claim_id": "222731607199-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "222803745761",
+  "text_file": "28_20220707_222803745761.txt",
+  "batch": 5,
+  "rows": [
+   {
+    "claim_id": "222803745761-2",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "223301038709",
+  "text_file": "28_20231223_223301038709.txt",
+  "batch": 5,
+  "rows": [
+   {
+    "claim_id": "223301038709-2",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "223425822263",
+  "text_file": "28_20240424_223425822263.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223425822263-3",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223429310790",
+  "text_file": "28_20240428_223429310790.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223429310790-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223429310790-3",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223431378551",
+  "text_file": "28_20240430_223431378551.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223431378551-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223431378551-3",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223431378551-4",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223447539555",
+  "text_file": "28_20240515_223447539555.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223447539555-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223447539555-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223447539555-3",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223486055728",
+  "text_file": "28_20240620_223486055728.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223486055728-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223486055728-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223486055728-3",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223510945732",
+  "text_file": "28_20240713_223510945732.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223510945732-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223510945732-2",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223525152000",
+  "text_file": "28_20240725_223525152000.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223525152000-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223525152000-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223525152000-3",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223525152000-4",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223830014720",
+  "text_file": "28_20250411_223830014720.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223830014720-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223830014720-3",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223834933488",
+  "text_file": "28_20250416_223834933488.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223834933488-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223834933488-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223834933488-3",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223834933488-4",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223907979342",
+  "text_file": "28_20250622_223907979342.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223907979342-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223907979342-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223907979342-3",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223907979342-4",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223940505813",
+  "text_file": "28_20250720_223940505813.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223940505813-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223940505813-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223940505813-3",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "223978635244",
+  "text_file": "28_20250821_223978635244.txt",
+  "batch": 6,
+  "rows": [
+   {
+    "claim_id": "223978635244-1",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223978635244-2",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223978635244-3",
+    "issue": "NOT_IN_FILE"
+   },
+   {
+    "claim_id": "223978635244-4",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "224231592865",
+  "text_file": "29_20260327_224231592865.txt",
+  "batch": 26,
+  "rows": [
+   {
+    "claim_id": "224231592865-4",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "224245264467",
+  "text_file": "29_20260408_224245264467.txt",
+  "batch": 26,
+  "rows": [
+   {
+    "claim_id": "224245264467-1",
+    "issue": "NOT_IN_FILE"
+   }
+  ]
+ },
+ {
+  "log_no": "224359904250",
+  "text_file": "28_20260728_224359904250.txt",
+  "batch": 7,
+  "rows": [
+   {
+    "claim_id": "224359904250-3",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ },
+ {
+  "log_no": "80204117684",
+  "text_file": "28_20131224_80204117684.txt",
+  "batch": 1,
+  "rows": [
+   {
+    "claim_id": "80204117684-1",
+    "issue": "WRONG_IDX"
+   }
+  ]
+ }
+]
