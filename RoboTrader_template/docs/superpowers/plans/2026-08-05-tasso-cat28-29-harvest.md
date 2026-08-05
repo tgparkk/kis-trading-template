@@ -1561,27 +1561,24 @@ python harvest_cat28_29_full.py 2>&1 | tee harvest_cat2829_run.log
 - [ ] **Step 2: V1 을 돌려 게이트를 통과한다**
 
 ```bash
-python -c "
-import json, sys
-sys.path.insert(0,'.')
-import cat2829_common as C, verify_cat2829 as V
-cat = json.loads(C.CATLIST_JSON.read_text(encoding='utf-8'))
-meta = json.loads(C.POSTMETA_JSON.read_text(encoding='utf-8'))
-listed = {}
-for p in cat['posts'].values():
-    listed[p['category']] = listed.get(p['category'], 0) + 1
-r = V.v1_coverage(set(cat['posts']), {m['log_no'] for m in meta},
-                  {int(k): v for k, v in cat['post_cnt'].items()}, listed)
-print(json.dumps(r, ensure_ascii=False, indent=1))
-open(str(C.VERIFY_LOG),'a',encoding='utf-8').write('V1 '+json.dumps(r,ensure_ascii=False)+'\n')
-sys.exit(0 if r['status']=='PASS' else 1)
-"
+python verify_cat2829.py     # PASS → exit 0 · FAIL → exit 1 · VERIFY_LOG 에 append
+echo "exit=$?"
 ```
 
-Expected: `status: PASS` · `missing: []` · `extra: []`
+> 🔧 **2026-08-05 정정.** 초판은 여기에 `python -c` 히어독을 적었다. 전체 브랜치 리뷰가
+> **그것이 이 계획의 유일한 무테스트 배선**임을 지적했고, 실제로 거기서 C1(`logNo` 타입)의
+> 파급이 숨어 있었다. Task 6 이 *"부품 테스트만으론 배선이 안 잡힌다"* 며 `main()` 테스트를
+> 추가했던 그 처방을 V1 배선에도 적용해, `verify_cat2829.main()` 을 신설하고 테스트를 붙였다.
+> **판정 로직을 셸에 다시 적지 말 것.**
+
+Expected: `status: PASS` · `missing: []` · `extra: []` · `exit=0`
 
 🔴 **`status: FAIL` 이면 여기서 멈춘다.** 원인을 규명하기 전에는 다음 태스크로 가지 않는다.
 🔧 **`post_cnt_delta` 가 0이 아니면 값을 기록하고 진행한다.** 다만 이후 문서에서 「전수」라는 표현을 쓰기 전에 사유를 규명한다.
+🔴 **`post_cnt` 가 전부 `None` 이면 「전수」의 독립 증거가 없다.** V1 의 PASS 는 목록↔파일
+대조인데 둘 다 같은 목록에서 파생돼 **동어반복**이다. 카테고리 API 가 값을 안 주면
+페이지네이션이 서버 측에서 조기 절단돼도 V1 은 PASS 를 낸다. `main()` 이 이 경우를
+눈에 띄게 출력하므로, 나오면 **멈추고 원인을 규명**한다.
 
 - [ ] **Step 3: 텍스트 규모를 실측한다 (D-1 을 닫는다)**
 
@@ -1593,12 +1590,28 @@ import cat2829_common as C
 meta = json.loads(C.POSTMETA_JSON.read_text(encoding='utf-8'))
 tot = sum(m['text_len'] for m in meta)
 img_only = [m for m in meta if m['image_only']]
+legacy = [m for m in meta if m.get('legacy_editor')]
 print('글', len(meta), '· 총 텍스트', format(tot, ','), '자 · 평균', tot//max(len(meta),1))
 print('image_only', len(img_only), '건 · 총 이미지', sum(m['img_count'] for m in meta), '장')
+print('🔴 본문 미수신(legacy_editor)', len(legacy), '건')
+for m in legacy[:20]:
+    print('   ', m['log_no'], m['post_date'], 'container=' + str(m.get('body_container')))
 "
 ```
 
 스펙 §1의 추정(약 100만 자)과 **2배 이상 어긋나면 `make_batches` 의 `target_chars` 를 재산정**한다.
+
+🔴 **`legacy_editor` 건수를 반드시 볼 것.** 모바일 엔드포인트는 구 에디터(SmartEditor 2.x)
+글의 본문을 안 싣는다 — `harvest_fallback.py:3-5` 가 같은 블로그에서 이미 겪고 기록한
+결함이다. 그 글들은 `image_only` 가 아니라 **본문을 못 받은 것**이고, 두 상태를 한 플래그에
+섞으면 게이트가 전부 초록인 채로 corpus 에서 조용히 빠진다.
+
+- **0건이면** 그대로 진행한다.
+- **1건 이상이면** 그 수를 기록하고, PC 엔드포인트 재수집(`harvest_fallback.py` 방식)을
+  할지 사장님께 보고 후 결정한다. ⚠️ 재수집을 안 하기로 하면 **METHOD 2판에 「전수」가
+  아니라 「N건은 본문 미수신」을 명시**한다.
+- ⚠️ `body_container` 분포도 함께 본다. `none` 이 많으면 판별 가정 자체가 틀린 것이다
+  (마커는 저장소 코드에서 도출했고 실제 [28]·[29] HTML 로는 아직 검증되지 않았다).
 
 - [ ] **Step 4: 원문이 커밋에 안 섞였는지 확인하고 커밋 (사장님 확인 후)**
 
@@ -1653,6 +1666,13 @@ print('총', len(bs), '배치')
 - 🔴 **글당 최소 1행.** 방법론 주장이 없는 글도
   topic="⑧기타", claim="방법론 주장 없음", vs_v1="none", v1_anchor="" 행을 남긴다.
 - quote 는 **40자 이내**. 넘으면 검증기가 배치 전체를 거부한다.
+- 🔴 **`claim` 은 네가 쓴 요약 한 문장이다 — 원문을 복사하지 마라.** `quote` 에만 40자
+  상한이 걸려 있고 `claim` 은 무제한인데, **`claim` 은 커밋되는 CSV 에 실린다.** 원문
+  문장을 `claim` 에 넣으면 인용 상한을 우회해 타인 저작물이 저장소에 남는다.
+- 🔴 **`category` 는 파일명 stem(`{category}_{yyyymmdd}_{logNo}`)에서 도출하라.**
+  배치는 **cat28/cat29 경계를 넘을 수 있다**(정렬이 category 우선이라 경계에 미완성
+  배치가 남으면 다음 카테고리 글이 같은 배치에 들어간다). 「이 배치는 한 카테고리」를
+  가정하지 마라.
 - para_idx 는 텍스트 파일에서 0-base 문단 인덱스(개행으로 나눈 순번).
 - image_ref 는 본문이 이미지를 가리킬 때만 true
   (예: "아래 표", "그림 참조", 수치가 문장 중간에서 끊김).
@@ -1842,7 +1862,14 @@ json.dump({'seed': SEED, 'n': N, 'sample': picked, 'coverage': cov},
 ⚠️ **대신 「실현 분포」를 반드시 출력한다.** SRS 는 운 나쁘면 한 해에 몰릴 수 있고,
 그때는 관리자가 보고 판단해야 한다. **분포를 안 찍으면 몰렸다는 사실 자체가 안 보인다.**
 
-에이전트 C(원장을 **안 본** 새 에이전트)에게: *"이 12건의 텍스트를 정독하고 주장 JSONL 을 독립적으로 만들어라."* 그 결과를 원장과 대조해 **놓친 주장 수**를 센다.
+에이전트 C(원장을 **안 본** 새 에이전트)에게: *"이 12건의 텍스트를 정독하고 주장 JSONL 을 독립적으로 만들어라."*
+
+🔴 **출력 경로를 `harvest/v4_independent.jsonl` 로 지정한다 — `claims_batches/` 에 쓰면 안 된다.**
+거기에 쓰면 다음 `build_claims_cat2829.py` 실행이 그 12건을 원장에 편입해 **측정이 대상을
+오염시킨다.** (`load_batches` 가 `claim_id` 중복을 잡지만, 재정독은 새 `claim_id` 를 만들므로
+중복 검사에 걸리지 않고 그냥 이중 계상된다.)
+
+그 결과를 원장과 대조해 **놓친 주장 수**를 센다.
 
 - [ ] **Step 5: V4 를 분자·분모로 기록한다**
 
