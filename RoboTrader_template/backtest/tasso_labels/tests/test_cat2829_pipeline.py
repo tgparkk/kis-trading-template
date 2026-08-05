@@ -643,3 +643,135 @@ def test_main_merges_batches_and_writes_ledgers(tmp_path, monkeypatch, capsys):
     quo_header = open(str(b.C.CLAIMS_QUOTED_CSV), encoding="utf-8-sig", newline="").readline()
     assert "quote" not in pub_header, "🔴 커밋되는 원장에 원문 인용이 새어 들어갔다"
     assert "quote" in quo_header, "로컬 전용 원장에 quote 가 없다 = 인자가 뒤바뀌었다"
+
+
+# ============================ Task 7 ============================
+
+def _claim_row(log_no, date, topic, numbers, vs="conflict", anchor="§2"):
+    return _good_row(log_no=log_no, claim_id=log_no + "-1", post_date=date,
+                     topic=topic, numbers=numbers, vs_v1=vs, v1_anchor=anchor)
+
+
+def test_v5_flags_same_topic_changing_numbers_over_time():
+    """누적 통계 1만 → 12,500 → 13,503 은 모순이 아니라 개정이다."""
+    v = _load("verify_cat2829")
+    rows = [
+        _claim_row("1", "2025-08-01", "⑤데이터기반", "10000건"),
+        _claim_row("2", "2025-10-01", "⑤데이터기반", "12500건"),
+        _claim_row("3", "2026-07-01", "⑤데이터기반", "13503건"),
+    ]
+    cands = v.v5_revision_candidates(rows)
+    assert len(cands) == 1
+    assert cands[0]["topic"] == "⑤데이터기반"
+    assert [t["numbers"] for t in cands[0]["timeline"]] == ["10000건", "12500건", "13503건"]
+
+
+def test_v5_does_not_flag_across_different_topics():
+    """🔑 오경보를 안 내는 성질도 고정한다.
+
+    안 하면 다음 사람이 '전부 후보로 올리면 되지' 로 되돌려도 아무도 못 잡는다.
+    """
+    v = _load("verify_cat2829")
+    rows = [
+        _claim_row("1", "2025-08-01", "⑤데이터기반", "10000건"),
+        _claim_row("2", "2025-10-01", "③분할매수", "12500건"),
+    ]
+    assert v.v5_revision_candidates(rows) == []
+
+
+def test_v5_does_not_flag_identical_numbers():
+    v = _load("verify_cat2829")
+    rows = [
+        _claim_row("1", "2025-08-01", "⑤데이터기반", "13503건"),
+        _claim_row("2", "2026-07-01", "⑤데이터기반", "13503건"),
+    ]
+    assert v.v5_revision_candidates(rows) == []
+
+
+def test_v5_ignores_rows_not_marked_conflict():
+    """이미 revision 으로 표시된 것은 재판정 대상이 아니다."""
+    v = _load("verify_cat2829")
+    rows = [
+        _claim_row("1", "2025-08-01", "⑤데이터기반", "10000건", vs="revision"),
+        _claim_row("2", "2026-07-01", "⑤데이터기반", "13503건", vs="revision"),
+    ]
+    assert v.v5_revision_candidates(rows) == []
+
+
+# ---- Task 7 갭 보강 (판별력 자체 점검 — 브리프 테스트가 안 잡는 계약들) ----
+
+def test_v5_groups_by_topic_and_anchor_not_topic_alone():
+    """🔑 계약은 「같은 (topic, v1_anchor)」다 — topic 만으로 묶으면 다른 절(§)의
+    별개 규칙을 같은 개정 이력으로 섞어버린다.
+
+    같은 topic 에 서로 다른 anchor 두 묶음을 넣는다. topic 만으로 묶는 결함이면
+    4행이 한 후보로 합쳐지지만, 올바른 구현은 anchor 별로 별개 후보 2개를 낸다.
+    🔑 동시에 출력 리스트의 정렬 계약(anchor 오름차순)도 고정한다 — 입력을
+    §2 그룹을 먼저 주고 §1 그룹을 나중에 줘서, 정렬 없이 입력 순서를 그대로
+    돌려주면 이 테스트가 실패하게 만든다.
+    """
+    v = _load("verify_cat2829")
+    rows = [
+        # §2 그룹을 먼저 입력한다 — 출력은 anchor 오름차순이어야 하므로 §1 이 앞에 와야 한다.
+        _claim_row("21", "2025-08-01", "⑤데이터기반", "10000건", anchor="§2"),
+        _claim_row("22", "2026-07-01", "⑤데이터기반", "13503건", anchor="§2"),
+        _claim_row("11", "2025-08-01", "⑤데이터기반", "45%", anchor="§1"),
+        _claim_row("12", "2026-07-01", "⑤데이터기반", "48%", anchor="§1"),
+    ]
+    cands = v.v5_revision_candidates(rows)
+    assert len(cands) == 2, "topic 만으로 묶었다면 1개로 합쳐졌을 것이다"
+    assert [c["v1_anchor"] for c in cands] == ["§1", "§2"], "출력이 anchor 오름차순 정렬이 아니다"
+    assert [t["numbers"] for t in cands[0]["timeline"]] == ["45%", "48%"]
+    assert [t["numbers"] for t in cands[1]["timeline"]] == ["10000건", "13503건"]
+
+
+def test_v5_timeline_is_sorted_chronologically_regardless_of_input_order():
+    """🔑 Task 5·6 에서 두 번 연속 갭이었던 정렬 계약 — 브리프 테스트는 입력이
+    이미 시간순이라 「정렬 안 해도 우연히 통과」할 수 있다. 여기서는 입력을
+    일부러 뒤섞어 timeline 이 실제로 post_date 기준 재정렬되는지를 가른다.
+    """
+    v = _load("verify_cat2829")
+    rows = [
+        _claim_row("3", "2026-07-01", "⑤데이터기반", "13503건"),
+        _claim_row("1", "2025-08-01", "⑤데이터기반", "10000건"),
+        _claim_row("2", "2025-10-01", "⑤데이터기반", "12500건"),
+    ]
+    cands = v.v5_revision_candidates(rows)
+    assert len(cands) == 1
+    timeline = cands[0]["timeline"]
+    assert [t["post_date"] for t in timeline] == ["2025-08-01", "2025-10-01", "2026-07-01"]
+    assert [t["numbers"] for t in timeline] == ["10000건", "12500건", "13503건"]
+    assert [t["log_no"] for t in timeline] == ["1", "2", "3"]
+    assert [t["claim_id"] for t in timeline] == ["1-1", "2-1", "3-1"]
+
+
+def test_v5_filters_out_non_conflict_rows_within_mixed_group():
+    """같은 (topic, anchor) 안에 conflict 아닌 행이 섞여 있으면 timeline 에서 빠져야 한다.
+
+    브리프의 `test_v5_ignores_rows_not_marked_conflict` 는 **전부** non-conflict 인
+    경우만 본다 — 필터가 통째로 꺼져 있어도(전부 통과) 그 뒤 `len(grp) < 2` 나
+    numbers 동일성 체크가 우연히 같은 결론(빈 리스트)에 도달할 여지가 있다.
+    여기서는 conflict 2건 + agree 1건을 같은 묶음에 섞어, 필터가 정확히
+    conflict 행만 남기는지(개수·내용 둘 다)를 직접 확인한다.
+    """
+    v = _load("verify_cat2829")
+    rows = [
+        _claim_row("9", "2025-01-01", "⑤데이터기반", "999건", vs="agree"),
+        _claim_row("1", "2025-08-01", "⑤데이터기반", "10000건"),
+        _claim_row("3", "2026-07-01", "⑤데이터기반", "13503건"),
+    ]
+    cands = v.v5_revision_candidates(rows)
+    assert len(cands) == 1
+    timeline = cands[0]["timeline"]
+    assert len(timeline) == 2, "non-conflict 행(999건)이 timeline 에 새어 들어갔다"
+    assert [t["numbers"] for t in timeline] == ["10000건", "13503건"]
+
+
+def test_v5_single_conflict_row_amid_other_vs_v1_values_is_not_a_candidate():
+    """필터링 후 conflict 행이 1건만 남으면(다른 값 섞여 있어도) 후보가 아니다."""
+    v = _load("verify_cat2829")
+    rows = [
+        _claim_row("1", "2025-01-01", "③분할매수", "100건", vs="new"),
+        _claim_row("2", "2025-06-01", "③분할매수", "200건", vs="conflict"),
+    ]
+    assert v.v5_revision_candidates(rows) == []

@@ -49,3 +49,32 @@ def v2_ledger_coverage(rows, expected_lognos):
         "rows": len(rows),
         "posts": len(seen),
     }
+
+
+def v5_revision_candidates(rows):
+    """`conflict` 로 분류된 행 중, **같은 (topic, v1_anchor)** 안에서 시간에 따라
+    numbers 가 바뀐 묶음을 revision 후보로 올린다.
+
+    ⚠️ 판정이 아니라 **후보 제시**다. 최종 분류는 사람이 한다.
+    """
+    groups = {}
+    for r in rows:
+        if r.get("vs_v1") != "conflict":
+            continue
+        key = (r["topic"], str(r.get("v1_anchor") or ""))
+        groups.setdefault(key, []).append(r)
+
+    out = []
+    for (topic, anchor), grp in sorted(groups.items()):
+        grp = sorted(grp, key=lambda r: (r["post_date"], r["log_no"]))
+        numbers = [str(r.get("numbers") or "") for r in grp]
+        if len(grp) < 2 or len(set(numbers)) < 2:
+            continue
+        out.append({
+            "topic": topic,
+            "v1_anchor": anchor,
+            "timeline": [{"post_date": r["post_date"], "log_no": r["log_no"],
+                          "numbers": str(r.get("numbers") or ""),
+                          "claim_id": r["claim_id"]} for r in grp],
+        })
+    return out
