@@ -412,3 +412,17 @@ def test_v1_handles_unknown_post_cnt():
     r = v.v1_coverage({"1"}, {"1"}, post_cnt={28: None}, listed_cnt={28: 1})
     assert r["status"] == "PASS"
     assert r["post_cnt_delta"] == {28: None}
+
+
+def test_v1_missing_and_extra_are_sorted():
+    """🔑 인터페이스가 「정렬 list」를 약속한다 — 원소 1개짜리 픽스처로는 증명되지 않는다.
+
+    Task 9 가 이 목록을 게이트 출력으로 사람에게 보여준다.
+    sorted() 를 list() 로 바꾸면 이 테스트가 실패해야 한다.
+    """
+    v = _load("verify_cat2829")
+    r = v.v1_coverage({"30", "4", "200", "1"}, {"1", "99", "10"},
+                      post_cnt={28: 4}, listed_cnt={28: 4})
+    assert r["status"] == "FAIL"
+    assert r["missing"] == ["200", "30", "4"], "문자열 정렬이 아니다"
+    assert r["extra"] == ["10", "99"]
