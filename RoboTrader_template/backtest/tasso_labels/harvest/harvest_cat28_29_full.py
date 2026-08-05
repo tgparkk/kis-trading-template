@@ -78,19 +78,44 @@ def fetch_post_list(cat, fetch=None, sleep=None):
         "조용한 절단을 막기 위해 중단한다. 상한을 올리고 재실행할 것.")
 
 
-def item_title(item):
-    """목록 항목의 제목.
+# 🔴 이 API 의 제목 필드명은 **불안정하다**. 같은 URL 의 두 관측이 서로 반대다:
+#
+#   2026-08-01 · `harvest_list.py:41-43` 이 가공 없이 저장한 tasso_postlist.json
+#       키 **4개** ['addDate','categoryNo','logNo','title']
+#       title 858/858 · titleWithInspectMessage **0건**
+#   2026-08-05 · 같은 엔드포인트 라이브 1건 (categoryNo=28&itemCount=1&page=1)
+#       키 **44개** (addDate…videoPlayTime)
+#       title **없음** · titleWithInspectMessage 있음
+#
+# ⚠️ 어느 한쪽 스냅샷을 계약으로 못 박으면 반대편 시점에 조용히 빈 제목이 된다.
+#    실제로 그렇게 두 번 틀렸다 — 옛 코드는 08-01 관측에서, 그 교정판은 08-05
+#    라이브에서. 두 이름을 **모두** 받아들이는 것이 측정된 사실에 맞는 대응이다.
+# 우선순위: title 이 먼저. 둘 다 있으면 title 을 쓴다.
+TITLE_KEYS = ("title", "titleWithInspectMessage")
 
-    🔴 `titleWithInspectMessage` 는 **존재하지 않는 키**다(tasso_postlist.json 858건 중
-       0건 · harvest_bodies.py:4 가 2026-08-02 에 이미 기록). `.get(키, "")` 로 읽으면
-       KeyError 가 **조용한 빈 문자열**로 바뀌어 커밋되는 카탈로그의 제목이 전부 빈다.
-       키가 또 바뀌면 조용해지지 말고 소리를 내야 하므로 기본값을 두지 않는다.
+
+def item_title(item):
+    """목록 항목의 제목. 알려진 두 키 중 **존재하고 값이 있는** 쪽을 쓴다.
+
+    🔑 지키는 성질(이번에 실제로 작동한 부분이다): 아는 키가 **하나도 없으면**
+       조용한 빈 문자열이 아니라 실제 키 목록과 함께 raise 한다. 스키마가 또
+       바뀌면 432건을 제목 전부 빈 채로 수집하는 대신 첫 글에서 멈춘다.
+
+    ⚠️ 값이 빈 제목은 **막지 않는다**(판단 근거는 아래). 키는 있는데 값만 비었다면
+       그건 스키마 변화가 아니라 그 글의 성질일 수 있다. 글 하나 때문에 432건
+       파이프라인을 죽이는 것은 I4 에서 고친 실패 방식과 같다. 대신 침묵하지도
+       않는다 — main() 이 빈 제목 건수와 log_no 를 출력한다.
     """
-    if "title" not in item:
+    present = [k for k in TITLE_KEYS if k in item]
+    if not present:
         raise RuntimeError(
-            "LIST_ITEM_NO_TITLE: 목록 항목에 'title' 키가 없다 — API 스키마가 바뀌었다. "
-            "keys=" + repr(sorted(item.keys())))
-    return item["title"]
+            "LIST_ITEM_NO_TITLE: 목록 항목에 제목 키가 없다 — API 스키마가 바뀌었다. "
+            "찾은 키=" + repr(TITLE_KEYS) + " · 실제 keys=" + repr(sorted(item.keys())))
+    for key in present:
+        value = item[key]
+        if value is not None and str(value).strip():
+            return value
+    return ""
 
 
 def build_catalog():
@@ -113,6 +138,14 @@ def build_catalog():
                 "post_date": dt.strftime("%Y-%m-%d"),
                 "add_date_ms": item["addDate"],
                 "title": item_title(item),
+                # 🔑 2026-08-05 라이브 응답에서 발견 — 목록 API 가 **글별 에디터 세대**를
+                #    준다(실측값 4 = SmartEditor ONE). C2 의 본문 컨테이너 판정
+                #    (se3/se2/none)을 **독립 경로로 대조**할 수 있는 유일한 재료다.
+                #    여기서 안 담으면 나중에 대조하려고 432건 목록을 다시 받아야 한다.
+                # ⚠️ 분류에는 **쓰지 않는다** — 순수 기록이다. title 과 달리 없어도
+                #    조용히 None 을 둔다(제목은 산출물의 내용이라 소리를 내야 하지만
+                #    이건 대조용 부가정보라 부재가 곧 결함은 아니다).
+                "smart_editor_version": item.get("smartEditorVersion"),
             }
     C.ensure_dirs()
     C.CATLIST_JSON.write_text(
@@ -228,6 +261,10 @@ def main():
     for m in legacy:
         print("   본문 못 읽음", m["log_no"], m["post_date"],
               "container=" + str(m.get("body_container")))
+    # 제목 키는 있는데 값이 빈 글 — 막지는 않되 침묵하지도 않는다(item_title 참조).
+    blank = [m for m in metas if not str(m.get("title") or "").strip()]
+    if blank:
+        print("⚠️ 제목이 빈 글", len(blank), "건:", [m["log_no"] for m in blank][:20])
     if failures:
         print("🔴 수집 실패", len(failures), "건 — 「전수」를 주장할 수 없다:")
         for f in failures:

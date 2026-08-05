@@ -175,18 +175,56 @@ def _fake_pages(pages):
     return fetch
 
 
-def _item(log_no, add_date_ms, cat=28):
-    """목록 API 항목 — **실제 저장 응답과 같은 키·타입**.
+# 🔴 제목 키는 시점에 따라 다르다 — **두 관측 다 실측**이며 서로 반대다.
+#    한쪽만 픽스처로 굳히면 반대편 시점에 조용히 빈 제목이 된다. 실제로 두 번 그랬다.
+TITLE_KEY_0801 = "title"                      # 2026-08-01 tasso_postlist.json (4키, 858/858)
+TITLE_KEY_0805 = "titleWithInspectMessage"    # 2026-08-05 라이브 (44키) ← Task 9 가 만날 쪽
 
-    🔴 2026-08-05 실측(`harvest/tasso_postlist.json` 858건 전수):
-         keys = ['addDate', 'categoryNo', 'logNo', 'title']
-         logNo 타입 = int 858/858 (예: 224364189017)
-         titleWithInspectMessage = 0건 · title = 858건
-    이 픽스처의 옛 판본은 `"logNo": str(log_no)` 로 **현실에 없는 정규화**를 하고
-    `titleWithInspectMessage` 키를 지어내, 거짓 계약을 고정하고 C1·I1 을 둘 다 가렸다.
+# 2026-08-05 라이브 응답의 **실제 키 44개**(categoryNo=28&itemCount=1&page=1 로 1건 확인).
+# 값이 아니라 **스키마**만 옮겨 왔다 — 타인의 본문·제목은 담지 않는다.
+LIVE_KEYS_0805 = (
+    "addDate", "allOpenPost", "blogNo", "bothBuddyOpen", "briefContents", "buddyOpen",
+    "buyWithMyOwnMoney", "categoryBlockYn", "categoryName", "categoryNo",
+    "categoryOpenYn", "commentArrowVisible", "commentCnt", "domainIdOrBlogId",
+    "hasThumbnail", "isPortraitThumbnail", "isVRThumbnail", "isVideoThumbnail",
+    "logNo", "logNoObject", "marketPost", "memolog", "mp4", "notOpen", "openGraphLink",
+    "outSideAllow", "placeName", "postBlocked", "product", "readCount", "scrapType",
+    "scraped", "searchYn", "shareCnt", "smartEditorVersion", "sympathyArrowVisible",
+    "sympathyCnt", "thisDayPostInfo", "thumbnailCount", "thumbnailList", "thumbnailUrl",
+    "titleWithInspectMessage", "videoAniThumbnailUrl", "videoPlayTime",
+)
+
+
+def _item(log_no, add_date_ms, cat=28, title_key=TITLE_KEY_0805):
+    """목록 API 항목 — **실제 응답과 같은 키·타입**.
+
+    🔴 실측 두 건(둘 다 진짜 API 응답이다):
+         2026-08-01 `harvest/tasso_postlist.json` 858건 — 키 4개, `title` 858/858,
+                    `titleWithInspectMessage` 0건
+         2026-08-05 라이브 1건 — 키 44개, `title` **없음**,
+                    `titleWithInspectMessage` 있음, `smartEditorVersion`=4
+       공통: `logNo` 는 **int**(예: 224364189017).
+
+    기본값을 08-05 키로 두는 이유 = **Task 9 가 실제로 만날 쪽**이기 때문이다.
+    옛 판본은 `"logNo": str(log_no)` 로 현실에 없는 정규화를 하고 제목 키도 한쪽만
+    굳혀 C1·I1 을 둘 다 가렸다. 이번엔 두 시점을 파라미터로 **둘 다** 고정한다.
     """
     return {"logNo": int(log_no), "addDate": add_date_ms,
-            "categoryNo": cat, "title": "제목 " + str(log_no)}
+            "categoryNo": cat, title_key: "제목 " + str(log_no)}
+
+
+def _live_item(log_no=224361924061, add_date_ms=1785314089138, cat=28):
+    """2026-08-05 라이브 응답의 **키 44개를 그대로** 갖춘 항목(값은 대체).
+
+    스키마를 현실에서 도출한다 — 이번 사고의 원인이 「픽스처가 현실에 없는 계약을
+    고정」이었으므로, 실제로 받은 키 집합 자체를 회귀 대상으로 삼는다.
+    """
+    item = {k: None for k in LIVE_KEYS_0805}
+    item.update({"logNo": int(log_no), "logNoObject": int(log_no),
+                 "addDate": add_date_ms, "categoryNo": cat,
+                 "categoryName": "주식기법 분석", "smartEditorVersion": 4,
+                 "titleWithInspectMessage": "제목 " + str(log_no)})
+    return item
 
 
 MS_2019 = 1_546_300_800_000     # 2019-01-01
@@ -1038,31 +1076,152 @@ def test_build_catalog_normalizes_even_if_listing_yields_int_keys(tmp_path, monk
 
 # ---------------------------- I1: 제목 키 ----------------------------
 
-def test_build_catalog_reads_the_title_key_that_actually_exists(tmp_path, monkeypatch):
-    """🔴 `titleWithInspectMessage` 는 858건 중 **0건**. 그 키를 .get(…, "") 로 읽어
-    커밋되는 카탈로그의 제목이 전부 비어 있었다.
+@pytest.mark.parametrize("title_key,label", [
+    (TITLE_KEY_0801, "2026-08-01 관측(4키)"),
+    (TITLE_KEY_0805, "2026-08-05 라이브(44키)"),
+])
+def test_build_catalog_reads_whichever_title_key_the_api_used(
+        tmp_path, monkeypatch, title_key, label):
+    """🔴 제목 키가 **시점에 따라 다르다**. 두 관측 다 실측이며 서로 반대다.
+
+    한쪽만 계약으로 못 박아 두 번 틀렸다 — 옛 코드는 08-01 에서, 그 교정판은
+    08-05 라이브에서(Task 9 첫 API 호출에서 가드에 걸려 멈췄다).
     """
     h = _load("harvest_cat28_29_full")
     _install_tmp_dirs(h, tmp_path, monkeypatch)
     monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 1, 29: 0}))
-    monkeypatch.setattr(h.C, "api_json", _fake_api({28: [_item(224364189017, MS_2025, 28)]}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api({
+        28: [_item(224364189017, MS_2025, 28, title_key=title_key)]}))
     catalog = h.build_catalog()
-    assert catalog["posts"]["224364189017"]["title"] == "제목 224364189017"
+    assert catalog["posts"]["224364189017"]["title"] == "제목 224364189017", label
 
 
-def test_build_catalog_raises_when_title_key_is_absent(tmp_path, monkeypatch):
-    """🔑 반대 방향 — 키가 **또** 바뀌면 조용한 빈 문자열이 아니라 소리가 나야 한다.
+def test_build_catalog_accepts_the_real_live_44_key_item(tmp_path, monkeypatch):
+    """🔑 픽스처를 **현실에서 도출**한다 — 2026-08-05 라이브 응답의 키 44개 전부.
 
-    `.get("title", "")` 로 되돌리면 이 테스트가 실패한다.
+    이번 사고의 원인이 정확히 「픽스처가 현실에 없는 계약을 고정」이었다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 1, 29: 0}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api({28: [_live_item()]}))
+    catalog = h.build_catalog()
+    entry = catalog["posts"]["224361924061"]
+    assert entry["title"] == "제목 224361924061"
+    assert entry["log_no"] == "224361924061"
+    # 목록 API 가 주는 글별 에디터 세대 — C2 판정을 독립 경로로 대조할 재료다.
+    assert entry["smart_editor_version"] == 4
+
+
+def test_build_catalog_records_none_when_editor_version_absent(tmp_path, monkeypatch):
+    """🔑 부가정보는 부재가 곧 결함이 아니다 — 조용히 None 이면 된다.
+
+    제목과 **정책이 다른** 이유를 고정한다: 제목은 산출물의 내용이라 소리를 내야 하고,
+    이건 대조용이라 없으면 없는 대로 기록한다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 1, 29: 0}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api({28: [_item(1, MS_2025, 28)]}))
+    catalog = h.build_catalog()
+    assert catalog["posts"]["1"]["smart_editor_version"] is None
+
+
+def test_build_catalog_raises_when_no_known_title_key_is_present(tmp_path, monkeypatch):
+    """🔑 반대 방향 — 아는 키가 **하나도** 없으면 조용한 빈 문자열이 아니라 소리가 나야 한다.
+
+    이 성질이 이번에 실제로 작동했다(Task 9 를 첫 글에서 세웠다). 잃으면 안 된다.
     """
     h = _load("harvest_cat28_29_full")
     _install_tmp_dirs(h, tmp_path, monkeypatch)
     monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 1, 29: 0}))
     monkeypatch.setattr(h.C, "api_json", _fake_api({
         28: [{"logNo": 224364189017, "addDate": MS_2025, "categoryNo": 28,
-              "titleWithInspectMessage": "옛 키"}]}))
+              "subject": "또 바뀐 이름"}]}))
     with pytest.raises(RuntimeError, match="LIST_ITEM_NO_TITLE"):
         h.build_catalog()
+
+
+# ---- item_title 네 경우를 직접 고정한다 ----
+
+def test_item_title_uses_title_when_only_title_present():
+    h = _load("harvest_cat28_29_full")
+    assert h.item_title({"title": "가"}) == "가"
+
+
+def test_item_title_uses_inspect_message_when_only_that_present():
+    """← 2026-08-05 현재 라이브가 이 경우다."""
+    h = _load("harvest_cat28_29_full")
+    assert h.item_title({"titleWithInspectMessage": "나"}) == "나"
+
+
+def test_item_title_prefers_title_when_both_present():
+    h = _load("harvest_cat28_29_full")
+    assert h.item_title({"title": "가", "titleWithInspectMessage": "나"}) == "가"
+
+
+def test_item_title_error_lists_the_actual_keys():
+    """🔑 메시지에 **실제 키 목록**이 있어야 다음 사람이 새 이름을 바로 안다.
+
+    `match=` 는 부분일치라 키 목록이 통째로 빠져도 위 raise 테스트는 통과한다.
+    """
+    h = _load("harvest_cat28_29_full")
+    with pytest.raises(RuntimeError) as ei:
+        h.item_title({"logNo": 1, "subject": "새 이름", "addDate": 0})
+    msg = str(ei.value)
+    assert "LIST_ITEM_NO_TITLE" in msg
+    assert "'subject'" in msg and "'logNo'" in msg, "실제 키 목록이 없다 — " + msg
+
+
+def test_item_title_falls_back_when_preferred_key_is_blank():
+    """🔑 「존재」가 아니라 「값이 있는가」로 고른다.
+
+    `title` 이 있지만 비었고 다른 키에 값이 있으면 그 값을 써야 한다. 존재만 보면
+    빈 문자열을 반환해 I1 이 고치려던 무음 손실이 좁은 형태로 되살아난다.
+    """
+    h = _load("harvest_cat28_29_full")
+    assert h.item_title({"title": "   ", "titleWithInspectMessage": "실제 제목"}) == "실제 제목"
+    assert h.item_title({"title": None, "titleWithInspectMessage": "실제 제목"}) == "실제 제목"
+
+
+def test_item_title_returns_blank_without_raising_when_all_values_blank():
+    """⚠️ 값이 빈 제목은 **막지 않는다**(판단: 아래 근거).
+
+    키는 있는데 값만 비었다면 스키마 변화가 아니라 그 글의 성질일 수 있다.
+    글 하나 때문에 432건을 죽이는 것은 I4 에서 고친 실패 방식과 같다.
+    대신 침묵하지도 않는다 — main() 이 건수와 log_no 를 출력한다(아래 테스트).
+    """
+    h = _load("harvest_cat28_29_full")
+    assert h.item_title({"title": "", "titleWithInspectMessage": ""}) == ""
+    assert h.item_title({"title": "   "}) == ""
+
+
+def test_harvest_main_reports_blank_titles_without_failing(tmp_path, monkeypatch, capsys):
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.time, "sleep", lambda s: None)
+    monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 2, 29: 0}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api({28: [
+        dict(_item(1, MS_2025, 28), titleWithInspectMessage=""),
+        _item(2, MS_2025, 28)]}))
+    monkeypatch.setattr(h.C, "fetch_html", lambda n: _post_html(["본문"]))
+
+    rc = h.main()
+    out = capsys.readouterr().out
+    assert rc == 0, "빈 제목은 실패가 아니다"
+    assert "제목이 빈 글 1 건" in out, "빈 제목이 조용히 지나갔다 — " + out
+
+
+def test_harvest_main_stays_quiet_when_no_blank_titles(tmp_path, monkeypatch, capsys):
+    """🔑 오경보를 안 내는 성질도 고정한다."""
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.time, "sleep", lambda s: None)
+    monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 1, 29: 0}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api({28: [_item(1, MS_2025, 28)]}))
+    monkeypatch.setattr(h.C, "fetch_html", lambda n: _post_html(["본문"]))
+    h.main()
+    assert "제목이 빈 글" not in capsys.readouterr().out
 
 
 # ------------------- C2: 구 에디터 위장 (image_only) -------------------
