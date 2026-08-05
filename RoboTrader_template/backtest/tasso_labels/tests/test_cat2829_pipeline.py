@@ -363,3 +363,52 @@ def test_harvest_one_retries_param_is_not_hardcoded(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="HTML_TOO_SHORT"):
         h.harvest_one(_entry(), fetch=short, retries=2, sleep=lambda s: None)
     assert len(calls) == 2, "retries=2 인데 3회 시도했다 — 하드코딩 의심"
+
+
+# ============================ Task 5 ============================
+
+def test_v1_passes_when_listing_matches_files():
+    v = _load("verify_cat2829")
+    r = v.v1_coverage({"1", "2", "3"}, {"1", "2", "3"},
+                      post_cnt={28: 2, 29: 1}, listed_cnt={28: 2, 29: 1})
+    assert r["status"] == "PASS"
+    assert r["missing"] == [] and r["extra"] == []
+    assert r["post_cnt_delta"] == {28: 0, 29: 0}
+
+
+def test_v1_fails_on_missing_file():
+    """우리 책임 구간 — 목록에 있는데 파일이 없다."""
+    v = _load("verify_cat2829")
+    r = v.v1_coverage({"1", "2", "3"}, {"1", "2"},
+                      post_cnt={28: 3}, listed_cnt={28: 3})
+    assert r["status"] == "FAIL"
+    assert r["missing"] == ["3"]
+
+
+def test_v1_fails_on_extra_file():
+    v = _load("verify_cat2829")
+    r = v.v1_coverage({"1", "2"}, {"1", "2", "9"},
+                      post_cnt={28: 2}, listed_cnt={28: 2})
+    assert r["status"] == "FAIL"
+    assert r["extra"] == ["9"]
+
+
+def test_v1_records_post_cnt_gap_without_failing():
+    """🔑 postCnt 어긋남은 네이버 쪽 사정(비공개·삭제)일 수 있다.
+
+    실패로 처리하면 우리 잘못이 아닌 것 때문에 파이프라인이 서고,
+    무시하면 근거 없이 「전수」를 주장하게 된다. ⇒ 기록하되 통과.
+    """
+    v = _load("verify_cat2829")
+    r = v.v1_coverage({"1", "2"}, {"1", "2"},
+                      post_cnt={28: 150, 29: 282}, listed_cnt={28: 148, 29: 282})
+    assert r["status"] == "PASS"
+    assert r["post_cnt_delta"] == {28: -2, 29: 0}
+
+
+def test_v1_handles_unknown_post_cnt():
+    """카테고리 API 가 postCnt 를 안 주면 None 으로 남긴다 — 0 으로 세지 않는다."""
+    v = _load("verify_cat2829")
+    r = v.v1_coverage({"1"}, {"1"}, post_cnt={28: None}, listed_cnt={28: 1})
+    assert r["status"] == "PASS"
+    assert r["post_cnt_delta"] == {28: None}
