@@ -206,12 +206,25 @@ def test_fetch_post_list_does_not_stop_at_old_posts():
 
 
 def test_fetch_post_list_dedupes_across_pages():
+    """🔑 종료 조건은 「빈 페이지」가 아니라 「새 logNo 가 없는 페이지」다.
+
+    2페이지가 **비어 있지 않은데 전부 중복**이다. 여기서 멈춰야 하므로
+    3페이지의 항목 3 은 절대 수집되면 안 된다.
+    구 구현(items 가 literally 빈 페이지에서만 중단)이면 3 까지 걷어와 실패한다.
+    """
     h = _load("harvest_cat28_29_full")
-    pages = [[_item(1, MS_2025), _item(2, MS_2025)],
-             [_item(2, MS_2025), _item(3, MS_2025)],
-             []]
-    got = h.fetch_post_list(28, fetch=_fake_pages(pages), sleep=lambda s: None)
-    assert set(got) == {"1", "2", "3"}
+    fetched = []
+    inner = _fake_pages([[_item(1, MS_2025), _item(2, MS_2025)],
+                         [_item(2, MS_2025)],
+                         [_item(3, MS_2025)]])
+
+    def fetch(cat, page):
+        fetched.append(page)
+        return inner(cat, page)
+
+    got = h.fetch_post_list(28, fetch=fetch, sleep=lambda s: None)
+    assert set(got) == {"1", "2"}, "전부 중복인 페이지에서 멈추지 않았다"
+    assert fetched == [1, 2], "3페이지를 걷어왔다 = 종료 조건이 「빈 페이지」다"
 
 
 def test_fetch_post_list_raises_instead_of_truncating():
