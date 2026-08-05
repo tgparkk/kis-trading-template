@@ -475,7 +475,7 @@ def validate_row(row):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 21 passed
+Expected: 20 passed (Task 1 의 10 + 이 태스크의 10)
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -716,7 +716,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 27 passed
+Expected: 26 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -895,7 +895,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 30 passed
+Expected: 29 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1024,7 +1024,7 @@ def v1_coverage(catalog_lognos, saved_lognos, post_cnt, listed_cnt):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 35 passed
+Expected: 34 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1211,7 +1211,7 @@ def v2_ledger_coverage(rows, expected_lognos):
 - [ ] **Step 5: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 40 passed
+Expected: 39 passed
 
 - [ ] **Step 6: 커밋 (사장님 확인 후)**
 
@@ -1334,7 +1334,7 @@ def v5_revision_candidates(rows):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 44 passed
+Expected: 43 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1443,7 +1443,7 @@ def make_batches(metas, target_chars=60000):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 48 passed
+Expected: 47 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1894,5 +1894,5 @@ git merge --no-ff research/tasso-cat2829-harvest
 - [ ] V4 누락률이 **분자/분모**로 기록됨
 - [ ] `METHOD.md` 2판이 **[28]·[29] 한정 전수**임을 명시하고 [1]·[35] 169건 미수집을 함께 명시
 - [ ] 영향 판정이 ①7차 FAIL 해석 ②2막 종결 사유 ③1판 서술 **각각에 명시 결론** (흔들지 않았다도 근거와 함께)
-- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 48 passed
+- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 47 passed
 - [ ] 커밋에 원문 캐시(`posts28/`·`text28/`·`images28/`·`claims_batches/`·`*_quoted.csv`)가 **한 건도 없음**
