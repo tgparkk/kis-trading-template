@@ -1268,7 +1268,17 @@ def v2_ledger_coverage(rows, expected_lognos):
 - [ ] **Step 5: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 41 passed
+Expected: **50 passed** (브리프 5건 + 계약 갭 보강 9건)
+
+> 🔧 **2026-08-05 실측 정정.** 구현자가 인터페이스 계약을 코드에서 열거해 **브리프 5건이
+> 못 잡는 갭 8건**을 찾았고(정렬 미증명 · CSV 열 순서 · 다행 기록 · `ValueError` 의
+> `파일:줄` 형식 · V2 의 「extra 는 실패 아님」 비대칭 · `main()` 무커버리지 등),
+> 9건을 더해 6개 변이로 실증했다. 독립 리뷰가 **9/9 실제 계약 겨냥 · 공허한 단언 0** 으로 판정.
+> 이어서 리뷰가 하나를 더 찾았다 — `main()` 의 `write_ledgers(rows, PUBLIC, QUOTED)` 두
+> 인자를 뒤바꾸면 `quote` 열이 **커밋되는** CSV 로 새는데 기존 단언이 정상·스왑 양쪽에서
+> 통과했다. 양방향 경계 단언으로 고정.
+> **보강된 테스트 본문은 `backtest/tasso_labels/tests/test_cat2829_pipeline.py` 가 정본이다**
+> — 여기 옮겨 적으면 또 갈라진다.
 
 - [ ] **Step 6: 커밋 (사장님 확인 후)**
 
@@ -1391,7 +1401,7 @@ def v5_revision_candidates(rows):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 45 passed
+Expected: 54 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1500,7 +1510,7 @@ def make_batches(metas, target_chars=60000):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 49 passed
+Expected: 58 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1951,5 +1961,5 @@ git merge --no-ff research/tasso-cat2829-harvest
 - [ ] V4 누락률이 **분자/분모**로 기록됨
 - [ ] `METHOD.md` 2판이 **[28]·[29] 한정 전수**임을 명시하고 [1]·[35] 169건 미수집을 함께 명시
 - [ ] 영향 판정이 ①7차 FAIL 해석 ②2막 종결 사유 ③1판 서술 **각각에 명시 결론** (흔들지 않았다도 근거와 함께)
-- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 49 passed
+- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 58 passed
 - [ ] 커밋에 원문 캐시(`posts28/`·`text28/`·`images28/`·`claims_batches/`·`*_quoted.csv`)가 **한 건도 없음**
