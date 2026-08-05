@@ -1401,7 +1401,13 @@ def v5_revision_candidates(rows):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 54 passed
+Expected: **58 passed** (브리프 4건 + 계약 갭 보강 4건)
+
+> 🔧 **2026-08-05 실측 정정.** 브리프 4건이 독립적으로 증명하지 못하는 것 4가지가 있었다:
+> ① `(topic, v1_anchor)` 의 **anchor 부분** — 픽스처가 전부 `anchor="§2"` 라 `topic` 단독
+> 그룹핑과 구분되지 않는다 · ② `timeline` 시간순 정렬 — 입력이 이미 정렬돼 있었다 ·
+> ③④ `conflict` 외 값(`agree`·`new`)이 필터를 뚫는 회귀. 각각 단일 줄 변이로 실증했고
+> 독립 리뷰가 4/4 정당 판정. **테스트 본문은 테스트 파일이 정본이다.**
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1510,7 +1516,7 @@ def make_batches(metas, target_chars=60000):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 58 passed
+Expected: 62 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1961,5 +1967,5 @@ git merge --no-ff research/tasso-cat2829-harvest
 - [ ] V4 누락률이 **분자/분모**로 기록됨
 - [ ] `METHOD.md` 2판이 **[28]·[29] 한정 전수**임을 명시하고 [1]·[35] 169건 미수집을 함께 명시
 - [ ] 영향 판정이 ①7차 FAIL 해석 ②2막 종결 사유 ③1판 서술 **각각에 명시 결론** (흔들지 않았다도 근거와 함께)
-- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 58 passed
+- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 62 passed
 - [ ] 커밋에 원문 캐시(`posts28/`·`text28/`·`images28/`·`claims_batches/`·`*_quoted.csv`)가 **한 건도 없음**
