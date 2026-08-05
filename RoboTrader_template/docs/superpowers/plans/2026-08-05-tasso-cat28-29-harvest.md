@@ -1620,6 +1620,7 @@ cd D:/tmp/wt-tasso-cat2829
 git status --ignored --short RoboTrader_template/backtest/tasso_labels/harvest/ | head -20
 git add RoboTrader_template/backtest/tasso_labels/harvest/catlist_28_29.json \
         RoboTrader_template/backtest/tasso_labels/harvest/postmeta_28_29.json \
+        RoboTrader_template/backtest/tasso_labels/harvest/harvest_fail_28_29.json \
         RoboTrader_template/backtest/tasso_labels/harvest/verify_cat2829.log
 git diff --cached --name-only     # 🔴 posts28/·text28/ 이 한 줄도 없어야 한다
 git commit -m "data(tasso): [28]·[29] 전 범위 목록·메타 수집 + V1 통과"
@@ -1669,6 +1670,10 @@ print('총', len(bs), '배치')
 - 🔴 **`claim` 은 네가 쓴 요약 한 문장이다 — 원문을 복사하지 마라.** `quote` 에만 40자
   상한이 걸려 있고 `claim` 은 무제한인데, **`claim` 은 커밋되는 CSV 에 실린다.** 원문
   문장을 `claim` 에 넣으면 인용 상한을 우회해 타인 저작물이 저장소에 남는다.
+- 🔴 **`log_no` 는 반드시 **문자열**로 써라** — JSON 숫자로 쓰면 안 된다.
+  `claims_schema.validate_row` 가 타입을 제약하지 않아 그대로 통과하고, 그다음
+  V2 커버리지에서 **조용히 전건 누락**으로 나온다. (수집 쪽에서 같은 클래스의 결함이
+  실제로 있었다 — 네이버 API 의 `logNo` 가 `int` 라 파이프라인이 죽을 뻔했다.)
 - 🔴 **`category` 는 파일명 stem(`{category}_{yyyymmdd}_{logNo}`)에서 도출하라.**
   배치는 **cat28/cat29 경계를 넘을 수 있다**(정렬이 category 우선이라 경계에 미완성
   배치가 남으면 다음 카테고리 글이 같은 배치에 들어간다). 「이 배치는 한 카테고리」를
