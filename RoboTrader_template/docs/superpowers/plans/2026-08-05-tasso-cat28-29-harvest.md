@@ -785,8 +785,16 @@ def test_harvest_one_extracts_text_and_counts_images(tmp_path, monkeypatch):
 
     assert meta["img_count"] == 3
     assert meta["image_only"] is False
-    assert "상승폭 45~48%" in (h.C.TEXT_DIR / (meta["text_file"])).read_text(encoding="utf-8")
+    content = (h.C.TEXT_DIR / (meta["text_file"])).read_text(encoding="utf-8")
+    assert "상승폭 45~48%" in content
+    assert "하락폭 통계" in content
+    # 🔑 raw HTML 을 그대로 쓰는 회귀를 잡는다 — 위 부분문자열은 HTML 안에도 그대로
+    #    들어 있어(태그 없는 순문자열) 그것만으로는 「추출했다」의 증거가 되지 않는다.
+    assert "<p" not in content, "텍스트 파일에 HTML 태그가 남아 있다"
+    assert "<img" not in content
+    assert "x" * 100 not in content, "패딩 주석이 텍스트에 새어 들어왔다"
     assert meta["text_len"] > 0
+    assert meta["text_len"] == len(content)
 
 
 def test_harvest_one_marks_image_only_when_no_text(tmp_path, monkeypatch):
@@ -823,6 +831,28 @@ def test_harvest_one_retries_short_html_then_raises(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="HTML_TOO_SHORT"):
         h.harvest_one(_entry(), fetch=short, retries=3, sleep=lambda s: None)
     assert len(calls) == 3, "재시도 횟수가 다르다"
+
+
+def test_harvest_one_retries_param_is_not_hardcoded(tmp_path, monkeypatch):
+    """🔑 위 테스트는 retries=3 으로만 부른다 — `range(3)` 하드코딩이 통과한다.
+
+    파라미터에 실제로 묶여 있는지는 **다른 값**으로 불러야 알 수 있다.
+    """
+    h = _load("harvest_cat28_29_full")
+    monkeypatch.setattr(h.C, "POSTS_DIR", tmp_path / "posts28")
+    monkeypatch.setattr(h.C, "TEXT_DIR", tmp_path / "text28")
+    h.C.POSTS_DIR.mkdir(parents=True)
+    h.C.TEXT_DIR.mkdir(parents=True)
+
+    calls = []
+
+    def short(log_no):
+        calls.append(log_no)
+        return "<html>too short</html>"
+
+    with pytest.raises(RuntimeError, match="HTML_TOO_SHORT"):
+        h.harvest_one(_entry(), fetch=short, retries=2, sleep=lambda s: None)
+    assert len(calls) == 2, "retries 가 파라미터가 아니라 리터럴에 묶여 있다"
 ```
 
 - [ ] **Step 2: 테스트를 돌려 실패를 확인한다**
@@ -908,7 +938,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 29 passed
+Expected: 30 passed (브리프 3건 + `retries` 파라미터 결속 1건)
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1037,7 +1067,7 @@ def v1_coverage(catalog_lognos, saved_lognos, post_cnt, listed_cnt):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 34 passed
+Expected: 35 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1224,7 +1254,7 @@ def v2_ledger_coverage(rows, expected_lognos):
 - [ ] **Step 5: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 39 passed
+Expected: 40 passed
 
 - [ ] **Step 6: 커밋 (사장님 확인 후)**
 
@@ -1347,7 +1377,7 @@ def v5_revision_candidates(rows):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 43 passed
+Expected: 44 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1456,7 +1486,7 @@ def make_batches(metas, target_chars=60000):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 47 passed
+Expected: 48 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1907,5 +1937,5 @@ git merge --no-ff research/tasso-cat2829-harvest
 - [ ] V4 누락률이 **분자/분모**로 기록됨
 - [ ] `METHOD.md` 2판이 **[28]·[29] 한정 전수**임을 명시하고 [1]·[35] 169건 미수집을 함께 명시
 - [ ] 영향 판정이 ①7차 FAIL 해석 ②2막 종결 사유 ③1판 서술 **각각에 명시 결론** (흔들지 않았다도 근거와 함께)
-- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 47 passed
+- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 48 passed
 - [ ] 커밋에 원문 캐시(`posts28/`·`text28/`·`images28/`·`claims_batches/`·`*_quoted.csv`)가 **한 건도 없음**
