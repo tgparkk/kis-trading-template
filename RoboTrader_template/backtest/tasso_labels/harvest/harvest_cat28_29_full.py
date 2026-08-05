@@ -97,3 +97,73 @@ def build_catalog():
     C.CATLIST_JSON.write_text(
         json.dumps(catalog, ensure_ascii=False, indent=1), encoding="utf-8")
     return catalog
+
+
+MIN_HTML_BYTES = 5000       # 구 수집기(harvest_cat28_29.py:62)의 실패 판정 기준을 승계
+BODY_SLEEP = 1.0
+
+
+def _stem(entry):
+    return (str(entry["category"]) + "_" + entry["post_date"].replace("-", "")
+            + "_" + entry["log_no"])
+
+
+def harvest_one(entry, fetch=None, retries=3, sleep=None):
+    """글 하나의 HTML 을 받아 저장하고 텍스트를 뽑아 메타를 만든다."""
+    fetch = fetch or C.fetch_html
+    sleep = sleep if sleep is not None else time.sleep
+    stem = _stem(entry)
+    html_path = C.POSTS_DIR / (stem + ".html")
+    text_path = C.TEXT_DIR / (stem + ".txt")
+
+    src = None
+    for attempt in range(retries):
+        src = fetch(entry["log_no"])
+        if src is not None and len(src.encode("utf-8")) >= MIN_HTML_BYTES:
+            break
+        src = None
+        if attempt < retries - 1:
+            sleep(BODY_SLEEP * (attempt + 1))
+    if src is None:
+        raise RuntimeError("HTML_TOO_SHORT:" + entry["log_no"])
+
+    html_path.write_text(src, encoding="utf-8")
+    text = C.html_to_text(src)
+    text_path.write_text(text, encoding="utf-8")
+
+    return {
+        "log_no": entry["log_no"],
+        "category": entry["category"],
+        "post_date": entry["post_date"],
+        "title": entry.get("title", ""),
+        "html_bytes": len(src.encode("utf-8")),
+        "text_len": len(text),
+        "text_file": stem + ".txt",
+        "img_count": C.count_images(src),
+        "image_only": len(text) == 0,
+    }
+
+
+def harvest_bodies(catalog, sleep=None):
+    """카탈로그 전건을 수집하고 POSTMETA_JSON 을 쓴다. 실패는 즉시 올린다."""
+    sleep = sleep if sleep is not None else time.sleep
+    C.ensure_dirs()
+    metas = []
+    for log_no in sorted(catalog["posts"]):
+        metas.append(harvest_one(catalog["posts"][log_no], sleep=sleep))
+        sleep(BODY_SLEEP)
+    C.POSTMETA_JSON.write_text(
+        json.dumps(metas, ensure_ascii=False, indent=1), encoding="utf-8")
+    return metas
+
+
+def main():
+    catalog = build_catalog()
+    metas = harvest_bodies(catalog)
+    print("카탈로그", len(catalog["posts"]), "건 · 본문", len(metas), "건")
+    print("postCnt", catalog["post_cnt"])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

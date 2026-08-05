@@ -264,3 +264,94 @@ def test_category_counts_reads_post_cnt():
          "subCategoryList": [{"categoryNo": 99, "categoryName": "하위", "postCnt": 7}]},
     ]}}
     assert h.category_counts(payload) == {28: 150, 29: 282, 99: 7}
+
+
+# ============================ Task 4 ============================
+
+_HTML_HEAD = "<html><body>"
+_HTML_TAIL = "</body></html>"
+
+
+def _post_html(paragraphs, n_img=0, pad=6000):
+    body = "".join('<p class="se-text-paragraph">' + p + "</p>" for p in paragraphs)
+    imgs = "".join('<img src="x' + str(i) + '.png">' for i in range(n_img))
+    return _HTML_HEAD + body + imgs + ("<!--" + "x" * pad + "-->") + _HTML_TAIL
+
+
+def _entry(log_no="221000000001", cat=28):
+    return {"log_no": log_no, "category": cat, "post_date": "2021-03-04", "title": "t"}
+
+
+def test_harvest_one_extracts_text_and_counts_images(tmp_path, monkeypatch):
+    h = _load("harvest_cat28_29_full")
+    monkeypatch.setattr(h.C, "POSTS_DIR", tmp_path / "posts28")
+    monkeypatch.setattr(h.C, "TEXT_DIR", tmp_path / "text28")
+    h.C.POSTS_DIR.mkdir(parents=True)
+    h.C.TEXT_DIR.mkdir(parents=True)
+
+    html_src = _post_html(["상승폭 45~48%", "하락폭 통계"], n_img=3)
+    meta = h.harvest_one(_entry(), fetch=lambda log_no: html_src)
+
+    assert meta["img_count"] == 3
+    assert meta["image_only"] is False
+    assert "상승폭 45~48%" in (h.C.TEXT_DIR / (meta["text_file"])).read_text(encoding="utf-8")
+    assert meta["text_len"] > 0
+
+
+def test_harvest_one_marks_image_only_when_no_text(tmp_path, monkeypatch):
+    """🔑 텍스트 0자 글은 ④단계로 **자동 승격**돼야 한다.
+
+    텍스트가 없으면 「이미지를 가리키는 문장」도 없어서, 선별 기준을 그냥 통과해
+    아무도 안 본 채 끝난다.
+    """
+    h = _load("harvest_cat28_29_full")
+    monkeypatch.setattr(h.C, "POSTS_DIR", tmp_path / "posts28")
+    monkeypatch.setattr(h.C, "TEXT_DIR", tmp_path / "text28")
+    h.C.POSTS_DIR.mkdir(parents=True)
+    h.C.TEXT_DIR.mkdir(parents=True)
+
+    meta = h.harvest_one(_entry(), fetch=lambda log_no: _post_html([], n_img=9))
+    assert meta["text_len"] == 0
+    assert meta["image_only"] is True
+    assert meta["img_count"] == 9
+
+
+def test_harvest_one_retries_short_html_then_raises(tmp_path, monkeypatch):
+    h = _load("harvest_cat28_29_full")
+    monkeypatch.setattr(h.C, "POSTS_DIR", tmp_path / "posts28")
+    monkeypatch.setattr(h.C, "TEXT_DIR", tmp_path / "text28")
+    h.C.POSTS_DIR.mkdir(parents=True)
+    h.C.TEXT_DIR.mkdir(parents=True)
+
+    calls = []
+
+    def short(log_no):
+        calls.append(log_no)
+        return "<html>too short</html>"
+
+    with pytest.raises(RuntimeError, match="HTML_TOO_SHORT"):
+        h.harvest_one(_entry(), fetch=short, retries=3, sleep=lambda s: None)
+    assert len(calls) == 3, "재시도 횟수가 다르다"
+
+
+def test_harvest_one_retries_param_is_not_hardcoded(tmp_path, monkeypatch):
+    """🔑 판별력 자체 점검 — 위 테스트는 retries=3 만 쓰므로 구현이 `range(retries)`
+    대신 `range(3)` 을 하드코딩해도 똑같이 통과한다(Task 3 dedup 테스트와 동형 결함).
+
+    `retries` 를 기본값과 다른 2 로 호출해 실제로 파라미터에 묶였는지를 가른다.
+    """
+    h = _load("harvest_cat28_29_full")
+    monkeypatch.setattr(h.C, "POSTS_DIR", tmp_path / "posts28")
+    monkeypatch.setattr(h.C, "TEXT_DIR", tmp_path / "text28")
+    h.C.POSTS_DIR.mkdir(parents=True)
+    h.C.TEXT_DIR.mkdir(parents=True)
+
+    calls = []
+
+    def short(log_no):
+        calls.append(log_no)
+        return "<html>too short</html>"
+
+    with pytest.raises(RuntimeError, match="HTML_TOO_SHORT"):
+        h.harvest_one(_entry(), fetch=short, retries=2, sleep=lambda s: None)
+    assert len(calls) == 2, "retries=2 인데 3회 시도했다 — 하드코딩 의심"
