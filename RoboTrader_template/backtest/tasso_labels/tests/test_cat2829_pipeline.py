@@ -78,3 +78,86 @@ def test_gitignore_keeps_derived_evidence(rel):
     이 방향을 안 고정하면 다음 사람이 "그냥 harvest/ 전체를 차단" 으로 되돌려도 안 잡힌다.
     """
     assert not _ignored(rel), rel + " 이 조용히 무시된다"
+
+
+# ============================ Task 2 ============================
+
+def _good_row(**over):
+    row = {
+        "log_no": "223000000001", "post_date": "2024-05-02", "category": 28,
+        "claim_id": "223000000001-1", "topic": "③분할매수",
+        "claim": "상승폭이 클수록 매수 밴드를 더 깊게 잡는다",
+        "numbers": "45~48%;481건", "quote": "평균은 점 하나인데 현실은 퍼짐",
+        "para_idx": 12, "image_ref": False,
+        "vs_v1": "agree", "v1_anchor": "§1-③",
+    }
+    row.update(over)
+    return row
+
+
+def test_public_columns_exclude_quote():
+    """커밋되는 판본에는 원문 인용이 없어야 한다."""
+    s = _load("claims_schema")
+    assert "quote" in s.COLUMNS
+    assert "quote" not in s.PUBLIC_COLUMNS
+    assert len(s.PUBLIC_COLUMNS) == len(s.COLUMNS) - 1
+
+
+def test_valid_row_passes():
+    s = _load("claims_schema")
+    assert s.validate_row(_good_row()) == []
+
+
+def test_missing_column_is_reported():
+    s = _load("claims_schema")
+    row = _good_row()
+    del row["numbers"]
+    assert any(v.startswith("MISSING_COLUMN:numbers") for v in s.validate_row(row))
+
+
+@pytest.mark.parametrize("field,bad,prefix", [
+    ("category", 32, "BAD_CATEGORY"),
+    ("topic", "③분할매수 ", "BAD_TOPIC"),      # 뒤 공백 = 다른 값이다
+    ("vs_v1", "New", "BAD_VS_V1"),             # 대소문자 오타
+])
+def test_enum_violations_are_reported(field, bad, prefix):
+    """🔑 오타를 「정상」으로 보고하는 것이 거짓 안심의 전형이다.
+
+    2026-08-04 급락게이트에서 독립검증이 잡은 결정적 결함이 정확히 이것이었다 —
+    `"Auto"`·null 을 정상으로 보고했다.
+    """
+    s = _load("claims_schema")
+    assert any(v.startswith(prefix) for v in s.validate_row(_good_row(**{field: bad})))
+
+
+def test_quote_length_cap():
+    s = _load("claims_schema")
+    assert s.QUOTE_MAX == 40
+    long_quote = "가" * 41
+    assert any(v.startswith("QUOTE_TOO_LONG") for v in s.validate_row(_good_row(quote=long_quote)))
+    assert s.validate_row(_good_row(quote="가" * 40)) == []
+
+
+def test_anchor_required_when_related_to_v1():
+    s = _load("claims_schema")
+    for vs in ("agree", "conflict", "revision"):
+        bad = s.validate_row(_good_row(vs_v1=vs, v1_anchor=""))
+        assert any(v.startswith("ANCHOR_REQUIRED_FOR:" + vs) for v in bad), vs
+
+
+def test_anchor_forbidden_when_unrelated_to_v1():
+    """🔑 반대 방향을 고정한다.
+
+    안 하면 "전부 v1_anchor 를 채우면 통과" 로 되돌려도 아무도 못 잡는다.
+    `if not FLAG:` 형태의 단방향 가드는 플래그를 뒤집으면 실패가 아니라 **꺼진다.**
+    """
+    s = _load("claims_schema")
+    for vs in ("new", "none"):
+        bad = s.validate_row(_good_row(vs_v1=vs, v1_anchor="§1-③"))
+        assert any(v.startswith("ANCHOR_FORBIDDEN_FOR:" + vs) for v in bad), vs
+    assert s.validate_row(_good_row(vs_v1="new", v1_anchor="")) == []
+
+
+def test_empty_claim_is_reported():
+    s = _load("claims_schema")
+    assert any(v == "EMPTY_CLAIM" for v in s.validate_row(_good_row(claim="   ")))
