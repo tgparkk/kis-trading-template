@@ -294,8 +294,16 @@ def test_harvest_one_extracts_text_and_counts_images(tmp_path, monkeypatch):
 
     assert meta["img_count"] == 3
     assert meta["image_only"] is False
-    assert "상승폭 45~48%" in (h.C.TEXT_DIR / (meta["text_file"])).read_text(encoding="utf-8")
+    content = (h.C.TEXT_DIR / (meta["text_file"])).read_text(encoding="utf-8")
+    assert "상승폭 45~48%" in content
+    assert "하락폭 통계" in content
+    # 🔑 raw HTML 을 그대로 쓰는 회귀를 잡는다 — 위 부분문자열은 HTML 안에도 그대로
+    #    들어 있어(태그 없는 순문자열) 그것만으로는 「추출했다」의 증거가 되지 않는다.
+    assert "<p" not in content, "텍스트 파일에 HTML 태그가 남아 있다"
+    assert "<img" not in content
+    assert "x" * 100 not in content, "패딩 주석이 텍스트에 새어 들어왔다"
     assert meta["text_len"] > 0
+    assert meta["text_len"] == len(content)
 
 
 def test_harvest_one_marks_image_only_when_no_text(tmp_path, monkeypatch):
