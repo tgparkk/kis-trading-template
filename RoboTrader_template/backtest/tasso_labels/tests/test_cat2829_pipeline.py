@@ -161,3 +161,93 @@ def test_anchor_forbidden_when_unrelated_to_v1():
 def test_empty_claim_is_reported():
     s = _load("claims_schema")
     assert any(v == "EMPTY_CLAIM" for v in s.validate_row(_good_row(claim="   ")))
+
+
+# ============================ Task 3 ============================
+
+def _fake_pages(pages):
+    """pages = [[item, ...], ...]. 페이지 번호(1-base)로 꺼내 쓴다."""
+    def fetch(cat, page):
+        if page > len(pages):
+            return {"result": {"items": []}}
+        return {"result": {"items": pages[page - 1]}}
+    return fetch
+
+
+def _item(log_no, add_date_ms):
+    return {"logNo": str(log_no), "addDate": add_date_ms,
+            "titleWithInspectMessage": "제목 " + str(log_no)}
+
+
+MS_2019 = 1_546_300_800_000     # 2019-01-01
+MS_2025 = 1_735_689_600_000     # 2025-01-01
+
+
+def test_fetch_post_list_walks_every_page():
+    h = _load("harvest_cat28_29_full")
+    pages = [[_item(i, MS_2025) for i in range(p * 10, p * 10 + 10)] for p in range(3)]
+    got = h.fetch_post_list(28, fetch=_fake_pages(pages), sleep=lambda s: None)
+    assert len(got) == 30
+
+
+def test_fetch_post_list_does_not_stop_at_old_posts():
+    """🔑 회귀 테스트 — 구 스크립트의 CUT-break 가 재발하면 여기서 잡힌다.
+
+    2페이지가 통째로 2019년이어도 3페이지까지 계속 돌아야 한다.
+    """
+    h = _load("harvest_cat28_29_full")
+    pages = [
+        [_item(1, MS_2025), _item(2, MS_2025)],
+        [_item(3, MS_2019), _item(4, MS_2019)],
+        [_item(5, MS_2019)],
+    ]
+    got = h.fetch_post_list(28, fetch=_fake_pages(pages), sleep=lambda s: None)
+    assert set(got) == {"1", "2", "3", "4", "5"}
+
+
+def test_fetch_post_list_dedupes_across_pages():
+    h = _load("harvest_cat28_29_full")
+    pages = [[_item(1, MS_2025), _item(2, MS_2025)],
+             [_item(2, MS_2025), _item(3, MS_2025)],
+             []]
+    got = h.fetch_post_list(28, fetch=_fake_pages(pages), sleep=lambda s: None)
+    assert set(got) == {"1", "2", "3"}
+
+
+def test_fetch_post_list_raises_instead_of_truncating():
+    """🔑 조용한 절단 금지 — 상한에 닿으면 중단하고 소리를 낸다."""
+    h = _load("harvest_cat28_29_full")
+
+    def endless(cat, page):
+        base = page * 100
+        return {"result": {"items": [_item(base + i, MS_2025) for i in range(30)]}}
+
+    with pytest.raises(RuntimeError, match="MAX_PAGES"):
+        h.fetch_post_list(28, fetch=endless, sleep=lambda s: None)
+
+
+def test_fetch_post_list_retries_then_raises_on_api_failure():
+    """목록 API 파싱 실패(None)는 3회 재시도 후 중단한다.
+
+    🔑 조용히 빈 목록으로 처리하면 「그 카테고리에 글이 없다」와 구분되지 않는다.
+    """
+    h = _load("harvest_cat28_29_full")
+    calls = []
+
+    def broken(cat, page):
+        calls.append(page)
+        return None
+
+    with pytest.raises(RuntimeError, match="LIST_API_FAILED"):
+        h.fetch_post_list(28, fetch=broken, sleep=lambda s: None)
+    assert len(calls) == h.LIST_RETRIES
+
+
+def test_category_counts_reads_post_cnt():
+    h = _load("harvest_cat28_29_full")
+    payload = {"isSuccess": True, "result": {"mylogCategoryList": [
+        {"categoryNo": 28, "categoryName": "주식기법 분석", "postCnt": 150},
+        {"categoryNo": 29, "categoryName": "시황이슈 정리", "postCnt": 282,
+         "subCategoryList": [{"categoryNo": 99, "categoryName": "하위", "postCnt": 7}]},
+    ]}}
+    assert h.category_counts(payload) == {28: 150, 29: 282, 99: 7}
