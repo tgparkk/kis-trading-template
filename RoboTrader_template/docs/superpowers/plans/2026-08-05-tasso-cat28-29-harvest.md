@@ -1017,6 +1017,20 @@ def test_v1_handles_unknown_post_cnt():
     r = v.v1_coverage({"1"}, {"1"}, post_cnt={28: None}, listed_cnt={28: 1})
     assert r["status"] == "PASS"
     assert r["post_cnt_delta"] == {28: None}
+
+
+def test_v1_missing_and_extra_are_sorted():
+    """🔑 인터페이스가 「정렬 list」를 약속한다 — 원소 1개짜리 픽스처로는 증명되지 않는다.
+
+    Task 9 가 이 목록을 게이트 출력으로 사람에게 보여준다.
+    sorted() 를 list() 로 바꾸면 이 테스트가 실패해야 한다.
+    """
+    v = _load("verify_cat2829")
+    r = v.v1_coverage({"30", "4", "200", "1"}, {"1", "99", "10"},
+                      post_cnt={28: 4}, listed_cnt={28: 4})
+    assert r["status"] == "FAIL"
+    assert r["missing"] == ["200", "30", "4"], "문자열 정렬이 아니다"
+    assert r["extra"] == ["10", "99"]
 ```
 
 - [ ] **Step 2: 테스트를 돌려 실패를 확인한다**
@@ -1067,7 +1081,7 @@ def v1_coverage(catalog_lognos, saved_lognos, post_cnt, listed_cnt):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 35 passed
+Expected: 36 passed (브리프 5건 + 정렬 계약 1건)
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1254,7 +1268,7 @@ def v2_ledger_coverage(rows, expected_lognos):
 - [ ] **Step 5: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 40 passed
+Expected: 41 passed
 
 - [ ] **Step 6: 커밋 (사장님 확인 후)**
 
@@ -1377,7 +1391,7 @@ def v5_revision_candidates(rows):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 44 passed
+Expected: 45 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1486,7 +1500,7 @@ def make_batches(metas, target_chars=60000):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 48 passed
+Expected: 49 passed
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1937,5 +1951,5 @@ git merge --no-ff research/tasso-cat2829-harvest
 - [ ] V4 누락률이 **분자/분모**로 기록됨
 - [ ] `METHOD.md` 2판이 **[28]·[29] 한정 전수**임을 명시하고 [1]·[35] 169건 미수집을 함께 명시
 - [ ] 영향 판정이 ①7차 FAIL 해석 ②2막 종결 사유 ③1판 서술 **각각에 명시 결론** (흔들지 않았다도 근거와 함께)
-- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 48 passed
+- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 49 passed
 - [ ] 커밋에 원문 캐시(`posts28/`·`text28/`·`images28/`·`claims_batches/`·`*_quoted.csv`)가 **한 건도 없음**
