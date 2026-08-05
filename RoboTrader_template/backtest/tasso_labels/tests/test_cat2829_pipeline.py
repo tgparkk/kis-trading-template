@@ -631,4 +631,15 @@ def test_main_merges_batches_and_writes_ledgers(tmp_path, monkeypatch, capsys):
     assert pub.exists() and quo.exists()
     with open(str(pub), encoding="utf-8-sig") as f:
         assert len(list(_csv.DictReader(f))) == 2
-    assert "2" in out, "행/글 건수가 출력에 안 보인다 — " + out
+    assert out == "주장 2 행 · 글 2 건\n", "요약 출력 전체가 계약과 다르다 — " + repr(out)
+
+    # 🔴 저작권 경계 — write_ledgers(rows, public_path, quoted_path) 인자 순서가
+    #    main() 에서 뒤바뀌면 quote(타인의 원문 인용)가 커밋 대상 claims_cat2829.csv 로
+    #    새어 들어간다. 위의 존재/행수/출력 단언 3개는 이 누출을 전혀 못 잡는다 —
+    #    스왑된 상태에서도 파일 2개가 생기고 행수도 2고 출력도 똑같기 때문이다.
+    #    양방향을 전부 고정한다: 한쪽만 걸면 "둘 다 public 열로 씀" 같은 다른 회귀를
+    #    못 잡는다.
+    pub_header = open(str(b.C.CLAIMS_PUBLIC_CSV), encoding="utf-8-sig", newline="").readline()
+    quo_header = open(str(b.C.CLAIMS_QUOTED_CSV), encoding="utf-8-sig", newline="").readline()
+    assert "quote" not in pub_header, "🔴 커밋되는 원장에 원문 인용이 새어 들어갔다"
+    assert "quote" in quo_header, "로컬 전용 원장에 quote 가 없다 = 인자가 뒤바뀌었다"
