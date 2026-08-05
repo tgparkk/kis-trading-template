@@ -319,38 +319,121 @@ def test_category_counts_reads_post_cnt():
 _HTML_HEAD = "<html><body>"
 _HTML_TAIL = "</body></html>"
 
+# ── 실제 응답에서 도출한 조각들 ────────────────────────────────────────────────
+# 🔴 이번 사고의 원인이 「픽스처가 현실에 없는 계약을 고정」이었다. 아래 문자열은
+#    전부 `posts28/` 의 실제 수집본(432건) 과 PC 응답 1건에서 **그대로 옮긴 것**이다.
+#    타인의 본문은 담지 않는다 — 옮긴 것은 **마크업 골격**뿐이고 글은 자리표시자다.
+#
+# 🔴 결정적 조각: 네이버 모바일은 에디터 세대와 무관하게 **모든** 페이지 골격에
+#    이 JS 한 줄을 넣는다. 옛 `classify_body` 는 `"se-main-container" in src` 로
+#    판정했기에 **이 한 줄만으로** SE3 본문이 있다고 믿었고, 본문 0자 글 197건이
+#    「진짜 이미지 전용」으로 위장했다. 픽스처에 이 줄이 없으면 그 결함을 재현할 수 없다.
+DECOY_LAZYLOADER = (
+    '<script type="text/javascript">\n'
+    '    $Fn(function() {\n'
+    '        var imageLazyLoader = new ImageLazyLoader('
+    '".se-main-container,.__se_component_area");\n'
+    '        imageLazyLoader.loadImages();\n'
+    '    }).attach(window, "DOMContentLoaded");\n'
+    '</script>')
+
+# 응답이 스스로 밝히는 에디터 세대(432/432 존재, 목록 API 값과 432/432 일치).
+_EDITOR_ATTR = "<div class=\"photo_view_property\" style=\"display: none\" editorversion='{v}'></div>"
+
+# SE4 의 `se-viewer` 안에는 **UI 크롬**이 들어 있다(글쓴이·날짜·이웃추가·공유하기·신고하기).
+# 본문 컨테이너를 `se-viewer` 로 잡으면 이것이 본문에 섞인다 — 실측으로 확인한 함정이라
+# 픽스처에 그대로 넣어 회귀를 잡는다.
+_SE4_CHROME = (
+    '<div class="se-component se-documentTitle se-l-default ">'
+    '<div class="se-section se-section-documentTitle">'
+    '<p class="se-text-paragraph">글제목자리</p></div></div>'
+    '<div class="blog_author"><strong class="ell">글쓴이자리</strong></div>'
+    '<p class="blog_date">2021. 6. 6. 17:09</p>'
+    '<a href="#" class="btn_buddyadd"><span class="sp"></span> 이웃추가</a>'
+    '<div class="post_function_t1"><ul><li><a href="#">공유하기</a></li>'
+    '<li><a href="#">URL복사</a></li><li><a href="#">신고하기</a></li></ul></div>')
+
+
+def _page(inner, editor_version, pad=6000):
+    """모바일 응답 한 장. 골격(크롬·JS 미끼·패딩)은 모든 세대가 공유한다."""
+    return (_HTML_HEAD + _EDITOR_ATTR.format(v=editor_version)
+            + '<div class="_postView">' + inner + "</div>"
+            + DECOY_LAZYLOADER + ("<!--" + "x" * pad + "-->") + _HTML_TAIL)
+
 
 def _post_html(paragraphs, n_img=0, pad=6000):
-    """SE3(2019~) 글 — 본문 컨테이너 `se-main-container` 안에 문단·이미지가 들어간다.
+    """SE4(SmartEditor ONE, 2019~) 글 — 본문은 `se-main-container` 안에 있다.
 
-    🔑 옛 판본은 컨테이너를 빼고 문단만 넣었다. 그러면 「본문을 받았는데 글자가 없다」와
-       「본문을 아예 못 받았다」가 같은 HTML 이 되어 C2 를 구조적으로 못 잡는다.
-       parse_posts.py:3 이 실제 SE3 페이지의 컨테이너로 기록한 이름을 그대로 쓴다.
+    🔑 실제 응답과 같은 중첩을 쓴다: post_ct > se-viewer > (크롬) + se-main-container.
+       크롬이 se-viewer **안**에 있다는 것이 실측이며, 그래서 본문 앵커는
+       se-viewer 가 아니라 se-main-container 여야 한다.
     """
-    body = "".join('<p class="se-text-paragraph">' + p + "</p>" for p in paragraphs)
+    body = "".join('<p class="se-text-paragraph se-text-paragraph-align-" style="">'
+                   + p + "</p>" for p in paragraphs)
     imgs = "".join('<img src="x' + str(i) + '.png">' for i in range(n_img))
-    return (_HTML_HEAD + '<div class="se-main-container">' + body + imgs + "</div>"
-            + ("<!--" + "x" * pad + "-->") + _HTML_TAIL)
+    return _page('<div class="post_ct   wrap_rabbit " id="viewTypeSelector">'
+                 '<div class="se-viewer se-theme-default" lang="ko-KR">'
+                 + _SE4_CHROME
+                 + '<div class="se-main-container">'
+                 '<div class="se-component se-text se-l-default">'
+                 '<div class="se-component-content">' + body + imgs
+                 + "</div></div></div></div></div>", 4, pad)
 
 
-def _legacy_html(pad=6000):
-    """구 에디터(SE2, 2017~2018) 글 — 본문이 `#postViewArea` 에 `<br>` 로만 들어간다.
+def _se3_html(paragraphs, n_img=0, pad=6000):
+    """SE3(2018 무렵) 글 — `se_component_wrap sect_dsc __se_component_area` 안.
 
-    parse_posts.py:23-24 가 구 에디터 본문을 뽑는 컨테이너이자,
-    harvest_fallback.py:38,46 이 PC 재수집 성패를 판정하는 바로 그 마커다.
+    ⚠️ 머리말 쪽에도 `<div class="se_component_wrap">` 가 따로 있다(실측).
+       앵커가 `__se_component_area` 를 함께 요구하지 않으면 머리말을 본문으로 잡는다.
     """
-    return (_HTML_HEAD + '<div id="postViewArea">본문 첫 줄<br>둘째 줄</div>'
-            + ("<!--" + "x" * pad + "-->") + _HTML_TAIL)
+    body = "".join('<div class="se_component se_paragraph default">'
+                   '<p class="se_textarea">' + p + "</p></div>" for p in paragraphs)
+    imgs = "".join('<img src="y' + str(i) + '.png">' for i in range(n_img))
+    return _page('<div class="post_ct   se3_view " id="viewTypeSelector">'
+                 '<div id="SEDOC-1544336565523" class="se_doc_viewer se_body_wrap se_m"'
+                 ' data-docversion="1.0">'
+                 '<div class="se_component_wrap"><p class="se_textarea">머리말자리</p></div>'
+                 '<div class="se_component_wrap sect_dsc __se_component_area">'
+                 + body + imgs + "</div></div></div>", 3, pad)
+
+
+def _se2_html(paragraphs=("본문 첫 줄", "둘째 줄"), n_img=0, pad=6000):
+    """SE2(구 에디터) 글 — 모바일은 본문을 `post_ct` 안에 **클래스 없는 `<p>`** 로 준다.
+
+    🔴 여기가 이번 손실의 핵심이다. 본문은 왔는데 `se-text-paragraph` 가 하나도 없어
+       옛 추출기가 0자를 냈고, 옛 판정기는 위 JS 미끼를 보고 「SE3 본문 있음 +
+       이미지 전용」이라고 적었다. 195건이 이 형태였다.
+    """
+    body = "".join('<p><span style="" _foo="FONT-FAMILY: 돋움,dotum">' + p
+                   + "</span></p>" for p in paragraphs)
+    imgs = "".join('<img src="z' + str(i) + '.png">' for i in range(n_img))
+    return _page('<div class="post_ct  " id="viewTypeSelector">'
+                 '<div style="font-size:10pt;" _foo="view">' + body + imgs
+                 + "</div></div>", 2, pad)
+
+
+def _pc_html(paragraphs=("PC 본문 첫 줄",), pad=6000):
+    """PC 엔드포인트 응답 — 본문이 `#postViewArea` 에 있다(harvest_fallback.py 의 마커).
+
+    모바일 응답에는 `postViewArea` 가 **0건**, PC 응답에는 `viewTypeSelector` 가
+    **0건**이다(양쪽 실측) — 그래서 이 한 쌍으로 출처를 판별할 수 있다.
+    """
+    body = "".join("<p>" + p + "</p>" for p in paragraphs)
+    return (_HTML_HEAD + '<div id="postViewArea">'
+            '<div id="post-view220000968295" class="post-view pcol2">' + body
+            + "</div></div>" + ("<!--" + "x" * pad + "-->") + _HTML_TAIL)
 
 
 def _body_missing_html(pad=6000):
-    """모바일 엔드포인트가 구 에디터 글의 **본문을 아예 안 실어 준** 응답.
+    """본문 컨테이너가 **하나도** 없는 응답 — 본문을 못 받았다.
 
-    harvest_fallback.py:3-5 가 2017~2018 글 11건에서 실측해 기록한 형태다.
-    UI 아이콘만 있고 본문 컨테이너가 SE3·SE2 어느 쪽도 없다. 크기는 문턱을 통과한다.
+    ⚠️ JS 미끼는 그대로 들어 있다. 즉 「`se-main-container` 라는 문자열이 있다」는
+       사실만으로는 본문 유무를 하나도 말해 주지 못한다는 것을 이 픽스처가 고정한다.
+       크기는 문턱(5,000B)을 통과한다.
     """
-    return (_HTML_HEAD + '<div class="blog_header">머리말</div><img src="ui_icon.png">'
-            + ("<!--" + "x" * pad + "-->") + _HTML_TAIL)
+    return (_HTML_HEAD + _EDITOR_ATTR.format(v=2)
+            + '<div class="blog_header">머리말</div><img src="ui_icon.png">'
+            + DECOY_LAZYLOADER + ("<!--" + "x" * pad + "-->") + _HTML_TAIL)
 
 
 def _entry(log_no="221000000001", cat=28):
@@ -1224,60 +1307,215 @@ def test_harvest_main_stays_quiet_when_no_blank_titles(tmp_path, monkeypatch, ca
     assert "제목이 빈 글" not in capsys.readouterr().out
 
 
-# ------------------- C2: 구 에디터 위장 (image_only) -------------------
+# ------------------- C2: 본문 유무 판별 (2026-08-05 재교정) -------------------
+#
+# 🔴 무엇이 틀렸었나: 옛 판정기는 `"se-main-container" in src` 라는 **부분문자열**을
+#    SE3 본문 신호로 썼다. 그 문자열은 본문이 0자인 글의 **페이지 골격 JS 한 줄**에도
+#    들어 있다(위 DECOY_LAZYLOADER). 그래서 Task 9 실전 수집에서
+#      · `text_len == 0` 197건이 전부 `body_container="se3"` + `image_only=True`
+#      · 「본문 미수신」은 **0건** 으로 보고됨
+#    즉 본문을 한 글자도 못 읽은 글들이 「진짜 이미지 전용 글」로 위장했다.
+#  ⇒ 판정 축을 **「본문 문단이 실제로 추출됐는가」**로 바꾼다. 컨테이너는 **여는 태그**로만
+#    인정하고, 「미수신」과 「이미지 전용」은 *본문 안에 이미지가 있는가* 로 가른다.
+
+_CLASSIFY_SEQ = [0]
+
 
 def _classify(tmp_path, monkeypatch, html_src):
+    """⚠️ log_no 를 매번 다르게 준다 — 같은 값이면 `harvest_one` 의 존재-스킵이 걸려
+    **한 테스트 안의 두 번째 호출부터 첫 HTML 을 되돌려준다**(실제로 여기서 겪었다).
+    """
     h = _load("harvest_cat28_29_full")
     _install_tmp_dirs(h, tmp_path, monkeypatch)
-    return h.harvest_one(_entry(), fetch=lambda n: html_src, sleep=lambda s: None)
+    _CLASSIFY_SEQ[0] += 1
+    return h.harvest_one(_entry(log_no="22100000%04d" % _CLASSIFY_SEQ[0]),
+                         fetch=lambda n: html_src, sleep=lambda s: None)
 
 
-def test_legacy_editor_post_is_flagged_not_image_only(tmp_path, monkeypatch):
-    """🔴 구 에디터(SE2) 글은 `image_only` 로 위장되면 안 된다.
+def test_marker_alone_does_not_mean_the_body_arrived(tmp_path, monkeypatch):
+    """🔴 이번 결함의 **직접 재현** — 본문이 없는데 `se-main-container` 문자열은 있다.
 
-    본문이 `#postViewArea` 에 있는데 이 추출기는 SE3 문단만 읽는다 = **아직 못 읽은 글**.
-    image_only 로 적으면 V1(파일 있음)·V2(⑧기타 1행)가 전부 초록인 채
-    원문을 한 번도 안 읽고 「전수」를 주장하게 된다.
+    이 픽스처에는 본문 컨테이너 태그가 하나도 없고, 그 이름을 담은 JS 미끼만 있다.
+    부분문자열 판정으로 되돌리면 여기서 `image_only=True` 가 나와 실패한다.
     """
-    meta = _classify(tmp_path, monkeypatch, _legacy_html())
-    assert meta["text_len"] == 0
-    assert meta["legacy_editor"] is True, "구 에디터 신호를 못 잡았다"
-    assert meta["image_only"] is False, "🔴 못 읽은 글이 이미지 전용으로 위장됐다"
-    assert meta["body_container"] == "se2"
-
-
-def test_response_without_any_body_container_is_flagged_not_image_only(tmp_path, monkeypatch):
-    """🔴 harvest_fallback.py:3-5 가 기록한 **실제** 사례 — 모바일이 구 에디터 글의
-    본문을 아예 안 실어 준다. 8KB 라 크기 문턱을 통과하고 본문만 0자다.
-    """
-    meta = _classify(tmp_path, monkeypatch, _body_missing_html())
+    src = _body_missing_html()
+    assert "se-main-container" in src, "미끼가 없으면 이 결함을 재현할 수 없다"
+    assert '<div class="se-main-container' not in src, "픽스처에 진짜 컨테이너가 있다"
+    meta = _classify(tmp_path, monkeypatch, src)
     assert meta["html_bytes"] >= 5000, "크기 문턱을 통과하는 응답이어야 재현이 된다"
     assert meta["text_len"] == 0
-    assert meta["legacy_editor"] is True
+    assert meta["body_missing"] is True
     assert meta["image_only"] is False, "🔴 본문 미수신이 이미지 전용으로 위장됐다"
     assert meta["body_container"] == "none"
 
 
-def test_true_image_only_post_is_image_only_and_not_legacy(tmp_path, monkeypatch):
-    """🔑 반대 방향 — 진짜 이미지 전용 글은 여전히 image_only 여야 한다.
+@pytest.mark.parametrize("make,gen,ver", [
+    (_se2_html, "se2", 2),
+    (_se3_html, "se3", 3),
+    (_post_html, "se4", 4),
+])
+def test_every_editor_generation_yields_body_text(tmp_path, monkeypatch, make, gen, ver):
+    """🔴 세 세대 **전부** 본문이 나와야 한다.
 
-    이걸 안 걸면 「전부 legacy_editor 로 찍으면 되지」로 되돌려도 아무도 못 잡는다.
-    SE3 본문 컨테이너를 **받았는데** 문단만 없는 경우가 그것이다.
+    옛 추출기는 `se-text-paragraph`(SE4) 하나만 읽어 SE2 195건·SE3 2건을
+    **0자로** 만들었다. 세대별 마크업은 서로 완전히 다르다(전부 실측):
+      SE2 클래스 없는 `<p><span>` · SE3 `<p class="se_textarea">` ·
+      SE4 `<p class="se-text-paragraph">`
+    """
+    meta = _classify(tmp_path, monkeypatch, make(["첫 문단입니다", "둘째 문단입니다"]))
+    assert meta["text_len"] > 0, "🔴 " + gen + " 본문이 또 0자다"
+    assert meta["body_missing"] is False
+    assert meta["image_only"] is False
+    assert meta["body_container"] == gen
+    assert meta["page_editor_version"] == ver, "응답이 밝힌 세대를 못 읽었다"
+    h = _load("harvest_cat28_29_full")
+    content = (h.C.TEXT_DIR / meta["text_file"]).read_text(encoding="utf-8")
+    assert "첫 문단입니다" in content and "둘째 문단입니다" in content
+
+
+def test_body_text_excludes_ui_chrome(tmp_path, monkeypatch):
+    """🔴 경계가 틀리면 정독 에이전트가 **남의 글을 저자의 주장으로** 기록한다.
+
+    SE4 는 글쓴이·날짜·「이웃추가」·「공유하기」·「신고하기」가 `se-viewer` **안**에
+    들어 있다(실측). 본문 앵커를 se-viewer 로 잡으면 그게 전부 본문에 섞인다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    meta = h.harvest_one(_entry(), fetch=lambda n: _post_html(["진짜 본문"]),
+                         sleep=lambda s: None)
+    content = (h.C.TEXT_DIR / meta["text_file"]).read_text(encoding="utf-8")
+    assert "진짜 본문" in content
+    for chrome in ("이웃추가", "공유하기", "URL복사", "신고하기", "글쓴이자리"):
+        assert chrome not in content, "🔴 UI 크롬이 본문에 섞였다: " + chrome
+
+
+def test_se3_anchor_does_not_grab_the_header_component_wrap(tmp_path, monkeypatch):
+    """🔑 SE3 머리말에도 `se_component_wrap` 이 따로 있다 — `__se_component_area` 를
+    함께 요구하지 않으면 머리말을 본문으로 집는다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    meta = h.harvest_one(_entry(), fetch=lambda n: _se3_html(["진짜 본문"]),
+                         sleep=lambda s: None)
+    content = (h.C.TEXT_DIR / meta["text_file"]).read_text(encoding="utf-8")
+    assert "진짜 본문" in content
+    assert "머리말자리" not in content, "🔴 머리말 컴포넌트를 본문으로 집었다"
+
+
+def test_true_image_only_post_is_image_only_not_missing(tmp_path, monkeypatch):
+    """🔑 반대 방향 — 진짜 이미지 전용 글은 여전히 `image_only` 여야 한다.
+
+    이걸 안 걸면 「전부 body_missing 으로 찍으면 되지」로 되돌려도 아무도 못 잡는다.
+    가르는 기준은 **본문 컨테이너 안에 이미지가 있는가**다.
     """
     meta = _classify(tmp_path, monkeypatch, _post_html([], n_img=9))
     assert meta["text_len"] == 0
     assert meta["image_only"] is True
-    assert meta["legacy_editor"] is False, "진짜 이미지 전용 글이 미수신으로 오분류됐다"
-    assert meta["body_container"] == "se3"
-    assert meta["img_count"] == 9
+    assert meta["body_missing"] is False, "진짜 이미지 전용 글이 미수신으로 오분류됐다"
+    assert meta["body_container"] == "se4"
+    assert meta["body_img_count"] == 9
 
 
-def test_normal_post_is_neither_image_only_nor_legacy(tmp_path, monkeypatch):
+def test_empty_container_with_no_images_is_missing_not_image_only(tmp_path, monkeypatch):
+    """🔑 컨테이너는 왔는데 글자도 이미지도 없다 = 빈 본문. 글이 아니다.
+
+    「이미지 전용」이라 부르면 아무도 안 읽은 채 모든 게이트가 초록이 된다.
+    """
+    meta = _classify(tmp_path, monkeypatch, _post_html([], n_img=0))
+    assert meta["text_len"] == 0
+    assert meta["image_only"] is False, "🔴 빈 본문이 이미지 전용으로 위장됐다"
+    assert meta["body_missing"] is True
+    assert meta["body_container"] == "se4"
+
+
+def test_body_img_count_ignores_ui_icons_outside_the_body(tmp_path, monkeypatch):
+    """🔑 `image_only` 판정이 **본문 안** 이미지를 봐야 하는 이유.
+
+    페이지 전체를 세면 UI 아이콘 때문에 어떤 응답이든 이미지가 있는 것처럼 보여
+    판별력이 0 이 된다. 본문 밖 아이콘 1장 + 본문 안 0장 = 이미지 전용이 아니다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    src = _post_html([], n_img=0).replace("</body>", '<img src="ui_icon.png"></body>')
+    meta = h.harvest_one(_entry(), fetch=lambda n: src, sleep=lambda s: None)
+    assert meta["img_count"] == 1, "페이지 전체 이미지 수가 안 세어졌다"
+    assert meta["body_img_count"] == 0
+    assert meta["image_only"] is False
+    assert meta["body_missing"] is True
+
+
+def test_normal_post_is_neither_image_only_nor_missing(tmp_path, monkeypatch):
     meta = _classify(tmp_path, monkeypatch, _post_html(["본문 있음"], n_img=2))
     assert meta["text_len"] > 0
     assert meta["image_only"] is False
-    assert meta["legacy_editor"] is False
-    assert meta["body_container"] == "se3"
+    assert meta["body_missing"] is False
+    assert meta["body_container"] == "se4"
+
+
+# ---- 출처(source) — 「이 글은 어디서 왔나」를 산출물에서 되읽는다 ----
+
+def test_source_is_read_from_the_saved_html_not_asserted(tmp_path, monkeypatch):
+    """🔑 우리가 적은 메모가 아니라 **응답 자체**가 출처를 답해야 한다.
+
+    모바일 응답에는 `viewTypeSelector` 가 432/432, PC 응답에는 `postViewArea` 가
+    있고 서로 0건 겹친다(양쪽 실측). 메모 방식이면 파일과 어긋나도 아무도 모른다.
+    """
+    assert _classify(tmp_path, monkeypatch, _post_html(["본문"]))["source"] == "mobile"
+    assert _classify(tmp_path, monkeypatch, _se2_html())["source"] == "mobile"
+    assert _classify(tmp_path, monkeypatch, _pc_html())["source"] == "pc"
+    assert _classify(tmp_path, monkeypatch, _body_missing_html())["source"] == "unknown"
+
+
+def test_pc_endpoint_body_is_extracted_without_network(tmp_path, monkeypatch):
+    """PC 응답(`#postViewArea`)에서도 본문이 나와야 한다 — 저장된 HTML 을 입력으로.
+
+    실증(관리자 승인 하 1회 호출): logNo=220000968295 을 두 경로에서 뽑으면
+    모바일 4,192자 / PC 4,192자 · **88줄 완전일치, 차이 0줄**.
+    """
+    meta = _classify(tmp_path, monkeypatch, _pc_html(["PC 본문 첫 줄", "PC 본문 둘째 줄"]))
+    assert meta["body_container"] == "postview"
+    assert meta["body_missing"] is False
+    assert meta["text_len"] > 0
+    h = _load("harvest_cat28_29_full")
+    content = (h.C.TEXT_DIR / meta["text_file"]).read_text(encoding="utf-8")
+    assert "PC 본문 첫 줄" in content and "PC 본문 둘째 줄" in content
+
+
+def test_summary_shouts_about_missing_bodies_and_stays_quiet_otherwise():
+    """🔑 양방향 — 미수신이 있으면 시끄럽고, 없으면 오경보를 안 낸다.
+
+    「0건」이 성공인지 판별 불능인지 구분되게 **컨테이너·출처 분포**도 함께 낸다.
+    이번 사고는 `legacy_editor` 가 정확히 0건이었는데 실제로는 197건이 사라진 것이다.
+    """
+    h = _load("harvest_cat28_29_full")
+    ok = {"log_no": "1", "post_date": "2021-01-01", "text_len": 10,
+          "image_only": False, "body_missing": False, "body_container": "se4",
+          "source": "mobile"}
+    bad = dict(ok, log_no="2", text_len=0, body_missing=True,
+               body_container="none", source="unknown")
+    quiet = h.summarize_bodies([ok])
+    assert "본문 미수신 0 건" in quiet
+    assert "본문 못 읽음" not in quiet, "오경보를 냈다"
+    assert "'se4': 1" in quiet and "'mobile': 1" in quiet, "분포가 없다 — " + quiet
+    loud = h.summarize_bodies([ok, bad])
+    assert "본문 미수신 1 건" in loud
+    assert "본문 못 읽음 2 2021-01-01" in loud, "빠진 글의 log_no 가 없다 — " + loud
+
+
+def test_summary_flags_editor_version_disagreement_between_the_two_signals():
+    """🔑 목록 API 와 응답 자체가 세대를 다르게 말하면 소리가 나야 한다(현재 432/432 일치).
+
+    반대 방향(일치하면 조용)도 함께 고정한다.
+    """
+    h = _load("harvest_cat28_29_full")
+    meta = {"log_no": "1", "post_date": "2021-01-01", "text_len": 10,
+            "image_only": False, "body_missing": False, "body_container": "se4",
+            "source": "mobile", "page_editor_version": 4}
+    agree = {"posts": {"1": {"smart_editor_version": 4}}}
+    disagree = {"posts": {"1": {"smart_editor_version": 2}}}
+    assert "불일치 0 건" in h.summarize_bodies([meta], agree)
+    out = h.summarize_bodies([meta], disagree)
+    assert "불일치 1 건" in out and "'1'" in out, out
 
 
 # ---------------------- I2: 배치 중복 (claim_id) ----------------------
@@ -1588,3 +1826,185 @@ def test_verify_listed_counts_uses_same_key_type_as_post_cnt(tmp_path, monkeypat
     v.main()
     rec = _json.loads(h.C.VERIFY_LOG.read_text(encoding="utf-8").splitlines()[0])
     assert rec["post_cnt_delta"] == {"28": 0, "29": 0}, "delta 가 0 이 아니다 = 키가 안 맞는다"
+
+
+# ---- 실제 수집본 432건에 대한 회귀 (posts28/ 이 있을 때만) ----
+
+def _corpus():
+    """저장된 수집본 + 카탈로그. 없으면 skip — `posts28/` 는 타인 저작물이라 미추적이다."""
+    c = _load("cat2829_common")
+    if not (c.POSTS_DIR.exists() and c.CATLIST_JSON.exists()):
+        pytest.skip("posts28/ 또는 catlist_28_29.json 이 없다 (수집 전 환경)")
+    catalog = _json.loads(c.CATLIST_JSON.read_text(encoding="utf-8"))
+    files = sorted(c.POSTS_DIR.glob("*.html"))
+    if not files:
+        pytest.skip("posts28/ 이 비어 있다")
+    return c, catalog, files
+
+
+def test_real_corpus_has_no_post_without_body():
+    """🔴 이번 사고의 **실물 회귀**. 저장된 432건 중 본문이 안 나오는 글이 있으면 실패한다.
+
+    수정 전 실측: 197건이 `text_len=0` 이면서 전부 `image_only=True`(위장).
+    수정 후 실측: `body_missing` 0건 · `image_only` 0건 — 이 코퍼스에 진짜
+    이미지 전용 글은 **한 건도 없었다**.
+    """
+    c, _, files = _corpus()
+    bad = []
+    for p in files:
+        src = p.read_text(encoding="utf-8")
+        cls = c.classify_body(src, c.html_to_text(src))
+        if cls["body_missing"]:
+            bad.append((p.name, cls["body_container"]))
+    assert bad == [], "본문을 못 읽은 글이 남아 있다: " + repr(bad[:10])
+
+
+def test_real_corpus_container_matches_the_editor_version_the_api_reported():
+    """🔑 판정을 **독립 신호 두 개**와 대조한다 — 목록 API 의 `smartEditorVersion`,
+    응답 자체의 `editorversion=`. 셋이 어긋나면 판정 근거가 흔들린 것이다.
+
+    실측(432건): se2 195 / se3 2 / se4 235, 세 신호 **전건 일치**.
+    """
+    c, catalog, files = _corpus()
+    gen_of = {"se2": 2, "se3": 3, "se4": 4}
+    mismatch = []
+    for p in files:
+        log_no = p.stem.split("_")[-1]
+        entry = catalog["posts"].get(log_no)
+        if not entry or entry.get("smart_editor_version") is None:
+            continue
+        src = p.read_text(encoding="utf-8")
+        container, _ = c.body_region(src)
+        if gen_of.get(container) != entry["smart_editor_version"]:
+            mismatch.append((p.name, container, entry["smart_editor_version"]))
+        if c.page_editor_version(src) != entry["smart_editor_version"]:
+            mismatch.append((p.name, "page_editor_version", c.page_editor_version(src)))
+    assert mismatch == [], "세대 신호가 어긋난다: " + repr(mismatch[:10])
+
+
+def test_real_corpus_body_text_is_free_of_ui_chrome_and_plausibly_sized():
+    """🔴 경계 검증 — 사이드바·댓글·관련글이 섞이면 정독이 남의 글을 저자 주장으로 적는다.
+
+    ⚠️ 길이도 함께 본다. 관리자의 급조 정규식은 같은 글에서 39,723자를 냈는데
+       올바른 경계로는 4,192자였다 — **4만 자짜리가 즐비하면 경계가 틀린 것**이다.
+       실측 상한: 12,668자(SE4). 20,000자 넘는 글이 하나라도 나오면 경계를 의심해야 한다.
+    """
+    c, _, files = _corpus()
+    chrome = ("이웃추가", "본문 폰트 크기", "URL복사", "이 블로그 홈", "카테고리 이동")
+    leaks, oversized = [], []
+    for p in files:
+        t = c.html_to_text(p.read_text(encoding="utf-8"))
+        hit = [w for w in chrome if w in t]
+        if hit:
+            leaks.append((p.name, hit))
+        if len(t) > 20000:
+            oversized.append((p.name, len(t)))
+    assert leaks == [], "UI 크롬이 본문에 섞였다: " + repr(leaks[:10])
+    assert oversized == [], "본문이 비정상적으로 길다 = 경계 의심: " + repr(oversized[:10])
+
+
+# ============ 재추출 (reextract_cat2829) — 네트워크 0회가 계약이다 ============
+
+def _install_reextract_dirs(tmp_path, monkeypatch):
+    r = _load("reextract_cat2829")
+    for name, sub in (("POSTS_DIR", "posts28"), ("TEXT_DIR", "text28"),
+                      ("IMAGES_DIR", "images28"), ("CLAIMS_BATCH_DIR", "claims_batches")):
+        monkeypatch.setattr(r.C, name, tmp_path / sub)
+    monkeypatch.setattr(r.C, "CATLIST_JSON", tmp_path / "catlist_28_29.json")
+    monkeypatch.setattr(r.C, "POSTMETA_JSON", tmp_path / "postmeta_28_29.json")
+    monkeypatch.setattr(r.C, "HARVEST_FAIL_JSON", tmp_path / "harvest_fail_28_29.json")
+    r.C.ensure_dirs()
+    return r
+
+
+def _save_post(r, entry, html_src, suffix=".html"):
+    stem = r.H._stem(entry)
+    (r.C.POSTS_DIR / (stem + suffix)).write_text(html_src, encoding="utf-8")
+    return stem
+
+
+def test_reextract_recovers_body_from_already_saved_html(tmp_path, monkeypatch):
+    """🔴 이번 복구의 핵심 — 본문은 **이미 디스크에 있었다.** 네트워크 없이 되살아나야 한다.
+
+    실증: 같은 글(220000968295)을 모바일 저장본에서 4,192자, PC 응답에서 4,192자로
+    뽑아 88줄 **완전일치**(차이 0줄) ⇒ PC 재수집으로 얻을 것이 없다.
+    """
+    r = _install_reextract_dirs(tmp_path, monkeypatch)
+    entry = _entry(log_no="220000968295")
+    _save_post(r, entry, _se2_html(["구 에디터 본문 첫 줄", "둘째 줄"]))
+    meta = r.reextract_one(entry)
+    assert meta["text_len"] > 0
+    assert meta["body_missing"] is False and meta["image_only"] is False
+    assert meta["body_container"] == "se2" and meta["source"] == "mobile"
+    text = (r.C.TEXT_DIR / meta["text_file"]).read_text(encoding="utf-8")
+    assert "구 에디터 본문 첫 줄" in text
+
+
+def test_reextract_meta_contract_matches_harvest_one(tmp_path, monkeypatch):
+    """🔑 두 경로가 다른 모양의 메타를 내면 하류가 어느 쪽을 보느냐로 조용히 갈린다."""
+    r = _install_reextract_dirs(tmp_path, monkeypatch)
+    entry = _entry(log_no="221000000009")
+    src = _post_html(["본문"], n_img=2)
+    _save_post(r, entry, src)
+    from_reextract = r.reextract_one(entry)
+    monkeypatch.setattr(r.H.C, "POSTS_DIR", r.C.POSTS_DIR)
+    monkeypatch.setattr(r.H.C, "TEXT_DIR", r.C.TEXT_DIR)
+    from_harvest = r.H.harvest_one(entry, fetch=lambda n: src, sleep=lambda s: None)
+    assert set(from_reextract) == set(from_harvest), "메타 키 집합이 다르다"
+    for k in from_harvest:
+        assert from_reextract[k] == from_harvest[k], "키 " + k + " 값이 다르다"
+
+
+def test_reextract_raises_loudly_when_html_was_never_saved(tmp_path, monkeypatch):
+    """🔑 없는 글을 조용히 0자로 처리하지 않는다 — 「본문이 없다」와 구분돼야 한다."""
+    r = _install_reextract_dirs(tmp_path, monkeypatch)
+    with pytest.raises(RuntimeError, match="HTML_NOT_SAVED:221000000077"):
+        r.reextract_one(_entry(log_no="221000000077"))
+
+
+def test_reextract_prefers_pc_copy_over_mobile_original(tmp_path, monkeypatch):
+    """🔑 PC 재수집본은 **별도 이름**으로 두고 모바일 원본을 덮지 않는다.
+
+    모바일 원본은 「모바일이 무엇을 줬는가」의 유일한 증거다. 덮어쓰면 이번 결함의
+    재현이 불가능해지고 「이 글은 어디서 왔나」를 파일로 답할 수 없다.
+    """
+    r = _install_reextract_dirs(tmp_path, monkeypatch)
+    entry = _entry(log_no="220000968295")
+    _save_post(r, entry, _body_missing_html())                       # 모바일 원본(본문 없음)
+    _save_post(r, entry, _pc_html(["PC 로 되살린 본문"]), r.PC_SUFFIX)  # PC 보강본
+    meta = r.reextract_one(entry)
+    assert meta["source"] == "pc" and meta["body_missing"] is False
+    assert "PC 로 되살린 본문" in (r.C.TEXT_DIR / meta["text_file"]).read_text(encoding="utf-8")
+    stem = r.H._stem(entry)
+    assert (r.C.POSTS_DIR / (stem + ".html")).exists(), "🔴 모바일 원본이 사라졌다"
+    assert "se-main-container" in (r.C.POSTS_DIR / (stem + ".html")).read_text(encoding="utf-8")
+
+
+def test_refetch_pc_targets_nothing_and_makes_no_request_when_bodies_are_fine(tmp_path, monkeypatch):
+    """🔑 **요청 0회**가 계약이다. 2026-08-05 현재 본문 미수신은 0건이므로 대상도 0건이다."""
+    r = _install_reextract_dirs(tmp_path, monkeypatch)
+    calls = []
+    got, failures = r.refetch_pc([], fetch=lambda n: calls.append(n) or "",
+                                 sleep=lambda s: None)
+    assert (got, failures, calls) == (0, [], [])
+
+
+def test_refetch_pc_fetches_only_targets_and_skips_existing(tmp_path, monkeypatch):
+    """존재-스킵 + 실패를 모아 끝까지 진행 — `harvest_one`/`harvest_bodies` 방식 승계."""
+    r = _install_reextract_dirs(tmp_path, monkeypatch)
+    done, todo, bad = _entry(log_no="1"), _entry(log_no="2"), _entry(log_no="3")
+    _save_post(r, done, _pc_html(["이미 받아 둠"]) + "x" * r.PC_MIN_BYTES, r.PC_SUFFIX)
+    calls = []
+
+    def fetch(log_no):
+        calls.append(str(log_no))
+        if str(log_no) == "3":
+            return "<html>비공개</html>"
+        return _pc_html(["새로 받은 본문"]) + "x" * r.PC_MIN_BYTES
+
+    got, failures = r.refetch_pc([done, todo, bad], fetch=fetch, sleep=lambda s: None)
+    assert calls == ["2", "3"], "이미 받아 둔 글을 다시 요청했다 — " + repr(calls)
+    assert got == 1
+    assert [f["log_no"] for f in failures] == ["3"]
+    assert "PC_FETCH_FAILED" in failures[0]["error"]
+    assert (r.C.POSTS_DIR / (r.H._stem(todo) + r.PC_SUFFIX)).exists()

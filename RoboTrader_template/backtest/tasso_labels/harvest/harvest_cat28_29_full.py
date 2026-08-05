@@ -209,9 +209,15 @@ def harvest_one(entry, fetch=None, retries=3, sleep=None):
         "text_len": len(text),
         "text_file": stem + ".txt",
         "img_count": C.count_images(src),
+        "body_img_count": C.count_images(src, body_only=True),
         "from_cache": from_cache,
+        # 🔑 「이 글은 어디서 왔나」 — 우리가 적은 메모가 아니라 **저장된 HTML 자체**에서
+        #    되읽는다. 메모는 실제 파일과 어긋날 수 있지만 이건 못 어긋난다.
+        "source": C.detect_source(src),
+        # 목록 API 의 smart_editor_version 과 대조할 **독립** 신호(응답이 스스로 밝힌 값).
+        "page_editor_version": C.page_editor_version(src),
     }
-    # image_only / legacy_editor / body_container — 두 상태를 한 플래그에 섞지 않는다.
+    # image_only / body_missing / body_container — 두 상태를 한 플래그에 섞지 않는다.
     meta.update(C.classify_body(src, text))
     return meta
 
@@ -248,6 +254,41 @@ def harvest_bodies(catalog, sleep=None):
     return metas, failures
 
 
+def summarize_bodies(metas, catalog=None):
+    """본문 수신 상태 요약 문자열. **본문 미수신은 한 건도 조용히 넘어가면 안 된다.**
+
+    🔑 컨테이너·소스 분포를 함께 낸다. 옛 판본은 `legacy_editor` 건수만 봤는데,
+       그 값이 **0** 이면서 실제로는 197건이 사라진 것이 이번 사고였다 —
+       분포를 안 보면 「0건」이 성공인지 판별 불능인지 구분되지 않는다.
+    """
+    lines = []
+    missing = [m for m in metas if m.get("body_missing")]
+    img_only = [m for m in metas if m.get("image_only")]
+    lines.append("🔴 본문 미수신 " + str(len(missing)) + " 건 · 이미지 전용 "
+                 + str(len(img_only)) + " 건 · 본문 있음 "
+                 + str(sum(1 for m in metas if m.get("text_len"))) + " 건")
+    for key, label in (("body_container", "컨테이너"), ("source", "받은 곳")):
+        dist = {}
+        for m in metas:
+            dist[str(m.get(key))] = dist.get(str(m.get(key)), 0) + 1
+        lines.append("   " + label + " " + repr(dict(sorted(dist.items()))))
+    for m in missing:
+        lines.append("   본문 못 읽음 " + m["log_no"] + " " + m["post_date"]
+                     + " container=" + str(m.get("body_container"))
+                     + " source=" + str(m.get("source")))
+    # 독립 신호 대조 — 목록 API(smartEditorVersion) vs 응답 자체(editorversion=).
+    # 어긋나면 「어느 세대인가」에 대한 두 증언이 다른 것이므로 판정 근거가 흔들린다.
+    if catalog:
+        bad = [m["log_no"] for m in metas
+               if catalog["posts"].get(m["log_no"], {}).get("smart_editor_version")
+               is not None and m.get("page_editor_version") is not None
+               and catalog["posts"][m["log_no"]]["smart_editor_version"]
+               != m["page_editor_version"]]
+        lines.append("   에디터 세대 교차대조(목록 API vs 응답) 불일치 "
+                     + str(len(bad)) + " 건" + (" " + repr(bad[:10]) if bad else ""))
+    return "\n".join(lines)
+
+
 def main():
     catalog = build_catalog()
     metas, failures = harvest_bodies(catalog)
@@ -255,12 +296,7 @@ def main():
     print("카탈로그", len(catalog["posts"]), "건 · 본문", len(metas),
           "건(기존 재사용", cached, "건) · 실패", len(failures), "건")
     print("postCnt", catalog["post_cnt"])
-    legacy = [m for m in metas if m.get("legacy_editor")]
-    print("본문 미수신(legacy_editor)", len(legacy), "건 ·",
-          "이미지 전용", sum(1 for m in metas if m.get("image_only")), "건")
-    for m in legacy:
-        print("   본문 못 읽음", m["log_no"], m["post_date"],
-              "container=" + str(m.get("body_container")))
+    print(summarize_bodies(metas, catalog))
     # 제목 키는 있는데 값이 빈 글 — 막지는 않되 침묵하지도 않는다(item_title 참조).
     blank = [m for m in metas if not str(m.get("title") or "").strip()]
     if blank:
