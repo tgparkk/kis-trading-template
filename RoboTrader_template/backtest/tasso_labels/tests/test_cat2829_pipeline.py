@@ -426,3 +426,209 @@ def test_v1_missing_and_extra_are_sorted():
     assert r["status"] == "FAIL"
     assert r["missing"] == ["200", "30", "4"], "문자열 정렬이 아니다"
     assert r["extra"] == ["10", "99"]
+
+
+# ============================ Task 6 ============================
+
+import csv as _csv
+import json as _json
+
+
+def _write_batch(d, name, rows):
+    p = d / name
+    with open(str(p), "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(_json.dumps(r, ensure_ascii=False) + "\n")
+    return p
+
+
+def test_load_batches_merges_all_jsonl(tmp_path):
+    b = _load("build_claims_cat2829")
+    _write_batch(tmp_path, "b01.jsonl", [_good_row(claim_id="a-1")])
+    _write_batch(tmp_path, "b02.jsonl", [_good_row(claim_id="b-1"), _good_row(claim_id="b-2")])
+    rows = b.load_batches(tmp_path)
+    assert len(rows) == 3
+    assert {r["claim_id"] for r in rows} == {"a-1", "b-1", "b-2"}
+
+
+def test_load_batches_rejects_schema_violation(tmp_path):
+    b = _load("build_claims_cat2829")
+    _write_batch(tmp_path, "b01.jsonl", [_good_row(vs_v1="Nope")])
+    with pytest.raises(ValueError, match="BAD_VS_V1"):
+        b.load_batches(tmp_path)
+
+
+def test_write_ledgers_splits_quote_column(tmp_path):
+    """공개판에는 원문 인용이 없어야 한다."""
+    b = _load("build_claims_cat2829")
+    pub, quo = tmp_path / "pub.csv", tmp_path / "quo.csv"
+    b.write_ledgers([_good_row()], pub, quo)
+
+    with open(str(pub), encoding="utf-8-sig") as f:
+        pub_rows = list(_csv.DictReader(f))
+    with open(str(quo), encoding="utf-8-sig") as f:
+        quo_rows = list(_csv.DictReader(f))
+
+    assert "quote" not in pub_rows[0]
+    assert quo_rows[0]["quote"] == "평균은 점 하나인데 현실은 퍼짐"
+    assert pub_rows[0]["claim_id"] == quo_rows[0]["claim_id"]
+
+
+def test_v2_fails_when_a_post_has_no_row():
+    """🔑 배치를 조용히 건너뛴 것을 잡는다.
+
+    「글당 최소 1행」 이 강제되므로, 원장에 없는 log_no 는 정독이 안 된 것이다.
+    """
+    v = _load("verify_cat2829")
+    rows = [_good_row(log_no="1"), _good_row(log_no="2")]
+    r = v.v2_ledger_coverage(rows, {"1", "2", "3"})
+    assert r["status"] == "FAIL"
+    assert r["missing_lognos"] == ["3"]
+
+
+def test_v2_passes_when_every_post_has_at_least_one_row():
+    v = _load("verify_cat2829")
+    rows = [_good_row(log_no="1"), _good_row(log_no="1"), _good_row(log_no="2")]
+    r = v.v2_ledger_coverage(rows, {"1", "2"})
+    assert r["status"] == "PASS"
+    assert r["rows"] == 3 and r["posts"] == 2
+
+
+# ---- Task 6 갭 보강 (판별력 자체 점검 — 브리프 테스트가 안 잡는 계약들) ----
+
+def test_load_batches_is_sorted_by_filename_and_preserves_line_order(tmp_path):
+    """🔑 병합 순서가 결정적이지 않으면 원장 diff 가 실행마다 흔들린다.
+
+    파일명 역순으로 써도 항상 파일명 오름차순으로, 파일 내부는 줄 순서대로 나와야 한다.
+    """
+    b = _load("build_claims_cat2829")
+    _write_batch(tmp_path, "b02.jsonl", [_good_row(claim_id="b-1"), _good_row(claim_id="b-2")])
+    _write_batch(tmp_path, "a01.jsonl", [_good_row(claim_id="a-1")])
+    rows = b.load_batches(tmp_path)
+    assert [r["claim_id"] for r in rows] == ["a-1", "b-1", "b-2"], "파일명·줄 순서가 아니다"
+
+
+def test_load_batches_ignores_non_jsonl_files(tmp_path):
+    """배치 디렉토리에 *.jsonl 이 아닌 파일이 섞여도 무시해야 한다."""
+    b = _load("build_claims_cat2829")
+    (tmp_path / "README.txt").write_text("이것은 JSON 이 아니다", encoding="utf-8")
+    _write_batch(tmp_path, "b01.jsonl", [_good_row(claim_id="only-1")])
+    rows = b.load_batches(tmp_path)
+    assert len(rows) == 1
+    assert rows[0]["claim_id"] == "only-1"
+
+
+def test_load_batches_error_message_has_file_and_line_number(tmp_path):
+    """🔑 인터페이스가 「파일:줄 사유」 형태를 명시로 약속한다.
+
+    브리프 테스트는 `match="BAD_VS_V1"` 로 메시지 어딘가에 그 문자열이 있는지만 본다
+    (re.search 는 부분일치). 파일명·줄번호가 아예 안 들어가도 그 테스트는 통과한다.
+    여기서는 위반이 3번째 줄에 있을 때 그 줄번호가 정확히 찍히는지를 고정한다.
+    """
+    b = _load("build_claims_cat2829")
+    _write_batch(tmp_path, "zz.jsonl", [
+        _good_row(claim_id="ok-1"),
+        _good_row(claim_id="ok-2"),
+        _good_row(claim_id="bad-1", vs_v1="Nope"),
+    ])
+    with pytest.raises(ValueError) as ei:
+        b.load_batches(tmp_path)
+    msg = str(ei.value)
+    assert msg.startswith("zz.jsonl:3 "), "파일명:줄번호 접두사가 다르다 — " + msg
+    assert "BAD_VS_V1" in msg
+
+
+def test_write_ledgers_column_order_matches_schema(tmp_path):
+    """🔑 "열 순서는 claims_schema 가 정한다" — 헤더 순서 자체를 고정한다.
+
+    DictReader 로만 읽으면 열 순서가 바뀌어도 딕셔너리 키 존재 여부만 보므로 안 잡힌다.
+    """
+    b = _load("build_claims_cat2829")
+    s = _load("claims_schema")
+    pub, quo = tmp_path / "pub.csv", tmp_path / "quo.csv"
+    b.write_ledgers([_good_row()], pub, quo)
+
+    with open(str(pub), encoding="utf-8-sig", newline="") as f:
+        pub_header = next(_csv.reader(f))
+    with open(str(quo), encoding="utf-8-sig", newline="") as f:
+        quo_header = next(_csv.reader(f))
+
+    assert pub_header == list(s.PUBLIC_COLUMNS)
+    assert quo_header == list(s.COLUMNS)
+
+
+def test_write_ledgers_preserves_row_order_and_all_rows(tmp_path):
+    """행이 여럿일 때 전부·같은 순서로 두 판본에 쓰여야 한다(브리프 테스트는 1행뿐)."""
+    b = _load("build_claims_cat2829")
+    pub, quo = tmp_path / "pub.csv", tmp_path / "quo.csv"
+    rows = [_good_row(claim_id="r1"), _good_row(claim_id="r2"), _good_row(claim_id="r3")]
+    b.write_ledgers(rows, pub, quo)
+
+    with open(str(pub), encoding="utf-8-sig") as f:
+        pub_ids = [r["claim_id"] for r in _csv.DictReader(f)]
+    with open(str(quo), encoding="utf-8-sig") as f:
+        quo_ids = [r["claim_id"] for r in _csv.DictReader(f)]
+
+    assert pub_ids == ["r1", "r2", "r3"]
+    assert quo_ids == ["r1", "r2", "r3"]
+
+
+def test_v2_missing_lognos_are_sorted():
+    """🔑 Task 5 와 동형 결함 계열 — 브리프의 v2 FAIL 테스트는 missing_lognos 원소가 1개뿐이라
+    `sorted()` 를 `list()` 로 바꿔도 우연히 통과한다(정렬 여부를 판별 못 함).
+
+    문자열 정렬(사전식)이 되는지를 여러 원소로 고정한다. "200" < "30" < "4" 는
+    숫자 정렬이면 절대 나오지 않는 순서다.
+    """
+    v = _load("verify_cat2829")
+    rows = [_good_row(log_no="1")]
+    r = v.v2_ledger_coverage(rows, {"30", "4", "200", "1"})
+    assert r["status"] == "FAIL"
+    assert r["missing_lognos"] == ["200", "30", "4"], "문자열 정렬이 아니다"
+
+
+def test_v2_fail_still_reports_rows_and_posts():
+    """FAIL 이어도 rows·posts 집계가 조기 반환으로 생략되면 안 된다."""
+    v = _load("verify_cat2829")
+    rows = [_good_row(log_no="1"), _good_row(log_no="1"), _good_row(log_no="2")]
+    r = v.v2_ledger_coverage(rows, {"1", "2", "3"})
+    assert r["status"] == "FAIL"
+    assert r["rows"] == 3
+    assert r["posts"] == 2
+
+
+def test_v2_passes_even_with_extra_lognos_not_expected():
+    """🔑 V2 는 「모든 글이 최소 1행 있는가」만 본다 — 기대 밖 log_no 가 섞여도 실패가 아니다.
+
+    V1(v1_coverage)의 `extra` 개념과 섞으면(대칭 차집합) 이 테스트가 실패해야 한다.
+    """
+    v = _load("verify_cat2829")
+    rows = [_good_row(log_no="1"), _good_row(log_no="2"), _good_row(log_no="99")]
+    r = v.v2_ledger_coverage(rows, {"1", "2"})
+    assert r["status"] == "PASS"
+    assert r["rows"] == 3 and r["posts"] == 3
+
+
+def test_main_merges_batches_and_writes_ledgers(tmp_path, monkeypatch, capsys):
+    """load_batches 와 write_ledgers 가 main() 에서 실제로 이어붙었는지 — 부품 테스트만으론
+    배선 자체(어느 경로에서 읽어 어느 경로에 쓰는지)가 안 잡힌다."""
+    b = _load("build_claims_cat2829")
+    batch_dir = tmp_path / "claims_batches"
+    batch_dir.mkdir()
+    pub, quo = tmp_path / "claims_cat2829.csv", tmp_path / "claims_cat2829_quoted.csv"
+
+    monkeypatch.setattr(b.C, "CLAIMS_BATCH_DIR", batch_dir)
+    monkeypatch.setattr(b.C, "CLAIMS_PUBLIC_CSV", pub)
+    monkeypatch.setattr(b.C, "CLAIMS_QUOTED_CSV", quo)
+
+    _write_batch(batch_dir, "b01.jsonl", [_good_row(log_no="1", claim_id="1-1")])
+    _write_batch(batch_dir, "b02.jsonl", [_good_row(log_no="2", claim_id="2-1")])
+
+    rc = b.main()
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert pub.exists() and quo.exists()
+    with open(str(pub), encoding="utf-8-sig") as f:
+        assert len(list(_csv.DictReader(f))) == 2
+    assert "2" in out, "행/글 건수가 출력에 안 보인다 — " + out

@@ -33,3 +33,19 @@ def v1_coverage(catalog_lognos, saved_lognos, post_cnt, listed_cnt):
         "extra": extra,
         "post_cnt_delta": delta,
     }
+
+
+def v2_ledger_coverage(rows, expected_lognos):
+    """원장이 **모든 글**을 덮는가.
+
+    「글당 최소 1행」 규칙 덕에, 원장에 없는 log_no = 정독이 안 된 글이다.
+    (주장이 없는 글도 topic=⑧기타 · vs_v1=none 행을 남기게 돼 있다.)
+    """
+    seen = {r["log_no"] for r in rows}
+    missing = sorted(set(expected_lognos) - seen)
+    return {
+        "status": "FAIL" if missing else "PASS",
+        "missing_lognos": missing,
+        "rows": len(rows),
+        "posts": len(seen),
+    }
