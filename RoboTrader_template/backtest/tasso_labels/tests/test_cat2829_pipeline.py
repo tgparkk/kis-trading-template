@@ -775,3 +775,91 @@ def test_v5_single_conflict_row_amid_other_vs_v1_values_is_not_a_candidate():
         _claim_row("2", "2025-06-01", "③분할매수", "200건", vs="conflict"),
     ]
     assert v.v5_revision_candidates(rows) == []
+
+
+# ============================ Task 8 ============================
+
+def _meta(log_no, cat, date, text_len):
+    return {"log_no": str(log_no), "category": cat, "post_date": date,
+            "text_len": text_len, "image_only": text_len == 0}
+
+
+def test_make_batches_respects_target_size():
+    b = _load("batch_cat2829")
+    metas = [_meta(i, 28, "2024-01-0" + str(i % 9 + 1), 25000) for i in range(1, 10)]
+    batches = b.make_batches(metas, target_chars=60000)
+    assert all(sum(m["text_len"] for m in batch) <= 60000 or len(batch) == 1
+               for batch in batches)
+
+
+def test_make_batches_covers_every_post_exactly_once():
+    """🔑 분할이 글을 잃거나 겹치면 V2 가 잡기 전에 여기서 잡는다."""
+    b = _load("batch_cat2829")
+    metas = [_meta(i, 28 if i % 2 else 29, "2024-01-01", 7000) for i in range(1, 31)]
+    batches = b.make_batches(metas, target_chars=20000)
+    flat = [m["log_no"] for batch in batches for m in batch]
+    assert sorted(flat) == sorted(m["log_no"] for m in metas)
+    assert len(flat) == len(set(flat))
+
+
+def test_make_batches_is_deterministic():
+    b = _load("batch_cat2829")
+    metas = [_meta(i, 28, "2024-01-01", 5000) for i in range(1, 21)]
+    assert b.make_batches(metas, 20000) == b.make_batches(list(reversed(metas)), 20000)
+
+
+def test_make_batches_keeps_oversized_post_alone():
+    b = _load("batch_cat2829")
+    metas = [_meta(1, 28, "2024-01-01", 500000), _meta(2, 28, "2024-01-02", 1000)]
+    batches = b.make_batches(metas, target_chars=20000)
+    assert [m["log_no"] for m in batches[0]] == ["1"]
+
+
+# ---- Task 8 갭 보강 (판별력 자체 점검 — 브리프 테스트가 안 잡는 계약들) ----
+
+def test_make_batches_sort_key_precedence_is_category_then_date_then_lognos():
+    """🔑 브리프의 `test_make_batches_is_deterministic` 은 category·post_date 가
+    **상수**라 log_no 하나만 바뀐다 — 정렬 키를 `m["log_no"]` 로만 구현해도
+    (reversed 입력 == 원본 입력) 은 여전히 성립해 실패하지 않는다(실측 확인함).
+
+    여기서는 세 키가 전부 다르게 움직이도록 배치해 (category, post_date, log_no)
+    3중 정렬이 실제로 그 순서로 동작하는지 직접 고정한다 — log_no 단독 정렬,
+    (post_date, log_no) 정렬(category 무시), (category, log_no, post_date)
+    정렬(log_no 가 date 보다 우선) 전부 아래 fixture 에서 다른 순서를 낸다.
+    """
+    b = _load("batch_cat2829")
+    a = _meta("999", 28, "2024-05-01", 10)   # cat28, 가장 늦은 date, 가장 큰 log_no
+    bb = _meta("500", 28, "2024-01-01", 10)  # cat28, 가장 이른 date 그룹, log_no 큰 쪽
+    c = _meta("100", 29, "2023-01-01", 10)   # cat29 — date·log_no 는 전부 가장 작지만 category 가 커서 맨 뒤
+    d = _meta("200", 28, "2024-01-01", 10)   # cat28, 가장 이른 date 그룹, log_no 작은 쪽
+    e = _meta("150", 28, "2024-03-01", 10)   # cat28, 중간 date, log_no 는 그룹 내 최소
+
+    for order in (
+        [a, bb, c, d, e],
+        [e, d, c, bb, a],
+        [c, a, d, bb, e],
+    ):
+        batches = b.make_batches(order, target_chars=100000)
+        assert len(batches) == 1, "target 이 커서 한 배치에 다 들어가야 한다"
+        got = [m["log_no"] for m in batches[0]]
+        assert got == ["200", "500", "150", "999", "100"], (
+            "정렬 순서가 (category, post_date, log_no) 가 아니다 — " + repr(got))
+
+
+def test_make_batches_groups_posts_that_fit_together_not_one_per_batch():
+    """🔑 브리프의 `test_make_batches_respects_target_size` 단언은
+    `... or len(batch) == 1` 을 포함한다 — **모든 배치를 원소 1개로 쪼개는**
+    망가진 구현(`[[m] for m in ordered]`)도 이 단언을 우연히 통과한다(실측 확인함).
+    `test_make_batches_covers_every_post_exactly_once`·`_is_deterministic`·
+    `_keeps_oversized_post_alone` 도 마찬가지로 통과한다 — 넷 다 갭이었다.
+
+    5건(각 3000자, target 10000)을 넣어 정확한 배치 구성 자체를 고정한다 —
+    누적이 10000 을 넘기 직전(4번째에서)에 끊겨 [1,2,3] 과 [4,5] 두 배치가
+    나와야 한다. 원소 1개짜리 배치 5개나, 전부 한 배치로 뭉친 결과는 모두 FAIL.
+    """
+    b = _load("batch_cat2829")
+    metas = [_meta(i, 28, "2024-01-01", 3000) for i in range(1, 6)]
+    batches = b.make_batches(metas, target_chars=10000)
+    got = [[m["log_no"] for m in batch] for batch in batches]
+    assert got == [["1", "2", "3"], ["4", "5"]], (
+        "배치 구성이 다르다 — 원소 1개씩 쪼개졌거나 하나로 뭉쳤을 수 있다: " + repr(got))
