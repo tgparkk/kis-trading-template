@@ -171,6 +171,19 @@ backtest/tasso_labels/harvest/text/
 # 🔴 단, 산문 **문장 원문**이 컬럼에 들어간 파일은 타인 저작물이므로 되살리지 않는다(재차단).
 #    같은 판정의 결과는 harvest/prose_incorporation.csv 에 **날짜·종목·분류만** 남는 형태로 가공돼 있다.
 backtest/tasso_labels/harvest/prose_only_candidates.csv
+# 🔴 [28]·[29] 전수 수집(2026-08-05)의 원문 캐시 — posts/·text/ 와 같은 사유(타인 저작물).
+#    ⚠️ 실측: 이 줄들이 없으면 posts28/*.html 이 그대로 커밋 대상이 된다.
+backtest/tasso_labels/harvest/posts28/
+backtest/tasso_labels/harvest/text28/
+backtest/tasso_labels/harvest/images28/
+# 🔴 정독 에이전트의 배치 출력(JSONL)에도 원문 인용이 들어 있다.
+backtest/tasso_labels/harvest/claims_batches/
+# 🔴 주장 원장 중 `quote`(원문 인용) 열이 든 판본은 되살리지 않는다 — prose_only_candidates.csv 와 동일 사유.
+#    공개판은 claims_cat2829.csv(quote 제거)이며 위 `!harvest/*.csv` 로 이미 추적된다.
+backtest/tasso_labels/harvest/claims_cat2829_quoted.csv
+# 🔑 반대 방향: 검증 로그는 V1·V2·V5 의 **유일한 근거**인데 `*.log`(68·138행)가 삼킨다.
+#    survivorship_recount.log·c_rate_by_year.log 와 같은 예외 처리 — 순수 수치표이고 원문 인용이 없다.
+!backtest/tasso_labels/harvest/verify_cat2829.log
 # 종결 근거 로그 2본만 `*.log` 차단의 예외 — 둘 다 **순수 수치표**이고 원문 인용이 없다.
 #   survivorship_recount.log = 생존편향 대정정(보고 42.4% → 진짜 상폐 2.9%)의 유일한 근거
 #   c_rate_by_year.log       = 연도 층화 근거를 깎은 부트스트랩 CI 의 유일한 근거
