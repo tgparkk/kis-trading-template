@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import sys
@@ -78,3 +79,59 @@ def v5_revision_candidates(rows):
                           "claim_id": r["claim_id"]} for r in grp],
         })
     return out
+
+
+# ============================ V1 배선 (진입점) ============================
+
+def listed_counts(catalog):
+    """카탈로그가 실제로 담은 글 수를 카테고리별로 센다.
+
+    🔑 키를 str 로 맞춘다 — `post_cnt` 는 JSON 객체라 키가 항상 str 이고,
+       v1_coverage 는 `listed_cnt.get(cat, 0)` 로 **같은 키**를 찾는다.
+       한쪽만 int 면 전 카테고리가 조용히 0 으로 세어져 delta 가 거짓이 된다.
+    """
+    out = {}
+    for entry in catalog.get("posts", {}).values():
+        key = str(entry.get("category"))
+        out[key] = out.get(key, 0) + 1
+    return out
+
+
+def main():
+    """CATLIST_JSON · POSTMETA_JSON 을 읽어 V1 을 돌리고 VERIFY_LOG 에 남긴다.
+
+    🔑 이 배선이 없어서 C1(logNo 타입) 파급이 테스트에 안 잡혔다. 부품만 테스트하면
+       「어느 파일을 읽어 어느 집합끼리 비교하는가」가 통째로 사각지대가 된다.
+    반환: PASS 0 / FAIL 1.
+    """
+    catalog = json.loads(C.CATLIST_JSON.read_text(encoding="utf-8"))
+    metas = json.loads(C.POSTMETA_JSON.read_text(encoding="utf-8"))
+
+    catalog_lognos = {str(k) for k in catalog.get("posts", {})}
+    saved_lognos = {str(m["log_no"]) for m in metas}
+    post_cnt = {str(k): v for k, v in (catalog.get("post_cnt") or {}).items()}
+    result = v1_coverage(catalog_lognos, saved_lognos, post_cnt, listed_counts(catalog))
+
+    record = dict(result, check="V1",
+                  checked_at=datetime.datetime.now().isoformat(timespec="seconds"),
+                  catalog_posts=len(catalog_lognos), saved_posts=len(saved_lognos))
+    with open(str(C.VERIFY_LOG), "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print("V1", result["status"], "· 목록", len(catalog_lognos),
+          "건 · 저장", len(saved_lognos), "건")
+    print("post_cnt_delta", result["post_cnt_delta"])
+    if result["missing"]:
+        print("🔴 목록에 있는데 저장 안 됨", len(result["missing"]), "건:",
+              result["missing"][:20])
+    if result["extra"]:
+        print("🔴 목록에 없는데 저장됨", len(result["extra"]), "건:", result["extra"][:20])
+    # ⚠️ 중단하지 않는다 — 이건 우리 결함이 아니라 근거의 부재이고, 판단은 사람이 한다.
+    if post_cnt and all(v is None for v in post_cnt.values()):
+        print("⚠️ post_cnt 가 전부 None — 카테고리 API 가 글 수를 안 줬다. "
+              "「전수」를 뒷받침할 **독립 증거가 없다**(목록 API 혼자 자기를 증명 중).")
+    return 0 if result["status"] == "PASS" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

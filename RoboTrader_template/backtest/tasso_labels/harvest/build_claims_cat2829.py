@@ -18,8 +18,16 @@ import claims_schema as S           # noqa: E402
 
 
 def load_batches(batch_dir):
-    """배치 디렉토리의 *.jsonl 을 전부 읽고 **행마다 스키마 검증**한다."""
+    """배치 디렉토리의 *.jsonl 을 전부 읽고 **행마다 스키마 검증 + claim_id 유일성**을 본다.
+
+    🔴 유일성 검사가 없으면 중복이 원장을 조용히 배로 불린다. V2 는 커버리지만 보므로
+       (「글마다 최소 1행」) 같은 행이 두 번 들어와도 PASS 를 낸다 = 경보가 안 운다.
+       중복은 사고가 아니라 **계획이 적극적으로 유발**한다:
+         · V2 FAIL 시 배치 재실행   · Task 11 이 img_NN.jsonl 을 같은 디렉토리에 추가
+         · Task 12 의 독립 재정독 출력
+    """
     rows = []
+    seen = {}                       # claim_id -> "파일:줄"
     for path in sorted(os.listdir(str(batch_dir))):
         if not path.endswith(".jsonl"):
             continue
@@ -33,6 +41,13 @@ def load_batches(batch_dir):
                 bad = S.validate_row(row)
                 if bad:
                     raise ValueError(path + ":" + str(lineno) + " " + ";".join(bad))
+                here = path + ":" + str(lineno)
+                cid = row["claim_id"]
+                if cid in seen:
+                    raise ValueError(
+                        here + " DUPLICATE_CLAIM_ID:" + str(cid)
+                        + " (이미 " + seen[cid] + " 에 있다)")
+                seen[cid] = here
                 rows.append(row)
     return rows
 

@@ -68,6 +68,7 @@ def test_gitignore_blocks_copyrighted_artifacts(rel):
     "backtest/tasso_labels/harvest/claims_cat2829.csv",
     "backtest/tasso_labels/harvest/catlist_28_29.json",
     "backtest/tasso_labels/harvest/postmeta_28_29.json",
+    "backtest/tasso_labels/harvest/harvest_fail_28_29.json",
     "backtest/tasso_labels/harvest/verify_cat2829.log",
 ])
 def test_gitignore_keeps_derived_evidence(rel):
@@ -174,9 +175,18 @@ def _fake_pages(pages):
     return fetch
 
 
-def _item(log_no, add_date_ms):
-    return {"logNo": str(log_no), "addDate": add_date_ms,
-            "titleWithInspectMessage": "제목 " + str(log_no)}
+def _item(log_no, add_date_ms, cat=28):
+    """목록 API 항목 — **실제 저장 응답과 같은 키·타입**.
+
+    🔴 2026-08-05 실측(`harvest/tasso_postlist.json` 858건 전수):
+         keys = ['addDate', 'categoryNo', 'logNo', 'title']
+         logNo 타입 = int 858/858 (예: 224364189017)
+         titleWithInspectMessage = 0건 · title = 858건
+    이 픽스처의 옛 판본은 `"logNo": str(log_no)` 로 **현실에 없는 정규화**를 하고
+    `titleWithInspectMessage` 키를 지어내, 거짓 계약을 고정하고 C1·I1 을 둘 다 가렸다.
+    """
+    return {"logNo": int(log_no), "addDate": add_date_ms,
+            "categoryNo": cat, "title": "제목 " + str(log_no)}
 
 
 MS_2019 = 1_546_300_800_000     # 2019-01-01
@@ -273,9 +283,36 @@ _HTML_TAIL = "</body></html>"
 
 
 def _post_html(paragraphs, n_img=0, pad=6000):
+    """SE3(2019~) 글 — 본문 컨테이너 `se-main-container` 안에 문단·이미지가 들어간다.
+
+    🔑 옛 판본은 컨테이너를 빼고 문단만 넣었다. 그러면 「본문을 받았는데 글자가 없다」와
+       「본문을 아예 못 받았다」가 같은 HTML 이 되어 C2 를 구조적으로 못 잡는다.
+       parse_posts.py:3 이 실제 SE3 페이지의 컨테이너로 기록한 이름을 그대로 쓴다.
+    """
     body = "".join('<p class="se-text-paragraph">' + p + "</p>" for p in paragraphs)
     imgs = "".join('<img src="x' + str(i) + '.png">' for i in range(n_img))
-    return _HTML_HEAD + body + imgs + ("<!--" + "x" * pad + "-->") + _HTML_TAIL
+    return (_HTML_HEAD + '<div class="se-main-container">' + body + imgs + "</div>"
+            + ("<!--" + "x" * pad + "-->") + _HTML_TAIL)
+
+
+def _legacy_html(pad=6000):
+    """구 에디터(SE2, 2017~2018) 글 — 본문이 `#postViewArea` 에 `<br>` 로만 들어간다.
+
+    parse_posts.py:23-24 가 구 에디터 본문을 뽑는 컨테이너이자,
+    harvest_fallback.py:38,46 이 PC 재수집 성패를 판정하는 바로 그 마커다.
+    """
+    return (_HTML_HEAD + '<div id="postViewArea">본문 첫 줄<br>둘째 줄</div>'
+            + ("<!--" + "x" * pad + "-->") + _HTML_TAIL)
+
+
+def _body_missing_html(pad=6000):
+    """모바일 엔드포인트가 구 에디터 글의 **본문을 아예 안 실어 준** 응답.
+
+    harvest_fallback.py:3-5 가 2017~2018 글 11건에서 실측해 기록한 형태다.
+    UI 아이콘만 있고 본문 컨테이너가 SE3·SE2 어느 쪽도 없다. 크기는 문턱을 통과한다.
+    """
+    return (_HTML_HEAD + '<div class="blog_header">머리말</div><img src="ui_icon.png">'
+            + ("<!--" + "x" * pad + "-->") + _HTML_TAIL)
 
 
 def _entry(log_no="221000000001", cat=28):
@@ -863,3 +900,532 @@ def test_make_batches_groups_posts_that_fit_together_not_one_per_batch():
     got = [[m["log_no"] for m in batch] for batch in batches]
     assert got == [["1", "2", "3"], ["4", "5"]], (
         "배치 구성이 다르다 — 원소 1개씩 쪼개졌거나 하나로 뭉쳤을 수 있다: " + repr(got))
+
+
+# ================= 브랜치 리뷰 교정 (C1·C2·I1·I2·I4·M1) =================
+#
+# 실행 직전 리뷰가 잡은 블로커들. 전부 「경보가 조용하다」로 통과하던 계열이라
+# 각 항목마다 **양방향**(결함이면 실패 / 정상이면 통과)을 고정한다.
+
+def _install_tmp_dirs(h, tmp_path, monkeypatch):
+    """수집 산출물 경로를 전부 tmp 로 돌린다. 네트워크·저장소를 건드리지 않는다."""
+    for name, sub in (("POSTS_DIR", "posts28"), ("TEXT_DIR", "text28"),
+                      ("IMAGES_DIR", "images28"), ("CLAIMS_BATCH_DIR", "claims_batches")):
+        monkeypatch.setattr(h.C, name, tmp_path / sub)
+    monkeypatch.setattr(h.C, "CATLIST_JSON", tmp_path / "catlist_28_29.json")
+    monkeypatch.setattr(h.C, "POSTMETA_JSON", tmp_path / "postmeta_28_29.json")
+    monkeypatch.setattr(h.C, "HARVEST_FAIL_JSON", tmp_path / "harvest_fail_28_29.json")
+    monkeypatch.setattr(h.C, "VERIFY_LOG", tmp_path / "verify_cat2829.log")
+    h.C.ensure_dirs()
+
+
+def _fake_api(by_cat):
+    """{cat: [item, ...]} 를 1페이지에 전부 주는 가짜 목록 API."""
+    def api_json(cat, page, item_count=30):
+        return {"result": {"items": by_cat.get(cat, []) if page == 1 else []}}
+    return api_json
+
+
+def _fake_category_list(counts):
+    return lambda: {"isSuccess": True, "result": {"mylogCategoryList": [
+        {"categoryNo": c, "postCnt": n} for c, n in counts.items()]}}
+
+
+# ---------------------------- C1: logNo 타입 ----------------------------
+
+def test_fetch_post_list_normalizes_int_lognos_to_str():
+    """🔴 목록 API 는 logNo 를 **int** 로 준다(858/858 실측). 여기서 str 로 고정해야
+    이후 전 경로가 한 타입만 본다. 정규화를 걷어내면 키가 int 가 되어 실패한다.
+    """
+    h = _load("harvest_cat28_29_full")
+    got = h.fetch_post_list(28, fetch=_fake_pages([[_item(224364189017, MS_2025),
+                                                   _item(224364189018, MS_2025)]]),
+                            sleep=lambda s: None)
+    assert set(got) == {"224364189017", "224364189018"}
+    assert all(isinstance(k, str) for k in got), (
+        "logNo 가 str 로 정규화되지 않았다 — " + repr([type(k).__name__ for k in got]))
+
+
+def test_fetch_post_list_dedupes_int_and_str_forms_of_same_logno():
+    """🔑 정규화가 **중복 판정**에도 걸려야 한다.
+
+    같은 글이 1페이지엔 int, 2페이지엔 str 로 오면(또는 그 반대) 정규화 없이는
+    서로 다른 키로 보여 종료 조건이 안 걸리고 같은 글을 두 번 담는다.
+    """
+    h = _load("harvest_cat28_29_full")
+    pages = [[_item(224364189017, MS_2025)],
+             [dict(_item(224364189017, MS_2025), logNo="224364189017")],
+             [_item(224364189099, MS_2025)]]
+    fetched = []
+
+    def fetch(cat, page):
+        fetched.append(page)
+        return _fake_pages(pages)(cat, page)
+
+    got = h.fetch_post_list(28, fetch=fetch, sleep=lambda s: None)
+    assert set(got) == {"224364189017"}
+    assert fetched == [1, 2], "int/str 형태 차이를 새 글로 봤다 = 정규화가 빠졌다"
+
+
+def test_stem_accepts_int_log_no():
+    """🔴 재현했던 TypeError: `str + int`. 파일명이 타입 때문에 갈리면 안 된다."""
+    h = _load("harvest_cat28_29_full")
+    as_int = h._stem({"log_no": 224364189017, "category": 28, "post_date": "2021-03-04"})
+    as_str = h._stem({"log_no": "224364189017", "category": 28, "post_date": "2021-03-04"})
+    assert as_int == as_str == "28_20210304_224364189017"
+
+
+def test_harvest_one_raises_html_too_short_not_typeerror_for_int_log_no(tmp_path, monkeypatch):
+    """🔑 진짜 실패 사유가 TypeError 로 **덮이면** 안 된다.
+
+    수정 전에는 int logNo + 짧은 응답이면 HTML_TOO_SHORT 를 만들다가 TypeError 로 죽어
+    「본문을 못 받았다」는 사실이 사라졌다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    with pytest.raises(RuntimeError, match="HTML_TOO_SHORT:224364189017"):
+        h.harvest_one(_entry(log_no=224364189017), fetch=lambda n: "<html>짧다</html>",
+                      retries=1, sleep=lambda s: None)
+
+
+def test_harvest_one_meta_log_no_is_str_for_int_entry(tmp_path, monkeypatch):
+    """메타의 log_no 는 V1 이 집합 비교에 쓰는 값이다 — 반드시 str."""
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    meta = h.harvest_one(_entry(log_no=224364189017),
+                         fetch=lambda n: _post_html(["본문"]), sleep=lambda s: None)
+    assert meta["log_no"] == "224364189017"
+    assert isinstance(meta["log_no"], str)
+
+
+def test_build_catalog_normalizes_keys_and_values_to_str(tmp_path, monkeypatch):
+    """🔴 V1 배선 오탐의 근원 — catalog['posts'] 는 JSON **객체**라 재적재 후 키가 항상
+    str 인데, postmeta 는 JSON **배열**이라 원 타입을 유지한다. 둘이 어긋나면
+    전건이 「missing 이면서 동시에 extra」로 잡힌다(432 missing + 432 extra).
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 1, 29: 1}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api({
+        28: [_item(224364189017, MS_2025, 28)],
+        29: [_item(224364189018, MS_2025, 29)]}))
+
+    catalog = h.build_catalog()
+    assert set(catalog["posts"]) == {"224364189017", "224364189018"}
+    assert all(isinstance(k, str) for k in catalog["posts"])
+    assert all(isinstance(e["log_no"], str) for e in catalog["posts"].values())
+    # JSON 왕복 후에도 키와 값이 같은 타입이어야 한다.
+    reloaded = _json.loads(h.C.CATLIST_JSON.read_text(encoding="utf-8"))
+    assert set(reloaded["posts"]) == {str(e["log_no"]) for e in reloaded["posts"].values()}
+
+
+def test_build_catalog_normalizes_even_if_listing_yields_int_keys(tmp_path, monkeypatch):
+    """정규화 지점 ②를 **단독으로** 고정한다.
+
+    ①(fetch_post_list)이 int 키를 흘려도 카탈로그는 str 로 나와야 한다. 이 테스트가
+    없으면 ①만 있는 구현과 ①②가 다 있는 구현을 구분할 수 없다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 1, 29: 0}))
+    monkeypatch.setattr(h, "fetch_post_list",
+                        lambda cat: ({224364189017: _item(224364189017, MS_2025, 28)}
+                                     if cat == 28 else {}))
+    catalog = h.build_catalog()
+    assert set(catalog["posts"]) == {"224364189017"}
+    assert catalog["posts"]["224364189017"]["log_no"] == "224364189017"
+
+
+# ---------------------------- I1: 제목 키 ----------------------------
+
+def test_build_catalog_reads_the_title_key_that_actually_exists(tmp_path, monkeypatch):
+    """🔴 `titleWithInspectMessage` 는 858건 중 **0건**. 그 키를 .get(…, "") 로 읽어
+    커밋되는 카탈로그의 제목이 전부 비어 있었다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 1, 29: 0}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api({28: [_item(224364189017, MS_2025, 28)]}))
+    catalog = h.build_catalog()
+    assert catalog["posts"]["224364189017"]["title"] == "제목 224364189017"
+
+
+def test_build_catalog_raises_when_title_key_is_absent(tmp_path, monkeypatch):
+    """🔑 반대 방향 — 키가 **또** 바뀌면 조용한 빈 문자열이 아니라 소리가 나야 한다.
+
+    `.get("title", "")` 로 되돌리면 이 테스트가 실패한다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 1, 29: 0}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api({
+        28: [{"logNo": 224364189017, "addDate": MS_2025, "categoryNo": 28,
+              "titleWithInspectMessage": "옛 키"}]}))
+    with pytest.raises(RuntimeError, match="LIST_ITEM_NO_TITLE"):
+        h.build_catalog()
+
+
+# ------------------- C2: 구 에디터 위장 (image_only) -------------------
+
+def _classify(tmp_path, monkeypatch, html_src):
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    return h.harvest_one(_entry(), fetch=lambda n: html_src, sleep=lambda s: None)
+
+
+def test_legacy_editor_post_is_flagged_not_image_only(tmp_path, monkeypatch):
+    """🔴 구 에디터(SE2) 글은 `image_only` 로 위장되면 안 된다.
+
+    본문이 `#postViewArea` 에 있는데 이 추출기는 SE3 문단만 읽는다 = **아직 못 읽은 글**.
+    image_only 로 적으면 V1(파일 있음)·V2(⑧기타 1행)가 전부 초록인 채
+    원문을 한 번도 안 읽고 「전수」를 주장하게 된다.
+    """
+    meta = _classify(tmp_path, monkeypatch, _legacy_html())
+    assert meta["text_len"] == 0
+    assert meta["legacy_editor"] is True, "구 에디터 신호를 못 잡았다"
+    assert meta["image_only"] is False, "🔴 못 읽은 글이 이미지 전용으로 위장됐다"
+    assert meta["body_container"] == "se2"
+
+
+def test_response_without_any_body_container_is_flagged_not_image_only(tmp_path, monkeypatch):
+    """🔴 harvest_fallback.py:3-5 가 기록한 **실제** 사례 — 모바일이 구 에디터 글의
+    본문을 아예 안 실어 준다. 8KB 라 크기 문턱을 통과하고 본문만 0자다.
+    """
+    meta = _classify(tmp_path, monkeypatch, _body_missing_html())
+    assert meta["html_bytes"] >= 5000, "크기 문턱을 통과하는 응답이어야 재현이 된다"
+    assert meta["text_len"] == 0
+    assert meta["legacy_editor"] is True
+    assert meta["image_only"] is False, "🔴 본문 미수신이 이미지 전용으로 위장됐다"
+    assert meta["body_container"] == "none"
+
+
+def test_true_image_only_post_is_image_only_and_not_legacy(tmp_path, monkeypatch):
+    """🔑 반대 방향 — 진짜 이미지 전용 글은 여전히 image_only 여야 한다.
+
+    이걸 안 걸면 「전부 legacy_editor 로 찍으면 되지」로 되돌려도 아무도 못 잡는다.
+    SE3 본문 컨테이너를 **받았는데** 문단만 없는 경우가 그것이다.
+    """
+    meta = _classify(tmp_path, monkeypatch, _post_html([], n_img=9))
+    assert meta["text_len"] == 0
+    assert meta["image_only"] is True
+    assert meta["legacy_editor"] is False, "진짜 이미지 전용 글이 미수신으로 오분류됐다"
+    assert meta["body_container"] == "se3"
+    assert meta["img_count"] == 9
+
+
+def test_normal_post_is_neither_image_only_nor_legacy(tmp_path, monkeypatch):
+    meta = _classify(tmp_path, monkeypatch, _post_html(["본문 있음"], n_img=2))
+    assert meta["text_len"] > 0
+    assert meta["image_only"] is False
+    assert meta["legacy_editor"] is False
+    assert meta["body_container"] == "se3"
+
+
+# ---------------------- I2: 배치 중복 (claim_id) ----------------------
+
+def test_load_batches_rejects_duplicate_claim_id_across_files(tmp_path):
+    """🔴 중복이 원장을 조용히 배로 불린다. V2 는 커버리지만 보므로 PASS 를 낸다.
+
+    계획이 중복을 적극적으로 유발한다: V2 FAIL 시 배치 재실행 · Task 11 의 img_NN.jsonl ·
+    Task 12 의 독립 재정독 출력이 전부 같은 디렉토리에 쌓인다.
+    """
+    b = _load("build_claims_cat2829")
+    _write_batch(tmp_path, "b01.jsonl", [_good_row(claim_id="1-1")])
+    _write_batch(tmp_path, "b02.jsonl", [_good_row(claim_id="1-1")])
+    with pytest.raises(ValueError, match="DUPLICATE_CLAIM_ID:1-1"):
+        b.load_batches(tmp_path)
+
+
+def test_load_batches_rejects_duplicate_claim_id_within_one_file(tmp_path):
+    b = _load("build_claims_cat2829")
+    _write_batch(tmp_path, "b01.jsonl", [_good_row(claim_id="x-1"),
+                                         _good_row(claim_id="x-1")])
+    with pytest.raises(ValueError, match="DUPLICATE_CLAIM_ID:x-1"):
+        b.load_batches(tmp_path)
+
+
+def test_duplicate_error_names_both_conflicting_locations(tmp_path):
+    """🔑 「어느 파일 어느 줄이 충돌하는가」가 계약이다 — match= 는 부분일치라
+    위치가 아예 없어도 위 두 테스트는 통과한다.
+    """
+    b = _load("build_claims_cat2829")
+    _write_batch(tmp_path, "b01.jsonl", [_good_row(claim_id="a-1"),
+                                         _good_row(claim_id="dup")])
+    _write_batch(tmp_path, "b02.jsonl", [_good_row(claim_id="b-1"),
+                                         _good_row(claim_id="b-2"),
+                                         _good_row(claim_id="dup")])
+    with pytest.raises(ValueError) as ei:
+        b.load_batches(tmp_path)
+    msg = str(ei.value)
+    assert msg.startswith("b02.jsonl:3 "), "충돌한 쪽의 파일:줄이 앞에 없다 — " + msg
+    assert "b01.jsonl:2" in msg, "먼저 있던 쪽의 위치가 없다 — " + msg
+
+
+def test_load_batches_still_accepts_distinct_claim_ids(tmp_path):
+    """🔑 반대 방향 — 유일성 검사가 정상 원장을 막으면 안 된다."""
+    b = _load("build_claims_cat2829")
+    _write_batch(tmp_path, "b01.jsonl", [_good_row(claim_id="1-1"), _good_row(claim_id="1-2")])
+    _write_batch(tmp_path, "b02.jsonl", [_good_row(claim_id="2-1")])
+    assert len(b.load_batches(tmp_path)) == 3
+
+
+# ------------------- I4: 재개 · 개별 실패 내성 -------------------
+
+def test_harvest_one_skips_already_downloaded_file(tmp_path, monkeypatch):
+    """🔴 432건 중 431번째에서 실패하면 전량 재요청이었다.
+
+    선행 2본(harvest_cat28_29.py:62 · harvest_bodies.py:70)의 존재-스킵을 승계한다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    entry = _entry()
+    saved = _post_html(["이미 받아 둔 본문"])
+    (h.C.POSTS_DIR / (h._stem(entry) + ".html")).write_text(saved, encoding="utf-8")
+
+    calls = []
+
+    def fetch(log_no):
+        calls.append(log_no)
+        return _post_html(["새로 받은 본문"])
+
+    meta = h.harvest_one(entry, fetch=fetch, sleep=lambda s: None)
+    assert calls == [], "이미 받아 둔 글을 다시 요청했다"
+    assert meta["from_cache"] is True
+    assert "이미 받아 둔 본문" in (h.C.TEXT_DIR / meta["text_file"]).read_text(encoding="utf-8")
+
+
+def test_harvest_one_refetches_when_saved_file_is_too_small(tmp_path, monkeypatch):
+    """🔑 반대 방향 — 잘린 파일이 남아 있으면 **다시 받아야** 한다.
+
+    안 걸면 「파일만 있으면 스킵」으로 되돌려도 안 잡히고, 잘린 응답이 영구히 굳는다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    entry = _entry()
+    (h.C.POSTS_DIR / (h._stem(entry) + ".html")).write_text("<html>잘림</html>",
+                                                            encoding="utf-8")
+    calls = []
+
+    def fetch(log_no):
+        calls.append(log_no)
+        return _post_html(["온전한 본문"])
+
+    meta = h.harvest_one(entry, fetch=fetch, sleep=lambda s: None)
+    assert len(calls) == 1, "잘린 파일을 그대로 재사용했다"
+    assert meta["from_cache"] is False
+    assert meta["text_len"] > 0
+
+
+def _catalog_of(*entries):
+    return {"post_cnt": {"28": len(entries)},
+            "posts": {e["log_no"]: e for e in entries}}
+
+
+def test_harvest_bodies_finishes_all_posts_despite_one_failure(tmp_path, monkeypatch):
+    """🔴 계획서는 "비공개·삭제 글은 우리 잘못이 아니다" 라는데 코드는 글 하나에 즉사했다.
+
+    끝까지 돌되 실패를 **성공으로 보고하지 않는다** — 목록으로 남긴다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    entries = [_entry(log_no="1"), _entry(log_no="2"), _entry(log_no="3")]
+
+    def fetch(log_no):
+        return "<html>비공개</html>" if str(log_no) == "2" else _post_html(["본문"])
+
+    monkeypatch.setattr(h.C, "fetch_html", fetch)
+    metas, failures = h.harvest_bodies(_catalog_of(*entries), sleep=lambda s: None)
+
+    assert [m["log_no"] for m in metas] == ["1", "3"], "실패 뒤 글을 안 받았다"
+    assert len(failures) == 1
+    assert failures[0]["log_no"] == "2"
+    assert "HTML_TOO_SHORT" in failures[0]["error"], "왜 실패했는지가 안 남았다"
+    on_disk = _json.loads(h.C.HARVEST_FAIL_JSON.read_text(encoding="utf-8"))
+    assert [f["log_no"] for f in on_disk] == ["2"]
+
+
+def test_harvest_bodies_reports_zero_failures_when_all_succeed(tmp_path, monkeypatch):
+    """🔑 반대 방향 — 정상 실행이 실패를 지어내면 안 된다(오경보 금지)."""
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.C, "fetch_html", lambda n: _post_html(["본문"]))
+    metas, failures = h.harvest_bodies(_catalog_of(_entry(log_no="1"), _entry(log_no="2")),
+                                       sleep=lambda s: None)
+    assert len(metas) == 2 and failures == []
+    assert _json.loads(h.C.HARVEST_FAIL_JSON.read_text(encoding="utf-8")) == []
+
+
+def test_harvest_bodies_overwrites_stale_failure_file(tmp_path, monkeypatch):
+    """🔑 지난 실행의 실패 목록이 남아 이번 실행을 잘못 말하면 안 된다.
+
+    거짓 경보(이미 고친 실패가 계속 보임)와 거짓 안심(반대 방향) 둘 다 막는다.
+    """
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    h.C.HARVEST_FAIL_JSON.write_text('[{"log_no": "옛날실패"}]', encoding="utf-8")
+    monkeypatch.setattr(h.C, "fetch_html", lambda n: _post_html(["본문"]))
+    h.harvest_bodies(_catalog_of(_entry(log_no="1")), sleep=lambda s: None)
+    assert _json.loads(h.C.HARVEST_FAIL_JSON.read_text(encoding="utf-8")) == []
+
+
+def test_harvest_main_returns_nonzero_and_lists_failures(tmp_path, monkeypatch, capsys):
+    """🔑 Task 9 게이트가 **볼 수 있어야** 한다 — 종료코드와 출력 둘 다에 드러난다."""
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.time, "sleep", lambda s: None)   # main() 은 sleep 주입구가 없다
+    monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 2, 29: 0}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api({
+        28: [_item(1, MS_2025, 28), _item(2, MS_2025, 28)]}))
+    monkeypatch.setattr(h.C, "fetch_html",
+                        lambda n: "<html>비공개</html>" if str(n) == "2" else _post_html(["본문"]))
+
+    rc = h.main()
+    out = capsys.readouterr().out
+    assert rc == 1, "실패가 있는데 성공으로 보고했다"
+    assert "실패 1 건" in out
+    assert "HTML_TOO_SHORT" in out
+
+
+def test_harvest_main_returns_zero_when_everything_succeeds(tmp_path, monkeypatch, capsys):
+    """🔑 반대 방향 — 정상 실행이 실패로 보고되면 게이트가 무의미해진다."""
+    h = _load("harvest_cat28_29_full")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.time, "sleep", lambda s: None)   # main() 은 sleep 주입구가 없다
+    monkeypatch.setattr(h.C, "category_list", _fake_category_list({28: 1, 29: 1}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api({
+        28: [_item(224364189017, MS_2025, 28)], 29: [_item(224364189018, MS_2025, 29)]}))
+    monkeypatch.setattr(h.C, "fetch_html", lambda n: _post_html(["본문"]))
+    assert h.main() == 0
+    assert "실패 0 건" in capsys.readouterr().out
+
+
+# ---------------------- M1: V1 배선 진입점 ----------------------
+
+def _run_harvest_into(tmp_path, monkeypatch, h, items_by_cat, fetch=None):
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.C, "category_list",
+                        _fake_category_list({c: len(v) for c, v in items_by_cat.items()}))
+    monkeypatch.setattr(h.C, "api_json", _fake_api(items_by_cat))
+    monkeypatch.setattr(h.C, "fetch_html", fetch or (lambda n: _post_html(["본문"])))
+    catalog = h.build_catalog()
+    metas, failures = h.harvest_bodies(catalog, sleep=lambda s: None)
+    return catalog, metas, failures
+
+
+def test_verify_main_passes_end_to_end_with_int_lognos(tmp_path, monkeypatch, capsys):
+    """🔴 C1 회귀 방지의 핵심 — **logNo 가 int 인 카탈로그**로 V1 배선이 통과하는가.
+
+    부품 테스트(v1_coverage 단독)는 이미 다 통과하고 있었다. 배선이 없어서
+    「JSON 객체 키(str) vs JSON 배열 값(원 타입)」 비교가 사각지대였고 거기서
+    432 missing + 432 extra 오탐이 났을 것이다.
+    """
+    h = _load("harvest_cat28_29_full")
+    v = _load("verify_cat2829")
+    _run_harvest_into(tmp_path, monkeypatch, h, {
+        28: [_item(224364189017, MS_2025, 28), _item(224364189018, MS_2025, 28)],
+        29: [_item(224364189019, MS_2025, 29)]})
+    monkeypatch.setattr(v.C, "CATLIST_JSON", h.C.CATLIST_JSON)
+    monkeypatch.setattr(v.C, "POSTMETA_JSON", h.C.POSTMETA_JSON)
+    monkeypatch.setattr(v.C, "VERIFY_LOG", h.C.VERIFY_LOG)
+
+    rc = v.main()
+    out = capsys.readouterr().out
+    assert rc == 0, "int logNo 카탈로그에서 V1 이 통과하지 못했다 — " + out
+    assert "V1 PASS" in out
+    assert "목록 3 건" in out and "저장 3 건" in out
+
+
+def test_verify_main_writes_result_to_log(tmp_path, monkeypatch):
+    """판정이 VERIFY_LOG 에 append 로 남아야 한다(실행마다 한 줄)."""
+    h = _load("harvest_cat28_29_full")
+    v = _load("verify_cat2829")
+    _run_harvest_into(tmp_path, monkeypatch, h, {28: [_item(1, MS_2025, 28)], 29: []})
+    monkeypatch.setattr(v.C, "CATLIST_JSON", h.C.CATLIST_JSON)
+    monkeypatch.setattr(v.C, "POSTMETA_JSON", h.C.POSTMETA_JSON)
+    monkeypatch.setattr(v.C, "VERIFY_LOG", h.C.VERIFY_LOG)
+
+    v.main()
+    v.main()
+    lines = [l for l in h.C.VERIFY_LOG.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(lines) == 2, "append 가 아니라 덮어썼다"
+    rec = _json.loads(lines[0])
+    assert rec["check"] == "V1" and rec["status"] == "PASS"
+    assert rec["catalog_posts"] == 1 and rec["saved_posts"] == 1
+    assert rec["checked_at"]
+
+
+def test_verify_main_returns_1_when_a_post_was_not_saved(tmp_path, monkeypatch, capsys):
+    """🔑 반대 방향 — FAIL 이 1 을 돌려줘야 Task 9 게이트가 선다."""
+    h = _load("harvest_cat28_29_full")
+    v = _load("verify_cat2829")
+    catalog, metas, failures = _run_harvest_into(
+        tmp_path, monkeypatch, h,
+        {28: [_item(1, MS_2025, 28), _item(2, MS_2025, 28)], 29: []},
+        fetch=lambda n: "<html>비공개</html>" if str(n) == "2" else _post_html(["본문"]))
+    assert len(failures) == 1, "픽스처 전제: 한 건이 실패해야 한다"
+    monkeypatch.setattr(v.C, "CATLIST_JSON", h.C.CATLIST_JSON)
+    monkeypatch.setattr(v.C, "POSTMETA_JSON", h.C.POSTMETA_JSON)
+    monkeypatch.setattr(v.C, "VERIFY_LOG", h.C.VERIFY_LOG)
+
+    rc = v.main()
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "V1 FAIL" in out
+    assert "'2'" in out or '"2"' in out, "빠진 글의 log_no 가 출력에 없다 — " + out
+
+
+def test_verify_main_shouts_when_post_cnt_is_entirely_unknown(tmp_path, monkeypatch, capsys):
+    """🔑 post_cnt 가 전부 None = 「전수」의 **독립 증거가 없다**.
+
+    중단하지는 않는다(사람이 판단). 다만 눈에 띄어야 한다.
+    """
+    h = _load("harvest_cat28_29_full")
+    v = _load("verify_cat2829")
+    _install_tmp_dirs(h, tmp_path, monkeypatch)
+    monkeypatch.setattr(h.C, "category_list", lambda: None)      # 카테고리 API 실패
+    monkeypatch.setattr(h.C, "api_json", _fake_api({28: [_item(1, MS_2025, 28)]}))
+    monkeypatch.setattr(h.C, "fetch_html", lambda n: _post_html(["본문"]))
+    catalog = h.build_catalog()
+    h.harvest_bodies(catalog, sleep=lambda s: None)
+    assert catalog["post_cnt"] == {"28": None, "29": None}, "픽스처 전제가 깨졌다"
+
+    monkeypatch.setattr(v.C, "CATLIST_JSON", h.C.CATLIST_JSON)
+    monkeypatch.setattr(v.C, "POSTMETA_JSON", h.C.POSTMETA_JSON)
+    monkeypatch.setattr(v.C, "VERIFY_LOG", h.C.VERIFY_LOG)
+
+    rc = v.main()
+    out = capsys.readouterr().out
+    assert rc == 0, "근거 부재는 우리 결함이 아니므로 FAIL 이 아니다"
+    assert "독립 증거가 없다" in out
+
+
+def test_verify_main_stays_quiet_when_post_cnt_is_known(tmp_path, monkeypatch, capsys):
+    """🔑 오경보를 안 내는 성질도 고정한다 — 안 걸면 「항상 경고 출력」으로 되돌려도 안 잡힌다."""
+    h = _load("harvest_cat28_29_full")
+    v = _load("verify_cat2829")
+    _run_harvest_into(tmp_path, monkeypatch, h, {28: [_item(1, MS_2025, 28)], 29: []})
+    monkeypatch.setattr(v.C, "CATLIST_JSON", h.C.CATLIST_JSON)
+    monkeypatch.setattr(v.C, "POSTMETA_JSON", h.C.POSTMETA_JSON)
+    monkeypatch.setattr(v.C, "VERIFY_LOG", h.C.VERIFY_LOG)
+    v.main()
+    assert "독립 증거가 없다" not in capsys.readouterr().out
+
+
+def test_verify_listed_counts_uses_same_key_type_as_post_cnt(tmp_path, monkeypatch):
+    """🔑 post_cnt 는 JSON 객체라 키가 str 이다. listed_cnt 를 int 키로 세면
+    `listed_cnt.get(cat, 0)` 이 전부 0 을 집어 delta 가 통째로 거짓이 된다.
+    """
+    h = _load("harvest_cat28_29_full")
+    v = _load("verify_cat2829")
+    catalog, _, _ = _run_harvest_into(tmp_path, monkeypatch, h, {
+        28: [_item(1, MS_2025, 28), _item(2, MS_2025, 28)], 29: [_item(3, MS_2025, 29)]})
+    counts = v.listed_counts(catalog)
+    assert counts == {"28": 2, "29": 1}
+    assert set(counts) == set(catalog["post_cnt"]), "post_cnt 와 키 타입이 어긋난다"
+
+    monkeypatch.setattr(v.C, "CATLIST_JSON", h.C.CATLIST_JSON)
+    monkeypatch.setattr(v.C, "POSTMETA_JSON", h.C.POSTMETA_JSON)
+    monkeypatch.setattr(v.C, "VERIFY_LOG", h.C.VERIFY_LOG)
+    v.main()
+    rec = _json.loads(h.C.VERIFY_LOG.read_text(encoding="utf-8").splitlines()[0])
+    assert rec["post_cnt_delta"] == {"28": 0, "29": 0}, "delta 가 0 이 아니다 = 키가 안 맞는다"
