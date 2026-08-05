@@ -1516,7 +1516,20 @@ def make_batches(metas, target_chars=60000):
 - [ ] **Step 4: 테스트를 돌려 통과를 확인한다**
 
 Run: `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py -v`
-Expected: 62 passed
+Expected: **64 passed** (브리프 4건 + 계약 갭 보강 2건)
+
+> 🔧 **2026-08-05 실측 정정.** 브리프 4건이 못 잡는 갭 2건: ① `test_make_batches_is_deterministic`
+> 픽스처가 `category`/`post_date` 상수라 **`log_no` 단독 정렬 변이도 통과**한다 ·
+> ② `test_make_batches_respects_target_size` 의 `or len(batch) == 1` 탈출구 때문에
+> **모든 배치를 원소 1개로 쪼개는 퇴화 구현이 브리프 4건을 전부 통과**한다
+> (`is_deterministic` 조차 통과 — `sorted()` 출력이 입력 순서 무관이라 퇴화 구현에서도 성립).
+> 리뷰가 두 변이를 손으로 재현해 2/2 정당 판정.
+>
+> ⚠️ **알려진 성질(설계 그대로, 결함 아님)**: 배치는 **cat28/cat29 경계를 넘을 수 있다.**
+> 정렬이 category 우선이라 카테고리가 바뀌는 지점에 미완성 배치가 남아 있으면 다음
+> 카테고리 글이 같은 배치에 들어간다. Task 10 의 에이전트 지시는 **카테고리를 파일명
+> stem(`{category}_{yyyymmdd}_{logNo}`)에서 도출**해야 하며 「배치 = 한 카테고리」를
+> 가정하면 안 된다.
 
 - [ ] **Step 5: 커밋 (사장님 확인 후)**
 
@@ -1967,5 +1980,5 @@ git merge --no-ff research/tasso-cat2829-harvest
 - [ ] V4 누락률이 **분자/분모**로 기록됨
 - [ ] `METHOD.md` 2판이 **[28]·[29] 한정 전수**임을 명시하고 [1]·[35] 169건 미수집을 함께 명시
 - [ ] 영향 판정이 ①7차 FAIL 해석 ②2막 종결 사유 ③1판 서술 **각각에 명시 결론** (흔들지 않았다도 근거와 함께)
-- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 62 passed
+- [ ] `pytest backtest/tasso_labels/tests/test_cat2829_pipeline.py` 64 passed
 - [ ] 커밋에 원문 캐시(`posts28/`·`text28/`·`images28/`·`claims_batches/`·`*_quoted.csv`)가 **한 건도 없음**
