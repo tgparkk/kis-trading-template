@@ -2883,3 +2883,316 @@ def test_image_failure_list_is_tracked_evidence():
     이 저장소에 6번 있었다.
     """
     assert not _ignored("backtest/tasso_labels/harvest/image_fail_28_29.json")
+
+
+# ============================ Task 11 — 이미지 원장 2층 경계 ============================
+#
+# 🔴 이 절의 본체는 «유출 검사» 다. 공개 원장(img_claims_28_29.csv)은 커밋되고
+#    비공개 원장(..._quoted.csv)은 gitignore 되며, 경계선은 **값 대 구조**다.
+#    저자가 본문에서 수치는 원래 공개 대상이 아니라고 직접 밝혔고 구조는 산문으로
+#    이미 설명했으므로, 공개본에는 «무엇에 관한 항목인가»(topic)만 남는다.
+#
+# ⚠️ 이 파일 자체가 커밋된다. 그래서 **양성 대조 문자열에 저자의 실제 값을 쓰면
+#    검사를 지키려다 검사가 막는 바로 그 유출을 이 파일이 저지른다.** 아래 표본은
+#    형태만 흉내 낸 **지어낸 값**이다. (재사용 규칙: 양성 대조도 공개물이다.)
+
+_V_IMG = _load("verify_img_claims")
+_B_IMG = _load("build_img_claims")
+
+_IMG_PUBLIC = HARVEST / "img_claims_28_29.csv"
+_IMG_QUOTED = HARVEST / "img_claims_28_29_quoted.csv"
+_IMG_READINGS = HARVEST / "img_readings"
+
+# 형태만 실물과 같고 값은 전부 지어낸 것 — 패턴별 양성 대조.
+_FAKE_LEAKS = [
+    ("DIGITS3", "표본 777개를 담은 분포도"),
+    ("GROUPED_NUM", "중심가가 33,333 으로 찍힌 표"),
+    ("DECIMAL", "구간 밀도 4.2 로 표시된 카드"),
+    ("PERCENT", "커버가 77% 라고 적힌 패널"),
+    ("HDR_VALUE", "매수 HDR 42 로 맞춘 화면"),
+    ("QUARTILE", "Q1 자리에 값이 찍힌 분포도"),
+    ("MONEY", "1차 매수가가 4,321원 인 라벨"),
+    ("COUNT", "표본 88건 을 쓴 구간"),
+    ("FRACTION", "거래량이 1/9 로 줄어든 지점"),
+]
+
+
+def _img_public_rows():
+    """공개 원장은 **추적본**이라 clean checkout 에서도 있어야 한다."""
+    assert _IMG_PUBLIC.exists(), "공개 원장이 없다 — build_img_claims.py 를 돌릴 것"
+    return _V_IMG.read_ledger(_IMG_PUBLIC)
+
+
+def _img_quoted_rows():
+    """비공개 원장·판독 원본은 gitignore 대상이라 없을 수 있다(posts28/ 과 같은 규약)."""
+    if not _IMG_QUOTED.exists() or not _IMG_READINGS.is_dir():
+        pytest.skip("img_claims_28_29_quoted.csv / img_readings/ 가 없다 (판독 전 환경)")
+    return _V_IMG.read_ledger(_IMG_QUOTED)
+
+
+# ---- 유출 검사: 음성 방향(오경보를 안 내는가) ----
+
+def test_leak_scanner_is_silent_on_every_real_topic():
+    """★ 정상 75행에서 한 건도 울면 안 된다.
+
+    🔑 오경보를 안 내는 성질도 계약이다 — 검사가 정상 행에서 울면 사람이 검사를 끄고,
+       그 순간 경계는 «있다고 믿어지는» 상태로만 남는다.
+    """
+    fired = []
+    for r in _img_public_rows():
+        for name, frag in _V_IMG.scan_topic(r["topic"]):
+            fired.append("%s#%s [%s] %r" % (r["log_no"], r["img_no"], name, frag))
+    assert not fired, "정상 topic 에서 오경보: " + "\n".join(fired)
+
+
+def test_leak_scan_is_not_vacuous():
+    """반-공허 — 검사가 실제로 «내용이 있는» 문자열을 훑고 있는가.
+
+    빈 topic 75행이어도 위 테스트는 통과한다. 그러면 판별력 증명이 무의미해진다.
+    """
+    rows = _img_public_rows()
+    topics = [r["topic"] for r in rows]
+    assert len(rows) == _V_IMG.EXPECTED_ROWS
+    assert all(len(t) >= 10 for t in topics), "너무 짧은 topic 이 있다"
+    assert sum(len(t) for t in topics) > 3000, "topic 총량이 비정상적으로 작다"
+
+
+# ---- 유출 검사: 양성 방향(진짜 잡는가) ----
+
+@pytest.mark.parametrize("kind,sample", _FAKE_LEAKS)
+def test_leak_scanner_fires_on_each_pattern(kind, sample):
+    """★ 패턴 **하나하나** 가 살아 있는가.
+
+    묶어서 한 번만 확인하면 패턴 하나가 죽어도 다른 패턴이 대신 울어 통과한다.
+    """
+    kinds = {k for k, _ in _V_IMG.scan_topic(sample)}
+    assert kind in kinds, "%s 패턴이 %r 에서 안 울렸다 (검사기 회귀)" % (kind, sample)
+
+
+def test_declared_patterns_all_have_a_positive_control():
+    """🔑 패턴을 추가하고 양성 대조를 빠뜨리면 그 패턴은 «검증된 적 없는» 검사가 된다."""
+    declared = {name for name, _rx in _V_IMG.LEAK_PATTERNS}
+    covered = {k for k, _ in _FAKE_LEAKS}
+    assert declared == covered, "선언 %s / 대조 %s" % (sorted(declared), sorted(covered))
+
+
+def test_leak_check_fails_a_ledger_row_that_carries_values():
+    """★ 원장 단위로도 FAIL 이 나는가 — 행 하나만 오염돼도 잡혀야 한다."""
+    rows = _img_public_rows()
+    assert not _V_IMG.check_no_value_leak(rows), "실물 원장이 이미 오염돼 있다"
+
+    poisoned = [dict(r) for r in rows]
+    poisoned[0]["topic"] = "표본 777개 중 88% 구간, 극단값 9개 제외, 중심가 33,333원"
+    bad = _V_IMG.check_no_value_leak(poisoned)
+    assert bad, "값이 든 행을 통과시켰다 — 주 검사가 공허하다"
+    assert len(bad) >= 4, "한 행의 여러 유출을 하나로 뭉뚱그렸다: " + repr(bad)
+
+
+def test_builder_refuses_to_write_a_leaky_topic():
+    """🔴 검증이 아니라 **생성 시점**에 막는가.
+
+    검증까지 미루면 값이 든 공개 CSV 가 한 번은 디스크에 쓰이고, 그 파일은
+    추적 대상이라 그 사이에 `git add -A` 한 번이면 경계가 끝난다.
+    """
+    targets = [{"stem": "28_20200101_9", "log_no": "9",
+                "category": 28, "post_date": "2020-01-01"}]
+    readings = {"28_20200101_9#0": {"stem": "28_20200101_9", "img_no": 0,
+                                    "content_type": "표", "readable": True,
+                                    "verbatim": "v", "methodology": "m",
+                                    "numbers": "n", "note": ""}}
+    ja = {"28_20200101_9#0": {"id": "28_20200101_9#0", "verdict": "있음", "evidence": "e"}}
+    jb = dict(ja)
+
+    ok = _B_IMG.build_rows(targets, readings, ja, jb, {"28_20200101_9#0": "표를 두 열로 구성"})
+    assert len(ok) == 1, "정상 topic 을 거절했다 — 반대 방향 오경보"
+
+    with pytest.raises(ValueError) as exc:
+        _B_IMG.build_rows(targets, readings, ja, jb,
+                          {"28_20200101_9#0": "표본 777개 중 88% 를 담은 표"})
+    assert "TOPIC_LEAK" in str(exc.value)
+
+
+# ---- 공개/비공개 분리 ----
+
+def test_public_ledger_has_no_verbatim_columns():
+    """🔴 공개본에 판독·판정 «원문» 열이 되살아나면 경계가 통째로 무너진다."""
+    rows = _img_public_rows()
+    assert tuple(rows[0].keys()) == _V_IMG.PUBLIC_COLUMNS
+    for col in ("verbatim", "methodology", "numbers", "note",
+                "evidence_A", "evidence_B", "verdict_A", "verdict_B"):
+        assert col not in rows[0], "공개본에 원문 열 %s 가 있다" % col
+
+
+def test_public_columns_are_a_prefix_of_the_full_contract():
+    """두 원장이 같은 계약에서 갈라져 나온다 — 열 이름이 따로 놀면 대조가 불가능해진다."""
+    assert set(_V_IMG.PUBLIC_COLUMNS) < set(_V_IMG.COLUMNS)
+    assert _V_IMG.COLUMNS[:len(_V_IMG.PUBLIC_COLUMNS)] == _V_IMG.PUBLIC_COLUMNS
+
+
+@pytest.mark.parametrize("rel", [
+    "backtest/tasso_labels/harvest/img_claims_28_29_quoted.csv",
+    "backtest/tasso_labels/harvest/img_readings/28_20151210_220563934226.jsonl",
+    "backtest/tasso_labels/harvest/img_readings/judges/t11_calc_judge_C1.jsonl",
+    "backtest/tasso_labels/harvest/img_readings/whatever_is_added_later.jsonl",
+])
+def test_gitignore_blocks_the_image_reading_originals(rel):
+    """⚠️ 실측: `!harvest/*.csv` 가 quoted 판본까지 되살리고 있었다.
+
+    이름으로 하나씩 막는 관례를 깨지 말 것 — 범용 `*.jsonl` 은 우리 산출물을 삼킨다
+    (이 저장소에 5번의 선례).
+    """
+    assert _ignored(rel), rel + " 이 무시되지 않는다"
+
+
+@pytest.mark.parametrize("rel", [
+    "backtest/tasso_labels/harvest/img_claims_28_29.csv",
+    "backtest/tasso_labels/harvest/img_topics.json",
+    "backtest/tasso_labels/harvest/build_img_claims.py",
+    "backtest/tasso_labels/harvest/verify_img_claims.py",
+])
+def test_public_image_artifacts_stay_tracked(rel):
+    """🔑 반대 방향 — 차단이 과해서 **공개본까지** 삼키면 저장소엔 결론만 남는다."""
+    assert not _ignored(rel), rel + " 이 무시되고 있다"
+
+
+# ---- 보수적 합의 ----
+
+@pytest.mark.parametrize("a,b,vs,agree", [
+    ("있음", "있음", "있음", True),
+    ("부분", "부분", "부분", True),
+    ("없음", "없음", "없음", True),
+    # 갈리면 «덜 새로운 쪽» = 있음 < 부분 < 없음. 순서를 바꿔도 같은 답이어야 한다.
+    ("있음", "부분", "있음", False),
+    ("부분", "있음", "있음", False),
+    ("있음", "없음", "있음", False),
+    ("없음", "있음", "있음", False),
+    ("부분", "없음", "부분", False),
+    ("없음", "부분", "부분", False),
+])
+def test_consensus_takes_the_less_novel_side(a, b, vs, agree):
+    """🔑 틀리면 안 되는 방향은 «신규성을 부풀리는 쪽»이다."""
+    assert _V_IMG.consensus(a, b) == (vs, agree)
+
+
+def test_consensus_covers_every_verdict_pair():
+    """반-공허 — 위 표가 판정값 조합을 전부 덮는가(새 판정값이 생기면 여기서 깨진다)."""
+    pairs = {(a, b) for a in _V_IMG.VERDICTS for b in _V_IMG.VERDICTS}
+    assert len(pairs) == 9
+    for a, b in pairs:
+        vs, agree = _V_IMG.consensus(a, b)
+        assert vs in _V_IMG.VERDICTS
+        assert agree == (a == b)
+
+
+def test_consensus_rejects_an_unknown_verdict():
+    with pytest.raises(ValueError):
+        _V_IMG.consensus("있음", "애매")
+
+
+def test_ledger_consensus_matches_the_rule():
+    """실물 원장의 vs_text·judge_agree 가 규칙 그대로인가."""
+    assert not _V_IMG.check_consensus(_img_quoted_rows())
+
+
+def test_ledger_disagreements_are_declared_not_hidden():
+    """🔑 갈렸다는 사실이 지워지면 나중에 사람이 다시 볼 근거가 사라진다."""
+    rows = _img_quoted_rows()
+    split = [r for r in rows if r["verdict_A"] != r["verdict_B"]]
+    assert split, "판정이 한 건도 안 갈렸다 — 두 판정자가 같은 출력이었을 수 있다"
+    for r in split:
+        assert r["judge_agree"] == "False", "갈린 건이 True 로 적혔다: %s#%s" % (
+            r["log_no"], r["img_no"])
+    agreed = [r for r in rows if r["verdict_A"] == r["verdict_B"]]
+    assert all(r["judge_agree"] == "True" for r in agreed)
+
+
+# ---- 무손실 ----
+
+def test_quoted_ledger_is_character_identical_to_the_readings():
+    """★ 비공개 원장이 판독 원문을 **문자 단위**로 담았는가.
+
+    ⚠️ 여기가 무너지면 원장은 «요약» 이 되고, 뒤에 인용할 때 우리가 쓴 문장을
+       저자 발언으로 귀속하게 된다 — 이 트랙이 이미 실측으로 겪은 사고다.
+    """
+    targets = _json.loads((HARVEST / "image_targets.json").read_text(encoding="utf-8"))
+    rows = _img_quoted_rows()
+    readings = _V_IMG.load_readings()
+    ja, jb = _V_IMG.load_judges()
+    assert not _V_IMG.check_lossless(rows, targets, readings, ja, jb)
+
+
+def test_lossless_check_catches_a_one_character_drift():
+    """반-공허 — 한 글자만 바꿔도 잡히는가. 안 잡히면 위 통과는 아무 뜻이 없다."""
+    targets = _json.loads((HARVEST / "image_targets.json").read_text(encoding="utf-8"))
+    rows = [dict(r) for r in _img_quoted_rows()]
+    readings = _V_IMG.load_readings()
+    ja, jb = _V_IMG.load_judges()
+
+    victim = next(r for r in rows if r["methodology"])
+    victim["methodology"] = victim["methodology"] + "."
+    bad = _V_IMG.check_lossless(rows, targets, readings, ja, jb)
+    assert any("methodology" in b for b in bad), "한 글자 변형을 못 잡았다: " + repr(bad)
+
+
+# ---- 실재·선정 규칙 ----
+
+def test_every_ledger_row_points_at_a_real_target_and_reading():
+    targets = _json.loads((HARVEST / "image_targets.json").read_text(encoding="utf-8"))
+    readings = _V_IMG.load_readings()
+    ja, jb = _V_IMG.load_judges()
+    assert not _V_IMG.check_ids_exist(_img_quoted_rows(), targets, readings, ja, jb)
+
+
+def test_ledger_covers_exactly_the_images_that_state_a_method():
+    """🔑 원장의 «선정 규칙» 을 못 박는다 — 75 는 임의의 수가 아니라
+    «판독에서 methodology 를 채운 항목 전건» 이다. 규칙을 안 적어두면 다음 사람은
+    빠진 항목이 누락인지 설계인지 구분할 수 없다.
+    """
+    if not _IMG_READINGS.is_dir():
+        pytest.skip("img_readings/ 가 없다 (판독 전 환경)")
+    targets = _json.loads((HARVEST / "image_targets.json").read_text(encoding="utf-8"))
+    stems = {t["stem"] for t in targets}
+    readings = _V_IMG.load_readings()
+    assert set(readings) and {k.split("#")[0] for k in readings} == stems
+
+    with_method = {k for k, v in readings.items() if str(v.get("methodology") or "").strip()}
+    by_logno = {t["log_no"]: t["stem"] for t in targets}
+    in_ledger = {"%s#%s" % (by_logno[r["log_no"]], r["img_no"]) for r in _img_public_rows()}
+    assert in_ledger == with_method, (
+        "원장과 «방법을 말한 그림» 집합이 다르다.\n  원장에만: %s\n  판독에만: %s"
+        % (sorted(in_ledger - with_method), sorted(with_method - in_ledger)))
+    assert len(in_ledger) == _V_IMG.EXPECTED_ROWS
+
+
+def test_verifier_reports_pass_on_the_committed_artifacts():
+    """검증기를 통째로 한 번 돌린다 — 개별 검사가 배선에서 빠지는 것을 막는다."""
+    if not _IMG_QUOTED.exists() or not _IMG_READINGS.is_dir():
+        pytest.skip("비공개 산출물이 없다 (판독 전 환경)")
+    results = _V_IMG.run_all()
+    assert [n for n, bad in results if bad] == []
+    assert len(results) >= 6, "검사 수가 줄었다 — 배선에서 빠진 검사가 있다"
+
+
+def test_topics_source_file_is_gated_too():
+    """🔴 CSV 만 검사하면 경계가 파일 하나만큼 뚫린다.
+
+    `img_topics.json` 도 커밋되는 파일이다. 원본만 고치고 재빌드를 안 하면
+    CSV 는 깨끗한 채로 JSON 에 값이 실려 커밋된다.
+    """
+    topics = _json.loads((HARVEST / "img_topics.json").read_text(encoding="utf-8"))
+    assert not _V_IMG.check_topics_source_no_leak(topics)
+
+    poisoned = dict(topics)
+    poisoned["28_20200101_9#0"] = "표본 777개 중 88% 를 담은 표"
+    assert _V_IMG.check_topics_source_no_leak(poisoned), "출처 파일 검사가 공허하다"
+
+
+def test_topics_source_covers_every_ledger_row():
+    """출처와 원장이 1:1 인가 — 원장에 있는데 출처에 없는 topic 은 손편집의 흔적이다."""
+    topics = {k for k in _json.loads(
+        (HARVEST / "img_topics.json").read_text(encoding="utf-8")) if not k.startswith("_")}
+    targets = _json.loads((HARVEST / "image_targets.json").read_text(encoding="utf-8"))
+    by_logno = {t["log_no"]: t["stem"] for t in targets}
+    in_ledger = {"%s#%s" % (by_logno[r["log_no"]], r["img_no"]) for r in _img_public_rows()}
+    assert topics == in_ledger, "출처에만: %s / 원장에만: %s" % (
+        sorted(topics - in_ledger), sorted(in_ledger - topics))
