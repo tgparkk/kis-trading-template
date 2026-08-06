@@ -2,13 +2,21 @@
 시장별 거래시간 설정
 해외주식 확장을 고려한 시장별/날짜별 거래시간 관리
 
-경계 시간대 처리:
+경계 시간대 구분 (MarketPhase):
 - 08:30~09:00 동시호가 (pre_auction)
 - 09:00~09:05 장 시작 직후 보호 (opening_protection)
-- 15:20~15:30 장 마감 직전 신규 매수 차단 (closing_cutoff)
+- 15:20~15:30 장 마감 직전 (closing_cutoff)
 - 15:20~15:30 동시호가 (closing_auction)
 - EOD 청산 시간 (eod_liquidation)
 - 서킷브레이커/VI 대응
+
+⚠️ 위는 **구간 정의**일 뿐 전부가 주문을 막는 건 아니다. 실제 주문 경로에 걸린 것만:
+- `can_place_order()` → pre_market/pre_auction(장 시작 전), closing_cutoff·closing_auction,
+  시장 전체 서킷브레이커, 종목 VI. **opening_protection 은 차단하지 않는다**
+  (`is_opening_protection()` 은 프로덕션 호출자 0건 — 09:00~09:05 에도 주문된다).
+- `is_eod_liquidation_time()` → EOD 청산 + 그 시각 이후 intraday 전략 신규매수 차단.
+- `should_stop_buying()`/`is_new_buy_blocked()`(buy_cutoff_hour) → **결선 안 됨. 호출자 0건.**
+보호장치를 인용하기 전에 호출자부터 확인할 것 (2026-08-06 거짓 배너 사건).
 """
 from datetime import time, datetime, timedelta
 from typing import Dict, Optional, List
@@ -158,6 +166,11 @@ def arm_circuit_breaker_from_info(stock_code: str, info: Optional[Dict],
 
 class MarketHours:
     """시장별 거래시간 설정"""
+
+    # 마감 동시호가 시작 기본값 = **주문이 실제로 막히는 시각**.
+    # `get_market_phase()`(게이트)와 `get_today_info()`(배너)가 반드시 같은 값을
+    # 봐야 배너가 실제 동작과 어긋나지 않으므로 한 곳에서만 정의한다.
+    DEFAULT_CLOSING_AUCTION_START = time(15, 20)
 
     # 시장별 기본 거래시간 설정
     MARKET_CONFIG = {
@@ -387,6 +400,17 @@ class MarketHours:
     def should_stop_buying(cls, market: str = 'KRX', dt: Optional[datetime] = None) -> bool:
         """매수 중단 시간인지 확인 (buy_cutoff_hour 이후)
 
+        🔴 **이 함수는 현재 매매 경로에 결선돼 있지 않다** — 프로덕션 호출자 0건
+        (`is_new_buy_blocked()` 와 테스트만 호출하며, `is_new_buy_blocked()` 자체도
+        프로덕션 호출자가 없다). 따라서 `buy_cutoff_hour`(KRX 기본 12시)는 실매매에
+        아무 영향이 없고, 실제로 12시 이후 신규 매수가 계속 체결된다
+        (2026-08-06 실측: 14거래일 166매수 중 8건이 12시 이후, 최대 15:09).
+
+        결선하려면: 주문 경로의 유일한 시간 게이트인 `can_place_order()` 에 이 판정을
+        추가해야 한다(`core/orders/order_executor.place_buy_order` 가 호출하는 함수).
+        결선할 경우 `get_today_info()` 배너도 함께 고칠 것 — 배너는 `can_place_order()`
+        가 실제로 보는 조건만 적기로 돼 있고, 테스트가 둘의 일치를 강제한다.
+
         Args:
             market: 시장 코드
             dt: 확인할 시간 (None이면 현재)
@@ -462,7 +486,7 @@ class MarketHours:
         market_close = hours['market_close']
         pre_auction_start = hours.get('pre_auction_start', time(8, 30))
         opening_protection_end = hours.get('opening_protection_end', time(9, 5))
-        closing_auction_start = hours.get('closing_auction_start', time(15, 20))
+        closing_auction_start = hours.get('closing_auction_start', cls.DEFAULT_CLOSING_AUCTION_START)
 
         if current_time < pre_auction_start:
             return MarketPhase.PRE_MARKET
@@ -483,6 +507,16 @@ class MarketHours:
 
         장 마감 직전(15:20 이후), 동시호가, 장 시작 보호 시간에는 신규 매수 차단.
         서킷브레이커/VI 발동 중에도 차단.
+
+        🔴 **이 함수는 현재 매매 경로에 결선돼 있지 않다** — 프로덕션 호출자 0건
+        (테스트만 호출). "이 함수가 있으니 12시 이후엔 안 산다"고 읽지 말 것.
+        실제 매수를 막는 유일한 시간 게이트는 `can_place_order()` 이고, 거기엔
+        `should_stop_buying`(12시 컷오프)이 들어 있지 않다.
+
+        결선하려면: `can_place_order()` 를 고쳐야 한다
+        (`core/orders/order_executor.place_buy_order` 가 호출하는 함수). 결선하면
+        신규 매수가 12시부터 멈추므로 **라이브 매매 동작이 바뀐다** — 사장님 승인 없이
+        결선하지 말 것. 결선 시 `get_today_info()` 배너도 함께 고칠 것.
 
         Returns:
             True면 신규 매수 불가
@@ -551,19 +585,60 @@ class MarketHours:
         return True
 
     @classmethod
-    def get_today_info(cls, market: str = 'KRX') -> str:
-        """오늘 거래시간 정보를 문자열로 반환 (로깅용)"""
-        hours = cls.get_market_hours(market)
+    def get_today_info(cls, market: str = 'KRX', dt: Optional[datetime] = None) -> str:
+        """오늘 거래시간 정보를 문자열로 반환 (로깅용)
+
+        🔴 **이 배너는 실제로 주문 경로에 결선된 제약만 적는다.** 근거는 두 곳뿐이다:
+
+        1) `can_place_order()` — 주문의 유일한 시간 게이트.
+           `core/orders/order_executor.place_buy_order`(매수) 와
+           `place_sell_order(force=False)`(매도) 가 호출한다. 검사 항목:
+           `is_market_open`(평일·비공휴일 + market_open~market_close) →
+           마감 동시호가(`closing_auction_start` 이후) 차단 → 시장 전체 서킷브레이커 →
+           종목 VI.
+        2) `MarketHours.is_eod_liquidation_time()` — `core/trading_context` 의 매수
+           판단이 이 시각 이후 `holding_period == "intraday"` 전략의 신규 매수만 막고,
+           `bot/liquidation_handler` 의 일괄청산도 `should_liquidate_eod()` 기본구현에
+           따라 intraday 보유분만 청산한다. swing 전략은 둘 다 해당 없음.
+
+        ⚠️ `buy_cutoff_hour`(=`should_stop_buying`, KRX 기본 12시)는 **적지 않는다** —
+        프로덕션 호출자가 0건이라 실매매에 걸리지 않기 때문이다. 예전 배너가
+        "매수 중단: 12:00 이후"로 적혀 있었으나 반증이 매일 로그에 찍히고 있었다
+        (2026-08-06 실측: 14거래일 166매수 중 8건이 12시 이후, 최대 15:09:32).
+        배너에 제약을 추가하려면 **그 제약을 실행하는 프로덕션 호출자가 있는지부터
+        확인할 것.** `tests/test_buy_stop_banner_matches_gate.py` 가 배너와
+        `can_place_order()` 의 일치를 강제한다.
+
+        Args:
+            market: 시장 코드
+            dt: 기준 날짜 (None이면 오늘). 특수일 설정 반영·테스트용.
+        """
+        hours = cls.get_market_hours(market, dt)
 
         info = f"[{market}] "
         if hours.get('is_special_day', False):
             reason = hours.get('reason', '특수일')
             info += f"[!] {reason}\n"
 
+        # 주문이 막히는 시각 = get_market_phase() 가 CLOSING_CUTOFF 로 넘어가는 시각.
+        # can_place_order() 가 그 phase 를 차단하므로 이 값이 실효 주문 마감이다.
+        order_cutoff = hours.get('closing_auction_start', cls.DEFAULT_CLOSING_AUCTION_START)
+
         info += f"장 시작: {hours['market_open'].strftime('%H:%M')}\n"
         info += f"장 마감: {hours['market_close'].strftime('%H:%M')}\n"
-        info += f"매수 중단: {hours['buy_cutoff_hour']:02d}:00 이후\n"
-        info += f"일괄 청산: {hours['eod_liquidation_hour']:02d}:{hours['eod_liquidation_minute']:02d}"
+        info += (
+            f"주문 가능: {hours['market_open'].strftime('%H:%M')}~{order_cutoff.strftime('%H:%M')} "
+            f"(이후 마감 동시호가 — 매수·매도 주문 모두 차단, EOD 청산만 force 로 예외)\n"
+        )
+        info += (
+            "신규 매수: 위 주문 가능 시간 내내 허용 — 시각 기준 매수 컷오프 없음 "
+            "(서킷브레이커·종목 VI 발동 시에만 차단)\n"
+        )
+        info += (
+            f"일괄 청산: {hours['eod_liquidation_hour']:02d}:{hours['eod_liquidation_minute']:02d} "
+            f"— intraday 전략 보유분만 청산하며 이 시각 이후 intraday 신규매수도 차단 "
+            f"(swing 전략은 해당 없음)"
+        )
 
         return info
 
