@@ -12,6 +12,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from urllib.parse import urlsplit
 
 HARVEST = Path(__file__).resolve().parent            # backtest/tasso_labels/harvest
 TASSO = HARVEST.parent                               # backtest/tasso_labels
@@ -287,8 +288,41 @@ SPACER_NAME = "blank.gif"
 IMAGE_KINDS = ("photo", "oglink", "sticker", "spacer", "gif")
 
 
+# `type=w966` 이 통하는 것으로 **실측된** 호스트. 호스트 「목록」이 아니라 **증거의 목록**이다.
+#
+# 🔴 2026-08-06 사고: 이 규약을 **모든 호스트에** 적용하고 있었다. w966 은
+#    mblogthumb 에서 도출한 것인데, 나머지 호스트는 각자 다른 어휘를 쓴다.
+#    호스트별 대표 1건씩 실제로 받아 본 결과(원본 URL vs type=w966 로 바꾼 URL):
+#      mblogthumb-phinf  `?type=`      (SE2 1,986) 원본 **404**  → w966 200     49,143B
+#                        `?type=w800`  (lazy 2,606) 원본 200 130,610B → w966 200 219,754B
+#                        `?type=w420`  (gif 1)      원본 200 2,097,327B → w966 200 3,084,150B
+#      dthumb-phinf      `?type=w1`    (photo 17)  원본 200  25,177B → w966 **404**
+#                        `?type=f560_336`(oglink)  원본 200  37,344B → w966 **404**
+#      storep-phinf      `?type=p100_100`(sticker 16) 원본 200 18,121B → w966 **404**
+#      ssl.pstatic.net   type 없음     (spacer 84) 원본 200   1,098B → w966 200 1,098B
+#    ⇒ 규약은 **양방향으로 호스트에 매여 있다.** mblogthumb 은 w966 이 **없으면** 죽고
+#      (SE2 1,986장이 전부 이 형태다) dthumb·storep 은 w966 이 **있으면** 죽는다.
+#      옛 코드는 5,886 슬롯 중 **1,075장(18.3%)** 을 받을 수 없는 주소로 바꾸고 있었다.
+#      ssl 84장이 살아남은 건 정적 파일 서버가 쿼리를 무시했을 뿐 — 운이지 정확성이 아니다.
+#
+# 🔴 이 표를 **차단 목록으로 뒤집지 말 것.** 「아는 것만 바꾼다」와 「아는 것만 안 바꾼다」의
+#    차이는 **모르는 호스트가 왔을 때 무엇이 되느냐**다:
+#      · 차단 목록 → 모르는 호스트도 **변형**한다. 실패해도 남는 주소는 **어디에도 없던 주소**라
+#        「원본이 사라진 것」인지 「우리가 망친 것」인지 구별이 안 된다. 이번 사고가 그것이다.
+#      · 허용 목록 → 모르는 호스트는 **원본 그대로**다. 실패하면 실패 기록에 남는 주소가
+#        **페이지가 실제로 실은 주소**라 브라우저에 붙여 넣는 것만으로 판정된다.
+# 🔴 값의 모양(`w\d+`)으로는 못 가른다 — dthumb 의 저자 그림 17장이 하필 **`type=w1`** 이다.
+#    폭 계열 값인데도 w966 을 거부한다. 그래서 판정 축은 값이 아니라 **호스트**여야 한다.
+# 🔴 부분문자열로 호스트를 보지 말 것 — dthumb 은 `?src=` 에 **남의 pstatic 주소를 통째로**
+#    싣는다(819/1,059 실측). `"pstatic" in url` 류는 프록시 URL 을 원본으로 오인한다.
+TYPE_REWRITE_HOSTS = ("mblogthumb-phinf.pstatic.net",)
+
+
 def normalize_image_url(url, type_param="w966"):
     """썸네일 URL 의 `type` 파라미터만 **교체**한다. 나머지 쿼리는 그대로 둔다.
+
+    🔑 **규약이 실측된 호스트에서만** 손댄다(`TYPE_REWRITE_HOSTS`). 그 밖의 호스트는
+       한 글자도 바꾸지 않고 그대로 돌려준다 — 위 주석의 근거를 볼 것.
 
     🔴 선행 코드(`extract_calc_images.py:43`)는 `re.sub(r"\\?type=w\\d+", "", url)
        + "?type=w966"` 이었다. 두 형태에서 깨진다(둘 다 실측):
@@ -297,6 +331,8 @@ def normalize_image_url(url, type_param="w966"):
     ⇒ 문자열로 쿼리를 다시 쓴다. `urlencode` 를 쓰면 안 된다 — `src=%22…%22` 의
       퍼센트 인코딩을 **다시 인코딩**해 URL 이 달라진다.
     """
+    if (urlsplit(url).hostname or "") not in TYPE_REWRITE_HOSTS:
+        return url
     base, _, query = url.partition("?")
     kept = [p for p in query.split("&") if p and p.split("=", 1)[0] != "type"]
     kept.append("type=" + type_param)

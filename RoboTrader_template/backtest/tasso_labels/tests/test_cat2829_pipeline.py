@@ -2079,6 +2079,27 @@ def _kinds(items):
     return [i["kind"] for i in items]
 
 
+def _host(url):
+    from urllib.parse import urlsplit
+    return urlsplit(url).hostname or ""
+
+
+def _raw_body_images(c, monkeypatch, files):
+    """정규화 **전**의 URL. `body_images` 가 모듈 전역을 부르므로 그 자리를 항등함수로 둔다."""
+    monkeypatch.setattr(c, "normalize_image_url", lambda u, type_param="w966": u)
+    out = [i["url"] for p in files for i in c.body_images(p.read_text(encoding="utf-8"))]
+    monkeypatch.undo()
+    return out
+
+
+def _old_rule(url, type_param="w966"):
+    """2026-08-06 이전 판본 — **호스트를 안 보고** 전부 바꾸던 규칙. 회귀 대조군이다."""
+    base, _, query = url.partition("?")
+    kept = [p for p in query.split("&") if p and p.split("=", 1)[0] != "type"]
+    kept.append("type=" + type_param)
+    return base + "?" + "&".join(kept)
+
+
 # ---- C1: 경계는 body_region 안쪽뿐이다 ----
 
 def test_body_images_ignore_everything_outside_the_body_region():
@@ -2185,15 +2206,20 @@ def test_body_images_preserve_document_order_across_mixed_slot_kinds():
 
 
 def test_body_images_order_is_preserved_in_se4_too():
-    """SE4 에서도 그림·링크카드·스티커·GIF 가 **섞인 순서 그대로** 나와야 한다."""
+    """SE4 에서도 그림·링크카드·스티커·GIF 가 **섞인 순서 그대로** 나와야 한다.
+
+    ⚠️ 자리표시자는 **서로의 부분문자열이 되면 안 된다.** 예전 `"p1"` 은 손대지 않는
+       스티커 URL 의 `?type=p100_100` 안에서 먼저 걸려 순서 판정을 거짓으로 만들었다.
+    """
     c = _load("cat2829_common")
-    src = _se4_page([_SE4_OGLINK.format(n="og1"), _SE4_IMG.format(n="p1"),
-                     _SE4_VIDEO.format(n="g1"), _SE4_STICKER.format(n="s1"),
-                     _SE4_IMG.format(n="p2")])
+    toks = ("og1", "pho1", "gif1", "stk1", "pho2")
+    src = _se4_page([_SE4_OGLINK.format(n="og1"), _SE4_IMG.format(n="pho1"),
+                     _SE4_VIDEO.format(n="gif1"), _SE4_STICKER.format(n="stk1"),
+                     _SE4_IMG.format(n="pho2")])
     items = c.body_images(src)
     assert _kinds(items) == ["oglink", "photo", "gif", "sticker", "photo"], repr(_kinds(items))
-    got = [next(t for t in ("og1", "p1", "g1", "s1", "p2") if t in i["url"]) for i in items]
-    assert got == ["og1", "p1", "g1", "s1", "p2"]
+    got = [[t for t in toks if t in i["url"]] for i in items]
+    assert got == [["og1"], ["pho1"], ["gif1"], ["stk1"], ["pho2"]], repr(got)
 
 
 # ---- C5: HTML 엔티티 이스케이프 ----
@@ -2214,25 +2240,83 @@ def test_body_images_unescape_html_entities_in_urls(make, page):
     assert "src=%22" in url and "%3A%2F%2F" in url, "퍼센트 인코딩이 훼손됐다 — " + url
 
 
-# ---- C6: type 파라미터만 교체 ----
+# ---- C6: type 파라미터만 교체 — **규약이 실측된 호스트에서만** ----
+#
+# 🔴 2026-08-06 실측이 뒤집은 것: 이 정규화를 **모든 호스트에** 적용하고 있었다.
+#    w966 은 mblogthumb 에서 도출한 규약인데 나머지 호스트는 각자 어휘가 다르다.
+#    호스트별로 실제로 받아 본 결과(원본 URL vs w966 로 바꾼 URL):
+#      mblogthumb `?type=`(SE2 1,986)  원본 **404** → w966 200  49,143B   ⇒ w966 이 **필수**
+#      dthumb     `?type=w1`(photo 17) 원본 200 25,177B → w966 **404**
+#      dthumb     `?type=f560_336`(oglink) 원본 200 37,344B → w966 **404**
+#      storep     `?type=p100_100`(16) 원본 200 18,121B → w966 **404**
+#      ssl        type 없음(spacer 84) 원본 200 1,098B → w966 200 1,098B(쿼리 무시)
+#    ⇒ 규약은 **양방향으로 호스트에 매여 있다.** 아래 케이스가 그 사실을 고정한다.
 
 @pytest.mark.parametrize("raw,expect", [
+    # ── 손대는 쪽: mblogthumb 만 ────────────────────────────────────────────
     # SE2 span — 값이 **빈** type. 선행 정규식(`\?type=w\d+`)이 못 잡던 형태다.
+    # 이 형태는 원본이 404 라 **바꿔야만 받아진다**(1,986 슬롯 전량).
     ("https://mblogthumb-phinf.pstatic.net/a/b.jpg?type=",
      "https://mblogthumb-phinf.pstatic.net/a/b.jpg?type=w966"),
     # SE4 lazy
     ("https://mblogthumb-phinf.pstatic.net/a/b.png?type=w800",
      "https://mblogthumb-phinf.pstatic.net/a/b.png?type=w966"),
-    # 링크카드 — type 앞에 다른 파라미터가 있다. 선행 코드는 `?` 를 두 번 붙였다.
+    # ── 안 건드리는 쪽: 규약이 통하지 않는 것으로 실측된 호스트 ──────────────
+    # 링크카드 프록시. type 앞에 다른 파라미터가 있어 선행 코드는 `?` 를 두 번 붙였고,
+    # 지금 판본은 아예 손대지 않는다 — w966 으로 바꾸면 **404** 다(실측).
     ("https://dthumb-phinf.pstatic.net/?src=%22https%3A%2F%2Fx%2Fy.jpg%22&type=ff120",
-     "https://dthumb-phinf.pstatic.net/?src=%22https%3A%2F%2Fx%2Fy.jpg%22&type=w966"),
-    # 쿼리가 아예 없는 경우
+     "https://dthumb-phinf.pstatic.net/?src=%22https%3A%2F%2Fx%2Fy.jpg%22&type=ff120"),
+    # 🔴 같은 프록시의 **저자 그림**(17장). 하필 값이 `w1` 이라 **폭 계열**이다 —
+    #    「값이 w숫자면 바꾼다」로 구현하면 이 17장을 다시 404 로 만든다.
+    ("https://dthumb-phinf.pstatic.net/?src=%22https%3A%2F%2Fx%2Fy.jpg%22&type=w1",
+     "https://dthumb-phinf.pstatic.net/?src=%22https%3A%2F%2Fx%2Fy.jpg%22&type=w1"),
+    # 스티커(16장) — w966 은 404.
+    ("https://storep-phinf.pstatic.net/ogq_x/original_22.png?type=p100_100",
+     "https://storep-phinf.pstatic.net/ogq_x/original_22.png?type=p100_100"),
+    # 쿼리가 아예 없는 경우(스페이서 84장) — 없던 파라미터를 **만들어 붙이지 않는다**.
     ("https://ssl.pstatic.net/static/blog/blank.gif",
-     "https://ssl.pstatic.net/static/blog/blank.gif?type=w966"),
+     "https://ssl.pstatic.net/static/blog/blank.gif"),
 ])
 def test_normalize_image_url_replaces_only_the_type_parameter(raw, expect):
     c = _load("cat2829_common")
     assert c.normalize_image_url(raw) == expect
+
+
+def test_normalize_image_url_reads_the_host_by_parsing_not_by_substring():
+    """🔴 dthumb 은 `?src=` 에 **남의 pstatic 주소를 통째로** 싣는다(819/1,059 실측).
+
+    부분문자열로 호스트를 보면 프록시 URL 을 원본으로 오인해 다시 404 를 받는다.
+    첫 케이스는 실물 코퍼스에서 그대로 가져오고, 둘째는 그 실물의 `src` 호스트만
+    mblogthumb 으로 바꾼 것이다 — `"mblogthumb" in url` 구현을 정확히 겨눈다.
+    """
+    c, _, files = _corpus()
+    proxied = [i["url"] for p in files
+               for i in c.body_images(p.read_text(encoding="utf-8"))
+               if _host(i["url"]) == "dthumb-phinf.pstatic.net" and "pstatic" in i["url"].partition("?")[2]]
+    assert proxied, "픽스처 전제: 쿼리에 pstatic 을 싣는 프록시 URL 이 코퍼스에 있어야 한다"
+    for url in proxied[:50]:
+        assert c.normalize_image_url(url) == url
+    swapped = proxied[0].replace("cafefiles.pstatic.net", "mblogthumb-phinf.pstatic.net")
+    if swapped == proxied[0]:
+        swapped = ("https://dthumb-phinf.pstatic.net/?src=%22https%3A%2F%2F"
+                   "mblogthumb-phinf.pstatic.net%2Fx.png%22&type=w1")
+    assert c.normalize_image_url(swapped) == swapped, (
+        "쿼리 안의 호스트 문자열에 속았다 — 호스트는 파싱해서 얻어야 한다")
+
+
+def test_normalize_image_url_does_not_generalize_to_a_host_that_merely_looks_familiar():
+    """🔑 「모르면 건드리지 않는다」 — **이름이 닮은 것은 증거가 아니다.**
+
+    dthumb 의 저자 그림 17장이 하필 폭 계열 `type=w1` 인데도 w966 을 404 로 돌려주듯,
+    어휘는 실측으로만 확인된다. 닮은 이름의 새 호스트를 자동으로 편입하면 이번 사고가
+    그대로 재발하고, 그때 실패 기록에 남는 주소는 **어디에도 없던 주소**라 「원본이
+    사라진 것」인지 「우리가 망친 것」인지 가릴 수 없다.
+    """
+    c = _load("cat2829_common")
+    for host in ("mblogthumb2-phinf.pstatic.net",        # 접두사 매칭을 겨눈다
+                 "mblogthumb-phinf.pstatic.net.example"):  # 접미사/포함 매칭을 겨눈다
+        url = "https://%s/x.png?type=" % host
+        assert c.normalize_image_url(url) == url, "증거 없는 호스트로 규약을 넓혔다: " + url
 
 
 def test_normalize_image_url_matches_the_prior_convention_for_plain_thumbnails():
@@ -2250,8 +2334,73 @@ def test_normalize_image_url_matches_the_prior_convention_for_plain_thumbnails()
 def test_normalize_image_url_is_idempotent():
     """두 번 적용해도 같아야 한다 — 안 그러면 재실행마다 다른 파일을 받는다."""
     c = _load("cat2829_common")
-    once = c.normalize_image_url("https://x/y.png?type=w800")
+    once = c.normalize_image_url("https://mblogthumb-phinf.pstatic.net/y.png?type=w800")
     assert c.normalize_image_url(once) == once
+    other = "https://dthumb-phinf.pstatic.net/?src=%22https%3A%2F%2Fx%2Fy.jpg%22&type=w1"
+    assert c.normalize_image_url(c.normalize_image_url(other)) == other
+
+
+# ---- C6 회귀: 저장된 433건 전 슬롯(5,886)에서 도출한 계약 ----
+
+def test_real_corpus_normalization_leaves_every_unevidenced_host_byte_identical(monkeypatch):
+    """🔴 이번 사고의 **실물 회귀**. 규약이 실측되지 않은 호스트는 **한 글자도** 안 바뀐다.
+
+    수정 전 실측: 5,886 슬롯 중 **1,075장**(dthumb 1,059 + storep 16)이 받을 수 없는
+    주소로 바뀌어 있었다. 실제로 그중 2장이 `CURL_EXIT:22` 로 실패해 남아 있었다.
+    """
+    c, _, files = _corpus()
+    raw = _raw_body_images(c, monkeypatch, files)
+    assert raw, "코퍼스에 이미지 슬롯이 없다"
+    off = [u for u in raw if _host(u) not in c.TYPE_REWRITE_HOSTS]
+    assert off, "픽스처 전제: 허용 목록 밖 호스트가 코퍼스에 있어야 판별력이 생긴다"
+    bad = [u for u in off if c.normalize_image_url(u) != u]
+    assert bad == [], "규약이 실측되지 않은 호스트를 건드렸다 — %d건, 예: %s" % (
+        len(bad), bad[:2])
+
+
+def test_real_corpus_normalization_still_rewrites_every_evidenced_host_slot(monkeypatch):
+    """🔑 반대 방향도 고정한다 — mblogthumb 은 w966 이 **없으면 404** 다(SE2 1,986장).
+
+    「아무것도 안 바꾸는」 구현이 위 테스트만으로는 통과하므로 이 테스트가 필요하다.
+    """
+    c, _, files = _corpus()
+    raw = _raw_body_images(c, monkeypatch, files)
+    on = [u for u in raw if _host(u) in c.TYPE_REWRITE_HOSTS]
+    assert on, "픽스처 전제: 허용 목록 호스트가 코퍼스에 있어야 한다"
+    for url in on:
+        got = c.normalize_image_url(url)
+        assert got.endswith("type=w966"), "규약이 적용되지 않았다: " + got
+        assert got.partition("?")[2].count("type=") == 1, "type 이 중복됐다: " + got
+        assert _host(got) == _host(url) and got.partition("?")[0] == url.partition("?")[0]
+
+
+def test_real_corpus_mblogthumb_results_are_unchanged_by_the_host_gate(monkeypatch):
+    """🔴 **이미 받아 둔 301장의 근거가 흔들리지 않는다는 증거.**
+
+    호스트 관문을 넣은 뒤에도 mblogthumb 4,727 슬롯의 정규화 결과는 **옛 규칙과 완전히
+    같아야** 한다. 하나라도 달라지면 파일럿 170장이 다른 주소에서 온 것이 된다.
+    """
+    c, _, files = _corpus()
+    raw = _raw_body_images(c, monkeypatch, files)
+    on = [u for u in raw if _host(u) in c.TYPE_REWRITE_HOSTS]
+    diff = [u for u in on if c.normalize_image_url(u) != _old_rule(u)]
+    assert diff == [], "mblogthumb 결과가 달라졌다 — 이미 받은 파일의 출처가 바뀐다: %s" % diff[:2]
+
+
+def test_real_corpus_change_is_confined_to_the_hosts_that_rejected_the_convention(monkeypatch):
+    """🔑 고친 것이 **실제로 무엇을 바꿨는지**를 수로 고정한다.
+
+    옛 규칙과 결과가 다른 슬롯은 전부 허용 목록 **밖** 호스트여야 하고, 0건이어서도
+    안 된다(0건이면 아무것도 안 고친 것이다).
+    """
+    c, _, files = _corpus()
+    raw = _raw_body_images(c, monkeypatch, files)
+    changed = [u for u in raw if c.normalize_image_url(u) != _old_rule(u)]
+    assert changed, "옛 규칙과 결과가 같다 — 결함이 그대로다"
+    assert all(_host(u) not in c.TYPE_REWRITE_HOSTS for u in changed)
+    assert {_host(u) for u in changed} == {
+        h for h in map(_host, raw) if h not in c.TYPE_REWRITE_HOSTS}, (
+        "규약을 거부하는 호스트 중 일부만 고쳤다 — 차단 목록식 구현의 징후다")
 
 
 # ---- C7·C8·C9·C10: 정체 라벨 ----
@@ -2348,14 +2497,20 @@ def test_real_corpus_image_totals_by_generation():
 
 
 def test_real_corpus_image_urls_are_normalized_and_unescaped():
-    """모든 URL 이 `type=w966` 으로 끝나고 엔티티가 남아 있지 않아야 한다."""
+    """엔티티가 남아 있지 않아야 하고, 규약이 실측된 호스트는 `type=w966` 으로 끝나야 한다.
+
+    🔴 예전 판본은 **모든** URL 에 `type=w966` 을 요구했다. 그 단언 자체가 이번 결함의
+       계약판이었다 — dthumb·storep 은 w966 을 **404** 로 돌려준다(실측). 요구 범위를
+       `TYPE_REWRITE_HOSTS` 로 좁힌다.
+    """
     c, _, files = _corpus()
     bad = []
     for p in files:
         for i in c.body_images(p.read_text(encoding="utf-8")):
             u = i["url"]
-            if not (u.endswith("?type=w966") or u.endswith("&type=w966")):
-                bad.append((p.name, u[:100]))
+            ends_w966 = u.endswith("?type=w966") or u.endswith("&type=w966")
+            if ends_w966 != (_host(u) in c.TYPE_REWRITE_HOSTS):
+                bad.append((p.name, "TYPE " + u[:100]))
             if "&amp;" in u or "&#x3D;" in u or "&#61;" in u:
                 bad.append((p.name, "ESCAPED " + u[:100]))
             if "blogpfthumb" in u:
