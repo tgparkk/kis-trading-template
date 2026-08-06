@@ -199,15 +199,31 @@ class TradingAnalyzer:
                         )
                         # 매수 쿨다운 설정
                         trading_stock.set_buy_time(_now_kst())
-                        # 상태를 BUY_PENDING → POSITIONED 2단계로 전이 (실전 경로와 일관성)
+                        # 상태를 BUY_PENDING → POSITIONED 2단계로 전이 (실전 경로와 일관성).
+                        # owner 는 인자(strategy_name=폴더키)가 아니라 **슬롯 객체**에서
+                        # 읽는다 — 위 add_position(:197)·get_trading_stock(:159)·매도 실패
+                        # 복원(:300) 과 문자 그대로 동일한 식이어야 한다(표기-불변, 01d336e).
+                        # 인자를 넘기면 안 되는 이유는 추상적이지 않다: 바로 위
+                        # execute_virtual_buy 가 trading_decision_engine:660 에서
+                        # `owner_strategy_name = display_name`(전략 인스턴스 .name =
+                        # **클래스명**)으로 이 객체의 owner 를 **덮어쓴 직후**다. 인자는
+                        # 폴더키이므로 두 표기가 갈리고, _find_by_code 는 == 정확일치라
+                        # 매칭 0 이 된다.
+                        # ⚠️ change_stock_state 는 매칭 0 일 때 예외 없이 조용히 return
+                        # 한다(stock_state_manager:158~159) → 이 try/except 는 무력하고
+                        # 에러 로그도 남지 않는다. 그래서 종목이 SELECTED 로 남은 채
+                        # EOD 청산 대상집합(POSITIONED)에서 통째로 빠졌다(2026-08-06 실측:
+                        # 청산 대상 46 vs 실보유 55, 차 9 = 당일 매수 9건·전략별 6/6 일치).
+                        # ⚠️ `or None` 을 붙이지 말 것 — "" 는 무기명 슬롯만 정확 매칭하는
+                        # 가장 정밀한 키이고, None 은 필터를 해제해 남의 슬롯을 집는다.
                         try:
                             self.bot.trading_manager._change_stock_state(
                                 stock_code, StockState.BUY_PENDING, "가상 매수 주문",
-                                strategy=strategy_name
+                                strategy=trading_stock.owner_strategy_name
                             )
                             self.bot.trading_manager._change_stock_state(
                                 stock_code, StockState.POSITIONED, "가상 매수 체결",
-                                strategy=strategy_name
+                                strategy=trading_stock.owner_strategy_name
                             )
                         except Exception as e:
                             self.logger.debug(f"가상 매수 상태 변경 실패: {stock_code} - {e}")

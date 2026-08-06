@@ -156,6 +156,11 @@ class StockStateManager:
         with self._lock:
             matches = self._find_by_code(stock_code, strategy)
             if not matches:
+                # ⚠️ 조용한 return — 예외도 반환값도 없어 호출부 try/except 와 에러
+                # 로그가 둘 다 무력하다. owner 표기가 어긋나면 상태 전이가 실패한
+                # 사실 자체가 관측되지 않는다(2026-08-06 EOD: 당일 매수 9건이 SELECTED
+                # 로 남아 청산 대상집합에서 누락). 호출부는 owner 를 반드시 슬롯
+                # 객체(owner_strategy_name)에서 읽어 넘길 것 — 재구성 금지.
                 return
             if len(matches) > 1:
                 self.logger.warning(
