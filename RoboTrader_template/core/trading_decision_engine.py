@@ -186,15 +186,38 @@ class TradingDecisionEngine:
             for name, code, threshold in checks:
                 data = get_index_data(code)
                 if not data:
+                    # 조용한 fail-open 이던 자리(2026-08-07). 판정 동작은 그대로
+                    # continue → 결국 매수 허용이지만, "정상값이라 허용"과
+                    # "못 읽어서 허용"이 로그로 갈리도록 흔적을 남긴다.
+                    self.logger.info(
+                        f"[시장방향성필터] 관측실패 지수={name} 코드={code} "
+                        f"사유=응답없음 임계값={threshold}% 판정=허용(무판정)"
+                    )
                     continue
+                raw = None
                 try:
-                    change = float(data.get('bstp_nmix_prdy_ctrt', '0'))
+                    raw = data.get('bstp_nmix_prdy_ctrt', '0')
+                    change = float(raw)
                 except (ValueError, TypeError):
+                    self.logger.info(
+                        f"[시장방향성필터] 관측실패 지수={name} 코드={code} "
+                        f"사유=파싱불가 원값={raw!r} 임계값={threshold}% 판정=허용(무판정)"
+                    )
                     continue
                 if change <= threshold:
                     result = (True, f"{name} {change:+.2f}% (임계값: {threshold}%)")
+                    self.logger.info(
+                        f"[시장방향성필터] 관측 지수={name} 코드={code} "
+                        f"등락률={change:+.2f}% 임계값={threshold}% 판정=차단"
+                    )
                     self.logger.info(f"[시장방향성필터] 매수 차단: {result[1]}")
                     return _store(result)
+                # 실제 조회(캐시 미스)마다 읽은 값을 남긴다 — 캐시 히트는 여기
+                # 도달 전에 반환되므로 시계열이 중복값으로 오염되지 않는다.
+                self.logger.info(
+                    f"[시장방향성필터] 관측 지수={name} 코드={code} "
+                    f"등락률={change:+.2f}% 임계값={threshold}% 판정=허용"
+                )
 
             # 시장 정상 → 매수 허용
             return _store((False, ""))
