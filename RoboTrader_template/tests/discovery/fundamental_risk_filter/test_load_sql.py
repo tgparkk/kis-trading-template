@@ -15,9 +15,12 @@ _SRC = open(os.path.join(_SCRIPTS, "f4_load.py"), encoding="utf-8").read()
 
 
 def test_no_write_statement_targets_existing_tables():
-    """🔴 UPDATE/DELETE/DROP/TRUNCATE 가 기존 테이블을 향하면 안 된다."""
-    for verb in ("UPDATE ", "DELETE ", "DROP TABLE", "TRUNCATE", "ALTER TABLE"):
-        for m in re.finditer(verb, _SRC, re.IGNORECASE):
+    """🔴 UPDATE/DELETE/DROP/TRUNCATE/INSERT 가 기존 테이블을 향하면 안 된다.
+
+    값싼 트립와이어다 — 보증이 아니다. 줄바꿈을 우회하는 것 같은 패턴을 수기로 찾아야 한다.
+    """
+    for verb in (r"UPDATE", r"DELETE", r"DROP\s+TABLE", r"TRUNCATE", r"ALTER\s+TABLE", r"INSERT"):
+        for m in re.finditer(rf"{verb}\s+", _SRC, re.IGNORECASE):
             tail = _SRC[m.end(): m.end() + 60]
             assert "daily_prices" not in tail
             assert "minute_candles" not in tail
@@ -50,3 +53,23 @@ def test_rcept_dt_column_exists_and_is_nullable():
     m = re.search(r"rcept_dt\s+\w+([^,]*),", f4.DDL, re.IGNORECASE)
     assert m is not None
     assert "NOT NULL" not in m.group(1).upper()
+
+
+def test_every_inserted_column_is_refreshed_on_conflict():
+    """🔴 INSERT 에 있는데 SET 에 없는 컬럼은 재적재 때 옛 값이 남는다."""
+    m = re.search(r"INSERT\s+INTO\s+\S+\s*\(([^)]*)\)", f4.UPSERT, re.IGNORECASE | re.DOTALL)
+    assert m is not None
+    cols = [c.strip() for c in m.group(1).split(",")]
+    key = {"stock_code", "bsns_year"}
+    set_part = f4.UPSERT.split("DO UPDATE SET", 1)[1]
+    missing = [c for c in cols
+               if c not in key
+               and not re.search(rf"\b{c}\s*=\s*EXCLUDED\.{c}\b", set_part, re.IGNORECASE)]
+    assert missing == [], f"SET 에서 빠진 컬럼: {missing}"
+
+
+def test_fingerprint_covers_whole_row_not_a_column_subset():
+    """🔴 컬럼을 골라 해싱하면 고르지 않은 컬럼의 변경을 못 잡는다."""
+    assert "d::text" in f4.DP_FINGERPRINT
+    for col in ("close", "market_cap", "adj_factor", "volume"):
+        assert f"{col}::text" not in f4.DP_FINGERPRINT

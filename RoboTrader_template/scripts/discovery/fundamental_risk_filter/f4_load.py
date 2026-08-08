@@ -68,14 +68,13 @@ ON CONFLICT (stock_code, bsns_year) DO UPDATE SET
   interest_expense  = EXCLUDED.interest_expense,
   finance_costs     = EXCLUDED.finance_costs,
   interest_paid_cf  = EXCLUDED.interest_paid_cf
+  -- 🔑 created_at 을 의도적으로 뺀다 — 최초 적재 시각을 보존하기 위함
 """
 
 DP_FINGERPRINT = """
 SELECT count(*),
-       coalesce(sum(hashtext(stock_code || date ||
-                             coalesce(close::text,'') ||
-                             coalesce(market_cap::text,''))::bigint), 0)
-FROM daily_prices
+       coalesce(sum(hashtext(d::text)::bigint), 0)
+FROM daily_prices d
 """
 
 
@@ -115,6 +114,7 @@ def read_rows():
 
 
 def main():
+    import time
     ap = argparse.ArgumentParser()
     ap.add_argument("--create", action="store_true")
     ap.add_argument("--load", action="store_true")
@@ -125,36 +125,61 @@ def main():
     conn.autocommit = False
     cur = conn.cursor()
 
-    if args.create:
-        cur.execute(DDL)
-        conn.commit()
-        print(f"{TABLE} 준비 완료")
+    try:
+        if args.create:
+            cur.execute(DDL)
+            conn.commit()
+            print(f"{TABLE} 준비 완료")
 
-    if args.load:
-        before = fingerprint(cur)
-        rows = read_rows()
-        execute_values(cur, UPSERT, rows, page_size=1000)
-        conn.commit()
-        after = fingerprint(cur)
+        if args.load:
+            # 🔴 불변 증명: 쓰기 «전»에 검사하고, 통과할 때만 커밋한다
+            t0 = time.time()
+            before = fingerprint(cur)
+            t_before = time.time() - t0
 
-        cur.execute(f"SELECT count(*), count(rcept_dt) FROM {TABLE}")
-        n_all, n_dt = cur.fetchone()
+            rows = read_rows()
+            execute_values(cur, UPSERT, rows, page_size=1000)
 
-        ok = before == after
-        text = (
-            f"적재 {len(rows)}행 → {TABLE} 총 {n_all}행 (rcept_dt 있는 행 {n_dt})\n"
-            f"daily_prices before: {before}\n"
-            f"daily_prices after : {after}\n"
-            f"불변: {'OK' if ok else '🔴 변경됨'}\n"
-        )
-        with open(PROOF_TXT, "w", encoding="utf-8") as f:
-            f.write(text)
-        print(text)
-        if not ok:
-            sys.exit(4)
+            t0 = time.time()
+            after = fingerprint(cur)
+            t_after = time.time() - t0
 
-    cur.close()
-    conn.close()
+            ok = before == after
+            if not ok:
+                # 증명 실패 → 롤백
+                conn.rollback()
+                text = (
+                    f"🔴 적재 {len(rows)}행 검증 실패\n"
+                    f"daily_prices before: {before}\n"
+                    f"daily_prices after : {after}\n"
+                    f"불변: 변경됨\n"
+                    f"fingerprint 계산시간: {t_before:.2f}s / {t_after:.2f}s\n"
+                )
+                with open(PROOF_TXT, "w", encoding="utf-8") as f:
+                    f.write(text)
+                print(text)
+                sys.exit(4)
+
+            # 증명 통과 → 커밋
+            conn.commit()
+
+            # 커밋 후 행 수 조회
+            cur.execute(f"SELECT count(*), count(rcept_dt), count(status) FROM {TABLE}")
+            n_all, n_dt, n_status = cur.fetchone()
+
+            text = (
+                f"적재 {len(rows)}행 → {TABLE} 총 {n_all}행 (rcept_dt {n_dt}건, status {n_status}건)\n"
+                f"daily_prices before: {before}\n"
+                f"daily_prices after : {after}\n"
+                f"불변: OK\n"
+                f"fingerprint 계산시간: {t_before:.2f}s / {t_after:.2f}s\n"
+            )
+            with open(PROOF_TXT, "w", encoding="utf-8") as f:
+                f.write(text)
+            print(text)
+    finally:
+        cur.close()
+        conn.close()
 
 
 if __name__ == "__main__":
