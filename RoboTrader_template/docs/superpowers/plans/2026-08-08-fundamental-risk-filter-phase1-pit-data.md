@@ -531,7 +531,10 @@ def main():
     conn = db_conn()
     cur = conn.cursor()
     cur.execute(UNIVERSE_SQL)
-    rows = [(str(a), str(b)) for a, b in cur.fetchall()]
+    # ⚠️ str(None) == "None" 은 진리값이 True 라 build_worklist 의 `if not corp`
+    #    가드를 그대로 통과한다. SQL 이 이미 NULL 을 막고 있지만, 두 겹 중
+    #    파이썬 쪽만 남는 날 조용히 샌다. None 은 None 으로 넘긴다.
+    rows = [(str(a), None if b is None else str(b)) for a, b in cur.fetchall()]
     cur.close()
     conn.close()
 
