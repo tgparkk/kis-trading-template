@@ -169,6 +169,14 @@ def test_fs_div_is_passed_through():
     c = _client([_Resp({"status": "000", "message": "", "list": []})])
     c.fnltt_all("00126380", "2022", dc.REPRT_FY, "OFS")
     assert c.session.calls[0]["fs_div"] == "OFS"
+
+
+def test_project_root_points_at_repo_package_root():
+    """🔴 조용히 틀리는 자리다. 틀리면 OUT_DIR 도 .env 경로도 함께 어긋난다."""
+    assert os.path.basename(dc.PROJECT_ROOT) == "RoboTrader_template"
+    assert os.path.isdir(os.path.join(dc.PROJECT_ROOT, "scripts"))
+    assert dc.OUT_DIR.endswith(os.path.join("RoboTrader_template",
+                                            "scratchpad", "fund_pit"))
 ```
 
 - [ ] **Step 2: 테스트가 실패하는지 확인한다**
@@ -199,7 +207,12 @@ import time
 import requests
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(_HERE))
+# _HERE = <root>/scripts/discovery/fundamental_risk_filter → dirname 3번이 <root> 다.
+# ⚠️ 원본 scripts/dart_mcap_common.py 는 scripts/ 바로 아래라 1번이면 됐다.
+#    두 단계 깊어졌으므로 2번이 아니라 3번이다 — 틀리면 OUT_DIR 이
+#    scripts/scratchpad 가 되고 .env 도 못 찾는다(조용히 실패한다).
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))
+assert os.path.basename(PROJECT_ROOT) == "RoboTrader_template", PROJECT_ROOT
 OUT_DIR = os.path.join(PROJECT_ROOT, "scratchpad", "fund_pit")
 
 DART_BASE = "https://opendart.fss.or.kr/api"
@@ -346,7 +359,7 @@ class DartClient:
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/test_dart_client.py -v`
-Expected: PASS (6 passed)
+Expected: PASS (7 passed)
 
 - [ ] **Step 5: 커밋** (사장님 승인 후)
 
@@ -1321,7 +1334,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/test_load_sql.py -v`
-Expected: PASS (6 passed)
+Expected: PASS (7 passed)
 
 - [ ] **Step 5: 파일럿 적재 + 불변 증명**
 
@@ -1467,7 +1480,7 @@ Expected: PASS (8 passed)
 - [ ] **Step 5: 패키지 전체 테스트를 돌린다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/ -v`
-Expected: PASS (40 passed)
+Expected: PASS (41 passed)
 
 - [ ] **Step 6: 커밋** (사장님 승인 후)
 
