@@ -75,7 +75,13 @@ def main():
     lines.append("   관측 수가 아니라 «종목 수»를 본다. 블록 SE 의 블록이 종목이고,")
     lines.append("   관측 3만 개가 종목 20개에서 나왔다면 사실상 n=20 이다.")
     lines.append("   ⚠️ 아래 꼬리 마스크는 «분위수» 기반이라 후보 문턱을 제시하지 않는다.")
-    masks = [("자본잠식(모수없음)", u["equity_impaired"].fillna(False))]
+    # 🔴 fillna(False) 로 결측(자본총계를 못 읽음)을 채우면 「모른다」가 「비잠식(클린)」이
+    #    된다 — p2_features.py 에서 두 라운드 전 제거된 것과 같은 결함이 마스크 계층에서
+    #    재발한 것이다(279행 · 종목 2). 이 표는 잠식군만 세지만, Phase 2B 가 이 표현을
+    #    그대로 복사해 대조군(비잠식)을 `~mask` 로 만들면 결측이 조용히 대조군에 들어간다.
+    #    eq(True) 는 결측을 True 도 False 도 아닌 「선택 안 됨」으로만 두어 결측이
+    #    양쪽(잠식군·비잠식군) 어디에도 «클린»으로 계상되지 않게 한다.
+    masks = [("자본잠식(모수없음)", u["equity_impaired"].eq(True))]
     for col, tail in (("debt_ratio", "hi"), ("interest_coverage", "lo")):
         s = u[col]
         for p in (0.01, 0.05):
@@ -89,12 +95,11 @@ def main():
         masks.append((f"op_loss_years hi {int(p*100)}%", ol.gt(cut)))
     for name, mask in masks:
         sub = u[mask]
-        rate = 100 * sub["crash"].mean() if len(sub) else float("nan")
         lines.append(f"   {name:<26s} 관측 {len(sub):>9,} · 종목 "
-                     f"{sub['stock_code'].nunique():>5,} · 폭락률 {rate:6.2f}%")
+                     f"{sub['stock_code'].nunique():>5,}")
     lines.append("")
-    lines.append("   기저 대비 폭락률이 «올라가 있는» 축이 후보다. 다만 이 표는 문턱을")
-    lines.append("   고르는 데 쓰지 않는다 — 그러면 사후 선택이다. 축의 «검정 가능성»만 본다.")
+    lines.append("   이 표는 문턱을 고르는 데 쓰지 않는다 — 그러면 사후 선택이다.")
+    lines.append("   축의 «검정 가능성»만 본다.")
 
     text = "\n".join(lines)
     with open(REPORT_TXT, "w", encoding="utf-8") as f:
