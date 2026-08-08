@@ -875,8 +875,11 @@ git commit -m "feat(fund-pit): as-filed 수집기 — 원본 gzip 보존으로 �
   - 파일 `scratchpad/fund_pit/f3_normalized.jsonl`, `scratchpad/fund_pit/f3_coverage.txt`
 
 정규화 결과 dict 의 키:
-`stock_code, bsns_year, rcept_dt, fs_div, total_equity, issued_capital, total_liabilities,
-operating_income, interest_expense, finance_costs, interest_paid_cf`
+`stock_code, bsns_year, status, rcept_dt, fs_div, total_equity, issued_capital,
+total_liabilities, operating_income, interest_expense, finance_costs, interest_paid_cf`
+
+추가 산출: `summarize(records) -> (n_all, cov_all, n_filed, cov_filed, status_counts)`,
+상수 `FIELDS`
 
 - [ ] **Step 1: 실패하는 테스트를 쓴다**
 
@@ -916,6 +919,18 @@ def test_parse_amount_returns_none_not_zero_on_failure():
     assert f3.parse_amount("-") is None
     assert f3.parse_amount(None) is None
     assert f3.parse_amount("해당사항없음") is None
+
+
+def test_parse_amount_real_zero_stays_zero():
+    """🔴 위 테스트의 «반대쪽». 진짜 0 을 None 으로 만들면 안 된다.
+
+    둘을 한 쌍으로 고정해야 `return int(...) or None` 류의 회귀가 잡힌다 —
+    그 한 줄이면 진짜 0 이 조용히 결측이 되고, 자본잠식(자본총계 ≤ 0) 판정이
+    통째로 무력해진다.
+    """
+    assert f3.parse_amount("0") == 0
+    assert f3.parse_amount("0") is not None
+    assert f3.parse_amount("-0") == 0
 
 
 def test_rcept_dt_is_extracted_from_rcept_no():
@@ -1015,6 +1030,25 @@ def test_normalize_of_empty_record_keeps_the_row():
     assert out["stock_code"] == "900300"
     assert out["total_equity"] is None
     assert out["rcept_dt"] is None
+    assert out["status"] == "013"    # 왜 비었는지가 함께 남아야 한다
+
+
+def test_summarize_separates_no_filing_from_mapping_failure():
+    """🔴 이 구분이 없으면 매핑 오류가 「신고 부재」로 위장한다.
+
+    2026-08-08 에 실제로 이 구조가 판정을 속였다 — 외국기업만 담긴 표본에서
+    모든 필드가 나란히 내려갔는데, 표만 보고는 원인을 가릴 수 없었다.
+    """
+    recs = [
+        {"status": "000", "total_equity": 100, "rcept_dt": "2023-03-15"},
+        {"status": "000", "total_equity": None, "rcept_dt": "2023-03-15"},
+        {"status": "013", "total_equity": None, "rcept_dt": None},
+    ]
+    n_all, cov_all, n_filed, cov_filed, sc = f3.summarize(recs)
+    assert (n_all, n_filed) == (3, 2)
+    assert cov_all["total_equity"] == 1      # 전체 3건 중 1건 = 33%
+    assert cov_filed["total_equity"] == 1    # 신고 2건 중 1건 = 50% ← 매핑 실패가 보인다
+    assert sc == {"000": 2, "013": 1}
 ```
 
 - [ ] **Step 2: 테스트가 실패하는지 확인한다**
@@ -1120,6 +1154,10 @@ def pick_account(rows, sj_divs, account_ids, name_hints):
 
     sj_divs 는 튜플이다 — 손익 항목은 ("IS","CIS") 처럼 둘 이상을 받는다.
     """
+    # ⚠️ 문자열이 들어오면 `in` 이 «부분문자열» 매칭이 되어 조용히 오스코프된다
+    #    (예: "BS" 를 주면 sj_div "B" 도 통과). 튜플로 승격해 그 경로를 없앤다.
+    if isinstance(sj_divs, str):
+        sj_divs = (sj_divs,)
     cand = [r for r in rows if str(r.get("sj_div") or "") in sj_divs]
     for aid in account_ids:
         for r in cand:
@@ -1142,6 +1180,11 @@ def normalize(rec):
     out = {
         "stock_code": rec["stock_code"],
         "bsns_year": rec["bsns_year"],
+        # 🔑 status 를 «끌고 간다». 이게 없으면 커버리지 표가
+        #    「신고 자체가 없다(013·000_EMPTY)」와 「신고는 있는데 계정을 못 찾았다」를
+        #    구분하지 못하고, 둘이 섞이면 매핑 오류가 결측으로 위장된다.
+        #    실제로 2026-08-08 에 외국기업 표본이 이 구조로 판정을 속였다.
+        "status": rec.get("status"),
         "rcept_dt": rcept_dt_from(rows),
         "fs_div": rec.get("fs_div"),
     }
@@ -1150,11 +1193,32 @@ def normalize(rec):
     return out
 
 
+FIELDS = [f[0] for f in SPECS] + ["rcept_dt"]
+
+
+def summarize(records):
+    """커버리지를 «두 벌» 돌려준다 — (전체 기준, 신고 있는 레코드 기준).
+
+    🔴 한 벌만 내면 안 된다. 신고가 아예 없는 종목·연도(013·000_EMPTY)가 섞이면
+       모든 필드가 «나란히» 내려가고, 그러면 「매핑이 틀렸다」와 「신고가 없다」가
+       같은 그림이 된다. 축 채택을 가르는 숫자라 이 구분이 판정을 바꾼다.
+    반환: (n_all, cov_all, n_filed, cov_filed, status_counts)
+    """
+    filed = [r for r in records if r.get("status") == "000"]
+    status_counts = {}
+    for r in records:
+        s = r.get("status")
+        status_counts[s] = status_counts.get(s, 0) + 1
+
+    def _cov(rs):
+        return {f: sum(1 for r in rs if r.get(f) is not None) for f in FIELDS}
+
+    return len(records), _cov(records), len(filed), _cov(filed), status_counts
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    total = 0
-    have = {f[0]: 0 for f in SPECS}
-    have["rcept_dt"] = 0
+    records = []
     with gzip.open(RAW_GZ, "rt", encoding="utf-8") as src, \
             open(NORM_JSONL, "w", encoding="utf-8") as dst:
         for line in src:
@@ -1167,18 +1231,25 @@ def main():
                 continue
             norm = normalize(rec)
             dst.write(json.dumps(norm, ensure_ascii=False) + "\n")
-            total += 1
-            for k in have:
-                if norm.get(k) is not None:
-                    have[k] += 1
+            records.append(norm)
 
-    lines = [f"정규화 {total}행", ""]
-    for k, n in have.items():
-        pct = (100.0 * n / total) if total else 0.0
-        lines.append(f"  {k:20s} {n:7d}  {pct:6.2f}%")
+    n_all, cov_all, n_filed, cov_filed, status_counts = summarize(records)
+
+    lines = [f"정규화 {n_all}행 · 그중 신고 있음(status=000) {n_filed}행", ""]
+    lines.append(f"  status 분포: {status_counts}")
     lines.append("")
-    lines.append("🔴 interest_expense 커버리지가 낮으면 이자보상배율 축을 "
-                 "사전등록에서 제외할 것.")
+    lines.append(f"  {'field':20s} {'전체':>16s} {'신고분만':>16s}")
+    for f in FIELDS:
+        pa = (100.0 * cov_all[f] / n_all) if n_all else 0.0
+        pf = (100.0 * cov_filed[f] / n_filed) if n_filed else 0.0
+        lines.append(f"  {f:20s} {cov_all[f]:6d} {pa:6.2f}%  "
+                     f"{cov_filed[f]:6d} {pf:6.2f}%")
+    lines.append("")
+    lines.append("🔑 게이트는 «신고분만» 열로 판정한다. 「전체」 열은 신고가 없는")
+    lines.append("   종목·연도까지 분모에 넣기 때문에, 매핑 오류와 신고 부재가")
+    lines.append("   같은 그림으로 보인다.")
+    lines.append("🔴 커버리지로 축 채택을 판정하기 전에 «표본의 고유 종목 수»를 확인할 것.")
+    lines.append("   작업목록은 종목당 7년이 연속이라 100행이 15종목도 안 될 수 있다.")
     text = "\n".join(lines)
     with open(COVERAGE_TXT, "w", encoding="utf-8") as f:
         f.write(text + "\n")
@@ -1192,7 +1263,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/test_normalize.py -v`
-Expected: PASS (12 passed)
+Expected: PASS (14 passed)
 
 - [ ] **Step 5: 파일럿 50건으로 커버리지를 본다**
 
@@ -1327,6 +1398,9 @@ DDL = f"""
 CREATE TABLE IF NOT EXISTS {TABLE} (
     stock_code         VARCHAR(20) NOT NULL,
     bsns_year          VARCHAR(4)  NOT NULL,
+    status             TEXT,                  -- DART 응답 요약. 000 / 013 / 000_EMPTY
+                                              -- 🔑 왜 비었는지가 함께 남아야 커버리지에서
+                                              --    「신고 부재」와 「매핑 실패」가 갈린다
     rcept_dt           DATE,                  -- 접수일 = 이 값을 알 수 있게 된 날
     fs_div             TEXT,                  -- CFS | OFS | NULL(무자료)
     total_equity       BIGINT,
@@ -1345,11 +1419,12 @@ CREATE INDEX IF NOT EXISTS idx_{TABLE}_code ON {TABLE} (stock_code);
 
 UPSERT = f"""
 INSERT INTO {TABLE}
-  (stock_code, bsns_year, rcept_dt, fs_div, total_equity,
+  (stock_code, bsns_year, status, rcept_dt, fs_div, total_equity,
    issued_capital, total_liabilities, operating_income, interest_expense,
    finance_costs, interest_paid_cf)
 VALUES %s
 ON CONFLICT (stock_code, bsns_year) DO UPDATE SET
+  status            = EXCLUDED.status,
   rcept_dt          = EXCLUDED.rcept_dt,
   fs_div            = EXCLUDED.fs_div,
   total_equity      = EXCLUDED.total_equity,
@@ -1395,7 +1470,8 @@ def read_rows():
                 continue
             r = json.loads(line)
             out.append((
-                r["stock_code"], r["bsns_year"], r.get("rcept_dt"), r.get("fs_div"),
+                r["stock_code"], r["bsns_year"], r.get("status"),
+                r.get("rcept_dt"), r.get("fs_div"),
                 r.get("total_equity"), r.get("issued_capital"),
                 r.get("total_liabilities"), r.get("operating_income"),
                 r.get("interest_expense"),
@@ -1600,7 +1676,7 @@ Expected: PASS (8 passed)
 - [ ] **Step 5: 패키지 전체 테스트를 돌린다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/ -v`
-Expected: PASS (47 passed) — T1 11 · T2 5 · T3 9 · T4 12 · T5 6 · T6 8
+Expected: PASS (49 passed) — T1 11 · T2 5 · T3 9 · T4 14 · T5 6 · T6 8
 
 ⚠️ 개수는 수정 라운드에서 늘어난 실측값이다. 계획 초판(42)이 아니라 이 값을 쓸 것.
 
