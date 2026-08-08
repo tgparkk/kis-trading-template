@@ -1645,6 +1645,44 @@ def test_same_rcept_dt_breaks_tie_by_fiscal_year_deterministically():
     assert pj.asof_financials([b, a], "2023-01-01")["bsns_year"] == "2022"
 
 
+def test_identical_key_is_order_independent():
+    """🔴 리뷰가 찾은 「살아남는 변이」를 막는다.
+
+    `key > best_key` 를 `>=` 로 바꾸면 «같은 (rcept_dt, bsns_year)» 를 가진
+    레코드들 중 마지막 것이 이긴다 = 입력 순서 의존. 다른 어떤 테스트도
+    이걸 못 잡았다 — 기존 동률 테스트는 `bsns_year` 가 «달라서» 키가 같지 않다.
+    """
+    a = {"bsns_year": "2021", "rcept_dt": "2022-03-22", "tag": "a"}
+    b = {"bsns_year": "2021", "rcept_dt": "2022-03-22", "tag": "b"}
+    assert pj.asof_financials([a, b], "2023-01-01")["tag"] == "a"
+    assert pj.asof_financials([b, a], "2023-01-01")["tag"] == "b"
+    # 🔑 「먼저 온 것이 이긴다」가 규약이다. `>=` 로 바꾸면 둘 다 뒤엣것이 나와 실패한다.
+
+
+def test_malformed_date_raises_instead_of_comparing_wrong():
+    """🔴 '2023-3-5' 는 사전순 비교에서 «조용히 틀린 답»을 낸다.
+
+    '2023-3-5' > '2023-12-01' 이 참이 된다 — 3월이 12월보다 나중이 되는 것이다.
+    이 모듈이 막으려는 실패 유형이 정확히 그것이므로 시끄럽게 실패해야 한다.
+    """
+    import pytest
+    with pytest.raises(ValueError):
+        pj._daystr("2023-3-5")
+    with pytest.raises(ValueError):
+        pj.asof_financials([{"bsns_year": "2022", "rcept_dt": "2023-3-5"}],
+                           "2023-12-31")
+
+
+def test_empty_and_missing_rcept_dt_are_skipped_not_errors():
+    """빈 값·키 없음은 「모른다」라 건너뛸 대상이지 오류가 아니다."""
+    recs = [
+        {"bsns_year": "2020", "rcept_dt": ""},
+        {"bsns_year": "2021"},                       # 키 자체가 없음
+        {"bsns_year": "2019", "rcept_dt": "2020-03-30", "tag": "ok"},
+    ]
+    assert pj.asof_financials(recs, "2023-01-01")["tag"] == "ok"
+
+
 def test_accepts_date_objects_not_just_strings():
     """🔴 적재 테이블의 rcept_dt 는 DATE 컬럼이라 psycopg2 가 date 를 돌려준다.
 
@@ -1676,19 +1714,33 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'pit_join'`
    방향이 «반대» 다. 여기는 복원이 아니라 예측이고, 재무는 보고서가 접수되기 전엔
    실제로 아무도 몰랐다. 두 규칙은 모순이 아니라 목적이 다르다.
 """
+import re
+
+
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _daystr(v):
-    """'YYYY-MM-DD' 로 정규화. datetime.date 도 받는다.
+    """'YYYY-MM-DD' 로 정규화. `datetime.date`·`datetime`·`Timestamp` 도 받는다.
 
     🔴 이게 필요한 이유: 적재 테이블의 `rcept_dt` 는 DATE 컬럼이라 psycopg2 가
        `datetime.date` 로 돌려준다. 반면 정규화 JSONL 에서 읽으면 문자열이다.
        섞이면 파이썬 3 에서 date 와 str 비교가 **TypeError** 로 죽는다 —
        조용히 틀리지는 않지만, 소비자가 어디서 읽느냐에 따라 터진다.
+
+    🔴 형식을 **검사**하고 어긋나면 예외를 낸다. 비교가 문자열 사전순이라
+       `'2023-3-5'`(0 패딩 없음) 같은 값은 **조용히 틀린 답**을 낸다 —
+       `'2023-3-5' > '2023-12-01'` 이 참이 된다. 이 모듈이 막으려는 실패 유형이
+       바로 그것이므로, 여기서는 «시끄럽게 실패»하는 쪽이 옳다.
     """
     if v is None:
         return None
-    return str(v)[:10]
+    s = str(v)[:10]
+    if not s:
+        return None          # 빈 값은 「모른다」 — 건너뛸 대상이지 오류가 아니다
+    if not _DAY_RE.match(s):
+        raise ValueError(f"날짜 형식이 'YYYY-MM-DD' 가 아니다: {v!r}")
+    return s
 
 
 def asof_financials(records, as_of):
@@ -1715,12 +1767,12 @@ def asof_financials(records, as_of):
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/test_pit_join.py -v`
-Expected: PASS (10 passed)
+Expected: PASS (13 passed)
 
 - [ ] **Step 5: 패키지 전체 테스트를 돌린다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/ -v`
-Expected: PASS (59 passed) — T1 11 · T2 5 · T3 9 · T4 14 · T5 8 · T6 10
+Expected: PASS (60 passed) — T1 11 · T2 5 · T3 9 · T4 14 · T5 8 · T6 13
 
 ⚠️ 개수는 수정 라운드에서 늘어난 실측값이다. 계획 초판(42)이 아니라 이 값을 쓸 것.
 
