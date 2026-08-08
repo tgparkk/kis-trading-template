@@ -80,14 +80,17 @@ def eprint(*a):
 
 
 class DartClient:
-    def __init__(self, key: str, min_interval: float = 0.34, session_factory=None):
+    def __init__(self, key: str, min_interval: float = 0.34, session_factory=None, sleep_fn=None):
         # 🔴 session_factory 는 테스트 이음매다. 리셋 복구가 세션을 «새로 만들기»
         #    때문에, 이 이음매가 없으면 테스트가 주입한 가짜 세션이 복구 순간
         #    진짜 requests.Session 으로 갈아치워지고 **실제 DART 로 호출이 나간다**
         #    (2026-08-08 에 실측으로 확인됨 — status=010 응답을 받았다).
+        # 🔴 sleep_fn 도 테스트 이음매다. 재시도 경로 테스트가 실제로 수십초를 잔다.
+        #    기본값은 time.sleep (프로덕션 동작 동일).
         self.key = key
         self._session_factory = session_factory or requests.Session
         self.session = self._session_factory()
+        self._sleep = sleep_fn or time.sleep
         self.min_interval = min_interval
         self._last_call = 0.0
         self.calls = 0
@@ -103,7 +106,7 @@ class DartClient:
             return
         gap = time.time() - self._last_call
         if gap < self.min_interval:
-            time.sleep(self.min_interval - gap)
+            self._sleep(self.min_interval - gap)
         self._last_call = time.time()
 
     def fnltt_all(self, corp_code: str, bsns_year: str, reprt_code: str, fs_div: str):
@@ -133,26 +136,26 @@ class DartClient:
                     raise DartBlocked("연결 리셋 3연속 — opendart IP 차단으로 판단")
                 self.session.close()
                 self.session = self._session_factory()  # 오염된 커넥션 풀 폐기
-                time.sleep(backoff)
+                self._sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
                 continue
             except Exception:
                 self.http_errors += 1
-                time.sleep(backoff)
+                self._sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
                 continue
 
             reset_streak = 0
             if r.status_code != 200:
                 self.http_errors += 1
-                time.sleep(backoff)
+                self._sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
                 continue
             try:
                 js = r.json()
             except ValueError:
                 self.http_errors += 1
-                time.sleep(backoff)
+                self._sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
                 continue
 
@@ -161,7 +164,7 @@ class DartClient:
             if status == "020":
                 raise DartQuotaExceeded("DART 사용한도 초과(status=020) — 즉시 중단")
             if status == "800":
-                time.sleep(backoff)
+                self._sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
                 continue
             return status, js.get("message", ""), js.get("list") or []
