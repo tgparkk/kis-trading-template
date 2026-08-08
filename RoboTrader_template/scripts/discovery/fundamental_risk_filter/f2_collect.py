@@ -32,6 +32,7 @@ RAW_GZ = os.path.join(OUT_DIR, "f2_raw.jsonl.gz")
 
 def collect_one(client, item):
     """CFS 우선, 무자료면 OFS 로 재시도. 둘 다 없으면 013 을 기록한다."""
+    last = (None, "")
     for fs_div in ("CFS", "OFS"):
         status, message, rows = client.fnltt_all(
             item["corp_code"], item["bsns_year"], REPRT_FY, fs_div,
@@ -46,31 +47,44 @@ def collect_one(client, item):
                 "rows": rows,
             }
         last = (status, message)
+    # 🔴 데이터 없음을 성공으로 기록하지 않는다. 리스크 필터가 조용히 깨끗하다고 답하면 최악이다.
+    final_status = last[0]
+    if final_status == "000":
+        final_status = "000_EMPTY"
     return {
         "stock_code": item["stock_code"],
         "corp_code": item["corp_code"],
         "bsns_year": item["bsns_year"],
-        "status": last[0],
+        "status": final_status,
         "fs_div": None,
         "rows": [],
     }
 
 
 def load_done(path):
-    """이미 수집한 (stock_code, bsns_year) 집합. 잘린 마지막 줄은 버린다."""
+    """이미 수집한 (stock_code, bsns_year) 집합. 잘린 마지막 줄은 버린다.
+
+    🔴 하드킬·전원차단으로 gzip 종료 마커가 없으면 EOFError 를 낸다.
+       «디코딩된 만큼은 살려» 재개를 할 수 있게 한다.
+    """
     done = set()
     if not os.path.exists(path):
         return done
-    with gzip.open(path, "rt", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue  # 중단 시점의 잘린 줄 — 그 한 줄만 버린다
-            done.add((rec["stock_code"], rec["bsns_year"]))
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue  # 중단 시점의 잘린 줄 — 그 한 줄만 버린다
+                done.add((rec["stock_code"], rec["bsns_year"]))
+    except EOFError:
+        # gzip 컨테이너가 정상 종료되지 않았으나 읽은 데이터는 유효하다.
+        # 앞부분을 살리고 재개한다.
+        pass
     return done
 
 
@@ -87,6 +101,7 @@ def load_worklist():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--offset", type=int, default=0)
     ap.add_argument("--interval", type=float, default=0.34)
     ap.add_argument("--status", action="store_true")
     args = ap.parse_args()
@@ -106,6 +121,8 @@ def main():
         sys.exit(1)
 
     client = DartClient(key, min_interval=args.interval)
+    if args.offset:
+        todo = todo[args.offset:]
     if args.limit:
         todo = todo[: args.limit]
 

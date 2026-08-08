@@ -91,3 +91,27 @@ def test_load_done_tolerates_truncated_last_line(tmp_path):
         f.write('{"stock_code": "0006')
     done = f2.load_done(str(p))
     assert done == {("005930", "2022")}
+
+
+def test_empty_000_is_not_recorded_as_success():
+    """🔴 「데이터 없음」이 「성공」으로 둔갑하면 리스크 필터가 조용히 깨끗하다고 답한다."""
+    c = _FakeClient([("000", "", []), ("000", "", [])])
+    out = f2.collect_one(c, ITEM)
+    assert out["status"] == "000_EMPTY"
+    assert out["status"] != "000"
+    assert out["rows"] == []
+    assert out["fs_div"] is None
+
+
+def test_load_done_survives_gzip_without_end_marker(tmp_path):
+    """🔴 하드킬로 종료 마커가 없어도 앞부분은 살려야 한다. 재개가 통째로 죽으면 안 된다."""
+    p = tmp_path / "raw.jsonl.gz"
+    f = gzip.open(p, "wt", encoding="utf-8")
+    f.write(json.dumps({"stock_code": "005930", "bsns_year": "2022"}) + "\n")
+    f.flush()
+    # close() 를 «부러» 호출하지 않는다 = 종료 마커 없음
+    del f
+    raw = open(p, "rb").read()
+    (tmp_path / "raw2.jsonl.gz").write_bytes(raw)
+    done = f2.load_done(str(tmp_path / "raw2.jsonl.gz"))
+    assert ("005930", "2022") in done
