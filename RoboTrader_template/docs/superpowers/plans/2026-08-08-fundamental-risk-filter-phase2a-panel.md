@@ -546,21 +546,37 @@ Expected: PASS (10 passed)
 PYTHONUTF8=1 python scripts/discovery/fundamental_risk_filter/p2_features.py
 ```
 
-그리고 **000040(KR모터스)** 로 경계를 직접 확인해 보고한다 — Phase 1 에서 확인된 값이다:
+그리고 look-ahead 를 **전 패널 불변식**으로 확인해 보고한다.
+
+🔴 **초판은 `000040`(KR모터스)의 `2022-05-18/19` 경계를 앵커로 지정했는데 그것은 쓸 수 없다.**
+그 종목은 **가격 데이터가 2024-03-13 부터**(525행)라 2022년 관측이 패널에 아예 없다.
+Phase 1 의 확인은 `dart_financials_asfiled` **재무 테이블에서 직접** 한 것이고, 재무엔 FY2021 이
+있어도 **그 시점 가격이 없으면 패널 행이 생기지 않는다.** ⇒ ***앵커 하나를 지정할 때 그 앵커가
+검사 대상 산출물에 실제로 존재하는지 먼저 확인해야 한다.***
+
+대신 **전수 불변식**을 쓴다 — 앵커 하나보다 강하다:
 
 ```bash
 PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python -c "
-import pandas as pd, sys, os
+import pandas as pd, sys
 sys.path.insert(0,'scripts/discovery/fundamental_risk_filter')
 from p2_features import FEATURES_PARQUET
-d = pd.read_parquet(FEATURES_PARQUET)
-d = d[(d.stock_code=='000040') & (d.date>='2022-05-15') & (d.date<='2022-05-25')]
-print(d[['date','bsns_year','rcept_dt']].to_string(index=False))
+d = pd.read_parquet(FEATURES_PARQUET, columns=['stock_code','date','bsns_year','rcept_dt'])
+m = d[d.bsns_year.notna()].copy()
+m['rcept_dt'] = m['rcept_dt'].astype(str).str[:10]
+bad = m[m['date'] <= m['rcept_dt']]
+print('매칭 행', len(m), ' look-ahead 위반(date <= rcept_dt):', len(bad))
+lag = (pd.to_datetime(m['date']) - pd.to_datetime(m['rcept_dt'])).dt.days
+print('date - rcept_dt 일수: min', lag.min(), ' p50', int(lag.median()), ' max', lag.max())
 "
 ```
 
-**판정:** `2022-05-18` 까지는 `bsns_year=2020`, `2022-05-19` 부터 `2021` 이어야 한다.
-🔴 다르면 멈추고 보고한다 — 계단 경계가 하루 어긋난 것이고, 그건 look-ahead 다.
+**판정 기준:**
+- 🔴 **위반 0건**이어야 한다. 1건이라도 있으면 look-ahead 이고 즉시 중단·보고한다.
+- 🔴 **`min` 이 정확히 `1`** 이어야 한다. `0` 이면 접수 당일이 보이는 것(look-ahead), `2` 이상이면
+  경계가 하루 늦게 열린 것이다.
+
+**실측(2026-08-08)**: 매칭 2,786,895행 · 위반 **0** · lag min **1** · p50 184 · max 2,185.
 
 - [ ] **Step 6: 커밋**
 
