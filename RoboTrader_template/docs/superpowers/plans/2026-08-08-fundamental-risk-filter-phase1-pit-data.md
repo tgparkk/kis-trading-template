@@ -875,7 +875,8 @@ git commit -m "feat(fund-pit): as-filed 수집기 — 원본 gzip 보존으로 �
   - 파일 `scratchpad/fund_pit/f3_normalized.jsonl`, `scratchpad/fund_pit/f3_coverage.txt`
 
 정규화 결과 dict 의 키:
-`stock_code, bsns_year, rcept_dt, fs_div, total_equity, issued_capital, total_liabilities, operating_income, interest_expense`
+`stock_code, bsns_year, rcept_dt, fs_div, total_equity, issued_capital, total_liabilities,
+operating_income, interest_expense, finance_costs, interest_paid_cf`
 
 - [ ] **Step 1: 실패하는 테스트를 쓴다**
 
@@ -964,6 +965,36 @@ def test_operating_income_found_in_cis_only():
     assert out["operating_income"] == 1234
 
 
+def test_finance_costs_and_interest_paid_are_captured():
+    """🔑 `ifrs-full_InterestExpense` 는 국내 46건 실측 **0.0%** 였다.
+
+    한국 상장사가 실제로 쓰는 것은 금융원가(CIS)와 이자지급(CF)이다.
+    이 테스트가 없으면 「계정이 없다」는 잘못된 결론으로 축 하나를 통째로 버린다.
+    """
+    rec = {
+        "stock_code": "005930", "bsns_year": "2022", "fs_div": "CFS",
+        "status": "000",
+        "rows": [
+            _row("CIS", "ifrs-full_FinanceCosts", "금융원가", "500"),
+            _row("CF", "ifrs-full_InterestPaidClassifiedAsOperatingActivities",
+                 "이자지급", "300"),
+        ],
+    }
+    out = f3.normalize(rec)
+    assert out["finance_costs"] == 500
+    assert out["interest_paid_cf"] == 300
+    assert out["interest_expense"] is None   # 국내 태그가 아니다 — None 이 정상
+
+
+def test_cf_only_account_is_not_found_in_income_statements():
+    """CF 전용 항목을 IS/CIS 에서 찾으면 안 된다 — 표 구분이 살아 있어야 한다."""
+    rows = [_row("CF", "ifrs-full_InterestPaidClassifiedAsOperatingActivities",
+                 "이자지급", "300")]
+    assert f3.pick_account(rows, ("IS", "CIS"),
+                           ("ifrs-full_InterestPaidClassifiedAsOperatingActivities",),
+                           ("이자지급",)) is None
+
+
 def test_normalize_missing_account_is_none():
     rec = {
         "stock_code": "005930", "bsns_year": "2022", "fs_div": "CFS",
@@ -1037,6 +1068,20 @@ SPECS = (
      ("영업이익", "영업손실")),
     ("interest_expense",   ("IS", "CIS"),  ("ifrs-full_InterestExpense",),
      ("이자비용",)),
+    # 🔑 2026-08-08 실측(국내 46건): `ifrs-full_InterestExpense` 는 **0.0%** 다.
+    #    한국 상장사는 그 태그를 쓰지 않는다. 실제로 쓰는 것은 아래 둘이다 —
+    #      ifrs-full_FinanceCosts(금융원가·CIS)                     39/46 = **84.8%**
+    #      ifrs-full_InterestPaid...OperatingActivities(이자지급·CF) 42/46 = **91.3%**
+    #    ⇒ ***「계정이 없다」가 아니라 「없는 이름을 찾고 있었다」였다.***
+    #    둘 다 담고 사전등록에서 고른다(재파생은 DART 호출 0건이라 공짜다).
+    #    ⚠️ 금융원가는 이자 외에 환손실·파생손실을 포함해 분모를 **과대**하게 만든다
+    #       ⇒ 이자보상배율을 **과소** 추정 ⇒ 배제 필터에서는 **보수적인 방향**이다.
+    #    ⚠️ 이자지급(CF)은 현금주의라 발생주의 분자(영업이익)와 기준이 다르다.
+    ("finance_costs",      ("IS", "CIS"),  ("ifrs-full_FinanceCosts",),
+     ("금융원가", "금융비용")),
+    ("interest_paid_cf",   ("CF",),
+     ("ifrs-full_InterestPaidClassifiedAsOperatingActivities",),
+     ("이자지급",)),
 )
 
 
@@ -1141,7 +1186,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/test_normalize.py -v`
-Expected: PASS (10 passed)
+Expected: PASS (12 passed)
 
 - [ ] **Step 5: 파일럿 50건으로 커버리지를 본다**
 
@@ -1282,7 +1327,9 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     issued_capital     BIGINT,
     total_liabilities  BIGINT,
     operating_income   BIGINT,
-    interest_expense   BIGINT,
+    interest_expense   BIGINT,                -- 국내 실측 0.0%. 「찾아봤다」는 기록으로 남긴다
+    finance_costs      BIGINT,                -- 금융원가(CIS). 국내 실측 84.8%
+    interest_paid_cf   BIGINT,                -- 이자지급(CF, 현금주의). 국내 실측 91.3%
     created_at         TIMESTAMP NOT NULL DEFAULT now(),
     PRIMARY KEY (stock_code, bsns_year)
 );
@@ -1293,7 +1340,8 @@ CREATE INDEX IF NOT EXISTS idx_{TABLE}_code ON {TABLE} (stock_code);
 UPSERT = f"""
 INSERT INTO {TABLE}
   (stock_code, bsns_year, rcept_dt, fs_div, total_equity,
-   issued_capital, total_liabilities, operating_income, interest_expense)
+   issued_capital, total_liabilities, operating_income, interest_expense,
+   finance_costs, interest_paid_cf)
 VALUES %s
 ON CONFLICT (stock_code, bsns_year) DO UPDATE SET
   rcept_dt          = EXCLUDED.rcept_dt,
@@ -1302,7 +1350,9 @@ ON CONFLICT (stock_code, bsns_year) DO UPDATE SET
   issued_capital    = EXCLUDED.issued_capital,
   total_liabilities = EXCLUDED.total_liabilities,
   operating_income  = EXCLUDED.operating_income,
-  interest_expense  = EXCLUDED.interest_expense
+  interest_expense  = EXCLUDED.interest_expense,
+  finance_costs     = EXCLUDED.finance_costs,
+  interest_paid_cf  = EXCLUDED.interest_paid_cf
 """
 
 DP_FINGERPRINT = """
@@ -1343,6 +1393,7 @@ def read_rows():
                 r.get("total_equity"), r.get("issued_capital"),
                 r.get("total_liabilities"), r.get("operating_income"),
                 r.get("interest_expense"),
+                r.get("finance_costs"), r.get("interest_paid_cf"),
             ))
     return out
 
@@ -1543,7 +1594,9 @@ Expected: PASS (8 passed)
 - [ ] **Step 5: 패키지 전체 테스트를 돌린다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/ -v`
-Expected: PASS (42 passed) — T1 8 · T2 4 · T3 7 · T4 9 · T5 6 · T6 8
+Expected: PASS (47 passed) — T1 11 · T2 5 · T3 9 · T4 12 · T5 6 · T6 8
+
+⚠️ 개수는 수정 라운드에서 늘어난 실측값이다. 계획 초판(42)이 아니라 이 값을 쓸 것.
 
 - [ ] **Step 6: 커밋** (사장님 승인 후)
 
