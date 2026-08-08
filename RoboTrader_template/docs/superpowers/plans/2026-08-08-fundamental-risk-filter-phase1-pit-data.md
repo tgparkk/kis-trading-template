@@ -22,6 +22,11 @@
 - 🔴 **TimescaleDB retention policy 를 설정하지 않는다. hypertable 로 만들지 않는다.** (프로젝트 영구 규칙 — 자동삭제 금지)
 - 🔴 **결측을 `0` 으로 채우지 않는다. `NULL` 을 쓴다.** `market_cap` 결손의 대부분이 `0` 이라 `NULL` 만 세면 9.65% 로 보이던 전례가 있다.
 - DB 접속: host `127.0.0.1` · port **5433** · db `kis_template` · user `robotrader` · pw `1234`.
+- 🔴 **워크트리에는 `.env` 가 없다** — gitignore 대상이라 새 워크트리·clean checkout·CI 어디에도 안 따라온다
+  (`RoboTrader_template/CLAUDE.md` 가 이미 경고한 함정이고, 2026-08-08 Task 3 에서 실제로 밟았다).
+  DART 를 부르는 태스크는 시작 전에 `RoboTrader_template/.env` 에 **`OPENDART_API_KEY` 한 줄만** 넣을 것.
+  ⚠️ **다른 비밀(`APP_KEY`·`APP_SECRET`·DB 자격증명)은 옮기지 말 것** — 이 파이프라인에 필요 없다.
+  ⚠️ 키 값을 로그·보고서·터미널에 **출력하지 말 것**. 존재 여부만 확인한다.
 - 실행: cwd = `RoboTrader_template`, `PYTHONUTF8=1 python scripts/discovery/fundamental_risk_filter/<파일>`.
 - 테스트: `python -m pytest tests/discovery/fundamental_risk_filter/ -v`
 - git commit·push 는 **사장님 확인 필요**. 각 Task 의 커밋 단계는 승인 후 실행한다.
