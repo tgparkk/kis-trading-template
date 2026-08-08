@@ -48,8 +48,11 @@ def test_is_crash_boundary_is_inclusive_at_exactly_drop():
 
     IEEE754 때문에 나눗셈은 정확히 DROP 을 만들 수 없으므로,
     이 테스트는 is_crash() 에 직접 DROP 을 전달해 경계 포함성을 검증한다.
+
+    🔑 판별력은 DROP 정확값 단언 하나가 담당한다. DROP±1e-12 는 중복이다
+       (1e-12 >> 6.7e-17 ULP 이라 어느 연산자에서도 같은 결과).
     """
-    # 정확히 DROP (포함해야 함)
+    # 정확히 DROP (포함해야 함) — 유일한 판별점
     assert bool(p1.is_crash(pd.Series([p1.DROP])).iloc[0]) is True
     # DROP 보다 약간 위 (미포함)
     assert bool(p1.is_crash(pd.Series([p1.DROP + 1e-12])).iloc[0]) is False
@@ -60,7 +63,13 @@ def test_is_crash_boundary_is_inclusive_at_exactly_drop():
 
 
 def test_partial_window_is_flagged_not_dropped():
-    """🔴 부분 창은 폭락률을 과소 측정한다. 버리지 말고 «표시»해서 하류가 고르게 한다."""
+    """부분 창은 「다른 처치」를 받은 관측이라 표시해서 하류가 고르게 한다.
+
+    🔴 「과소 측정」이 아니다 — 실측(2026-08-08) 부분 창 폭락률은 33~67% 로
+       기저의 3~5배다. 부분 창은 종목 이력 끝(상장폐지·거래정지 직전)에
+       몰려 있어 창 길이와 결과가 교란된다. 버리지 않는 이유는 어느 관측이
+       왜 빠졌는지가 기록이어야 하기 때문이다.
+    """
     out = p1.crash_flags(_df([("005930", "2026-05-11", 1000.0, 900.0, 17)]))
     assert bool(out["window_full"].iloc[0]) is False
     assert bool(out["crash"].iloc[0]) is False   # 값 자체는 계산한다
