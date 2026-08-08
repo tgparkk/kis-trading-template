@@ -18,6 +18,7 @@
 - 🔴 **DART 호출 0건.** 외부 네트워크 접근 없음.
 - 🔴 **as-of 조인 로직을 «재구현하지 말 것».** 반드시 `pit_join.asof_financials` 를 호출한다. 두 벌이 되면 안전장치가 갈라진다.
 - 🔴 **임계값을 코드에 넣지 말 것.** 이 Phase 는 **연속값**(부채비율·이자보상배율 등)까지만 만든다. 이진 플래그의 문턱은 Phase 2B 의 `PREREG.md` 에서 동결한다. 유일한 예외는 **자본잠식(`total_equity <= 0`)** 으로, 자유모수가 없다.
+  🔑 **진단 리포트에도 후보 문턱을 찍지 않는다.** 분포는 **분위수**로, 블록 수 진단은 **분위수 기반 꼬리 마스크**로 보여준다. 리포트에 `부채비율 > 4배` 같은 값이 한 번 찍히면 그걸 읽은 사람이 그 값에 끌리고, 그게 곧 사후 선택이다.
 - 🔴 **결측은 `NaN`/`None`. `0` 으로 채우지 말 것.**
 - **타겟 창**: `2021-01-04` ~ **`2026-05-12`**(전방 60거래일이 완결되는 마지막 날, 실측). 그 이후는 절단이라 제외.
 - **의사티커 제외**: `KOSPI`·`KOSDAQ`·`KS11`·`KQ11`.
@@ -693,35 +694,51 @@ def main():
     lines.append("")
     lines.append(f"기저 폭락률 {100*u['crash'].mean():.2f}%")
     lines.append("")
-    lines.append("배제 후보 축별 관측 비율 (문턱 없는 것 / 참고 문턱)")
-    lines.append(f"  자본잠식(eq<=0)          {100*u['equity_impaired'].fillna(False).mean():7.3f}%")
-    for th in (2.0, 4.0):
-        m = u["debt_ratio"].gt(th)
-        lines.append(f"  부채비율 > {th:>3.0f}배           {100*m.mean():7.3f}%")
-    for n in (1, 2, 3):
-        m = u["op_loss_years"].fillna(0).ge(n)
-        lines.append(f"  연속 영업손실 >= {n}년      {100*m.mean():7.3f}%")
-    m = u["interest_coverage"].lt(1.0)
-    lines.append(f"  이자보상배율 < 1          {100*m.mean():7.3f}%")
-    lines.append("")
-    lines.append("⚠️ 위 문턱은 «참고용 예시»다. 실제 격자는 Phase 2B 의 PREREG 에서 동결한다.")
-    lines.append("   여기 숫자를 보고 문턱을 고르면 그게 곧 사후 선택이다.")
+    lines.append("연속 축의 «분포» — 문턱을 제시하지 않는다")
+    lines.append("  🔑 후보 문턱을 여기 찍으면 리포트를 읽은 사람이 그 값에 끌린다.")
+    lines.append("     분위수만 보여주고 문턱 선택은 Phase 2B 의 PREREG 로 넘긴다.")
+    for col in ("debt_ratio", "interest_coverage"):
+        s = u[col].dropna()
+        if len(s) == 0:
+            lines.append(f"  {col:<18s} 값 없음")
+            continue
+        q = s.quantile([0.01, 0.05, 0.50, 0.95, 0.99])
+        lines.append(f"  {col:<18s} n={len(s):>9,}  "
+                     f"p01={q.loc[0.01]:9.3f} p05={q.loc[0.05]:9.3f} "
+                     f"p50={q.loc[0.50]:9.3f} p95={q.loc[0.95]:9.3f} "
+                     f"p99={q.loc[0.99]:9.3f}")
+    ol = u["op_loss_years"].fillna(0)
+    lines.append(f"  op_loss_years      분포 { {int(k): int(v) for k, v in ol.value_counts().sort_index().items()} }")
     lines.append("")
     lines.append("국면 진폭 (월별 폭락률, 창 완결분):")
     mr = monthly_rates(u)
     lines.append(f"  최소 {100*mr['crash_rate'].min():.2f}% · "
                  f"최대 {100*mr['crash_rate'].max():.2f}% · 월 {len(mr)}개")
     lines.append("")
-    lines.append("🔑 Phase 2B 진행 판정:")
-    lines.append("   각 축의 배제 관측이 «종목 수» 기준으로 충분한가를 볼 것.")
-    lines.append("   관측 수가 아니라 종목 수다 — 블록 SE 의 블록이 종목이기 때문이다.")
-    for name, mask in (("자본잠식", u["equity_impaired"].fillna(False)),
-                       ("부채비율>4", u["debt_ratio"].gt(4.0)),
-                       ("연속손실>=2", u["op_loss_years"].fillna(0).ge(2)),
-                       ("이자보상<1", u["interest_coverage"].lt(1.0))):
+    lines.append("🔑 Phase 2B 진행 판정 — 블록이 몇 개 생기는가:")
+    lines.append("   관측 수가 아니라 «종목 수»를 본다. 블록 SE 의 블록이 종목이고,")
+    lines.append("   관측 3만 개가 종목 20개에서 나왔다면 사실상 n=20 이다.")
+    lines.append("   ⚠️ 아래 꼬리 마스크는 «분위수» 기반이라 후보 문턱을 제시하지 않는다.")
+    masks = [("자본잠식(모수없음)", u["equity_impaired"].fillna(False))]
+    for col, tail in (("debt_ratio", "hi"), ("interest_coverage", "lo")):
+        s = u[col]
+        for p in (0.01, 0.05):
+            if s.notna().sum() == 0:
+                continue
+            cut = s.quantile(1 - p if tail == "hi" else p)
+            m = s.gt(cut) if tail == "hi" else s.lt(cut)
+            masks.append((f"{col} {tail} {int(p*100)}%", m.fillna(False)))
+    for p in (0.01, 0.05):
+        cut = ol.quantile(1 - p)
+        masks.append((f"op_loss_years hi {int(p*100)}%", ol.gt(cut)))
+    for name, mask in masks:
         sub = u[mask]
-        lines.append(f"   {name:<12s} 관측 {len(sub):>9,} · 종목 {sub['stock_code'].nunique():>5,}"
-                     f" · 폭락률 {100*sub['crash'].mean() if len(sub) else float('nan'):6.2f}%")
+        rate = 100 * sub["crash"].mean() if len(sub) else float("nan")
+        lines.append(f"   {name:<26s} 관측 {len(sub):>9,} · 종목 "
+                     f"{sub['stock_code'].nunique():>5,} · 폭락률 {rate:6.2f}%")
+    lines.append("")
+    lines.append("   기저 대비 폭락률이 «올라가 있는» 축이 후보다. 다만 이 표는 문턱을")
+    lines.append("   고르는 데 쓰지 않는다 — 그러면 사후 선택이다. 축의 «검정 가능성»만 본다.")
 
     text = "\n".join(lines)
     with open(REPORT_TXT, "w", encoding="utf-8") as f:
@@ -747,8 +764,9 @@ PYTHONUTF8=1 python scripts/discovery/fundamental_risk_filter/p3_panel.py
 ```
 Expected: **100 passed** (Phase 1 의 78 + T1 8 + T2 10 + T3 4)
 
-리포트 전문을 보고할 것. ⚠️ **문턱을 고르라는 뜻이 아니다** — 리포트의 참고 문턱은
-분포를 보여주기 위한 것이고, 실제 격자는 Phase 2B 의 사전등록에서 결과를 보기 «전»에 동결한다.
+리포트 전문을 보고할 것. ⚠️ **문턱을 고르라는 뜻이 아니다** — 리포트는 분위수와
+분위수 기반 꼬리 마스크만 싣고 후보 문턱을 제시하지 않는다. 실제 격자는 Phase 2B 의
+사전등록에서 동결한다. 판단할 것은 오직 **「이 축이 검정 가능한 블록 수를 갖는가」**다.
 
 - [ ] **Step 6: 커밋**
 
@@ -775,6 +793,7 @@ git commit -m "docs(frf): 패널 결합 + Phase 2B 진행 판정 리포트"
 Phase 1 에서 자본잠식 사업연도가 **50건**뿐이었다 — 일 단위로 펴도 종목 수는 그대로 50 미만일 수 있고,
 그러면 그 축은 **검정력이 없어서** 격자에서 빠져야 한다. 이것은 실패가 아니라 **설계 입력**이다.
 
-⚠️ 리포트의 참고 문턱을 보고 격자를 고르면 **사후 선택**이다. 격자는 축과 문턱 후보를
-**분포를 보기 전에** 정하는 것이 원칙이나, 이미 리포트를 봤다면 그 사실을 PREREG 에 명시하고
-**문턱을 분포에 맞춰 조정하지 않았음**을 기록할 것.
+🟢 **리포트가 후보 문턱을 싣지 않도록 설계했다** — 분위수와 분위수 기반 꼬리 마스크만
+보여준다. 그래서 리포트를 읽은 뒤에 PREREG 를 써도 「문턱을 분포에 맞춰 골랐다」가 되지 않는다.
+⚠️ 단 **분위수 자체를 문턱으로 승격하지 말 것**(예: "p99 를 쓰자"). 그것도 같은 사후 선택이다.
+문턱은 **도메인 근거**(회계·상장규정에서 통용되는 값)로 정하고 그 근거를 PREREG 에 적는다.
