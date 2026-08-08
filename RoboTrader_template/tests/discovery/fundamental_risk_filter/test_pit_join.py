@@ -72,6 +72,44 @@ def test_same_rcept_dt_breaks_tie_by_fiscal_year_deterministically():
     assert pj.asof_financials([b, a], "2023-01-01")["bsns_year"] == "2022"
 
 
+def test_identical_key_is_order_independent():
+    """🔴 리뷰가 찾은 「살아남는 변이」를 막는다.
+
+    `key > best_key` 를 `>=` 로 바꾸면 «같은 (rcept_dt, bsns_year)» 를 가진
+    레코드들 중 마지막 것이 이긴다 = 입력 순서 의존. 다른 어떤 테스트도
+    이걸 못 잡았다 — 기존 동률 테스트는 `bsns_year` 가 «달라서» 키가 같지 않다.
+    """
+    a = {"bsns_year": "2021", "rcept_dt": "2022-03-22", "tag": "a"}
+    b = {"bsns_year": "2021", "rcept_dt": "2022-03-22", "tag": "b"}
+    assert pj.asof_financials([a, b], "2023-01-01")["tag"] == "a"
+    assert pj.asof_financials([b, a], "2023-01-01")["tag"] == "b"
+    # 🔑 「먼저 온 것이 이긴다」가 규약이다. `>=` 로 바꾸면 둘 다 뒤엣것이 나와 실패한다.
+
+
+def test_malformed_date_raises_instead_of_comparing_wrong():
+    """🔴 '2023-3-5' 는 사전순 비교에서 «조용히 틀린 답»을 낸다.
+
+    '2023-3-5' > '2023-12-01' 이 참이 된다 — 3월이 12월보다 나중이 되는 것이다.
+    이 모듈이 막으려는 실패 유형이 정확히 그것이므로 시끄럽게 실패해야 한다.
+    """
+    import pytest
+    with pytest.raises(ValueError):
+        pj._daystr("2023-3-5")
+    with pytest.raises(ValueError):
+        pj.asof_financials([{"bsns_year": "2022", "rcept_dt": "2023-3-5"}],
+                           "2023-12-31")
+
+
+def test_empty_and_missing_rcept_dt_are_skipped_not_errors():
+    """빈 값·키 없음은 「모른다」라 건너뛸 대상이지 오류가 아니다."""
+    recs = [
+        {"bsns_year": "2020", "rcept_dt": ""},
+        {"bsns_year": "2021"},                       # 키 자체가 없음
+        {"bsns_year": "2019", "rcept_dt": "2020-03-30", "tag": "ok"},
+    ]
+    assert pj.asof_financials(recs, "2023-01-01")["tag"] == "ok"
+
+
 def test_accepts_date_objects_not_just_strings():
     """🔴 적재 테이블의 rcept_dt 는 DATE 컬럼이라 psycopg2 가 date 를 돌려준다.
 

@@ -7,19 +7,33 @@
    방향이 «반대» 다. 여기는 복원이 아니라 예측이고, 재무는 보고서가 접수되기 전엔
    실제로 아무도 몰랐다. 두 규칙은 모순이 아니라 목적이 다르다.
 """
+import re
+
+
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _daystr(v):
-    """'YYYY-MM-DD' 로 정규화. datetime.date 도 받는다.
+    """'YYYY-MM-DD' 로 정규화. `datetime.date`·`datetime`·`Timestamp` 도 받는다.
 
     🔴 이게 필요한 이유: 적재 테이블의 `rcept_dt` 는 DATE 컬럼이라 psycopg2 가
        `datetime.date` 로 돌려준다. 반면 정규화 JSONL 에서 읽으면 문자열이다.
        섞이면 파이썬 3 에서 date 와 str 비교가 **TypeError** 로 죽는다 —
        조용히 틀리지는 않지만, 소비자가 어디서 읽느냐에 따라 터진다.
+
+    🔴 형식을 **검사**하고 어긋나면 예외를 낸다. 비교가 문자열 사전순이라
+       `'2023-3-5'`(0 패딩 없음) 같은 값은 **조용히 틀린 답**을 낸다 —
+       `'2023-3-5' > '2023-12-01'` 이 참이 된다. 이 모듈이 막으려는 실패 유형이
+       바로 그것이므로, 여기서는 «시끄럽게 실패»하는 쪽이 옳다.
     """
     if v is None:
         return None
-    return str(v)[:10]
+    s = str(v)[:10]
+    if not s:
+        return None          # 빈 값은 「모른다」 — 건너뛸 대상이지 오류가 아니다
+    if not _DAY_RE.match(s):
+        raise ValueError(f"날짜 형식이 'YYYY-MM-DD' 가 아니다: {v!r}")
+    return s
 
 
 def asof_financials(records, as_of):
