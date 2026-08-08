@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dart_client import OUT_DIR, db_conn  # noqa: E402
 from p1_target import DATE_MAX, TARGET_PARQUET  # noqa: E402
-from pit_join import asof_financials  # noqa: E402
+from pit_join import asof_financials, _daystr  # noqa: E402
 
 FEATURES_PARQUET = os.path.join(OUT_DIR, "frf_features.parquet")
 
@@ -43,9 +43,12 @@ def consec_op_loss(records, as_of):
     """as_of 에 보이는 사업연도들을 최신부터 훑어 «연속» 영업손실 연수를 센다.
 
     중간 연도가 비면 거기서 끊는다 — 없는 해를 적자로 세지 않는다.
+    호출자의 정렬에 의존하지 않는다 — rcept_dt 오름차순으로 정렬한 뒤 처리한다.
     """
+    # rcept_dt 오름차순으로 정렬하면 같은 사업연도에서 최신 정정본이 마지막으로 덮어쓴다
+    sorted_records = sorted(records, key=lambda r: _daystr(r.get("rcept_dt")) or "")
     visible = {}
-    for r in records:
+    for r in sorted_records:
         cur = asof_financials([r], as_of)
         if cur is None:
             continue
@@ -72,7 +75,10 @@ def _row(rec, records, as_of):
         "from_date": as_of,
         "bsns_year": str(rec["bsns_year"]),
         "rcept_dt": str(rec["rcept_dt"])[:10],
-        "equity_impaired": (eq is not None and eq <= 0),
+        # 🔴 None = 「자본총계를 읽을 수 없다」. False(정상)와 «반드시» 구별해야 한다.
+        #    배제 필터에서 「모른다」를 「안전」으로 접으면 그 종목이 필터를 통과한다.
+        #    실측 2026-08-08: 자본총계 null 로 인한 None 이 패널 279행(136490·217190).
+        "equity_impaired": (None if eq is None else (eq <= 0)),
         "debt_ratio": (li / eq) if (eq is not None and eq > 0 and li is not None) else None,
         "op_loss_years": consec_op_loss(records, as_of),
         "interest_coverage": (oi / fc) if (fc is not None and fc > 0 and oi is not None) else None,

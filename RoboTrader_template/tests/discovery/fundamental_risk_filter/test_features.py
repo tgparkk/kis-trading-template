@@ -40,6 +40,19 @@ def test_equity_impaired_is_the_only_hardcoded_rule():
     assert steps[0]["equity_impaired"] is False
 
 
+def test_equity_impaired_is_none_when_equity_is_unknown():
+    """🔴 「모른다」를 「안전하다」로 읽으면 배제 필터가 그 종목을 통과시킨다."""
+    steps = p2.step_table([_rec("2020", "2021-03-19", eq=None)])
+    assert steps[0]["equity_impaired"] is None
+    assert steps[0]["equity_impaired"] is not False
+
+
+def test_equity_impaired_zero_is_impairment_not_unknown():
+    """자본총계가 정확히 0 이면 «잠식»이다 — 결측과 구별된다."""
+    steps = p2.step_table([_rec("2020", "2021-03-19", eq=0)])
+    assert steps[0]["equity_impaired"] is True
+
+
 def test_debt_ratio_is_none_when_equity_not_positive():
     """자본이 0 이하면 부채비율은 정의되지 않는다 — 0 이나 inf 로 만들지 않는다."""
     steps = p2.step_table([_rec("2020", "2021-03-19", eq=0, li=500)])
