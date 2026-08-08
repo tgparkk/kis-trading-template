@@ -26,7 +26,13 @@ def test_constants_match_the_measured_window():
 
 
 def test_exactly_minus_30_percent_counts_as_crash():
-    """경계는 포함이다 — 정확히 −30% 는 폭락으로 센다."""
+    """−30% 근방(나눗셈 결과)이 폭락으로 잡히는지 검증한다.
+
+    🔴 참고: 이 테스트는 경계 포함성(<=)을 검증하지 못한다.
+    −0.30 은 IEEE754 로 정확히 표현되지 않아 700/1000 - 1 은
+    결코 정확히 −0.30 이 아니기 때문이다.
+    경계 포함성은 test_is_crash_boundary_is_inclusive_at_exactly_drop() 이 검증한다.
+    """
     out = p1.crash_flags(_df([("005930", "2022-01-03", 1000.0, 700.0, 60)]))
     assert abs(out["ret_min"].iloc[0] - (-0.30)) < 1e-10
     assert bool(out["crash"].iloc[0]) is True
@@ -35,6 +41,22 @@ def test_exactly_minus_30_percent_counts_as_crash():
 def test_just_above_threshold_is_not_a_crash():
     out = p1.crash_flags(_df([("005930", "2022-01-03", 1000.0, 700.1, 60)]))
     assert bool(out["crash"].iloc[0]) is False
+
+
+def test_is_crash_boundary_is_inclusive_at_exactly_drop():
+    """🔴 이 테스트만이 `.le` vs `.lt` 를 구분한다.
+
+    IEEE754 때문에 나눗셈은 정확히 DROP 을 만들 수 없으므로,
+    이 테스트는 is_crash() 에 직접 DROP 을 전달해 경계 포함성을 검증한다.
+    """
+    # 정확히 DROP (포함해야 함)
+    assert bool(p1.is_crash(pd.Series([p1.DROP])).iloc[0]) is True
+    # DROP 보다 약간 위 (미포함)
+    assert bool(p1.is_crash(pd.Series([p1.DROP + 1e-12])).iloc[0]) is False
+    # DROP 보다 약간 아래 (포함)
+    assert bool(p1.is_crash(pd.Series([p1.DROP - 1e-12])).iloc[0]) is True
+    # NaN (결측)
+    assert bool(p1.is_crash(pd.Series([float('nan')])).iloc[0]) is False
 
 
 def test_partial_window_is_flagged_not_dropped():
