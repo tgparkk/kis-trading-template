@@ -34,6 +34,18 @@ def test_parse_amount_returns_none_not_zero_on_failure():
     assert f3.parse_amount("해당사항없음") is None
 
 
+def test_parse_amount_real_zero_stays_zero():
+    """🔴 위 테스트의 «반대쪽». 진짜 0 을 None 으로 만들면 안 된다.
+
+    둘을 한 쌍으로 고정해야 `return int(...) or None` 류의 회귀가 잡힌다 —
+    그 한 줄이면 진짜 0 이 조용히 결측이 되고, 자본잠식(자본총계 ≤ 0) 판정이
+    통째로 무력해진다.
+    """
+    assert f3.parse_amount("0") == 0
+    assert f3.parse_amount("0") is not None
+    assert f3.parse_amount("-0") == 0
+
+
 def test_rcept_dt_is_extracted_from_rcept_no():
     rows = [_row("BS", "ifrs-full_Equity", "자본총계", "100", "20230315000123")]
     assert f3.rcept_dt_from(rows) == "2023-03-15"
@@ -131,3 +143,22 @@ def test_normalize_of_empty_record_keeps_the_row():
     assert out["stock_code"] == "900300"
     assert out["total_equity"] is None
     assert out["rcept_dt"] is None
+    assert out["status"] == "013"    # 왜 비었는지가 함께 남아야 한다
+
+
+def test_summarize_separates_no_filing_from_mapping_failure():
+    """🔴 이 구분이 없으면 매핑 오류가 「신고 부재」로 위장한다.
+
+    2026-08-08 에 실제로 이 구조가 판정을 속였다 — 외국기업만 담긴 표본에서
+    모든 필드가 나란히 내려갔는데, 표만 보고는 원인을 가릴 수 없었다.
+    """
+    recs = [
+        {"status": "000", "total_equity": 100, "rcept_dt": "2023-03-15"},
+        {"status": "000", "total_equity": None, "rcept_dt": "2023-03-15"},
+        {"status": "013", "total_equity": None, "rcept_dt": None},
+    ]
+    n_all, cov_all, n_filed, cov_filed, sc = f3.summarize(recs)
+    assert (n_all, n_filed) == (3, 2)
+    assert cov_all["total_equity"] == 1      # 전체 3건 중 1건 = 33%
+    assert cov_filed["total_equity"] == 1    # 신고 2건 중 1건 = 50% ← 매핑 실패가 보인다
+    assert sc == {"000": 2, "013": 1}

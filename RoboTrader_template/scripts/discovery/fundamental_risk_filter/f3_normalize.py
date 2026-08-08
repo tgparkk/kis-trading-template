@@ -40,10 +40,16 @@ SPECS = (
      ("영업이익", "영업손실")),
     ("interest_expense",   ("IS", "CIS"),  ("ifrs-full_InterestExpense",),
      ("이자비용",)),
-    # 🔑 2026-08-08 실측(국내 46건): `ifrs-full_InterestExpense` 는 **0.0%** 다.
-    #    한국 상장사는 그 태그를 쓰지 않는다. 실제로 쓰는 것은 아래 둘이다 —
-    #      ifrs-full_FinanceCosts(금융원가·CIS)                     39/46 = **84.8%**
-    #      ifrs-full_InterestPaid...OperatingActivities(이자지급·CF) 42/46 = **91.3%**
+    # 🔑 2026-08-08 실측(국내 「rows 가 있는」 46건): `ifrs-full_InterestExpense` 는 **0.0%**.
+    #    한국 상장사는 그 태그를 쓰지 않는다. 실제로 쓰는 것은 아래 둘이다.
+    #    ⚠️ **계정 존재율과 값 확보율을 반드시 구분할 것** — DART 가 계정 행은 주면서
+    #       `thstrm_amount` 를 **빈 문자열**로 주는 경우가 있다(예: 194480·024060).
+    #       `parse_amount` 가 None 을 돌려주므로 결측이 되고, 그게 옳은 동작이다.
+    #                                          계정 존재    값 파싱 가능
+    #      ifrs-full_FinanceCosts(금융원가·CIS)   39/46 84.8%   **37/46 80.4%**
+    #      ifrs-full_InterestPaid…(이자지급·CF)   42/46 91.3%   **37/46 80.4%**
+    #    ⇒ 인용할 때는 **값 확보율(80.4%)** 을 쓴다. 계정 존재율은 상한일 뿐이다.
+    #    🔑 계정명 힌트 폴백이 실제로 더 건진다(fc 37 → 44, paid 37 → 40 / 분모 50).
     #    ⇒ ***「계정이 없다」가 아니라 「없는 이름을 찾고 있었다」였다.***
     #    둘 다 담고 사전등록에서 고른다(재파생은 DART 호출 0건이라 공짜다).
     #    ⚠️ 금융원가는 이자 외에 환손실·파생손실을 포함해 분모를 **과대**하게 만든다
@@ -86,6 +92,10 @@ def pick_account(rows, sj_divs, account_ids, name_hints):
 
     sj_divs 는 튜플이다 — 손익 항목은 ("IS","CIS") 처럼 둘 이상을 받는다.
     """
+    # ⚠️ 문자열이 들어오면 `in` 이 «부분문자열» 매칭이 되어 조용히 오스코프된다
+    #    (예: "BS" 를 주면 sj_div "B" 도 통과). 튜플로 승격해 그 경로를 없앤다.
+    if isinstance(sj_divs, str):
+        sj_divs = (sj_divs,)
     cand = [r for r in rows if str(r.get("sj_div") or "") in sj_divs]
     for aid in account_ids:
         for r in cand:
@@ -108,6 +118,11 @@ def normalize(rec):
     out = {
         "stock_code": rec["stock_code"],
         "bsns_year": rec["bsns_year"],
+        # 🔑 status 를 «끌고 간다». 이게 없으면 커버리지 표가
+        #    「신고 자체가 없다(013·000_EMPTY)」와 「신고는 있는데 계정을 못 찾았다」를
+        #    구분하지 못하고, 둘이 섞이면 매핑 오류가 결측으로 위장된다.
+        #    실제로 2026-08-08 에 외국기업 표본이 이 구조로 판정을 속였다.
+        "status": rec.get("status"),
         "rcept_dt": rcept_dt_from(rows),
         "fs_div": rec.get("fs_div"),
     }
@@ -116,11 +131,32 @@ def normalize(rec):
     return out
 
 
+FIELDS = [f[0] for f in SPECS] + ["rcept_dt"]
+
+
+def summarize(records):
+    """커버리지를 «두 벌» 돌려준다 — (전체 기준, 신고 있는 레코드 기준).
+
+    🔴 한 벌만 내면 안 된다. 신고가 아예 없는 종목·연도(013·000_EMPTY)가 섞이면
+       모든 필드가 «나란히» 내려가고, 그러면 「매핑이 틀렸다」와 「신고가 없다」가
+       같은 그림이 된다. 축 채택을 가르는 숫자라 이 구분이 판정을 바꾼다.
+    반환: (n_all, cov_all, n_filed, cov_filed, status_counts)
+    """
+    filed = [r for r in records if r.get("status") == "000"]
+    status_counts = {}
+    for r in records:
+        s = r.get("status")
+        status_counts[s] = status_counts.get(s, 0) + 1
+
+    def _cov(rs):
+        return {f: sum(1 for r in rs if r.get(f) is not None) for f in FIELDS}
+
+    return len(records), _cov(records), len(filed), _cov(filed), status_counts
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    total = 0
-    have = {f[0]: 0 for f in SPECS}
-    have["rcept_dt"] = 0
+    records = []
     with gzip.open(RAW_GZ, "rt", encoding="utf-8") as src, \
             open(NORM_JSONL, "w", encoding="utf-8") as dst:
         for line in src:
@@ -133,18 +169,25 @@ def main():
                 continue
             norm = normalize(rec)
             dst.write(json.dumps(norm, ensure_ascii=False) + "\n")
-            total += 1
-            for k in have:
-                if norm.get(k) is not None:
-                    have[k] += 1
+            records.append(norm)
 
-    lines = [f"정규화 {total}행", ""]
-    for k, n in have.items():
-        pct = (100.0 * n / total) if total else 0.0
-        lines.append(f"  {k:20s} {n:7d}  {pct:6.2f}%")
+    n_all, cov_all, n_filed, cov_filed, status_counts = summarize(records)
+
+    lines = [f"정규화 {n_all}행 · 그중 신고 있음(status=000) {n_filed}행", ""]
+    lines.append(f"  status 분포: {status_counts}")
     lines.append("")
-    lines.append("🔴 interest_expense 커버리지가 낮으면 이자보상배율 축을 "
-                 "사전등록에서 제외할 것.")
+    lines.append(f"  {'field':20s} {'전체':>16s} {'신고분만':>16s}")
+    for f in FIELDS:
+        pa = (100.0 * cov_all[f] / n_all) if n_all else 0.0
+        pf = (100.0 * cov_filed[f] / n_filed) if n_filed else 0.0
+        lines.append(f"  {f:20s} {cov_all[f]:6d} {pa:6.2f}%  "
+                     f"{cov_filed[f]:6d} {pf:6.2f}%")
+    lines.append("")
+    lines.append("🔑 게이트는 «신고분만» 열로 판정한다. 「전체」 열은 신고가 없는")
+    lines.append("   종목·연도까지 분모에 넣기 때문에, 매핑 오류와 신고 부재가")
+    lines.append("   같은 그림으로 보인다.")
+    lines.append("🔴 커버리지로 축 채택을 판정하기 전에 «표본의 고유 종목 수»를 확인할 것.")
+    lines.append("   작업목록은 종목당 7년이 연속이라 100행이 15종목도 안 될 수 있다.")
     text = "\n".join(lines)
     with open(COVERAGE_TXT, "w", encoding="utf-8") as f:
         f.write(text + "\n")
