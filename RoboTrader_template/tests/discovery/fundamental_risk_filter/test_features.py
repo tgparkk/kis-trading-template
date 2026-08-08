@@ -114,3 +114,19 @@ def test_consec_op_loss_does_not_count_nan_as_a_loss():
             _rec("2020", "2021-03-19", oi=float('nan')),
             _rec("2021", "2022-03-22", oi=-1)]
     assert p2.consec_op_loss(recs, "2023-01-01") == 1   # 2021 만. 2020 은 결측이라 끊긴다
+
+
+def test_op_loss_latest_observed_is_false_when_latest_year_oi_is_missing():
+    """🔴 op_loss_years 단독으로는 「흑자」와 「모른다」를 못 가른다 — 둘 다 0.
+
+    이 필드가 그 둘을 다시 가른다. 실측 2026-08-08: 18,443행 · 43종목 영향.
+    """
+    steps = p2.step_table([_rec("2020", "2021-03-19", oi=float('nan'))])
+    assert steps[0]["op_loss_years"] == 0
+    assert steps[0]["op_loss_latest_observed"] is False
+
+
+def test_op_loss_latest_observed_is_true_for_a_normal_profitable_year():
+    steps = p2.step_table([_rec("2020", "2021-03-19", oi=50)])
+    assert steps[0]["op_loss_years"] == 0
+    assert steps[0]["op_loss_latest_observed"] is True

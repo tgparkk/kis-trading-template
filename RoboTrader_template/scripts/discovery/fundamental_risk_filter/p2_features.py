@@ -49,11 +49,11 @@ def _missing(v):
     return v is None or (isinstance(v, float) and v != v)
 
 
-def consec_op_loss(records, as_of):
-    """as_of 에 보이는 사업연도들을 최신부터 훑어 «연속» 영업손실 연수를 센다.
+def _visible_op_income(records, as_of):
+    """as_of 에 보이는 사업연도 → operating_income 매핑(최신 정정본이 이긴다).
 
-    중간 연도가 비면 거기서 끊는다 — 없는 해를 적자로 세지 않는다.
-    호출자의 정렬에 의존하지 않는다 — rcept_dt 오름차순으로 정렬한 뒤 처리한다.
+    `consec_op_loss` 와 `op_loss_latest_observed` 가 공유하는 내부 헬퍼다 —
+    「어떤 연도가 보이는가」 판정 로직을 두 곳에 따로 적으면 갈라질 수 있다.
     """
     # rcept_dt 오름차순으로 정렬하면 같은 사업연도에서 최신 정정본이 마지막으로 덮어쓴다
     sorted_records = sorted(records, key=lambda r: _daystr(r.get("rcept_dt")) or "")
@@ -63,6 +63,16 @@ def consec_op_loss(records, as_of):
         if cur is None:
             continue
         visible[str(r["bsns_year"])] = r.get("operating_income")
+    return visible
+
+
+def consec_op_loss(records, as_of):
+    """as_of 에 보이는 사업연도들을 최신부터 훑어 «연속» 영업손실 연수를 센다.
+
+    중간 연도가 비면 거기서 끊는다 — 없는 해를 적자로 세지 않는다.
+    호출자의 정렬에 의존하지 않는다 — rcept_dt 오름차순으로 정렬한 뒤 처리한다.
+    """
+    visible = _visible_op_income(records, as_of)
     if not visible:
         return 0
     n = 0
@@ -74,6 +84,24 @@ def consec_op_loss(records, as_of):
         n += 1
         year -= 1
     return n
+
+
+def op_loss_latest_observed(records, as_of):
+    """최신 «보이는» 사업연도의 operating_income 을 실제로 읽을 수 있었는가.
+
+    🔴 `op_loss_years` 는 int 라서 「흑자」와 「모른다」를 구별 못 한다 — 최신
+       보이는 연도가 흑자여도, 그 값이 결측이어도 똑같이 0이 나온다. 이 필드가
+       그 둘을 다시 가른다. Phase 2B 의 처치 정의는 반드시
+       `op_loss_years >= N and op_loss_latest_observed` 로 묶어야 하며,
+       `op_loss_years` 단독으로 처치를 정의하지 말 것
+       (실측 2026-08-08: 18,443행 · 43종목이 이 구분에 걸린다).
+       보이는 연도가 아예 없으면(visible 비어있음) 「관측 없음」이므로 False.
+    """
+    visible = _visible_op_income(records, as_of)
+    if not visible:
+        return False
+    year = max(int(y) for y in visible)
+    return not _missing(visible.get(str(year)))
 
 
 def _row(rec, records, as_of):
@@ -92,6 +120,9 @@ def _row(rec, records, as_of):
         "equity_impaired": (None if _missing(eq) else (eq <= 0)),
         "debt_ratio": (li / eq) if (not _missing(eq) and eq > 0 and not _missing(li)) else None,
         "op_loss_years": consec_op_loss(records, as_of),
+        # 🔴 op_loss_years 는 그 자체로 「모른다」를 표현 못 한다 — 위 함수 docstring 참조.
+        #    Phase 2B 는 이 필드 없이 op_loss_years 만으로 처치를 정의하면 안 된다.
+        "op_loss_latest_observed": op_loss_latest_observed(records, as_of),
         "interest_coverage": (oi / fc) if (not _missing(fc) and fc > 0 and not _missing(oi)) else None,
     }
 
