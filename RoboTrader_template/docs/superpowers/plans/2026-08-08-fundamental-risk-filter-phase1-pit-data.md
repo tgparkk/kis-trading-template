@@ -1068,10 +1068,16 @@ SPECS = (
      ("영업이익", "영업손실")),
     ("interest_expense",   ("IS", "CIS"),  ("ifrs-full_InterestExpense",),
      ("이자비용",)),
-    # 🔑 2026-08-08 실측(국내 46건): `ifrs-full_InterestExpense` 는 **0.0%** 다.
-    #    한국 상장사는 그 태그를 쓰지 않는다. 실제로 쓰는 것은 아래 둘이다 —
-    #      ifrs-full_FinanceCosts(금융원가·CIS)                     39/46 = **84.8%**
-    #      ifrs-full_InterestPaid...OperatingActivities(이자지급·CF) 42/46 = **91.3%**
+    # 🔑 2026-08-08 실측(국내 「rows 가 있는」 46건): `ifrs-full_InterestExpense` 는 **0.0%**.
+    #    한국 상장사는 그 태그를 쓰지 않는다. 실제로 쓰는 것은 아래 둘이다.
+    #    ⚠️ **계정 존재율과 값 확보율을 반드시 구분할 것** — DART 가 계정 행은 주면서
+    #       `thstrm_amount` 를 **빈 문자열**로 주는 경우가 있다(예: 194480·024060).
+    #       `parse_amount` 가 None 을 돌려주므로 결측이 되고, 그게 옳은 동작이다.
+    #                                          계정 존재    값 파싱 가능
+    #      ifrs-full_FinanceCosts(금융원가·CIS)   39/46 84.8%   **37/46 80.4%**
+    #      ifrs-full_InterestPaid…(이자지급·CF)   42/46 91.3%   **37/46 80.4%**
+    #    ⇒ 인용할 때는 **값 확보율(80.4%)** 을 쓴다. 계정 존재율은 상한일 뿐이다.
+    #    🔑 계정명 힌트 폴백이 실제로 더 건진다(fc 37 → 44, paid 37 → 40 / 분모 50).
     #    ⇒ ***「계정이 없다」가 아니라 「없는 이름을 찾고 있었다」였다.***
     #    둘 다 담고 사전등록에서 고른다(재파생은 DART 호출 0건이라 공짜다).
     #    ⚠️ 금융원가는 이자 외에 환손실·파생손실을 포함해 분모를 **과대**하게 만든다
@@ -1328,8 +1334,8 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     total_liabilities  BIGINT,
     operating_income   BIGINT,
     interest_expense   BIGINT,                -- 국내 실측 0.0%. 「찾아봤다」는 기록으로 남긴다
-    finance_costs      BIGINT,                -- 금융원가(CIS). 국내 실측 84.8%
-    interest_paid_cf   BIGINT,                -- 이자지급(CF, 현금주의). 국내 실측 91.3%
+    finance_costs      BIGINT,                -- 금융원가(CIS). 값 확보율 80.4%(계정 존재 84.8%)
+    interest_paid_cf   BIGINT,                -- 이자지급(CF, 현금주의). 값 확보율 80.4%(계정 존재 91.3%)
     created_at         TIMESTAMP NOT NULL DEFAULT now(),
     PRIMARY KEY (stock_code, bsns_year)
 );
