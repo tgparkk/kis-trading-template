@@ -112,8 +112,12 @@ class _Session:
 
 
 def _client(script):
-    c = dc.DartClient("KEY", min_interval=0.0)
-    c.session = _Session(script)
+    """🔴 세션을 «주입»한다. 대입(c.session = ...)으로는 안 된다 —
+    리셋 복구가 세션을 새로 만들기 때문에 그 순간 진짜 requests.Session 이
+    끼어들어 테스트가 실제 DART 로 호출을 날린다(2026-08-08 실측).
+    factory 가 같은 가짜를 계속 돌려주므로 스크립트가 이어서 소비된다."""
+    sess = _Session(script)
+    c = dc.DartClient("KEY", min_interval=0.0, session_factory=lambda: sess)
     return c
 
 
@@ -169,6 +173,29 @@ def test_fs_div_is_passed_through():
     c = _client([_Resp({"status": "000", "message": "", "list": []})])
     c.fnltt_all("00126380", "2022", dc.REPRT_FY, "OFS")
     assert c.session.calls[0]["fs_div"] == "OFS"
+
+
+def test_session_is_recreated_after_reset():
+    """🔴 복구 동작을 «고정»한다 — 세션 교체를 지워도 다른 테스트는 다 통과한다.
+
+    오염된 커넥션 풀을 버리는 것이 리셋 복구의 핵심이고, 원본
+    scripts/dart_mcap_common.py 가 20,241 호출로 실증한 동작이다.
+    """
+    import requests
+    made = []
+
+    def factory():
+        s = _Session([
+            requests.exceptions.ConnectionError("reset"),
+            _Resp({"status": "000", "message": "", "list": []}),
+        ] if not made else [_Resp({"status": "000", "message": "", "list": []})])
+        made.append(s)
+        return s
+
+    c = dc.DartClient("KEY", min_interval=0.0, session_factory=factory)
+    status, _, _ = c.fnltt_all("00126380", "2022", dc.REPRT_FY, "CFS")
+    assert status == "000"
+    assert len(made) == 2, "리셋 뒤 세션이 새로 만들어져야 한다"
 
 
 def test_project_root_points_at_repo_package_root():
@@ -272,9 +299,14 @@ def eprint(*a):
 
 
 class DartClient:
-    def __init__(self, key: str, min_interval: float = 0.34):
+    def __init__(self, key: str, min_interval: float = 0.34, session_factory=None):
+        # 🔴 session_factory 는 테스트 이음매다. 리셋 복구가 세션을 «새로 만들기»
+        #    때문에, 이 이음매가 없으면 테스트가 주입한 가짜 세션이 복구 순간
+        #    진짜 requests.Session 으로 갈아치워지고 **실제 DART 로 호출이 나간다**
+        #    (2026-08-08 에 실측으로 확인됨 — status=010 응답을 받았다).
         self.key = key
-        self.session = requests.Session()
+        self._session_factory = session_factory or requests.Session
+        self.session = self._session_factory()
         self.min_interval = min_interval
         self._last_call = 0.0
         self.calls = 0
@@ -319,7 +351,7 @@ class DartClient:
                 if reset_streak >= 3:
                     raise DartBlocked("연결 리셋 3연속 — opendart IP 차단으로 판단")
                 self.session.close()
-                self.session = requests.Session()
+                self.session = self._session_factory()  # 오염된 커넥션 풀 폐기
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
                 continue
@@ -359,7 +391,7 @@ class DartClient:
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/test_dart_client.py -v`
-Expected: PASS (7 passed)
+Expected: PASS (8 passed)
 
 - [ ] **Step 5: 커밋** (사장님 승인 후)
 
@@ -1334,7 +1366,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/test_load_sql.py -v`
-Expected: PASS (7 passed)
+Expected: PASS (6 passed)
 
 - [ ] **Step 5: 파일럿 적재 + 불변 증명**
 
@@ -1480,7 +1512,7 @@ Expected: PASS (8 passed)
 - [ ] **Step 5: 패키지 전체 테스트를 돌린다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/ -v`
-Expected: PASS (41 passed)
+Expected: PASS (42 passed) — T1 8 · T2 4 · T3 7 · T4 9 · T5 6 · T6 8
 
 - [ ] **Step 6: 커밋** (사장님 승인 후)
 
