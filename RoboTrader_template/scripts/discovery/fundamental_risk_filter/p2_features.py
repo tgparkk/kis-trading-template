@@ -39,6 +39,16 @@ def _next_day(daystr):
     return (d + _dt.timedelta(days=1)).isoformat()
 
 
+def _missing(v):
+    """None 과 NaN 을 «둘 다» 결측으로 본다.
+
+    🔴 `v is None` 만으로는 부족하다 — pd.read_sql 이 NULL 을 nan 으로 주고
+       `nan is None` 은 False 다. 그리고 `nan >= 0` 도 False 라서 비교 기반
+       가드는 조용히 반대 방향으로 통과한다(2026-08-08 실측: 136490 FY2024).
+    """
+    return v is None or (isinstance(v, float) and v != v)
+
+
 def consec_op_loss(records, as_of):
     """as_of 에 보이는 사업연도들을 최신부터 훑어 «연속» 영업손실 연수를 센다.
 
@@ -59,7 +69,7 @@ def consec_op_loss(records, as_of):
     year = max(int(y) for y in visible)
     while True:
         oi = visible.get(str(year))
-        if oi is None or oi >= 0:
+        if _missing(oi) or oi >= 0:
             break
         n += 1
         year -= 1
@@ -77,11 +87,12 @@ def _row(rec, records, as_of):
         "rcept_dt": str(rec["rcept_dt"])[:10],
         # 🔴 None = 「자본총계를 읽을 수 없다」. False(정상)와 «반드시» 구별해야 한다.
         #    배제 필터에서 「모른다」를 「안전」으로 접으면 그 종목이 필터를 통과한다.
-        #    실측 2026-08-08: 자본총계 null 로 인한 None 이 패널 279행(136490·217190).
-        "equity_impaired": (None if eq is None else (eq <= 0)),
-        "debt_ratio": (li / eq) if (eq is not None and eq > 0 and li is not None) else None,
+        #    pd.read_sql 은 SQL NULL 을 nan 으로 주므로 _missing() 으로 검사한다.
+        #    실측 2026-08-08: 136490 FY2024 자본총계 NULL 이 245행에서 「정상」으로 기록됐다.
+        "equity_impaired": (None if _missing(eq) else (eq <= 0)),
+        "debt_ratio": (li / eq) if (not _missing(eq) and eq > 0 and not _missing(li)) else None,
         "op_loss_years": consec_op_loss(records, as_of),
-        "interest_coverage": (oi / fc) if (fc is not None and fc > 0 and oi is not None) else None,
+        "interest_coverage": (oi / fc) if (not _missing(fc) and fc > 0 and not _missing(oi)) else None,
     }
 
 
@@ -103,6 +114,12 @@ def main():
     conn = db_conn()
     fin = pd.read_sql(FIN_SQL, conn)
     conn.close()
+
+    # 🔴 pd.read_sql 은 SQL NULL 을 numpy.nan 으로 준다. `x is None` 가드가
+    #    전부 무력해지고, 특히 `nan >= 0` 이 False 라 결측 연도가 「적자」로
+    #    카운트된다. 경계에서 한 번 None 으로 정규화해 하류 가드를 살린다.
+    #    (실측 2026-08-08: 136490 FY2024 자본총계 NULL 이 245행에서 「정상」으로 기록됐다)
+    fin = fin.astype(object).where(fin.notna(), None)
 
     rows = []
     for code, g in fin.groupby("stock_code", sort=True):

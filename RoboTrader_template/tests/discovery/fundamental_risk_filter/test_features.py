@@ -97,3 +97,20 @@ def test_consec_op_loss_stops_at_a_missing_year():
 
 def test_step_table_of_empty_history_is_empty():
     assert p2.step_table([]) == []
+
+
+def test_equity_impaired_is_none_when_equity_is_nan():
+    """🔴 실데이터 경로는 None 이 아니라 NaN 을 준다(pd.read_sql).
+
+    None 만 테스트하면 수정이 통과하고 실데이터에서 안 돈다 — 2026-08-08 실측.
+    """
+    steps = p2.step_table([_rec("2020", "2021-03-19", eq=float('nan'))])
+    assert steps[0]["equity_impaired"] is None
+
+
+def test_consec_op_loss_does_not_count_nan_as_a_loss():
+    """🔴 `nan >= 0` 은 False 라서 결측 연도가 「적자」로 세어진다."""
+    recs = [_rec("2019", "2020-03-30", oi=-1),
+            _rec("2020", "2021-03-19", oi=float('nan')),
+            _rec("2021", "2022-03-22", oi=-1)]
+    assert p2.consec_op_loss(recs, "2023-01-01") == 1   # 2021 만. 2020 은 결측이라 끊긴다
