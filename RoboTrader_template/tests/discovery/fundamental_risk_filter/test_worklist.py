@@ -39,3 +39,10 @@ def test_rows_without_corp_code_are_dropped():
     rows = [("005930", "00126380"), ("900300", ""), ("900301", None)]
     wl = f1.build_worklist(rows, ["2019"])
     assert [w["stock_code"] for w in wl] == ["005930"]
+
+
+def test_same_stock_code_with_and_without_corp_does_not_raise():
+    """🔴 정렬이 필터보다 먼저면 여기서 TypeError 가 난다."""
+    rows = [("005930", None), ("005930", "00126380")]
+    wl = f1.build_worklist(rows, ["2019"])
+    assert [w["corp_code"] for w in wl] == ["00126380"]
