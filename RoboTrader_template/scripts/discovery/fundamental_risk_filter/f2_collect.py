@@ -11,6 +11,14 @@ usage:
   PYTHONUTF8=1 python scripts/discovery/fundamental_risk_filter/f2_collect.py
   PYTHONUTF8=1 python scripts/discovery/fundamental_risk_filter/f2_collect.py --limit 300
   PYTHONUTF8=1 python scripts/discovery/fundamental_risk_filter/f2_collect.py --status
+  PYTHONUTF8=1 python scripts/discovery/fundamental_risk_filter/f2_collect.py --offset 17800 --limit 50
+
+⚠️ --offset 은 분포 표본 추출 전용이다. 청크 분할 실행에 쓰면 항목이 영구히 누락된다:
+   --offset 은 체크포인트로 걸러진 나머지(todo)를 인덱싱하므로, 분할 실행 시 마다
+   todo 가 줄어든다. --offset 0 --limit 1000 완료 후 --offset 1000 --limit 1000 을
+   부르면, todo 는 이미 1000 짧아져 있어 원래 items[1000:2000] 이 아닌 «다른» 1000건을
+   건너뛴다. 같은 --offset 으로 재시도해야 하나, 이미 수집된 것은 체크포인트로 걸러진다.
+   대신 full run(--limit 0, 모든 항목) 을 권장한다.
 """
 import argparse
 import gzip
@@ -101,7 +109,9 @@ def load_worklist():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--offset", type=int, default=0)
+    ap.add_argument("--offset", type=int, default=0,
+                    help="체크포인트로 걸러진 나머지를 인덱싱. 분포 표본 추출 전용. "
+                         "청크 분할에 쓰면 항목이 영구히 누락된다.")
     ap.add_argument("--interval", type=float, default=0.34)
     ap.add_argument("--status", action="store_true")
     args = ap.parse_args()

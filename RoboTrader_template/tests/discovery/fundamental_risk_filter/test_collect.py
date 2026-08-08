@@ -104,14 +104,20 @@ def test_empty_000_is_not_recorded_as_success():
 
 
 def test_load_done_survives_gzip_without_end_marker(tmp_path):
-    """🔴 하드킬로 종료 마커가 없어도 앞부분은 살려야 한다. 재개가 통째로 죽으면 안 된다."""
-    p = tmp_path / "raw.jsonl.gz"
-    f = gzip.open(p, "wt", encoding="utf-8")
-    f.write(json.dumps({"stock_code": "005930", "bsns_year": "2022"}) + "\n")
-    f.flush()
-    # close() 를 «부러» 호출하지 않는다 = 종료 마커 없음
-    del f
-    raw = open(p, "rb").read()
-    (tmp_path / "raw2.jsonl.gz").write_bytes(raw)
-    done = f2.load_done(str(tmp_path / "raw2.jsonl.gz"))
-    assert ("005930", "2022") in done
+    """🔴 하드킬로 종료 마커가 없어도 앞부분은 살려야 한다.
+
+    ⚠️ 이 테스트는 «종료 마커가 실제로 없는» 파일을 만들어야 의미가 있다.
+       gzip 핸들을 닫으면 close() 가 트레일러(CRC32+ISIZE, 8바이트)를 써서
+       «정상 gzip» 이 되고, EOFError 처리를 지워도 통과한다.
+       그래서 정상 파일을 만든 뒤 끝 8바이트를 직접 잘라낸다.
+    """
+    good = tmp_path / "good.jsonl.gz"
+    with gzip.open(good, "wt", encoding="utf-8") as f:
+        f.write(json.dumps({"stock_code": "005930", "bsns_year": "2022"}) + "\n")
+        f.write(json.dumps({"stock_code": "000660", "bsns_year": "2021"}) + "\n")
+
+    truncated = tmp_path / "truncated.jsonl.gz"
+    truncated.write_bytes(good.read_bytes()[:-8])   # 트레일러 제거
+
+    done = f2.load_done(str(truncated))
+    assert ("005930", "2022") in done               # 앞부분은 살아야 한다
