@@ -2,6 +2,8 @@ import os
 import re
 import sys
 
+import pytest
+
 _SCRIPTS = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))))),
@@ -73,3 +75,80 @@ def test_fingerprint_covers_whole_row_not_a_column_subset():
     assert "d::text" in f4.DP_FINGERPRINT
     for col in ("close", "market_cap", "adj_factor", "volume"):
         assert f"{col}::text" not in f4.DP_FINGERPRINT
+
+
+def test_expected_columns_match_ddl_columns():
+    """🔴 FIX4 — EXPECTED_COLUMNS 가 DDL 에 실제 정의된 컬럼명과 정확히 같아야 한다.
+
+    다르면 `verify_table_columns()`가 「우리 테이블이 아니다」를 오판(거짓 양성)하거나
+    남의 테이블을 우리 것으로 오인(거짓 음성)한다.
+    """
+    m = re.search(r"CREATE TABLE IF NOT EXISTS \S+\s*\((.*?)\n\);", f4.DDL, re.DOTALL)
+    assert m is not None
+    cols = set()
+    for line in m.group(1).splitlines():
+        line = line.split("--", 1)[0].strip()
+        if not line:
+            continue
+        if line.upper().startswith(("PRIMARY KEY", "CONSTRAINT", "UNIQUE")):
+            continue
+        col = line.split()[0].rstrip(",")
+        cols.add(col)
+    assert cols == f4.EXPECTED_COLUMNS
+
+
+def test_field_order_columns_are_subset_of_expected_columns():
+    """FIELD_ORDER(적재 대상)는 EXPECTED_COLUMNS(테이블 전체 컬럼)의 부분집합이어야 한다.
+
+    차이는 정확히 `created_at`(DEFAULT now(), INSERT 대상이 아님) 하나여야 한다.
+    """
+    assert set(f4.FIELD_ORDER) <= f4.EXPECTED_COLUMNS
+    assert f4.EXPECTED_COLUMNS - set(f4.FIELD_ORDER) == {"created_at"}
+
+
+def test_insert_column_order_matches_read_rows_field_order():
+    """🔴 FIX5 — 7개 숫자 컬럼이 전부 BIGINT라 두 개가 바뀌어도 타입 오류 없이
+
+    조용히 틀린 값이 들어간다. INSERT 컬럼 순서가 `read_rows()`가 만드는 튜플
+    순서(FIELD_ORDER)와 정확히 같아야 한다. `test_every_inserted_column_is_refreshed_on_conflict`
+    (INSERT↔SET 짝짓기)와는 다른 변이(컬럼 «순서» 전치)를 잡는다.
+    """
+    m = re.search(r"INSERT\s+INTO\s+\S+\s*\(([^)]*)\)", f4.UPSERT, re.IGNORECASE | re.DOTALL)
+    assert m is not None
+    cols = [c.strip() for c in m.group(1).split(",")]
+    assert cols == list(f4.FIELD_ORDER)
+
+
+def test_verify_table_columns_exits_6_on_mismatch():
+    """🔴 FIX4 — 컬럼 집합이 다르면(남의 테이블일 수 있다) exit(6)으로 중단해야 한다."""
+    class _FakeCur:
+        def execute(self, sql, params=None):
+            pass
+
+        def fetchall(self):
+            return [("stock_code",), ("bsns_year",)]  # 기대보다 훨씬 적다 — 남의 테이블 흉내
+
+    with pytest.raises(SystemExit) as exc:
+        f4.verify_table_columns(_FakeCur())
+    assert exc.value.code == 6
+
+
+def test_verify_table_columns_passes_on_exact_match():
+    """컬럼 집합이 정확히 같으면 예외·exit 없이 조용히 통과해야 한다."""
+    class _FakeCur:
+        def execute(self, sql, params=None):
+            pass
+
+        def fetchall(self):
+            return [(c,) for c in f4.EXPECTED_COLUMNS]
+
+    f4.verify_table_columns(_FakeCur())  # 예외를 내면 실패
+
+
+def test_load_runs_under_repeatable_read():
+    """🔴 FIX7 — READ COMMITTED 에서는 동시 커밋(EOD 수집기·라이브 봇)이 전/후
+
+    지문을 갈라놓아 「내가 바꿨다」와 「누가 바꿨다」가 섞인다. REPEATABLE READ
+    로 트랜잭션 시작 시점 스냅샷을 고정해야 한다.
+    """
+    assert "REPEATABLE READ" in _SRC

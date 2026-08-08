@@ -36,22 +36,36 @@ def _daystr(v):
     return s
 
 
-def asof_financials(records, as_of):
-    """rcept_dt <= as_of 인 것 중 rcept_dt 가 가장 늦은 레코드. 없으면 None.
+def asof_financials(records, as_of, same_day_visible=False):
+    """as_of 시점에 공개돼 있던 것 중 «사업연도가 가장 최근인» 레코드. 없으면 None.
 
-    동률(같은 날 접수)이면 **사업연도가 큰 쪽**을 고른다 — 정정공시·재제출이
-    같은 날짜로 들어올 수 있고, 입력 순서에 따라 답이 바뀌면 안 된다.
+    🔴 선택 키는 (bsns_year, rcept_dt) 다 — **사업연도를 먼저 최대화**하고,
+       동일 연도 안에서만 접수일로 동률을 깬다(정정공시가 원본을 대체한다).
+       예전 키 (rcept_dt, bsns_year)는 «가장 최근에 접수된 문서»를 골라
+       2021년 정정본(2024년 접수)이 2023년 원본(2024년 접수, 더 이른 날짜)을
+       이겨 3년 묵은 수치를 「최신」으로 내놓는 오류가 있었다.
+
+    same_day_visible=False(기본)이면 rcept_dt < as_of 만 보이고, True 이면
+    rcept_dt <= as_of(당일 포함)다. 기본을 엄격(<)으로 두는 이유: 사업보고서는
+    18시까지 접수될 수 있는데 시장은 15:30에 닫힌다 — 접수 «당일»을 그대로
+    보이는 것으로 치면 그날 장중에 내리는 의사결정에는 look-ahead가 된다.
+
+    동률(같은 (bsns_year, rcept_dt))이면 **먼저 온 레코드**가 이긴다 — 입력
+    순서에 따라 답이 바뀌면 안 된다.
     """
     as_of = _daystr(as_of)
+    if as_of is None:
+        raise ValueError("as_of 가 비었다 — 날짜(YYYY-MM-DD 또는 date)를 전달할 것")
     best = None
     best_key = None
     for r in records:
         dt = _daystr(r.get("rcept_dt"))
         if not dt:
             continue  # 언제 공개됐는지 모르는 값은 쓸 수 없다
-        if dt > as_of:
+        visible = (dt <= as_of) if same_day_visible else (dt < as_of)
+        if not visible:
             continue
-        key = (dt, str(r.get("bsns_year") or ""))
+        key = (str(r.get("bsns_year") or ""), dt)
         if best_key is None or key > best_key:
             best, best_key = r, key
     return best

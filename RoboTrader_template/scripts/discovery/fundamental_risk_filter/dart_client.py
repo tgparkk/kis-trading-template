@@ -36,6 +36,24 @@ class DartQuotaExceeded(RuntimeError):
     """DART 일일 사용한도 초과(status=020). 즉시 중단하고 체크포인트를 보존한다."""
 
 
+class DartUnexpectedStatus(RuntimeError):
+    """000(성공)·013(무자료)·000_EMPTY(응답은 왔으나 빈 내용) 외의 status.
+
+    010/011/012(키 불량·미등록·IP 차단)·100/101(필드 오류)·HTTP_FAIL(재시도 소진)이
+    여기 해당한다. 이런 상태를 조용히 013 처럼 «기록»해 버리면 키·IP 문제 하나가
+    작업목록 전체를 「수집 완료, 무자료」로 태우고 체크포인트에 영구히 박힌다.
+    즉시 올려서 중단시키고 체크포인트를 보존해야 한다.
+    """
+
+    def __init__(self, status, stock_code, bsns_year):
+        self.status = status
+        self.stock_code = stock_code
+        self.bsns_year = bsns_year
+        super().__init__(
+            f"예상 밖의 DART status={status!r} (stock_code={stock_code}, bsns_year={bsns_year})"
+        )
+
+
 def _parse_dart_key_from_lines(lines) -> str:
     for line in lines:
         line = line.strip()
