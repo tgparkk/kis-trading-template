@@ -81,6 +81,36 @@ def test_operating_income_found_in_cis_only():
     assert out["operating_income"] == 1234
 
 
+def test_finance_costs_and_interest_paid_are_captured():
+    """🔑 `ifrs-full_InterestExpense` 는 국내 46건 실측 **0.0%** 였다.
+
+    한국 상장사가 실제로 쓰는 것은 금융원가(CIS)와 이자지급(CF)이다.
+    이 테스트가 없으면 「계정이 없다」는 잘못된 결론으로 축 하나를 통째로 버린다.
+    """
+    rec = {
+        "stock_code": "005930", "bsns_year": "2022", "fs_div": "CFS",
+        "status": "000",
+        "rows": [
+            _row("CIS", "ifrs-full_FinanceCosts", "금융원가", "500"),
+            _row("CF", "ifrs-full_InterestPaidClassifiedAsOperatingActivities",
+                 "이자지급", "300"),
+        ],
+    }
+    out = f3.normalize(rec)
+    assert out["finance_costs"] == 500
+    assert out["interest_paid_cf"] == 300
+    assert out["interest_expense"] is None   # 국내 태그가 아니다 — None 이 정상
+
+
+def test_cf_only_account_is_not_found_in_income_statements():
+    """CF 전용 항목을 IS/CIS 에서 찾으면 안 된다 — 표 구분이 살아 있어야 한다."""
+    rows = [_row("CF", "ifrs-full_InterestPaidClassifiedAsOperatingActivities",
+                 "이자지급", "300")]
+    assert f3.pick_account(rows, ("IS", "CIS"),
+                           ("ifrs-full_InterestPaidClassifiedAsOperatingActivities",),
+                           ("이자지급",)) is None
+
+
 def test_normalize_missing_account_is_none():
     rec = {
         "stock_code": "005930", "bsns_year": "2022", "fs_div": "CFS",

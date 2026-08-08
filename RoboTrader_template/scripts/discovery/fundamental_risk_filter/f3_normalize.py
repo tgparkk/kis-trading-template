@@ -40,6 +40,20 @@ SPECS = (
      ("영업이익", "영업손실")),
     ("interest_expense",   ("IS", "CIS"),  ("ifrs-full_InterestExpense",),
      ("이자비용",)),
+    # 🔑 2026-08-08 실측(국내 46건): `ifrs-full_InterestExpense` 는 **0.0%** 다.
+    #    한국 상장사는 그 태그를 쓰지 않는다. 실제로 쓰는 것은 아래 둘이다 —
+    #      ifrs-full_FinanceCosts(금융원가·CIS)                     39/46 = **84.8%**
+    #      ifrs-full_InterestPaid...OperatingActivities(이자지급·CF) 42/46 = **91.3%**
+    #    ⇒ ***「계정이 없다」가 아니라 「없는 이름을 찾고 있었다」였다.***
+    #    둘 다 담고 사전등록에서 고른다(재파생은 DART 호출 0건이라 공짜다).
+    #    ⚠️ 금융원가는 이자 외에 환손실·파생손실을 포함해 분모를 **과대**하게 만든다
+    #       ⇒ 이자보상배율을 **과소** 추정 ⇒ 배제 필터에서는 **보수적인 방향**이다.
+    #    ⚠️ 이자지급(CF)은 현금주의라 발생주의 분자(영업이익)와 기준이 다르다.
+    ("finance_costs",      ("IS", "CIS"),  ("ifrs-full_FinanceCosts",),
+     ("금융원가", "금융비용")),
+    ("interest_paid_cf",   ("CF",),
+     ("ifrs-full_InterestPaidClassifiedAsOperatingActivities",),
+     ("이자지급",)),
 )
 
 
