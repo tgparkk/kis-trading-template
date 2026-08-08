@@ -933,20 +933,35 @@ def test_pick_account_prefers_account_id_over_name():
         _row("BS", "ifrs-full_Equity", "자본총계합계", "500"),
         _row("BS", "", "자본총계", "999"),
     ]
-    got = f3.pick_account(rows, "BS", ("ifrs-full_Equity",), ("자본총계",))
+    got = f3.pick_account(rows, ("BS",), ("ifrs-full_Equity",), ("자본총계",))
     assert got == 500
 
 
 def test_pick_account_falls_back_to_name_hint():
     rows = [_row("BS", "", "자본총계", "777")]
-    got = f3.pick_account(rows, "BS", ("ifrs-full_Equity",), ("자본총계",))
+    got = f3.pick_account(rows, ("BS",), ("ifrs-full_Equity",), ("자본총계",))
     assert got == 777
 
 
 def test_pick_account_respects_sj_div():
     """같은 이름이 재무상태표와 손익계산서에 다 있을 수 있다."""
     rows = [_row("IS", "", "자본총계", "111")]
-    assert f3.pick_account(rows, "BS", (), ("자본총계",)) is None
+    assert f3.pick_account(rows, ("BS",), (), ("자본총계",)) is None
+
+
+def test_operating_income_found_in_cis_only():
+    """🔴 단일 포괄손익계산서만 낸 회사는 영업이익이 CIS 에만 있다.
+
+    「IS」로만 찾으면 그 회사들이 조용히 결측이 되고, 커버리지 표에서
+    「계정이 원래 없다」로 오독된다 — 실제로는 우리가 안 본 것이다.
+    """
+    rec = {
+        "stock_code": "005930", "bsns_year": "2022", "fs_div": "CFS",
+        "status": "000",
+        "rows": [_row("CIS", "dart_OperatingIncomeLoss", "영업이익", "1234")],
+    }
+    out = f3.normalize(rec)
+    assert out["operating_income"] == 1234
 
 
 def test_normalize_missing_account_is_none():
@@ -1005,17 +1020,22 @@ COVERAGE_TXT = os.path.join(OUT_DIR, "f3_coverage.txt")
 
 _NUM_RE = re.compile(r"^-?[\d,]+$")
 
-# (필드, sj_div, account_id 후보, 계정명 힌트)
+# (필드, sj_div 후보들, account_id 후보, 계정명 힌트)
+# 🔴 손익 항목의 sj_div 는 ("IS","CIS") 둘 다 받아야 한다.
+#    DART 의 sj_div 는 BS(재무상태표)·IS(손익계산서)·CIS(포괄손익계산서)·CF·SCE 인데,
+#    한국 상장사 상당수가 «단일 포괄손익계산서»만 제출해 영업이익이 CIS 에만 있다.
+#    "IS" 로만 찾으면 그 회사들의 operating_income 이 조용히 None 이 되고,
+#    커버리지 표에서 「계정이 원래 없다」로 오독된다.
 SPECS = (
-    ("total_equity",       "BS", ("ifrs-full_Equity",),
+    ("total_equity",       ("BS",),        ("ifrs-full_Equity",),
      ("자본총계",)),
-    ("issued_capital",     "BS", ("ifrs-full_IssuedCapital",),
+    ("issued_capital",     ("BS",),        ("ifrs-full_IssuedCapital",),
      ("자본금",)),
-    ("total_liabilities",  "BS", ("ifrs-full_Liabilities",),
+    ("total_liabilities",  ("BS",),        ("ifrs-full_Liabilities",),
      ("부채총계",)),
-    ("operating_income",   "IS", ("dart_OperatingIncomeLoss",),
+    ("operating_income",   ("IS", "CIS"),  ("dart_OperatingIncomeLoss",),
      ("영업이익", "영업손실")),
-    ("interest_expense",   "IS", ("ifrs-full_InterestExpense",),
+    ("interest_expense",   ("IS", "CIS"),  ("ifrs-full_InterestExpense",),
      ("이자비용",)),
 )
 
@@ -1044,9 +1064,12 @@ def rcept_dt_from(rows):
     return None
 
 
-def pick_account(rows, sj_div, account_ids, name_hints):
-    """account_id 우선, 없으면 계정명 힌트. sj_div 가 다르면 보지 않는다."""
-    cand = [r for r in rows if str(r.get("sj_div") or "") == sj_div]
+def pick_account(rows, sj_divs, account_ids, name_hints):
+    """account_id 우선, 없으면 계정명 힌트. sj_divs 밖의 표는 보지 않는다.
+
+    sj_divs 는 튜플이다 — 손익 항목은 ("IS","CIS") 처럼 둘 이상을 받는다.
+    """
+    cand = [r for r in rows if str(r.get("sj_div") or "") in sj_divs]
     for aid in account_ids:
         for r in cand:
             if str(r.get("account_id") or "").strip() == aid:
@@ -1071,8 +1094,8 @@ def normalize(rec):
         "rcept_dt": rcept_dt_from(rows),
         "fs_div": rec.get("fs_div"),
     }
-    for field, sj_div, aids, hints in SPECS:
-        out[field] = pick_account(rows, sj_div, aids, hints)
+    for field, sj_divs, aids, hints in SPECS:
+        out[field] = pick_account(rows, sj_divs, aids, hints)
     return out
 
 
@@ -1118,7 +1141,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/test_normalize.py -v`
-Expected: PASS (9 passed)
+Expected: PASS (10 passed)
 
 - [ ] **Step 5: 파일럿 50건으로 커버리지를 본다**
 
