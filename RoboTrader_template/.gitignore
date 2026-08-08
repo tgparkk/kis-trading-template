@@ -234,3 +234,18 @@ reports/discovery/timing_lab/*.parquet
 # venv 백업·임시 작업 디렉토리 (git add -A 가드)
 venv_broken_quantcopy/
 scratchpad/
+# 예외: fund_pit 진단 리포트는 「사전등록이 무엇을 근거로 썼는지」의 증거라 커밋한다
+# (설계 스펙 §3: "커밋 해시가 증거다"). 나머지 scratchpad/fund_pit/ 산출물(parquet 등)은
+# 재생성 가능한 대용량이라 계속 무시한다.
+# 🔴 git 규칙상 부모 디렉토리가 통째 제외되면(위 `scratchpad/`) 자식을 「!」로 되살릴 수
+#    없다 — 디렉토리 자체를 먼저 되살리고, 그 안을 다시 통째 제외한 뒤, 파일 하나만
+#    다시 되살이는 4단 사슬이 필요하다(`!scratchpad/fund_pit/` 단독으로는 안 먹는다 —
+#    `git status --ignored -uall` 로 직접 확인함. `git check-ignore -v` 의 종료코드는
+#    부정(!) 패턴이 매치돼도 0을 반환해 「무시됨」처럼 보이므로 검증 수단으로 쓰지 말 것 —
+#    진짜 판정은 `git check-ignore`(옵션 없이, 출력 없음+exit 1 = 무시 안 됨) 또는
+#    `git status --ignored` 로 한다).
+!scratchpad/
+scratchpad/*
+!scratchpad/fund_pit/
+scratchpad/fund_pit/*
+!scratchpad/fund_pit/frf_panel_report.txt
