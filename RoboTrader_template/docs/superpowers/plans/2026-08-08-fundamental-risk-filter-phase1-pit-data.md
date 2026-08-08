@@ -1557,10 +1557,13 @@ git commit -m "feat(fund-pit): 신규 테이블 적재 — daily_prices 불변�
 
 **Interfaces:**
 - Consumes: 없음(순수 함수)
-- Produces: `asof_financials(records: list[dict], as_of: str) -> dict | None`
-  - `records` 원소는 `{"bsns_year","rcept_dt", ...}`
-  - `as_of` 는 `'YYYY-MM-DD'`
-  - **`rcept_dt <= as_of` 인 것 중 `rcept_dt` 가 가장 늦은 행**을 돌려준다
+- Produces:
+  - `_daystr(v) -> str | None` — `'YYYY-MM-DD'` 정규화. `datetime.date` 도 받는다
+  - `asof_financials(records, as_of) -> dict | None`
+    - `records` 원소는 `{"bsns_year","rcept_dt", ...}`
+    - `as_of` 는 `'YYYY-MM-DD'` **또는 `datetime.date`**
+    - **`rcept_dt <= as_of` 인 것 중 `rcept_dt` 가 가장 늦은 행**을 돌려준다
+    - 동률이면 **`bsns_year` 가 큰 쪽** (정정공시·재제출 대비, 입력 순서 무관)
 
 **🔑 이 태스크가 이 계획의 핵심 안전장치다.** 스펙 §2 전체가 이 한 줄의 정확성에 걸려 있다. 여기가 틀리면 look-ahead 가 조용히 들어오고, 그러면 이후 모든 검정 결과가 무효다.
 
@@ -1632,6 +1635,27 @@ def test_later_fiscal_year_filed_earlier_does_not_win_by_year():
 
 def test_empty_records_returns_none():
     assert pj.asof_financials([], "2023-01-01") is None
+
+
+def test_same_rcept_dt_breaks_tie_by_fiscal_year_deterministically():
+    """🔴 정정공시·재제출이 같은 날 들어올 수 있다. 입력 순서로 답이 바뀌면 안 된다."""
+    a = {"bsns_year": "2021", "rcept_dt": "2022-03-22", "total_equity": 1}
+    b = {"bsns_year": "2022", "rcept_dt": "2022-03-22", "total_equity": 2}
+    assert pj.asof_financials([a, b], "2023-01-01")["bsns_year"] == "2022"
+    assert pj.asof_financials([b, a], "2023-01-01")["bsns_year"] == "2022"
+
+
+def test_accepts_date_objects_not_just_strings():
+    """🔴 적재 테이블의 rcept_dt 는 DATE 컬럼이라 psycopg2 가 date 를 돌려준다.
+
+    문자열만 받으면 「JSONL 로 읽으면 되고 DB 로 읽으면 TypeError」가 된다.
+    """
+    from datetime import date
+    recs = [{"bsns_year": "2020", "rcept_dt": date(2021, 3, 19), "total_equity": 200}]
+    got = pj.asof_financials(recs, date(2021, 6, 30))
+    assert got["bsns_year"] == "2020"
+    # 경계도 date 로 확인 — 하루 전에는 안 보여야 한다
+    assert pj.asof_financials(recs, date(2021, 3, 18)) is None
 ```
 
 - [ ] **Step 2: 테스트가 실패하는지 확인한다**
@@ -1654,29 +1678,49 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'pit_join'`
 """
 
 
+def _daystr(v):
+    """'YYYY-MM-DD' 로 정규화. datetime.date 도 받는다.
+
+    🔴 이게 필요한 이유: 적재 테이블의 `rcept_dt` 는 DATE 컬럼이라 psycopg2 가
+       `datetime.date` 로 돌려준다. 반면 정규화 JSONL 에서 읽으면 문자열이다.
+       섞이면 파이썬 3 에서 date 와 str 비교가 **TypeError** 로 죽는다 —
+       조용히 틀리지는 않지만, 소비자가 어디서 읽느냐에 따라 터진다.
+    """
+    if v is None:
+        return None
+    return str(v)[:10]
+
+
 def asof_financials(records, as_of):
-    """rcept_dt <= as_of 인 것 중 rcept_dt 가 가장 늦은 레코드. 없으면 None."""
+    """rcept_dt <= as_of 인 것 중 rcept_dt 가 가장 늦은 레코드. 없으면 None.
+
+    동률(같은 날 접수)이면 **사업연도가 큰 쪽**을 고른다 — 정정공시·재제출이
+    같은 날짜로 들어올 수 있고, 입력 순서에 따라 답이 바뀌면 안 된다.
+    """
+    as_of = _daystr(as_of)
     best = None
+    best_key = None
     for r in records:
-        dt = r.get("rcept_dt")
+        dt = _daystr(r.get("rcept_dt"))
         if not dt:
             continue  # 언제 공개됐는지 모르는 값은 쓸 수 없다
         if dt > as_of:
             continue
-        if best is None or dt > best["rcept_dt"]:
-            best = r
+        key = (dt, str(r.get("bsns_year") or ""))
+        if best_key is None or key > best_key:
+            best, best_key = r, key
     return best
 ```
 
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/test_pit_join.py -v`
-Expected: PASS (8 passed)
+Expected: PASS (10 passed)
 
 - [ ] **Step 5: 패키지 전체 테스트를 돌린다**
 
 Run: `python -m pytest tests/discovery/fundamental_risk_filter/ -v`
-Expected: PASS (49 passed) — T1 11 · T2 5 · T3 9 · T4 14 · T5 6 · T6 8
+Expected: PASS (59 passed) — T1 11 · T2 5 · T3 9 · T4 14 · T5 8 · T6 10
 
 ⚠️ 개수는 수정 라운드에서 늘어난 실측값이다. 계획 초판(42)이 아니라 이 값을 쓸 것.
 
