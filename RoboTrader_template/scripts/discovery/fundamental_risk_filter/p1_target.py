@@ -4,8 +4,12 @@
 
 🔴 윈도우는 «전체 이력»에서 계산한 뒤 타겟 창으로 자른다. 먼저 자르면
    창 끝 근처 관측의 전방 60일이 사라진다.
-🔴 부분 창(fwd_n < 60)은 폭락률을 과소 측정하므로 «표시»한다. 버리지 않는 이유는
-   어느 관측이 왜 빠졌는지가 기록이어야 하기 때문이다.
+🔴 부분 창(fwd_n < 60)은 «다른 처치»를 받은 관측이라 배제 대상이다.
+   실측(2026-08-08): 부분 창의 폭락률이 33~67% 로 기저의 3~5배다 —
+   부분 창은 종목 이력 끝에 몰려 있고 그 자리는 상장폐지·거래정지
+   직전이라 실제로 폭락 중이다. 즉 「짧아서 과소 측정」이 아니라
+   「폭락 중인 종목에 선택적으로 몰려 있다」가 맞다.
+   버리지 않고 표시하는 이유는 어느 관측이 왜 빠졌는지가 기록이어야 하기 때문이다.
 ⚠️ `daily_prices.date` 는 TEXT 다. 문자열로 비교한다.
 ⚠️ `adj_factor` 를 곱하지 않는다 — close 는 이미 분할조정 연속시세다.
 
@@ -81,7 +85,7 @@ def main():
     full = df[df["window_full"]]
     partial = df[~df["window_full"]]
     yr_full = full.assign(y=full["date"].str[:4]).groupby("y")["crash"].agg(["size", "mean"])
-    yr_partial = partial.assign(y=partial["date"].str[:4]).groupby("y").size()
+    yr_partial_stats = partial.assign(y=partial["date"].str[:4]).groupby("y")["crash"].agg(["size", "mean"])
 
     print(f"관측 {len(df):,} · 종목 {df['stock_code'].nunique():,} "
           f"· 창 완결 {len(full):,} ({100*len(full)/len(df):.2f}%)")
@@ -90,12 +94,14 @@ def main():
     for y, row in yr_full.iterrows():
         print(f"  {y}  n={int(row['size']):>9,}  {100*row['mean']:6.2f}%")
     print()
-    print("부분 창 분포:")
+    print("부분 창 분포 (n · 비율 · 폭락률):")
     for y in sorted(yr_full.index):
-        n_partial = yr_partial.get(y, 0)
-        n_total = int(yr_full.loc[y, "size"]) + n_partial
-        pct = 100 * n_partial / n_total if n_total > 0 else 0
-        print(f"  {y}  n={int(n_partial):>9,}  ({pct:5.2f}%)")
+        n_full = int(yr_full.loc[y, "size"])
+        n_partial = yr_partial_stats.loc[y, "size"] if y in yr_partial_stats.index else 0
+        n_total = n_full + int(n_partial)
+        pct_partial = 100 * int(n_partial) / n_total if n_total > 0 else 0
+        crash_rate_partial = 100 * yr_partial_stats.loc[y, "mean"] if y in yr_partial_stats.index else 0
+        print(f"  {y}  n={int(n_partial):>9,}  ({pct_partial:5.2f}%)  {crash_rate_partial:6.2f}%")
     print()
     print("🔑 2021~2025 는 관리자 실측(6.97 / 13.11 / 7.08 / 12.25 / 5.92)과")
     print("   ±0.15%p 안에서 일치해야 한다. 벗어나면 창 정의가 어긋난 것이다.")
