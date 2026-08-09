@@ -187,6 +187,17 @@ backtest/tasso_labels/harvest/claims_cat2829_quoted.csv
 #       근거 인용이 그대로 커밋 대상이 된다. 공개판은 img_claims_28_29.csv 이며
 #       거기에는 값이 아니라 «무엇에 관한 항목인가»(topic) 만 있다.
 backtest/tasso_labels/harvest/img_claims_28_29_quoted.csv
+# 🔴 [1]·[35] 초기 매매일지 전수 수집(2026-08-09)도 **같은 2층 경계**를 쓴다.
+#    ⚠️ 실측: 이 줄들이 없으면 posts_early/*.html 5.0MB + text_early/*.txt 405KB 가
+#       그대로 커밋 대상이 된다(`git check-ignore -q` 가 NOT_IGNORED 였다).
+#       posts28/·text28/ 를 막은 줄은 **이름이 달라서 안 걸린다** — 디렉토리를 새로
+#       만들 때마다 이 규약을 손으로 이어 붙여야 한다는 뜻이고, 그게 이 파일의 관례다.
+backtest/tasso_labels/harvest/posts_early/
+backtest/tasso_labels/harvest/text_early/
+# 🔴 항목 줄 원문(`line` 열)이 든 판본은 되살리지 않는다 — claims_cat2829_quoted.csv 와 동일 사유.
+#    공개판은 journal_items_early.csv(구조화 필드만: 종목·기법·수익률 수치)이며
+#    위 `!harvest/*.csv` 로 이미 추적된다.
+backtest/tasso_labels/harvest/journal_items_early_quoted.csv
 # 🔴 판독·판정 원본 JSONL — claims_batches/ 와 같은 사유(화면 문자열 원문이 들어 있다).
 #    `*.jsonl` 을 범용으로 막지 않는다: 그 패턴이 우리 산출물을 삼킨 사고가 이 저장소에
 #    다섯 번 있었고, 그래서 이 파일은 **이름 열거 + `!` 예외** 관례를 쓴다.
@@ -199,6 +210,11 @@ backtest/tasso_labels/harvest/img_readings/
 #   c_rate_by_year.log       = 연도 층화 근거를 깎은 부트스트랩 CI 의 유일한 근거
 !backtest/tasso_labels/harvest/survivorship_recount.log
 !backtest/tasso_labels/harvest/c_rate_by_year.log
+#   journal_recall_early.log = 초기 매매일지 원장의 **회수율 게이트 유일한 근거**.
+#   ⚠️ 이 로그가 없으면 「309항목」이 전수인지 확인할 방법이 저장소에 남지 않는다.
+#      실제로 이 게이트가 `2, SKC`(마침표 대신 쉼표) 한 줄을 잡았고, 없었으면 308행으로
+#      초록불이었다. 숫자표·제목뿐이고 본문 인용은 없다.
+!backtest/tasso_labels/harvest/journal_recall_early.log
 # 🔴 가격 wide 캐시(32MB)는 DB 에서 power/step1_freeze_and_data.py 로 재생성되는 중간물 — 커밋 금지.
 backtest/tasso_labels/power/*.npz
 *.xlsx
