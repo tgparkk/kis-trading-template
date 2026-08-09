@@ -34,6 +34,36 @@ def get_inquire_price(div_code: str = "J", itm_no: str = "", tr_cont: str = "",
         return None
 
 
+def get_stock_basic_info(stock_code: str) -> Optional[Dict[str, Any]]:
+    """종목 기본정보 조회 (거래정지·VI·관리종목·정리매매 판별용).
+
+    inquire-price(FHKST01010100) 응답의 output 1행을 dict 로 반환한다.
+    안전필터(core.candidate_selector._get_stock_safety_info)와 라이브 VI 가드
+    (core.trading_context)가 이 함수를 import 해서 쓴다.
+
+    ⚠️ 이 심볼을 지우거나 이름을 바꾸지 말 것. 과거 호출부만 있고 이 함수가
+    없어서 ImportError 가 호출부의 try/except 에 삼켜졌고, 그 결과 안전필터가
+    수개월간 전건 통과였다(로그에도 안 보였다).
+    tests/test_candidate_filter_unsafe.py 의 계약 테스트가 import 가능성을 고정한다.
+
+    Returns:
+        응답 1행 dict. 응답 없음/빈 응답이면 None.
+        ⚠️ dict 를 받았다고 «정상 종목»이 아니다 — 실측상 비거래 종목 5개는
+        mang_issu_cls_code/sltr_yn 등이 통째로 빠진 빈껍데기 dict 를 돌려준다.
+    """
+    # kis_auth._url_fetch 가 이미 60ms 최소간격 + 유량제한 재시도를 강제하므로
+    # 여기서 별도 sleep 을 넣지 않는다.
+    try:
+        df = get_inquire_price(div_code="J", itm_no=stock_code)
+        if df is None or df.empty:
+            logger.warning(f"종목 기본정보 조회 실패: {stock_code}")
+            return None
+        return df.iloc[0].to_dict()
+    except Exception as e:
+        logger.error(f"종목 기본정보 조회 오류 ({stock_code}): {e}")
+        return None
+
+
 def get_chk_holiday(bass_dt: str, tr_cont: str = "", FK: str = "", NK: str = "") -> Optional[list]:
     """국내휴장일조회 (CTCA0903R). bass_dt(YYYYMMDD) 기준 24일치 캘린더 리스트 반환, 실패 시 None."""
     url = '/uapi/domestic-stock/v1/quotations/chk-holiday'

@@ -404,8 +404,14 @@ class TradingContext:
                         stock_code, _vi_info if isinstance(_vi_info, dict) else None, cb_state
                     )
             except Exception as _vi_err:
-                # 라이브 VI 조회 실패는 매수를 막지 않는다(보수적 통과)
-                self.logger.debug(f"{stock_code} 라이브 VI 조회 실패(가드 스킵): {_vi_err}")
+                # 라이브 VI 조회 실패는 매수를 막지 않는다(보수적 통과 — 매수는 계속된다).
+                # ⚠️ debug 가 아니라 WARNING 이다. 이 예외가 debug 로 묻히는 바람에
+                #    공급자(get_stock_basic_info) 부재로 VI 가드가 통째로 no-op 이던
+                #    사실이 수개월간 로그에 한 줄도 안 남았다. 예외 시에만 찍히므로
+                #    정상일 땐 조용하다.
+                self.logger.warning(
+                    f"{stock_code} VI 가드 미적용(종목정보 조회 실패 → 가드 없이 매수 진행): {_vi_err}"
+                )
 
             # 개별 종목 VI 발동 시 매수 스킵
             if cb_state.is_vi_active(stock_code):

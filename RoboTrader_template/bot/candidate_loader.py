@@ -25,12 +25,17 @@ class CandidateLoader:
         _candidates_loaded 플래그와 재시도 카운터를 리셋한 뒤
         즉시 _load_screener_candidates()를 호출합니다.
 
+        안전정보 메모 캐시도 함께 비웁니다. 비우지 않으면 09:00 에 내린
+        거래정지·관리종목 판정을 그대로 재사용해, 재로드했는데도 그 사이 지정된
+        종목이 후보로 살아남습니다(장중 재로드의 목적 자체를 깨뜨림).
+
         # TODO: 텔레그램 /reload 명령어에서 이 메서드를 호출하도록 연결
         #        (core/telegram_integration.py 의 커맨드 핸들러 추가 필요)
         """
         self.logger.info("후보 종목 재로드 요청")
         self._bot._candidates_loaded = False
         self._bot._candidate_load_retries = 0
+        self._bot.candidate_selector.clear_safety_cache()
         await self._load_screener_candidates()
 
     async def _load_screener_candidates(self):

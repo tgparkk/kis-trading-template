@@ -1,0 +1,113 @@
+{
+  "_meta": {
+    "source": "KIS inquire-price FHKST01010100 실응답 전수 채록",
+    "recorded": "2026-08-09",
+    "universe": 2574,
+    "purpose": "코드 주석·docstring 이 인용하는 headline 카운트(122/116/43/2566/1584/44)를 재현 가능하게 만든다. 원본 2,574행(scratchpad/sweep_setC.json, 948KB)은 리포지토리에 넣지 않으므로 이 집계표가 그 자리를 대신한다.",
+    "excerpt_consistency": "kis_stock_basic_info_recorded.json 의 18행이 원본과 필드 단위로 100% 일치함을 생성 시점에 확인(18/18).",
+    "absent_marker": "<absent>",
+    "note": "손으로 고치지 말 것 — 원본 채록에서 집계한 표다."
+  },
+  "observed_fields": [
+    "clpr_rang_cont_yn",
+    "code",
+    "invt_caful_yn",
+    "iscd_stat_cls_code",
+    "mang_issu_cls_code",
+    "mrkt_warn_cls_code",
+    "name",
+    "oprc_rang_cont_yn",
+    "ovtm_vi_cls_code",
+    "short_over_yn",
+    "sltr_yn",
+    "ssts_yn",
+    "temp_stop_yn",
+    "vi_cls_code"
+  ],
+  "field_value_counts": {
+    "clpr_rang_cont_yn": {
+      "N": 2574
+    },
+    "invt_caful_yn": {
+      "N": 2569,
+      "<absent>": 5
+    },
+    "iscd_stat_cls_code": {
+      "57": 1584,
+      "55": 776,
+      "58": 122,
+      "51": 43,
+      "54": 33,
+      "53": 9,
+      "00": 5,
+      "59": 2
+    },
+    "mang_issu_cls_code": {
+      "N": 2453,
+      "Y": 116,
+      "<absent>": 5
+    },
+    "mrkt_warn_cls_code": {
+      "00": 2525,
+      "01": 35,
+      "02": 9,
+      "<absent>": 5
+    },
+    "oprc_rang_cont_yn": {
+      "N": 2574
+    },
+    "ovtm_vi_cls_code": {
+      "N": 2574
+    },
+    "short_over_yn": {
+      "N": 2572,
+      "Y": 2
+    },
+    "sltr_yn": {
+      "N": 2568,
+      "<absent>": 5,
+      "Y": 1
+    },
+    "ssts_yn": {
+      "Y": 2566,
+      "<absent>": 5,
+      "N": 3
+    },
+    "temp_stop_yn": {
+      "N": 2574
+    },
+    "vi_cls_code": {
+      "N": 2574
+    }
+  },
+  "derived": {
+    "iscd_stat_cls_code_58_거래정지": 122,
+    "iscd_stat_cls_code_51_관리종목슬롯": 43,
+    "iscd_stat_cls_code_57_증거금100": 1584,
+    "iscd_stat_cls_code_not_55": 1798,
+    "mang_issu_cls_code_Y_관리종목": 116,
+    "sltr_yn_Y_정리매매": 1,
+    "ssts_yn_Y_공매도가능": 2566,
+    "mrkt_warn_cls_code_non_00_시장경고": 44,
+    "vi_cls_code_Y_관측": 0,
+    "temp_stop_yn_Y_관측": 0,
+    "iscd51_is_strict_subset_of_mang_Y": true,
+    "mang_Y_missed_if_using_iscd51": 73,
+    "empty_shell_codes": [
+      "012510",
+      "057050",
+      "060240",
+      "203690",
+      "222160"
+    ]
+  },
+  "absent_field_names": {
+    "note": "옛 구현이 읽던 이름들. 전 유니버스 2,574행 어디에도 나타나지 않는다.",
+    "names": [
+      "mang_issu_yn",
+      "ssts_hot_yn",
+      "mrkt_trtm_cls_code",
+      "stat_cls_code"
+    ]
+  }
+}

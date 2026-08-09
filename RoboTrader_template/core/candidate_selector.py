@@ -48,6 +48,9 @@ class CandidateSelector:
         self.logger = setup_logger(__name__)
         self.stock_list_file = Path(__file__).parent.parent / "stock_list.json"
         self.screener_data_dir = Path(__file__).parent.parent / "data"
+        # 종목 안전정보 메모 캐시 (인스턴스 단위, 후보 선정 경로 전용).
+        # 전략 8개가 같은 코드를 각각 조회하는 것을 막는다.
+        self._safety_info_cache: Dict[str, Optional[Dict]] = {}
         self.selection_stats = {
             'total_analyzed': 0, 'passed_basic_filter': 0,
             'passed_detailed_analysis': 0, 'final_selected': 0,
@@ -80,13 +83,15 @@ class CandidateSelector:
             self.selection_stats['passed_basic_filter'] = len(filtered)
             self.logger.info(f"필터링: {len(raw_candidates)}건 → {len(filtered)}건")
 
-            # 3. 스코어 정렬 후 상위 N개 선정
+            # 3. 스코어 정렬
+            # ⚠️ 여기서 max_candidates 로 자르지 않는다. 자른 뒤 안전필터를 걸면
+            #    상위권에 거래정지·관리종목이 끼어 있을 때 슬롯이 그냥 사라진다.
+            #    아래 5번에서 limit= 로 지연 필터링해 스코어 순서대로 채운다.
             filtered.sort(key=lambda x: x['score'], reverse=True)
-            selected_data = filtered[:max_candidates]
 
             # 4. CandidateStock 변환
             candidates = []
-            for item in selected_data:
+            for item in filtered:
                 candidate = CandidateStock(
                     code=item['code'],
                     name=item['name'],
@@ -97,8 +102,9 @@ class CandidateSelector:
                 )
                 candidates.append(candidate)
 
-            # 5. 안전성 필터 (거래정지·VI·관리종목·단일가매매)
-            candidates = self._filter_unsafe_stocks(candidates)
+            # 5. 안전성 필터 (거래정지·VI·관리종목·정리매매) — 지연 필터링으로
+            #    «안전한» 후보가 max_candidates 개 모일 때까지만 조회한다.
+            candidates = self._filter_unsafe_stocks(candidates, limit=max_candidates)
 
             # 6. 손실 블랙리스트 (최근 5영업일 손실 + 연속 3회 손실)
             candidates = self._apply_loss_blacklist(candidates)
@@ -484,109 +490,259 @@ class CandidateSelector:
         return safe
 
     # =========================================================================
-    # 안전성 필터 (D1: VI/거래정지/관리종목/단일가매매)
+    # 안전성 필터 (거래정지·VI·관리종목·정리매매)
+    #
+    # 값 계약은 2026-08-09 에 KIS inquire-price(FHKST01010100) 를 전 유니버스
+    # 2,574종목에 대해 실측한 결과다. 문서/기억이 아니라 이 실측이 SSOT.
+    #
+    #   거래정지 : iscd_stat_cls_code == '58'   (122종목 — 전건 거래량 0으로 교차확인,
+    #                                            정상 대조군 400종목은 0/400)
+    #   관리종목 : mang_issu_cls_code == 'Y'    (116종목)
+    #   정리매매 : sltr_yn == 'Y'               (1종목, 043090)
+    #   VI       : vi_cls_code == 'Y'           (🔴'N' 미발동만 2,574/2,574 관측.
+    #                                            'Y'=발동은 **미관측 추정** — 아래 참조)
+    #   임시정지 : temp_stop_yn == 'Y'
+    #
+    # ⚠️ 「고쳐서」 되돌리지 말 것 — 아래는 전부 실측으로 확인된 지뢰다:
+    #   1. ssts_hot_yn 은 **존재하지 않는 필드**다. 이름이 비슷한 ssts_yn 은
+    #      «공매도가능여부»로 2,566/2,574(삼성전자 포함)가 'Y' — 이걸 정리매매로
+    #      쓰면 시장 거의 전체가 배제된다. 정리매매는 sltr_yn 이다.
+    #   2. mang_issu_yn 도 존재하지 않는 필드다. 실재는 mang_issu_cls_code.
+    #   3. iscd_stat_cls_code 는 비트마스크가 아니라 **단일 슬롯**이다.
+    #      '51'(관리종목) 은 {mang_issu_cls_code=='Y'} 의 진부분집합(43 ⊊ 116)이라
+    #      '51'로 관리종목을 판별하면 116 중 73을 놓친다. SSOT 는 mang_issu_cls_code.
+    #   4. iscd_stat_cls_code != '55' 를 이상으로 보면 안 된다. 1,798/2,574 가
+    #      '55'가 아니면서 정상 거래된다('57' 증거금100% 만 1,584종목).
+    #
+    # 배제 범위는 사장님 결정(2026-08-09)으로 «주문 가능 여부»에 한정한다.
+    # 시장경고(mrkt_warn_cls_code)·투자유의(invt_caful_yn)는 알파 주장이지
+    # 주문 적격성이 아니므로 **배제 사유가 아니다**(로그로만 남긴다).
     # =========================================================================
 
+    #: 빈껍데기(판정불가) 응답 식별용 결정 필드. 실측상 비거래 5종목은 이 4개가
+    #: 통째로 빠진 dict 를 돌려준다(name 도 ' ').
+    _DECISIVE_INFO_FIELDS = ('mang_issu_cls_code', 'sltr_yn', 'invt_caful_yn', 'ssts_yn')
+
+    #: 판정불가 비율이 이 값을 넘으면 «개별 종목 이상»이 아니라 응답 스키마 변경을
+    #: 의심해야 한다. 작은 풀에서 오경보가 나지 않도록 최소 건수 조건을 함께 건다.
+    _UNDECIDABLE_ALERT_RATIO = 0.2
+    _UNDECIDABLE_ALERT_MIN = 3
+
+    @staticmethod
+    def _field(info: Dict, key: str) -> str:
+        """응답 필드를 공백 제거·대문자 정규화한 문자열로 읽는다(부재/None → '').
+
+        ⚠️ .strip() 과 .upper() 를 빼지 말 것. KIS 는 값에 공백을 붙여 보낸다
+        (채록본의 빈껍데기 응답은 name 이 ' ' 다). 정규화를 지워도 오늘의 테스트가
+        전부 통과하는 구멍이 있었으므로 tests 에 (\"Y\", \"Y \", \" Y\", \"y\") 파라미터
+        테스트를 고정해 뒀다.
+
+        NaN 도 «값 없음»으로 본다 — pandas 경유(df.iloc[0].to_dict())로 들어오면
+        결측이 None 이 아니라 NaN 이라, 안 막으면 'NAN' 이라는 «판정 가능한 정상값»
+        으로 읽혀 「모른다」가 「안전」으로 접힌다.
+        """
+        value = info.get(key)
+        if value is None or value != value:  # None 또는 NaN
+            return ''
+        return str(value).strip().upper()
+
     def _get_stock_safety_info(self, code: str) -> Optional[Dict]:
-        """KIS API 종목 기본정보 조회 (거래정지·VI·관리종목 판별용).
+        """KIS API 종목 기본정보 조회 (거래정지·VI·관리종목·정리매매 판별용).
 
         실패 시 None 반환 — 호출부에서 보수적 통과(false negative 허용) 처리.
+
+        ⚠️ import 실패는 WARNING 으로 올린다. 이 함수가 부르는
+        api.kis_market_api.get_stock_basic_info 가 **아예 없던 시절**에도
+        try/except 가 ImportError 를 삼켜 필터 전체가 조용히 무효였다.
+        보이지 않는 실패가 결함의 본체였으므로 debug 로 내리지 말 것.
+
+        조회 **성공**만 인스턴스 메모 캐시에 남긴다(8개 전략이 같은 코드를 재조회하는
+        것을 막는다 — 09:00 후보 적재에서 60~110회 호출된다). 캐시는 후보 선정
+        경로 전용이며, 매수 시점 라이브 VI 가드(core.trading_context)는 캐시를
+        거치지 않고 매번 실조회한다.
+
+        ⚠️ 실패(None)는 캐시하지 말 것. 토큰 갱신·유량제한 같은 **일시적** 실패를
+        캐시하면 그 종목은 하루 종일 «판정 불가 → 보수적 통과»로 굳는다. 그러면
+        bot/candidate_loader 의 3회 재시도가 캐시된 None 만 읽어 무의미해지고,
+        관리종목·정리매매는 매수 시점에 재조회하는 2차 방어선이 없어 그대로 통과한다.
         """
+        if code in self._safety_info_cache:
+            return self._safety_info_cache[code]
+
+        info_dict: Optional[Dict] = None
         try:
-            from api.kis_market_api import get_stock_basic_info
+            try:
+                from api.kis_market_api import get_stock_basic_info
+            except Exception as import_err:
+                self.logger.warning(
+                    f"안전필터 무효: api.kis_market_api.get_stock_basic_info import 실패 "
+                    f"({import_err}) — 후보가 전건 통과한다"
+                )
+                raise
+
             info = get_stock_basic_info(code)
-            if info is None:
-                return None
-            if hasattr(info, 'to_dict'):
-                return info.to_dict() if callable(info.to_dict) else dict(info)
-            if hasattr(info, '__dict__'):
-                return info.__dict__
-            if isinstance(info, dict):
-                return info
-            return None
+            if info is not None:
+                if hasattr(info, 'to_dict') and callable(info.to_dict):
+                    info_dict = info.to_dict()
+                elif isinstance(info, dict):
+                    info_dict = info
+                elif hasattr(info, '__dict__'):
+                    info_dict = info.__dict__
         except Exception as e:
-            self.logger.debug(f"{code} 종목정보 조회 실패: {e}")
-            return None
+            self.logger.warning(f"{code} 종목정보 조회 실패(보수적 통과): {e}")
+            info_dict = None
+
+        # 성공만 캐시한다(실패 캐시는 재시도를 무력화한다 — 위 docstring 참조).
+        if info_dict is not None:
+            self._safety_info_cache[code] = info_dict
+        return info_dict
+
+    def clear_safety_cache(self) -> None:
+        """종목 안전정보 메모 캐시를 비운다.
+
+        장중 후보 재로드(bot.candidate_loader.reload_candidates) 시 반드시 호출한다.
+        비우지 않으면 09:00 에 내린 판정을 그대로 다시 내주게 되어, 그 사이 거래정지·
+        관리종목 지정된 종목이 «재로드했는데도» 후보로 살아난다.
+        """
+        cached = len(self._safety_info_cache)
+        self._safety_info_cache.clear()
+        if cached:
+            self.logger.info(f"안전정보 캐시 {cached}건 비움 (재판정)")
+
+    def _is_undecidable(self, info: Dict) -> bool:
+        """판정불가(빈껍데기 응답) 여부.
+
+        실측(2026-08-09): 5종목(012510·057050 등)이 name=' ' 이면서
+        mang_issu_cls_code/sltr_yn/invt_caful_yn/ssts_yn 이 전부 부재한 dict 를
+        돌려줬다. 이들은 «안전»이 아니라 «거래되지 않는» 종목이다.
+
+        info is None(API 실패)과는 다른 경우다 — 그쪽은 보수적 통과, 이쪽은 배제.
+        """
+        if not isinstance(info, dict):
+            return False
+        return all(not self._field(info, f) for f in self._DECISIVE_INFO_FIELDS)
 
     def _is_trading_halted(self, info: Dict) -> bool:
         """거래정지 여부 판별.
 
-        KIS API 응답 필드: iscd_stat_cls_code(종목상태구분코드)
-        - '09': 거래정지  기타 값 = 정상
+        실측 계약: iscd_stat_cls_code == '58'(거래정지) 또는 temp_stop_yn == 'Y'(임시정지).
+        ❌ '09' 가 아니다(전 유니버스에서 관측되지 않는 값).
+        ❌ '55'가 아닌 값 = 이상, 도 아니다('57' 증거금100%가 1,584종목으로 최다).
         """
         if not info:
             return False
-        stat = str(info.get('iscd_stat_cls_code', '') or info.get('stat_cls_code', '') or '')
-        return stat == '09'
+        if self._field(info, 'iscd_stat_cls_code') == '58':
+            return True
+        return self._field(info, 'temp_stop_yn') == 'Y'
 
     def _is_vi_active(self, info: Dict) -> bool:
         """VI(변동성완화장치) 발동 중 여부 판별.
 
-        KIS API 응답 필드: vi_cls_code
-        - '0': 미발동  '1': 정적VI  '2': 동적VI  '3': 동적+정적 모두
+        관측 (2026-08-09, 일요일 채록이라 VI 사건이 있을 수 없는 시각):
+        - vi_cls_code == 'N' 이 2,574/2,574. 즉 **미발동 값만 관측됐다**.
+        - ❌ '1'/'2'/'3'(정적/동적) 코드는 **한 건도 나오지 않았다** — 옛 계약은
+          이 관측으로 확실히 반증된다(그렇게 읽으면 항상 False 라 가드가 no-op).
+
+        🔴 'Y' == 발동 은 **미관측 추정**이다. KIS 필드 명명(다른 _yn/_cls_code 가
+        전부 Y/N)에서 온 추론이지 측정이 아니다. 장중 첫 VI 사건에서 확증할 것.
+        (확증 전까지 이 술어는 «미발동을 미발동으로 판정»하는 것만 검증돼 있다.)
         """
         if not info:
             return False
-        vi = str(info.get('vi_cls_code', '') or '')
-        return vi in ('1', '2', '3')
+        return self._field(info, 'vi_cls_code') == 'Y'
 
-    def _is_managed_stock(self, info: Dict) -> bool:
-        """관리종목·투자주의·소수계좌집중 여부 판별.
+    def _is_managed_issue(self, info: Dict) -> bool:
+        """관리종목 여부 판별.
 
-        KIS API 응답 필드:
-        - mrkt_warn_cls_code: 시장경고구분  '00'=없음 '01'=주의 '02'=경고 '03'=위험예고
-        - invt_caful_yn: 투자유의 여부 ('Y'/'N')
-        - mang_issu_yn: 관리종목 여부 ('Y'/'N')
+        실측 계약: mang_issu_cls_code == 'Y' (116종목). 이것이 관리종목 SSOT 다.
+        ❌ mang_issu_yn 은 존재하지 않는 필드.
+        ❌ iscd_stat_cls_code == '51' 로 대신하면 안 된다 — {51}(43종목)은
+           {mang_issu_cls_code=='Y'}(116종목)의 진부분집합이라 73종목을 놓친다.
+
+        시장경고·투자유의는 여기 포함하지 않는다(사장님 결정: 배제 사유 아님).
         """
         if not info:
             return False
-        warn = str(info.get('mrkt_warn_cls_code', '') or '')
+        return self._field(info, 'mang_issu_cls_code') == 'Y'
+
+    def _is_liquidation_trading(self, info: Dict) -> bool:
+        """정리매매(상장폐지 정리매매) 여부 판별.
+
+        실측 계약: sltr_yn == 'Y' (1종목, 043090 — 이 종목은 mang_issu_cls_code 도 'Y').
+        ⚠️ ssts_yn 을 쓰면 안 된다 — 그건 «공매도가능여부»로 2,566/2,574(삼성전자
+           포함)가 'Y' 라서 시장 전체를 배제한다. 존재하지도 않는 ssts_hot_yn 을
+           보던 옛 구현이 이 함정에 인접해 있었다.
+        ❌ mrkt_trtm_cls_code 는 존재하지 않는 필드라 제거했다.
+        """
+        if not info:
+            return False
+        return self._field(info, 'sltr_yn') == 'Y'
+
+    def _market_warning_note(self, info: Dict) -> str:
+        """시장경고·투자유의를 **로그용 주석 문자열**로만 만든다(배제 사유 아님).
+
+        실측 계약: mrkt_warn_cls_code '00'=없음 '01'=주의 '02'=경고 (44종목),
+        invt_caful_yn 'Y'/'N'. 사장님 결정으로 주문 적격성과 분리했으므로
+        이 값들로 후보를 빼지 않는다. 다만 통과 사실은 눈에 보여야 한다.
+        """
+        if not info:
+            return ''
+        notes = []
+        warn = self._field(info, 'mrkt_warn_cls_code')
         if warn and warn != '00':
-            return True
-        if str(info.get('mang_issu_yn', '') or '') == 'Y':
-            return True
-        if str(info.get('invt_caful_yn', '') or '') == 'Y':
-            return True
-        return False
-
-    def _is_single_price_match(self, info: Dict) -> bool:
-        """단일가매매(정리매매 등) 여부 판별.
-
-        KIS API 응답 필드: ssts_hot_yn (정리매매여부) 또는 mrkt_trtm_cls_code
-        - ssts_hot_yn = 'Y': 단일가(정리매매)
-        """
-        if not info:
-            return False
-        if str(info.get('ssts_hot_yn', '') or '') == 'Y':
-            return True
-        trtm = str(info.get('mrkt_trtm_cls_code', '') or '')
-        return trtm not in ('', '0', '00')
+            notes.append({'01': '시장경고(주의)', '02': '시장경고(경고)'}.get(warn, f'시장경고({warn})'))
+        if self._field(info, 'invt_caful_yn') == 'Y':
+            notes.append('투자유의')
+        return ', '.join(notes)
 
     def _filter_unsafe_stocks(
         self,
         candidates: List[CandidateStock],
         _get_info_fn: Optional[Callable[[str], Optional[Dict]]] = None,
+        limit: Optional[int] = None,
     ) -> List[CandidateStock]:
-        """후보 풀에서 거래정지·VI·관리종목·단일가매매 종목 사전 제거.
+        """후보 풀에서 거래정지·VI·관리종목·정리매매 종목 사전 제거.
 
         Args:
-            candidates: 필터링 전 후보 리스트
+            candidates: 필터링 전 후보 리스트(랭크 순서 유지)
             _get_info_fn: 테스트용 의존성 주입 콜백 (기본: _get_stock_safety_info)
+            limit: 지정하면 **지연 필터링** — 안전한 후보가 limit 개 모이는 즉시
+                멈춘다. 그 뒤 종목은 조회조차 하지 않으므로 API 호출은
+                (limit + 도중 제외된 수)로 최소화되고, 앞머리에 제외 종목이
+                있어도 슬롯이 줄지 않는다. 풀이 먼저 소진되면 모인 만큼만 반환한다.
 
         Returns:
-            안전한 종목만 포함한 리스트. API 실패 시 보수적 통과(종목 유지).
+            안전한 종목만 포함한 리스트(입력 순서 보존, limit 지정 시 최대 limit 개).
+
+        분기 3종을 구분한다:
+        - info is None (API 실패)   → 보수적 통과. 단 INFO 로 남긴다.
+        - 빈껍데기 dict (판정불가)  → **배제**. dict 를 받았다고 안전이 아니다.
+        - 정상 dict                 → 술어 4종으로 판정.
         """
         if not candidates:
             return candidates
 
         get_info = _get_info_fn if _get_info_fn is not None else self._get_stock_safety_info
         safe: List[CandidateStock] = []
+        consumed = 0
+        undecidable = 0
 
         for c in candidates:
+            if limit is not None and len(safe) >= limit:
+                break  # 지연 필터링: 남은 종목은 조회하지 않는다.
+            consumed += 1
             info = get_info(c.code)
             if info is None:
-                # API 조회 실패 → 보수적 통과 (false negative 허용)
+                # API 조회 실패 → 보수적 통과(false negative 허용).
+                # ⚠️ debug 가 아니라 INFO 다 — 필터가 통째로 무효였는데도 로그에
+                #    아무것도 안 보였던 것이 결함이 수개월간 산 이유다.
+                self.logger.info(f"안전성 판정 스킵(조회 실패 → 보수적 통과): {c.code}({c.name})")
                 safe.append(c)
+                continue
+
+            if self._is_undecidable(info):
+                undecidable += 1
+                self.logger.info(f"후보 제외: {c.code}({c.name}) — 판정불가(응답 필드 부재)")
                 continue
 
             reasons = []
@@ -594,21 +750,38 @@ class CandidateSelector:
                 reasons.append("거래정지")
             if self._is_vi_active(info):
                 reasons.append("VI발동")
-            if self._is_managed_stock(info):
+            if self._is_managed_issue(info):
                 reasons.append("관리종목")
-            if self._is_single_price_match(info):
-                reasons.append("단일가매매")
+            if self._is_liquidation_trading(info):
+                reasons.append("정리매매")
 
             if reasons:
                 self.logger.info(
                     f"후보 제외: {c.code}({c.name}) — {', '.join(reasons)}"
                 )
             else:
+                note = self._market_warning_note(info)
+                if note:
+                    # 배제하지 않는다 — 사장님 결정으로 주문 적격성과 분리된 항목.
+                    self.logger.info(f"후보 통과(주의 표기): {c.code}({c.name}) — {note}")
                 safe.append(c)
 
-        excluded = len(candidates) - len(safe)
-        if excluded > 0:
-            self.logger.info(f"안전성 필터: {len(candidates)}건 → {len(safe)}건 ({excluded}건 제외)")
+        excluded = consumed - len(safe)
+        if excluded > 0 or limit is not None:
+            self.logger.info(
+                f"안전성 필터: {consumed}건 조회 → {len(safe)}건 통과 ({excluded}건 제외)"
+            )
+
+        # 판정불가는 종목당 fail-closed 라, 응답 스키마가 바뀌면 «전 종목 제외 →
+        # 전략별 후보 0건» 이 되면서도 흔적은 종목별 INFO 뿐이다. 스키마 파손은
+        # 전역 사건이므로 전역 사건처럼 보여야 한다.
+        if (undecidable >= self._UNDECIDABLE_ALERT_MIN
+                and undecidable > consumed * self._UNDECIDABLE_ALERT_RATIO):
+            self.logger.warning(
+                f"판정불가 {undecidable}/{consumed}건 "
+                f"({undecidable / consumed:.0%}) — 개별 종목 이상이 아니라 KIS 응답 "
+                f"스키마 변경을 의심할 것. 결정 필드: {', '.join(self._DECISIVE_INFO_FIELDS)}"
+            )
 
         return safe
 
@@ -886,8 +1059,10 @@ class CandidateSelector:
             provider = make_screener_snapshot_provider(strategy_name)
             codes = provider(strategy_name, prev_day_str)
             if codes:
-                # code 리스트 → CandidateStock 변환 (name/score는 미상)
-                candidates = [
+                # code 리스트 → CandidateStock 변환 (name/score는 미상).
+                # ⚠️ 여기서 max_candidates 로 자르지 않는다. 자른 뒤 필터를 걸면
+                #    앞머리에 제외 종목이 있을 때 슬롯이 그냥 사라진다(백필 없음).
+                pool = [
                     CandidateStock(
                         code=code,
                         name=code,  # 이름 정보 없음 — trading_stock 등록 시 갱신 가능
@@ -896,10 +1071,21 @@ class CandidateSelector:
                         reason=f"screener_snapshot({strategy_name})",
                         prev_close=0.0,
                     )
-                    for code in codes[:max_candidates]
+                    for code in codes
                 ]
+                # 안전성 필터 (거래정지·VI·관리종목·정리매매).
+                # 이 1순위 경로는 원래 무필터로 반환해 안전필터를 통째로 우회했다.
+                #
+                # 지연 필터링(limit): 스크리너 랭크 순서대로 «안전한» 후보가
+                # max_candidates 개 모이면 즉시 멈춘다 → 슬롯이 줄지 않으면서
+                # API 호출은 (max_candidates + 도중 제외된 수)로 끝난다.
+                # load_from_screener 의 2배 버퍼 방식은 여기 쓰지 않는다 —
+                # 실측 제외율이 1.8%(110건 중 2건)라 개장 직후 호출만 2배로 늘린다.
+                # (손실 블랙리스트는 사장님 보류 결정으로 여기 적용하지 않는다.)
+                candidates = self._filter_unsafe_stocks(pool, limit=max_candidates)
                 self.logger.info(
-                    f"[E6] {strategy_name}: screener_snapshots {len(candidates)}건 (D-1={prev_day_str})"
+                    f"[E6] {strategy_name}: screener_snapshots {len(candidates)}건 확보 "
+                    f"(스냅샷 {len(codes)}건, 목표 {max_candidates}건, D-1={prev_day_str})"
                 )
                 return candidates
         except Exception as e:
