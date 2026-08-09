@@ -215,6 +215,10 @@ backtest/tasso_labels/harvest/img_readings/
 #      실제로 이 게이트가 `2, SKC`(마침표 대신 쉼표) 한 줄을 잡았고, 없었으면 308행으로
 #      초록불이었다. 숫자표·제목뿐이고 본문 인용은 없다.
 !backtest/tasso_labels/harvest/journal_recall_early.log
+#   universe_2015_feasibility.log = 「2015~16 백필은 막혀 있지 않다」 정정의 **유일한 근거**.
+#   ⚠️ 같은 날 오전에 재지 않고 쓴 반대 문장이 CLOSING.md 에 들어갔다가 이 로그로 뒤집혔다.
+#      숫자표뿐이고 본문 인용은 없다.
+!backtest/tasso_labels/harvest/universe_2015_feasibility.log
 # 🔴 가격 wide 캐시(32MB)는 DB 에서 power/step1_freeze_and_data.py 로 재생성되는 중간물 — 커밋 금지.
 backtest/tasso_labels/power/*.npz
 *.xlsx
