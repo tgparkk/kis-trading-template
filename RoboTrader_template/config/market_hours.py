@@ -143,9 +143,16 @@ def arm_circuit_breaker_from_info(stock_code: str, info: Optional[Dict],
     이던 문제를 해소한다(사전-실전 감사 BLOCKER #6, 2026-06-24). 매수 시점에
     호출해 해당 종목이 VI/거래정지면 trigger_vi 로 표기 → is_vi_active 가드 발효.
 
-    KIS 응답 필드:
-    - vi_cls_code: '0' 미발동 / '1' 정적VI / '2' 동적VI / '3' 동적+정적
-    - iscd_stat_cls_code: '09' 거래정지
+    KIS inquire-price(FHKST01010100) 값 계약 — 2026-08-09 전 유니버스 2,574종목 실측:
+    - vi_cls_code: 'N' 미발동이 **2,574/2,574 관측**(일요일 채록이라 VI 사건이 있을
+      수 없는 시각이었다). ❌ '1'/'2'/'3' 은 한 건도 나오지 않아 옛 계약은 반증됨
+      (숫자로 읽으면 항상 False 라 가드가 영구 no-op 이 된다 — 실제로 그랬다).
+      🔴 'Y' == 발동 은 **미관측 추정**이다(KIS 명명 규칙 기반 추론). 장중 첫 VI
+      사건에서 확증할 것.
+    - iscd_stat_cls_code: '58' = 거래정지 (122종목, 전건 거래량 0으로 교차확인).
+      ❌ '09' 는 유니버스에 존재하지 않는 값. '55'가 아닌 값 = 이상, 도 아니다
+      ('57' 증거금100% 가 1,584종목으로 최다이며 정상 거래된다).
+    - temp_stop_yn: 'Y' = 임시정지.
 
     실제 KIS 보고에만 arm 하므로 오탐(정상거래 차단) 위험이 없다.
     info 가 비었으면(조회 실패) arm 하지 않아 위험축소가 아닌 신규매수만 영향.
@@ -156,9 +163,19 @@ def arm_circuit_breaker_from_info(stock_code: str, info: Optional[Dict],
     if not info:
         return False
     cb = cb_state if cb_state is not None else get_circuit_breaker_state()
-    vi = str(info.get('vi_cls_code', '') or '')
-    halted = str(info.get('iscd_stat_cls_code', '') or info.get('stat_cls_code', '') or '')
-    if vi in ('1', '2', '3') or halted == '09':
+
+    def _f(key: str) -> str:
+        # .strip()/.upper() 를 빼지 말 것(KIS 가 값에 공백을 붙여 보낸다).
+        # NaN 도 «값 없음» — pandas 경유(df.iloc[0].to_dict())면 결측이 NaN 이라,
+        # 안 막으면 'NAN' 이라는 판정 가능한 값처럼 읽힌다.
+        value = info.get(key)
+        if value is None or value != value:
+            return ''
+        return str(value).strip().upper()
+
+    vi = _f('vi_cls_code')
+    halted = _f('iscd_stat_cls_code') or _f('stat_cls_code')
+    if vi == 'Y' or halted == '58' or _f('temp_stop_yn') == 'Y':
         cb.trigger_vi(stock_code)
         return True
     return False
