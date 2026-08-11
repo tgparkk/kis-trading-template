@@ -10,6 +10,7 @@ Test Requirements:
 - test_strategy_loader(): Dynamic strategy loading test
 """
 
+import logging
 import pytest
 from pathlib import Path
 import tempfile
@@ -522,6 +523,57 @@ class TestPullbackConfigIntegration:
 
         except FileNotFoundError:
             pytest.skip("Pullback strategy not found in actual path")
+
+
+# ============================================================================
+# Test: load_strategies() max_capital_pct 합계 경고 — 문구 개정 동작 불변 확인
+#   (2026-08-11 — 경고 문구에 "결선 필요" 사실만 추가, 조건식/반환값/로그 레벨 불변)
+# ============================================================================
+
+class TestLoadStrategiesMaxPctWarning:
+    """load_strategies()의 max_capital_pct 합계 > 100% WARNING 이 문구 개정 후에도
+    동일하게 발생/미발생하는지, 반환된 전략 dict 가 경고 여부와 무관하게 정상인지 확인."""
+
+    SPEC_OVER_100 = [
+        {"name": "sample", "enabled": True, "max_capital_pct": 0.7},
+        {"name": "momentum", "enabled": True, "max_capital_pct": 0.7},
+    ]
+
+    SPEC_UNDER_100 = [
+        {"name": "sample", "enabled": True, "max_capital_pct": 0.4},
+        {"name": "momentum", "enabled": True, "max_capital_pct": 0.3},
+    ]
+
+    def test_warning_emitted_when_over_100pct(self, caplog):
+        """합계 > 100%면 여전히 WARNING 로그가 발생한다."""
+        with caplog.at_level(logging.WARNING, logger="strategies.config"):
+            result = StrategyLoader.load_strategies(self.SPEC_OVER_100)
+
+        warnings = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING and r.name == "strategies.config"
+        ]
+        assert len(warnings) == 1, f"WARNING 발생 횟수 불일치: {[r.message for r in caplog.records]}"
+        assert "> 100%" in warnings[0].message
+
+        # 경고가 로딩 결과에 영향을 주지 않는다.
+        assert len(result) == 2
+        assert "sample" in result and "momentum" in result
+
+    def test_no_warning_when_at_or_under_100pct(self, caplog):
+        """합계 <= 100%면 경고가 없다 (대칭 단언)."""
+        with caplog.at_level(logging.WARNING, logger="strategies.config"):
+            result = StrategyLoader.load_strategies(self.SPEC_UNDER_100)
+
+        warnings = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING and r.name == "strategies.config"
+        ]
+        assert warnings == [], f"의도치 않은 WARNING 발생: {[r.message for r in warnings]}"
+
+        # 경고 미발생 시에도 로딩 결과는 동일하게 정상.
+        assert len(result) == 2
+        assert "sample" in result and "momentum" in result
 
 
 if __name__ == '__main__':

@@ -454,8 +454,16 @@ class StrategyLoader:
             total_pct += instance.max_capital_pct
 
         if total_pct > 1.0:
+            # 주의: 이 경고가 나와도 상한이 "발효" 되는 건 아니다 — ①FundManager 생성 시
+            # strategy_max_pct_provider 주입 ②reserve_funds(..., strategy_name=...) 전달이
+            # 둘 다 결선돼야 실제로 적용된다(가드: core/fund_manager.py:276). 미결선이면
+            # 이 합계가 100%를 넘어도 아무 효과가 없다. (확인 2026-08-11)
             logger.warning(
-                f"전략별 max_capital_pct 합계 {total_pct:.2%} > 100%. 의도된 설정인지 확인 권장."
+                f"전략별 max_capital_pct 합계 {total_pct:.2%} > 100%. 의도된 설정인지 확인 권장. "
+                "(참고: 이 상한은 FundManager에 strategy_max_pct_provider 주입 + "
+                "reserve_funds(strategy_name=...) 전달이 둘 다 있어야 발효됨 — "
+                "미결선 시 합계가 100%를 넘어도 효과 없음. 가드: core/fund_manager.py:276, "
+                "확인 2026-08-11)"
             )
 
         return instances
