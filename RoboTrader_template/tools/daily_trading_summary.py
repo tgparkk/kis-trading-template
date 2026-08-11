@@ -47,7 +47,12 @@ def print_today_trading_summary():
                    timestamp
             FROM virtual_trading_records
             WHERE action = 'BUY'
-              AND is_test = false
+              -- is_test 필터 제거(2026-08-11): virtual_trading_records 는
+              -- 페이퍼(가상) 매매 테이블이라 전 이력이 is_test=true 이고
+              -- false 행은 0건이다(운영 규칙: "페이퍼 매매는 is_test=true
+              -- 가 정상이며 필터로 거르지 말 것"). 형제 프로젝트 분리는
+              -- 이미 source 필터가 담당하므로 is_test 는 중복이자
+              -- 리포트가 항상 "매매 없음"을 출력하는 오작동 원인이었다.
               AND source = %s
               AND (timestamp AT TIME ZONE 'Asia/Seoul')::date = %s::date
             ORDER BY timestamp
@@ -90,7 +95,8 @@ def print_today_trading_summary():
                    timestamp
             FROM virtual_trading_records
             WHERE action = 'SELL'
-              AND is_test = false
+              -- is_test 필터 제거(2026-08-11): 위 매수 쿼리와 동일한 사유
+              -- (source 필터가 형제 프로젝트 분리를 이미 담당).
               AND source = %s
               AND (timestamp AT TIME ZONE 'Asia/Seoul')::date = %s::date
             ORDER BY timestamp
@@ -155,7 +161,8 @@ def print_today_trading_summary():
                 b.stop_loss_rate
             FROM virtual_trading_records b
             WHERE b.action = 'BUY'
-              AND b.is_test = false
+              -- is_test 필터 제거(2026-08-11): 위 매수 쿼리와 동일한 사유
+              -- (source 필터가 형제 프로젝트 분리를 이미 담당).
               AND b.source = %s
               AND NOT EXISTS (
                 SELECT 1 FROM virtual_trading_records s
@@ -232,8 +239,9 @@ def print_today_trading_summary():
                 COUNT(CASE WHEN action = 'SELL' AND profit_loss < 0 THEN 1 END) as loss_count,
                 COUNT(CASE WHEN action = 'SELL' THEN 1 END) as total_trades
             FROM virtual_trading_records
-            WHERE is_test = false
-              AND source = %s
+            -- is_test 필터 제거(2026-08-11): 위 매수 쿼리와 동일한 사유
+            -- (source 필터가 형제 프로젝트 분리를 이미 담당).
+            WHERE source = %s
         ''', (SOURCE_KIS_TEMPLATE,))
 
         pl_row = cursor.fetchone()
