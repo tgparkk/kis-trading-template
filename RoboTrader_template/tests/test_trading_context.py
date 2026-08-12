@@ -812,7 +812,9 @@ class TestSell:
         result = await ctx.sell("005930")
 
         assert result == "005930"
-        trading_analyzer.analyze_sell_decision.assert_awaited_once_with(trading_stock)
+        # signal 미전달 시 기본값 None이 그대로 forward된다 (D2: signal 패스스루 추가로
+        # 호출 시그니처가 늘어남 — 기존엔 trading_stock 단일 인자였다).
+        trading_analyzer.analyze_sell_decision.assert_awaited_once_with(trading_stock, signal=None)
 
     @pytest.mark.asyncio
     async def test_returns_none_when_trading_stock_not_found(self):
@@ -860,6 +862,32 @@ class TestSell:
         result = await ctx.sell("005930")
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_forwards_signal_to_analyze_sell_decision(self):
+        """ctx.sell(code, signal=sig)는 Signal을 analyze_sell_decision에 그대로
+        전달해야 한다. sell()에 signal= 명시 파라미터가 없던 시절엔 **kwargs가
+        조용히 삼켜(에러도 로그도 없이) 실제로는 절대 전달되지 않았다(D2 결함).
+        """
+        from strategies.base import Signal, SignalType
+
+        trading_stock = _make_trading_stock_mock(prev_close=0)
+        trading_manager = Mock()
+        trading_manager.get_trading_stock.return_value = trading_stock
+        trading_analyzer = AsyncMock()
+        broker = Mock()
+        broker.get_current_price.return_value = None
+        ctx = _make_context(trading_manager=trading_manager,
+                            trading_analyzer=trading_analyzer,
+                            intraday_manager=_make_intraday_no_price(),
+                            broker=broker)
+
+        sell_signal = Signal(signal_type=SignalType.SELL, stock_code="005930", reasons=["손절"])
+
+        result = await ctx.sell("005930", signal=sell_signal)
+
+        assert result == "005930"
+        trading_analyzer.analyze_sell_decision.assert_awaited_once_with(trading_stock, signal=sell_signal)
 
 
 # ============================================================================

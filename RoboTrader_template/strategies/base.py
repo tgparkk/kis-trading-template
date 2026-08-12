@@ -686,7 +686,8 @@ class BaseStrategy(ABC):
                     )
                     await ctx.sell(
                         stock.stock_code,
-                        reason=', '.join(signal.reasons) if signal.reasons else self.name
+                        reason=', '.join(signal.reasons) if signal.reasons else self.name,
+                        signal=signal
                     )
 
         self.logger.info(

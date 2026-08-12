@@ -536,7 +536,7 @@ class TradingContext:
             return None
 
     async def sell(self, stock_code: str, quantity: int = None,
-                   reason: str = "", **kwargs) -> Optional[str]:
+                   reason: str = "", signal=None, **kwargs) -> Optional[str]:
         """매도 주문 (기존 TradingAnalyzer.analyze_sell_decision 래핑)
 
         내부적으로 decision_engine.execute_virtual_sell()을 호출합니다.
@@ -546,6 +546,8 @@ class TradingContext:
             stock_code: 종목코드
             quantity: 매도 수량 (None이면 전량)
             reason: 매도 사유
+            signal: Signal 객체 (generate_signal에서 반환된 값). 전달되면
+                analyze_sell_decision이 재판단 없이 이 신호를 그대로 신뢰한다.
             **kwargs: 추가 파라미터
 
         Returns:
@@ -595,7 +597,7 @@ class TradingContext:
                         )
 
             # TradingAnalyzer를 통한 매도 판단 + 실행
-            await self._trading_analyzer.analyze_sell_decision(trading_stock)
+            await self._trading_analyzer.analyze_sell_decision(trading_stock, signal=signal)
             return stock_code
 
         except Exception as e:

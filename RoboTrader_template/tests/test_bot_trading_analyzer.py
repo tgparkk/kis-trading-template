@@ -488,6 +488,161 @@ class TestAnalyzeSellDecision:
         await analyzer.analyze_sell_decision(stock)
 
 
+# ---------------------------------------------------------------------------
+# analyze_sell_decision — Signal 전달 (D2: 매도신호 패스스루)
+# ---------------------------------------------------------------------------
+
+class TestAnalyzeSellDecisionWithSignal:
+    """전략이 일봉으로 이미 내린 매도 결정을 signal 인자로 전달하는 경로.
+
+    combined_data(1분봉)는 rebalancing_mode=true라 구조적으로 항상 None —
+    이 상태에서 decision_engine.analyze_sell_decision을 거치면 영구 False가
+    되어(트리거 3,727회 vs 매도패스스루 로그 0회) 매도가 실행되지 않았다.
+    """
+
+    @pytest.mark.asyncio
+    async def test_sell_executes_when_combined_data_none_but_sell_signal_supplied(self):
+        """combined_data=None(프로덕션 실측) + SELL Signal 공급 → 매도가 실행된다.
+
+        decision_engine.analyze_sell_decision은 재판단하지 않고(호출 안 됨),
+        Signal의 결정을 그대로 신뢰해 가상 매도 경로가 실행돼야 한다.
+        """
+        from strategies.base import Signal, SignalType
+
+        stock = _make_positioned_stock("005930", buy_price=50000)
+        bot = _make_bot(is_virtual=True)
+        bot.intraday_manager.get_combined_chart_data.return_value = None  # 구조적 None
+        bot.decision_engine.execute_virtual_sell.return_value = True
+        analyzer = _make_analyzer(bot)
+
+        sell_signal = Signal(
+            signal_type=SignalType.SELL,
+            stock_code="005930",
+            reasons=["MA20 이탈"],
+        )
+
+        await analyzer.analyze_sell_decision(stock, signal=sell_signal)
+
+        bot.decision_engine.execute_virtual_sell.assert_called_once()
+        bot.decision_engine.analyze_sell_decision.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_sell_when_combined_data_none_and_no_signal(self):
+        """combined_data=None인 동일 조건에서 Signal 미공급 시 매도가 실행되지
+        않는다 (기존 결함 재현 — 위 테스트와 대칭시켜 신호 유무만이 결과를
+        가른다는 것을 증명한다).
+        """
+        stock = _make_positioned_stock("005930", buy_price=50000)
+        bot = _make_bot(is_virtual=True)
+        bot.intraday_manager.get_combined_chart_data.return_value = None
+        # combined_data=None일 때 decision_engine.analyze_sell_decision의
+        # 실제 게이트(core/trading_decision_engine.py:458)는 항상 False를 반환한다.
+        bot.decision_engine.analyze_sell_decision.return_value = (False, "")
+        analyzer = _make_analyzer(bot)
+
+        await analyzer.analyze_sell_decision(stock)  # signal 미전달
+
+        bot.decision_engine.execute_virtual_sell.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_sell_when_signal_is_buy_type(self):
+        """매수성 Signal(BUY)이 매도 경로에 들어와도 매도를 유발해선 안 된다."""
+        from strategies.base import Signal, SignalType
+
+        stock = _make_positioned_stock("005930", buy_price=50000)
+        bot = _make_bot(is_virtual=True)
+        bot.intraday_manager.get_combined_chart_data.return_value = None
+        analyzer = _make_analyzer(bot)
+
+        buy_signal = Signal(
+            signal_type=SignalType.BUY,
+            stock_code="005930",
+            reasons=["오신호"],
+        )
+
+        await analyzer.analyze_sell_decision(stock, signal=buy_signal)
+
+        bot.decision_engine.execute_virtual_sell.assert_not_called()
+        bot.decision_engine.analyze_sell_decision.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_sell_reason_built_from_signal_reasons(self):
+        """Signal.reasons가 있으면 sell_reason은 그 reasons를 조합한 문자열이다."""
+        from strategies.base import Signal, SignalType
+
+        stock = _make_positioned_stock("005930", buy_price=50000)
+        bot = _make_bot(is_virtual=True)
+        bot.intraday_manager.get_combined_chart_data.return_value = None
+        bot.decision_engine.execute_virtual_sell.return_value = True
+        analyzer = _make_analyzer(bot)
+
+        sell_signal = Signal(
+            signal_type=SignalType.SELL,
+            stock_code="005930",
+            reasons=["MA20 이탈", "RSI 과매수"],
+        )
+
+        await analyzer.analyze_sell_decision(stock, signal=sell_signal)
+
+        call_args = bot.decision_engine.execute_virtual_sell.call_args
+        sell_reason = call_args[0][2]
+        assert sell_reason == "MA20 이탈, RSI 과매수"
+
+
+# ---------------------------------------------------------------------------
+# BaseStrategy.on_tick — 매도신호 발생 시 ctx.sell에 signal 전달 (D2)
+# ---------------------------------------------------------------------------
+
+class TestOnTickPassesSellSignal:
+    """strategies/base.py:687 — on_tick이 SELL Signal 발생 시 ctx.sell을
+    signal= 키워드와 함께 호출해야 한다(기존에는 reason만 전달돼 신호가
+    소실됐다 — ctx.sell이 **kwargs를 받아 조용히 삼켰다)."""
+
+    @pytest.mark.asyncio
+    async def test_ontick_calls_ctx_sell_with_non_none_signal(self):
+        from strategies.base import BaseStrategy, Signal, SignalType
+
+        class _SellStrategy(BaseStrategy):
+            name = "SellTestStrategy"
+            version = "1.0.0"
+            exit_timeframe = "daily"  # 일봉 기준 매도판단(D2 결함 재현 시나리오)
+
+            def get_min_data_length(self):
+                return 1
+
+            def generate_signal(self, stock_code, data, timeframe="daily"):
+                return Signal(
+                    signal_type=SignalType.SELL,
+                    stock_code=stock_code,
+                    reasons=["MA20 이탈"],
+                )
+
+        strategy = _SellStrategy({})
+
+        pos = MagicMock()
+        pos.stock_code = "005930"
+
+        ctx = MagicMock()
+        ctx.tracer = None
+        ctx.get_selected_stocks.return_value = []
+        ctx.get_positions.return_value = [pos]
+
+        async def _get_daily(code, days=60):
+            return _make_daily_df(30)
+
+        ctx.get_daily_data = _get_daily
+        ctx.sell = AsyncMock(return_value="005930")
+
+        await strategy.on_tick(ctx)
+
+        ctx.sell.assert_awaited_once()
+        _, call_kwargs = ctx.sell.call_args
+        assert call_kwargs.get("signal") is not None, (
+            f"ctx.sell이 signal 없이 호출됨: {ctx.sell.call_args}"
+        )
+        assert call_kwargs["signal"].signal_type == SignalType.SELL
+
+
 class TestLiveBuyFundReservationKey:
     """실전 매수 자금 예약 키 정합 (사전-실전 감사 BLOCKER #7, 2026-06-24).
 

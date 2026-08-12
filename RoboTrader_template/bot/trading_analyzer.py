@@ -261,19 +261,40 @@ class TradingAnalyzer:
             self.logger.error(f"상세 오류 정보: {traceback.format_exc()}")
             return False
 
-    async def analyze_sell_decision(self, trading_stock) -> None:
-        """매도 판단 분석 (1분봉 고가/저가 기준 익절/손절 + 3분봉 기술적 분석)"""
+    async def analyze_sell_decision(self, trading_stock, signal=None) -> None:
+        """매도 판단 분석 (1분봉 고가/저가 기준 익절/손절 + 3분봉 기술적 분석)
+
+        Args:
+            trading_stock: 거래 대상 주식
+            signal: Signal 객체 (TradingContext.sell()에서 전달). 전략이 일봉
+                데이터로 이미 매도를 결정한 경우 이 결정을 그대로 신뢰하고
+                decision_engine 재판단을 건너뛴다. decision_engine의 재판단은
+                1분봉(combined_data) 기반인데, rebalancing_mode=true 설정에서는
+                분봉이 수집되지 않아 combined_data가 구조적으로 항상 None이라
+                재판단 경로는 영구히 매도를 차단했다(D2 결함). signal=None이면
+                기존 동작(재판단 경로)을 그대로 유지한다.
+        """
         try:
             stock_code = trading_stock.stock_code
             stock_name = trading_stock.stock_name
 
-            # 1분봉 데이터 조회 (백테스팅과 동일한 방식)
-            combined_data = self.bot.intraday_manager.get_combined_chart_data(stock_code)
+            if signal is not None:
+                from strategies.base import SignalType
+                if signal.signal_type not in (SignalType.SELL, SignalType.STRONG_SELL):
+                    # 매수성 신호가 매도를 유발해선 안 된다 — 아무 것도 하지 않는다.
+                    return
+                sell_signal = True
+                sell_reason = ', '.join(signal.reasons) if signal.reasons else (
+                    trading_stock.owner_strategy_name or signal.signal_type.value
+                )
+            else:
+                # 1분봉 데이터 조회 (백테스팅과 동일한 방식)
+                combined_data = self.bot.intraday_manager.get_combined_chart_data(stock_code)
 
-            # 매매 판단 엔진으로 매도 신호 확인 (1분봉 데이터 전달)
-            sell_signal, sell_reason = await self.bot.decision_engine.analyze_sell_decision(
-                trading_stock, combined_data
-            )
+                # 매매 판단 엔진으로 매도 신호 확인 (1분봉 데이터 전달)
+                sell_signal, sell_reason = await self.bot.decision_engine.analyze_sell_decision(
+                    trading_stock, combined_data
+                )
 
             if sell_signal:
                 # 매도 전 종목 상태 확인
