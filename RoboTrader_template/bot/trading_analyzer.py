@@ -341,7 +341,8 @@ class TradingAnalyzer:
                                 strategy=trading_stock.owner_strategy_name
                             )
                             self.logger.warning(f"{stock_code} 가상 매도 실패 - POSITIONED로 복원")
-                        self.logger.info(f"가상 매도 완료 처리: {stock_code}({stock_name}) - {sell_reason}")
+                        else:
+                            self.logger.info(f"가상 매도 완료 처리: {stock_code}({stock_name}) - {sell_reason}")
                     except Exception as e:
                         self.logger.error(f"가상 매도 처리 오류: {e}")
                 else:

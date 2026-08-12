@@ -6,6 +6,7 @@ TradingAnalyzer 유닛 테스트
 - analyze_sell_decision: 매도 판단 (가상/실전 분기, 실패 복원)
 """
 
+import logging
 import pytest
 import pandas as pd
 from datetime import datetime, timedelta, timezone
@@ -409,6 +410,65 @@ class TestAnalyzeSellDecision:
         # POSITIONED로 복원 호출 확인 (owner 전략 배선: strategy 키워드 전달)
         bot.trading_manager._change_stock_state.assert_called_once_with(
             "005930", StockState.POSITIONED, "가상 매도 실패 복원", strategy=""
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_completion_log_when_virtual_sell_fails(self, caplog):
+        """가상 매도 실패 시 '가상 매도 완료 처리' 로그가 찍히면 안 된다.
+
+        2026-08-13: 이 INFO 로그가 if not sell_ok: 블록 밖에 있어 POSITIONED로
+        되돌린 실패 경로에서도 '완료 처리'가 찍혔다 — 실패를 성공으로 표시하는
+        결함. 08-13 D2(9b82eec) 발효 판정의 근거 로그가 바로 이 줄이라 실패
+        매도까지 같이 잡히면 판정이 무력화된다.
+        """
+        stock = _make_positioned_stock("005930")
+
+        bot = _make_bot(is_virtual=True)
+        bot.decision_engine.analyze_sell_decision.return_value = (True, "손절")
+        bot.decision_engine.execute_virtual_sell.return_value = False
+        analyzer = _make_analyzer(bot)
+        # setup_logger()는 propagate=False로 설정한다 — caplog가 캡처하려면
+        # 켜야 한다 (test_sell_pipeline_integration.py의 기존 관례)
+        analyzer.logger._logger.propagate = True
+
+        try:
+            with caplog.at_level(logging.INFO, logger=analyzer.logger._logger.name):
+                await analyzer.analyze_sell_decision(stock)
+        finally:
+            analyzer.logger._logger.propagate = False
+
+        messages = [r.message for r in caplog.records]
+        assert not any("가상 매도 완료 처리" in m for m in messages), (
+            "매도 실패(POSITIONED 복원) 시에도 완료 로그가 찍히면 실패가 성공으로 표시된다"
+        )
+        assert any("가상 매도 실패" in m for m in messages), (
+            "매도 실패 warning 로그는 그대로 남아야 한다"
+        )
+
+    @pytest.mark.asyncio
+    async def test_completion_log_when_virtual_sell_succeeds(self, caplog):
+        """가상 매도 성공 시 '가상 매도 완료 처리' 로그가 찍힌다 (회귀 방지).
+
+        위 실패 케이스와의 대칭 단언 — 로그 조건을 좁히면서 성공 경로까지
+        같이 지워지지 않았는지 확인한다.
+        """
+        stock = _make_positioned_stock("005930")
+
+        bot = _make_bot(is_virtual=True)
+        bot.decision_engine.analyze_sell_decision.return_value = (True, "손절")
+        bot.decision_engine.execute_virtual_sell.return_value = True
+        analyzer = _make_analyzer(bot)
+        analyzer.logger._logger.propagate = True
+
+        try:
+            with caplog.at_level(logging.INFO, logger=analyzer.logger._logger.name):
+                await analyzer.analyze_sell_decision(stock)
+        finally:
+            analyzer.logger._logger.propagate = False
+
+        messages = [r.message for r in caplog.records]
+        assert any("가상 매도 완료 처리" in m for m in messages), (
+            "매도 성공 시에는 완료 로그가 그대로 남아야 한다"
         )
 
     @pytest.mark.asyncio
