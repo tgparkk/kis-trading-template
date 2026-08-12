@@ -270,6 +270,15 @@ class DayTradingBot:
         # 전략 초기화
         await self._initialize_strategy()
 
+        # on_init()의 self.positions={} 초기화로 지워진 복원 포지션을 재주입한다.
+        # 반드시 _initialize_strategy() 뒤여야 한다 (2026-08-12 라이브 실측: 복원이
+        # on_init 보다 먼저 실행되어 즉시 주입분이 지워지고 재시작 후 전략측 청산이
+        # 죽었다). 실패해도 기동을 막지 않는다.
+        try:
+            self.state_restoration_helper.apply_pending_strategy_positions()
+        except Exception as e:
+            self.logger.warning(f"[재주입] 전략 포지션 재주입 호출 실패: {e}")
+
         # TradingDecisionEngine + TradingStockManager에 전략 연결
         if self.strategy:
             self.decision_engine.set_strategy(self.strategy)
@@ -595,10 +604,6 @@ class DayTradingBot:
     async def _analyze_buy_decision(self, trading_stock, available_funds: float = None):
         """매수 판단 분석 (위임)"""
         await self.trading_analyzer.analyze_buy_decision(trading_stock, available_funds)
-
-    async def _analyze_sell_decision(self, trading_stock):
-        """매도 판단 분석 (위임)"""
-        await self.trading_analyzer.analyze_sell_decision(trading_stock)
 
     async def _telegram_task(self):
         """텔레그램 태스크"""

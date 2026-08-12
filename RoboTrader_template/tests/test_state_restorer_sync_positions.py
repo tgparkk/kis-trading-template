@@ -27,7 +27,7 @@ import asyncio
 import sys
 from datetime import timedelta
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import numpy as np
 import pandas as pd
@@ -179,3 +179,168 @@ class TestDaytradingMaxHoldAfterRestart:
         assert sig is not None
         assert sig.signal_type == SignalType.SELL
         assert sig.metadata["exit_reason"] == "max_hold"
+
+
+class TestApplyPendingStrategyPositions:
+    """운영 순서 결함(2026-08-12 라이브 실측) 재현 + 수정 회귀.
+
+    main.py:264-271 순서: StateRestorer(→_sync_strategy_positions 즉시 주입)가
+    strategy.on_init() 보다 먼저 실행된다. on_init 은 self.positions = {} 로
+    초기화하므로(daytrading_3methods_breakout/strategy.py:96 등) 복원 직후
+    주입이 지워진다. 라이브 로그에서 같은 초(07:40:35)에
+    "[sync_positions] 포지션 동기화 완료: 19종목" → "초기화 완료" 가 연달아
+    찍힌 뒤 09:00:40 "장 시작 — 보유 종목 없음"으로 이어진 것이 그 증거다.
+
+    apply_pending_strategy_positions() 는 main.py 가 _initialize_strategy()
+    (on_init 호출) 직후 재호출해 이 공백을 메운다. main.py 쪽 배선 순서 자체는
+    TestApplyPendingWiringOrder 가 별도로 검증한다.
+    """
+
+    def _build_real_strategy(self):
+        from strategies.daytrading_3methods_breakout.strategy import (
+            DayTrading3MethodsBreakoutStrategy,
+        )
+        return DayTrading3MethodsBreakoutStrategy({
+            "parameters": {"min_daily_bars": 25, "max_holding_days": 10},
+            "risk_management": {
+                "take_profit_pct": 0.10, "stop_loss_pct": 0.10,
+                "max_hold_days": 10, "trail_ma": None, "max_positions": 5,
+            },
+            "paper_trading": True,
+        })
+
+    def test_on_init_wipes_injection_then_apply_pending_restores_it(self):
+        """대칭 단언: ① on_init 이 실제로 지운다(버그가 실재함을 고정하는,
+        판별력 있는 절반) ② apply_pending_strategy_positions 가 되돌린다(수정 실증)."""
+        buy_time = now_kst() - timedelta(days=5)
+        strat = self._build_real_strategy()
+        db = Mock()
+        db.get_virtual_open_positions.return_value = _holdings_df(buy_time)
+
+        restorer = _make_restorer(db, strategies={'stratA': strat})
+        _wire_trading_manager(restorer)
+        restorer._sync_fund_manager_for_position = Mock(return_value=0.0)
+
+        # 1) 운영 순서 재현: 복원(즉시 주입, 기존 배선 불변) → on_init
+        asyncio.run(restorer._restore_holdings_from_db())
+        assert '005930' in strat.positions  # 즉시 주입은 여전히 동작(회귀 없음)
+
+        strat.on_init(broker=None, data_provider=None, executor=None)
+
+        # 판별력 있는 절반: on_init 이 정말로 지운다(라이브 결함의 근본원인을 고정)
+        assert strat.positions == {}
+
+        # 2) 수정: on_init 이후 재주입
+        synced = restorer.apply_pending_strategy_positions()
+
+        assert synced == 1
+        assert '005930' in strat.positions
+        pos = strat.positions['005930']
+        assert pos['quantity'] == 10
+        assert pos['entry_price'] == pytest.approx(100_000.0)
+        assert pos['entry_time'] is not None
+        assert pos['entry_time'].tzinfo is not None
+
+    def test_apply_pending_is_idempotent(self):
+        """재호출해도 크래시·중복 없이 동일 결과
+        (BaseStrategy.sync_positions 는 dict.update 라 재주입이 멱등)."""
+        buy_time = now_kst() - timedelta(days=5)
+        strat = self._build_real_strategy()
+        db = Mock()
+        db.get_virtual_open_positions.return_value = _holdings_df(buy_time)
+
+        restorer = _make_restorer(db, strategies={'stratA': strat})
+        _wire_trading_manager(restorer)
+        restorer._sync_fund_manager_for_position = Mock(return_value=0.0)
+
+        asyncio.run(restorer._restore_holdings_from_db())
+        strat.on_init(broker=None, data_provider=None, executor=None)
+
+        first = restorer.apply_pending_strategy_positions()
+        second = restorer.apply_pending_strategy_positions()
+
+        assert first == 1
+        assert second == 1
+        assert list(strat.positions.keys()) == ['005930']
+
+    def test_unresolved_owner_skips_silently_in_apply_pending(self):
+        """apply_pending 시점에 owner 가 strategies dict 에 없으면 조용히 스킵(크래시 없음)."""
+        db = Mock()
+        db.get_virtual_open_positions.return_value = _holdings_df(now_kst())
+
+        restorer = _make_restorer(db, strategies={})  # stratA 미등록
+        _wire_trading_manager(restorer)
+        restorer._sync_fund_manager_for_position = Mock(return_value=0.0)
+
+        asyncio.run(restorer._restore_holdings_from_db())
+
+        synced = restorer.apply_pending_strategy_positions()  # 예외 없이 완료
+        assert synced == 0
+
+
+class TestApplyPendingWiringOrder:
+    """main.py::DayTradingBot.initialize() 의 배선 순서 회귀.
+
+    ⚠️ 소스 문자열 검사(`inspect.getsource` 로 호출부 존재만 확인)를 의도적으로
+    쓰지 않는다 — 이 레포는 그 방식이 실패한 전례가 있다
+    (tests/bot/test_initializer_market_mapping_preload.py:93-99, 2026-08-04):
+    호출을 주석 처리해도 · `if False:` 안에 넣어도 · 도달 불가 위치로 옮겨도
+    문자열 검사는 전부 통과시켰다. 대신 실제 DayTradingBot.initialize() 를
+    호출해 호출 "순서"를 기록하는 런타임 검증을 쓴다 — 이는 impractical 하지
+    않다: tests/test_main_smoke.py::TestBotInitialization 이 이미 broker/DB/
+    telegram/설정/전략로더만 patch 하고 나머지는 실제 __init__ 경로를 태우는
+    동일 패턴으로 실제 DayTradingBot() 을 만들어 성공하고 있다.
+    """
+
+    def _make_bootable_bot(self, log):
+        with patch('main.KISBroker') as mock_broker_cls, \
+             patch('main.DatabaseManager') as mock_db_cls, \
+             patch('main.TelegramIntegration'), \
+             patch('main.check_duplicate_process'), \
+             patch('main.load_config') as mock_load_config, \
+             patch('main.StrategyLoader') as mock_loader:
+
+            mock_load_config.return_value = MagicMock(
+                rebalancing_mode=False,
+                strategy={'name': 'sample', 'enabled': False},
+            )
+            mock_db_cls.return_value.db_path = ':memory:'
+            mock_broker_cls.return_value.connect = AsyncMock(return_value=True)
+            mock_loader.load_strategy.side_effect = FileNotFoundError("test")
+
+            from main import DayTradingBot
+            bot = DayTradingBot()
+
+        # bot.strategies 는 StrategyLoader FileNotFoundError 로 {} 확정
+        # (self.strategy=None) → initialize() 의 전략 연결 분기는 전부 스킵되고
+        # 아래 3개 호출 순서만 남는다.
+        async def _init_system():
+            log.append("initialize_system")
+            return True
+        bot.bot_initializer.initialize_system = _init_system
+
+        async def _init_strategy():
+            log.append("_initialize_strategy")
+            return True
+        bot._initialize_strategy = _init_strategy
+
+        def _apply_pending():
+            log.append("apply_pending_strategy_positions")
+            return 0
+        bot.state_restoration_helper.apply_pending_strategy_positions = _apply_pending
+
+        return bot
+
+    def test_apply_pending_runs_after_initialize_strategy(self):
+        log = []
+        bot = self._make_bootable_bot(log)
+
+        ok = asyncio.run(bot.initialize())
+
+        assert ok is True
+        assert "apply_pending_strategy_positions" in log, (
+            f"initialize() 가 apply_pending_strategy_positions 를 호출하지 않았다: {log}"
+        )
+        assert log.index("apply_pending_strategy_positions") > log.index("_initialize_strategy"), (
+            f"재주입이 on_init(_initialize_strategy) 보다 먼저/동시에 실행됐다 — 순서 위반: {log}"
+        )

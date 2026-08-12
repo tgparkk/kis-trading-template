@@ -66,6 +66,14 @@ class StateRestorer:
         # 가상/실전 모드 플래그
         self.is_paper_trading = getattr(config, 'paper_trading', True) if config else True
 
+        # on_init() 이후 재주입할 복원 포지션 누적 저장소 ({owner: {code: pos}}).
+        # _sync_strategy_positions 가 즉시 주입과 동시에 여기 병합해 두면,
+        # main.py 가 strategy.on_init() 이후 apply_pending_strategy_positions() 를
+        # 호출해 on_init 의 self.positions={} 초기화로 지워진 주입을 되살릴 수 있다
+        # (두 호출부 _restore_holdings_from_db/_restore_holdings_from_real_account
+        # 가 모두 여기로 병합된다).
+        self._pending_strategy_positions: Dict[str, Dict[str, dict]] = {}
+
     async def restore_todays_candidates(self) -> None:
         """DB에서 후보 종목 및 보유 종목 복원"""
         try:
@@ -153,6 +161,9 @@ class StateRestorer:
         for owner_name, pos_map in by_owner.items():
             if not owner_name or not pos_map:
                 continue
+            # on_init() 이후 재주입용으로 누적 (두 호출부가 여기로 병합됨).
+            self._pending_strategy_positions.setdefault(owner_name, {}).update(pos_map)
+
             strategy = self._resolve_owner_strategy(owner_name)
             if strategy is None or not hasattr(strategy, 'sync_positions'):
                 continue
@@ -160,6 +171,40 @@ class StateRestorer:
                 strategy.sync_positions(pos_map)
             except Exception as e:
                 logger.warning(f"[복원] {owner_name} sync_positions 주입 실패: {e}")
+
+    def apply_pending_strategy_positions(self) -> int:
+        """on_init() 이후 복원 포지션을 전략 self.positions 에 재주입한다.
+
+        main.py 기동 순서상 StateRestorer(→_sync_strategy_positions 즉시 주입)가
+        strategy.on_init() 보다 먼저 실행되는데, on_init 은 self.positions = {}
+        로 초기화하므로 즉시 주입분이 지워진다(2026-08-12 라이브 실측: 61종목
+        복원 성공 로그 직후 전략 초기화 로그가 같은 초에 찍혔고, 09:00:40
+        "보유 종목 없음"으로 이어졌다). main.py 는 _initialize_strategy()
+        (on_init 호출) 직후 이 메서드를 호출해 그 공백을 메운다.
+        BaseStrategy.sync_positions 는 dict.update() 라 재호출은 멱등이다.
+
+        Returns:
+            int: 재주입에 성공한 전략 수
+        """
+        synced_count = 0
+        for owner_name, pos_map in self._pending_strategy_positions.items():
+            if not owner_name or not pos_map:
+                continue
+            strategy = self._resolve_owner_strategy(owner_name)
+            if strategy is None or not hasattr(strategy, 'sync_positions'):
+                continue
+            try:
+                strategy.sync_positions(pos_map)
+                synced_count += 1
+            except Exception as e:
+                logger.warning(f"[재주입] {owner_name} sync_positions 재주입 실패: {e}")
+
+        if synced_count:
+            logger.info(
+                f"[재주입] on_init 이후 전략 포지션 재주입 완료: {synced_count}개 전략"
+            )
+
+        return synced_count
 
     def _sync_fund_manager_for_position(self, stock_code: str, quantity: int, buy_price: float,
                                         owner: Optional[str] = None) -> float:
