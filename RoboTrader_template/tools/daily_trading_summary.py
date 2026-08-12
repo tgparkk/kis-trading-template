@@ -17,9 +17,74 @@ from db.connection import DatabaseConnection
 # 테이블을 공유하므로, 이 프로젝트(kis-template) 데이터만 집계하도록 필터링한다.
 SOURCE_KIS_TEMPLATE = 'kis_template'
 
+# 보유 종목 표에서 현재가를 해석하지 못했을 때 쓰는 표기.
+# 🔴 avg_buy(평균매수가) 대체 금지 — 그러면 평가손익이 «정확히 0» 으로 찍혀
+#    「데이터 없음」이 「정상값 0」으로 둔갑한다(경보로 안 잡히는 형태).
+UNRESOLVED_PRICE_MARK = '-'
 
-def print_today_trading_summary():
-    """오늘의 매매 현황 요약"""
+
+def _resolve_current_price(cursor, stock_code, today, price_lookup):
+    """보유 종목의 현재가를 3단계로 해석한다. 해결 불가 시 None.
+
+    1) ``price_lookup`` — 봇 프로세스 안에서 실행될 때 주입되는 in-memory
+       현재가 조회자(sync). ⚠️ **None 또는 <= 0 은 실패로 간주하고 2단계로
+       내려간다** — 거래정지 종목은 0 을 주며(2026-08-12 15:36~15:42 에
+       13종목이 api/kis_market_api.py:814 "현재가 정보 없음 (값: 0)" ERROR),
+       그 0 을 그대로 곱하면 평가금액 0 이라는 더 나쁜 오보가 된다.
+       조회자가 예외를 던져도 리포트를 죽이지 않고 2단계로 내려간다.
+
+    2) daily_prices 의 **당일** 종가. 날짜 조건이 필수다 — 없으면
+       ``ORDER BY date DESC LIMIT 1`` 이 구조적으로 **항상 전일 종가**를 준다.
+       이 리포트는 bot/system_monitor.py 가 15:35 에 부르는데 당일 일봉은
+       16:01 EOD 수집에서 들어오기 때문이다(2026-08-12 실측: 보유 60종목 중
+       당일 종가와 일치한 건 1건뿐, 최대 괴리 6.46%).
+       ⚠️ daily_prices.date 는 text('YYYY-MM-DD')라 ``%s::date`` 캐스팅을
+       붙이면 "연산자 없음: text = date" 로 죽는다(§4 주석 참조). today 는
+       이미 같은 형식의 문자열이므로 그대로 비교한다.
+
+    3) 둘 다 실패 → None. 호출측이 "-" 로 표기하고 합계에서 제외한다.
+    """
+    if price_lookup is not None:
+        try:
+            value = price_lookup(stock_code)
+        except Exception:
+            value = None
+        if value is not None:
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                value = None
+            if value is not None and value > 0:
+                return value
+
+    cursor.execute('''
+        SELECT close
+        FROM daily_prices
+        WHERE stock_code = %s
+          AND date = %s
+        LIMIT 1
+    ''', (stock_code, today))
+
+    row = cursor.fetchone()
+    if row and row[0] is not None:
+        try:
+            close = float(row[0])
+        except (TypeError, ValueError):
+            return None
+        if close > 0:
+            return close
+    return None
+
+
+def print_today_trading_summary(price_lookup=None):
+    """오늘의 매매 현황 요약
+
+    Args:
+        price_lookup: ``f(stock_code) -> price|None`` 형태의 **선택적** sync
+            현재가 조회자. 봇 프로세스 안에서 호출될 때만 주입된다
+            (bot/system_monitor.py). 생략하면(=CLI 단독 실행) 당일 일봉
+            → 미해결 순으로 내려간다. 상세는 _resolve_current_price 참조.
+    """
     today = now_kst().strftime('%Y-%m-%d')
 
     print("=" * 100)
@@ -175,6 +240,7 @@ def print_today_trading_summary():
         holdings = cursor.fetchall()
 
         total_unrealized_pl = 0
+        unresolved_codes = []
         if holdings:
             print(f"📦 보유 종목 ({len(holdings)}개)")
             print("-" * 120)
@@ -188,19 +254,22 @@ def print_today_trading_summary():
             for stock_code, stock_name, qty, avg_buy, target_profit, stop_loss in holdings:
                 qty = int(qty)
                 avg_buy = float(avg_buy)
-                # 최신 종가 조회
-                cursor.execute('''
-                    SELECT close
-                    FROM daily_prices
-                    WHERE stock_code = %s
-                    ORDER BY date DESC
-                    LIMIT 1
-                ''', (stock_code,))
-
-                price_row = cursor.fetchone()
-                current_price = float(price_row[0]) if price_row else avg_buy
-
                 buy_value = qty * avg_buy
+
+                current_price = _resolve_current_price(
+                    cursor, stock_code, today, price_lookup
+                )
+
+                if current_price is None:
+                    # 현재가 미해결 — 합계 전체(매수금액 포함)에서 뺀다.
+                    # 매수금액만 남기면 합계 행이 «평가금액 < 매수금액» 이 돼
+                    # 있지도 않은 손실로 읽힌다(합계 행의 내부 정합성 우선).
+                    unresolved_codes.append(stock_code)
+                    print(f"{stock_code:<10} {stock_name:<20} {qty:>8,} {avg_buy:>12,.0f} {buy_value:>15,.0f} "
+                          f"{UNRESOLVED_PRICE_MARK:>12} {UNRESOLVED_PRICE_MARK:>15} "
+                          f"{UNRESOLVED_PRICE_MARK:>15} {UNRESOLVED_PRICE_MARK:>10}")
+                    continue
+
                 current_value = qty * current_price
                 unrealized_pl = current_value - buy_value
                 unrealized_pl_rate = (unrealized_pl / buy_value) if buy_value > 0 else 0
@@ -220,6 +289,9 @@ def print_today_trading_summary():
             if total_buy_value > 0:
                 print(f"{'합계:':<50} {total_buy_value:>15,.0f} {'':<12} {total_current_value:>15,.0f} "
                       f"{total_unrealized_pl:>15,.0f} {total_unrealized_pl/total_buy_value*100:>9.1f}%")
+            if unresolved_codes:
+                print(f"⚠️ 현재가 미해결 {len(unresolved_codes)}종목(합계에서 제외): "
+                      f"{', '.join(unresolved_codes)}")
             print()
         else:
             print("📦 보유 종목: 없음")
@@ -253,9 +325,15 @@ def print_today_trading_summary():
         total_pl = total_realized_pl + total_unrealized_pl
         win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
 
+        # 미해결 종목은 §2 합계에서 빠졌으므로 여기 미실현/총 손익도 그만큼
+        # 불완전하다. 꼬리표 없이 찍으면 "완전한 수"로 읽혀 §2 의 경고가 무력화된다.
+        unresolved_note = (
+            f"  (⚠️ 현재가 미해결 {len(unresolved_codes)}종목 제외)"
+            if unresolved_codes else ""
+        )
         print(f"실현 손익: {total_realized_pl:>15,.0f}원")
-        print(f"미실현 손익: {total_unrealized_pl:>15,.0f}원")
-        print(f"총 손익: {total_pl:>15,.0f}원")
+        print(f"미실현 손익: {total_unrealized_pl:>15,.0f}원{unresolved_note}")
+        print(f"총 손익: {total_pl:>15,.0f}원{unresolved_note}")
         print()
         print(f"총 매매 횟수: {total_trades}회")
         print(f"승: {win_count}회, 패: {loss_count}회")

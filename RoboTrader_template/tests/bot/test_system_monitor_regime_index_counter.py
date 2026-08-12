@@ -50,7 +50,8 @@ def _make_monitor(monkeypatch, order=None, holiday=False):
     """EOD 하위 단계를 전부 무해한 스텁으로 덮은 SystemMonitor."""
     monkeypatch.setattr(sm, "is_holiday", lambda t: holiday, raising=False)
     monkeypatch.setattr(sm, "get_holiday_name", lambda t: "테스트휴장", raising=False)
-    monkeypatch.setattr(sm, "print_today_trading_summary", lambda: None, raising=False)
+    # 2026-08-12: 리포트가 in-memory 현재가 조회자를 인자로 받으므로 *a 로 흡수.
+    monkeypatch.setattr(sm, "print_today_trading_summary", lambda *a, **k: None, raising=False)
 
     rec = _RecLogger()
     mon = sm.SystemMonitor.__new__(sm.SystemMonitor)  # __init__ 우회(봇 의존성 없음)
@@ -192,7 +193,10 @@ def test_emit_is_once_even_when_the_daily_report_keeps_failing(monkeypatch):
     """
     mon, rec = _make_monitor(monkeypatch)
 
-    def _boom():
+    def _boom(*a, **k):
+        # *a: 리포트가 받는 in-memory 현재가 조회자(2026-08-12). 시그니처
+        # 불일치의 TypeError 가 아니라 «리포트가 터졌다»를 재현해야 하므로
+        # 인자를 흡수하고 의도한 RuntimeError 만 던진다.
         raise RuntimeError("report exploded")
 
     monkeypatch.setattr(sm, "print_today_trading_summary", _boom, raising=False)

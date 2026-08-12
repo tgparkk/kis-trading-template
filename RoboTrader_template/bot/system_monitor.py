@@ -271,7 +271,7 @@ class SystemMonitor:
 
                 self.logger.info(f"15:35+ 장 마감 후 일일 매매 리포트 생성 ({current_time.strftime('%H:%M:%S')})")
                 try:
-                    print_today_trading_summary()
+                    print_today_trading_summary(self._build_current_price_lookup())
                     self._last_daily_report_date = current_time.date()
                     self.logger.info("일일 매매 리포트 생성 완료")
                 except Exception as report_err:
@@ -332,6 +332,74 @@ class SystemMonitor:
                     self._run_equity_snapshot()
                 except Exception as eq2_err:
                     self.logger.error(f"EOD equity 재스냅샷 적재 오류: {eq2_err}")
+
+    def _build_current_price_lookup(self):
+        """일일 매매 리포트에 넘길 **in-memory 현재가 조회자**를 만든다 (없으면 None).
+
+        리포트는 15:35 에 도는데 daily_prices 의 당일 행은 16:01 EOD 수집에서
+        들어온다. 그래서 DB 만 보면 구조적으로 항상 전일 종가가 나온다. 봇
+        프로세스 안에서는 장중 갱신된 현재가가 메모리에 있으므로 그걸 1순위로
+        쓴다(tools/daily_trading_summary.py 의 3단계 해석).
+
+        🔑 **`POSITIONED` TradingStock 의 `position.current_price` 를 고른 이유**
+          - **sync 다.** `print_today_trading_summary()` 는 sync 이고 여기서는
+            async 루프 안에서 직접 호출된다. `TradingContext.get_current_price`
+            는 async 라 못 쓴다(스레드/루프 배선이 필요해진다).
+          - **살아 있는 유일한 경로다.** `main.py:441` 이 매 반복
+            `trading_manager.check_positions_once()` → `_monitor_stock_states()`
+            → `_update_position_prices()` 를 돌려 POSITIONED 종목의
+            `position.update_current_price()` 를 갱신한다
+            (core/trading/position_monitor.py:145-165). 대상 집합이 정확히
+            «보유 종목» 이라 리포트 §2 와 일치한다.
+          - **API 를 안 친다.** `IntradayStockManager.get_current_price_for_sell`
+            은 이름과 달리 호출마다 KIS 현재가 API 를 친다
+            (core/intraday/price_service.py:45) — 보유 60종목이면 15:35 에 60회
+            추가 호출이고, 거래정지 종목에서 "현재가 정보 없음" ERROR 를 더
+            찍는다. 리포트가 시세를 새로 사오는 건 취지도 아니다.
+
+        🔴 **`IntradayStockManager.get_cached_current_price` 는 쓰지 않는다 —
+           그 캐시는 프로덕션에서 절대 채워지지 않는다.** 유일한 writer 가
+           `realtime_updater._update_current_price_data`(:436)인데 이건
+           `batch_update_realtime_data`(:357) 안에서만 불리고, 그 함수는
+           **프로덕션 호출자가 0건**이다(tests 제외 전수 확인). 즉
+           `selected_stocks[code].current_price_info` 는 항상 None 이다.
+           같은 캐시를 읽는 `position_monitor.py:395` 와
+           `trading_analyzer.py:296` 도 조용히 폴백만 타고 있다 — 「호출자
+           0건」 죽은 가드 계열의 또 다른 사례이며 **별건으로 보고한다**.
+
+        0/None(미갱신 포지션·거래정지)의 판정은 여기서 하지 않는다 — 리포트의
+        `_resolve_current_price` 가 «<=0 은 1단계 실패» 로 보고 당일 일봉으로
+        내려간다. 판정 규칙을 한 곳에만 둔다.
+
+        참조 불가·예외 시 None 을 돌려주면 리포트는 CLI 와 같은 2·3단계만 탄다.
+        """
+        manager = getattr(getattr(self, 'bot', None), 'trading_manager', None)
+        if manager is None or not hasattr(manager, 'get_stocks_by_state'):
+            return None
+
+        try:
+            from core.models import StockState
+            positioned = manager.get_stocks_by_state(StockState.POSITIONED) or []
+        except Exception as e:
+            self.logger.warning(f"일일 리포트 현재가 스냅샷 생성 실패 (무시): {e}")
+            return None
+
+        # 리포트 시점에 한 번만 스냅샷을 뜬다(종목당 재조회 불필요·일관된 시점).
+        # 같은 종목을 여러 전략이 보유하면 TradingStock 이 복수지만 현재가는
+        # 종목 속성이므로 먼저 나온 유효값을 쓴다.
+        snapshot = {}
+        for ts in positioned:
+            code = getattr(ts, 'stock_code', None)
+            position = getattr(ts, 'position', None)
+            price = getattr(position, 'current_price', None) if position else None
+            if code and price:  # 0.0/None 은 담지 않는다(2단계로 내려가게)
+                snapshot.setdefault(code, float(price))
+
+        self.logger.info(
+            f"일일 리포트 현재가 메모리 스냅샷: {len(snapshot)}종목 "
+            f"(POSITIONED {len(positioned)}종목)"
+        )
+        return snapshot.get
 
     def _log_regime_index_resolution(self, current_time) -> None:
         """급락게이트 지수 해석 집계를 거래일당 1회 남기고 리셋한다.
