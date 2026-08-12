@@ -21,6 +21,7 @@ from collectors.split_factor_infer import infer_and_stamp_split_factors  # noqa:
 from collectors.daily_adj import update_adj_factors  # noqa: E402
 from collectors.corp_action_watch import scan_and_queue  # noqa: E402
 from api import kis_market_api  # noqa: E402
+from config.constants import SQL_STOCK_ONLY  # noqa: E402
 from utils.logger import setup_logger  # noqa: E402
 
 logger = setup_logger(__name__)
@@ -28,9 +29,33 @@ COVERAGE_MIN = 0.99
 VALUE_MATCH_MIN = 0.99
 
 
+_UNIVERSE_SQL = (
+    "SELECT stock_code FROM stock_market WHERE " + SQL_STOCK_ONLY
+    + " UNION "
+    + "SELECT stock_code FROM daily_prices WHERE " + SQL_STOCK_ONLY
+    + " ORDER BY 1"
+)
+
+
 def load_universe(conn) -> list:
+    """수집 대상 = 상장목록(`stock_market`) ∪ 일봉 보유 종목(`daily_prices`).
+
+    🔴 `daily_prices` 단독으로 읽으면 안 된다 — **자기충족적 순환**이 생긴다.
+       일봉이 없는 종목은 대상에 못 들어가고, 대상이 아니니 계속 일봉이 안 생긴다.
+       한 번 빠지면 스스로 복구되지 않는다.
+       실측(2026-08-12): FDR 상장목록 2,764 중 **185종목이 일봉 0행**이었다.
+
+    🔴 `stock_market` 단독으로도 안 된다 — 상장목록에서 빠졌지만 일봉이 있는 종목이
+       **27개** 있다(상폐 등). 합집합이라야 어느 쪽도 잃지 않는다.
+
+    ⚠️ 술어는 `config.constants.SQL_STOCK_ONLY`(숫자5+영숫자1) 하나만 쓴다.
+       숫자 6자리로 좁히면 신형우선주 10종이 배제된다 — 그 결함으로 `00088K` 등이
+       2024-02-29 이후 2년 5개월간 수집되지 않았다.
+
+    ⚠️ 이 함수는 `collectors/foreign_flow_collector.py` 도 import 한다(수집기 2개 공유).
+    """
     with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT stock_code FROM daily_prices WHERE stock_code ~ '^[0-9]{6}$' ORDER BY stock_code")
+        cur.execute(_UNIVERSE_SQL)
         return [r[0] for r in cur.fetchall()]
 
 
