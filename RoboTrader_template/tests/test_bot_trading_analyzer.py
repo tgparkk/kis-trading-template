@@ -446,6 +446,36 @@ class TestAnalyzeSellDecision:
         assert call_args[0][1] == 48000.0
 
     @pytest.mark.asyncio
+    async def test_does_not_fall_back_to_avg_price_when_cache_has_no_price(self):
+        """캐시 미스 시 원가(avg_price)로 매도하지 않고 falsy 값을 전달해
+        execute_virtual_sell 자체 폴백 체인(캐시→브로커→거부)이 돌게 한다.
+
+        2026-08-12: intraday_manager 캐시는 구조적으로 항상 비어 있다
+        (rebalancing_mode=true 라 유일한 writer 가 호출되지 않음). 종전 코드는
+        sell_price 를 avg_price 로 미리 채워 execute_virtual_sell 의 자체 가드
+        (`not sell_price or sell_price <= 0`)를 무력화 → 매수가로 매도되어
+        실현손익이 항상 0으로 왜곡됐다.
+        """
+        stock = _make_positioned_stock("005930", buy_price=50000)
+
+        bot = _make_bot(is_virtual=True)
+        bot.decision_engine.analyze_sell_decision.return_value = (True, "손절")
+        bot.decision_engine.execute_virtual_sell.return_value = True
+        bot.intraday_manager.get_cached_current_price.return_value = None  # 캐시 미스 (상시)
+        analyzer = _make_analyzer(bot)
+
+        await analyzer.analyze_sell_decision(stock)
+
+        call_args = bot.decision_engine.execute_virtual_sell.call_args
+        sell_price = call_args[0][1]
+        assert sell_price != stock.position.avg_price, (
+            "원가(avg_price)를 매도가로 전달하면 손익이 0%로 왜곡된다"
+        )
+        assert not sell_price, (
+            "캐시 미스 시 falsy 값을 넘겨 execute_virtual_sell 자체 폴백 체인이 실행돼야 한다"
+        )
+
+    @pytest.mark.asyncio
     async def test_does_not_raise_when_outer_exception_occurs(self):
         """외부 예외 발생 시 예외를 전파하지 않고 로깅만 한다"""
         stock = _make_positioned_stock("005930")

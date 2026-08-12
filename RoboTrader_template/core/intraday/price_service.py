@@ -79,6 +79,14 @@ class PriceService:
 
         Returns:
             Dict: 캐시된 현재가 정보 또는 None
+
+        주의(2026-08-12): 이 캐시(`current_price_info`)는 `rebalancing_mode=true`
+        (`config/trading_config.json`) 인 동안 절대 채워지지 않는다. 유일한 writer는
+        `_update_current_price_data`(realtime_updater.py:436)인데, 이 함수는
+        `batch_update_realtime_data`(realtime_updater.py:326)에서만 호출되고
+        그 함수의 프로덕션 호출자는 0건이다. 따라서 이 함수는 항상 None을 반환하며,
+        모든 호출부는 이 함수 뒤에 반드시 실제 폴백(캐시 실패 시 원가로 되돌리지
+        말 것)을 두어야 한다.
         """
         try:
             with self.manager._lock:

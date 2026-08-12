@@ -289,9 +289,11 @@ class TradingAnalyzer:
                     # 가상 매도
                     try:
                         # 매도가를 먼저 결정 (execute_virtual_sell과 PnL 계산에 동일 가격 사용)
+                        # 원가(avg_price)로 미리 채우지 않는다 — 그러면 execute_virtual_sell의
+                        # 자체 캐시→브로커→거부 폴백 체인(:827)이 무력화되어 매수가로 매도되고
+                        # 실현손익이 항상 0으로 왜곡된다. 캐시 실패 시 None을 그대로 전달한다.
                         sell_price = None
                         if trading_stock.position:
-                            sell_price = trading_stock.position.avg_price  # fallback: 원가
                             try:
                                 price_info = self.bot.intraday_manager.get_cached_current_price(stock_code)
                                 if price_info and price_info.get('current_price', 0) > 0:
