@@ -728,8 +728,8 @@ class BotInitializer:
             # 미체결 주문 취소
             await self._cancel_pending_orders()
 
-            # API 매니저 종료
-            self.bot.broker.shutdown()
+            # API 매니저 종료 (KISBroker 에 shutdown 은 없다 — disconnect 가 정식 경로, 2026-08-14 P0 D4d)
+            await self.bot.broker.disconnect()
 
             # PID 파일 삭제
             if self.bot.pid_file.exists():
