@@ -696,7 +696,7 @@ async def main() -> None:
         logging.getLogger(__name__).critical(f"🚨 실전 기동 중단: {e}")
         try:
             if getattr(bot, 'telegram', None):
-                await bot.telegram.send_notification(f"🚨 실전 기동 중단\n{e}")
+                await bot.telegram.notify_urgent_signal(f"🚨 실전 기동 중단\n{e}")
         except Exception:
             pass  # 경보 실패가 exit 를 막지 않는다
         sys.exit(2)
