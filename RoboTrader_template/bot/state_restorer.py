@@ -476,6 +476,35 @@ class StateRestorer:
             f"투자금액: {invested:,.0f}원, 가용자금: {available:,.0f}원"
         )
 
+        # ── 진단(2026-08-13) — 런타임 엔트리 ↔ DB 기준선 대조 ─────────────────
+        # 목적은 «owner=None 탐지»가 «아니다». add_position 생산자 전수조사 결과
+        # owner 를 빠뜨리는 경로는 실주문 2곳뿐이고(order_monitor.py:370 ·
+        # order_timeout.py:294), order_monitor.py:364-365 가 스스로 적어놨다 —
+        # "이 경로는 페이퍼 모드에선 pending_orders 자체가 비어 휴면이라 무해하나".
+        # ⇒ 페이퍼 모드에서 owner 없음 0 은 «정상»이며 blocker 의 반증이 아니다.
+        # 진짜 질문은 "런타임 엔트리가 DB 기준선과 일치하는가"이고, 불일치가
+        # 나오면 그게 곧 다른 종류의 누수다.
+        # 기준선(2026-08-13 종가 후 virtual_trading_records, 두 독립 방법이
+        # 대칭 차분 양방향 0 으로 일치): 엔트리 48 / 고유 47종목 / owner 없음 0.
+        # 대조 프로브: scripts/probe_position_entries.py
+        # 진단 전용 — 프로덕션 동작 0줄이고, 어떤 예외도 복원 흐름으로
+        # 전파시키지 않는다(실패 시 WARNING 만).
+        try:
+            from collections import Counter as _Counter
+            _registry = getattr(self.fund_manager, '_position_entries', None)
+            if isinstance(_registry, (set, frozenset)):
+                with self.fund_manager._lock:
+                    _entries = list(_registry)
+                _dist = _Counter(owner or "(none)" for _, owner in _entries)
+                logger.info(
+                    f"[진단] 런타임 포지션 엔트리 {len(_entries)}건 / "
+                    f"고유 {len({c for c, _ in _entries})}종목 / "
+                    f"소유자별 {dict(_dist)} "
+                    f"(DB 기준선 2026-08-13: 48건/47종목/owner없음 0)"
+                )
+        except Exception as e:
+            logger.warning(f"[진단] 런타임 포지션 엔트리 분포 출력 실패: {e}")
+
         # 포지션 수 제한 초과 경고
         # 근거(2026-07-29 EOD): 이 한도를 실제로 강제하는 fund_manager.can_add_position()은
         # core/trading/order_execution.py의 실주문 경로에서만 호출된다. 페이퍼(가상) 매수는

@@ -38,38 +38,80 @@
 
 ---
 
-## Task 1: 선행 측정 — 런타임 엔트리에 owner=None 이 있는가
+## Task 1: 선행 측정 — 런타임 엔트리가 DB 기준선과 «일치»하는가
+
+> **🔴 2026-08-13 정정 — 이 Task 의 질문이 바뀌었다.**
+> 원안은 *"런타임 엔트리에 owner=None 이 있는가"* 였고 Step 2 Expected 는
+> *"`owner 없음` 이 0이 아니면 즉시 기록할 것"* 이었다. **그 기대치는 페이퍼
+> 모드에서 발동 불가능하다.** `add_position` 생산자를 전수조사한 결과:
+>
+> | 호출자 | owner 전달 | 경로 |
+> |---|---|---|
+> | `bot/state_restorer.py:247` | ✅ | 복원 |
+> | `bot/trading_analyzer.py:197` | ✅ (슬롯 객체 `trading_stock.owner_strategy_name`) | **페이퍼 매수** |
+> | `core/orders/order_monitor.py:370` | 🔴 없음 | 실주문 체결 |
+> | `core/orders/order_timeout.py:294` | 🔴 없음 | 실주문 타임아웃 |
+>
+> owner 를 빠뜨리는 두 경로는 **둘 다 실주문 경로**다. 그리고
+> `core/orders/order_monitor.py:364-365` 가 **스스로** 적어놨다 —
+> *"⚠️ 실전 전환 blocker: 이 경로는 페이퍼 모드에선 pending_orders 자체가 비어
+> **휴면이라 무해**하나, 실전 모드에선 …"*
+>
+> ⇒ **페이퍼 모드에서 런타임 owner=None 은 구조적으로 0 일 수밖에 없다.**
+> ⇒ ***0 을 관측해도 blocker 가 반증되지 않는다.*** 🔑 *데이터 부족이 「정상
+> 라벨」로 나오는 경로는 경보로 절대 안 잡힌다* 의 또 다른 사례다.
+>
+> **재정의(사장님 승인 완료): 질문은 「owner=None 찾기」가 아니라
+> 「런타임 엔트리가 DB 기준선과 일치하는가」다.** 불일치가 나오면 그게 곧
+> 다른 종류의 누수다. blocker 자체는 여기서 반증되지 않으므로 Task 2~ 로 간다.
 
 **Files:**
 - Create: `scripts/probe_position_entries.py`
+- Modify: `bot/state_restorer.py` (진단 로그 1블록)
 
 **Interfaces:**
 - Consumes: (없음)
-- Produces: 콘솔 리포트 — 전략별 엔트리 수 + `owner=None` 목록
+- Produces: 콘솔 리포트 — 총 엔트리 / 고유 종목 / 전략별 분포 / 같은 종목 다중소유 / `owner=None` 목록 / **두 판정 방법의 대칭 차분**
 
 설계 §10-1 이 남긴 항목이다. §6 의 DB 측정(미청산 48 / 고유 47 / 겹침 1)은
 `virtual_trading_records` 기준이고 **런타임 `fund_manager._position_entries` 기준이 아니다.**
 🔑 ***두 값이 다르면 그 차이가 곧 누수다.***
 
-- [ ] **Step 1: 프로브 스크립트 작성**
+**DB 기준선 (2026-08-13 종가 후 측정, 두 독립 방법이 대칭 차분 양방향 0 으로 일치):**
+
+- 엔트리 **48** / 고유 종목 **47** / **owner 없음 0**
+- `elder_ema_pullback` 16 · `daytrading_3methods_breakout` 8 · `book_pullback_ma20` 6 ·
+  `minervini_volume_dryup` 6 · `book_envelope_200d` 5 · `rs_leader` 4 · `book_pullback_ma5` 3
+- 겹침 1건: **003280** = `book_pullback_ma5` + `minervini_volume_dryup` (2.1%)
+- `SELL` 595행 **전부** `buy_record_id` 를 갖는다(NULL 0건) → **정확 링크가 가능하다.**
+
+- [x] **Step 1: 프로브 스크립트 작성**
+
+판정은 **`buy_record_id` 정확 링크**로 한다(원안의 `(stock_code, strategy, timestamp>)`
+휴리스틱은 분할매수 BUY 2 : SELL 1 에서 갈릴 수 있다 — **2차 교차검증용으로 남기고
+두 결과의 대칭 차분을 양방향으로 출력**한다).
+🔑 ***단독 단언은 판별력이 없다 — 두 방법이 갈리면 그 자체가 발견이다.***
+기준선 값은 스크립트 docstring 에 「2026-08-13 측정치」로 박고, 다르면 `[!]` 로 출력한다.
+
+핵심은 두 판정 SQL 이다 (전문은 실제 파일 참조):
 
 ```python
-# scripts/probe_position_entries.py
-"""런타임 _position_entries 대조 프로브 (읽기 전용, 연구 스크립트).
-
-DB(virtual_trading_records) 기준 미청산과 런타임 엔트리를 대조한다.
-🔑 두 값이 다르면 그 차이가 곧 누수다.
+# 1차(정확): buy_record_id 링크. action='SELL' AND buy_record_id IS NOT NULL 에
+# UNIQUE 인덱스가 걸려 있어 BUY 1 : SELL 1 대응이 보장된다.
+SQL_EXACT = """
+SELECT b.id, b.stock_code, COALESCE(b.strategy, '(null)')
+FROM virtual_trading_records b
+WHERE b.action = 'BUY'
+  AND NOT EXISTS (
+    SELECT 1 FROM virtual_trading_records s
+    WHERE s.action = 'SELL' AND s.buy_record_id = b.id)
+ORDER BY b.id
 """
-import os
-import sys
-from collections import Counter
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from db.kis_db_connection import KisDbConnection  # noqa: E402
-
-DB_OPEN_SQL = """
-SELECT b.stock_code, COALESCE(b.strategy, '(null)')
+# 2차(교차검증): 원안의 휴리스틱. 같은 종목·전략에 «나중» SELL 이 하나라도 있으면
+# 닫힌 것으로 본다 → 분할매수(BUY 2 : SELL 1)에서 1차와 갈릴 수 있다.
+SQL_HEURISTIC = """
+SELECT b.id, b.stock_code, COALESCE(b.strategy, '(null)')
 FROM virtual_trading_records b
 WHERE b.action = 'BUY'
   AND NOT EXISTS (
@@ -77,64 +119,91 @@ WHERE b.action = 'BUY'
     WHERE s.action = 'SELL' AND s.stock_code = b.stock_code
       AND s.strategy IS NOT DISTINCT FROM b.strategy
       AND s.timestamp > b.timestamp)
+ORDER BY b.id
 """
 
-
-def db_open_positions():
-    with KisDbConnection.get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(DB_OPEN_SQL)
-            return [(r[0], r[1]) for r in cur.fetchall()]
-
-
-def report(entries, label):
-    by_owner = Counter(o for _, o in entries)
-    codes = {c for c, _ in entries}
-    print(f"--- {label} ---")
-    print(f"엔트리 {len(entries)} / 고유 종목 {len(codes)}")
-    for owner, n in by_owner.most_common():
-        print(f"  {owner:<32} {n}")
-    nones = sorted(c for c, o in entries if o in ("(null)", "", None))
-    print(f"owner 없음 {len(nones)}건: {nones}")
-    return by_owner, codes
-
-
-if __name__ == "__main__":
-    db = db_open_positions()
-    report(db, "DB (virtual_trading_records)")
-    print()
-    print("⚠️ 런타임 _position_entries 는 봇 프로세스 안에 있어 여기서 못 읽는다.")
-    print("   봇에 진단 로그를 심어 07:40 복원 직후 같은 형식으로 찍고, 위 출력과 대조할 것.")
+# 1차 방법의 «전제» 점검 — 0 이 아니면 정확 링크가 깨진다는 뜻이다.
+SQL_ORPHAN_SELL = """
+SELECT COUNT(*) FROM virtual_trading_records
+WHERE action = 'SELL' AND buy_record_id IS NULL
+"""
 ```
 
-- [ ] **Step 2: 실행**
+두 결과의 대칭 차분은 `b.id` 집합으로 **양방향** 계산한다(`only_exact` / `only_heur`).
+읽기 전용 — `INSERT/UPDATE/DELETE` 를 절대 실행하지 않는다.
+
+- [x] **Step 2: 실행**
 
 ```bash
-cd D:/GIT/kis-trading-template/RoboTrader_template
+cd D:/tmp/wt-live-guards/RoboTrader_template     # 🔴 라이브 트리에서 돌리지 말 것
 python scripts/probe_position_entries.py
 ```
-Expected: 엔트리/고유/전략별 분포 출력. **`owner 없음` 이 0이 아니면 즉시 기록할 것.**
 
-- [ ] **Step 3: 봇 측 진단 로그 심기**
+~~Expected: **`owner 없음` 이 0이 아니면 즉시 기록할 것.**~~ ← **폐기**(위 정정 참조:
+페이퍼에서 발동 불가능한 기준이다).
 
-`bot/state_restorer.py` 의 복원 완료 로그(`:474` 근처) 바로 뒤에 한 줄:
+**Expected(정정):** 출력이 **DB 기준선과 일치**해야 한다 — 엔트리 48 / 고유 47 /
+owner 없음 0 / 전략별 분포 7종 / 겹침 003280 1건 / 대칭 차분 **양방향 0**.
+🔴 **어긋나면 그 차이를 기록할 것.** `owner 없음` 이 0 인 것은 **정상이며 blocker 의
+반증이 아니다**(기준선 이후 매매가 있었다면 총량이 변하는 것도 정상 — 같은 날짜인데
+다를 때만 조사).
+
+**실측(2026-08-13 21:28 실행):** 기준선 및 전략별 분포 **완전 일치**.
+`SELL 595행 / buy_record_id IS NULL 0행` → 정확 링크 성립. 대칭 차분 **양방향 0**
+(즉 이 데이터에는 분할매수로 두 방법이 갈리는 사례가 없었다).
+
+- [x] **Step 3: 봇 측 진단 로그 심기**
+
+원안은 `:474` 근처라고만 적었다. **실제 위치를 확인한 결과** `"N/N 복원 완료"` 로그는
+`_restore_holdings_from_db:731`(가상) 과 `_restore_holdings_from_real_account:936`(실전)
+**두 곳**이고, 둘 다 직후에 `_log_fund_sync_summary()` 를 호출한다. `:474` 는 바로 그
+공통 함수 안의 요약 로그다. ⇒ **`_log_fund_sync_summary` 의 `logger.info` 직후 한 블록**
+이면 가상·실전 **두 경로를 한 번에** 덮고, 함수 진입부(`:461`)의 `if not self.fund_manager:`
+조기 반환이 **None 가드를 이미 해준다.**
 
 ```python
-        # 진단(2026-08-13): DB 미청산과 런타임 엔트리를 대조하기 위한 분포 출력.
-        # 🔑 두 값이 다르면 그 차이가 곧 누수다.
-        from collections import Counter as _C
-        _dist = _C(o or "(none)" for _, o in self.fund_manager._position_entries)
-        logger.info("[진단] 런타임 포지션 엔트리 %d건 / 고유 %d종목 / 소유자별 %s",
-                    len(self.fund_manager._position_entries),
-                    len(self.fund_manager.current_position_codes), dict(_dist))
+        # ── 진단(2026-08-13) — 런타임 엔트리 ↔ DB 기준선 대조 ─────────────────
+        # 목적은 «owner=None 탐지»가 «아니다» (위 정정 참조).
+        # 기준선(2026-08-13 종가 후): 엔트리 48 / 고유 47종목 / owner 없음 0.
+        # 진단 전용 — 프로덕션 동작 0줄이고, 어떤 예외도 복원 흐름으로
+        # 전파시키지 않는다(실패 시 WARNING 만).
+        try:
+            from collections import Counter as _Counter
+            _registry = getattr(self.fund_manager, '_position_entries', None)
+            if isinstance(_registry, (set, frozenset)):
+                with self.fund_manager._lock:
+                    _entries = list(_registry)
+                _dist = _Counter(owner or "(none)" for _, owner in _entries)
+                logger.info(
+                    f"[진단] 런타임 포지션 엔트리 {len(_entries)}건 / "
+                    f"고유 {len({c for c, _ in _entries})}종목 / "
+                    f"소유자별 {dict(_dist)} "
+                    f"(DB 기준선 2026-08-13: 48건/47종목/owner없음 0)"
+                )
+        except Exception as e:
+            logger.warning(f"[진단] 런타임 포지션 엔트리 분포 출력 실패: {e}")
 ```
 
-- [ ] **Step 4: 커밋**
+원안 스니펫에서 바뀐 점 3가지:
+1. **`_lock` 안에서 스냅샷** — `_position_entries` 는 다른 스레드가 변경하는 set 이라
+   맨몸 순회는 `RuntimeError: Set changed size during iteration` 위험이 있다.
+   `_lock` 은 RLock 이라 재진입 안전하다.
+2. **`isinstance` 타입 가드** — 원안은 `len(self.fund_manager.current_position_codes)` 를
+   따로 읽었으나, 같은 스냅샷에서 고유 종목을 세면 두 값의 «기준 시각»이 어긋나지 않는다.
+   가드는 테스트의 `MagicMock` fund_manager 에서 헛 WARNING 이 나는 것도 막는다.
+3. **`try/except` 로 격리** — 진단이 복원 흐름을 깨면 안 된다.
+
+- [ ] **Step 4: 커밋** *(사장님 승인 후 코디네이터가 수행)*
 
 ```bash
-git add scripts/probe_position_entries.py RoboTrader_template/bot/state_restorer.py
+git add RoboTrader_template/scripts/probe_position_entries.py \
+        RoboTrader_template/bot/state_restorer.py \
+        RoboTrader_template/docs/superpowers/plans/2026-08-13-live-trading-guards.md
 git commit -m "chore(diag): 런타임 포지션 엔트리 소유자 분포 프로브 — DB 미청산과 대조용"
 ```
+
+> 원안의 `git add scripts/probe_position_entries.py` 는 **경로가 틀렸다** — git 루트는
+> 워크트리 루트이고 두 파일 모두 `RoboTrader_template/` 아래다.
 
 ---
 
