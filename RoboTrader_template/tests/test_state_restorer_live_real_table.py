@@ -139,7 +139,7 @@ class TestLiveRealAccountBindsOwnerFromRealTable:
         restorer = _make_restorer(db, strategies={'stratA': strat}, paper_trading=False, broker=broker)
         _wire_trading_manager(restorer)
         restorer._sync_fund_manager_for_position = Mock(return_value=0.0)
-        restorer._detect_holdings_mismatch = AsyncMock()
+        restorer._detect_holdings_mismatch = AsyncMock(return_value=[])
         restorer._apply_stale_position_check = Mock(return_value=(0.05, 0.03))
 
         asyncio.run(restorer._restore_holdings_from_real_account())

@@ -86,3 +86,24 @@ class TestSplitBuyAggregation:
         r = _restorer_with(db, broker, strat)
         asyncio.run(r._restore_holdings_from_real_account())  # 수량 10=10 → 불일치 없음 → no raise
         strat.sync_positions.assert_called_once()
+
+
+class TestFailClosedMismatch:
+    def test_mismatch_aborts_startup(self):
+        """5: 불일치 1건이면 LiveStartupAbort. 자동 대사(0원 INSERT)는 코드째 소멸."""
+        buy_time = now_kst() - timedelta(days=5)
+        db = Mock()
+        db.get_real_open_positions.return_value = _holdings_df(buy_time)  # DB 에 1종목
+        broker = _real_broker_mock([])                                    # 실계좌 0종목
+        r = _restorer_with(db, broker, Mock())
+        with pytest.raises(LiveStartupAbort):
+            asyncio.run(r._restore_holdings_from_real_account())
+        db.save_real_sell.assert_not_called()   # 0원 매도 INSERT 불가
+        db.save_real_buy.assert_not_called()
+
+    def test_reconcile_machinery_is_gone(self):
+        from bot import state_restorer as mod
+        import config.constants as consts
+        r = _restorer_with(Mock(), _real_broker_mock([]), Mock())
+        assert not hasattr(r, '_reconcile_mismatches')
+        assert not hasattr(consts, 'STATE_RESTORATION_AUTO_RECONCILE')

@@ -36,7 +36,7 @@ def base_deps():
     db_manager.get_virtual_open_positions = MagicMock(return_value=pd.DataFrame())
 
     telegram = AsyncMock()
-    telegram.send_notification = AsyncMock()
+    telegram.notify_urgent_signal = AsyncMock()
 
     config = MagicMock()
     config.paper_trading = True
@@ -109,6 +109,9 @@ class TestRealTradingRestore:
         base_deps['config'].paper_trading = False
         restorer = StateRestorer(**base_deps)
         restorer.is_paper_trading = False
+        # 이 테스트는 브로커→메모리 복원 배선만 검증한다. 대사(불일치 감지)는
+        # 별도 관심사이므로 fail-closed 결정(5)의 영향을 받지 않게 우회한다.
+        restorer._detect_holdings_mismatch = AsyncMock(return_value=[])
 
         from tests.broker_contract import make_account_balance, make_holding
         base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=1)
@@ -154,8 +157,8 @@ class TestMismatchDetection:
 
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-        base_deps['telegram_integration'].send_notification.assert_called_once()
-        call_args = base_deps['telegram_integration'].send_notification.call_args[0][0]
+        base_deps['telegram_integration'].notify_urgent_signal.assert_called_once()
+        call_args = base_deps['telegram_integration'].notify_urgent_signal.call_args[0][0]
         assert '불일치' in call_args
 
     @pytest.mark.asyncio
@@ -170,7 +173,7 @@ class TestMismatchDetection:
 
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-        base_deps['telegram_integration'].send_notification.assert_called_once()
+        base_deps['telegram_integration'].notify_urgent_signal.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_DB에만_존재하는_종목_감지(self, restorer, base_deps):
@@ -182,7 +185,7 @@ class TestMismatchDetection:
 
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-        base_deps['telegram_integration'].send_notification.assert_called_once()
+        base_deps['telegram_integration'].notify_urgent_signal.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_일치_시_알림_없음(self, restorer, base_deps):
@@ -196,7 +199,7 @@ class TestMismatchDetection:
 
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-        base_deps['telegram_integration'].send_notification.assert_not_called()
+        base_deps['telegram_integration'].notify_urgent_signal.assert_not_called()
 
 
 class TestCandidateRestore:
@@ -595,6 +598,9 @@ class TestFundManagerSync:
 
         restorer = StateRestorer(**base_deps, fund_manager=fm)
         restorer.is_paper_trading = False
+        # 이 테스트는 FundManager 동기화만 검증한다. 대사는 별도 관심사이므로
+        # fail-closed 결정(5)의 영향을 받지 않게 우회한다.
+        restorer._detect_holdings_mismatch = AsyncMock(return_value=[])
 
         with patch('bot.state_restorer.DatabaseConnection'):
             await restorer._restore_holdings_from_real_account()
