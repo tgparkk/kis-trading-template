@@ -13,9 +13,9 @@ from config.constants import (
     DEFAULT_TARGET_PROFIT_RATE, DEFAULT_STOP_LOSS_RATE,
     STALE_POSITION_DAYS, STALE_DEFAULT_APPLY_DAYS,
     STALE_DEFAULT_TARGET_PROFIT, STALE_DEFAULT_STOP_LOSS,
-    STATE_RESTORATION_AUTO_RECONCILE,
 )
 from db.connection import DatabaseConnection
+from utils.exceptions import LiveStartupAbort
 
 logger = setup_logger(__name__)
 
@@ -88,6 +88,10 @@ class StateRestorer:
             else:
                 await self._restore_holdings_from_real_account()
 
+        except LiveStartupAbort:
+            # 실전 기동 중단은 그대로 전파한다 — 여기서 삼키면 main.py 의 전용
+            # 핸들러(텔레그램 경보 + exit 2)가 발화하지 못한다(2026-08-14 리뷰 C1).
+            raise
         except Exception as e:
             logger.error(f"❌ 종목 복원 실패: {e}")
 
@@ -766,27 +770,73 @@ class StateRestorer:
         except Exception as e:
             logger.error(f"[가상매매] 보유 종목 복원 실패: {e}")
 
+    async def _cancel_all_pending_orders_on_startup(self) -> bool:
+        """실전 기동 시 미체결 전량 취소. 취소가 1건 이상이면 True(잔고 재조회 필요)."""
+        from utils.exceptions import LiveStartupAbort
+        pending = self.broker.get_pending_orders()
+        if pending is None:
+            raise LiveStartupAbort("미체결 주문 조회 실패", "get_pending_orders() = None")
+        if not pending:
+            logger.info("✅ [실전매매] 미체결 주문 없음")
+            return False
+        logger.warning(f"⚠️ [실전매매] 미체결 {len(pending)}건 발견 — 전량 취소 후 기동")
+        for po in pending:
+            odno = str(po.get('odno', ''))
+            code = str(po.get('pdno', ''))
+            result = self.broker.cancel_order(odno, code)
+            if not result.get('success'):
+                raise LiveStartupAbort(
+                    f"미체결 취소 실패: {code} 주문 {odno}",
+                    str(result.get('message', '')))
+            logger.info(f"🧹 [실전매매] 미체결 취소: {code} 주문 {odno}")
+        remain = self.broker.get_pending_orders()
+        if remain is None or remain:
+            raise LiveStartupAbort(
+                "취소 후 미체결 잔존 확인 실패",
+                f"재조회 결과={('실패' if remain is None else f'{len(remain)}건 잔존')}")
+        return True
+
     async def _restore_holdings_from_real_account(self) -> None:
         """실전매매 모드: 실제 계좌에서 보유 종목 조회 → DB 동기화 → 메모리 복원"""
+        # 함수 어디서든 이 이름을 참조하는 local import 가 하나라도 있으면
+        # 파이썬이 함수 전체 스코프에서 LiveStartupAbort 를 local 로 확정한다.
+        # 「0. 기동 시 미체결 전량 취소」가 이 import 문(종전 위치) «보다 먼저»
+        # LiveStartupAbort 를 raise 할 수 있게 되며 그 예외가 맨 아래
+        # except LiveStartupAbort 에서 UnboundLocalError 로 깨진다
+        # (2026-08-14 Task 6에서 실측) — 그래서 try 진입 직후로 끌어올린다.
+        from utils.exceptions import LiveStartupAbort
         try:
             if not self.broker:
-                logger.error("❌ [실전매매] broker가 없어 계좌 조회 불가 - DB 복원으로 대체")
-                await self._restore_holdings_from_db()
-                return
+                # 2026-08-14 리뷰 I4: broker 부재를 DB 폴백으로 조용히 넘기면
+                # 실계좌 대사를 건너뛴 채 기동한다 — 실전 기동 실패는 전부
+                # LiveStartupAbort 로 수렴해야 한다(결정 5).
+                raise LiveStartupAbort(
+                    "실전 복원 불가 — broker 미연결",
+                    "self.broker is None/falsy")
 
             logger.info("🔄 [실전매매] 실제 계좌에서 보유 종목 조회 중...")
 
-            # 1. 실제 계좌 보유 종목 조회
+            # 0. 기동 시 미체결 전량 취소 (2026-08-14 P0 결정 6) — 취소가 잔고
+            #    조회보다 먼저여야 부분체결분이 확정 반영된 잔고로 복원한다.
+            #    취소 후 종전 SELL_PENDING 복원은 불필요(항상 미체결 0 에서 시작).
+            await self._cancel_all_pending_orders_on_startup()
+
+            # 1. 실전 잔고 — 요약(총평가·종목수)과 보유 목록을 분리 조회 후 교차검증.
+            #    get_holdings() 는 실패를 빈 리스트로 삼키므로(broker.py:313,326)
+            #    요약 total_stocks 와 대조해야 「빈 계좌」와 「조회 실패」가 갈린다.
+            #    (2026-08-14 P0 — 종전 코드는 요약 dict 의 없는 키 'positions' 를
+            #     읽어 실보유가 항상 0건이었다)
             account_info = self.broker.get_account_balance()
-
-            if not account_info:
-                logger.error("❌ [실전매매] 계좌 조회 실패 - DB 복원으로 대체")
-                await self._restore_holdings_from_db()
-                return
-
-            real_holdings = account_info.get('positions', []) if isinstance(account_info, dict) else (
-                account_info.positions if hasattr(account_info, 'positions') and account_info.positions else []
-            )
+            if not account_info or not isinstance(account_info, dict):
+                raise LiveStartupAbort(
+                    "실계좌 요약 조회 실패",
+                    f"get_account_balance()={str(account_info)[:200]}")
+            summary_stock_count = int(account_info.get('total_stocks', 0) or 0)
+            real_holdings = self.broker.get_holdings()
+            if summary_stock_count > 0 and not real_holdings:
+                raise LiveStartupAbort(
+                    "실계좌 보유 목록 조회 실패",
+                    f"요약 total_stocks={summary_stock_count} 인데 get_holdings() 0건 — 오류 삼킴 의심")
             logger.info(f"📊 [실전매매] 실제 계좌 보유 종목: {len(real_holdings)}개")
 
             # 2. DB 보유 종목 조회 (실전 owner/buy_time 보강은 실거래 테이블에서)
@@ -808,39 +858,42 @@ class StateRestorer:
                         sl_rate = sl_val if (sl_val is not None and not math.isnan(sl_val)) else DEFAULT_STOP_LOSS_RATE
                     except (ValueError, TypeError, OverflowError):
                         sl_rate = DEFAULT_STOP_LOSS_RATE
-                    db_holdings_dict[row['stock_code']] = {
-                        'stock_name': row['stock_name'],
-                        'quantity': int(row['quantity']),
-                        'buy_price': float(row['buy_price']),
-                        'buy_time': row.get('buy_time'),
-                        'strategy': row.get('strategy', ''),
-                        'target_profit_rate': tp_rate,
-                        'stop_loss_rate': sl_rate,
-                    }
+                    code = row['stock_code']
+                    if code in db_holdings_dict:
+                        # 분할매수 합산: 수량 SUM · 매입가 가중평균.
+                        # ORDER BY timestamp DESC 라 첫 행이 최신 — strategy/tp/sl/buy_time 은 최신 행 유지.
+                        prev = db_holdings_dict[code]
+                        add_qty = int(row['quantity'])
+                        new_qty = prev['quantity'] + add_qty
+                        if new_qty > 0:
+                            prev['buy_price'] = (
+                                prev['buy_price'] * prev['quantity']
+                                + float(row['buy_price']) * add_qty) / new_qty
+                        prev['quantity'] = new_qty
+                    else:
+                        db_holdings_dict[code] = {
+                            'stock_name': row['stock_name'],
+                            'quantity': int(row['quantity']),
+                            'buy_price': float(row['buy_price']),
+                            'buy_time': row.get('buy_time'),
+                            'strategy': row.get('strategy', ''),
+                            'target_profit_rate': tp_rate,
+                            'stop_loss_rate': sl_rate,
+                        }
 
             logger.info(f"📊 [실전매매] DB 보유 종목: {len(db_holdings_dict)}개")
 
-            # 3. 불일치 감지 및 로깅
-            await self._detect_holdings_mismatch(real_holdings, db_holdings_dict)
+            # 3. 계좌-DB 대사 — 불일치는 기동 중단(fail-closed, 2026-08-14 P0 결정 5)
+            mismatches = await self._detect_holdings_mismatch(real_holdings, db_holdings_dict)
+            if mismatches:
+                # [:10] — 텔레그램 경보(_detect_holdings_mismatch)와 노출 건수를
+                # 통일한다(2026-08-14 리뷰 Minor). 다른 수를 쓰면 두 경보가
+                # 같은 사건을 다른 분량으로 보여줘 대조가 헷갈린다.
+                raise LiveStartupAbort(
+                    f"계좌-DB 불일치 {len(mismatches)}건 — 수동 확인 후 재기동 필요",
+                    " / ".join(mismatches[:10]))
 
-            # 4. 미체결 매도 주문 조회 (C7 fix: SELL_PENDING 중복 매도 방지)
-            pending_sell_codes = set()
-            try:
-                if hasattr(self.broker, 'get_pending_orders'):
-                    pending_orders = self.broker.get_pending_orders()
-                    if pending_orders:
-                        for po in pending_orders:
-                            # 매도 미체결 주문의 종목코드 수집
-                            order_type = po.get('order_type', '') if isinstance(po, dict) else getattr(po, 'order_type', '')
-                            stock_code_po = po.get('stock_code', '') if isinstance(po, dict) else getattr(po, 'stock_code', '')
-                            # 매도 주문 판별: "sell", "02" (KIS 매도코드), "SELL" 등
-                            if str(order_type).lower() in ('sell', '02', 'sell_market'):
-                                pending_sell_codes.add(stock_code_po)
-                                logger.info(f"📋 [실전매매] 미체결 매도 주문 발견: {stock_code_po}")
-            except Exception as pending_err:
-                logger.warning(f"⚠️ [실전매매] 미체결 주문 조회 실패 (POSITIONED로 폴백): {pending_err}")
-
-            # 5. 실제 계좌 기준으로 메모리에 복원
+            # 4. 실제 계좌 기준으로 메모리에 복원
             holding_restored = 0
             total_invested = 0.0
             stale_info = []  # 장기보유 종목 정보 수집
@@ -910,13 +963,10 @@ class StateRestorer:
                                 'entry_time': self._normalize_entry_time(buy_time),
                             }
 
-                        # C7 fix: 매도 미체결이 있으면 SELL_PENDING으로 복원
-                        if stock_code in pending_sell_codes:
-                            restore_state = StockState.SELL_PENDING
-                            state_label = "SELL_PENDING (미체결 매도 존재)"
-                        else:
-                            restore_state = StockState.POSITIONED
-                            state_label = "POSITIONED"
+                        # 기동 시 미체결 전량 취소(위 0단계)로 SELL_PENDING 은
+                        # 발생하지 않는다 — 복원은 항상 POSITIONED.
+                        restore_state = StockState.POSITIONED
+                        state_label = "POSITIONED"
 
                         ts_is_stale = getattr(trading_stock, 'is_stale', False) is True
                         ts_days_held = getattr(trading_stock, 'days_held', 0)
@@ -969,182 +1019,75 @@ class StateRestorer:
             else:
                 logger.info("[실전매매] 보유 종목 없음")
 
+        except LiveStartupAbort:
+            # 실계좌 조회 실패 = 기동 중단(2026-08-14 P0) — DB 폴백으로 계속하지 않는다.
+            raise
         except Exception as e:
-            logger.error(f"[실전매매] 보유 종목 복원 실패: {e}")
-            logger.warning("DB 복원으로 대체합니다...")
-            await self._restore_holdings_from_db()
+            # 2026-08-14 리뷰 I4: 여기서 DB 폴백으로 조용히 넘어가면 원인 불명 예외가
+            # "복원 실패 → DB 로 대체"로 위장돼 실전 기동 실패가 전부 LiveStartupAbort 로
+            # 수렴한다는 계약(결정 5)이 깨진다. 그대로 abort 로 전환한다.
+            raise LiveStartupAbort(
+                "실전 복원 중 예외", f"{type(e).__name__}: {e}") from e
 
-    async def _detect_holdings_mismatch(self, real_holdings: List[Dict], db_holdings_dict: Dict[str, Dict]) -> None:
-        """실제 계좌와 DB 간 보유 종목 불일치 감지 및 자동 조정 (STATE_RESTORATION_AUTO_RECONCILE=True 시)"""
-        try:
-            mismatches = []
-            real_codes = set()
-            # 자동조정 대상 수집: (종류, 종목코드, 종목명, 실계좌정보, DB정보)
-            reconcile_tasks = []
+    async def _detect_holdings_mismatch(self, real_holdings: List[Dict], db_holdings_dict: Dict[str, Dict]) -> List[str]:
+        """실제 계좌와 DB 간 보유 종목 불일치 감지.
 
-            for real_stock in real_holdings:
-                stock_code = real_stock.get('stock_code', '')
-                real_qty = int(real_stock.get('quantity', 0))
-                stock_name = real_stock.get('stock_name', stock_code)
-                avg_price = float(real_stock.get('avg_price', 0))
-
-                if real_qty <= 0:
-                    continue
-
-                real_codes.add(stock_code)
-
-                if stock_code not in db_holdings_dict:
-                    mismatches.append(
-                        f"⚠️ {stock_code}({stock_name}): 실제 계좌에만 존재 ({real_qty}주) - 외부 매수 또는 DB 누락"
-                    )
-                    reconcile_tasks.append(('real_only', stock_code, stock_name, real_stock, None))
-                else:
-                    db_qty = db_holdings_dict[stock_code]['quantity']
-                    if real_qty != db_qty:
-                        mismatches.append(
-                            f"⚠️ {stock_code}({stock_name}): 수량 불일치 (실제: {real_qty}주, DB: {db_qty}주)"
-                        )
-                        reconcile_tasks.append(('qty_diff', stock_code, stock_name, real_stock, db_holdings_dict[stock_code]))
-
-            for stock_code, db_info in db_holdings_dict.items():
-                if stock_code not in real_codes:
-                    mismatches.append(
-                        f"⚠️ {stock_code}({db_info['stock_name']}): DB에만 존재 ({db_info['quantity']}주) - 외부 매도 또는 미체결"
-                    )
-                    reconcile_tasks.append(('db_only', stock_code, db_info['stock_name'], None, db_info))
-
-            if mismatches:
-                logger.warning(f"🚨 [실전매매] 계좌-DB 불일치 감지: {len(mismatches)}건")
-                for m in mismatches:
-                    logger.warning(m)
-
-                reconcile_applied = False
-                if STATE_RESTORATION_AUTO_RECONCILE and reconcile_tasks:
-                    reconcile_applied = await self._reconcile_mismatches(reconcile_tasks)
-
-                if self.telegram:
-                    tag = " [자동 보정 적용]" if reconcile_applied else ""
-                    alert_msg = f"🚨 계좌-DB 불일치 감지: {len(mismatches)}건{tag}\n\n"
-                    for m in mismatches[:5]:
-                        alert_msg += f"• {m}\n"
-                    if len(mismatches) > 5:
-                        alert_msg += f"... 외 {len(mismatches)-5}건"
-                    await self.telegram.send_notification(alert_msg)
-            else:
-                logger.info("✅ [실전매매] 계좌-DB 보유 종목 일치 확인")
-
-        except Exception as e:
-            logger.error(f"❌ 불일치 감지 오류: {e}")
-
-    async def _reconcile_mismatches(self, reconcile_tasks: list) -> bool:
-        """불일치 항목을 DB INSERT로 자동 보정. 실패 시 raise 금지.
-
-        Returns:
-            bool: 하나 이상 성공적으로 보정되었으면 True
+        자동 보정(0원 매도 INSERT 등)은 하지 않는다 — fail-closed
+        (2026-08-14 P0 결정 5). 대사 판정·반환은 예외를 그대로 전파하고,
+        텔레그램 발송 실패만 best-effort 로 삼킨다(기동 판정 오염 방지).
         """
-        any_success = False
-        now = now_kst()
+        mismatches = []
+        real_codes = set()
 
-        for task_type, stock_code, stock_name, real_info, db_info in reconcile_tasks:
-            try:
-                if task_type == 'real_only':
-                    # 실계좌에만 있음 → 외부 매수로 간주, BUY 레코드 INSERT
-                    avg_price = float(real_info.get('avg_price', 0))
-                    real_qty = int(real_info.get('quantity', 0))
-                    rec_id = self.db_manager.save_real_buy(
-                        stock_code=stock_code,
-                        stock_name=stock_name,
-                        price=avg_price,
-                        quantity=real_qty,
-                        strategy='EXTERNAL_MANUAL',
-                        reason='자동조정: 실계좌에만 존재(외부매수)',
-                        timestamp=now,
+        for real_stock in real_holdings:
+            stock_code = real_stock.get('stock_code', '')
+            real_qty = int(real_stock.get('quantity', 0))
+            stock_name = real_stock.get('stock_name', stock_code)
+
+            if real_qty <= 0:
+                continue
+
+            real_codes.add(stock_code)
+
+            if stock_code not in db_holdings_dict:
+                mismatches.append(
+                    f"⚠️ {stock_code}({stock_name}): 실제 계좌에만 존재 ({real_qty}주) - 외부 매수 또는 DB 누락"
+                )
+            else:
+                db_qty = db_holdings_dict[stock_code]['quantity']
+                if real_qty != db_qty:
+                    mismatches.append(
+                        f"⚠️ {stock_code}({stock_name}): 수량 불일치 (실제: {real_qty}주, DB: {db_qty}주)"
                     )
-                    if rec_id is not None:
-                        logger.info(
-                            f"[자동조정] {stock_code} BUY 레코드 생성 (id={rec_id}, "
-                            f"{real_qty}주 @{avg_price:,.0f}원, strategy=EXTERNAL_MANUAL)"
-                        )
-                        any_success = True
-                    else:
-                        logger.error(f"[자동조정] {stock_code} BUY INSERT 실패")
 
-                elif task_type == 'db_only':
-                    # DB에만 있음 → 외부 매도로 간주, 기존 BUY에 대응하는 SELL 레코드 INSERT
-                    db_qty = int(db_info['quantity'])
-                    buy_record_id = self.db_manager.get_last_open_real_buy(stock_code)
-                    ok = self.db_manager.save_real_sell(
-                        stock_code=stock_code,
-                        stock_name=stock_name,
-                        price=0.0,          # 실제 매도가 불확정 → 0으로 마킹
-                        quantity=db_qty,
-                        strategy='EXTERNAL_SOLD_RECONCILE',
-                        reason='자동조정: DB에만 존재(외부매도)',
-                        buy_record_id=buy_record_id,
-                        timestamp=now,
-                    )
-                    if ok:
-                        logger.info(
-                            f"[자동조정] {stock_code} SELL 레코드 생성 "
-                            f"({db_qty}주, buy_id={buy_record_id}, strategy=EXTERNAL_SOLD_RECONCILE)"
-                        )
-                        any_success = True
-                    else:
-                        logger.error(f"[자동조정] {stock_code} SELL INSERT 실패")
+        for stock_code, db_info in db_holdings_dict.items():
+            if stock_code not in real_codes:
+                mismatches.append(
+                    f"⚠️ {stock_code}({db_info['stock_name']}): DB에만 존재 ({db_info['quantity']}주) - 외부 매도 또는 미체결"
+                )
 
-                elif task_type == 'qty_diff':
-                    # 수량 불일치 → 차분 처리
-                    real_qty = int(real_info.get('quantity', 0))
-                    avg_price = float(real_info.get('avg_price', 0))
-                    db_qty = int(db_info['quantity'])
-                    diff = real_qty - db_qty
-
-                    if diff < 0:
-                        # 실계좌 < DB → 부분 매도 간주
-                        sold_qty = abs(diff)
-                        buy_record_id = self.db_manager.get_last_open_real_buy(stock_code)
-                        ok = self.db_manager.save_real_sell(
-                            stock_code=stock_code,
-                            stock_name=stock_name,
-                            price=0.0,
-                            quantity=sold_qty,
-                            strategy='EXTERNAL_SOLD_RECONCILE',
-                            reason=f'자동조정: 수량불일치 부분매도(실제{real_qty}주<DB{db_qty}주)',
-                            buy_record_id=buy_record_id,
-                            timestamp=now,
-                        )
-                        if ok:
-                            logger.info(
-                                f"[자동조정] {stock_code} 부분매도 SELL 레코드 생성 "
-                                f"({sold_qty}주, buy_id={buy_record_id})"
-                            )
-                            any_success = True
-                        else:
-                            logger.error(f"[자동조정] {stock_code} 부분매도 SELL INSERT 실패")
-
-                    else:
-                        # 실계좌 > DB → 부분 추가매수 간주
-                        added_qty = diff
-                        rec_id = self.db_manager.save_real_buy(
-                            stock_code=stock_code,
-                            stock_name=stock_name,
-                            price=avg_price,
-                            quantity=added_qty,
-                            strategy='EXTERNAL_MANUAL',
-                            reason=f'자동조정: 수량불일치 부분매수(실제{real_qty}주>DB{db_qty}주)',
-                            timestamp=now,
-                        )
-                        if rec_id is not None:
-                            logger.info(
-                                f"[자동조정] {stock_code} 부분매수 BUY 레코드 생성 "
-                                f"(id={rec_id}, +{added_qty}주 @{avg_price:,.0f}원)"
-                            )
-                            any_success = True
-                        else:
-                            logger.error(f"[자동조정] {stock_code} 부분매수 BUY INSERT 실패")
-
-            except Exception as e:
-                # 자동조정 실패는 critical 로그 + 알림 없이 계속 진행
-                logger.critical(f"[자동조정] {stock_code} ({task_type}) 처리 중 예외: {e}")
-
-        return any_success
+        if mismatches:
+            logger.warning(f"🚨 [실전매매] 계좌-DB 불일치 감지: {len(mismatches)}건")
+            for m in mismatches:
+                logger.warning(m)
+            if self.telegram:
+                alert_msg = f"🚨 계좌-DB 불일치 {len(mismatches)}건 — 실전 기동 중단\n\n"
+                for m in mismatches[:10]:
+                    alert_msg += f"• {m}\n"
+                if len(mismatches) > 10:
+                    alert_msg += f"... 외 {len(mismatches)-10}건\n"
+                # 2026-08-14 리뷰 I5: 알려진 오탐 원인을 경보 본문에 함께 남긴다 —
+                # EOD 강제완료(_force_complete_failed_stocks)는 DB 부작용이 0이라
+                # 다음날 이 대사에 안 잡힌다(수량이 원장상 그대로 일치한다). 여기서
+                # 잡히는 불일치는 그와 다른 경로(부분체결 매도의 원장 비대칭 등)다.
+                alert_msg += (
+                    "※ 부분체결 매도는 원장 비대칭으로 불일치가 날 수 있음(백로그)"
+                )
+                try:
+                    await self.telegram.notify_urgent_signal(alert_msg)
+                except Exception as telegram_err:
+                    # 알림 발송 실패는 삼킨다 — 대사 판정(기동 중단 여부)을 오염시키지 않는다.
+                    logger.warning(f"⚠️ [실전매매] 불일치 알림 전송 실패(무시): {telegram_err}")
+        else:
+            logger.info("✅ [실전매매] 계좌-DB 보유 종목 일치 확인")
+        return mismatches

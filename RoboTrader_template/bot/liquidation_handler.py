@@ -306,19 +306,24 @@ class LiquidationHandler:
                             moved = self.bot.trading_manager.move_to_sell_candidate(
                                 stock_code, f"{time_label} 시장가 일괄매도", strategy=owner_name
                             )
+                            sell_ok = False
                             if moved:
-                                await self.bot.trading_manager.execute_sell_order(
+                                sell_ok = await self.bot.trading_manager.execute_sell_order(
                                     stock_code, quantity, current_price,
                                     f"{time_label} 시장가 일괄매도", market=True,
                                     force=True, strategy=owner_name
                                 )
+                            if sell_ok:
                                 self.logger.info(
                                     f"{time_label} 시장가 매도: "
                                     f"{stock_code}({stock_name}) {quantity}주 시장가 주문"
                                 )
                             else:
+                                # 페이퍼 브랜치(:289-303)와 대칭 — 반환값을 검사해
+                                # 실매도 실패도 재시도 대상에 태운다 (2026-08-14 P0 D3).
+                                reason = "주문 거부" if moved else "매도 후보 전환 실패"
                                 self.logger.warning(
-                                    f"{stock_code} 매도 후보 전환 실패 - 재시도 대상에 추가"
+                                    f"{stock_code} 실매도 실패({reason}) - 재시도 대상에 추가"
                                 )
                                 failed_stocks.append((stock_code, owner_name))
 
@@ -418,16 +423,20 @@ class LiquidationHandler:
                         stock_code, f"EOD 청산 재시도 #{self._eod_retry_count}",
                         strategy=resolved_owner
                     )
+                    sell_ok = False
                     if moved:
-                        await self.bot.trading_manager.execute_sell_order(
+                        sell_ok = await self.bot.trading_manager.execute_sell_order(
                             stock_code, quantity, 0.0,
                             f"EOD 청산 재시도 #{self._eod_retry_count}", market=True,
                             force=True, strategy=resolved_owner
                         )
+                    if sell_ok:
                         self.logger.info(f"EOD 재시도 성공: {stock_code} {quantity}주")
                     else:
+                        # 본청산 브랜치와 동일 패턴 — 반환값 검사 (2026-08-14 P0 D3).
+                        reason = "주문 거부" if moved else "매도 후보 전환 실패"
                         self.logger.warning(
-                            f"EOD 재시도 매도 후보 전환 실패: {stock_code} - 재시도 대상 유지"
+                            f"EOD 재시도 실패({reason}): {stock_code} - 재시도 대상 유지"
                         )
                         still_failed.append((stock_code, resolved_owner))
             except Exception as e:

@@ -80,12 +80,20 @@ class TestInitializeFundManagerVirtualMode:
 
     @pytest.mark.asyncio
     async def test_real_mode_uses_broker_balance(self):
-        """실전 모드는 broker.get_account_balance()를 사용해야 함 (기존 로직 유지)."""
+        """실전 모드는 broker.get_account_balance()를 사용해야 함 (기존 로직 유지).
+
+        2026-08-14 P0(test_live_p0_fund_init.py): 총자금 산식이
+        min(real_total_funds_cap, 실계좌 total_balance) 로 바뀌었다 — 상한
+        미설정은 기동 중단이고, 응답 키는 'account_balance'(실계약에 없는
+        발명)가 아니라 'total_balance' 다. 이 테스트는 상한보다 작은 잔고를
+        골라 broker 잔고 경로 자체(기존 로직 유지)만 확인한다.
+        """
         from bot.initializer import BotInitializer
 
         bot = MagicMock()
         bot.decision_engine.is_virtual_mode = False
-        bot.broker.get_account_balance.return_value = {'account_balance': 15_000_000}
+        bot.config.real_total_funds_cap = 100_000_000  # 상한 > 잔고 → 잔고가 그대로 채택
+        bot.broker.get_account_balance.return_value = {'total_balance': 15_000_000}
         bot.fund_manager.update_total_funds = Mock()
         init = BotInitializer(bot)
 

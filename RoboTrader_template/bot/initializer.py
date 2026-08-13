@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, get_market_status
 from utils.price_utils import check_duplicate_process, load_config
+from utils.exceptions import LiveStartupAbort
 from config.market_hours import MarketHours
 from config.constants import VIRTUAL_CAPITAL_PER_STRATEGY
 
@@ -582,15 +583,23 @@ class BotInitializer:
                 return False
             self.logger.info("API 초기화 완료")
 
-            # 1.5. 자금 관리자 초기화 (API 초기화 후)
-            await self._initialize_fund_manager()
-
             # 2. 시장 상태 확인
             market_status = get_market_status()
             self.logger.info(f"현재 시장 상태: {market_status}")
 
-            # 3. 텔레그램 초기화
+            # 3. 텔레그램 초기화 (자금 관리자 초기화보다 먼저 — 2026-08-14 리뷰 I3)
+            #    실전 자금 상한 미설정/조회실패는 LiveStartupAbort 를 던진다. 그 abort 가
+            #    텔레그램 초기화 «전에» 발생하면 TelegramIntegration.is_enabled 가 여전히
+            #    False 라서 main.py 의 notify_urgent_signal 호출이 조기 return 으로
+            #    조용히 죽는다(경보 없는 프로세스 종료). 텔레그램을 먼저 세워 그 경로를 막는다.
+            #    안전성: 이 사이(시장 상태 확인)와 텔레그램 초기화 자체는 fund_manager 를
+            #    읽지 않는다(core/telegram_integration.py 확인) — 재배열 무해.
             await self.bot.telegram.initialize()
+
+            # 3.5. 자금 관리자 초기화 (텔레그램 초기화 후, 후보/보유 복원 «전» —
+            #      복원 단계(4)가 fund_manager.total_funds 를 기준으로 보유 종목의
+            #      invested_funds/available_funds 를 갱신하므로 그 전에 반드시 끝나야 한다)
+            await self._initialize_fund_manager()
 
             # 4. DB에서 오늘 날짜의 후보 종목 복원
             await self.bot.state_restoration_helper.restore_todays_candidates()
@@ -605,6 +614,10 @@ class BotInitializer:
             self.logger.info("시스템 초기화 완료")
             return True
 
+        except LiveStartupAbort:
+            # 실전 기동 중단은 그대로 전파한다 — 여기서 삼키면 main.py 의 전용
+            # 핸들러(텔레그램 경보 + exit 2)가 발화하지 못한다(2026-08-14 리뷰 I1).
+            raise
         except Exception as e:
             self.logger.error(f"시스템 초기화 실패: {e}")
             return False
@@ -671,18 +684,42 @@ class BotInitializer:
             self.bot.fund_manager.update_total_funds(total_funds)
             self.logger.info(f"자금 관리자 초기화 완료 (가상매매 모드): {total_funds:,.0f}원")
         else:
+            from utils.exceptions import LiveStartupAbort
+
+            def _to_float(value, label):
+                # 실전 기동 실패는 전부 LiveStartupAbort 로 수렴해야 한다(스펙) —
+                # 생 ValueError/TypeError 로 죽으면 main 의 텔레그램 경보를 건너뛴다.
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    raise LiveStartupAbort(
+                        "실전 총자금 설정/응답이 숫자가 아니다",
+                        f"{label}={value!r}")
+
+            cap_raw = getattr(self.bot.config, 'real_total_funds_cap', None)
+            if cap_raw is None:
+                raise LiveStartupAbort(
+                    "실전 총자금 상한 미설정",
+                    "trading_config.json 에 real_total_funds_cap(원)을 설정해야 실전 기동이 가능합니다")
+            cap = _to_float(cap_raw, "real_total_funds_cap")
+            if cap <= 0:
+                raise LiveStartupAbort(
+                    "실전 총자금 상한 미설정",
+                    "trading_config.json 에 real_total_funds_cap(원)을 설정해야 실전 기동이 가능합니다")
             balance_info = self.bot.broker.get_account_balance()
-            if balance_info:
-                # KISBroker returns dict, KISAPIManager returns AccountInfo
-                if isinstance(balance_info, dict):
-                    total_funds = float(balance_info.get('account_balance', 10000000))
-                else:
-                    total_funds = float(balance_info.account_balance) if hasattr(balance_info, 'account_balance') else 10000000
-                self.bot.fund_manager.update_total_funds(total_funds)
-                self.logger.info(f"자금 관리자 초기화 완료: {total_funds:,.0f}원")
+            if isinstance(balance_info, dict):
+                total_eval = _to_float(balance_info.get('total_balance', 0) or 0, "total_balance")
             else:
-                self.logger.warning("잔고 조회 실패 - 기본값 1천만원으로 설정")
-                self.bot.fund_manager.update_total_funds(10000000)
+                # KISAPIManager 경로: AccountInfo.account_balance (kis_api_manager.py:222)
+                total_eval = _to_float(getattr(balance_info, 'account_balance', 0) or 0, "account_balance")
+            if total_eval <= 0:
+                raise LiveStartupAbort(
+                    "실계좌 잔고 조회 실패 또는 0원",
+                    f"get_account_balance() 반환 요약={str(balance_info)[:200]}")
+            total_funds = min(cap, total_eval)
+            self.bot.fund_manager.update_total_funds(total_funds)
+            self.logger.info(
+                f"자금 관리자 초기화 완료(실전): min(상한 {cap:,.0f}, 총평가 {total_eval:,.0f}) = {total_funds:,.0f}원")
 
     async def shutdown(self) -> None:
         """시스템 종료"""
@@ -704,8 +741,8 @@ class BotInitializer:
             # 미체결 주문 취소
             await self._cancel_pending_orders()
 
-            # API 매니저 종료
-            self.bot.broker.shutdown()
+            # API 매니저 종료 (KISBroker 에 shutdown 은 없다 — disconnect 가 정식 경로, 2026-08-14 P0 D4d)
+            await self.bot.broker.disconnect()
 
             # PID 파일 삭제
             if self.bot.pid_file.exists():

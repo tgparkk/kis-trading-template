@@ -22,6 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from bot.state_restorer import StateRestorer
 from core.models import StockState
+from utils.exceptions import LiveStartupAbort
 
 
 @pytest.fixture
@@ -36,12 +37,17 @@ def base_deps():
     db_manager.get_virtual_open_positions = MagicMock(return_value=pd.DataFrame())
 
     telegram = AsyncMock()
-    telegram.send_notification = AsyncMock()
+    telegram.notify_urgent_signal = AsyncMock()
 
     config = MagicMock()
     config.paper_trading = True
 
     broker = MagicMock()
+    # Task 6 (2026-08-14 P0 결정 6): 실전 복원은 미체결 전량 취소를 가장 먼저
+    # 시도한다. 기본값을 「미체결 없음」으로 둬 기존 real-account 테스트들이
+    # 취소 단계와 무관한 관심사를 검증할 때 굳이 매 테스트마다 배선하지
+    # 않아도 되게 한다(취소 시나리오 자체는 test_live_p0_pending_orders.py).
+    broker.get_pending_orders.return_value = []
 
     get_prev_close = MagicMock(return_value=50000.0)
 
@@ -109,17 +115,15 @@ class TestRealTradingRestore:
         base_deps['config'].paper_trading = False
         restorer = StateRestorer(**base_deps)
         restorer.is_paper_trading = False
+        # 이 테스트는 브로커→메모리 복원 배선만 검증한다. 대사(불일치 감지)는
+        # 별도 관심사이므로 fail-closed 결정(5)의 영향을 받지 않게 우회한다.
+        restorer._detect_holdings_mismatch = AsyncMock(return_value=[])
 
-        base_deps['broker'].get_account_balance.return_value = {
-            'positions': [
-                {
-                    'stock_code': '005930',
-                    'stock_name': '삼성전자',
-                    'quantity': 5,
-                    'avg_price': 72000.0,
-                }
-            ]
-        }
+        from tests.broker_contract import make_account_balance, make_holding
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=1)
+        base_deps['broker'].get_holdings.return_value = [make_holding(
+            stock_code='005930', stock_name='삼성전자', quantity=5, avg_price=72000.0,
+        )]
 
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
@@ -131,8 +135,14 @@ class TestRealTradingRestore:
         mock_ts.set_position.assert_called_once_with(5, 72000.0)
 
     @pytest.mark.asyncio
-    async def test_브로커_없으면_DB_폴백(self, base_deps):
-        """broker가 None이면 DB 복원으로 대체하는지"""
+    async def test_브로커_없으면_기동_중단(self, base_deps):
+        """broker가 None이면 기동 중단(LiveStartupAbort).
+
+        구 기대치("DB 복원으로 대체")는 2026-08-14 최종 리뷰 I4 로 폐기됐다 —
+        broker 미연결을 DB 폴백으로 조용히 넘기면 실계좌 대사를 건너뛴 채
+        기동하게 된다. 실전 기동 실패는 전부 LiveStartupAbort 로 수렴해야
+        한다(결정 5).
+        """
         base_deps['config'].paper_trading = False
         base_deps['broker'] = None
         restorer = StateRestorer(**base_deps)
@@ -141,9 +151,10 @@ class TestRealTradingRestore:
         restorer._restore_holdings_from_db = AsyncMock()
 
         with patch('bot.state_restorer.DatabaseConnection'):
-            await restorer._restore_holdings_from_real_account()
+            with pytest.raises(LiveStartupAbort):
+                await restorer._restore_holdings_from_real_account()
 
-        restorer._restore_holdings_from_db.assert_called_once()
+        restorer._restore_holdings_from_db.assert_not_called()
 
 
 class TestMismatchDetection:
@@ -159,8 +170,8 @@ class TestMismatchDetection:
 
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-        base_deps['telegram_integration'].send_notification.assert_called_once()
-        call_args = base_deps['telegram_integration'].send_notification.call_args[0][0]
+        base_deps['telegram_integration'].notify_urgent_signal.assert_called_once()
+        call_args = base_deps['telegram_integration'].notify_urgent_signal.call_args[0][0]
         assert '불일치' in call_args
 
     @pytest.mark.asyncio
@@ -175,7 +186,7 @@ class TestMismatchDetection:
 
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-        base_deps['telegram_integration'].send_notification.assert_called_once()
+        base_deps['telegram_integration'].notify_urgent_signal.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_DB에만_존재하는_종목_감지(self, restorer, base_deps):
@@ -187,7 +198,7 @@ class TestMismatchDetection:
 
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-        base_deps['telegram_integration'].send_notification.assert_called_once()
+        base_deps['telegram_integration'].notify_urgent_signal.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_일치_시_알림_없음(self, restorer, base_deps):
@@ -201,7 +212,7 @@ class TestMismatchDetection:
 
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-        base_deps['telegram_integration'].send_notification.assert_not_called()
+        base_deps['telegram_integration'].notify_urgent_signal.assert_not_called()
 
 
 class TestCandidateRestore:
@@ -309,8 +320,13 @@ class TestStateRestorerEdgeCases:
         base_deps['trading_manager']._change_stock_state.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_실전매매_broker_예외_시_DB_폴백(self, base_deps):
-        """실전매매에서 broker.get_account_balance()가 예외를 던지면 DB 폴백하는지"""
+    async def test_실전매매_broker_예외_시_기동_중단(self, base_deps):
+        """실전매매에서 broker.get_account_balance()가 예외를 던지면 기동 중단(LiveStartupAbort).
+
+        구 기대치("DB 폴백")는 2026-08-14 최종 리뷰 I4 로 폐기됐다 — 원인 불명
+        예외를 DB 복원으로 조용히 대체하면 실전 기동 실패가 전부 LiveStartupAbort
+        로 수렴해야 한다는 계약(결정 5)이 깨진다.
+        """
         base_deps['config'].paper_trading = False
         base_deps['broker'].get_account_balance.side_effect = Exception("API 장애")
         restorer = StateRestorer(**base_deps)
@@ -318,15 +334,18 @@ class TestStateRestorerEdgeCases:
         restorer._restore_holdings_from_db = AsyncMock()
 
         with patch('bot.state_restorer.DatabaseConnection'):
-            await restorer._restore_holdings_from_real_account()
+            with pytest.raises(LiveStartupAbort):
+                await restorer._restore_holdings_from_real_account()
 
-        restorer._restore_holdings_from_db.assert_called_once()
+        restorer._restore_holdings_from_db.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_실전매매_빈_포지션_리스트(self, base_deps):
         """실전매매에서 계좌에 포지션이 없을 때 정상 처리하는지"""
         base_deps['config'].paper_trading = False
-        base_deps['broker'].get_account_balance.return_value = {'positions': []}
+        from tests.broker_contract import make_account_balance
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=0)
+        base_deps['broker'].get_holdings.return_value = []
         restorer = StateRestorer(**base_deps)
         restorer.is_paper_trading = False
 
@@ -339,11 +358,11 @@ class TestStateRestorerEdgeCases:
     async def test_실전매매_수량0_포지션_스킵(self, base_deps):
         """실전매매에서 수량 0인 포지션(청산완료)을 스킵하는지"""
         base_deps['config'].paper_trading = False
-        base_deps['broker'].get_account_balance.return_value = {
-            'positions': [
-                {'stock_code': '005930', 'stock_name': '삼성전자', 'quantity': 0, 'avg_price': 70000},
-            ]
-        }
+        from tests.broker_contract import make_account_balance, make_holding
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=1)
+        base_deps['broker'].get_holdings.return_value = [make_holding(
+            stock_code='005930', stock_name='삼성전자', quantity=0, avg_price=70000.0,
+        )]
         restorer = StateRestorer(**base_deps)
         restorer.is_paper_trading = False
 
@@ -588,16 +607,19 @@ class TestFundManagerSync:
         fm = self._make_fund_manager(10_000_000)
         base_deps['config'].paper_trading = False
 
-        base_deps['broker'].get_account_balance.return_value = {
-            'positions': [
-                {'stock_code': '005930', 'stock_name': '삼성전자', 'quantity': 10, 'avg_price': 70000},
-            ]
-        }
+        from tests.broker_contract import make_account_balance, make_holding
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=1)
+        base_deps['broker'].get_holdings.return_value = [make_holding(
+            stock_code='005930', stock_name='삼성전자', quantity=10, avg_price=70000.0,
+        )]
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
 
         restorer = StateRestorer(**base_deps, fund_manager=fm)
         restorer.is_paper_trading = False
+        # 이 테스트는 FundManager 동기화만 검증한다. 대사는 별도 관심사이므로
+        # fail-closed 결정(5)의 영향을 받지 않게 우회한다.
+        restorer._detect_holdings_mismatch = AsyncMock(return_value=[])
 
         with patch('bot.state_restorer.DatabaseConnection'):
             await restorer._restore_holdings_from_real_account()

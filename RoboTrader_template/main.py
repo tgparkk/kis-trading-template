@@ -39,6 +39,7 @@ from framework import KISBroker
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, is_market_open
 from utils.price_utils import check_duplicate_process, load_config
+from utils.exceptions import LiveStartupAbort
 from config.market_hours import MarketHours
 from config.constants import (
     OHLCV_LOOKBACK_DAYS,
@@ -687,9 +688,18 @@ async def main() -> None:
 
     bot = DayTradingBot()
 
-    # 시스템 초기화
-    if not await bot.initialize():
-        sys.exit(1)
+    # 시스템 초기화 — LiveStartupAbort 는 실전 기동 중단(스펙 2026-08-14 P0)
+    try:
+        if not await bot.initialize():
+            sys.exit(1)
+    except LiveStartupAbort as e:
+        logging.getLogger(__name__).critical(f"🚨 실전 기동 중단: {e}")
+        try:
+            if getattr(bot, 'telegram', None):
+                await bot.telegram.notify_urgent_signal(f"🚨 실전 기동 중단\n{e}")
+        except Exception:
+            pass  # 경보 실패가 exit 를 막지 않는다
+        sys.exit(2)
 
     # KIS chk-holiday 휴장일 동기화 (auth 완료 후 1회, 캐시 가드로 하루 1회만 API 호출)
     try:
