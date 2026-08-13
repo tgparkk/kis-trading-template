@@ -372,7 +372,8 @@ class TradingConfig:
     candidate_filters: CandidateFiltersConfig = field(default_factory=CandidateFiltersConfig)
     paper_trading: bool = True  # 가상 매매 모드 (기본 활성화)
     rebalancing_mode: bool = False  # 리밸런싱 모드 (일봉 데이터만 수집)
-    
+    real_total_funds_cap: Optional[float] = None  # 실전 총자금 상한(원). 실전 모드 필수 — 미설정 시 기동 중단(2026-08-14 P0)
+
     @classmethod
     def from_json(cls, json_data: Dict[str, Any]) -> 'TradingConfig':
         """JSON 데이터로부터 TradingConfig 객체 생성"""
@@ -408,5 +409,6 @@ class TradingConfig:
             ),
             strategies=json_data.get('strategies', None),
             paper_trading=json_data.get('paper_trading', True),
-            rebalancing_mode=json_data.get('rebalancing_mode', False)
+            rebalancing_mode=json_data.get('rebalancing_mode', False),
+            real_total_funds_cap=json_data.get('real_total_funds_cap', None)
         )

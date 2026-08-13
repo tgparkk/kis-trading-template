@@ -671,18 +671,26 @@ class BotInitializer:
             self.bot.fund_manager.update_total_funds(total_funds)
             self.logger.info(f"자금 관리자 초기화 완료 (가상매매 모드): {total_funds:,.0f}원")
         else:
+            from utils.exceptions import LiveStartupAbort
+            cap = getattr(self.bot.config, 'real_total_funds_cap', None)
+            if cap is None or float(cap) <= 0:
+                raise LiveStartupAbort(
+                    "실전 총자금 상한 미설정",
+                    "trading_config.json 에 real_total_funds_cap(원)을 설정해야 실전 기동이 가능합니다")
             balance_info = self.bot.broker.get_account_balance()
-            if balance_info:
-                # KISBroker returns dict, KISAPIManager returns AccountInfo
-                if isinstance(balance_info, dict):
-                    total_funds = float(balance_info.get('account_balance', 10000000))
-                else:
-                    total_funds = float(balance_info.account_balance) if hasattr(balance_info, 'account_balance') else 10000000
-                self.bot.fund_manager.update_total_funds(total_funds)
-                self.logger.info(f"자금 관리자 초기화 완료: {total_funds:,.0f}원")
+            if isinstance(balance_info, dict):
+                total_eval = float(balance_info.get('total_balance', 0) or 0)
             else:
-                self.logger.warning("잔고 조회 실패 - 기본값 1천만원으로 설정")
-                self.bot.fund_manager.update_total_funds(10000000)
+                # KISAPIManager 경로: AccountInfo.account_balance (kis_api_manager.py:222)
+                total_eval = float(getattr(balance_info, 'account_balance', 0) or 0)
+            if total_eval <= 0:
+                raise LiveStartupAbort(
+                    "실계좌 잔고 조회 실패 또는 0원",
+                    f"get_account_balance() 반환 요약={str(balance_info)[:200]}")
+            total_funds = float(min(float(cap), total_eval))
+            self.bot.fund_manager.update_total_funds(total_funds)
+            self.logger.info(
+                f"자금 관리자 초기화 완료(실전): min(상한 {float(cap):,.0f}, 총평가 {total_eval:,.0f}) = {total_funds:,.0f}원")
 
     async def shutdown(self) -> None:
         """시스템 종료"""
