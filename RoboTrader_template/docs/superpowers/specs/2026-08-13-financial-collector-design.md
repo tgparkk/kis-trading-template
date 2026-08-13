@@ -93,6 +93,8 @@ Phase 2B 가 끝난 뒤 정리한다.
 | `collectors/dart_financial_fetcher.py` | `fnlttSinglAcntAll` 호출 · status 처리 · 원본 append | `requests` |
 | `collectors/kis_financial_fetcher.py` | `get_financial_ratio(div_cls="1")` 래핑 | `api/kis_financial_api` |
 | `collectors/financial_writer.py` | UPSERT 전담 — **DB 쓰기는 이 파일 한 곳뿐** | `db/kis_db_connection` |
+| `collectors/financial_metrics.py` | `account_id` → 13지표 매핑 + `fn_financials_as_of` DDL | — |
+| `collectors/dart_corp_code.py` | corpCode.xml → `dart_corp_code` 매핑 테이블 | `requests` |
 
 **경계**: 각 파일은 하나의 질문에만 답한다. fetcher 는 「DART/KIS 가 무엇을 돌려주는가」,
 writer 는 「그것을 어떻게 저장하는가」, collector 는 「지금 무엇을 받아야 하는가」.
@@ -100,7 +102,10 @@ fetcher 는 DB 를 모르고, writer 는 HTTP 를 모른다.
 
 ---
 
-## 3. 스키마 (신규 3테이블 + 뷰 1개)
+## 3. 스키마 (신규 5테이블 + 뷰 1개)
+
+> 🔧 **2026-08-13 개정** — 계획 작성 중 발견해 사장님 승인을 받은 편차 2건이 반영돼 있다:
+> `thstrm_add_amount` 컬럼(§3.2) · `dart_corp_code` 테이블(§3.5). 부수로 `dart_financial_nodata`(§3.6).
 
 ### 3.1 `dart_financial_filings` — 접수건 메타 (1행 = 1보고서)
 
@@ -139,7 +144,8 @@ CREATE TABLE dart_financial_accounts (
     account_id        text        NOT NULL,   -- 'ifrs-full_Assets' 등
     ord               int         NOT NULL,   -- 응답 내 순서
     account_nm        text,
-    thstrm_amount     bigint,                 -- 당기
+    thstrm_amount     bigint,                 -- 당기 (분기 IS 면 «당분기 3개월»)
+    thstrm_add_amount bigint,                 -- 당기 누계 (연간 보고서엔 없음 → NULL)
     frmtrm_amount     bigint,                 -- 전기
     bfefrmtrm_amount  bigint,                 -- 전전기
     currency          text,
@@ -147,6 +153,10 @@ CREATE TABLE dart_financial_accounts (
     FOREIGN KEY (rcept_no, fs_div) REFERENCES dart_financial_filings (rcept_no, fs_div)
 );
 ```
+
+🔴 **`thstrm_add_amount` 는 분기 손익계산서에서 필수다.** 분기 IS 에서 `thstrm_amount` 는
+**당분기 3개월**이고 `thstrm_add_amount` 가 **누계**다. 이 컬럼이 없으면 ***분기 매출액·영업이익을
+만들 수 없다*** — 이 수집기 목적의 절반이 무너진다. Wide 파생(§3.4)은 `COALESCE(누계, 당기)` 를 쓴다.
 
 🔑 **`ord` 를 키에 넣는 이유**: DART 응답에서 같은 `account_id` 가 한 보고서에 **두 번 이상** 나올 수 있다
 (표준계정코드 미사용분 16.3%, `account_id='-표준계정코드 미사용-'`). `ord` 없이 키를 잡으면
@@ -204,6 +214,34 @@ CREATE TABLE kis_financial_ratio (
 표준계정코드 미사용 16.3% 라 **한 지표에 여러 `account_id` 가 대응한다.** 매핑 커버리지를
 `f3_coverage.txt` 형식으로 리포트하고, **커버리지가 아니라 「매핑 실패 종목 목록」을 산출물로 남긴다**
 (비율만 남기면 어느 종목이 빠졌는지 못 찾는다).
+
+---
+
+### 3.5 `dart_corp_code` — corp_code ↔ stock_code 매핑
+
+```sql
+PRIMARY KEY (stock_code)
+corp_code varchar(8) NOT NULL · corp_name text · updated_at timestamp
+```
+
+🔴 **왜 테이블이어야 하는가**: 이 매핑 **2,556건**이 지금
+`scratchpad/mcap_dart/a1_corpcode_map.json` **파일에만** 있고 그 디렉토리는 **git 미추적**이다.
+운영 수집기가 거기 의존하면 `git clean -xdf` 한 번에 죽는다.
+🔑 ***오늘 아침 `D:\archive\` 로 백업한 `f2_raw` 와 정확히 같은 형태의 위험이다*** —
+「재수집 비용이 큰 데이터가 gitignore 대상 디렉토리에만 있다」.
+
+갱신은 `corpCode.xml` **1호출**(zip)이라 한도 영향이 없다. 🔴 응답이 zip 이 아니면 즉시 실패시킨다 —
+에러 JSON 을 XML 로 파싱하면 **0건이 「성공」이 된다.**
+
+### 3.6 `dart_financial_nodata` — 「무자료 확정」 기록
+
+```sql
+PRIMARY KEY (stock_code, bsns_year, reprt_code)
+checked_at timestamp
+```
+
+CFS·OFS **둘 다** `status=013` 이면 여기 기록한다. 🔑 ***「무자료 확정」과 「아직 미수집」을 구분하지
+않으면 매일 같은 것을 두드린다*** — 창 안 예산(일 800)을 영구 결번에 낭비하게 된다.
 
 ---
 
