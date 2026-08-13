@@ -15,6 +15,7 @@ from config.constants import (
     STALE_DEFAULT_TARGET_PROFIT, STALE_DEFAULT_STOP_LOSS,
 )
 from db.connection import DatabaseConnection
+from utils.exceptions import LiveStartupAbort
 
 logger = setup_logger(__name__)
 
@@ -87,6 +88,10 @@ class StateRestorer:
             else:
                 await self._restore_holdings_from_real_account()
 
+        except LiveStartupAbort:
+            # 실전 기동 중단은 그대로 전파한다 — 여기서 삼키면 main.py 의 전용
+            # 핸들러(텔레그램 경보 + exit 2)가 발화하지 못한다(2026-08-14 리뷰 C1).
+            raise
         except Exception as e:
             logger.error(f"❌ 종목 복원 실패: {e}")
 
@@ -802,9 +807,12 @@ class StateRestorer:
         from utils.exceptions import LiveStartupAbort
         try:
             if not self.broker:
-                logger.error("❌ [실전매매] broker가 없어 계좌 조회 불가 - DB 복원으로 대체")
-                await self._restore_holdings_from_db()
-                return
+                # 2026-08-14 리뷰 I4: broker 부재를 DB 폴백으로 조용히 넘기면
+                # 실계좌 대사를 건너뛴 채 기동한다 — 실전 기동 실패는 전부
+                # LiveStartupAbort 로 수렴해야 한다(결정 5).
+                raise LiveStartupAbort(
+                    "실전 복원 불가 — broker 미연결",
+                    "self.broker is None/falsy")
 
             logger.info("🔄 [실전매매] 실제 계좌에서 보유 종목 조회 중...")
 
@@ -878,9 +886,12 @@ class StateRestorer:
             # 3. 계좌-DB 대사 — 불일치는 기동 중단(fail-closed, 2026-08-14 P0 결정 5)
             mismatches = await self._detect_holdings_mismatch(real_holdings, db_holdings_dict)
             if mismatches:
+                # [:10] — 텔레그램 경보(_detect_holdings_mismatch)와 노출 건수를
+                # 통일한다(2026-08-14 리뷰 Minor). 다른 수를 쓰면 두 경보가
+                # 같은 사건을 다른 분량으로 보여줘 대조가 헷갈린다.
                 raise LiveStartupAbort(
                     f"계좌-DB 불일치 {len(mismatches)}건 — 수동 확인 후 재기동 필요",
-                    " / ".join(mismatches[:5]))
+                    " / ".join(mismatches[:10]))
 
             # 4. 실제 계좌 기준으로 메모리에 복원
             holding_restored = 0
@@ -1012,9 +1023,11 @@ class StateRestorer:
             # 실계좌 조회 실패 = 기동 중단(2026-08-14 P0) — DB 폴백으로 계속하지 않는다.
             raise
         except Exception as e:
-            logger.error(f"[실전매매] 보유 종목 복원 실패: {e}")
-            logger.warning("DB 복원으로 대체합니다...")
-            await self._restore_holdings_from_db()
+            # 2026-08-14 리뷰 I4: 여기서 DB 폴백으로 조용히 넘어가면 원인 불명 예외가
+            # "복원 실패 → DB 로 대체"로 위장돼 실전 기동 실패가 전부 LiveStartupAbort 로
+            # 수렴한다는 계약(결정 5)이 깨진다. 그대로 abort 로 전환한다.
+            raise LiveStartupAbort(
+                "실전 복원 중 예외", f"{type(e).__name__}: {e}") from e
 
     async def _detect_holdings_mismatch(self, real_holdings: List[Dict], db_holdings_dict: Dict[str, Dict]) -> List[str]:
         """실제 계좌와 DB 간 보유 종목 불일치 감지.
@@ -1062,7 +1075,14 @@ class StateRestorer:
                 for m in mismatches[:10]:
                     alert_msg += f"• {m}\n"
                 if len(mismatches) > 10:
-                    alert_msg += f"... 외 {len(mismatches)-10}건"
+                    alert_msg += f"... 외 {len(mismatches)-10}건\n"
+                # 2026-08-14 리뷰 I5: 알려진 오탐 원인을 경보 본문에 함께 남긴다 —
+                # EOD 강제완료(_force_complete_failed_stocks)는 DB 부작용이 0이라
+                # 다음날 이 대사에 안 잡힌다(수량이 원장상 그대로 일치한다). 여기서
+                # 잡히는 불일치는 그와 다른 경로(부분체결 매도의 원장 비대칭 등)다.
+                alert_msg += (
+                    "※ 부분체결 매도는 원장 비대칭으로 불일치가 날 수 있음(백로그)"
+                )
                 try:
                     await self.telegram.notify_urgent_signal(alert_msg)
                 except Exception as telegram_err:

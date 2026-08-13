@@ -22,6 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from bot.state_restorer import StateRestorer
 from core.models import StockState
+from utils.exceptions import LiveStartupAbort
 
 
 @pytest.fixture
@@ -134,8 +135,14 @@ class TestRealTradingRestore:
         mock_ts.set_position.assert_called_once_with(5, 72000.0)
 
     @pytest.mark.asyncio
-    async def test_브로커_없으면_DB_폴백(self, base_deps):
-        """broker가 None이면 DB 복원으로 대체하는지"""
+    async def test_브로커_없으면_기동_중단(self, base_deps):
+        """broker가 None이면 기동 중단(LiveStartupAbort).
+
+        구 기대치("DB 복원으로 대체")는 2026-08-14 최종 리뷰 I4 로 폐기됐다 —
+        broker 미연결을 DB 폴백으로 조용히 넘기면 실계좌 대사를 건너뛴 채
+        기동하게 된다. 실전 기동 실패는 전부 LiveStartupAbort 로 수렴해야
+        한다(결정 5).
+        """
         base_deps['config'].paper_trading = False
         base_deps['broker'] = None
         restorer = StateRestorer(**base_deps)
@@ -144,9 +151,10 @@ class TestRealTradingRestore:
         restorer._restore_holdings_from_db = AsyncMock()
 
         with patch('bot.state_restorer.DatabaseConnection'):
-            await restorer._restore_holdings_from_real_account()
+            with pytest.raises(LiveStartupAbort):
+                await restorer._restore_holdings_from_real_account()
 
-        restorer._restore_holdings_from_db.assert_called_once()
+        restorer._restore_holdings_from_db.assert_not_called()
 
 
 class TestMismatchDetection:
@@ -312,8 +320,13 @@ class TestStateRestorerEdgeCases:
         base_deps['trading_manager']._change_stock_state.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_실전매매_broker_예외_시_DB_폴백(self, base_deps):
-        """실전매매에서 broker.get_account_balance()가 예외를 던지면 DB 폴백하는지"""
+    async def test_실전매매_broker_예외_시_기동_중단(self, base_deps):
+        """실전매매에서 broker.get_account_balance()가 예외를 던지면 기동 중단(LiveStartupAbort).
+
+        구 기대치("DB 폴백")는 2026-08-14 최종 리뷰 I4 로 폐기됐다 — 원인 불명
+        예외를 DB 복원으로 조용히 대체하면 실전 기동 실패가 전부 LiveStartupAbort
+        로 수렴해야 한다는 계약(결정 5)이 깨진다.
+        """
         base_deps['config'].paper_trading = False
         base_deps['broker'].get_account_balance.side_effect = Exception("API 장애")
         restorer = StateRestorer(**base_deps)
@@ -321,9 +334,10 @@ class TestStateRestorerEdgeCases:
         restorer._restore_holdings_from_db = AsyncMock()
 
         with patch('bot.state_restorer.DatabaseConnection'):
-            await restorer._restore_holdings_from_real_account()
+            with pytest.raises(LiveStartupAbort):
+                await restorer._restore_holdings_from_real_account()
 
-        restorer._restore_holdings_from_db.assert_called_once()
+        restorer._restore_holdings_from_db.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_실전매매_빈_포지션_리스트(self, base_deps):

@@ -278,16 +278,22 @@ class TestRealTradingEdgeCases:
         return r
 
     @pytest.mark.asyncio
-    async def test_계좌_조회_예외_시_DB_폴백(self, real_restorer, base_deps):
-        """broker.get_account_balance()가 예외 시 DB 폴백"""
+    async def test_계좌_조회_예외_시_기동_중단(self, real_restorer, base_deps):
+        """broker.get_account_balance()가 예외 시 기동 중단(LiveStartupAbort).
+
+        구 기대치("DB 폴백")는 2026-08-14 최종 리뷰 I4 로 폐기됐다 — 잔존하던
+        마지막 silent-continue 경로(원인 불명 예외 → DB 복원으로 대체)가 실전
+        기동 실패는 전부 LiveStartupAbort 로 수렴해야 한다는 계약(결정 5)을
+        깨고 있었다. 이제 예외는 삼켜지지 않고 LiveStartupAbort 로 전환되어
+        전파된다 — DB 폴백은 더 이상 일어나지 않는다.
+        """
         base_deps['broker'].get_account_balance.side_effect = Exception("네트워크 오류")
 
         with patch('bot.state_restorer.DatabaseConnection'):
-            await real_restorer._restore_holdings_from_real_account()
+            with pytest.raises(LiveStartupAbort):
+                await real_restorer._restore_holdings_from_real_account()
 
-        # 라이브 모드 DB 폴백은 실거래 테이블을 읽는다 (가상 테이블 아님).
-        # 사전-실전 감사 BLOCKER #3, 2026-06-24.
-        base_deps['db_manager'].get_real_open_positions.assert_called_once()
+        base_deps['db_manager'].get_real_open_positions.assert_not_called()
         base_deps['db_manager'].get_virtual_open_positions.assert_not_called()
 
     @pytest.mark.asyncio

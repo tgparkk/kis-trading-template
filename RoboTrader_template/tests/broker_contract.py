@@ -5,7 +5,7 @@ account_balance)를 발명」해 테스트가 green 인 채 숨었다. 이 모�
 test_live_broker_contract.py 가 실브로커 반환과 동일함을 고정한다.
 손으로 브로커 dict 를 만들지 말 것.
 """
-from typing import Dict, List
+from typing import Dict
 
 # framework/broker.py get_account_balance() 반환 dict 의 전체 키 (:280-290)
 ACCOUNT_BALANCE_KEYS = frozenset({
