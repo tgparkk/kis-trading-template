@@ -17,6 +17,8 @@ import pytest
 
 from bot.state_restorer import StateRestorer
 from core.models import StockState
+from tests.broker_contract import make_account_balance, make_holding
+from utils.exceptions import LiveStartupAbort
 
 
 @pytest.fixture
@@ -29,14 +31,24 @@ def base_deps():
 
     db_manager = MagicMock()
     db_manager.get_virtual_open_positions = MagicMock(return_value=pd.DataFrame())
+    # 실전 모드 폴백/대사는 real_trading_records 를 읽는다(BLOCKER #3/#4, 2026-06-24).
+    # 기본값을 빈 DataFrame 으로 둬 실전 계열 테스트가 대사 단계에서 크래시하지 않게 한다.
+    db_manager.get_real_open_positions = MagicMock(return_value=pd.DataFrame())
 
     telegram = AsyncMock()
-    telegram.send_notification = AsyncMock()
+    # 2026-08-14 P0(6c93ac2): send_notification 은 유령 메서드 — 실코드는
+    # notify_urgent_signal 을 부른다. AsyncMock 은 임의 속성 접근을 허용하므로
+    # 이 줄이 없어도 호출 자체는 성공하지만, 이름을 맞춰 두어 혼동을 없앤다.
+    telegram.notify_urgent_signal = AsyncMock()
 
     config = MagicMock()
     config.paper_trading = True
 
     broker = MagicMock()
+    # 2026-08-14 P0(b71d3e6): 실전 복원 0단계가 기동 시 미체결을 전량 조회·취소한다.
+    # 기본값 없이 두면 MagicMock() 이 매수 목록으로 오인돼(참·비-iterable) 모든
+    # 실전 계열 테스트가 이 단계에서 깨진다.
+    broker.get_pending_orders = MagicMock(return_value=[])
 
     get_prev_close = MagicMock(return_value=50000.0)
 
@@ -258,6 +270,10 @@ class TestRealTradingEdgeCases:
         base_deps['config'].paper_trading = False
         r = StateRestorer(**base_deps)
         r.is_paper_trading = False
+        # 이 클래스는 브로커측 엣지케이스(예외/None/빈 목록 등)를 검증한다 —
+        # 계좌-DB 대사(fail-closed, 2026-08-14 P0 결정 5)는 별도 관심사이므로
+        # 여기서는 항상 불일치 0으로 고정해 대사 로직이 각 테스트를 가리지 않게 한다.
+        r._detect_holdings_mismatch = AsyncMock(return_value=[])
         return r
 
     @pytest.mark.asyncio
@@ -274,21 +290,31 @@ class TestRealTradingEdgeCases:
         base_deps['db_manager'].get_virtual_open_positions.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_계좌_조회_None_반환_시_DB_폴백(self, real_restorer, base_deps):
-        """broker.get_account_balance()가 None 반환 시 DB 폴백"""
+    async def test_계좌_조회_None_반환_시_기동_중단(self, real_restorer, base_deps):
+        """broker.get_account_balance()가 None 반환 시 기동 중단.
+
+        구 기대치("DB 폴백")는 2026-08-14 P0 결정 5(불일치는 경고가 아니라 기동
+        중단이다, dc63cbf)로 폐기됐다 — 요약 조회가 None/비-dict 이면 "조회 실패"로
+        간주해 LiveStartupAbort 로 중단한다(state_restorer.py:822-825). DB 폴백으로
+        조용히 이어가면 텅 빈 실계좌를 만들 위험이 있어 fail-closed 로 바뀌었다.
+        """
         base_deps['broker'].get_account_balance.return_value = None
 
         with patch('bot.state_restorer.DatabaseConnection'):
-            await real_restorer._restore_holdings_from_real_account()
+            with pytest.raises(LiveStartupAbort):
+                await real_restorer._restore_holdings_from_real_account()
 
-        # 라이브 모드 DB 폴백은 실거래 테이블을 읽는다 (BLOCKER #3, 2026-06-24).
-        base_deps['db_manager'].get_real_open_positions.assert_called_once()
         base_deps['db_manager'].get_virtual_open_positions.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_빈_positions_리스트(self, real_restorer, base_deps):
-        """계좌에 보유 종목이 없는 경우"""
-        base_deps['broker'].get_account_balance.return_value = {'positions': []}
+        """계좌에 보유 종목이 없는 경우.
+
+        2026-08-14 P0: 요약(get_account_balance)과 목록(get_holdings)은 분리
+        조회다 — 'positions' 키는 실계약에 없는 발명된 키였다(broker_contract.py).
+        """
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=0)
+        base_deps['broker'].get_holdings.return_value = []
 
         with patch('bot.state_restorer.DatabaseConnection'):
             await real_restorer._restore_holdings_from_real_account()
@@ -298,12 +324,11 @@ class TestRealTradingEdgeCases:
     @pytest.mark.asyncio
     async def test_quantity_0_종목_스킵(self, real_restorer, base_deps):
         """quantity <= 0인 종목은 건너뜀"""
-        base_deps['broker'].get_account_balance.return_value = {
-            'positions': [
-                {'stock_code': '005930', 'stock_name': '삼성전자', 'quantity': 0, 'avg_price': 70000},
-                {'stock_code': '000660', 'stock_name': 'SK하이닉스', 'quantity': 5, 'avg_price': 120000},
-            ]
-        }
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=2)
+        base_deps['broker'].get_holdings.return_value = [
+            make_holding(stock_code='005930', stock_name='삼성전자', quantity=0, avg_price=70000.0),
+            make_holding(stock_code='000660', stock_name='SK하이닉스', quantity=5, avg_price=120000.0),
+        ]
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
 
@@ -315,13 +340,17 @@ class TestRealTradingEdgeCases:
 
     @pytest.mark.asyncio
     async def test_DB에_없는_종목은_기본_익절손절률(self, real_restorer, base_deps):
-        """실제 계좌에만 있고 DB에 없는 종목은 기본 익절/손절률 적용"""
-        base_deps['broker'].get_account_balance.return_value = {
-            'positions': [
-                {'stock_code': '005930', 'stock_name': '삼성전자', 'quantity': 10, 'avg_price': 70000},
-            ]
-        }
-        base_deps['db_manager'].get_virtual_open_positions.return_value = pd.DataFrame()
+        """실제 계좌에만 있고 DB에 없는 종목은 기본 익절/손절률 적용.
+
+        DB 폴백/보강은 real_trading_records 다(get_virtual_open_positions 아님
+        — BLOCKER #4, 2026-06-24). 구 테스트는 가상 테이블을 비웠는데 실전
+        경로는 애초에 그 테이블을 읽지 않아 검증이 무의미했다.
+        """
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=1)
+        base_deps['broker'].get_holdings.return_value = [
+            make_holding(stock_code='005930', stock_name='삼성전자', quantity=10, avg_price=70000.0),
+        ]
+        base_deps['db_manager'].get_real_open_positions.return_value = pd.DataFrame()
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
 
@@ -334,31 +363,41 @@ class TestRealTradingEdgeCases:
         assert mock_ts.stop_loss_rate == DEFAULT_STOP_LOSS_RATE
 
     @pytest.mark.asyncio
-    async def test_account_balance_dict가_아닌_객체_반환(self, real_restorer, base_deps):
-        """get_account_balance가 dict 대신 객체를 반환하는 경우"""
+    async def test_account_balance_dict가_아닌_객체_반환_시_기동_중단(self, real_restorer, base_deps):
+        """get_account_balance가 dict 대신 객체를 반환하면 기동 중단.
+
+        구 기대치("객체의 .positions 속성을 읽어 복원 진행")는 폐기됐다 —
+        'positions' 속성 자체가 실계약에 없는 발명이었고(broker_contract.py),
+        2026-08-14 P0 는 `isinstance(account_info, dict)` 가 아니면 "실계좌 요약
+        조회 실패"로 간주해 fail-closed 로 중단한다(state_restorer.py:822-825).
+        """
         account_obj = MagicMock()
         account_obj.positions = [
             {'stock_code': '005930', 'stock_name': '삼성전자', 'quantity': 5, 'avg_price': 70000}
         ]
         # isinstance(account_obj, dict) → False
         base_deps['broker'].get_account_balance.return_value = account_obj
-        mock_ts = MagicMock()
-        base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
 
         with patch('bot.state_restorer.DatabaseConnection'):
-            await real_restorer._restore_holdings_from_real_account()
+            with pytest.raises(LiveStartupAbort):
+                await real_restorer._restore_holdings_from_real_account()
 
-        base_deps['trading_manager'].add_selected_stock.assert_called_once()
+        base_deps['trading_manager'].add_selected_stock.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_account_balance_positions_키_없음(self, real_restorer, base_deps):
-        """get_account_balance 결과에 positions 키가 없는 경우"""
+    async def test_account_balance_total_stocks_키_없음(self, real_restorer, base_deps):
+        """get_account_balance 결과에 total_stocks 키가 없는 경우 0건으로 처리.
+
+        구 테스트명·본문은 'positions' 키(실계약에 없는 발명)를 전제했다 —
+        실계약의 종목수 키는 total_stocks 다(broker_contract.py:14).
+        """
         base_deps['broker'].get_account_balance.return_value = {'total_amount': 1000000}
+        base_deps['broker'].get_holdings.return_value = []
 
         with patch('bot.state_restorer.DatabaseConnection'):
             await real_restorer._restore_holdings_from_real_account()
 
-        # positions 키가 없으면 빈 리스트로 처리되어야 함
+        # total_stocks 키가 없으면 0으로 처리되어 보유 목록도 빈 채로 진행되어야 함
         base_deps['trading_manager'].add_selected_stock.assert_not_called()
 
 
@@ -370,23 +409,28 @@ class TestMismatchDetectionEdgeCases:
     """불일치 감지 경계 조건"""
 
     @pytest.mark.asyncio
-    async def test_5건_초과_불일치_시_요약_메시지(self, restorer, base_deps):
-        """불일치가 5건 초과 시 '외 N건' 요약 표시"""
+    async def test_10건_초과_불일치_시_요약_메시지(self, restorer, base_deps):
+        """불일치가 10건 초과 시 '외 N건' 요약 표시.
+
+        구 테스트는 임계값을 5건으로 가정했다 — 현 구현(state_restorer.py:1062-1065)의
+        요약 임계값은 10건이다. 7건으로는 절대 잘리지 않으므로 12건으로 늘려
+        '외 2건'(12-10) 을 재현한다.
+        """
         real_holdings = [
-            {'stock_code': f'00{i}000', 'stock_name': f'종목{i}', 'quantity': 10}
-            for i in range(7)
+            {'stock_code': f'{i:06d}', 'stock_name': f'종목{i}', 'quantity': 10}
+            for i in range(12)
         ]
         db_holdings_dict = {}
 
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-        call_args = base_deps['telegram_integration'].send_notification.call_args[0][0]
+        call_args = base_deps['telegram_integration'].notify_urgent_signal.call_args[0][0]
         assert '외 2건' in call_args
 
     @pytest.mark.asyncio
     async def test_telegram_알림_실패해도_크래시_없음(self, restorer, base_deps):
         """텔레그램 알림 전송 실패해도 예외가 전파되지 않음"""
-        base_deps['telegram_integration'].send_notification.side_effect = Exception("텔레그램 오류")
+        base_deps['telegram_integration'].notify_urgent_signal.side_effect = Exception("텔레그램 오류")
 
         real_holdings = [
             {'stock_code': '005930', 'stock_name': '삼성전자', 'quantity': 10}
@@ -420,7 +464,7 @@ class TestMismatchDetectionEdgeCases:
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
         # quantity 0은 건너뛰므로 불일치 없음
-        base_deps['telegram_integration'].send_notification.assert_not_called()
+        base_deps['telegram_integration'].notify_urgent_signal.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_복합_불일치_시나리오(self, restorer, base_deps):
@@ -436,7 +480,7 @@ class TestMismatchDetectionEdgeCases:
 
         await restorer._detect_holdings_mismatch(real_holdings, db_holdings_dict)
 
-        call_args = base_deps['telegram_integration'].send_notification.call_args[0][0]
+        call_args = base_deps['telegram_integration'].notify_urgent_signal.call_args[0][0]
         assert '3건' in call_args
 
 
@@ -498,19 +542,23 @@ class TestRestoreTodayCandidatesIntegration:
 
     @pytest.mark.asyncio
     async def test_실전매매_전체_흐름(self, base_deps):
-        """실전매매: 후보 복원 + 계좌 기반 보유 종목 복원"""
+        """실전매매: 후보 복원 + 계좌 기반 보유 종목 복원.
+
+        2026-08-14 P0: 요약/목록 분리 조회(get_account_balance/get_holdings)로
+        갱신 — 'positions' 키는 실계약에 없는 발명이었다. 계좌-DB 대사는 이
+        테스트의 관심사가 아니므로 불일치 0으로 고정한다.
+        """
         base_deps['config'].paper_trading = False
         restorer = StateRestorer(**base_deps)
         restorer.is_paper_trading = False
+        restorer._detect_holdings_mismatch = AsyncMock(return_value=[])
 
         mock_conn = _make_mock_conn([('005930', '삼성전자', 85.0, '모멘텀')])
 
-        base_deps['broker'].get_account_balance.return_value = {
-            'positions': [
-                {'stock_code': '000660', 'stock_name': 'SK하이닉스',
-                 'quantity': 5, 'avg_price': 120000},
-            ]
-        }
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=1)
+        base_deps['broker'].get_holdings.return_value = [
+            make_holding(stock_code='000660', stock_name='SK하이닉스', quantity=5, avg_price=120000.0),
+        ]
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
 
