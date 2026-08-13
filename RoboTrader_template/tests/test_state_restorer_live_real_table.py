@@ -126,13 +126,14 @@ class TestLiveRealAccountBindsOwnerFromRealTable:
         db.get_real_open_positions.return_value = _holdings_df(buy_time)
         db.get_virtual_open_positions.return_value = pd.DataFrame()
 
+        from tests.broker_contract import make_account_balance, make_holding
+
         broker = Mock()
-        broker.get_account_balance.return_value = {
-            'positions': [{
-                'stock_code': '005930', 'stock_name': '삼성전자',
-                'quantity': 10, 'avg_price': 100_000.0,
-            }],
-        }
+        broker.get_account_balance.return_value = make_account_balance(total_stocks=1)
+        broker.get_holdings.return_value = [make_holding(
+            stock_code='005930', stock_name='삼성전자',
+            quantity=10, avg_price=100_000.0,
+        )]
         broker.get_pending_orders.return_value = []
 
         restorer = _make_restorer(db, strategies={'stratA': strat}, paper_trading=False, broker=broker)

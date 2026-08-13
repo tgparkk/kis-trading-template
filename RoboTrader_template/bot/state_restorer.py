@@ -776,17 +776,23 @@ class StateRestorer:
 
             logger.info("🔄 [실전매매] 실제 계좌에서 보유 종목 조회 중...")
 
-            # 1. 실제 계좌 보유 종목 조회
+            # 1. 실전 잔고 — 요약(총평가·종목수)과 보유 목록을 분리 조회 후 교차검증.
+            #    get_holdings() 는 실패를 빈 리스트로 삼키므로(broker.py:313,326)
+            #    요약 total_stocks 와 대조해야 「빈 계좌」와 「조회 실패」가 갈린다.
+            #    (2026-08-14 P0 — 종전 코드는 요약 dict 의 없는 키 'positions' 를
+            #     읽어 실보유가 항상 0건이었다)
+            from utils.exceptions import LiveStartupAbort
             account_info = self.broker.get_account_balance()
-
-            if not account_info:
-                logger.error("❌ [실전매매] 계좌 조회 실패 - DB 복원으로 대체")
-                await self._restore_holdings_from_db()
-                return
-
-            real_holdings = account_info.get('positions', []) if isinstance(account_info, dict) else (
-                account_info.positions if hasattr(account_info, 'positions') and account_info.positions else []
-            )
+            if not account_info or not isinstance(account_info, dict):
+                raise LiveStartupAbort(
+                    "실계좌 요약 조회 실패",
+                    f"get_account_balance()={str(account_info)[:200]}")
+            summary_stock_count = int(account_info.get('total_stocks', 0) or 0)
+            real_holdings = self.broker.get_holdings()
+            if summary_stock_count > 0 and not real_holdings:
+                raise LiveStartupAbort(
+                    "실계좌 보유 목록 조회 실패",
+                    f"요약 total_stocks={summary_stock_count} 인데 get_holdings() 0건 — 오류 삼킴 의심")
             logger.info(f"📊 [실전매매] 실제 계좌 보유 종목: {len(real_holdings)}개")
 
             # 2. DB 보유 종목 조회 (실전 owner/buy_time 보강은 실거래 테이블에서)
@@ -808,15 +814,28 @@ class StateRestorer:
                         sl_rate = sl_val if (sl_val is not None and not math.isnan(sl_val)) else DEFAULT_STOP_LOSS_RATE
                     except (ValueError, TypeError, OverflowError):
                         sl_rate = DEFAULT_STOP_LOSS_RATE
-                    db_holdings_dict[row['stock_code']] = {
-                        'stock_name': row['stock_name'],
-                        'quantity': int(row['quantity']),
-                        'buy_price': float(row['buy_price']),
-                        'buy_time': row.get('buy_time'),
-                        'strategy': row.get('strategy', ''),
-                        'target_profit_rate': tp_rate,
-                        'stop_loss_rate': sl_rate,
-                    }
+                    code = row['stock_code']
+                    if code in db_holdings_dict:
+                        # 분할매수 합산: 수량 SUM · 매입가 가중평균.
+                        # ORDER BY timestamp DESC 라 첫 행이 최신 — strategy/tp/sl/buy_time 은 최신 행 유지.
+                        prev = db_holdings_dict[code]
+                        add_qty = int(row['quantity'])
+                        new_qty = prev['quantity'] + add_qty
+                        if new_qty > 0:
+                            prev['buy_price'] = (
+                                prev['buy_price'] * prev['quantity']
+                                + float(row['buy_price']) * add_qty) / new_qty
+                        prev['quantity'] = new_qty
+                    else:
+                        db_holdings_dict[code] = {
+                            'stock_name': row['stock_name'],
+                            'quantity': int(row['quantity']),
+                            'buy_price': float(row['buy_price']),
+                            'buy_time': row.get('buy_time'),
+                            'strategy': row.get('strategy', ''),
+                            'target_profit_rate': tp_rate,
+                            'stop_loss_rate': sl_rate,
+                        }
 
             logger.info(f"📊 [실전매매] DB 보유 종목: {len(db_holdings_dict)}개")
 
@@ -969,6 +988,9 @@ class StateRestorer:
             else:
                 logger.info("[실전매매] 보유 종목 없음")
 
+        except LiveStartupAbort:
+            # 실계좌 조회 실패 = 기동 중단(2026-08-14 P0) — DB 폴백으로 계속하지 않는다.
+            raise
         except Exception as e:
             logger.error(f"[실전매매] 보유 종목 복원 실패: {e}")
             logger.warning("DB 복원으로 대체합니다...")

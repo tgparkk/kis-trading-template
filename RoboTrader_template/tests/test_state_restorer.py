@@ -110,16 +110,11 @@ class TestRealTradingRestore:
         restorer = StateRestorer(**base_deps)
         restorer.is_paper_trading = False
 
-        base_deps['broker'].get_account_balance.return_value = {
-            'positions': [
-                {
-                    'stock_code': '005930',
-                    'stock_name': '삼성전자',
-                    'quantity': 5,
-                    'avg_price': 72000.0,
-                }
-            ]
-        }
+        from tests.broker_contract import make_account_balance, make_holding
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=1)
+        base_deps['broker'].get_holdings.return_value = [make_holding(
+            stock_code='005930', stock_name='삼성전자', quantity=5, avg_price=72000.0,
+        )]
 
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
@@ -326,7 +321,9 @@ class TestStateRestorerEdgeCases:
     async def test_실전매매_빈_포지션_리스트(self, base_deps):
         """실전매매에서 계좌에 포지션이 없을 때 정상 처리하는지"""
         base_deps['config'].paper_trading = False
-        base_deps['broker'].get_account_balance.return_value = {'positions': []}
+        from tests.broker_contract import make_account_balance
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=0)
+        base_deps['broker'].get_holdings.return_value = []
         restorer = StateRestorer(**base_deps)
         restorer.is_paper_trading = False
 
@@ -339,11 +336,11 @@ class TestStateRestorerEdgeCases:
     async def test_실전매매_수량0_포지션_스킵(self, base_deps):
         """실전매매에서 수량 0인 포지션(청산완료)을 스킵하는지"""
         base_deps['config'].paper_trading = False
-        base_deps['broker'].get_account_balance.return_value = {
-            'positions': [
-                {'stock_code': '005930', 'stock_name': '삼성전자', 'quantity': 0, 'avg_price': 70000},
-            ]
-        }
+        from tests.broker_contract import make_account_balance, make_holding
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=1)
+        base_deps['broker'].get_holdings.return_value = [make_holding(
+            stock_code='005930', stock_name='삼성전자', quantity=0, avg_price=70000.0,
+        )]
         restorer = StateRestorer(**base_deps)
         restorer.is_paper_trading = False
 
@@ -588,11 +585,11 @@ class TestFundManagerSync:
         fm = self._make_fund_manager(10_000_000)
         base_deps['config'].paper_trading = False
 
-        base_deps['broker'].get_account_balance.return_value = {
-            'positions': [
-                {'stock_code': '005930', 'stock_name': '삼성전자', 'quantity': 10, 'avg_price': 70000},
-            ]
-        }
+        from tests.broker_contract import make_account_balance, make_holding
+        base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=1)
+        base_deps['broker'].get_holdings.return_value = [make_holding(
+            stock_code='005930', stock_name='삼성전자', quantity=10, avg_price=70000.0,
+        )]
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
 
