@@ -140,9 +140,9 @@ hasattr 폴백으로 이미 사문)은 불필요 → 제거. 복원은 항상 �
 
 ```
 main → initializer.initialize_system
-  ├─ D4(b) 미체결 전량 취소 (실패 → LiveStartupAbort)
   ├─ D1  총자금 = min(real_total_funds_cap, broker.get_account_balance()['total_balance'])
-  │       (조회실패·0원·상한미설정 → LiveStartupAbort)
+  │       (조회실패·0원·상한미설정 → LiveStartupAbort)  · _initialize_fund_manager(:586)
+  ├─ D4(b) 미체결 전량 취소 — 복원(:596)의 첫 단계, 잔고 조회 «전» (실패 → LiveStartupAbort)
   ├─ D2  보유 = broker.get_holdings()  (total_stocks>0 인데 0건 = 조회실패 → LiveStartupAbort)
   │       ├─ DB 미청산 합산 대조 → 불일치 ≥1 → LiveStartupAbort(목록 첨부)
   │       └─ 일치 → 실계좌 값(수량·평단)으로 복원 (기존 로직)
