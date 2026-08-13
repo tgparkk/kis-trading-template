@@ -260,7 +260,7 @@ Expected: (파일 저장 전) FAIL `ModuleNotFoundError` → (저장 후) 2 pass
         logging.getLogger(__name__).critical(f"🚨 실전 기동 중단: {e}")
         try:
             if getattr(bot, 'telegram', None):
-                await bot.telegram.send_notification(f"🚨 실전 기동 중단\n{e}")
+                await bot.telegram.notify_urgent_signal(f"🚨 실전 기동 중단\n{e}")  # send_notification 은 존재하지 않는 메서드 (Task 2 리뷰 룰링)
         except Exception:
             pass  # 경보 실패가 exit 를 막지 않는다
         sys.exit(2)
@@ -665,7 +665,7 @@ class TestFailClosedMismatch:
                         alert_msg += f"• {m}\n"
                     if len(mismatches) > 10:
                         alert_msg += f"... 외 {len(mismatches)-10}건"
-                    await self.telegram.send_notification(alert_msg)
+                    await self.telegram.notify_urgent_signal(alert_msg)  # 종전 :1032 의 send_notification 은 존재하지 않는 메서드였다 (Task 2 리뷰 룰링)
             else:
                 logger.info("✅ [실전매매] 계좌-DB 보유 종목 일치 확인")
             return mismatches
