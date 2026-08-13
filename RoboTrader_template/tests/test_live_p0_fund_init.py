@@ -54,6 +54,22 @@ class TestRealFundInit:
         with pytest.raises(LiveStartupAbort):
             _run(init)
 
+    def test_non_numeric_cap_aborts(self):
+        """리뷰 Important: 생 ValueError 로 죽으면 main 의 텔레그램 경보를 건너뛴다."""
+        bot, init = _init_with(cap="abc",
+                               balance_return=make_account_balance(total_balance=5_000_000))
+        with pytest.raises(LiveStartupAbort):
+            _run(init)
+        bot.fund_manager.update_total_funds.assert_not_called()
+
+    def test_non_numeric_balance_aborts(self):
+        """리뷰 Important: fixture 의 키 가드는 값 타입을 안 막는다 — override 로 문자열 주입."""
+        bot, init = _init_with(cap=3_000_000,
+                               balance_return=make_account_balance(total_balance="N/A"))
+        with pytest.raises(LiveStartupAbort):
+            _run(init)
+        bot.fund_manager.update_total_funds.assert_not_called()
+
 
 def test_paper_mode_unchanged():
     """라이브 불변: 페이퍼 분기는 이 Task 가 건드리지 않는다."""

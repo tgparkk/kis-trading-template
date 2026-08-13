@@ -672,25 +672,41 @@ class BotInitializer:
             self.logger.info(f"자금 관리자 초기화 완료 (가상매매 모드): {total_funds:,.0f}원")
         else:
             from utils.exceptions import LiveStartupAbort
-            cap = getattr(self.bot.config, 'real_total_funds_cap', None)
-            if cap is None or float(cap) <= 0:
+
+            def _to_float(value, label):
+                # 실전 기동 실패는 전부 LiveStartupAbort 로 수렴해야 한다(스펙) —
+                # 생 ValueError/TypeError 로 죽으면 main 의 텔레그램 경보를 건너뛴다.
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    raise LiveStartupAbort(
+                        "실전 총자금 설정/응답이 숫자가 아니다",
+                        f"{label}={value!r}")
+
+            cap_raw = getattr(self.bot.config, 'real_total_funds_cap', None)
+            if cap_raw is None:
+                raise LiveStartupAbort(
+                    "실전 총자금 상한 미설정",
+                    "trading_config.json 에 real_total_funds_cap(원)을 설정해야 실전 기동이 가능합니다")
+            cap = _to_float(cap_raw, "real_total_funds_cap")
+            if cap <= 0:
                 raise LiveStartupAbort(
                     "실전 총자금 상한 미설정",
                     "trading_config.json 에 real_total_funds_cap(원)을 설정해야 실전 기동이 가능합니다")
             balance_info = self.bot.broker.get_account_balance()
             if isinstance(balance_info, dict):
-                total_eval = float(balance_info.get('total_balance', 0) or 0)
+                total_eval = _to_float(balance_info.get('total_balance', 0) or 0, "total_balance")
             else:
                 # KISAPIManager 경로: AccountInfo.account_balance (kis_api_manager.py:222)
-                total_eval = float(getattr(balance_info, 'account_balance', 0) or 0)
+                total_eval = _to_float(getattr(balance_info, 'account_balance', 0) or 0, "account_balance")
             if total_eval <= 0:
                 raise LiveStartupAbort(
                     "실계좌 잔고 조회 실패 또는 0원",
                     f"get_account_balance() 반환 요약={str(balance_info)[:200]}")
-            total_funds = float(min(float(cap), total_eval))
+            total_funds = min(cap, total_eval)
             self.bot.fund_manager.update_total_funds(total_funds)
             self.logger.info(
-                f"자금 관리자 초기화 완료(실전): min(상한 {float(cap):,.0f}, 총평가 {total_eval:,.0f}) = {total_funds:,.0f}원")
+                f"자금 관리자 초기화 완료(실전): min(상한 {cap:,.0f}, 총평가 {total_eval:,.0f}) = {total_funds:,.0f}원")
 
     async def shutdown(self) -> None:
         """시스템 종료"""
