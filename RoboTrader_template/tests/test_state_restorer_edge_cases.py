@@ -36,9 +36,10 @@ def base_deps():
     db_manager.get_real_open_positions = MagicMock(return_value=pd.DataFrame())
 
     telegram = AsyncMock()
-    # 2026-08-14 P0(6c93ac2): send_notification 은 유령 메서드 — 실코드는
-    # notify_urgent_signal 을 부른다. AsyncMock 은 임의 속성 접근을 허용하므로
-    # 이 줄이 없어도 호출 자체는 성공하지만, 이름을 맞춰 두어 혼동을 없앤다.
+    # 2026-08-14 P0(dc63cbf, state_restorer.py 110→253행 diff 실측): send_notification
+    # 은 유령 메서드 — 실코드는 notify_urgent_signal 을 부른다. AsyncMock 은 임의
+    # 속성 접근을 허용하므로 이 줄이 없어도 호출 자체는 성공하지만, 이름을 맞춰
+    # 두어 혼동을 없앤다.
     telegram.notify_urgent_signal = AsyncMock()
 
     config = MagicMock()
@@ -329,6 +330,14 @@ class TestRealTradingEdgeCases:
             make_holding(stock_code='005930', stock_name='삼성전자', quantity=0, avg_price=70000.0),
             make_holding(stock_code='000660', stock_name='SK하이닉스', quantity=5, avg_price=120000.0),
         ]
+        # 000660 은 수량이 일치하는 DB 행을 둬 대사(fail-closed, 결정 5)를 통과시킨다
+        # — quantity<=0 인 005930 은 _detect_holdings_mismatch 가 애초에 건너뛰므로
+        # (real_qty<=0 → continue) DB 행이 없어도 도달 가능 상태다.
+        base_deps['db_manager'].get_real_open_positions.return_value = pd.DataFrame([{
+            'stock_code': '000660', 'stock_name': 'SK하이닉스',
+            'quantity': 5, 'buy_price': 120000.0,
+            'strategy': '', 'target_profit_rate': None, 'stop_loss_rate': None,
+        }])
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
 
@@ -339,25 +348,35 @@ class TestRealTradingEdgeCases:
         base_deps['trading_manager'].add_selected_stock.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_DB에_없는_종목은_기본_익절손절률(self, real_restorer, base_deps):
-        """실제 계좌에만 있고 DB에 없는 종목은 기본 익절/손절률 적용.
+    async def test_tp_sl_미기록_종목은_기본_익절손절률(self, real_restorer, base_deps):
+        """DB 행은 있지만 target_profit_rate/stop_loss_rate 가 NULL 인 종목은 기본값 적용.
 
-        DB 폴백/보강은 real_trading_records 다(get_virtual_open_positions 아님
-        — BLOCKER #4, 2026-06-24). 구 테스트는 가상 테이블을 비웠는데 실전
-        경로는 애초에 그 테이블을 읽지 않아 검증이 무의미했다.
+        2026-08-14 코드리뷰 정정: 구 테스트("실제 계좌에만 있고 DB에 없는 종목")는
+        `_detect_holdings_mismatch` 를 mock 으로 우회한 상태에서만 성립하는 조합이었다
+        — 대사(fail-closed, 결정 5)와 복원 루프(state_restorer.py:891-908)가 같은
+        db_holdings_dict 를 같은 존재-여부 조건으로 훑으므로, "실보유가 DB 에 없는데
+        대사는 통과"는 프로덕션에서 구조적으로 도달 불가능하다(도달했다면 mismatches
+        가 비지 않아 그 전에 LiveStartupAbort 로 죽는다). 실제로 도달 가능한 「기본값
+        폴백」 경로는 DB 행 자체는 있는데 tp/sl 컬럼이 NULL 인 경우다(:843-852 의
+        None/NaN 폴백) — 대사는 수량 일치로 통과시키고 이 경로만 골라 검증한다.
         """
         base_deps['broker'].get_account_balance.return_value = make_account_balance(total_stocks=1)
         base_deps['broker'].get_holdings.return_value = [
             make_holding(stock_code='005930', stock_name='삼성전자', quantity=10, avg_price=70000.0),
         ]
-        base_deps['db_manager'].get_real_open_positions.return_value = pd.DataFrame()
+        # 수량이 일치하는 DB 행을 둬 대사를 통과시키되(10=10), tp/sl 은 미기록(NULL).
+        base_deps['db_manager'].get_real_open_positions.return_value = pd.DataFrame([{
+            'stock_code': '005930', 'stock_name': '삼성전자',
+            'quantity': 10, 'buy_price': 70000.0,
+            'strategy': '', 'target_profit_rate': None, 'stop_loss_rate': None,
+        }])
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
 
         with patch('bot.state_restorer.DatabaseConnection'):
             await real_restorer._restore_holdings_from_real_account()
 
-        # 기본값 적용 확인
+        # tp/sl NULL → 기본값 적용 확인
         from config.constants import DEFAULT_TARGET_PROFIT_RATE, DEFAULT_STOP_LOSS_RATE
         assert mock_ts.target_profit_rate == DEFAULT_TARGET_PROFIT_RATE
         assert mock_ts.stop_loss_rate == DEFAULT_STOP_LOSS_RATE
@@ -559,6 +578,14 @@ class TestRestoreTodayCandidatesIntegration:
         base_deps['broker'].get_holdings.return_value = [
             make_holding(stock_code='000660', stock_name='SK하이닉스', quantity=5, avg_price=120000.0),
         ]
+        # 000660 은 수량이 일치하는 DB 행을 둬 대사를 통과시킨다(10=10 패턴과 동일,
+        # _detect_holdings_mismatch mock 은 방어층으로 남기되 상태 자체를 도달
+        # 가능하게 만든다 — 2026-08-14 코드리뷰).
+        base_deps['db_manager'].get_real_open_positions.return_value = pd.DataFrame([{
+            'stock_code': '000660', 'stock_name': 'SK하이닉스',
+            'quantity': 5, 'buy_price': 120000.0,
+            'strategy': '', 'target_profit_rate': None, 'stop_loss_rate': None,
+        }])
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
 
