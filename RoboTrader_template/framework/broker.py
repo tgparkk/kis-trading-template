@@ -796,6 +796,30 @@ class KISBroker(BaseBroker):
             self.logger.error(f"Error getting order status {order_id}: {e}")
             return None
 
+    def get_pending_orders(self) -> Optional[List[dict]]:
+        """미체결(정정취소가능) 주문 전량 조회.
+
+        Returns:
+            None  = 조회 실패 (호출자가 구분해야 한다 — 빈 리스트로 뭉개지 말 것)
+            []    = 미체결 없음
+            [dict]= KIS 원컬럼 그대로 (odno 주문번호 · pdno 종목코드 ·
+                    sll_buy_dvsn_cd 01매도/02매수 등, TTTC8036R)
+        """
+        if not self._connected:
+            self.logger.error("Broker not connected")
+            return None
+        try:
+            from api import kis_order_api
+            df = kis_order_api.get_inquire_psbl_rvsecncl_lst()
+            if df is None:
+                return None
+            if df.empty:
+                return []
+            return df.to_dict('records')
+        except Exception as e:
+            self.logger.error(f"Error getting pending orders: {e}")
+            return None
+
     # ====================================================================
     # Utility Methods
     # ====================================================================

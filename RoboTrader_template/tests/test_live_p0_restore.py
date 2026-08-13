@@ -63,6 +63,7 @@ class TestHoldingsWiring:
         """조회 실패 시 「DB 폴백으로 계속」 제거 확인."""
         db = Mock(); db.get_real_open_positions.return_value = pd.DataFrame()
         broker = Mock(); broker.get_account_balance.return_value = {}
+        broker.get_pending_orders.return_value = []  # Task 6: 미체결 없음(취소 단계 무해 통과)
         r = _restorer_with(db, broker, Mock())
         r._restore_holdings_from_db = AsyncMock()
         with pytest.raises(LiveStartupAbort):

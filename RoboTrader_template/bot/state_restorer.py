@@ -765,8 +765,41 @@ class StateRestorer:
         except Exception as e:
             logger.error(f"[가상매매] 보유 종목 복원 실패: {e}")
 
+    async def _cancel_all_pending_orders_on_startup(self) -> bool:
+        """실전 기동 시 미체결 전량 취소. 취소가 1건 이상이면 True(잔고 재조회 필요)."""
+        from utils.exceptions import LiveStartupAbort
+        pending = self.broker.get_pending_orders()
+        if pending is None:
+            raise LiveStartupAbort("미체결 주문 조회 실패", "get_pending_orders() = None")
+        if not pending:
+            logger.info("✅ [실전매매] 미체결 주문 없음")
+            return False
+        logger.warning(f"⚠️ [실전매매] 미체결 {len(pending)}건 발견 — 전량 취소 후 기동")
+        for po in pending:
+            odno = str(po.get('odno', ''))
+            code = str(po.get('pdno', ''))
+            result = self.broker.cancel_order(odno, code)
+            if not result.get('success'):
+                raise LiveStartupAbort(
+                    f"미체결 취소 실패: {code} 주문 {odno}",
+                    str(result.get('message', '')))
+            logger.info(f"🧹 [실전매매] 미체결 취소: {code} 주문 {odno}")
+        remain = self.broker.get_pending_orders()
+        if remain is None or remain:
+            raise LiveStartupAbort(
+                "취소 후 미체결 잔존 확인 실패",
+                f"재조회 결과={('실패' if remain is None else f'{len(remain)}건 잔존')}")
+        return True
+
     async def _restore_holdings_from_real_account(self) -> None:
         """실전매매 모드: 실제 계좌에서 보유 종목 조회 → DB 동기화 → 메모리 복원"""
+        # 함수 어디서든 이 이름을 참조하는 local import 가 하나라도 있으면
+        # 파이썬이 함수 전체 스코프에서 LiveStartupAbort 를 local 로 확정한다.
+        # 「0. 기동 시 미체결 전량 취소」가 이 import 문(종전 위치) «보다 먼저»
+        # LiveStartupAbort 를 raise 할 수 있게 되며 그 예외가 맨 아래
+        # except LiveStartupAbort 에서 UnboundLocalError 로 깨진다
+        # (2026-08-14 Task 6에서 실측) — 그래서 try 진입 직후로 끌어올린다.
+        from utils.exceptions import LiveStartupAbort
         try:
             if not self.broker:
                 logger.error("❌ [실전매매] broker가 없어 계좌 조회 불가 - DB 복원으로 대체")
@@ -775,12 +808,16 @@ class StateRestorer:
 
             logger.info("🔄 [실전매매] 실제 계좌에서 보유 종목 조회 중...")
 
+            # 0. 기동 시 미체결 전량 취소 (2026-08-14 P0 결정 6) — 취소가 잔고
+            #    조회보다 먼저여야 부분체결분이 확정 반영된 잔고로 복원한다.
+            #    취소 후 종전 SELL_PENDING 복원은 불필요(항상 미체결 0 에서 시작).
+            await self._cancel_all_pending_orders_on_startup()
+
             # 1. 실전 잔고 — 요약(총평가·종목수)과 보유 목록을 분리 조회 후 교차검증.
             #    get_holdings() 는 실패를 빈 리스트로 삼키므로(broker.py:313,326)
             #    요약 total_stocks 와 대조해야 「빈 계좌」와 「조회 실패」가 갈린다.
             #    (2026-08-14 P0 — 종전 코드는 요약 dict 의 없는 키 'positions' 를
             #     읽어 실보유가 항상 0건이었다)
-            from utils.exceptions import LiveStartupAbort
             account_info = self.broker.get_account_balance()
             if not account_info or not isinstance(account_info, dict):
                 raise LiveStartupAbort(
@@ -845,24 +882,7 @@ class StateRestorer:
                     f"계좌-DB 불일치 {len(mismatches)}건 — 수동 확인 후 재기동 필요",
                     " / ".join(mismatches[:5]))
 
-            # 4. 미체결 매도 주문 조회 (C7 fix: SELL_PENDING 중복 매도 방지)
-            pending_sell_codes = set()
-            try:
-                if hasattr(self.broker, 'get_pending_orders'):
-                    pending_orders = self.broker.get_pending_orders()
-                    if pending_orders:
-                        for po in pending_orders:
-                            # 매도 미체결 주문의 종목코드 수집
-                            order_type = po.get('order_type', '') if isinstance(po, dict) else getattr(po, 'order_type', '')
-                            stock_code_po = po.get('stock_code', '') if isinstance(po, dict) else getattr(po, 'stock_code', '')
-                            # 매도 주문 판별: "sell", "02" (KIS 매도코드), "SELL" 등
-                            if str(order_type).lower() in ('sell', '02', 'sell_market'):
-                                pending_sell_codes.add(stock_code_po)
-                                logger.info(f"📋 [실전매매] 미체결 매도 주문 발견: {stock_code_po}")
-            except Exception as pending_err:
-                logger.warning(f"⚠️ [실전매매] 미체결 주문 조회 실패 (POSITIONED로 폴백): {pending_err}")
-
-            # 5. 실제 계좌 기준으로 메모리에 복원
+            # 4. 실제 계좌 기준으로 메모리에 복원
             holding_restored = 0
             total_invested = 0.0
             stale_info = []  # 장기보유 종목 정보 수집
@@ -932,13 +952,10 @@ class StateRestorer:
                                 'entry_time': self._normalize_entry_time(buy_time),
                             }
 
-                        # C7 fix: 매도 미체결이 있으면 SELL_PENDING으로 복원
-                        if stock_code in pending_sell_codes:
-                            restore_state = StockState.SELL_PENDING
-                            state_label = "SELL_PENDING (미체결 매도 존재)"
-                        else:
-                            restore_state = StockState.POSITIONED
-                            state_label = "POSITIONED"
+                        # 기동 시 미체결 전량 취소(위 0단계)로 SELL_PENDING 은
+                        # 발생하지 않는다 — 복원은 항상 POSITIONED.
+                        restore_state = StockState.POSITIONED
+                        state_label = "POSITIONED"
 
                         ts_is_stale = getattr(trading_stock, 'is_stale', False) is True
                         ts_days_held = getattr(trading_stock, 'days_held', 0)

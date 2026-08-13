@@ -42,6 +42,11 @@ def base_deps():
     config.paper_trading = True
 
     broker = MagicMock()
+    # Task 6 (2026-08-14 P0 결정 6): 실전 복원은 미체결 전량 취소를 가장 먼저
+    # 시도한다. 기본값을 「미체결 없음」으로 둬 기존 real-account 테스트들이
+    # 취소 단계와 무관한 관심사를 검증할 때 굳이 매 테스트마다 배선하지
+    # 않아도 되게 한다(취소 시나리오 자체는 test_live_p0_pending_orders.py).
+    broker.get_pending_orders.return_value = []
 
     get_prev_close = MagicMock(return_value=50000.0)
 
