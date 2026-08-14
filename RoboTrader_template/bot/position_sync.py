@@ -114,6 +114,15 @@ class PositionSyncManager:
                         else:
                             ts.strategy_name = "unknown"
 
+                        # ⚠️ 잠재 발화점: 이것도 «복원» 성격의 → POSITIONED 이지만
+                        # restoring=True 를 «일부러» 안 넘긴다. 여기는 출발 상태가
+                        # 무엇이든(COMPLETED 포함) 올라오는 경로라 선언을 붙이면
+                        # 「청산된 슬롯 되살리기」까지 조용해진다.
+                        # 오늘은 로그가 넘치지 않는다 — emergency_sync_positions 를
+                        # 실제로 부르는 코드가 없다. main.py:675 에 동명의 위임
+                        # 래퍼가 있어 :677 에서 이 메서드를 await 하지만, 그 «래퍼»를
+                        # 부르는 곳이 저장소 어디에도 없다(백로그의 죽은 코드).
+                        # 깨어나면 경고가 그 사실을 알리는 신호가 된다.
                         self.bot.trading_manager._change_stock_state(
                             code, StockState.POSITIONED,
                             f"미관리종목 복구: {quantity}주 @{avg_price:,.0f}원",
@@ -147,6 +156,8 @@ class PositionSyncManager:
             stop_loss = buy_price * (1 - stop_loss_ratio)
 
             # 상태 변경
+            # ⚠️ 위 _add_unmanaged_stocks 와 동일한 잠재 발화점 — restoring
+            # 미선언은 의도적이다(출발 상태가 임의라 선언하면 진짜 이상까지 침묵).
             self.bot.trading_manager._change_stock_state(
                 code, StockState.POSITIONED,
                 f"잔고복구: {quantity}주 @{buy_price:,.0f}원, "
