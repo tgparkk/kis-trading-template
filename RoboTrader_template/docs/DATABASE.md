@@ -133,6 +133,12 @@ SELECT * FROM daily_prices WHERE date = '2026-01-20';
 - `idx_virtual_trading_timestamp` - timestamp DESC
 - `idx_virtual_trading_unique_sell` - buy_record_id (WHERE action='SELL' AND buy_record_id IS NOT NULL)
 
+**🔴 `profit_loss`는 gross다 (2026-08-14 확인, `tools/daily_trading_summary.py:25-41` 주석 SSOT):**
+- `profit_loss = (매도가-매수가)×수량` — 위탁수수료(매수·매도 각 0.015%)·증권거래세(매도 0.18%) 미반영.
+- `paper_strategy_equity.realized_pnl_cum`도 이 gross 컬럼의 SUM(`tools/paper_strategy_equity.py:97-99`).
+- net 수치는 `core/trading_decision_engine.py:915` `pnl_with_fees`로 계산돼 `fund_manager.adjust_pnl()`(`:923`)로 전달되고, 로그(`core/fund_manager.py:476` `"매매 손익 반영"`)에만 남을 뿐 **어느 테이블에도 적재되지 않는다**.
+- 수수료·세금은 항상 양수라 net ≤ gross이므로 {net 승} ⊆ {gross 승} — **gross 승률은 net 승률의 상한**이다(진부분집합이 아니라 상한일 뿐, "일부는 net 패"라고 단정할 근거는 아님).
+
 ---
 
 ### 2.5 real_trading_records - 실거래 매매 기록

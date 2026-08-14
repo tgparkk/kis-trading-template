@@ -63,6 +63,18 @@
 | `regime_index` | **시장방향 급락 검사**용 지수 (장중 `ctx.buy` 가드) | KIS 실시간지수 (KOSPI 0001 / KOSDAQ 1001) |
 | `regime_gate` | **국면 매수차단** (BEAR/비BULL 진입 차단, EOD 1회 캐시 PIT) | `core/regime/regime_gate.py`, `daily_prices` KOSPI/KOSDAQ + `classify_daily` |
 
+### 0.6 현금 원장이 둘이다 (설계다, 결함이 아니다 — 2026-08-14 확인)
+
+페이퍼 매매의 "현금"을 계산하는 두 경로가 **매수 수수료를 서로 다른 시점에 인식**한다:
+
+| 원장 | 수수료 인식 시점 | 근거 |
+|---|---|---|
+| `VirtualTradingManager` 전략별 `_strategy_balances`(→ `paper_strategy_equity.cash`) | **매수 시점** — 현금주의 | `core/virtual_trading_manager.py:608-611,645` (`total_cost_with_fee = total_cost + commission`을 매수 즉시 차감) |
+| `core/fund_manager.py` `available_funds` | **매도 시점**, 매도 포지션의 원가 기준 — 발생주의 | `fund_manager.py:330-361` `confirm_order` docstring — "매수 수수료는 여기서 차감하지 않는다... 되돌리지 말 것: 매수 수수료는 «매도 시 1회» 인식이 의도된 설계다" |
+
+- 일일 갭 크기는 `COMMISSION_RATE(=0.00015, config/constants.py:118) × (오늘 매도분 원가 − 오늘 매수금액)` 규모다 — 포지션이 청산되면 두 원장 모두 같은 총 수수료를 인식하게 되어 수렴한다.
+- 🔴 **실계좌 예수금은 현금주의다.** `fund_manager.available`을 실계좌 잔고와 대사(reconcile)하지 말 것 — 자동 대사를 켜기 전에 어느 원장을 기준으로 삼을지 먼저 정할 것.
+
 ## 1. 활성 전략 한눈표
 
 | # | 전략 (폴더키) | 출처 | 진입 핵심 | 청산 (sl / tp / trail / maxhold) | regime idx/gate | K | 종목당 | 유니버스 |

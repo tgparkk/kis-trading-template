@@ -167,6 +167,7 @@ resolve_minute_source_db()  # 분봉 → 기본 "kis_template"  (minute_candles)
 | [docs/STRATEGY_GUIDE.md](docs/STRATEGY_GUIDE.md) | 전략 추가 가이드 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 아키텍처, 모듈 관계도 |
 | [docs/TRADING_FLOW.md](docs/TRADING_FLOW.md) | 매매 흐름 (초기화→루프→청산) |
+| [docs/OWNERSHIP_MODEL.md](docs/OWNERSHIP_MODEL.md) | **전략 소유권 모델** (폴더키/클래스명 2종 신원, 실주문 소유권 게이트, 미청산 수량판정) |
 | [docs/DATABASE.md](docs/DATABASE.md) | DB 스키마 |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | 설정 가이드 |
 | [docs/DATA_MANAGEMENT.md](docs/DATA_MANAGEMENT.md) · [docs/DYNAMIC_RISK_MANAGEMENT.md](docs/DYNAMIC_RISK_MANAGEMENT.md) | 데이터 관리 · 동적 리스크 관리 |
