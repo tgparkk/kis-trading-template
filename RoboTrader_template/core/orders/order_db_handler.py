@@ -118,6 +118,17 @@ class OrderDBHandlerMixin:
             reason="실전매매"
         )
         if buy_record_id:
+            # 받은 PK 를 **소유 슬롯**에 적재한다. 안 넣으면 실전 모드에서
+            # _virtual_buy_record_id 가 영원히 None 이라(이 필드는 이름만
+            # "virtual" 이고 실전 매도가 읽는 자리다) 매도 짝짓기가 전적으로
+            # get_last_open_real_buy 종목코드 조회에 의존한다 — 다중소유에서
+            # 남의 매수행에 붙는다(2026-08-14 리뷰 R3).
+            ts = self._get_owned_trading_stock(order)
+            if ts is not None and hasattr(ts, 'set_virtual_buy_info'):
+                try:
+                    ts.set_virtual_buy_info(buy_record_id, filled_price, order.quantity)
+                except Exception as e:
+                    self.logger.warning(f"매수 기록 ID 적재 실패({order.stock_code}): {e}")
             self.logger.info(f"실전 매수 기록 저장: {order.stock_code} {order.quantity}주 @{filled_price:,.0f}원 (ID: {buy_record_id})")
         else:
             self.logger.error(f"실전 매수 기록 저장 실패: {order.stock_code}")
@@ -130,9 +141,13 @@ class OrderDBHandlerMixin:
         if trading_stock is not None and hasattr(trading_stock, '_virtual_buy_record_id'):
             buy_record_id = trading_stock._virtual_buy_record_id
 
-        # buy_record_id가 없으면 DB에서 조회
+        # buy_record_id가 없으면 DB에서 조회 (재기동 후 — 복원은 id 를 안 채운다).
+        # 반드시 owner 를 실어 남의 매수행에 붙지 않게 한다.
         if not buy_record_id:
-            buy_record_id = self.db_manager.get_last_open_real_buy(order.stock_code)
+            buy_record_id = self.db_manager.get_last_open_real_buy(
+                order.stock_code,
+                (getattr(order, 'owner_strategy', '') or '').strip() or None,
+            )
 
         # 실전 매도 기록 저장
         strategy_name = self._get_strategy_name_for_order(order)

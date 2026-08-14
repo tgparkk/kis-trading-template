@@ -162,8 +162,9 @@ class DatabaseManager:
                        buy_record_id: Optional[int] = None, timestamp: datetime = None) -> bool:
         return self.trading_repo.save_real_sell(stock_code, stock_name, price, quantity, strategy, reason, buy_record_id, timestamp)
 
-    def get_last_open_real_buy(self, stock_code: str) -> Optional[int]:
-        return self.trading_repo.get_last_open_real_buy(stock_code)
+    def get_last_open_real_buy(self, stock_code: str,
+                               strategy: Optional[str] = None) -> Optional[int]:
+        return self.trading_repo.get_last_open_real_buy(stock_code, strategy)
 
     def save_virtual_buy(self, stock_code: str, stock_name: str, price: float,
                         quantity: int, strategy: str, reason: str,

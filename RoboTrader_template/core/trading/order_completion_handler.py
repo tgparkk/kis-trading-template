@@ -554,7 +554,9 @@ class OrderCompletionHandler:
             if not db:
                 self.logger.warning("실거래 매도 기록 저장 실패: db_manager 없음")
                 return profit_rate
-            buy_id = db.get_last_open_real_buy(trading_stock.stock_code)
+            buy_id = db.get_last_open_real_buy(
+                trading_stock.stock_code,
+                trading_stock.owner_strategy_name or None)
 
             # 수익률 계산을 위해 매수가 조회
             buy_price = None

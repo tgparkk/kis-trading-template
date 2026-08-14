@@ -187,20 +187,50 @@ class TradingRepository(BaseRepository):
             self.logger.error(f"실거래 매도 기록 저장 실패: {e}")
             return False
 
-    def get_last_open_real_buy(self, stock_code: str) -> Optional[int]:
-        """미매칭 실거래 매수 ID 조회"""
+    def get_last_open_real_buy(self, stock_code: str,
+                               strategy: Optional[str] = None) -> Optional[int]:
+        """미매칭 실거래 매수 ID 조회
+
+        Args:
+            stock_code: 종목코드
+            strategy: 소유 전략 표기. 지정 시 그 전략의 열린 매수행만 본다.
+
+        전략 술어가 없으면 두 전략이 한 종목을 보유할 때 A 의 매도가 B 의
+        매수행에 붙는다 — B 의 행이 닫히고 A 의 행이 열린 채 남는다. 다음
+        기동에서 수량은 여전히 맞아떨어지므로 계좌-DB 대사는 아무것도 보고하지
+        않는다(대사는 owner 축이 없다) ⇒ 조용히 손익 짝이 뒤집힌다
+        (2026-08-14 리뷰 R3).
+
+        전략 지정 조회가 0건이면 종목코드 단독으로 한 번 더 본다 — 표기가 다른
+        레거시 행이 남아 있을 때 짝을 통째로 잃는(buy_record_id=NULL) 것보다
+        낫다. 그 폴백은 WARNING 으로 드러낸다.
+        """
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute(f'''
+                base = f'''
                     SELECT b.id FROM {self._real_table} b
                     WHERE b.stock_code = %s AND b.action = 'BUY'
+                      {{owner_predicate}}
                       AND NOT EXISTS (
                         SELECT 1 FROM {self._real_table} s
                         WHERE s.buy_record_id = b.id AND s.action = 'SELL'
                       )
                     ORDER BY b.timestamp DESC LIMIT 1
-                ''', (stock_code,))
+                '''
+                if strategy:
+                    cursor.execute(
+                        base.format(owner_predicate='AND b.strategy = %s'),
+                        (stock_code, strategy))
+                    row = cursor.fetchone()
+                    if row:
+                        return int(row[0])
+                    self.logger.warning(
+                        f"[{stock_code}] 전략 {strategy!r} 의 열린 실매수 행 없음 — "
+                        f"종목코드 단독 폴백(다중소유면 남의 매수행에 붙을 수 있다)"
+                    )
+
+                cursor.execute(base.format(owner_predicate=''), (stock_code,))
                 row = cursor.fetchone()
                 return int(row[0]) if row else None
         except Exception as e:
