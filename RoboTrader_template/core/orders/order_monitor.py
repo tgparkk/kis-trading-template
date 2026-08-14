@@ -355,33 +355,32 @@ class OrderMonitorMixin:
         if self.fund_manager:
             try:
                 actual_amount = filled_price * filled_qty
+                # 소유 전략은 주문이 싣고 온다(Order.owner_strategy, 2026-08-14 Fix 2).
+                # owner 를 빼먹으면 이 등록이 (code, None) 엔트리를 만들고, 아침
+                # 복원이 넣어둔 (code, 'rs_leader') 와 둘이 되어, 매도 시 owner
+                # 없는 제거가 fund_manager 의 [모호제거] 로 «영구 보류» 된다 —
+                # 그 종목이 남은 세션 내내 보유 슬롯을 점유한다(리뷰 R2).
+                order_owner = (getattr(order, 'owner_strategy', '') or '').strip() or None
                 if order.order_type == OrderType.BUY:
                     # 매수: 예약 → 투자 확정
                     self.fund_manager.confirm_order(order_id, actual_amount)
-                    # owner 미지정(레거시 엔트리): Order 에 소유 전략 필드가 없고,
-                    # owner 없는 슬롯 조회를 새로 추가하면 다중소유에서 임의 소유자를
-                    # 집게 된다.
-                    # ⚠️ 실전 전환 blocker: 이 경로는 페이퍼 모드에선 pending_orders
-                    # 자체가 비어 휴면이라 무해하나, 실전 모드에선
-                    # liquidation_handler._force_complete_failed_stocks(is_virtual
-                    # 게이트 없음)가 owner 지정 제거를 하므로 여기서 등록한
-                    # owner=None 엔트리가 영구 잔류할 수 있다. 실전 전환 전에
-                    # 주문→소유 전략 연결을 만들어 owner 를 전달해야 한다.
-                    self.fund_manager.add_position(order.stock_code)
+                    self.fund_manager.add_position(order.stock_code, order_owner)
                 elif order.order_type == OrderType.SELL:
                     sell_amount = actual_amount
                     # 매수원가 기준으로 invested_funds 회수 (손익 차이는 total_funds 조정)
                     buy_cost = 0  # 기본값 (fallback 실패 시)
                     buy_price_per_share = 0
 
-                    # 1차: TradingStock의 position에서 매수원가 조회
-                    if self.trading_manager:
-                        try:
-                            ts = self.trading_manager.get_trading_stock(order.stock_code)
-                            if ts and ts.position and ts.position.avg_price > 0:
-                                buy_price_per_share = ts.position.avg_price
-                        except Exception:
-                            pass
+                    # 1차: TradingStock의 position에서 매수원가 조회.
+                    # 반드시 owner 소유 슬롯에서 읽는다 — 종목코드 단독 조회는
+                    # 다중소유에서 «남의 평단»을 집어 회수액(invested 회수)과
+                    # pnl 을 통째로 틀리게 만든다(리뷰 R2 동반 결함).
+                    try:
+                        ts = self._get_owned_trading_stock(order)
+                        if ts and ts.position and ts.position.avg_price > 0:
+                            buy_price_per_share = ts.position.avg_price
+                    except Exception:
+                        pass
 
                     # 2차: position 조회 실패 시 order.price 사용 (지정가 매도의 경우만, 시장가=0 제외)
                     if buy_price_per_share <= 0 and order.price > 0:
@@ -393,7 +392,8 @@ class OrderMonitorMixin:
                         self.logger.warning(f"매수원가 조회 실패, 체결가로 대체: {order.stock_code}")
 
                     buy_cost = buy_price_per_share * filled_qty
-                    self.fund_manager.release_investment(buy_cost, stock_code=order.stock_code)
+                    self.fund_manager.release_investment(
+                        buy_cost, stock_code=order.stock_code, owner=order_owner)
                     # 매매 손익을 total_funds와 available_funds에 반영 (수수료/세금 포함)
                     buy_commission = buy_cost * COMMISSION_RATE
                     sell_commission = sell_amount * COMMISSION_RATE
