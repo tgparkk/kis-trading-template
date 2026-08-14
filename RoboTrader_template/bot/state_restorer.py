@@ -800,6 +800,31 @@ class StateRestorer:
                 f"재조회 결과={('실패' if remain is None else f'{len(remain)}건 잔존')}")
         return True
 
+    def _owner_group_key(self, raw_owner: str) -> tuple:
+        """owner 표기를 «전략 인스턴스» 기준 그룹 키로 접는다.
+
+        같은 전략이 두 표기로 기록된다: `bot/candidate_loader.py:100` 은
+        **단일전략 모드**에서 `strategy.name`(클래스명)으로, `:186` 은
+        **다중전략 모드**에서 폴더키로 등록한다(`:68` 이 스위치). 1↔2 전략
+        구성 변경을 거친 종목은 두 표기의 행을 «둘 다» 갖는다.
+
+        원문 라벨로 키를 잡으면 그 종목이 「2 owner」로 보여 수량이 쪼개지는데,
+        둘 다 같은 인스턴스로 해석되므로 `sync_positions`(=dict.update)의 두
+        번째 주입이 첫 번째를 덮어쓴다 → 계좌 10주인데 전략은 5주만 보유한 줄
+        알고 그 5주에 맞춰 청산을 건다(2026-08-14 리뷰 R1). **전략이 1개일
+        때도 터진다.**
+
+        미해석(비활성 전략·무기명)은 전부 한 바구니로 접는다 — 어느 쪽도
+        전략 청산을 받지 못하므로 나눌 의미가 없고, 나누면 고아 레그만 늘어난다.
+        """
+        strat = self._resolve_owner_strategy(raw_owner) if raw_owner else None
+        if strat is None:
+            return ('U', '')
+        for key, s in (self.strategies or {}).items():
+            if s is strat:
+                return ('S', key)
+        return ('S', getattr(strat, 'name', '') or raw_owner)
+
     def _build_db_holdings_by_owner(self, db_holdings) -> Dict[tuple, Dict]:
         """DB 보유행을 **(종목코드, 전략)** 키로 집계한다.
 
@@ -836,7 +861,10 @@ class StateRestorer:
             code = row['stock_code']
             raw_owner = row.get('strategy', '')
             owner = raw_owner.strip() if (raw_owner and isinstance(raw_owner, str)) else ""
-            key = (code, owner)
+            # 키는 «인스턴스 기준» 그룹. 표시 라벨(strategy)은 그룹의 첫 행
+            # (= ORDER BY timestamp DESC 라 최신 행)의 원문을 그대로 쓴다 —
+            # 라벨이 1종뿐인 현행 데이터에서는 종전과 문자 그대로 동일하다.
+            key = (code, self._owner_group_key(owner))
             if key in by_owner:
                 prev = by_owner[key]
                 add_qty = int(row['quantity'])
@@ -917,9 +945,31 @@ class StateRestorer:
 
             single = len(owners) == 1
             for info in owners:
+                leg_qty = quantity if single else info['quantity']
+                # 방어선 2중화 — 0/음수 레그는 여기서도 버린다. 대사는 «합»만
+                # 보므로 10+0·15+(-5) 를 통과시켰고, 그 레그가 set_position 과
+                # POSITIONED 까지 도달했다(2026-08-14 리뷰 R5). 정상 경로에서는
+                # 아래 _detect_owner_leg_anomalies 가 이미 기동을 멈춘다.
+                if leg_qty <= 0:
+                    logger.error(
+                        f"🚨 [실전매매] {stock_code} owner={info['strategy']!r} "
+                        f"수량 {info['quantity']} — 비정상 레그 스킵"
+                    )
+                    continue
+                if not self._resolve_owner_strategy(info['strategy']):
+                    # 「아무 전략도 소유하지 않는 실포지션」. 기동은 막지 않되
+                    # (전략 폴더 개명만으로 아침 기동이 죽으면 그게 더 위험하다)
+                    # 반드시 시끄럽게 남긴다 — 이 레그는 전략 고유 청산
+                    # (trail/max_hold/trend_flip)을 영영 못 받고 프레임워크
+                    # 백스톱(position_monitor tp/sl · EOD 일괄청산)만 남는다.
+                    logger.error(
+                        f"🚨 [실전매매] {stock_code} {leg_qty}주 owner={info['strategy']!r} "
+                        f"미해석 — 전략 고유 청산 없음, 프레임워크 백스톱만 적용 "
+                        f"(등록 전략: {list((self.strategies or {}).keys())})"
+                    )
                 legs.append({
                     'stock_code': stock_code, 'stock_name': stock_name,
-                    'quantity': quantity if single else info['quantity'],
+                    'quantity': leg_qty,
                     'buy_price': avg_price if single else info['buy_price'],
                     'owner': info['strategy'],
                     'buy_time': info.get('buy_time'),
@@ -927,6 +977,23 @@ class StateRestorer:
                     'stop_loss_rate': info.get('stop_loss_rate', DEFAULT_STOP_LOSS_RATE),
                 })
         return legs
+
+    def _detect_owner_leg_anomalies(self, by_owner: Dict[tuple, Dict]) -> List[str]:
+        """소유자별 레그의 수량 이상을 잡는다 (대사가 못 보는 축).
+
+        `_detect_holdings_mismatch` 는 종목 단위 **합**만 계좌와 대조하므로
+        `10 + 0` 도 `15 + (-5)` 도 통과한다. 열린 매수행의 수량이 0 이하인 것은
+        원장 손상이고, 손상된 원장을 근거로 실탄을 굴리지 않는다 —
+        이 모듈의 fail-closed 계약(LiveStartupAbort)에 수렴시킨다.
+        """
+        anomalies: List[str] = []
+        for info in by_owner.values():
+            if info['quantity'] <= 0:
+                anomalies.append(
+                    f"⚠️ {info['stock_code']}: owner={info['strategy']!r} "
+                    f"수량 {info['quantity']} (열린 매수행 수량은 양수여야 함)"
+                )
+        return anomalies
 
     async def _restore_holdings_from_real_account(self) -> None:
         """실전매매 모드: 실제 계좌에서 보유 종목 조회 → DB 동기화 → 메모리 복원"""
@@ -976,6 +1043,14 @@ class StateRestorer:
             #    (사전-실전 감사 BLOCKER #4, 2026-06-24).
             db_holdings = self.db_manager.get_real_open_positions()
             db_by_owner = self._build_db_holdings_by_owner(db_holdings)
+
+            # 2-1. 소유자별 레그 수량 이상 — 대사(종목 합)가 못 보는 축이다.
+            leg_anomalies = self._detect_owner_leg_anomalies(db_by_owner)
+            if leg_anomalies:
+                raise LiveStartupAbort(
+                    f"DB 보유행 수량 이상 {len(leg_anomalies)}건 — 원장 확인 후 재기동 필요",
+                    " / ".join(leg_anomalies[:10]))
+
             db_holdings_dict = self._build_db_holdings_by_code(db_by_owner)
 
             logger.info(

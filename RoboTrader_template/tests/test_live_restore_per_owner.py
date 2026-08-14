@@ -176,12 +176,21 @@ class TestTwoOwnersSameCode:
 class TestSameOwnerSplitBuyStillAggregates:
     """같은 전략의 진짜 분할매수는 종전대로 합산(수량 SUM·매입가 가중평균)."""
 
-    def _by_owner(self, rows):
+    # 2026-08-14 리뷰 R1: by_owner 의 키는 원문 라벨이 아니라 «인스턴스 기준»
+    # 그룹 키가 됐다(같은 전략의 두 표기를 접기 위해). 그래서 키 튜플 대신
+    # 표시 라벨(strategy)로 조회한다 — 검증 대상은 집계 결과지 키 모양이 아니다.
+    # 전략을 등록해 두는 것도 그 때문이다(미등록 라벨은 전부 한 바구니다).
+    def _by_owner(self, rows, strategies=None):
+        a = Mock(); a.name = 'RSLeaderStrategy'
+        b = Mock(); b.name = 'ElderEmaPullbackStrategy'
         db = Mock()
         db.get_real_open_positions.return_value = pd.DataFrame(rows)
         db.get_virtual_open_positions.return_value = pd.DataFrame()
-        restorer = _make_restorer(db, {}, _broker(5))
-        return restorer._build_db_holdings_by_owner(pd.DataFrame(rows))
+        restorer = _make_restorer(
+            db, strategies if strategies is not None else {KEY_A: a, KEY_B: b},
+            _broker(5))
+        by_owner = restorer._build_db_holdings_by_owner(pd.DataFrame(rows))
+        return {info['strategy']: info for info in by_owner.values()}
 
     def test_split_buy_sums_quantity_and_weights_price(self):
         rows = [_row(KEY_A, 2, 15_000.0, 2),   # 최신
@@ -189,8 +198,8 @@ class TestSameOwnerSplitBuyStillAggregates:
 
         by_owner = self._by_owner(rows)
 
-        assert list(by_owner.keys()) == [(CODE, KEY_A)]
-        info = by_owner[(CODE, KEY_A)]
+        assert list(by_owner) == [KEY_A]
+        info = by_owner[KEY_A]
         assert info['quantity'] == 5
         # (2*15000 + 3*10000) / 5 = 12000
         assert info['buy_price'] == pytest.approx(12_000.0)
@@ -203,9 +212,9 @@ class TestSameOwnerSplitBuyStillAggregates:
 
         by_owner = self._by_owner(rows)
 
-        assert by_owner[(CODE, KEY_A)]['quantity'] == 5
-        assert by_owner[(CODE, KEY_B)]['quantity'] == 5
-        assert by_owner[(CODE, KEY_B)]['buy_price'] == pytest.approx(20_000.0)
+        assert by_owner[KEY_A]['quantity'] == 5
+        assert by_owner[KEY_B]['quantity'] == 5
+        assert by_owner[KEY_B]['buy_price'] == pytest.approx(20_000.0)
 
     def test_single_owner_restore_is_unchanged(self):
         """단일 owner 는 종전대로 계좌 수량·평단을 쓴다(동작 불변)."""
