@@ -22,9 +22,10 @@
   도달했다. 대사는 «합»만 보므로 `10+0`·`15+(-5)` 가 통과한다.
 """
 import asyncio
+import logging
 import sys
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pandas as pd
 import pytest
@@ -34,6 +35,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tests.broker_contract import make_account_balance, make_holding
+from core.models import StockState
 from utils.exceptions import LiveStartupAbort
 from utils.korean_time import now_kst
 
@@ -378,3 +380,84 @@ class TestLegQuantityAnomaly:
 
         assert all(leg['quantity'] > 0 for leg in legs)
         assert len(legs) == 1
+
+
+# ---------------------------------------------------------------------------
+# 4. 병합 상호작용 — 2 레그 전개 × 좁혀진 복원 경고 억제 (main 981d3cb)
+# ---------------------------------------------------------------------------
+
+class TestTwoLegExpansionUnderNarrowedSuppression:
+    """`981d3cb` 은 복원 경고 억제를 «SELECTED → POSITIONED» 한 쌍으로 좁혔다.
+
+    Fix 3 의 2 레그 전개는 같은 종목에 슬롯을 «두 개» 만들고 각각을 전이시키므로,
+    억제 범위가 좁아진 뒤에도 두 레그 모두 그 쌍 안에 머무는지 확인해야 한다.
+    (직전 리뷰의 증명은 넓은 형태 `ab383d0` 기준이었다.)
+
+    로거는 `propagate=False` 라 caplog 로 안 잡힌다 — 진짜 로거에 핸들러를 붙여
+    «방출 자체» 를 관측한다(test_restore_transition_warning 과 동일 관례).
+    """
+
+    ABNORMAL = "[비정상 상태전이]"
+
+    class _Recorder(logging.Handler):
+        def __init__(self):
+            super().__init__(level=logging.DEBUG)
+            self.records = []
+
+        def emit(self, record):
+            self.records.append(record)
+
+    def _real_chain_restorer(self, rows, broker_qty, strategies):
+        from core.trading_stock_manager import TradingStockManager
+        db = Mock()
+        db.get_real_open_positions.return_value = pd.DataFrame(rows)
+        db.get_virtual_open_positions.return_value = pd.DataFrame()
+
+        # intraday_manager.add_selected_stock 은 await 되므로 AsyncMock 이어야
+        # 한다. 맨 Mock 이면 등록이 조용히 실패해(「0/2개 복원 완료」) 전이가
+        # 아예 일어나지 않고, 「경고 0줄」이 통과해 버린다 — 아래 상태 단언이
+        # 그 죽은 테스트를 잡는다.
+        intraday = Mock()
+        intraday.add_selected_stock = AsyncMock(return_value=True)
+        tm = TradingStockManager(
+            intraday_manager=intraday, data_collector=Mock(), order_manager=Mock())
+        restorer = _make_restorer(db, strategies, _broker(broker_qty))
+        restorer.trading_manager = tm
+        restorer._sync_fund_manager_for_position = Mock(return_value=0.0)
+        restorer._apply_stale_position_check = Mock(return_value=(0.05, 0.03))
+        return restorer, tm
+
+    def _run(self, rows, broker_qty, strategies):
+        restorer, tm = self._real_chain_restorer(rows, broker_qty, strategies)
+        sm = tm._state_manager
+        rec = self._Recorder()
+        sm.logger.addHandler(rec)
+        try:
+            asyncio.run(restorer._restore_holdings_from_real_account())
+        finally:
+            sm.logger.removeHandler(rec)
+        msgs = [r.getMessage() for r in rec.records if self.ABNORMAL in r.getMessage()]
+        return sm, msgs
+
+    def test_two_leg_restore_emits_no_abnormal_transition_warning(self):
+        a, b = _strats()
+        rows = [_row(KEY_A, 5, 100_000.0, 2), _row(KEY_B, 5, 100_000.0, 1)]
+
+        sm, abnormal = self._run(rows, 10, {KEY_A: a, KEY_B: b})
+
+        assert abnormal == [], f"2 레그 전개가 경고를 남겼다: {abnormal}"
+        # 그리고 전이가 «사라진» 게 아니라 실제로 두 슬롯 다 POSITIONED 여야 한다
+        states = [ts.state for ts in sm._find_by_code(CODE)]
+        assert len(states) == 2
+        assert all(s == StockState.POSITIONED for s in states)
+
+    def test_single_leg_restore_still_silent(self):
+        """대칭: 1 레그(종전 형상)도 여전히 조용하다."""
+        a, _b = _strats()
+        rows = [_row(KEY_A, 10, 100_000.0, 1)]
+
+        sm, abnormal = self._run(rows, 10, {KEY_A: a})
+
+        assert abnormal == []
+        states = [ts.state for ts in sm._find_by_code(CODE)]
+        assert states == [StockState.POSITIONED]
