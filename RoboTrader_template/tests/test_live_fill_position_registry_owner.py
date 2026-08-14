@@ -300,3 +300,74 @@ class TestRegistryOwnerComesFromTheSlotNotTheOrder:
 
         assert (CODE, CLS_A) not in fm._position_entries
         assert (CODE, CLS_B) in fm._position_entries
+
+
+# ---------------------------------------------------------------------------
+# 5. 소유 슬롯이 없을 때 «남의 슬롯»을 집으면 안 된다 (F2)
+# ---------------------------------------------------------------------------
+
+class TestAbsentOwnerSlotNeverPicksAnother:
+    """리뷰 F2: 「모호하면 보류」가 「엉뚱한 걸 실행」으로 바뀌어 있었다.
+
+    체결 시점에 owner 의 슬롯이 사라졌으면 _find_owned_stock 이 종목코드 단독
+    폴백으로 **다른 소유자의** 슬롯을 돌려줬다. 그 결과:
+      · 그 슬롯 owner 로 remove_position → **B 의 엔트리가 지워지고**
+        A 의 엔트리는 남는다 (소유권 역전)
+      · B 의 can_add_position 슬롯이 풀려 중복매수 노출, A 의 유령 엔트리는
+        세션 내내 슬롯 점유
+      · 매수원가도 남의 평단에서 읽힌다
+
+    베이스라인은 owner 미지정 제거였고 fund_manager 의 [모호제거] 가드가
+    «보류» 했다 — 즉 이 브랜치가 안전한 무동작을 위험한 오동작으로 바꿨다.
+    다중소유에서 owner 가 지정됐는데 그 슬롯이 없으면 **None** 을 돌려주고
+    가드가 제 일을 하게 둔다.
+    """
+
+    def test_absent_owner_slot_returns_none_when_multiple_owners_exist(self):
+        sm = StockStateManager()
+        _slots(sm, KEY_B)          # B 만 남아 있다 (A 의 슬롯은 사라짐)
+        _slots(sm, 'third_owner')  # 다중소유 상태
+        a, b = _strategies()
+        tm = _real_trading_manager(sm, {KEY_A: a, KEY_B: b})
+
+        assert tm.find_owned_stock(CODE, KEY_A) is None
+
+    def test_single_owner_fallback_is_preserved(self):
+        """대칭: 소유자가 하나뿐이면 모호하지 않으므로 종전 폴백을 유지한다."""
+        sm = StockStateManager()
+        _slots(sm, KEY_B)
+        a, b = _strategies()
+        tm = _real_trading_manager(sm, {KEY_A: a, KEY_B: b})
+
+        assert tm.find_owned_stock(CODE, KEY_A) is not None
+
+    def test_sell_fill_with_absent_slot_does_not_remove_another_owner(self):
+        """진입점: A 의 매도 체결이 B 의 보유 엔트리를 지우면 안 된다."""
+        a, b = _strategies()
+        fm = FundManager(initial_funds=10_000_000)
+        om = _order_manager(fm)
+        sm = StockStateManager()
+        _slots(sm, KEY_B)
+        _slots(sm, 'third_owner')
+        om.trading_manager = _real_trading_manager(sm, {KEY_A: a, KEY_B: b})
+        fm.add_position(CODE, KEY_B)
+        fm.add_position(CODE, 'third_owner')
+        fm.invested_funds = 1_400_000
+
+        _fill(om, _order(OrderType.SELL, KEY_A, 'OID-S'))
+
+        # 대칭: 남의 엔트리 둘 다 살아 있어야 한다 (모호제거 가드가 보류)
+        assert (CODE, KEY_B) in fm._position_entries
+        assert (CODE, 'third_owner') in fm._position_entries
+
+    def test_owner_slot_present_still_removes_normally(self):
+        """대칭: 자기 슬롯이 있으면 종전대로 자기 것만 지운다."""
+        fm, om, _made, _a, _b = _setup(KEY_A, KEY_B)
+        fm.add_position(CODE, KEY_A)
+        fm.add_position(CODE, KEY_B)
+        fm.invested_funds = 1_400_000
+
+        _fill(om, _order(OrderType.SELL, KEY_A, 'OID-S'))
+
+        assert (CODE, KEY_A) not in fm._position_entries
+        assert (CODE, KEY_B) in fm._position_entries

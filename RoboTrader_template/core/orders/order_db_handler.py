@@ -37,6 +37,12 @@ class OrderDBHandlerMixin:
         # green 이 된다(2026-08-14 리뷰 F5, 실제로 3개 fixture 가 이 함정에 걸렸다).
         # 실체 검사로 바꾸면 가짜 facade 가 조용히 통과하지 못한다
         # (trading_decision_engine.py:485 와 동일 관례).
+        #
+        # 🔴 facade 가 있으면 그 «판단이 최종» 이다 — None 이어도 아래 레거시
+        # 폴백으로 내려가지 않는다. find_owned_stock 은 「owner 슬롯이 없고
+        # 다중소유」일 때 의도적으로 None 을 돌려주는데(리뷰 F2), 여기서 다시
+        # 종목코드 단독으로 훑으면 그 판단을 무효로 만들고 결국 «남의 슬롯»을
+        # 집는다. 판단은 한 곳에서만 내린다.
         from core.trading_stock_manager import TradingStockManager
         if owner and isinstance(tm, TradingStockManager):
             try:
@@ -44,10 +50,9 @@ class OrderDBHandlerMixin:
                 if inspect.iscoroutine(ts):
                     ts.close()
                     ts = None
-                if ts is not None:
-                    return ts
+                return ts
             except Exception:
-                pass
+                return None
 
         for strategy in ([owner] if owner else []) + [None]:
             try:

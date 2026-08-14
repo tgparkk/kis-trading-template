@@ -95,17 +95,40 @@ class OrderCompletionHandler:
     def _find_owned_stock(self, stock_code: str, owner_name):
         """주문 owner 로 소유 슬롯을 찾는다 (폴더키/클래스명 양쪽 허용).
 
-        owner 미지정·미해석이면 종목코드 단독 폴백 — 다중소유면 임의 소유자다.
+        owner 를 지정했는데 그 슬롯이 없고 **다른 소유자가 2명 이상**이면
+        None 을 돌려준다 — 남의 슬롯을 집으면 안 된다(2026-08-14 리뷰 F2).
+
+        ⚠️ 종전 구현은 무조건 종목코드 단독 폴백이라 «다른 소유자의» 슬롯을
+        돌려줬고, 그 결과 매도 체결이 **남의 보유 엔트리를 지웠다**(소유권
+        역전: 그쪽 can_add_position 슬롯이 풀려 중복매수에 노출되고, 진짜
+        소유자의 유령 엔트리는 세션 내내 슬롯을 점유). 매수원가도 남의
+        평단에서 읽혔다. 베이스라인은 owner 미지정 제거였고 fund_manager 의
+        [모호제거] 가드가 «보류» 했다 — 안전한 무동작을 위험한 오동작으로
+        바꾼 셈이라 되돌린다. 모호하면 가드가 일하게 둔다.
+
+        소유자가 하나뿐이면 표기가 어긋나도 모호하지 않으므로 종전 폴백 유지.
         """
         for key in self._owner_aliases(owner_name):
             ts = self.state_manager.get_trading_stock(stock_code, strategy=key)
             if ts is not None:
                 return ts
+
+        if owner_name:
+            with self.state_manager.lock:
+                others = self.state_manager._find_by_code(stock_code)
+            if len(others) > 1:
+                self.logger.error(
+                    f"[{stock_code}] 주문 owner={owner_name!r} 슬롯 미발견 + "
+                    f"다중소유({len(others)}) — 남의 슬롯을 집지 않고 보류한다 "
+                    f"(보유 owner: {[o.owner_strategy_name for o in others]})"
+                )
+                return None
+
         ts = self.state_manager.get_trading_stock(stock_code)
         if ts is not None and owner_name:
             self.logger.warning(
                 f"[{stock_code}] 주문 owner={owner_name!r} 슬롯 미발견 — "
-                f"종목코드 단독 폴백(다중소유면 임의 소유자다)"
+                f"단일 소유라 종목코드 단독 폴백"
             )
         return ts
 
