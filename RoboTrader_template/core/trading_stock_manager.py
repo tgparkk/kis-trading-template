@@ -354,6 +354,15 @@ class TradingStockManager:
         """종목 정보 조회"""
         return self._state_manager.get_trading_stock(stock_code, strategy=strategy)
 
+    def find_owned_stock(self, stock_code: str, owner_name) -> Optional[TradingStock]:
+        """owner 표기(폴더키/클래스명 어느 쪽이든)로 소유 슬롯 조회.
+
+        표기가 경로별로 갈리므로(신규매수=클래스명 / 복원=폴더키) 두 표기를 모두
+        시도해야 한다. 해석 규칙은 완료 핸들러가 갖고 있으므로 그리로 위임한다
+        — 규칙을 복제하면 둘이 갈린다.
+        """
+        return self._completion_handler._find_owned_stock(stock_code, owner_name)
+
     def update_current_order(self, stock_code: str, new_order_id: str,
                              strategy: Optional[str] = None) -> None:
         """정정 등으로 새 주문이 생성되었을 때 현재 주문ID를 최신값으로 동기화

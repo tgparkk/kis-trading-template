@@ -60,8 +60,17 @@ def _om_with_two_owner_slots():
         ts.set_position(10, 70_000.0)
         sm.register_stock(ts)
         slots[owner] = ts
+    # ⚠️ 맨 Mock 은 hasattr 이 무조건 True 라 find_owned_stock 이 Mock 을 돌려준다
+    # (계약을 발명한 mock). 실제 해석 규칙에 위임한다.
+    from core.trading.order_completion_handler import OrderCompletionHandler
+    a = Mock(); a.name = 'RSLeaderStrategy'
+    b = Mock(); b.name = 'ElderEmaPullbackStrategy'
+    handler = OrderCompletionHandler(state_manager=sm, order_manager=om)
+    handler.set_strategies({KEY_A: a, KEY_B: b})
+
     tm = Mock()
     tm.get_trading_stock.side_effect = sm.get_trading_stock
+    tm.find_owned_stock.side_effect = handler._find_owned_stock
     om.trading_manager = tm
 
     db = Mock()

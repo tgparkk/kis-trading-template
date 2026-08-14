@@ -27,6 +27,21 @@ class OrderDBHandlerMixin:
             return None
         owner = (getattr(order, 'owner_strategy', '') or '').strip()
         stock_code = order.stock_code
+
+        # 표기-불변 조회를 쓸 수 있으면 그것부터. 주문에 실린 표기는 «주문 접수
+        # 시점의» 슬롯 값이라, 매수 성공 직후 trading_context:529 가 슬롯 owner 를
+        # 클래스명으로 덮어쓰면 폴더키 정확일치가 빗나간다(2026-08-14).
+        if owner and hasattr(tm, 'find_owned_stock'):
+            try:
+                ts = tm.find_owned_stock(stock_code, owner)
+                if inspect.iscoroutine(ts):
+                    ts.close()
+                    ts = None
+                if ts is not None:
+                    return ts
+            except Exception:
+                pass
+
         for strategy in ([owner] if owner else []) + [None]:
             try:
                 ts = tm.get_trading_stock(stock_code, strategy=strategy)
