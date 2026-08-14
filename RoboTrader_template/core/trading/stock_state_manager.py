@@ -143,7 +143,8 @@ class StockStateManager:
             self._remove(matches[0])
 
     def change_stock_state(self, stock_code: str, new_state: StockState,
-                           reason: str = "", strategy: Optional[str] = None) -> None:
+                           reason: str = "", strategy: Optional[str] = None,
+                           *, restoring: bool = False) -> None:
         """
         종목 상태 변경
 
@@ -152,6 +153,17 @@ class StockStateManager:
             new_state: 새로운 상태
             reason: 변경 사유
             strategy: 소유 전략(미지정 시 종목 코드만으로 매칭)
+            restoring: DB/계좌 복원 경로에서의 전이임을 호출자가 선언한다.
+                True 면 «비정상 전이 경고 출력만» 건너뛴다(전이 자체는 동일).
+                복원은 SELECTED(=add_selected_stock 직후) → POSITIONED 를
+                포지션마다 수행하는데 이 조합은 _VALID_TRANSITIONS 에 없어,
+                기동할 때마다 복원 건수만큼 WARNING 이 쌓였다(2026-08-14
+                부팅 로그 48줄 = 복원 48건). 🔴 그렇다고 SELECTED 의 허용
+                목록에 POSITIONED 를 «더하면» 안 된다 — 정상 매매 경로에서
+                BUY_PENDING(주문추적)을 건너뛴 채 POSITIONED 에 도달하는
+                진짜 이상(체결은 났는데 주문이 추적 안 된 상태)까지 함께
+                침묵하기 때문이다. 그래서 허용 맵은 그대로 두고 복원
+                호출자만 스스로를 선언한다.
         """
         with self._lock:
             matches = self._find_by_code(stock_code, strategy)
@@ -173,8 +185,9 @@ class StockStateManager:
             old_state = trading_stock.state
 
             # 상태 전이 규칙 검증 (비정상 전이는 경고만, 차단하지 않음)
+            # restoring=True 는 «경고 출력»만 건너뛴다 — 아래 전이 로직은 불변.
             valid_next_states = _VALID_TRANSITIONS.get(old_state, [])
-            if new_state not in valid_next_states:
+            if new_state not in valid_next_states and not restoring:
                 self.logger.warning(
                     f"[비정상 상태전이] {stock_code} {old_state.value} → {new_state.value} "
                     f"(허용: {[s.value for s in valid_next_states]}) | 사유: {reason}"

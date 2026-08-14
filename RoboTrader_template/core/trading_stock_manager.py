@@ -379,6 +379,13 @@ class TradingStockManager:
         """종목 등록 해제 (하위 호환성)"""
         self._state_manager.unregister_stock(stock_code, strategy=strategy)
 
-    def _change_stock_state(self, stock_code: str, new_state: StockState, reason: str = "", strategy: Optional[str] = None) -> None:
-        """종목 상태 변경 (하위 호환성)"""
-        self._state_manager.change_stock_state(stock_code, new_state, reason, strategy=strategy)
+    def _change_stock_state(self, stock_code: str, new_state: StockState, reason: str = "",
+                            strategy: Optional[str] = None, *, restoring: bool = False) -> None:
+        """종목 상태 변경 (하위 호환성)
+
+        restoring 은 복원 경로 전용 선언이며 그대로 통과시킨다 —
+        상세는 StockStateManager.change_stock_state 참조.
+        """
+        self._state_manager.change_stock_state(
+            stock_code, new_state, reason, strategy=strategy, restoring=restoring
+        )
