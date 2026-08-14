@@ -10,12 +10,13 @@ DB 접속 없이 cursor 를 mock 하여, text date 컬럼 스키마에서 쿼리
 timestamptz 컬럼(``(timestamp AT TIME ZONE 'Asia/Seoul')::date = %s::date``)이라
 이 버그와 무관하므로 빈 결과로 통과시켜 daily_prices 쿼리 하나에 집중한다.
 """
+import re
 from contextlib import contextmanager
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from db.connection import DatabaseConnection
-from tools.daily_trading_summary import print_today_trading_summary
+from tools.daily_trading_summary import GROSS_LABEL_SUFFIX, print_today_trading_summary
 
 
 class _TextDateSchemaCursor:
@@ -162,6 +163,13 @@ class _IsTestAwareCursor:
             return True
 
         if "coalesce(sum" in ql:
+            # 🔴 이 더블은 승/패 «술어를 읽지 않는다» — > 0 / < 0 을 파이썬 쪽에
+            # 하드코딩해 둔다. 그래서 §3 집계 SQL 의 술어를 >= 0 으로 바꿔도,
+            # 심지어 SQL 안에 수수료 식을 심어도 «출력을 보는 테스트는 전부
+            # 통과»한다(2026-08-14 리뷰 실측). §3 의 SQL 경로는 반드시
+            # test_cumulative_aggregate_sql_* 의 «문자열 단언»으로 지켜야 한다.
+            # 여기 계산을 SQL 해석으로 바꾸려 하지 말 것 — 더블이 프로덕션
+            # 술어를 흉내내기 시작하면 순환 논리가 된다.
             sells = [r for r in self._records if base_match(r) and r["action"] == "SELL"]
             total_pl = sum((r["profit_loss"] or 0) for r in sells)
             win = sum(1 for r in sells if (r["profit_loss"] or 0) > 0)
@@ -513,7 +521,8 @@ def test_unresolvable_price_is_excluded_from_totals_not_replaced_by_avg_buy(
     assert "1,200,000" not in out, "미해결 종목이 avg_buy 로 평가금액에 섞임"
     # 해결된 종목만으로 계산된 합계
     assert "750,000" in out
-    assert "미실현 손익:          50,000원" in out
+    # 라벨은 gross 꼬리표를 달되(2026-08-14 후속) 값은 그대로여야 한다.
+    assert f"미실현 손익{GROSS_LABEL_SUFFIX}:          50,000원" in out
 
 
 def test_holding_close_query_filters_by_today(monkeypatch):
@@ -683,3 +692,474 @@ def test_cumulative_query_alias_is_not_a_bare_realized_pl(monkeypatch):
         f"gross 합계를 total_realized_pl 로 부르고 있다:\n{agg[0]}"
     )
     assert "gross" in ql, f"별칭이 gross 임을 밝히지 않음:\n{agg[0]}"
+
+
+# ============================================================================
+# gross 에서 «파생된 판정»(승/패·승률)이 라벨 없이 찍혔다 (2026-08-14 후속)
+#
+# 배경: c1b9dc3 은 «금액» 라벨만 gross 로 정정하고, 같은 gross 컬럼에서
+# 파생된 «판정»은 그대로 뒀다. 판정 쪽이 더 나쁘다 — 금액은 읽는 사람이
+# 보정할 수 있지만 승/패는 이미 내려진 결론이기 때문이다. 리뷰가 제시한
+# 구성 사례:
+#     매수 100주 @10,000 = 1,000,000 / 매도 100주 @10,010 = 1,001,000
+#     gross = +1,000
+#     수수료·세금 = 150(매수) + 150.15(매도) + 1,801.80(거래세) = 2,101.95
+#     net   = −1,102
+# 즉 **돈을 잃은** 포트폴리오가 「승률: 1/1 (100.0%)」로 찍힌다.
+#
+# 🔴 방침은 c1b9dc3 과 동일 — **라벨만. net 승률을 계산하지 않는다.**
+# 손익 금액과 똑같은 이유다(적용 시점이 달라 서로 어긋나는 현금 원장이 이미
+# 둘이고, 리포트에 심는 세 번째 수수료 계산식은 「두 번째 틀린 숫자」가 된다).
+# 다만 다음 사실은 산술 없이 말할 수 있어 고지문에 넣는다:
+#   · 수수료·세금은 항상 양수이므로 **모든** 거래에서 net ≤ gross 다.
+#     ⇒ {net 승} ⊆ {gross 승} ⇒ **gross 승률은 net 승률의 상한**이다.
+# 「상한」은 부등호지 수식이 아니라서 원장을 새로 만들지 않는다.
+#
+# 부수 정정 ①: §1 은 ``pl >= 0``(0원이 «승»), §3 SQL 은 ``> 0``/``< 0``
+# (0원은 승도 패도 아니지만 총 매매 횟수에는 남음)이라 **한 리포트 안의 두
+# 승률이 서로 다를 수 있었다**. §3 쪽(``> 0``)으로 통일한다 — 0원 거래는
+# 수수료·거래세만큼 확정 net 손실이라 «승»으로 셀 근거가 없다.
+# 부수 정정 ②: §2 보유 표의 평가손익·수익률·합계도 gross 이고, §3 의
+# 「미실현 손익」 줄만 꼬리표를 못 받았다(위아래 두 줄은 받았다).
+# ============================================================================
+
+
+def _breakeven_win_records():
+    """리뷰의 구성 사례 — gross +1,000 이지만 net 은 −1,102 인 매도 1건."""
+    buy = dict(
+        id=1, action="BUY", stock_code="005930", stock_name="삼성전자",
+        quantity=100, price=10000, target_profit_rate=0.03, stop_loss_rate=0.02,
+        timestamp=datetime(2026, 8, 11, 10, 0), is_test=True, source="kis_template",
+        buy_record_id=None, profit_loss=None, profit_rate=None,
+    )
+    sell = dict(
+        id=2, action="SELL", stock_code="005930", stock_name="삼성전자",
+        quantity=100, price=10010, target_profit_rate=None, stop_loss_rate=None,
+        timestamp=datetime(2026, 8, 11, 14, 0), is_test=True, source="kis_template",
+        buy_record_id=1, profit_loss=1000, profit_rate=0.001,
+    )
+    return [buy, sell]
+
+
+def _flat_pl_records():
+    """gross 이익 매도 1건 + gross 손익이 정확히 0 인 매도 1건.
+
+    0원 거래는 수수료·거래세만큼 **확정 net 손실**이다. §1(``>= 0``)과
+    §3(``> 0``)의 관례가 어긋나 있으면 두 승률이 100.0% 와 50.0% 로
+    갈린다 — 그 불일치를 잡는 표본이다.
+    """
+    rows = []
+    for idx, (code, name, pl) in enumerate(
+        [("005930", "삼성전자", 30000), ("000660", "SK하이닉스", 0)], start=1
+    ):
+        rows.append(dict(
+            id=idx * 10, action="BUY", stock_code=code, stock_name=name,
+            quantity=10, price=70000, target_profit_rate=0.03, stop_loss_rate=0.02,
+            timestamp=datetime(2026, 8, 11, 10, 0), is_test=True,
+            source="kis_template", buy_record_id=None,
+            profit_loss=None, profit_rate=None,
+        ))
+        rows.append(dict(
+            id=idx * 10 + 1, action="SELL", stock_code=code, stock_name=name,
+            quantity=10, price=73000, target_profit_rate=None, stop_loss_rate=None,
+            timestamp=datetime(2026, 8, 11, 14, 0), is_test=True,
+            source="kis_template", buy_record_id=idx * 10,
+            profit_loss=pl, profit_rate=0.0,
+        ))
+    return rows
+
+
+def _win_rate_lines(out):
+    return _labelled_lines(out, "승률")
+
+
+def test_gross_win_on_a_net_loss_is_never_rendered_unqualified(monkeypatch, capsys):
+    """리뷰의 구성 사례 — gross 는 +1,000 이지만 net 은 −1,102 인 거래 하나로
+    이뤄진 리포트는 **꼬리표 없는 「승률: 100.0%」를 찍으면 안 된다**.
+
+    §1(당일 매도)·§3(누적) 두 곳 모두 해당한다.
+    """
+    _run_summary_with_records(monkeypatch, _breakeven_win_records())
+
+    out = capsys.readouterr().out
+    rate_lines = _win_rate_lines(out)
+    assert len(rate_lines) == 2, f"승률 줄 2개(§1·§3)를 기대했으나: {rate_lines}\n{out}"
+    for line in rate_lines:
+        assert _declares_gross(line), (
+            "net 으로는 손실인 거래가 꼬리표 없는 승률로 찍혔다:\n" + line
+        )
+
+    bare = [ln.strip() for ln in out.splitlines()
+            if ln.strip().startswith("승률") and not _declares_gross(ln)]
+    assert not bare, f"꼬리표 없는 승률 줄이 남아 있다: {bare}"
+
+
+def test_win_rate_value_is_not_recomputed_as_net(monkeypatch, capsys):
+    """**대칭 단언**: 라벨을 고치면서 값을 net 으로 다시 계산하면 안 된다.
+
+    이 사례의 net 승률은 0% 지만, 리포트가 그 0% 를 찍으면 「세 번째
+    원장」(수수료 계산식)을 리포트에 심었다는 뜻이다. gross 판정 그대로
+    1/1 · 100.0% 가 남아 있어야 한다. 한 방향(꼬리표만)만 단언하면 값을
+    바꾼 구현도 통과한다.
+    """
+    _run_summary_with_records(monkeypatch, _breakeven_win_records())
+
+    out = capsys.readouterr().out
+    rate_lines = _win_rate_lines(out)
+    assert all("100.0%" in ln for ln in rate_lines), (
+        f"gross 승률 값이 바뀌었다(수수료를 리포트에서 재계산한 흔적): {rate_lines}"
+    )
+    assert any("1/1" in ln for ln in rate_lines), f"§1 승/건수 표기가 바뀌었다: {rate_lines}"
+
+    win_loss = _labelled_lines(out, "승/패", "승:")
+    assert win_loss, f"승/패 건수 줄을 찾지 못함:\n{out}"
+    for line in win_loss:
+        assert _declares_gross(line), f"gross 임을 밝히지 않은 승/패 줄:\n{line}"
+
+
+def test_zero_gross_trade_is_not_counted_as_a_win_in_either_section(monkeypatch, capsys):
+    """§1 과 §3 의 승/패 관례가 같아야 한다 — 0원 거래는 «승»이 아니다.
+
+    §1 이 ``pl >= 0``, §3 이 ``> 0`` 이면 같은 리포트 안에서 승률이
+    100.0% 와 50.0% 로 갈린다. 두 줄이 같은 수를 말하는지 직접 대조한다.
+    """
+    _run_summary_with_records(monkeypatch, _flat_pl_records())
+
+    out = capsys.readouterr().out
+    rate_lines = _win_rate_lines(out)
+    assert len(rate_lines) == 2, f"승률 줄 2개를 기대했으나: {rate_lines}\n{out}"
+    assert all("50.0%" in ln for ln in rate_lines), (
+        f"0원 거래를 «승»으로 센 승률이 있다(§1·§3 관례 불일치): {rate_lines}"
+    )
+    assert any("1/2" in ln for ln in rate_lines), f"§1 승/건수 표기: {rate_lines}"
+    assert "총 매매 횟수: 2회" in out
+
+
+def test_gross_disclaimer_covers_the_verdicts_not_just_the_amounts(monkeypatch, capsys):
+    """고지문이 승/패·승률 **아래**에 오고, 판정까지 포함해 말해야 한다.
+
+    c1b9dc3 시점의 고지문은 §3 손익 줄 바로 뒤(=승/패·승률 «위»)에 있었고
+    문구도 「위 손익은」이라 판정을 자연스럽게 덮지 못했다.
+    """
+    _run_summary_with_records(monkeypatch, _breakeven_win_records())
+
+    out = capsys.readouterr().out
+    lines = [ln.strip() for ln in out.splitlines()]
+
+    disclaimer_idx = [i for i, ln in enumerate(lines)
+                      if ln.startswith("⚠️") and "gross" in ln]
+    assert disclaimer_idx, f"gross 고지문을 찾지 못함:\n{out}"
+
+    rate_idx = [i for i, ln in enumerate(lines) if ln.startswith("승률")]
+    assert rate_idx, f"승률 줄을 찾지 못함:\n{out}"
+
+    assert max(disclaimer_idx) > max(rate_idx), (
+        "고지문이 승/패·승률보다 위에 있어 판정을 덮지 못한다 "
+        f"(고지문 {disclaimer_idx}, 승률 {rate_idx})"
+    )
+
+    disclaimer = lines[max(disclaimer_idx)]
+    assert "승" in disclaimer, f"고지문이 승/패·승률을 언급하지 않는다:\n{disclaimer}"
+    assert "상한" in disclaimer, (
+        "gross 승률이 net 승률의 «상한»이라는 사실(부등호 — 산술 아님)이 없다:\n"
+        + disclaimer
+    )
+
+
+def test_holdings_table_declares_gross_for_unrealized_columns(monkeypatch, capsys):
+    """§2 보유 표의 평가손익·수익률·합계도 gross 다 — 표 머리에 고지가 있어야
+    하고, 표 자체(값·정렬)는 그대로여야 한다."""
+    holdings = [("111770", "종목A", 10, 80000, 0.03, 0.02)]
+    daily = {("111770", _TODAY_PR): 85200}
+
+    _run_price_summary(monkeypatch, holdings, daily)
+
+    out = capsys.readouterr().out
+    note = [ln.strip() for ln in out.splitlines()
+            if "평가손익" in ln and _declares_gross(ln)]
+    assert note, f"§2 평가손익/수익률이 gross 임을 밝히는 줄이 없다:\n{out}"
+
+    line = _holding_line(out, "111770")
+    assert "85,200" in line and "852,000" in line, line
+
+
+def test_unrealized_pl_line_declares_gross(monkeypatch, capsys):
+    """§3 「미실현 손익」 줄만 꼬리표를 못 받았다(바로 위·아래 두 줄은 받았다)."""
+    holdings = [("111770", "종목A", 10, 80000, 0.03, 0.02)]
+    daily = {("111770", _TODAY_PR): 85200}
+
+    _run_price_summary(monkeypatch, holdings, daily)
+
+    out = capsys.readouterr().out
+    unrealized = _labelled_lines(out, "미실현 손익")
+    assert unrealized, f"미실현 손익 줄을 찾지 못함:\n{out}"
+    for line in unrealized:
+        assert _declares_gross(line), f"gross 임을 밝히지 않은 미실현 손익 줄:\n{line}"
+    # 값 불변: 10주 × (85,200 − 80,000) = 52,000
+    assert any("52,000" in ln for ln in unrealized), unrealized
+
+
+# ============================================================================
+# 후속 리뷰 정정 (2026-08-14) — 「라벨만」 원칙을 라벨 «문구» 에도 적용한다
+#
+# 리뷰가 실행으로 반증한 것: 고지문이 «부등식이 허락하지 않는 것»을 단언하고
+# 있었다.
+#   「gross 승 중 일부는 실제로는 net 패다」  ← 존재 주장(declarative)
+#   「위 승률은 net 승률의 «상한»이지 net 승률이 아니다」 ← 강부등호 주장
+# 내가 가진 근거는 「수수료 > 0 ⇒ net ≤ gross ⇒ {net 승} ⊆ {gross 승}」뿐이고,
+# 이는 «~일 수 있다» 까지만 허락한다. 부분집합은 진부분집합이 아니다.
+#
+# 🔑 그리고 이 지점이 날카롭다: **「실제로 일부가 손익분기 아래에 있다」를
+# 세우는 일이 바로 내가 (옳게) 거절한 손익분기 계산 그 자체다.** 산술을
+# 피하려고 쓴 문장이 산술을 했어야만 참이 되는 문장이었다 — 즉 이 파일이
+# 없애려던 「표시 ≠ 실제」를 내가 한 건 더 만든 셈이다.
+#
+# 반증 표본 두 개(둘 다 아래 테스트로 고정):
+#   · gross +10,000 / 매수금액 1,000,000 (10% — 손익분기의 약 50배)
+#     → net 패로 뒤집히는 승이 «0건». gross 승률 = net 승률(둘 다 100%)이라
+#       「상한이지 net 승률이 아니다」까지 함께 거짓이 된다.
+#   · 매매 0건 → 승/패 0회인데도 「일부는 net 패다」가 그대로 렌더링된다.
+# ============================================================================
+
+# 강화된(=근거 없는) 주장 형태. 재강화 방지용으로 문구를 못박는다.
+_OVERCLAIM_PHRASES = (
+    "net 패다",            # 「일부는 실제로는 net 패다」 — 존재 주장
+    "net 승률이 아니다",     # 「상한이지 net 승률이 아니다」 — 강부등호 주장
+)
+
+
+def _disclaimer_line(out):
+    lines = [ln.strip() for ln in out.splitlines()
+             if ln.strip().startswith("⚠️") and "gross" in ln]
+    assert lines, f"gross 고지문을 찾지 못함:\n{out}"
+    return lines[-1]
+
+
+def _comfortable_win_records():
+    """gross +10,000 / 매수금액 1,000,000 — 손익분기(약 0.21%)의 50배쯤 되는
+    10% 수익이라 net 으로도 «확실히» 승이다. 이 표본에서는 gross 승률과 net
+    승률이 «같다» — 둘이 다르다고 단언하는 문구는 여기서 거짓이 된다."""
+    buy = dict(
+        id=1, action="BUY", stock_code="005930", stock_name="삼성전자",
+        quantity=100, price=10000, target_profit_rate=0.03, stop_loss_rate=0.02,
+        timestamp=datetime(2026, 8, 11, 10, 0), is_test=True, source="kis_template",
+        buy_record_id=None, profit_loss=None, profit_rate=None,
+    )
+    sell = dict(
+        id=2, action="SELL", stock_code="005930", stock_name="삼성전자",
+        quantity=100, price=11000, target_profit_rate=None, stop_loss_rate=None,
+        timestamp=datetime(2026, 8, 11, 14, 0), is_test=True, source="kis_template",
+        buy_record_id=1, profit_loss=10000, profit_rate=0.10,
+    )
+    return [buy, sell]
+
+
+def test_disclaimer_does_not_claim_gross_and_net_win_rates_actually_differ(
+    monkeypatch, capsys
+):
+    """gross 승률 == net 승률인 표본에서 「둘은 다르다」고 단언하면 안 된다.
+
+    부분집합(⊆)은 진부분집합(⊊)이 아니다. 리포트는 net 을 모르므로 어느
+    쪽인지 «알 수 없고», 알 수 없는 것을 단언하면 그게 새 「표시 ≠ 실제」다.
+    """
+    _run_summary_with_records(monkeypatch, _comfortable_win_records())
+
+    out = capsys.readouterr().out
+    disclaimer = _disclaimer_line(out)
+
+    for phrase in _OVERCLAIM_PHRASES:
+        assert phrase not in disclaimer, (
+            f"부등식이 허락하지 않는 단언이 남아 있다({phrase!r}):\n{disclaimer}"
+        )
+    assert "수 있다" in disclaimer, (
+        "가능성 표현(«~일 수 있다»)이 없다 — 단언으로 읽힌다:\n" + disclaimer
+    )
+    assert "상한" in disclaimer, f"상한이라는 사실 자체는 남아야 한다:\n{disclaimer}"
+
+
+def test_disclaimer_holds_when_there_are_no_trades_at_all(monkeypatch, capsys):
+    """매매 0건 — 「gross 승 중 일부는 net 패다」는 공집합에 대한 존재 주장이라
+    명백히 거짓이었다. 가능성 표현이면 공허참이라 문제없다."""
+    _run_summary_with_records(monkeypatch, [])
+
+    out = capsys.readouterr().out
+    disclaimer = _disclaimer_line(out)
+
+    for phrase in _OVERCLAIM_PHRASES:
+        assert phrase not in disclaimer, (
+            f"매매 0건인데도 존재 주장이 렌더링된다({phrase!r}):\n{disclaimer}"
+        )
+    assert "총 매매 횟수: 0회" in out
+
+
+# ----------------------------------------------------------------------------
+# 매도 행 «색/부호»도 승/패 관례를 따라야 한다 (리뷰 Required 2)
+#
+# 집계는 > 0 으로 통일했는데 행 렌더링은 >= 0 그대로였다. 그래서 0원 거래가
+# «초록 + 부호» 로 찍히면서 승률은 50% — 이 커밋이 스스로 내세운 명제
+# (「한 리포트 안에 서로 다른 승률이 둘 있는 것 자체가 결함」)를 한 층 아래에서
+# 그대로 어긴다.
+# ----------------------------------------------------------------------------
+
+def _three_way_sell_records():
+    """이익·손실·0원 매도 각 1건 — 색/부호 3분기를 한 번에 본다."""
+    rows = []
+    for idx, (code, name, pl, rate) in enumerate([
+        ("005930", "이익", 30000, 0.043),
+        ("000660", "손실", -20000, -0.028),
+        ("035420", "보합", 0, 0.0),
+    ], start=1):
+        rows.append(dict(
+            id=idx * 10, action="BUY", stock_code=code, stock_name=name,
+            quantity=10, price=70000, target_profit_rate=0.03, stop_loss_rate=0.02,
+            timestamp=datetime(2026, 8, 11, 10, 0), is_test=True,
+            source="kis_template", buy_record_id=None,
+            profit_loss=None, profit_rate=None,
+        ))
+        rows.append(dict(
+            id=idx * 10 + 1, action="SELL", stock_code=code, stock_name=name,
+            quantity=10, price=73000, target_profit_rate=None, stop_loss_rate=None,
+            timestamp=datetime(2026, 8, 11, 14, 0), is_test=True,
+            source="kis_template", buy_record_id=idx * 10,
+            profit_loss=pl, profit_rate=rate,
+        ))
+    return rows
+
+
+def _sell_row(out, stock_code):
+    for line in out.splitlines():
+        if stock_code in line and ("🟢" in line or "🔴" in line or "⚪" in line):
+            return line
+    raise AssertionError(f"매도 행({stock_code})을 찾지 못함:\n{out}")
+
+
+def test_zero_pl_sell_row_is_not_coloured_as_a_win(monkeypatch, capsys):
+    """0원 매도 행은 «승»으로 색칠되면 안 된다 — 집계(> 0)와 같은 관례.
+
+    대칭 단언: 이익 행은 여전히 🟢, 손실 행은 여전히 🔴 이어야 한다. 한쪽만
+    보면 「전부 ⚪ 로 칠하기」도 통과한다.
+    """
+    _run_summary_with_records(monkeypatch, _three_way_sell_records())
+
+    out = capsys.readouterr().out
+    win_row = _sell_row(out, "005930")
+    loss_row = _sell_row(out, "000660")
+    flat_row = _sell_row(out, "035420")
+
+    assert "🟢" in win_row and "🔴" not in win_row, win_row
+    assert "🔴" in loss_row and "🟢" not in loss_row, loss_row
+    assert "🟢" not in flat_row, f"0원 거래가 승으로 색칠됐다:\n{flat_row}"
+    assert "⚪" in flat_row, f"0원 거래에 보합 표기가 없다:\n{flat_row}"
+    # 부호도 같은 관례 — 0.0% 앞에 «+» 를 붙이면 이익으로 읽힌다.
+    assert "+" not in flat_row.split("⚪")[1], f"0원 거래에 + 부호가 붙었다:\n{flat_row}"
+
+
+def test_zero_unrealized_holding_row_is_not_coloured_as_a_win(monkeypatch, capsys):
+    """§2 보유 행도 같은 관례를 쓴다 — 여기서만 🟢 를 남기면 한 리포트 안에
+    색 관례가 둘이 되어 방금 고친 결함을 형태만 바꿔 되살린다."""
+    holdings = [("111770", "보합", 10, 80000, 0.03, 0.02)]
+    daily = {("111770", _TODAY_PR): 80000}   # 현재가 == 평균매수가 -> 평가손익 0
+
+    _run_price_summary(monkeypatch, holdings, daily)
+
+    out = capsys.readouterr().out
+    line = _holding_line(out, "111770")
+    assert "🟢" not in line, f"평가손익 0 이 승으로 색칠됐다:\n{line}"
+    assert "⚪" in line, f"평가손익 0 에 보합 표기가 없다:\n{line}"
+
+
+# ----------------------------------------------------------------------------
+# §3 승/패 술어는 «SQL 안»에 있다 — 더블이 대신 계산하므로 출력 단언으로는
+# 절대 관측되지 않는다 (리뷰 Required 3)
+#
+# 리뷰 실측: 누적 집계 SQL 의 ``profit_loss > 0`` 을 ``>= 0`` 으로 바꿔도
+# 23개 테스트가 «전부 green». _IsTestAwareCursor 는 술어를 읽지 않고 파이썬
+# 쪽에 > 0 / < 0 을 하드코딩해 두었기 때문이다. 즉 이 커밋이 닫으려던 바로 그
+# 불일치(§1 vs §3)가 SQL 쪽에서는 무방비였다.
+#
+# 🔴 같은 사각지대는 «수수료 식» 도 숨긴다 — SQL 안에 수수료를 곱해 넣어도
+# 어떤 테스트도 깨지지 않는다. 그래서 이 파일의 하드 제약(「세 번째 원장
+# 금지」)을 SQL 문자열로 직접 못박는다. 선례: 바로 위
+# test_cumulative_query_alias_is_not_a_bare_realized_pl.
+# ----------------------------------------------------------------------------
+
+def _aggregate_sql(monkeypatch):
+    cursor = _run_summary_with_records(monkeypatch, _pnl_records())
+    agg = [sql for sql in cursor.executed_sql
+           if "virtual_trading_records" in sql.lower() and "coalesce(sum" in sql.lower()]
+    assert len(agg) == 1, f"누적 집계 쿼리 1개를 기대했으나 {len(agg)}개"
+    return agg[0], " ".join(agg[0].lower().split())
+
+
+def test_cumulative_aggregate_sql_uses_strict_win_loss_predicates(monkeypatch):
+    """§3 승/패 술어를 SQL 문자열로 단언한다 — 0원은 승도 패도 아니다.
+
+    출력만 보는 테스트는 여기서 무력하다(값이 테스트 더블에서 나온다).
+    """
+    sql, ql = _aggregate_sql(monkeypatch)
+
+    assert "profit_loss > 0" in ql, f"승 술어가 바뀌었다:\n{sql}"
+    assert "profit_loss < 0" in ql, f"패 술어가 바뀌었다:\n{sql}"
+    assert "profit_loss >= 0" not in ql, f"0원이 «승»으로 세어진다:\n{sql}"
+    assert "profit_loss <= 0" not in ql, f"0원이 «패»로 세어진다:\n{sql}"
+
+
+def test_cumulative_aggregate_sql_contains_no_fee_arithmetic(monkeypatch):
+    """이 리포트의 하드 제약(«세 번째 원장 금지»)을 SQL 경로에서도 지킨다.
+
+    더블이 SQL 을 해석하지 않으므로 여기에 수수료 식을 심으면 출력 단언은
+    전부 통과한다. 문자열로 직접 막는 수밖에 없다.
+    """
+    sql, ql = _aggregate_sql(monkeypatch)
+
+    for literal in ("0.00015", "0.0018", "0.015", "0.18"):
+        assert literal not in ql, f"수수료/세율 리터럴이 SQL 에 심겼다({literal}):\n{sql}"
+    for word in ("commission", "tax", "수수료", "거래세"):
+        assert word not in ql, f"수수료 계산 흔적이 SQL 에 있다({word}):\n{sql}"
+    for op in ("profit_loss *", "profit_loss -", "profit_loss /", "profit_loss +"):
+        assert op not in ql, f"profit_loss 를 가공하고 있다({op}):\n{sql}"
+
+
+# ----------------------------------------------------------------------------
+# 승/패 합이 총 매매 횟수와 안 맞는 것을 «독자가» 알 수 있어야 한다 (리뷰 LOW 4)
+#
+# 「총 매매 횟수: 2회 / 승·패: 1회 / 0회」는 1+0 ≠ 2 인데, 코드 주석에만 이유가
+# 있고 리포트 독자는 그 주석을 못 본다. 게다가 「1승 0패」는 순진하게 읽으면
+# 100% 다. 보합 건수를 함께 찍어 삼항이 «더해지게» 만든다 — 건수 뺄셈이지
+# 수수료 모델이 아니다.
+# ----------------------------------------------------------------------------
+
+def test_win_loss_flat_counts_add_up_to_total_trades(monkeypatch, capsys):
+    """승 + 패 + 보합 = 총 매매 횟수 가 리포트 «표면»에서 성립해야 한다."""
+    _run_summary_with_records(monkeypatch, _flat_pl_records())
+
+    out = capsys.readouterr().out
+    assert "총 매매 횟수: 2회" in out
+
+    tally = _labelled_lines(out, "승/패")
+    assert tally, f"승/패 줄을 찾지 못함:\n{out}"
+    line = tally[0]
+    assert "보합" in line, f"보합 건수가 없어 삼항이 더해지지 않는다:\n{line}"
+    assert _declares_gross(line), line
+    # 승 1 / 패 0 / 보합 1 = 2
+    counts = [int(tok) for tok in re.findall(r"(\d+)회", line)]
+    assert sum(counts) == 2, f"승+패+보합 이 총 매매 횟수와 다르다: {line}"
+
+
+def test_holdings_note_does_not_understate_the_missing_costs(monkeypatch, capsys):
+    """§2 고지가 «매도 쪽 비용만» 빠진 것처럼 말하면 안 된다 (리뷰 LOW 5).
+
+    평가손익에는 이미 지불한 «매수» 위탁수수료도 안 들어 있다. 「지금 청산하면
+    수수료·거래세만큼 줄어든다」는 그 한 다리를 빠뜨린 서술이었다.
+    """
+    holdings = [("111770", "종목A", 10, 80000, 0.03, 0.02)]
+    daily = {("111770", _TODAY_PR): 85200}
+
+    _run_price_summary(monkeypatch, holdings, daily)
+
+    out = capsys.readouterr().out
+    note = [ln.strip() for ln in out.splitlines()
+            if "평가손익" in ln and _declares_gross(ln)]
+    assert note, f"§2 gross 고지를 찾지 못함:\n{out}"
+    assert "매수" in note[0], f"이미 낸 매수 수수료 언급이 없다:\n{note[0]}"
+    assert "매도" in note[0], f"청산 시 낼 매도 비용 언급이 없다:\n{note[0]}"

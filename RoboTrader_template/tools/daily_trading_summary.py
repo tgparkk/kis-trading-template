@@ -39,12 +39,64 @@ UNRESOLVED_PRICE_MARK = '-'
 # ⇒ 값은 그대로 두고 라벨이 스스로 gross 임을 밝히게 한다(값을 고치는 것이
 #    아니라 «거짓말을 멈추는» 수정).
 GROSS_LABEL_SUFFIX = '(gross·수수료/거래세 미반영)'
+
+# 🔴 gross 에서 «파생된 판정»(승/패·승률)도 같은 꼬리표를 받아야 한다.
+# 금액은 읽는 사람이 보정할 수 있지만 승/패는 이미 내려진 결론이라 더 나쁘다.
+# 리뷰 구성 사례: 매수 100주 @10,000 / 매도 100주 @10,010 → gross +1,000,
+# 수수료·거래세 2,101.95 → net −1,102. 돈을 잃은 거래가 「승률 100%」로 찍힌다.
+#
+# ⚠️ 그래도 «net 승률을 계산하지 않는다» — 금액과 같은 이유다(세 번째 수수료
+# 계산식 금지). 대신 산술이 필요 없는 사실 하나만 덧붙인다: 수수료·세금은 항상
+# 양수라 모든 거래에서 net ≤ gross 이므로 {net 승} ⊆ {gross 승},
+# 즉 **gross 승률은 net 승률의 «상한»**이다. 부등호지 수식이 아니다.
+#
+# 🔴 그리고 «상한»에서 멈춰야 한다. 부분집합(⊆)은 진부분집합(⊊)이 아니므로
+# 「일부는 실제로 net 패다」·「상한이지 net 승률이 아니다」는 이 부등식이
+# 허락하지 않는 단언이다(전 거래가 손익분기를 크게 넘으면 두 승률은 «같다»).
+# 🔑 게다가 「실제로 일부가 손익분기 아래에 있다」를 세우는 일 자체가 위에서
+# 거절한 손익분기 계산이다 — 산술을 피하려고 쓴 문장이 산술을 했어야만 참이
+# 되는 문장이면, 그건 이 파일이 없애려던 「표시 ≠ 실제」를 하나 더 만드는 것이다.
+# ⇒ 단언이 아니라 «가능성»으로 적는다.
+#
+# 승/패 관례는 §3 SQL 쪽(> 0 승 / < 0 패, 0원은 어느 쪽도 아님)으로 통일한다.
+# 0원 거래는 수수료·거래세만큼 «확정» net 손실이라 승으로 셀 근거가 없고,
+# 한 리포트 안에 서로 다른 승률이 둘 있는 것 자체가 결함이었다.
 GROSS_DISCLAIMER = (
-    "⚠️ 위 손익은 모두 gross 다 — 위탁수수료(매수·매도 각 0.015%)와 "
-    "증권거래세(매도 0.18%)가 빠져 있어 이익은 과대·손실은 과소로 나온다. "
+    "⚠️ 위 손익과 승/패·승률은 모두 gross 기준이다 — 위탁수수료(매수·매도 각 "
+    "0.015%)와 증권거래세(매도 0.18%)가 빠져 있어 이익은 과대·손실은 과소로 "
+    "나온다. 수수료·세금은 항상 양수라 net ≤ gross 이므로 gross 승 중 일부는 "
+    "실제로는 net 패일 수 있다 — 즉 위 승률은 net 승률의 «상한»이다. "
     "net 실현손익은 DB 어느 테이블에도 적재돼 있지 않다(실제 net 은 "
     "로그의 'fund_manager 매매 손익 반영' 라인이 기준)."
 )
+
+# §2 보유 종목 표의 평가손익·수익률·합계도 같은 이유로 gross 다(매도 시
+# 발생할 수수료·거래세 미반영). 표가 고정폭이라 컬럼 머리마다 꼬리표를 달면
+# 정렬이 깨지므로 표 위에 한 줄로 고지한다.
+# ⚠️ 「청산하면 수수료·거래세만큼 줄어든다」로만 쓰면 «매도 다리»만 말하게 돼
+# 빠진 비용을 한 다리 적게 알린다 — 매수 때 이미 낸 위탁수수료도 평가손익에
+# 안 들어 있다.
+GROSS_HOLDINGS_NOTE = (
+    f"※ 아래 표의 평가손익·수익률·합계{GROSS_LABEL_SUFFIX} — "
+    "매수 때 이미 낸 위탁수수료도, 청산 시 낼 매도 수수료·거래세도 빠져 있다."
+)
+
+# 승/패/보합 색·부호 관례(§1 매도 행·§2 보유 행 공용).
+# 0원은 승도 패도 아니다 — 집계 술어(profit_loss > 0 / < 0)와 «같은» 관례를
+# 써야 한다. 예전엔 집계만 > 0 이고 행 렌더링은 >= 0 이라, 0원 거래가 초록으로
+# 찍히면서 승률은 50% 였다(이 파일이 없애려던 「한 리포트 두 판정」의 축소판).
+PL_MARK_WIN = '🟢'
+PL_MARK_LOSS = '🔴'
+PL_MARK_FLAT = '⚪'
+
+
+def _pl_marks(value):
+    """(색, 부호 접두사) — 0원은 보합(⚪·부호 없음)."""
+    if value > 0:
+        return PL_MARK_WIN, "+"
+    if value < 0:
+        return PL_MARK_LOSS, ""
+    return PL_MARK_FLAT, ""
 
 
 def _resolve_current_price(cursor, stock_code, today, price_lookup):
@@ -203,7 +255,6 @@ def print_today_trading_summary(price_lookup=None):
             total_sell_amount = 0
             total_profit_loss = 0
             profit_count = 0
-            loss_count = 0
 
             for row in sell_records:
                 stock_code, stock_name, qty, sell_price, total_amt, pl, pl_rate, ts = row
@@ -211,8 +262,7 @@ def print_today_trading_summary(price_lookup=None):
                 pl = float(pl or 0)
                 pl_rate = float(pl_rate or 0)
 
-                pl_sign = "+" if pl >= 0 else ""
-                pl_color = "🟢" if pl >= 0 else "🔴"
+                pl_color, pl_sign = _pl_marks(pl)
 
                 print(f"{time_str:<10} {stock_code:<10} {stock_name:<20} {int(qty):>8,} {float(sell_price):>12,.0f} "
                       f"{float(total_amt):>15,.0f} {pl_color}{pl:>14,.0f} {pl_sign}{pl_rate*100:>9.1f}%")
@@ -220,15 +270,18 @@ def print_today_trading_summary(price_lookup=None):
                 total_sell_amount += float(total_amt)
                 total_profit_loss += pl
 
-                if pl >= 0:
+                # 관례는 §3 누적 집계 SQL(profit_loss > 0 승 / < 0 패)과 동일하다.
+                # 예전엔 여기만 `pl >= 0` 이라 0원 거래가 «승»이 돼, 같은 리포트
+                # 안의 두 승률이 갈렸다(§1 2/2 100% vs §3 50%). 0원은 수수료·
+                # 거래세만큼 확정 net 손실이라 승이 아니다. 분모는 양쪽 모두
+                # 전체 매도 건수(§3 의 total_trades)로 맞춘다.
+                if pl > 0:
                     profit_count += 1
-                else:
-                    loss_count += 1
 
             print("-" * 100)
             print(f"{'총 매도 금액:':<70} {total_sell_amount:>15,.0f}원")
             print(f"{'총 손익' + GROSS_LABEL_SUFFIX + ':':<70} {total_profit_loss:>15,.0f}원")
-            print(f"{'승률:':<70} {profit_count}/{len(sell_records)} ({profit_count/len(sell_records)*100:.1f}%)")
+            print(f"{'승률' + GROSS_LABEL_SUFFIX + ':':<70} {profit_count}/{len(sell_records)} ({profit_count/len(sell_records)*100:.1f}%)")
             print()
         else:
             print("💸 매도 내역: 없음")
@@ -267,6 +320,7 @@ def print_today_trading_summary(price_lookup=None):
         unresolved_codes = []
         if holdings:
             print(f"📦 보유 종목 ({len(holdings)}개)")
+            print(GROSS_HOLDINGS_NOTE)
             print("-" * 120)
             print(f"{'종목코드':<10} {'종목명':<20} {'수량':>8} {'평균매수가':>12} {'매수금액':>15} "
                   f"{'현재가':>12} {'평가금액':>15} {'평가손익':>15} {'수익률':>10}")
@@ -298,8 +352,7 @@ def print_today_trading_summary(price_lookup=None):
                 unrealized_pl = current_value - buy_value
                 unrealized_pl_rate = (unrealized_pl / buy_value) if buy_value > 0 else 0
 
-                pl_sign = "+" if unrealized_pl >= 0 else ""
-                pl_color = "🟢" if unrealized_pl >= 0 else "🔴"
+                pl_color, pl_sign = _pl_marks(unrealized_pl)
 
                 print(f"{stock_code:<10} {stock_name:<20} {qty:>8,} {avg_buy:>12,.0f} {buy_value:>15,.0f} "
                       f"{current_price:>12,.0f} {current_value:>15,.0f} "
@@ -358,13 +411,24 @@ def print_today_trading_summary(price_lookup=None):
             if unresolved_codes else ""
         )
         print(f"실현 손익{GROSS_LABEL_SUFFIX}: {total_realized_pl_gross:>15,.0f}원")
-        print(f"미실현 손익: {total_unrealized_pl:>15,.0f}원{unresolved_note}")
+        print(f"미실현 손익{GROSS_LABEL_SUFFIX}: {total_unrealized_pl:>15,.0f}원{unresolved_note}")
         print(f"총 손익{GROSS_LABEL_SUFFIX}: {total_pl_gross:>15,.0f}원{unresolved_note}")
-        print(GROSS_DISCLAIMER)
         print()
         print(f"총 매매 횟수: {total_trades}회")
-        print(f"승: {win_count}회, 패: {loss_count}회")
-        print(f"승률: {win_rate:.1f}%")
+        # 승/패는 profit_loss > 0 / < 0 이므로 0원 거래는 어느 쪽도 아니다
+        # (총 매매 횟수에는 남는다) — §1 승률도 같은 관례를 쓴다.
+        # ⚠️ 그래서 승+패 < 총 이 될 수 있다. 그 이유는 «주석»에만 있고 리포트
+        # 독자는 못 보므로, 보합 건수를 함께 찍어 삼항이 더해지게 한다
+        # (「1승 0패」를 순진하게 읽으면 100% 로 보인다). 건수 뺄셈이지
+        # 수수료 모델이 아니다 — 새 원장이 생기지 않는다.
+        flat_count = total_trades - win_count - loss_count
+        print(f"승/패/보합{GROSS_LABEL_SUFFIX}: "
+              f"{win_count}회 / {loss_count}회 / {flat_count}회")
+        print(f"승률{GROSS_LABEL_SUFFIX}: {win_rate:.1f}%")
+        # 🔴 고지문은 손익 «과» 승/패·승률 «아래»에 둔다. c1b9dc3 에서는 손익
+        # 줄 바로 뒤(=판정 위)에 있었고 문구도 「위 손익은」이라, 정작 더 위험한
+        # 판정(승률)을 덮지 못했다.
+        print(GROSS_DISCLAIMER)
         print()
 
         # ==================== 4. 오늘의 데이터 수집 현황 ====================
