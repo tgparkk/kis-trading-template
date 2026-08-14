@@ -22,6 +22,30 @@ SOURCE_KIS_TEMPLATE = 'kis_template'
 #    「데이터 없음」이 「정상값 0」으로 둔갑한다(경보로 안 잡히는 형태).
 UNRESOLVED_PRICE_MARK = '-'
 
+# 🔴 이 리포트가 찍는 손익은 «전부 gross» 다.
+# virtual_trading_records.profit_loss = (매도가-매수가)×수량 이며 위탁수수료
+# (매수·매도 각 0.015%)도 증권거래세(매도 0.18%)도 빠져 있다. 2026-08-14 실측:
+# 리포트 284,104원 vs 실제 net 270,335원(core.fund_manager "매매 손익 반영"
+# 합) → 5.1% 과대. 누적으로는 손실이 1,685,761원 과소 표기된다.
+#
+# ⚠️ 그래서 «여기서 수수료를 다시 계산하지 않는다». 이미 적용 시점이 달라
+# 서로 어긋나는 현금 원장이 둘 있고, 리포트에 세 번째 계산식을 심으면 두
+# 번째 틀린 숫자가 될 뿐이다. 그리고 net 실현손익은 DB 어디에도 없다:
+#   · virtual_trading_records  — profit_loss/profit_rate 뿐, 수수료 컬럼 없음
+#   · paper_strategy_equity.realized_pnl_cum — 같은 gross 컬럼의 SUM
+#   · paper_trading_state.eod_balance — «현금 잔고»이지 실현손익이 아니다
+#   · trading_decision_engine 의 pnl_with_fees(=net) — FundManager 메모리와
+#     로그에만 남고 어느 테이블에도 적재되지 않는다
+# ⇒ 값은 그대로 두고 라벨이 스스로 gross 임을 밝히게 한다(값을 고치는 것이
+#    아니라 «거짓말을 멈추는» 수정).
+GROSS_LABEL_SUFFIX = '(gross·수수료/거래세 미반영)'
+GROSS_DISCLAIMER = (
+    "⚠️ 위 손익은 모두 gross 다 — 위탁수수료(매수·매도 각 0.015%)와 "
+    "증권거래세(매도 0.18%)가 빠져 있어 이익은 과대·손실은 과소로 나온다. "
+    "net 실현손익은 DB 어느 테이블에도 적재돼 있지 않다(실제 net 은 "
+    "로그의 'fund_manager 매매 손익 반영' 라인이 기준)."
+)
+
 
 def _resolve_current_price(cursor, stock_code, today, price_lookup):
     """보유 종목의 현재가를 3단계로 해석한다. 해결 불가 시 None.
@@ -203,7 +227,7 @@ def print_today_trading_summary(price_lookup=None):
 
             print("-" * 100)
             print(f"{'총 매도 금액:':<70} {total_sell_amount:>15,.0f}원")
-            print(f"{'총 손익:':<70} {total_profit_loss:>15,.0f}원")
+            print(f"{'총 손익' + GROSS_LABEL_SUFFIX + ':':<70} {total_profit_loss:>15,.0f}원")
             print(f"{'승률:':<70} {profit_count}/{len(sell_records)} ({profit_count/len(sell_records)*100:.1f}%)")
             print()
         else:
@@ -303,10 +327,12 @@ def print_today_trading_summary(price_lookup=None):
         print("=" * 100)
         print()
 
-        # 전체 매매 손익
+        # 전체 매매 손익 — profit_loss 는 gross 다(파일 상단 GROSS_* 주석 참조).
+        # 별칭도 gross 임을 밝힌다: 「realized」라고만 부르면 코드 안에서도
+        # net 으로 오해된다.
         cursor.execute('''
             SELECT
-                COALESCE(SUM(CASE WHEN action = 'SELL' THEN profit_loss ELSE 0 END), 0) as total_realized_pl,
+                COALESCE(SUM(CASE WHEN action = 'SELL' THEN profit_loss ELSE 0 END), 0) as total_realized_pl_gross,
                 COUNT(CASE WHEN action = 'SELL' AND profit_loss > 0 THEN 1 END) as win_count,
                 COUNT(CASE WHEN action = 'SELL' AND profit_loss < 0 THEN 1 END) as loss_count,
                 COUNT(CASE WHEN action = 'SELL' THEN 1 END) as total_trades
@@ -317,12 +343,12 @@ def print_today_trading_summary(price_lookup=None):
         ''', (SOURCE_KIS_TEMPLATE,))
 
         pl_row = cursor.fetchone()
-        total_realized_pl = float(pl_row[0] or 0)
+        total_realized_pl_gross = float(pl_row[0] or 0)
         win_count = pl_row[1] or 0
         loss_count = pl_row[2] or 0
         total_trades = pl_row[3] or 0
 
-        total_pl = total_realized_pl + total_unrealized_pl
+        total_pl_gross = total_realized_pl_gross + total_unrealized_pl
         win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
 
         # 미해결 종목은 §2 합계에서 빠졌으므로 여기 미실현/총 손익도 그만큼
@@ -331,9 +357,10 @@ def print_today_trading_summary(price_lookup=None):
             f"  (⚠️ 현재가 미해결 {len(unresolved_codes)}종목 제외)"
             if unresolved_codes else ""
         )
-        print(f"실현 손익: {total_realized_pl:>15,.0f}원")
+        print(f"실현 손익{GROSS_LABEL_SUFFIX}: {total_realized_pl_gross:>15,.0f}원")
         print(f"미실현 손익: {total_unrealized_pl:>15,.0f}원{unresolved_note}")
-        print(f"총 손익: {total_pl:>15,.0f}원{unresolved_note}")
+        print(f"총 손익{GROSS_LABEL_SUFFIX}: {total_pl_gross:>15,.0f}원{unresolved_note}")
+        print(GROSS_DISCLAIMER)
         print()
         print(f"총 매매 횟수: {total_trades}회")
         print(f"승: {win_count}회, 패: {loss_count}회")
