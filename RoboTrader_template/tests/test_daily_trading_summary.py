@@ -568,3 +568,118 @@ def test_explicit_none_price_lookup_behaves_like_omitted(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "85,200" in _holding_line(out, "111770")
+
+
+# ============================================================================
+# 손익 라벨이 net 을 참칭했다 (2026-08-14)
+#
+# 배경: ``virtual_trading_records.profit_loss`` 는 **gross**((매도가-매수가)
+# ×수량)로, 위탁수수료(매수·매도 각 0.015%)와 증권거래세(매도 0.18%)가 빠져
+# 있다. 그런데 리포트는 그 합계를 「총 손익」·「실현 손익」이라는, 실현된
+# net 으로 읽히는 라벨로 찍었다. 2026-08-14 실측: 리포트 284,104원 vs 실제
+# net 270,335원(core.fund_manager "매매 손익 반영" 로그 합) → **5.1% 과대**.
+# 누적으로는 paper_strategy_equity.realized_pnl_cum −13,381,292 vs 실제 net
+# −15,067,053 → 손실을 1,685,761원 **과소** 표기.
+#
+# 🔴 수정 방침 = **라벨만 정정. 수수료를 리포트에서 재계산하지 않는다.**
+# 이 프로젝트엔 적용 시점이 달라 서로 어긋나는 현금 원장이 이미 둘 있고,
+# 리포트에 세 번째 수수료 계산식을 심는 건 「두 번째 틀린 숫자」를 만드는
+# 일이다. 조사 결과 **net 실현손익은 DB 어디에도 적재돼 있지 않다**:
+#   - virtual_trading_records — profit_loss/profit_rate 뿐, 수수료 컬럼 없음
+#   - paper_strategy_equity.realized_pnl_cum — 같은 gross 컬럼의 SUM
+#     (tools/paper_strategy_equity.py replay_strategy_equity)
+#   - paper_trading_state.eod_balance — **현금 잔고**이지 실현손익이 아니다
+#   - core/trading_decision_engine.py 의 pnl_with_fees(=net) 는 FundManager
+#     메모리와 로그에만 남고 어느 테이블에도 적재되지 않는다
+# ⇒ 숫자는 그대로 두고, 그 숫자가 gross 임을 라벨이 스스로 밝히게 한다.
+# ============================================================================
+
+_GROSS_MARKS = ("gross", "수수료")
+
+
+def _labelled_lines(out, *prefixes):
+    """출력에서 주어진 접두사로 시작하는 줄들(양끝 공백 제거 후)."""
+    return [ln.strip() for ln in out.splitlines()
+            if ln.strip().startswith(prefixes)]
+
+
+def _declares_gross(line):
+    return any(mark in line for mark in _GROSS_MARKS)
+
+
+def _pnl_records(gross_pl=50000):
+    """매수 1건 + 그 매수를 청산한 매도 1건(gross 손익 지정)."""
+    buy = dict(
+        id=1, action="BUY", stock_code="005930", stock_name="삼성전자",
+        quantity=10, price=70000, target_profit_rate=0.03, stop_loss_rate=0.02,
+        timestamp=datetime(2026, 8, 11, 10, 0), is_test=True, source="kis_template",
+        buy_record_id=None, profit_loss=None, profit_rate=None,
+    )
+    sell = dict(
+        id=2, action="SELL", stock_code="005930", stock_name="삼성전자",
+        quantity=10, price=75000, target_profit_rate=None, stop_loss_rate=None,
+        timestamp=datetime(2026, 8, 11, 14, 0), is_test=True, source="kis_template",
+        buy_record_id=1, profit_loss=gross_pl, profit_rate=0.071,
+    )
+    return [buy, sell]
+
+
+def test_daily_sell_total_label_declares_gross(monkeypatch, capsys):
+    """§1 매도 내역의 합계 라벨은 그 값이 gross(수수료·세금 미반영)임을 밝혀야
+    한다. 「총 손익:」이라고만 쓰면 실현된 net 으로 읽힌다."""
+    _run_summary_with_records(monkeypatch, _pnl_records())
+
+    out = capsys.readouterr().out
+    lines = _labelled_lines(out, "총 손익")
+    assert lines, f"매도 합계 손익 줄을 찾지 못함:\n{out}"
+    for line in lines:
+        assert _declares_gross(line), f"gross 임을 밝히지 않은 손익 라벨:\n{line}"
+
+
+def test_cumulative_realized_label_declares_gross_and_keeps_the_number(
+    monkeypatch, capsys
+):
+    """§3 누적 「실현 손익」도 마찬가지다.
+
+    **대칭 단언**: 라벨을 고치면서 숫자를 바꾸면(=수수료를 리포트에서 새로
+    계산해 「세 번째 원장」을 만들면) 안 된다. gross 합계 50,000 이 그대로
+    찍혀야 하고, 동시에 어디서도 그 값을 net/순손익이라 부르면 안 된다.
+    """
+    _run_summary_with_records(monkeypatch, _pnl_records(gross_pl=50000))
+
+    out = capsys.readouterr().out
+    realized = [ln for ln in _labelled_lines(out, "실현 손익")
+                if not ln.startswith("미실현")]
+    assert realized, f"실현 손익 줄을 찾지 못함:\n{out}"
+    for line in realized:
+        assert _declares_gross(line), f"gross 임을 밝히지 않은 실현손익 라벨:\n{line}"
+        assert "50,000" in line, f"gross 합계 값이 바뀌었다:\n{line}"
+
+    assert "순손익" not in out, (
+        "net 을 적재된 값처럼 표기했다 — DB 에 net 실현손익은 없다:\n" + out
+    )
+
+
+def test_report_discloses_that_net_is_not_available(monkeypatch, capsys):
+    """숫자가 gross 라는 사실과 「net 은 적재돼 있지 않다」는 사실을 리포트가
+    명시해야 한다. 라벨만 바꾸고 이유를 안 남기면 다음 사람이 또 net 으로
+    읽는다(이 파일은 「표시값 ≠ 실제값」으로 이미 두 번 고쳐졌다)."""
+    _run_summary_with_records(monkeypatch, _pnl_records())
+
+    out = capsys.readouterr().out
+    assert "수수료" in out and "거래세" in out, f"수수료/세금 미반영 고지가 없음:\n{out}"
+
+
+def test_cumulative_query_alias_is_not_a_bare_realized_pl(monkeypatch):
+    """실행된 SQL 자체를 단언: 누적 집계의 별칭이 ``total_realized_pl`` 이면
+    gross 합계를 「실현손익」이라 부르는 오해가 코드 안에도 남는다."""
+    cursor = _run_summary_with_records(monkeypatch, _pnl_records())
+
+    agg = [sql for sql in cursor.executed_sql
+           if "virtual_trading_records" in sql.lower() and "coalesce(sum" in sql.lower()]
+    assert len(agg) == 1, f"누적 집계 쿼리 1개를 기대했으나 {len(agg)}개"
+    ql = agg[0].lower()
+    assert "as total_realized_pl," not in ql and not ql.rstrip().endswith("as total_realized_pl"), (
+        f"gross 합계를 total_realized_pl 로 부르고 있다:\n{agg[0]}"
+    )
+    assert "gross" in ql, f"별칭이 gross 임을 밝히지 않음:\n{agg[0]}"

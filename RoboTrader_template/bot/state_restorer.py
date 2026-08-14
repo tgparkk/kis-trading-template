@@ -721,6 +721,10 @@ class StateRestorer:
                             f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%)"
                             f"{' [장기보유]' if getattr(trading_stock, 'is_stale', False) is True else ''}",
                             strategy=trading_stock.owner_strategy_name,
+                            # 복원은 SELECTED → POSITIONED 라 허용 맵에 없다.
+                            # 경고 «출력»만 끈다(전이는 동일) — 상세는
+                            # StockStateManager.change_stock_state 참조.
+                            restoring=True,
                         )
                         holding_restored += 1
 
@@ -1063,6 +1067,8 @@ class StateRestorer:
                             f"[{state_label}]"
                             f"{' [장기보유]' if ts_is_stale else ''}",
                             strategy=trading_stock.owner_strategy_name,
+                            # 페이퍼 복원과 동일 — 복원 전이는 허용 맵에 없다.
+                            restoring=True,
                         )
                         holding_restored += 1
 
