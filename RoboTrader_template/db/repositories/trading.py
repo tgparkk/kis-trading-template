@@ -208,14 +208,16 @@ class TradingRepository(BaseRepository):
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
+                # 짝짓기 조회도 «수량 인식» 이어야 한다 — 부분매도된 행은 아직
+                # 열려 있으므로 다음 매도가 붙을 자리다(2026-08-14 리뷰 항목 5).
                 base = f'''
                     SELECT b.id FROM {self._real_table} b
+                    LEFT JOIN {self._real_table} s
+                        ON s.buy_record_id = b.id AND s.action = 'SELL'
                     WHERE b.stock_code = %s AND b.action = 'BUY'
                       {{owner_predicate}}
-                      AND NOT EXISTS (
-                        SELECT 1 FROM {self._real_table} s
-                        WHERE s.buy_record_id = b.id AND s.action = 'SELL'
-                      )
+                    GROUP BY b.id, b.quantity, b.timestamp
+                    HAVING b.quantity - COALESCE(SUM(s.quantity), 0) > 0
                     ORDER BY b.timestamp DESC LIMIT 1
                 '''
                 if strategy:
@@ -421,7 +423,15 @@ class TradingRepository(BaseRepository):
             return None
 
     def get_virtual_open_positions(self) -> pd.DataFrame:
-        """미체결 가상 포지션 조회"""
+        """미체결 가상 포지션 조회
+
+        ⚠️ 아래 존재성 술어는 실거래판(get_real_open_positions)에서 부분매도
+        결함을 일으켜 잔량 술어로 고쳤지만, **여기는 의도적으로 두었다**
+        (2026-08-14). 페이퍼 체결은 원자적이라 SELL.quantity <> BUY.quantity
+        인 행이 0 이어서 결함이 발화하지 않는다. 매일 돌고 있는 경로를 이득 0
+        으로 바꾸면 회귀 위험만 산다. 페이퍼에 부분체결이 생기면 그때
+        get_real_open_positions 와 같은 형태로 바꿀 것.
+        """
         try:
             with self._get_connection() as conn:
                 query = '''
@@ -469,16 +479,27 @@ class TradingRepository(BaseRepository):
             with self._get_connection() as conn:
                 # real_trading_records 는 target_profit_rate/stop_loss_rate 컬럼이 없다
                 # (init-scripts/01-init.sql). 다운스트림 복원이 .get()→DEFAULT 로 처리한다.
+                # 🔴 존재성 술어(NOT EXISTS ... action='SELL')를 쓰면 10주 중
+                # 6주만 팔아도 BUY 행 전체가 닫힌다 ⇒ 브로커 4주 vs DB 0주 ⇒
+                # 계좌-DB 대사가 아침 기동을 막는다(2026-08-14 리뷰 항목 5).
+                # 같은 저장소의 get_last_open_virtual_buy(quantity 분기)가 이미
+                # 올바른 형태를 갖고 있어 그 모양을 그대로 쓴다 — 그리고
+                # quantity 는 원 수량이 아니라 **잔량** 을 돌려준다.
+                # 부분체결 자체는 DB 를 안 쓰지만(order_monitor._handle_partial_fill),
+                # 완료·타임아웃 경로가 order.quantity = filled_qty 로 바꿔 기록하므로
+                # (order_timeout.py:245·280·318) 잔량 산술의 입력은 정확하다.
                 query = f'''
-                    SELECT b.id, b.stock_code, b.stock_name, b.quantity,
+                    SELECT b.id, b.stock_code, b.stock_name,
+                           b.quantity - COALESCE(SUM(s.quantity), 0) AS quantity,
                            b.price as buy_price, b.timestamp as buy_time,
                            b.strategy, b.reason as buy_reason
                     FROM {self._real_table} b
+                    LEFT JOIN {self._real_table} s
+                        ON s.buy_record_id = b.id AND s.action = 'SELL'
                     WHERE b.action = 'BUY'
-                        AND NOT EXISTS (
-                            SELECT 1 FROM {self._real_table} s
-                            WHERE s.buy_record_id = b.id AND s.action = 'SELL'
-                        )
+                    GROUP BY b.id, b.stock_code, b.stock_name, b.quantity,
+                             b.price, b.timestamp, b.strategy, b.reason
+                    HAVING b.quantity - COALESCE(SUM(s.quantity), 0) > 0
                     ORDER BY b.timestamp DESC
                 '''
 

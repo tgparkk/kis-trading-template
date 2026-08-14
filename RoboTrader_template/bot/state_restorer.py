@@ -113,14 +113,13 @@ class StateRestorer:
         matched = bot_strategies.get(name)
         if matched is not None:
             return matched
-        # 2차: 클래스명(strategy.name 속성) 보조 매핑 — lazy 생성
-        if not hasattr(self, '_by_class_name_cache'):
-            self._by_class_name_cache = {
-                s.name: s
-                for s in bot_strategies.values()
-                if getattr(s, 'name', None)
-            }
-        return self._by_class_name_cache.get(name)
+        # 2차: 클래스명(strategy.name 속성) 보조 매핑.
+        # ⚠️ 캐시하지 않는다 — main.py:234-235 가 on_init 실패 전략을 이 dict 에서
+        # 삭제하므로 캐시는 «삭제된 인스턴스»를 계속 돌려준다(리뷰 항목 6).
+        for s in bot_strategies.values():
+            if getattr(s, 'name', None) == name:
+                return s
+        return None
 
     def _normalize_entry_time(self, buy_time):
         """복원 buy_time → 전략 self.positions['entry_time'] 용 tz-aware KST datetime.
@@ -1084,6 +1083,36 @@ class StateRestorer:
         for msg in aborts:
             logger.error(f"🚨 [실전매매] {msg}")
         return aborts, quarantined
+
+    def rescan_orphans_after_init(self) -> List[str]:
+        """전략 on_init 이 끝난 «뒤» 고아를 다시 훑는다 (ERROR 전용, 중단 없음).
+
+        `main.py:234-235` 는 on_init 에 실패한 전략을 strategies dict 에서
+        삭제하는데, 그건 복원·고아 판정보다 **뒤** 다. 그래서 최초 판정은
+        「가장 유력한 진짜 고아」(초기화 실패 전략의 보유)를 구조적으로 볼 수
+        없다(2026-08-14 리뷰 항목 6).
+
+        기동은 막지 않는다 — 이 시점엔 이미 복원이 끝났고, 정책상 복원 시점의
+        고아는 격리이지 중단이 아니다(_classify_orphan_legs 참조).
+        """
+        newly: List[str] = []
+        for owner, pos_map in (self._pending_strategy_positions or {}).items():
+            if not owner or not pos_map:
+                continue
+            if self._resolve_owner_strategy(owner) is not None:
+                continue
+            codes = sorted(pos_map)
+            msg = (
+                f"⚠️ owner={owner!r} 가 on_init 이후 미해석 — 보유 {len(codes)}종목"
+                f"({', '.join(codes[:10])})이 전략 고유 청산 없이 남는다"
+            )
+            logger.error(
+                f"🚨 [실전매매][격리] {msg} — 프레임워크 백스톱"
+                f"(position_monitor tp/sl · EOD 일괄청산)만 적용된다. "
+                f"전략 초기화 실패 로그를 확인할 것"
+            )
+            newly.append(msg)
+        return newly
 
     def _detect_owner_leg_anomalies(self, by_owner: Dict[tuple, Dict]) -> List[str]:
         """소유자별 레그의 수량 이상을 잡는다 (대사가 못 보는 축).

@@ -273,3 +273,45 @@ class TestUnnamedOwnerDoesNotFallBack:
 
         a.on_order_filled.assert_called_once()
         b.on_order_filled.assert_not_called()
+
+
+class TestClassNameLookupIsNeverStale:
+    """리뷰 항목 6: 클래스명 보조 매핑 캐시가 무효화되지 않았다.
+
+    `main.py:234-235` 는 on_init 에 실패한 전략을 strategies dict 에서
+    **삭제**한다. 그런데 캐시는 그대로라, 같은 이름을 폴더키로 물으면 None
+    (올바름)인데 클래스명으로 물으면 **삭제된 인스턴스**가 나온다. 그 상태로
+    apply_pending_strategy_positions 가 포지션을 주입하면 on_tick 을 영영 받지
+    못할 전략이 포지션을 갖게 된다.
+
+    8개짜리 맵이라 캐시가 사는 이득이 없다 — 없앤다.
+    """
+
+    def test_deleted_strategy_is_not_resolvable_by_class_name(self):
+        # 전략 3개로 시작한다 — 하나를 지워도 «2개 이상» 이라야 단일전략 폴백이
+        # 켜지지 않고 캐시 staleness 자체를 볼 수 있다.
+        h, a, b = _wired_handler()
+        c = Mock(); c.name = 'LynchStrategy'
+        h.strategies_by_key['lynch'] = c
+        assert h._resolve_owner_strategy('LynchStrategy') is c   # 캐시 warm
+
+        del h.strategies_by_key['lynch']        # main.py:235 재현
+
+        assert h._resolve_owner_strategy('LynchStrategy') is None
+        # 대칭: 살아 있는 쪽은 그대로 해석돼야 한다
+        assert h._resolve_owner_strategy(CLS_A) is a
+        assert h._resolve_owner_strategy(CLS_B) is b
+
+    def test_added_strategy_is_immediately_resolvable(self):
+        """대칭: 뒤늦게 추가된 전략도 즉시 보인다(캐시가 막지 않는다).
+
+        전략 2개(폴백이 안 켜지는 상태)에서 «세 번째» 이름으로 캐시를 데운 뒤
+        그 전략을 추가한다.
+        """
+        h, _a, _b = _wired_handler()
+        c = Mock(); c.name = 'LynchStrategy'
+        assert h._resolve_owner_strategy('LynchStrategy') is None  # 캐시 warm
+
+        h.strategies_by_key['lynch'] = c
+
+        assert h._resolve_owner_strategy('LynchStrategy') is c

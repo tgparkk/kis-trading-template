@@ -280,6 +280,15 @@ class DayTradingBot:
         except Exception as e:
             self.logger.warning(f"[재주입] 전략 포지션 재주입 호출 실패: {e}")
 
+        # on_init 실패 전략은 위 _initialize_strategy() 에서 strategies dict 에서
+        # 삭제된다 — 복원 시점의 고아 판정보다 «뒤» 라, 가장 유력한 진짜 고아를
+        # 최초 판정이 볼 수 없다. 여기서 한 번 더 훑어 ERROR 로 드러낸다
+        # (기동은 막지 않는다 — 2026-08-14 리뷰 항목 6).
+        try:
+            self.state_restoration_helper.rescan_orphans_after_init()
+        except Exception as e:
+            self.logger.warning(f"[격리] on_init 이후 고아 재훑기 실패: {e}")
+
         # TradingDecisionEngine + TradingStockManager에 전략 연결
         if self.strategy:
             self.decision_engine.set_strategy(self.strategy)

@@ -296,3 +296,80 @@ class TestDbLabelComesFromTheSlotAtFillTime:
             _order(OrderType.BUY, KEY_A), 70_000.0))
 
         assert db.save_real_buy.call_args[1]['strategy'] == KEY_A
+
+
+# ---------------------------------------------------------------------------
+# 5. 부분매도 — 열린 포지션 판정이 «수량 인식» 이어야 한다
+# ---------------------------------------------------------------------------
+
+class TestPartialSellLeavesResidualOpen:
+    """10주 중 6주만 팔면 남은 4주는 «열린 포지션» 이어야 한다.
+
+    `get_real_open_positions` 는 존재성 술어(`NOT EXISTS ... action='SELL'`)를
+    써서 SELL 행이 하나라도 붙으면 BUY 행 전체를 닫았다 ⇒ 브로커 4주 vs DB 0주
+    ⇒ 계좌-DB 대사가 기동을 막는다.
+
+    같은 저장소 안에 올바른 형태가 이미 있다 — `get_last_open_virtual_buy`
+    (quantity 분기)의 `HAVING b.quantity - COALESCE(SUM(s.quantity),0) > 0`.
+    그 모양을 포팅하고 **잔량** 을 돌려준다.
+
+    부분체결 자체는 DB 를 쓰지 않지만(order_monitor._handle_partial_fill 은
+    메모리·알림만) 완료·타임아웃 경로가 `order.quantity = filled_qty` 로
+    바꿔 기록하므로(order_timeout.py:245·280·318) 잔량 산술의 입력은 정확하다.
+    """
+
+    def _repo_query(self, method, *args):
+        from db.repositories.trading import TradingRepository
+        captured = []
+        cursor = Mock()
+        cursor.execute.side_effect = lambda sql, params=None: captured.append(sql)
+        cursor.fetchall.return_value = []
+        cursor.description = []
+        conn = Mock()
+        conn.cursor.return_value = cursor
+        ctx = Mock()
+        ctx.__enter__ = Mock(return_value=conn)
+        ctx.__exit__ = Mock(return_value=False)
+        repo = TradingRepository.__new__(TradingRepository)
+        repo.logger = Mock()
+        repo._get_connection = Mock(return_value=ctx)
+        repo._real_table = 'real_trading_records'
+        repo.SOURCE_KIS_TEMPLATE = 'kis_template'
+        getattr(repo, method)(*args)
+        return " ".join(captured)
+
+    def test_real_open_positions_is_quantity_aware(self):
+        sql = self._repo_query('get_real_open_positions')
+
+        assert 'HAVING' in sql.upper()
+        assert 'COALESCE(SUM(s.quantity), 0)' in sql
+        # 대칭: 존재성 술어는 사라져야 한다 (남아 있으면 부분매도가 전량 청산으로 보인다)
+        assert 'NOT EXISTS' not in sql.upper()
+
+    def test_real_open_positions_returns_residual_quantity(self):
+        sql = self._repo_query('get_real_open_positions')
+
+        # quantity 컬럼이 원 수량이 아니라 잔량이어야 한다
+        assert 'b.quantity - COALESCE(SUM(s.quantity), 0)' in sql
+        assert 'AS quantity' in sql or 'as quantity' in sql
+
+    def test_last_open_real_buy_is_quantity_aware_too(self):
+        """짝짓기 조회도 같은 술어 — 부분매도된 행은 아직 열려 있다."""
+        sql = self._repo_query('get_last_open_real_buy', '005930')
+
+        assert 'HAVING' in sql.upper()
+        assert 'NOT EXISTS' not in sql.upper()
+
+    def test_virtual_open_positions_is_deliberately_untouched(self):
+        """대칭 + 의도 기록: 가상 경로는 같은 결함 형태지만 «건드리지 않는다».
+
+        페이퍼 체결은 원자적이라(SELL.quantity <> BUY.quantity 인 행이 0)
+        결함이 발화하지 않는다. 지금 매일 돌고 있는 경로를 이득 0 으로 바꾸는
+        건 회귀 위험만 산다 — 대신 형태가 같다는 사실을 여기에 못박아,
+        한쪽만 고치고 잊는 일을 막는다.
+        """
+        sql = self._repo_query('get_virtual_open_positions')
+
+        assert 'NOT EXISTS' in sql.upper(), (
+            "가상 경로가 바뀌었다 — 의도된 변경이면 이 테스트를 근거와 함께 갱신할 것"
+        )

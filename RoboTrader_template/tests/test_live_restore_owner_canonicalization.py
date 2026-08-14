@@ -577,3 +577,59 @@ class TestQuarantineInsteadOfAbort:
 
         assert aborts == []
         assert len(quarantined) == 2
+
+
+# ---------------------------------------------------------------------------
+# 6. on_init 실패 전략은 «판정 뒤» 에 지워진다 — 그래서 다시 훑는다
+# ---------------------------------------------------------------------------
+
+class TestRescanAfterStrategyInit:
+    """리뷰 항목 6: 최초 고아 판정은 가장 유력한 진짜 고아를 볼 수 없다.
+
+    `main.py:234-235` 가 on_init 에 실패한 전략을 strategies dict 에서 지우는데
+    그건 복원·고아 판정보다 **뒤** 다. 그래서 판정 시점엔 멀쩡히 해석되던
+    owner 가 그 직후 미해석이 된다.
+
+    기동은 막지 않는다(그 시점엔 이미 복원이 끝났고 정책상 복원 고아는 격리다)
+    — ERROR 로 드러내기만 한다.
+    """
+
+    def _restorer_with_pending(self, strategies, pending):
+        db = Mock()
+        db.get_real_open_positions.return_value = pd.DataFrame()
+        db.get_virtual_open_positions.return_value = pd.DataFrame()
+        r = _make_restorer(db, strategies, _broker(0))
+        r._pending_strategy_positions = pending
+        return r
+
+    def test_strategy_removed_after_init_is_reported(self):
+        a, b = _strats()
+        r = self._restorer_with_pending(
+            {KEY_A: a, KEY_B: b},
+            {KEY_B: {CODE: {'quantity': 5, 'entry_price': 1.0, 'entry_time': None}}})
+
+        del r.strategies[KEY_B]          # main.py:235 재현 (on_init 실패)
+
+        newly = r.rescan_orphans_after_init()
+
+        assert len(newly) == 1
+        assert KEY_B in newly[0] and CODE in newly[0]
+
+    def test_surviving_strategies_are_not_reported(self):
+        """대칭: 살아남은 전략의 포지션은 보고되지 않는다(경보 마비 방지)."""
+        a, b = _strats()
+        r = self._restorer_with_pending(
+            {KEY_A: a, KEY_B: b},
+            {KEY_A: {CODE: {'quantity': 5, 'entry_price': 1.0, 'entry_time': None}}})
+
+        assert r.rescan_orphans_after_init() == []
+
+    def test_rescan_never_raises(self):
+        """대칭: 재훑기는 기동을 막지 않는다 — ERROR 전용이다."""
+        a, _b = _strats()
+        r = self._restorer_with_pending(
+            {KEY_A: a},
+            {'macd_cross': {CODE: {'quantity': 5, 'entry_price': 1.0,
+                                   'entry_time': None}}})
+
+        assert len(r.rescan_orphans_after_init()) == 1   # no raise

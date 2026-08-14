@@ -46,8 +46,6 @@ class OrderCompletionHandler:
         self.strategy = None
         # 다중전략 맵 (폴더키 → 전략 인스턴스). 실매매 체결을 소유 전략으로 라우팅.
         self.strategies_by_key: dict = {}
-        # 클래스명(strategy.name) → 인스턴스 보조 매핑 (lazy, set_strategies 시 무효화)
-        self._by_class_name_cache = None
 
     def set_strategy(self, strategy: Any) -> None:
         """전략 연결 (on_order_filled 콜백용)"""
@@ -64,7 +62,6 @@ class OrderCompletionHandler:
         (사전-실전 감사 BLOCKER #2, 2026-06-24).
         """
         self.strategies_by_key = strategies_by_key or {}
-        self._by_class_name_cache = None  # 맵 교체 시 클래스명 보조 매핑 무효화
         if self.strategies_by_key:
             self.logger.info(
                 f"OrderCompletionHandler에 {len(self.strategies_by_key)}개 전략 맵 연결"
@@ -133,14 +130,19 @@ class OrderCompletionHandler:
         return ts
 
     def _strategy_by_class_name(self, name):
-        """클래스명(strategy.name)으로 전략 인스턴스 조회 (보조 매핑, lazy)."""
-        if self._by_class_name_cache is None:
-            self._by_class_name_cache = {
-                s.name: s
-                for s in self.strategies_by_key.values()
-                if getattr(s, 'name', None)
-            }
-        return self._by_class_name_cache.get(name)
+        """클래스명(strategy.name)으로 전략 인스턴스 조회 (보조 매핑).
+
+        ⚠️ 캐시하지 않는다. main.py:234-235 가 on_init 실패 전략을 dict 에서
+        **삭제**하는데 캐시는 그 변경을 못 본다 — 폴더키로는 None(올바름)인데
+        클래스명으로는 «삭제된 인스턴스»가 나오고, 그 상태로
+        apply_pending_strategy_positions 가 포지션을 주입하면 on_tick 을 영영
+        못 받을 전략이 포지션을 갖는다(2026-08-14 리뷰 항목 6).
+        맵은 8개짜리라 매번 만들어도 비용이 없다.
+        """
+        for s in self.strategies_by_key.values():
+            if getattr(s, 'name', None) == name:
+                return s
+        return None
 
     def _resolve_owner_strategy(self, owner_name=None, owner_strategy=None):
         """체결을 통보할 소유 전략 인스턴스를 해석한다.
