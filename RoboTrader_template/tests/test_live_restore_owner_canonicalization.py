@@ -50,10 +50,14 @@ def _strats():
     return a, b
 
 
-def _make_restorer(db_manager, strategies, broker):
+def _make_restorer(db_manager, strategies, broker, declared=None):
     from bot.state_restorer import StateRestorer
     config = Mock()
     config.paper_trading = False
+    # config 에 «선언된» 전략 목록 (enabled:false 포함). Mock 기본값은 iterable 이
+    # 아니므로 명시한다.
+    config.strategies = [{'name': n, 'enabled': False} for n in (declared or [])]
+    config.strategy = None
     return StateRestorer(
         trading_manager=Mock(),
         db_manager=db_manager,
@@ -108,11 +112,12 @@ def _broker(total_qty, avg_price=100_000.0):
     return b
 
 
-def _prepared(rows, broker_qty, strategies, avg_price=100_000.0):
+def _prepared(rows, broker_qty, strategies, avg_price=100_000.0, declared=None):
     db = Mock()
     db.get_real_open_positions.return_value = pd.DataFrame(rows)
     db.get_virtual_open_positions.return_value = pd.DataFrame()
-    restorer = _make_restorer(db, strategies, _broker(broker_qty, avg_price))
+    restorer = _make_restorer(db, strategies, _broker(broker_qty, avg_price),
+                              declared=declared)
     _wire_trading_manager(restorer)
     restorer._sync_fund_manager_for_position = Mock(return_value=0.0)
     restorer._apply_stale_position_check = Mock(return_value=(0.05, 0.03))
@@ -241,7 +246,7 @@ class TestUnresolvableOwners:
         하루를 굴리느니 멈추고 사람이 본다.
         """
         a, _b = _strats()
-        rows = [_row(KEY_A, 7, 100_000.0, 2), _row('unknown', 3, 100_000.0, 1)]
+        rows = [_row(KEY_A, 7, 100_000.0, 2), _row('macd_cross', 3, 100_000.0, 1)]
         restorer = _prepared(rows, 10, {KEY_A: a})
 
         with pytest.raises(LiveStartupAbort):
@@ -250,7 +255,7 @@ class TestUnresolvableOwners:
     def test_all_unresolvable_aborts_startup(self):
         """전량이 고아여도(=단일 레그) 마찬가지로 중단한다."""
         a, _b = _strats()
-        rows = [_row('unknown', 10, 100_000.0, 1)]
+        rows = [_row('macd_cross', 10, 100_000.0, 1)]
         restorer = _prepared(rows, 10, {KEY_A: a})
 
         with pytest.raises(LiveStartupAbort):
@@ -262,13 +267,13 @@ class TestUnresolvableOwners:
         a, _b = _strats()
         fake_logger = Mock()
         monkeypatch.setattr(sr, 'logger', fake_logger)
-        rows = [_row(KEY_A, 7, 100_000.0, 2), _row('unknown', 3, 100_000.0, 1)]
+        rows = [_row(KEY_A, 7, 100_000.0, 2), _row('macd_cross', 3, 100_000.0, 1)]
         restorer = _prepared(rows, 10, {KEY_A: a})
 
-        orphans = restorer._detect_orphan_legs(_legs(restorer, rows))
+        orphans, _quarantined = restorer._classify_orphan_legs(_legs(restorer, rows))
 
         assert len(orphans) == 1
-        assert CODE in orphans[0] and 'unknown' in orphans[0]
+        assert CODE in orphans[0] and 'macd_cross' in orphans[0]
         assert fake_logger.error.called, "고아 레그가 ERROR 없이 지나갔다"
 
     def test_resolvable_only_logs_no_orphan_error(self, monkeypatch):
@@ -280,17 +285,21 @@ class TestUnresolvableOwners:
         rows = [_row(KEY_A, 7, 100_000.0, 2), _row(KEY_B, 3, 100_000.0, 1)]
         restorer = _prepared(rows, 10, {KEY_A: a, KEY_B: b})
 
-        assert restorer._detect_orphan_legs(_legs(restorer, rows)) == []
+        assert restorer._classify_orphan_legs(_legs(restorer, rows)) == ([], [])
         assert not fake_logger.error.called
 
-    def test_blank_strategy_column_on_a_db_row_aborts(self):
-        """대칭 ①: DB 행이 있는데 strategy 컬럼이 비면 그건 진짜 고아다."""
+    def test_blank_strategy_column_is_quarantined_not_aborted(self):
+        """대칭 ①: 빈 라벨은 «설명 가능» 하므로 격리한다(2026-08-14 결정 번복).
+
+        앱 자신이 unknown/공백을 쓴다(_sanitize_strategy 등 5경로). config 로는
+        고칠 수 없는 상태라 기동을 막아 봐야 사람이 할 수 있는 일이 DB UPDATE
+        뿐이고, 그동안 포지션은 프레임워크 백스톱조차 못 받는다.
+        """
         a, _b = _strats()
         rows = [_row('', 10, 100_000.0, 1)]
         restorer = _prepared(rows, 10, {KEY_A: a})
 
-        with pytest.raises(LiveStartupAbort):
-            asyncio.run(restorer._restore_holdings_from_real_account())
+        asyncio.run(restorer._restore_holdings_from_real_account())  # no raise
 
     def test_leg_without_a_db_row_is_reconciliations_business(self):
         """대칭 ②: DB 행이 «아예 없는» 레그는 소유권이 아니라 대사의 소관이다.
@@ -305,7 +314,7 @@ class TestUnresolvableOwners:
         legs = restorer._build_restore_legs(restorer.broker.get_holdings(), {})
 
         assert len(legs) == 1 and legs[0]['owner'] == ""
-        assert restorer._detect_orphan_legs(legs) == []
+        assert restorer._classify_orphan_legs(legs) == ([], [])
 
     def test_clean_input_does_not_abort(self):
         """🔴 대칭 단언 — 여기가 제일 중요하다.
@@ -461,3 +470,110 @@ class TestTwoLegExpansionUnderNarrowedSuppression:
         assert abnormal == []
         states = [ts.state for ts in sm._find_by_code(CODE)]
         assert states == [StockState.POSITIONED]
+
+
+# ---------------------------------------------------------------------------
+# 5. 격리 vs 중단 — 하드스톱은 주문 시점으로, 복원은 설명 가능하면 격리
+# ---------------------------------------------------------------------------
+
+class TestQuarantineInsteadOfAbort:
+    """2026-08-14 사장님 결정 번복(운영 리뷰).
+
+    복원 시점의 미해석 라벨은 «대개 정당한 상태»다 — 전략 비활성화,
+    on_init 실패, 앱이 스스로 쓴 unknown. 반면 **주문 시점**의 미해석은
+    언제나 버그다. 그래서 하드스톱을 주문 시점으로 옮기고, 복원에서는
+    설명 가능한 두 부류를 격리(프레임워크 백스톱만 적용)한다.
+
+    결정적 근거: 텔레그램이 꺼져 있어 기동 중단 신호가 **아무에게도 안 간다**.
+    감시자·재기동 루프도 없다 ⇒ 07:40 에 조용히 죽고 포지션은 하루 종일
+    무방비. 「신호가 도달하지 않는 fail-closed 는 fail-silent 다」.
+    """
+
+    def test_disabled_strategy_holding_does_not_abort(self):
+        """가장 흔한 운영 조작 — 전략 하나 끄기 — 이 아침을 죽이면 안 된다."""
+        a, _b = _strats()
+        rows = [_row(KEY_B, 10, 100_000.0, 1)]      # B 는 로드 안 됨
+        restorer = _prepared(rows, 10, {KEY_A: a}, declared=[KEY_B])
+
+        asyncio.run(restorer._restore_holdings_from_real_account())  # no raise
+
+    def test_unknown_label_does_not_abort(self):
+        a, _b = _strats()
+        rows = [_row('unknown', 10, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a})
+
+        asyncio.run(restorer._restore_holdings_from_real_account())  # no raise
+
+    def test_undeclared_label_still_aborts(self):
+        """대칭: 설명 안 되는 라벨은 여전히 중단한다(과잉 완화 금지)."""
+        a, _b = _strats()
+        rows = [_row('macd_cross', 10, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a})
+
+        with pytest.raises(LiveStartupAbort):
+            asyncio.run(restorer._restore_holdings_from_real_account())
+
+    def test_quarantined_position_is_actually_restored(self):
+        """격리는 «복원하되 표시» 다 — 안 살리면 백스톱조차 못 받는다."""
+        a, _b = _strats()
+        rows = [_row(KEY_B, 10, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a}, declared=[KEY_B])
+
+        asyncio.run(restorer._restore_holdings_from_real_account())
+
+        restorer.trading_manager.add_selected_stock.assert_called_once()
+        assert restorer._sync_fund_manager_for_position.called
+
+    def test_messages_name_the_artifact_to_edit(self):
+        """진단 가능성: 어디를 고쳐야 하는지가 메시지에 있어야 한다."""
+        a, _b = _strats()
+        rows = [_row(KEY_B, 5, 100_000.0, 3),
+                _row('unknown', 3, 100_000.0, 2),
+                _row('macd_cross', 2, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a}, declared=[KEY_B])
+
+        aborts, quarantined = restorer._classify_orphan_legs(_legs(restorer, rows))
+
+        assert len(aborts) == 1 and 'macd_cross' in aborts[0]
+        joined = " ".join(quarantined)
+        # 비활성 전략 → config 를 고치라고 말해야 한다
+        assert KEY_B in joined and 'config' in joined
+        # unknown → config 로는 못 고친다, DB UPDATE 라고 말해야 한다
+        assert 'unknown' in joined and 'UPDATE' in joined.upper()
+
+    def test_declared_but_enabled_strategy_that_failed_to_load_is_quarantined(self):
+        """on_init 실패로 dict 에서 지워진 전략도 «선언은 돼 있다» → 격리."""
+        a, _b = _strats()
+        rows = [_row(KEY_B, 10, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a})
+        restorer.config.strategies = [{'name': KEY_B, 'enabled': True}]
+
+        asyncio.run(restorer._restore_holdings_from_real_account())  # no raise
+
+    def test_verdict_is_independent_of_db_row_order(self):
+        """🔑 미해석 라벨은 한 바구니로 접히므로 «표시 라벨» 하나로 판정하면
+        행 순서에 따라 중단이 조용히 격리로 강등된다.
+
+        판정은 그 레그로 접힌 **모든** 라벨에 대해 하고, 하나라도 설명 불가면
+        중단한다 — 순서를 뒤집어도 결론이 같아야 한다.
+        """
+        a, _b = _strats()
+        forward = [_row(KEY_B, 5, 100_000.0, 2), _row('macd_cross', 5, 100_000.0, 1)]
+        reverse = [_row('macd_cross', 5, 100_000.0, 2), _row(KEY_B, 5, 100_000.0, 1)]
+
+        for rows in (forward, reverse):
+            restorer = _prepared(rows, 10, {KEY_A: a}, declared=[KEY_B])
+            aborts, _q = restorer._classify_orphan_legs(_legs(restorer, rows))
+            assert len(aborts) == 1, f"행 순서로 판정이 바뀌었다: {rows[0]['strategy']}"
+            assert 'macd_cross' in aborts[0]
+
+    def test_all_quarantinable_labels_stay_quarantined_when_folded(self):
+        """대칭: 접힌 라벨이 전부 설명 가능하면 중단 없이 격리만."""
+        a, _b = _strats()
+        rows = [_row(KEY_B, 5, 100_000.0, 2), _row('unknown', 5, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a}, declared=[KEY_B])
+
+        aborts, quarantined = restorer._classify_orphan_legs(_legs(restorer, rows))
+
+        assert aborts == []
+        assert len(quarantined) == 2

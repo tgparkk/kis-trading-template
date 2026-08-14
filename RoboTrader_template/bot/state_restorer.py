@@ -4,7 +4,7 @@
 """
 import math
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, KST
@@ -866,6 +866,7 @@ class StateRestorer:
             # 라벨이 1종뿐인 현행 데이터에서는 종전과 문자 그대로 동일하다.
             key = (code, self._owner_group_key(owner))
             if key in by_owner:
+                by_owner[key]['raw_owners'].add(owner)
                 prev = by_owner[key]
                 add_qty = int(row['quantity'])
                 new_qty = prev['quantity'] + add_qty
@@ -877,6 +878,11 @@ class StateRestorer:
             else:
                 by_owner[key] = {
                     'stock_code': code,
+                    # 이 버킷으로 접힌 «원문 라벨 전체». 미해석 라벨은 한
+                    # 바구니로 접히는데, 그 안에 「비활성 전략」과 「삭제된
+                    # 전략명」이 섞이면 표시 라벨 하나만 보고 판정할 수 없다
+                    # — 행 순서에 따라 중단이 조용히 격리로 강등된다.
+                    'raw_owners': {owner},
                     'stock_name': row['stock_name'],
                     'quantity': int(row['quantity']),
                     'buy_price': float(row['buy_price']),
@@ -899,6 +905,7 @@ class StateRestorer:
         for info in by_owner.values():
             code = info['stock_code']
             if code in by_code:
+                by_code[code]['raw_owners'] |= info.get('raw_owners', set())
                 prev = by_code[code]
                 new_qty = prev['quantity'] + info['quantity']
                 if new_qty > 0:
@@ -971,47 +978,112 @@ class StateRestorer:
                     'target_profit_rate': info.get('target_profit_rate', DEFAULT_TARGET_PROFIT_RATE),
                     'stop_loss_rate': info.get('stop_loss_rate', DEFAULT_STOP_LOSS_RATE),
                     'from_db': True,
+                    'raw_owners': set(info.get('raw_owners') or {info['strategy']}),
                 })
         return legs
 
-    def _detect_orphan_legs(self, legs: List[Dict]) -> List[str]:
-        """어느 전략도 소유하지 않는 복원 레그를 잡는다.
+    _UNNAMED_LABELS = frozenset({"", "unknown"})
 
-        owner 라벨이 폴더키로도 클래스명으로도 해석되지 않으면(전략 비활성·
-        폴더명 오타·표기 드리프트·무기명) 그 포지션은 전략 고유 청산
-        (trail/max_hold/trend_flip)을 영영 받지 못한다.
+    def _declared_strategy_names(self) -> set:
+        """config 에 **선언된** 전략 이름 전체 — `enabled:false` 포함.
 
-        ⚠️ 이건 «의도된, 되돌릴 수 있는 정책 선택» 이다 — 실전 도입기 동안
-        fail-closed(기동 중단)로 간다(2026-08-14 사장님 결정).
-          · 채택 근거: 미해석 라벨은 이 시기에 거의 항상 «설정 실수» 다.
-            그때야말로 봇이 멈추고 사람이 봐야 할 순간이지, 아무도 소유하지
-            않는 포지션을 안고 하루를 굴릴 때가 아니다.
-          · 채택되지 않은 반대 논거(나중에 뒤집을 사람을 위해 남긴다):
-            그 포지션도 프레임워크 백스톱은 그대로 받는다 —
-            position_monitor 의 tp/sl 과 EOD 일괄청산이 커버하므로 «방치»는
-            아니다. 그리고 전략 폴더 개명 한 번이 매매일 하나를 통째로
-            날릴 수 있다. 페이퍼 경로(:667 「비활성 → 기본 정책 적용」)는
-            그래서 fail-open 이고, 그건 위험 국면이 다르기 때문이다.
-          · 설정 스위치는 **일부러 두지 않았다**. 이 저장소는 falsy 기본값을
-            가진 반쯤 결선된 스위치에 반복해서 물렸다(max_capital_pct 계열).
-            정책 하나를 근거와 함께 하드코딩하는 편이, 아무도 검증하지 않는
-            토글보다 안전하다. 뒤집으려면 이 함수의 호출부에서 raise 를
-            빼고 ERROR 로그만 남기면 된다.
+        `strategies/config.py:442-443` 이 비활성 전략을 조용히 건너뛰므로
+        self.strategies 에는 안 들어오지만, 그 전략의 포지션은 DB 에 자기 라벨을
+        그대로 갖고 있다. 「선언은 됐는데 로드가 안 된 것」과 「어디에도 없는
+        것」을 가르는 유일한 근거가 이 목록이다.
         """
-        orphans: List[str] = []
+        out = set()
+        specs = getattr(self.config, 'strategies', None) or []
+        if isinstance(specs, (list, tuple)):
+            for spec in specs:
+                name = spec.get('name') if isinstance(spec, dict) else None
+                if name:
+                    out.add(str(name).strip())
+        single = getattr(self.config, 'strategy', None)
+        if single is not None:
+            name = (single.get('name') if isinstance(single, dict)
+                    else getattr(single, 'name', None))
+            if name and isinstance(name, str):
+                out.add(name.strip())
+        return out
+
+    def _classify_orphan_legs(self, legs: List[Dict]) -> Tuple[List[str], List[str]]:
+        """미해석 owner 레그를 «기동 중단» 과 «격리» 로 가른다.
+
+        Returns:
+            (aborts, quarantined) — 각각 사람이 읽는 사유 문자열 목록.
+
+        🔴 정책 이력(2026-08-14, 두 번 바뀌었다 — 되돌릴 사람이 재발견하지
+        않도록 남긴다):
+          1차: fail-open(ERROR 만) — 페이퍼 경로(:665-670)의 선례.
+          2차: **fail-closed(전량 기동 중단)** — 「미해석은 설정 실수다」.
+          3차(현행): **주문 시점 하드스톱 + 복원 시점 선별 격리.**
+
+        2차가 뒤집힌 이유(운영 리뷰가 실제 오탐 6건을 만들어 보였다):
+          · 기동 중단 신호가 **아무에게도 안 간다** — 텔레그램이 꺼져 있고
+            (사장님이 켜지 않기로 결정) 감시자·재기동 루프도 없다. 07:40 에
+            조용히 죽고 포지션은 하루 종일 무방비다. 도달하지 않는 fail-closed
+            는 fail-closed 가 아니라 **fail-silent** 다.
+          · 중단은 보호를 «줄인다» — 살아 있으면 position_monitor 의 tp/sl 이
+            도는데, 죽으면 그것마저 없다.
+          · 게이트가 사건보다 하루 늦다 — 오늘 안 켠다고 어제 나간 돈이
+            돌아오지 않는다.
+          · 앱이 스스로 `unknown` 을 쓴다(`_sanitize_strategy` 등 5경로).
+            그건 config 로 고칠 수 없어 「전략 설정 확인」이라는 안내가 틀렸다.
+          · 전략 하나 끄기는 다음 달 가장 유력한 운영 조작인데(8전략 전부
+            net 마이너스) 그때마다 매일 아침이 죽는다. 게다가 페이퍼 경로는
+            바로 그 경우에 fail-OPEN 이라 「끄는 건 안전하다」고 학습돼 있다.
+
+        그래서 **주문 시점**(항상 버그다)은 하드스톱, **복원 시점**은 설명
+        가능한 두 부류만 격리한다:
+          (a) config 에 선언돼 있으나 로드되지 않음 — 비활성화·on_init 실패
+          (b) 라벨이 `unknown`/공백 — 앱 자신이 쓴 값
+
+        둘 다 아니면(오타·삭제된 전략명) 여전히 중단한다.
+        설정 스위치는 두지 않는다.
+        """
+        aborts: List[str] = []
+        quarantined: List[str] = []
+        declared = self._declared_strategy_names()
         for leg in legs:
             if not leg.get('from_db', True):
-                continue  # 대사 소관 (위 주석 참조)
-            if self._resolve_owner_strategy(leg['owner']) is not None:
+                continue  # 대사 소관 (_build_restore_legs 의 from_db 주석 참조)
+            if self._resolve_owner_strategy((leg['owner'] or '').strip()) is not None:
                 continue
-            msg = (
-                f"⚠️ {leg['stock_code']}: {leg['quantity']}주 "
-                f"owner={leg['owner']!r} 미해석 — 이 포지션은 어느 전략도 "
-                f"소유하지 않는다 (등록 전략: {list((self.strategies or {}).keys())})"
+            # 표시 라벨 하나가 아니라 이 레그로 접힌 «모든» 라벨을 따로 판정한다.
+            # 하나라도 설명 불가면 중단 — 행 순서로 안전도가 바뀌면 안 된다.
+            for owner in sorted(
+                    {(o or '').strip() for o in
+                     (leg.get('raw_owners') or {leg['owner']})}):
+                if self._resolve_owner_strategy(owner) is not None:
+                    continue
+                head = f"{leg['stock_code']}: {leg['quantity']}주 owner={owner!r}"
+                if owner in self._UNNAMED_LABELS:
+                    quarantined.append(
+                        f"⚠️ {head} — 무기명(앱이 쓴 값). config 로는 고칠 수 없다; "
+                        f"소유 전략을 정하려면 실거래 테이블의 strategy 컬럼을 UPDATE 할 것"
+                    )
+                elif owner in declared:
+                    quarantined.append(
+                        f"⚠️ {head} — config 에 선언됐으나 미로드(enabled:false 또는 "
+                        f"on_init 실패). 이 전략을 다시 돌리려면 config 의 strategies "
+                        f"항목을 확인할 것"
+                    )
+                else:
+                    aborts.append(
+                        f"⚠️ {head} — config 선언에도 없는 라벨. 오타면 config 의 "
+                        f"strategies 를, 삭제된 과거 전략이면 실거래 테이블의 "
+                        f"strategy 컬럼을 UPDATE 할 것 "
+                        f"(선언된 전략: {sorted(declared)})"
+                    )
+        for msg in quarantined:
+            logger.error(
+                f"🚨 [실전매매][격리] {msg} — 전략 고유 청산 없이 프레임워크 "
+                f"백스톱(position_monitor tp/sl · EOD 일괄청산)만 적용된다"
             )
+        for msg in aborts:
             logger.error(f"🚨 [실전매매] {msg}")
-            orphans.append(msg)
-        return orphans
+        return aborts, quarantined
 
     def _detect_owner_leg_anomalies(self, by_owner: Dict[tuple, Dict]) -> List[str]:
         """소유자별 레그의 수량 이상을 잡는다 (대사가 못 보는 축).
@@ -1111,14 +1183,20 @@ class StateRestorer:
 
             restore_legs = self._build_restore_legs(real_holdings, db_by_owner)
 
-            # 4-1. 소유자 없는 레그 = 기동 중단(fail-closed, 2026-08-14 사장님 결정).
-            #      근거·반대논거·되돌리는 법은 _detect_orphan_legs 독스트링에 있다.
-            orphan_legs = self._detect_orphan_legs(restore_legs)
+            # 4-1. 미해석 owner: 설명 가능하면 «격리», 아니면 기동 중단.
+            #      정책 이력(fail-open → fail-closed → 현행)과 근거는
+            #      _classify_orphan_legs 독스트링에 있다.
+            orphan_legs, quarantined_legs = self._classify_orphan_legs(restore_legs)
             if orphan_legs:
                 raise LiveStartupAbort(
                     f"소유 전략 미해석 보유 {len(orphan_legs)}건 — "
-                    f"전략 설정 확인 후 재기동 필요",
+                    f"라벨 출처 확인 후 재기동 필요(사유별 조치는 아래)",
                     " / ".join(orphan_legs[:10]))
+            if quarantined_legs:
+                logger.error(
+                    f"🚨 [실전매매] 격리 보유 {len(quarantined_legs)}건 — "
+                    f"복원은 하되 전략 고유 청산 없이 프레임워크 백스톱만 적용된다"
+                )
 
             for leg in restore_legs:
                 stock_code = leg['stock_code']

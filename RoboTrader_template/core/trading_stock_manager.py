@@ -354,6 +354,14 @@ class TradingStockManager:
         """종목 정보 조회"""
         return self._state_manager.get_trading_stock(stock_code, strategy=strategy)
 
+    def resolve_owner_strategy(self, owner_name):
+        """owner 표기(폴더키/클래스명)를 살아 있는 전략 인스턴스로 해석.
+
+        미해석이면 None. 주문 시점 게이트가 이걸로 「그 라벨이 실제로 도는
+        전략인가」를 묻는다. 해석 규칙은 완료 핸들러가 갖고 있으므로 위임한다.
+        """
+        return self._completion_handler._resolve_owner_strategy(owner_name)
+
     def find_owned_stock(self, stock_code: str, owner_name) -> Optional[TradingStock]:
         """owner 표기(폴더키/클래스명 어느 쪽이든)로 소유 슬롯 조회.
 

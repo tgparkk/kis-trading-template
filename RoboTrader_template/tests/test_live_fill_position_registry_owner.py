@@ -56,6 +56,7 @@ def _order_manager(fund_manager):
     config = Mock()
     config.paper_trading = False
     config.order_management.buy_timeout_seconds = 300
+    config.order_management.sell_timeout_seconds = 120
     om = OrderManager(config=config, broker=Mock(),
                       telegram_integration=None, db_manager=None)
     om.telegram = None
@@ -371,3 +372,107 @@ class TestAbsentOwnerSlotNeverPicksAnother:
 
         assert (CODE, KEY_A) not in fm._position_entries
         assert (CODE, KEY_B) in fm._position_entries
+
+
+# ---------------------------------------------------------------------------
+# 6. 하드스톱은 «주문 시점» 으로 — 미해석 owner 로는 실주문을 내지 않는다
+# ---------------------------------------------------------------------------
+
+class TestOrderTimeOwnerGate:
+    """2026-08-14 운영 리뷰 결정: 하드스톱의 자리는 복원이 아니라 주문이다.
+
+    복원 시점의 미해석은 «대개 정당»(전략 비활성화·on_init 실패·앱이 쓴
+    unknown)하지만, **주문 시점의 미해석은 언제나 버그**다. 여기서 막으면
+    비용이 「세션 하나」가 아니라 「주문 하나」이고, 잘못된 라벨의 행이 애초에
+    DB 에 안 써진다.
+
+    매도는 막지 않는다 — 소유 전략을 모른다고 청산을 막으면 포지션이 갇힌다.
+    """
+
+    def _market_open(self, monkeypatch):
+        import config.market_hours as mh
+        monkeypatch.setattr(mh.MarketHours, 'can_place_order',
+                            staticmethod(lambda *a, **k: True))
+        cb = Mock()
+        cb.is_market_halted.return_value = False
+        cb.is_vi_active.return_value = False
+        monkeypatch.setattr(mh, 'get_circuit_breaker_state', lambda: cb)
+
+    def _om(self, monkeypatch, strategies_by_key):
+        self._market_open(monkeypatch)
+        fm = FundManager(initial_funds=10_000_000)
+        om = _order_manager(fm)
+        om._get_stock_name = Mock(return_value='삼성전자')
+        om.broker.place_buy_order = Mock(return_value={
+            'success': True, 'order_id': 'OID-A', 'message': '',
+            'error_code': '', 'data': None})
+        om.broker.place_sell_order = Mock(return_value={
+            'success': True, 'order_id': 'OID-S', 'message': '',
+            'error_code': '', 'data': None})
+        sm = StockStateManager()
+        _slots(sm, KEY_A)
+        om.trading_manager = _real_trading_manager(sm, strategies_by_key)
+        return om
+
+    def test_real_buy_with_unresolvable_owner_is_refused(self, monkeypatch):
+        a, _b = _strategies()
+        om = self._om(monkeypatch, {KEY_A: a})
+
+        oid = asyncio.run(om.place_buy_order(
+            CODE, 10, 70_000.0, owner_strategy='macd_cross'))
+
+        assert oid is None
+        om.broker.place_buy_order.assert_not_called()
+
+    def test_real_buy_with_resolvable_owner_proceeds(self, monkeypatch):
+        """대칭: 정상 owner 는 그대로 나간다(과잉 차단 금지)."""
+        a, _b = _strategies()
+        om = self._om(monkeypatch, {KEY_A: a})
+
+        oid = asyncio.run(om.place_buy_order(
+            CODE, 10, 70_000.0, owner_strategy=KEY_A))
+
+        assert oid == 'OID-A'
+        om.broker.place_buy_order.assert_called_once()
+
+    def test_class_name_owner_also_proceeds(self, monkeypatch):
+        """대칭: 클래스명 표기도 해석되므로 막히면 안 된다."""
+        a, _b = _strategies()
+        om = self._om(monkeypatch, {KEY_A: a})
+
+        oid = asyncio.run(om.place_buy_order(
+            CODE, 10, 70_000.0, owner_strategy=CLS_A))
+
+        assert oid == 'OID-A'
+
+    def test_owner_less_legacy_buy_is_not_refused(self, monkeypatch):
+        """대칭: 무기명 레거시 주문 경로는 종전대로(게이트는 라벨이 있을 때만)."""
+        a, _b = _strategies()
+        om = self._om(monkeypatch, {KEY_A: a})
+
+        oid = asyncio.run(om.place_buy_order(CODE, 10, 70_000.0))
+
+        assert oid == 'OID-A'
+
+    def test_sell_is_never_blocked_by_the_gate(self, monkeypatch):
+        """🔴 대칭 중 가장 중요 — 매도를 막으면 포지션이 갇힌다."""
+        a, _b = _strategies()
+        om = self._om(monkeypatch, {KEY_A: a})
+        del om.broker.get_sellable_quantity
+
+        oid = asyncio.run(om.place_sell_order(
+            CODE, 10, 70_000.0, owner_strategy='macd_cross'))
+
+        assert oid == 'OID-S'
+        om.broker.place_sell_order.assert_called_once()
+
+    def test_paper_buy_is_not_gated(self, monkeypatch):
+        """대칭: 페이퍼는 이 게이트를 통과한다(라이브 불변)."""
+        a, _b = _strategies()
+        om = self._om(monkeypatch, {KEY_A: a})
+        om.config.paper_trading = True
+
+        oid = asyncio.run(om.place_buy_order(
+            CODE, 10, 70_000.0, owner_strategy='macd_cross'))
+
+        assert oid is not None and oid.startswith('VT-BUY-')

@@ -43,6 +43,28 @@ def coerce_order_result(result):
 class OrderExecutorMixin:
     """주문 실행 관련 메서드들을 모아둔 Mixin 클래스"""
 
+    def _owner_resolves(self: 'OrderManagerBase', owner_strategy: str) -> bool:
+        """owner 라벨이 «살아 있는» 전략으로 해석되는지.
+
+        게이트는 라벨이 «있을 때만» 판정한다 — 무기명 레거시 주문 경로와
+        페이퍼는 종전 동작을 유지한다. 실체(TradingStockManager) 검사인 이유는
+        order_db_handler._get_owned_trading_stock 과 같다(맨 Mock 은 hasattr 이
+        항상 True 라 가짜 facade 가 조용히 통과한다, 리뷰 F5).
+        """
+        owner = (owner_strategy or '').strip()
+        if not owner:
+            return True
+        if getattr(self.config, "paper_trading", False):
+            return True
+        from core.trading_stock_manager import TradingStockManager
+        tm = self.trading_manager
+        if not isinstance(tm, TradingStockManager):
+            return True  # facade 미연결(레거시 배선) — 종전 동작 보존
+        try:
+            return tm.resolve_owner_strategy(owner) is not None
+        except Exception:
+            return True  # 판정 불가를 «차단» 으로 바꾸지 않는다
+
     async def place_buy_order(self: 'OrderManagerBase', stock_code: str, quantity: int, price: float,
                              timeout_seconds: int = None,
                              target_profit_rate: float = None,
@@ -75,6 +97,21 @@ class OrderExecutorMixin:
                 return None
             if cb_state.is_vi_active(stock_code):
                 self.logger.warning(f"매수 주문 차단: {stock_code} VI 발동 중")
+                return None
+
+            # 소유 전략 게이트 — 미해석 owner 로는 실매수를 내지 않는다.
+            # 복원 시점의 미해석은 대개 정당하지만(전략 비활성화·on_init 실패·
+            # 앱이 쓴 unknown) **주문 시점의 미해석은 언제나 버그**다. 여기서
+            # 막으면 비용이 「세션 하나」가 아니라 「주문 하나」이고, 잘못된
+            # 라벨의 행이 애초에 DB 에 안 써진다(2026-08-14 운영 리뷰 결정).
+            #
+            # 매도에는 걸지 않는다 — 소유 전략을 모른다고 청산을 막으면
+            # 포지션이 갇힌다. 게이트는 «새 위험을 만드는» 쪽에만 건다.
+            if not self._owner_resolves(owner_strategy):
+                self.logger.error(
+                    f"매수 주문 차단: {stock_code} 소유 전략 미해석 "
+                    f"(owner={owner_strategy!r}) — config 의 strategies 를 확인할 것"
+                )
                 return None
 
             # 중복 주문 방지: 동일 종목 매수 주문이 이미 진행 중인지 확인
