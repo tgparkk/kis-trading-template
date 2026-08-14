@@ -796,6 +796,134 @@ class StateRestorer:
                 f"재조회 결과={('실패' if remain is None else f'{len(remain)}건 잔존')}")
         return True
 
+    def _build_db_holdings_by_owner(self, db_holdings) -> Dict[tuple, Dict]:
+        """DB 보유행을 **(종목코드, 전략)** 키로 집계한다.
+
+        종전 구현은 종목코드 단독으로 집계했다. 주석은 "분할매수 합산"이었지만
+        그 술어는 「같은 전략이 두 번 샀다」와 「서로 다른 두 전략이 한 번씩
+        샀다」를 구분하지 못한다. `db/repositories/trading.py:452` 의
+        `ORDER BY b.timestamp DESC` 때문에 최신 행의 전략이 이기고, 오래된
+        소유자는 **합산 수량째** 승자에게 넘어갔다 — 실전에서 A 는 두 배 크기
+        포지션을, B 는 아무것도 못 받는다(B 의 청산은 영영 미발동).
+
+        페이퍼 경로(`_restore_holdings_from_db`)는 행마다 owner 를 넘겨 이미
+        (code, owner) 당 슬롯 1개로 복원한다 — **페이퍼가 기준 동작**이고
+        실전을 거기에 맞춘다(2026-08-14 Fix 3).
+
+        같은 (code, strategy) 안에서의 진짜 분할매수는 종전대로 수량 SUM ·
+        매입가 가중평균으로 합산하고, strategy/tp/sl/buy_time 은 최신 행을 쓴다.
+        """
+        by_owner: Dict[tuple, Dict] = {}
+        if db_holdings is None or db_holdings.empty:
+            return by_owner
+        for _, row in db_holdings.iterrows():
+            raw_tp = row.get('target_profit_rate')
+            raw_sl = row.get('stop_loss_rate')
+            try:
+                tp_val = float(raw_tp) if raw_tp is not None else None
+                tp_rate = tp_val if (tp_val is not None and not math.isnan(tp_val)) else DEFAULT_TARGET_PROFIT_RATE
+            except (ValueError, TypeError, OverflowError):
+                tp_rate = DEFAULT_TARGET_PROFIT_RATE
+            try:
+                sl_val = float(raw_sl) if raw_sl is not None else None
+                sl_rate = sl_val if (sl_val is not None and not math.isnan(sl_val)) else DEFAULT_STOP_LOSS_RATE
+            except (ValueError, TypeError, OverflowError):
+                sl_rate = DEFAULT_STOP_LOSS_RATE
+            code = row['stock_code']
+            raw_owner = row.get('strategy', '')
+            owner = raw_owner.strip() if (raw_owner and isinstance(raw_owner, str)) else ""
+            key = (code, owner)
+            if key in by_owner:
+                prev = by_owner[key]
+                add_qty = int(row['quantity'])
+                new_qty = prev['quantity'] + add_qty
+                if new_qty > 0:
+                    prev['buy_price'] = (
+                        prev['buy_price'] * prev['quantity']
+                        + float(row['buy_price']) * add_qty) / new_qty
+                prev['quantity'] = new_qty
+            else:
+                by_owner[key] = {
+                    'stock_code': code,
+                    'stock_name': row['stock_name'],
+                    'quantity': int(row['quantity']),
+                    'buy_price': float(row['buy_price']),
+                    'buy_time': row.get('buy_time'),
+                    'strategy': owner,
+                    'target_profit_rate': tp_rate,
+                    'stop_loss_rate': sl_rate,
+                }
+        return by_owner
+
+    def _build_db_holdings_by_code(self, by_owner: Dict[tuple, Dict]) -> Dict[str, Dict]:
+        """owner 별 집계를 **종목코드 단위**로 다시 합산 — 계좌 대사 전용.
+
+        🔴 브로커 잔고는 owner 를 모른다(종목당 1행). owner 로 쪼갠 것을 그대로
+        `_detect_holdings_mismatch` 에 넣으면 정상 상태(A 5주 + B 5주 = 계좌
+        10주)가 「실제 10 vs DB 5」 불일치로 잡혀 아침 기동이 LiveStartupAbort
+        로 막힌다. 대사는 반드시 owner 합으로 비교한다.
+        """
+        by_code: Dict[str, Dict] = {}
+        for info in by_owner.values():
+            code = info['stock_code']
+            if code in by_code:
+                prev = by_code[code]
+                new_qty = prev['quantity'] + info['quantity']
+                if new_qty > 0:
+                    prev['buy_price'] = (
+                        prev['buy_price'] * prev['quantity']
+                        + info['buy_price'] * info['quantity']) / new_qty
+                prev['quantity'] = new_qty
+            else:
+                by_code[code] = dict(info)
+        return by_code
+
+    def _build_restore_legs(self, real_holdings: List[Dict],
+                            by_owner: Dict[tuple, Dict]) -> List[Dict]:
+        """실계좌 보유(종목 단위)를 **복원 단위(종목×소유자)** 로 전개한다.
+
+        - DB owner 0명: 종전대로 무기명 1건(기본 tp/sl). 대사가 fail-closed 라
+          실제로는 도달하지 않지만 방어적으로 남긴다.
+        - DB owner 1명: **종전과 완전히 동일** — 수량·매입가는 계좌 값을 쓴다.
+        - DB owner 2명 이상: owner 별로 DB 수량·매입가로 쪼갠다. 계좌 평단은
+          소유자들의 혼합 평단이라 어느 쪽 손절·트레일에도 맞지 않는다.
+          (owner 합 = 계좌 수량은 바로 앞 대사에서 이미 보장됐다)
+        """
+        legs: List[Dict] = []
+        for real_stock in real_holdings:
+            stock_code = real_stock.get('stock_code', '')
+            stock_name = real_stock.get('stock_name', f'Stock_{stock_code}')
+            quantity = int(real_stock.get('quantity', 0))
+            avg_price = float(real_stock.get('avg_price', 0))
+            if quantity <= 0:
+                continue
+
+            owners = [v for (code, _o), v in by_owner.items() if code == stock_code]
+
+            if not owners:
+                logger.warning(f"[실전매매] {stock_code} DB에 없음 - 기본 익절/손절률 적용")
+                legs.append({
+                    'stock_code': stock_code, 'stock_name': stock_name,
+                    'quantity': quantity, 'buy_price': avg_price,
+                    'owner': "", 'buy_time': None,
+                    'target_profit_rate': DEFAULT_TARGET_PROFIT_RATE,
+                    'stop_loss_rate': DEFAULT_STOP_LOSS_RATE,
+                })
+                continue
+
+            single = len(owners) == 1
+            for info in owners:
+                legs.append({
+                    'stock_code': stock_code, 'stock_name': stock_name,
+                    'quantity': quantity if single else info['quantity'],
+                    'buy_price': avg_price if single else info['buy_price'],
+                    'owner': info['strategy'],
+                    'buy_time': info.get('buy_time'),
+                    'target_profit_rate': info.get('target_profit_rate', DEFAULT_TARGET_PROFIT_RATE),
+                    'stop_loss_rate': info.get('stop_loss_rate', DEFAULT_STOP_LOSS_RATE),
+                })
+        return legs
+
     async def _restore_holdings_from_real_account(self) -> None:
         """실전매매 모드: 실제 계좌에서 보유 종목 조회 → DB 동기화 → 메모리 복원"""
         # 함수 어디서든 이 이름을 참조하는 local import 가 하나라도 있으면
@@ -843,45 +971,13 @@ class StateRestorer:
             #    가상 테이블을 읽으면 실보유 owner 가 공백→전략별 청산 무력
             #    (사전-실전 감사 BLOCKER #4, 2026-06-24).
             db_holdings = self.db_manager.get_real_open_positions()
-            db_holdings_dict = {}
-            if not db_holdings.empty:
-                for _, row in db_holdings.iterrows():
-                    raw_tp = row.get('target_profit_rate')
-                    raw_sl = row.get('stop_loss_rate')
-                    try:
-                        tp_val = float(raw_tp) if raw_tp is not None else None
-                        tp_rate = tp_val if (tp_val is not None and not math.isnan(tp_val)) else DEFAULT_TARGET_PROFIT_RATE
-                    except (ValueError, TypeError, OverflowError):
-                        tp_rate = DEFAULT_TARGET_PROFIT_RATE
-                    try:
-                        sl_val = float(raw_sl) if raw_sl is not None else None
-                        sl_rate = sl_val if (sl_val is not None and not math.isnan(sl_val)) else DEFAULT_STOP_LOSS_RATE
-                    except (ValueError, TypeError, OverflowError):
-                        sl_rate = DEFAULT_STOP_LOSS_RATE
-                    code = row['stock_code']
-                    if code in db_holdings_dict:
-                        # 분할매수 합산: 수량 SUM · 매입가 가중평균.
-                        # ORDER BY timestamp DESC 라 첫 행이 최신 — strategy/tp/sl/buy_time 은 최신 행 유지.
-                        prev = db_holdings_dict[code]
-                        add_qty = int(row['quantity'])
-                        new_qty = prev['quantity'] + add_qty
-                        if new_qty > 0:
-                            prev['buy_price'] = (
-                                prev['buy_price'] * prev['quantity']
-                                + float(row['buy_price']) * add_qty) / new_qty
-                        prev['quantity'] = new_qty
-                    else:
-                        db_holdings_dict[code] = {
-                            'stock_name': row['stock_name'],
-                            'quantity': int(row['quantity']),
-                            'buy_price': float(row['buy_price']),
-                            'buy_time': row.get('buy_time'),
-                            'strategy': row.get('strategy', ''),
-                            'target_profit_rate': tp_rate,
-                            'stop_loss_rate': sl_rate,
-                        }
+            db_by_owner = self._build_db_holdings_by_owner(db_holdings)
+            db_holdings_dict = self._build_db_holdings_by_code(db_by_owner)
 
-            logger.info(f"📊 [실전매매] DB 보유 종목: {len(db_holdings_dict)}개")
+            logger.info(
+                f"📊 [실전매매] DB 보유 종목: {len(db_holdings_dict)}개 "
+                f"(소유자 단위 {len(db_by_owner)}건)"
+            )
 
             # 3. 계좌-DB 대사 — 불일치는 기동 중단(fail-closed, 2026-08-14 P0 결정 5)
             mismatches = await self._detect_holdings_mismatch(real_holdings, db_holdings_dict)
@@ -893,37 +989,24 @@ class StateRestorer:
                     f"계좌-DB 불일치 {len(mismatches)}건 — 수동 확인 후 재기동 필요",
                     " / ".join(mismatches[:10]))
 
-            # 4. 실제 계좌 기준으로 메모리에 복원
+            # 4. 실제 계좌 기준으로 메모리에 복원 (복원 단위 = 종목 × 소유자)
             holding_restored = 0
             total_invested = 0.0
             stale_info = []  # 장기보유 종목 정보 수집
             by_owner = {}  # 전략 self.positions 주입용 {owner: {code: {qty, entry_price, entry_time}}}
 
-            for real_stock in real_holdings:
-                stock_code = real_stock.get('stock_code', '')
-                stock_name = real_stock.get('stock_name', f'Stock_{stock_code}')
-                quantity = int(real_stock.get('quantity', 0))
-                avg_price = float(real_stock.get('avg_price', 0))
+            restore_legs = self._build_restore_legs(real_holdings, db_by_owner)
 
-                if quantity <= 0:
-                    continue
-
-                # DB에 해당 종목 정보가 있으면 익절/손절률 사용
-                if stock_code in db_holdings_dict:
-                    db_info = db_holdings_dict[stock_code]
-                    target_profit_rate = db_info.get('target_profit_rate', DEFAULT_TARGET_PROFIT_RATE)
-                    stop_loss_rate = db_info.get('stop_loss_rate', DEFAULT_STOP_LOSS_RATE)
-                else:
-                    target_profit_rate = DEFAULT_TARGET_PROFIT_RATE
-                    stop_loss_rate = DEFAULT_STOP_LOSS_RATE
-                    logger.warning(f"[실전매매] {stock_code} DB에 없음 - 기본 익절/손절률 적용")
+            for leg in restore_legs:
+                stock_code = leg['stock_code']
+                stock_name = leg['stock_name']
+                quantity = leg['quantity']
+                avg_price = leg['buy_price']
+                target_profit_rate = leg['target_profit_rate']
+                stop_loss_rate = leg['stop_loss_rate']
+                owner_name = leg['owner']
 
                 prev_close = self.get_previous_close(stock_code)
-
-                # owner 전략을 등록 시점에 바인딩 (DB strategy 컬럼 기준)
-                _raw_owner = db_holdings_dict.get(stock_code, {}).get('strategy', '') \
-                    if stock_code in db_holdings_dict else ''
-                owner_name = _raw_owner.strip() if (_raw_owner and isinstance(_raw_owner, str)) else ""
 
                 success = await self.trading_manager.add_selected_stock(
                     stock_code=stock_code,
@@ -944,8 +1027,8 @@ class StateRestorer:
                         if owner_name:
                             trading_stock.strategy_name = owner_name
 
-                        # 장기보유 체크: DB에 buy_time이 있으면 사용
-                        buy_time = db_holdings_dict.get(stock_code, {}).get('buy_time') if stock_code in db_holdings_dict else None
+                        # 장기보유 체크: DB에 buy_time이 있으면 사용 (owner 별 값)
+                        buy_time = leg.get('buy_time')
                         if buy_time is not None:
                             target_profit_rate, stop_loss_rate = self._apply_stale_position_check(
                                 trading_stock, buy_time,
@@ -1010,8 +1093,11 @@ class StateRestorer:
             # 복원 포지션을 전략 self.positions 로 주입 (재시작 시 전략측 청산 복원)
             self._sync_strategy_positions(by_owner)
 
-            if real_holdings:
-                logger.info(f"[실전매매] 보유 종목 {holding_restored}/{len(real_holdings)}개 복원 완료")
+            if restore_legs:
+                logger.info(
+                    f"[실전매매] 보유 종목 {holding_restored}/{len(restore_legs)}개 복원 완료 "
+                    f"(계좌 {len(real_holdings)}종목)"
+                )
                 self._log_fund_sync_summary(holding_restored, total_invested, "실전매매")
 
                 # 장기보유 종목 요약
