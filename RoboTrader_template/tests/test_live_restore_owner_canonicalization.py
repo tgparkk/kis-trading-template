@@ -216,7 +216,10 @@ class TestUnresolvableOwners:
         assert len(_legs(restorer, rows)) == 1
 
     def test_resolvable_and_unresolvable_split_and_owner_keeps_its_share(self):
-        """대칭: 살아있는 전략은 정확히 자기 몫만, 고아 몫은 남에게 안 준다."""
+        """대칭: 살아있는 전략은 정확히 자기 몫만, 고아 몫은 남에게 안 준다.
+
+        (빌더 수준 검증. 진입점은 아래처럼 고아를 만나면 기동을 중단한다.)
+        """
         a, _b = _strats()
         rows = [_row(KEY_A, 7, 100_000.0, 2), _row('unknown', 3, 100_000.0, 1)]
         restorer = _prepared(rows, 10, {KEY_A: a})
@@ -228,8 +231,31 @@ class TestUnresolvableOwners:
         assert by_owner[KEY_A] == 7
         assert by_owner['unknown'] == 3
 
-    def test_orphan_leg_is_reported_as_error(self, monkeypatch):
-        """「아무도 소유하지 않는 실포지션」은 조용히 넘어가면 안 된다."""
+    def test_orphan_leg_aborts_startup(self):
+        """🔴 사장님 결정(2026-08-14): 고아 레그는 fail-closed = 기동 중단.
+
+        미해석 라벨은 실전 도입기에 거의 항상 «설정 실수»(폴더명 오타·전략
+        비활성화·표기 드리프트)다. 아무 전략도 소유하지 않는 실포지션을 안고
+        하루를 굴리느니 멈추고 사람이 본다.
+        """
+        a, _b = _strats()
+        rows = [_row(KEY_A, 7, 100_000.0, 2), _row('unknown', 3, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a})
+
+        with pytest.raises(LiveStartupAbort):
+            asyncio.run(restorer._restore_holdings_from_real_account())
+
+    def test_all_unresolvable_aborts_startup(self):
+        """전량이 고아여도(=단일 레그) 마찬가지로 중단한다."""
+        a, _b = _strats()
+        rows = [_row('unknown', 10, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a})
+
+        with pytest.raises(LiveStartupAbort):
+            asyncio.run(restorer._restore_holdings_from_real_account())
+
+    def test_orphan_report_names_the_code_and_label(self, monkeypatch):
+        """중단 사유는 진단 가능해야 한다 — 종목·라벨이 본문에 남는다."""
         import bot.state_restorer as sr
         a, _b = _strats()
         fake_logger = Mock()
@@ -237,11 +263,11 @@ class TestUnresolvableOwners:
         rows = [_row(KEY_A, 7, 100_000.0, 2), _row('unknown', 3, 100_000.0, 1)]
         restorer = _prepared(rows, 10, {KEY_A: a})
 
-        _legs(restorer, rows)
+        orphans = restorer._detect_orphan_legs(_legs(restorer, rows))
 
+        assert len(orphans) == 1
+        assert CODE in orphans[0] and 'unknown' in orphans[0]
         assert fake_logger.error.called, "고아 레그가 ERROR 없이 지나갔다"
-        msg = " ".join(str(c[0][0]) for c in fake_logger.error.call_args_list)
-        assert CODE in msg and 'unknown' in msg
 
     def test_resolvable_only_logs_no_orphan_error(self, monkeypatch):
         """대칭: 정상 입력에서는 고아 ERROR 가 나오지 않는다(경보 마비 방지)."""
@@ -252,9 +278,61 @@ class TestUnresolvableOwners:
         rows = [_row(KEY_A, 7, 100_000.0, 2), _row(KEY_B, 3, 100_000.0, 1)]
         restorer = _prepared(rows, 10, {KEY_A: a, KEY_B: b})
 
-        _legs(restorer, rows)
-
+        assert restorer._detect_orphan_legs(_legs(restorer, rows)) == []
         assert not fake_logger.error.called
+
+    def test_blank_strategy_column_on_a_db_row_aborts(self):
+        """대칭 ①: DB 행이 있는데 strategy 컬럼이 비면 그건 진짜 고아다."""
+        a, _b = _strats()
+        rows = [_row('', 10, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a})
+
+        with pytest.raises(LiveStartupAbort):
+            asyncio.run(restorer._restore_holdings_from_real_account())
+
+    def test_leg_without_a_db_row_is_reconciliations_business(self):
+        """대칭 ②: DB 행이 «아예 없는» 레그는 소유권이 아니라 대사의 소관이다.
+
+        「실계좌에만 존재」는 _detect_holdings_mismatch 가 이미 fail-closed 로
+        죽인다(프로덕션 도달 불가). 여기서 또 abort 하면 같은 입력에 중복
+        차단이 생기고, 대사를 mock 한 기존 테스트들이 진단 불가로 죽는다.
+        """
+        a, _b = _strats()
+        restorer = _prepared([], 10, {KEY_A: a})
+
+        legs = restorer._build_restore_legs(restorer.broker.get_holdings(), {})
+
+        assert len(legs) == 1 and legs[0]['owner'] == ""
+        assert restorer._detect_orphan_legs(legs) == []
+
+    def test_clean_input_does_not_abort(self):
+        """🔴 대칭 단언 — 여기가 제일 중요하다.
+
+        fail-closed 를 넣을 때 진짜 위험은 「아무도 진단 못 하는 기동 차단」이
+        되는 것이다. 정상 입력이 **중단 없이 끝까지 복원되는지** 를 같이 고정해야
+        고아 차단이 과잉으로 번지지 않는다.
+        """
+        a, b = _strats()
+        rows = [_row(KEY_A, 7, 100_000.0, 2), _row(KEY_B, 3, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a, KEY_B: b})
+
+        asyncio.run(restorer._restore_holdings_from_real_account())  # no raise
+
+        a.sync_positions.assert_called_once()
+        b.sync_positions.assert_called_once()
+
+    def test_class_name_notation_is_not_treated_as_orphan(self):
+        """대칭: 폴더키가 아니라 클래스명으로 적힌 라벨도 «해석된다» = 고아 아님.
+
+        2단 해석(폴더키→클래스명)이 죽으면 정상 계좌가 통째로 기동 차단된다.
+        """
+        a, _b = _strats()
+        rows = [_row(CLS_A, 10, 100_000.0, 1)]
+        restorer = _prepared(rows, 10, {KEY_A: a})
+
+        asyncio.run(restorer._restore_holdings_from_real_account())  # no raise
+
+        a.sync_positions.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

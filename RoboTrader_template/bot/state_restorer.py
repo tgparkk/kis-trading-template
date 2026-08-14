@@ -940,6 +940,12 @@ class StateRestorer:
                     'owner': "", 'buy_time': None,
                     'target_profit_rate': DEFAULT_TARGET_PROFIT_RATE,
                     'stop_loss_rate': DEFAULT_STOP_LOSS_RATE,
+                    # DB 행이 없는 레그 = 「실계좌에만 존재」. 소유권이 아니라
+                    # **대사**의 소관이고 거기서 이미 fail-closed 로 죽는다
+                    # (프로덕션 도달 불가 — test_state_restorer_edge_cases.py:362
+                    # 가 같은 근거를 적어 두었다). 고아 판정에서는 제외해 같은
+                    # 입력에 중복 abort 를 만들지 않는다.
+                    'from_db': False,
                 })
                 continue
 
@@ -956,17 +962,6 @@ class StateRestorer:
                         f"수량 {info['quantity']} — 비정상 레그 스킵"
                     )
                     continue
-                if not self._resolve_owner_strategy(info['strategy']):
-                    # 「아무 전략도 소유하지 않는 실포지션」. 기동은 막지 않되
-                    # (전략 폴더 개명만으로 아침 기동이 죽으면 그게 더 위험하다)
-                    # 반드시 시끄럽게 남긴다 — 이 레그는 전략 고유 청산
-                    # (trail/max_hold/trend_flip)을 영영 못 받고 프레임워크
-                    # 백스톱(position_monitor tp/sl · EOD 일괄청산)만 남는다.
-                    logger.error(
-                        f"🚨 [실전매매] {stock_code} {leg_qty}주 owner={info['strategy']!r} "
-                        f"미해석 — 전략 고유 청산 없음, 프레임워크 백스톱만 적용 "
-                        f"(등록 전략: {list((self.strategies or {}).keys())})"
-                    )
                 legs.append({
                     'stock_code': stock_code, 'stock_name': stock_name,
                     'quantity': leg_qty,
@@ -975,8 +970,48 @@ class StateRestorer:
                     'buy_time': info.get('buy_time'),
                     'target_profit_rate': info.get('target_profit_rate', DEFAULT_TARGET_PROFIT_RATE),
                     'stop_loss_rate': info.get('stop_loss_rate', DEFAULT_STOP_LOSS_RATE),
+                    'from_db': True,
                 })
         return legs
+
+    def _detect_orphan_legs(self, legs: List[Dict]) -> List[str]:
+        """어느 전략도 소유하지 않는 복원 레그를 잡는다.
+
+        owner 라벨이 폴더키로도 클래스명으로도 해석되지 않으면(전략 비활성·
+        폴더명 오타·표기 드리프트·무기명) 그 포지션은 전략 고유 청산
+        (trail/max_hold/trend_flip)을 영영 받지 못한다.
+
+        ⚠️ 이건 «의도된, 되돌릴 수 있는 정책 선택» 이다 — 실전 도입기 동안
+        fail-closed(기동 중단)로 간다(2026-08-14 사장님 결정).
+          · 채택 근거: 미해석 라벨은 이 시기에 거의 항상 «설정 실수» 다.
+            그때야말로 봇이 멈추고 사람이 봐야 할 순간이지, 아무도 소유하지
+            않는 포지션을 안고 하루를 굴릴 때가 아니다.
+          · 채택되지 않은 반대 논거(나중에 뒤집을 사람을 위해 남긴다):
+            그 포지션도 프레임워크 백스톱은 그대로 받는다 —
+            position_monitor 의 tp/sl 과 EOD 일괄청산이 커버하므로 «방치»는
+            아니다. 그리고 전략 폴더 개명 한 번이 매매일 하나를 통째로
+            날릴 수 있다. 페이퍼 경로(:667 「비활성 → 기본 정책 적용」)는
+            그래서 fail-open 이고, 그건 위험 국면이 다르기 때문이다.
+          · 설정 스위치는 **일부러 두지 않았다**. 이 저장소는 falsy 기본값을
+            가진 반쯤 결선된 스위치에 반복해서 물렸다(max_capital_pct 계열).
+            정책 하나를 근거와 함께 하드코딩하는 편이, 아무도 검증하지 않는
+            토글보다 안전하다. 뒤집으려면 이 함수의 호출부에서 raise 를
+            빼고 ERROR 로그만 남기면 된다.
+        """
+        orphans: List[str] = []
+        for leg in legs:
+            if not leg.get('from_db', True):
+                continue  # 대사 소관 (위 주석 참조)
+            if self._resolve_owner_strategy(leg['owner']) is not None:
+                continue
+            msg = (
+                f"⚠️ {leg['stock_code']}: {leg['quantity']}주 "
+                f"owner={leg['owner']!r} 미해석 — 이 포지션은 어느 전략도 "
+                f"소유하지 않는다 (등록 전략: {list((self.strategies or {}).keys())})"
+            )
+            logger.error(f"🚨 [실전매매] {msg}")
+            orphans.append(msg)
+        return orphans
 
     def _detect_owner_leg_anomalies(self, by_owner: Dict[tuple, Dict]) -> List[str]:
         """소유자별 레그의 수량 이상을 잡는다 (대사가 못 보는 축).
@@ -1075,6 +1110,15 @@ class StateRestorer:
             by_owner = {}  # 전략 self.positions 주입용 {owner: {code: {qty, entry_price, entry_time}}}
 
             restore_legs = self._build_restore_legs(real_holdings, db_by_owner)
+
+            # 4-1. 소유자 없는 레그 = 기동 중단(fail-closed, 2026-08-14 사장님 결정).
+            #      근거·반대논거·되돌리는 법은 _detect_orphan_legs 독스트링에 있다.
+            orphan_legs = self._detect_orphan_legs(restore_legs)
+            if orphan_legs:
+                raise LiveStartupAbort(
+                    f"소유 전략 미해석 보유 {len(orphan_legs)}건 — "
+                    f"전략 설정 확인 후 재기동 필요",
+                    " / ".join(orphan_legs[:10]))
 
             for leg in restore_legs:
                 stock_code = leg['stock_code']

@@ -53,7 +53,14 @@ def base_deps():
 
     get_prev_close = MagicMock(return_value=50000.0)
 
+    # 2026-08-14: 실전 복원은 소유 전략이 해석되지 않는 보유를 fail-closed 로
+    # 막는다(_detect_orphan_legs). 아래 실전 테스트들의 관심사는 소유권이
+    # 아니므로, DB 행이 «해석되는» owner 를 갖도록 전략 1개를 등록해 둔다.
+    strat_a = MagicMock()
+    strat_a.name = 'StratAStrategy'
+
     return {
+        'strategies': {'stratA': strat_a},
         'trading_manager': trading_manager,
         'db_manager': db_manager,
         'telegram_integration': telegram,
@@ -342,7 +349,7 @@ class TestRealTradingEdgeCases:
         base_deps['db_manager'].get_real_open_positions.return_value = pd.DataFrame([{
             'stock_code': '000660', 'stock_name': 'SK하이닉스',
             'quantity': 5, 'buy_price': 120000.0,
-            'strategy': '', 'target_profit_rate': None, 'stop_loss_rate': None,
+            'strategy': 'stratA', 'target_profit_rate': None, 'stop_loss_rate': None,
         }])
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
@@ -374,7 +381,7 @@ class TestRealTradingEdgeCases:
         base_deps['db_manager'].get_real_open_positions.return_value = pd.DataFrame([{
             'stock_code': '005930', 'stock_name': '삼성전자',
             'quantity': 10, 'buy_price': 70000.0,
-            'strategy': '', 'target_profit_rate': None, 'stop_loss_rate': None,
+            'strategy': 'stratA', 'target_profit_rate': None, 'stop_loss_rate': None,
         }])
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
@@ -590,7 +597,7 @@ class TestRestoreTodayCandidatesIntegration:
         base_deps['db_manager'].get_real_open_positions.return_value = pd.DataFrame([{
             'stock_code': '000660', 'stock_name': 'SK하이닉스',
             'quantity': 5, 'buy_price': 120000.0,
-            'strategy': '', 'target_profit_rate': None, 'stop_loss_rate': None,
+            'strategy': 'stratA', 'target_profit_rate': None, 'stop_loss_rate': None,
         }])
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
