@@ -39,7 +39,9 @@ class OrderManagerBase:
 
         # FundManager 연동
         self.fund_manager = None  # 외부에서 set_fund_manager()로 설정
-        self._temp_reserve_ids: Dict[str, str] = {}  # stock_code → temp_reserve_id 매핑
+        # make_reserve_id(stock_code, owner) → temp_reserve_id 매핑.
+        # 종목코드 단독 키는 두 전략의 동일종목 주문이 서로의 예약을 덮는다.
+        self._temp_reserve_ids: Dict[str, str] = {}
 
         # 모니터링 상태
         self.is_monitoring = False

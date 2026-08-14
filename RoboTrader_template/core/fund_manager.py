@@ -73,6 +73,27 @@ class FundManagerProtocol(Protocol):
         ...
 
 
+def make_reserve_id(stock_code: str, owner_strategy: Optional[str] = "") -> str:
+    """자금 예약 ID — 소유 전략을 키에 싣는다.
+
+    종전 키는 종목코드 단독이라 `reserve_funds` 의 중복 예약 거부
+    (fund_manager:292-294)가 「같은 전략의 진짜 중복」과 「다른 전략의 정당한
+    매수」를 구분하지 못했다. 실전에서는 A 의 미체결 매수가 살아 있는 동안
+    B 의 같은 종목 매수가 "자금 예약 실패 - 매수 스킵"으로 조용히 탈락한다
+    (2026-08-14 Fix 4).
+
+    ⚠️ 예약 측(trading_analyzer)과 감지 측(order_executor.has_reservation)이
+    **반드시 이 함수로 같은 id 를 만들어야** 한다. 키가 어긋나면 2차 예약이
+    생기고 1차가 영구 누수된다(사전-실전 감사 BLOCKER #7 재발).
+
+    owner 미지정(""/None)이면 종전 키(종목코드 단독)를 그대로 반환한다 —
+    레거시 호출 경로의 동작 불변. owner 는 **접미사**로 붙인다: 기존 계약
+    (예약 ID 가 종목코드로 시작한다)을 깨지 않기 위해서다.
+    """
+    owner = str(owner_strategy).strip() if owner_strategy else ""
+    return f"{stock_code}:{owner}" if owner else stock_code
+
+
 # ============================================================================
 # BacktestEngine용 인메모리 경량 구현
 # ============================================================================

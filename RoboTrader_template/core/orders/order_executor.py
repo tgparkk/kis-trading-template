@@ -85,20 +85,29 @@ class OrderExecutorMixin:
 
             # FundManager 자금 예약 (실전 매매 시)
             if not getattr(self.config, "paper_trading", False) and self.fund_manager:
+                from ..fund_manager import make_reserve_id
                 reserve_amount = price * quantity
-                # H4 fix: TradingAnalyzer에서 이미 stock_code로 예약한 경우 중복 예약 방지
-                already_reserved = self.fund_manager.has_reservation(stock_code)
+                # H4 fix: TradingAnalyzer에서 이미 예약한 경우 중복 예약 방지.
+                # ⚠️ 예약 키는 반드시 make_reserve_id 로 만든다 — 예약 측
+                # (trading_analyzer)과 키가 어긋나면 여기서 2차 예약이 생기고
+                # 1차가 영구 누수된다(BLOCKER #7, 2026-06-24).
+                analyzer_reserve_id = make_reserve_id(stock_code, owner_strategy)
+                slot_key = analyzer_reserve_id
+                already_reserved = self.fund_manager.has_reservation(analyzer_reserve_id)
                 if already_reserved:
-                    self.logger.debug(f"자금 이미 예약됨 (by TradingAnalyzer): {stock_code}")
-                    self._temp_reserve_ids[stock_code] = stock_code
+                    self.logger.debug(f"자금 이미 예약됨 (by TradingAnalyzer): {analyzer_reserve_id}")
+                    self._temp_reserve_ids[slot_key] = analyzer_reserve_id
                 else:
-                    # 임시 order_id로 예약 (실제 order_id는 API 응답 후 알 수 있음)
-                    temp_reserve_id = f"RESERVE-{stock_code}-{int(now_kst().timestamp())}"
+                    # 임시 order_id로 예약 (실제 order_id는 API 응답 후 알 수 있음).
+                    # owner 를 넣어 같은 초에 두 전략이 들어오는 충돌을 없앤다.
+                    temp_reserve_id = (
+                        f"RESERVE-{analyzer_reserve_id}-{int(now_kst().timestamp())}"
+                    )
                     if not self.fund_manager.reserve_funds(temp_reserve_id, reserve_amount):
                         self.logger.warning(f"자금 부족으로 매수 주문 거부: {stock_code} (필요: {reserve_amount:,.0f}원)")
                         return None
                     # 임시 예약 ID를 나중에 실제 order_id로 교체하기 위해 저장
-                    self._temp_reserve_ids[stock_code] = temp_reserve_id
+                    self._temp_reserve_ids[slot_key] = temp_reserve_id
 
             # 가상매매 모드: 즉시 체결로 시뮬레이션
             if getattr(self.config, "paper_trading", False):
@@ -170,7 +179,7 @@ class OrderExecutorMixin:
         if not result:
             self.logger.error(f"매수 주문 API 타임아웃: {stock_code}")
             # FundManager 예약 해제
-            self._release_temp_reserve(stock_code)
+            self._release_temp_reserve(stock_code, owner_strategy)
             return None
 
         if result.success:
@@ -202,7 +211,7 @@ class OrderExecutorMixin:
             self._register_active_order(stock_code, result.order_id, OrderType.BUY)
 
             # FundManager: 임시 예약을 실제 order_id로 교체
-            self._transfer_temp_reserve(stock_code, result.order_id)
+            self._transfer_temp_reserve(stock_code, result.order_id, owner_strategy)
 
             self.logger.info(f"매수 주문 성공: {result.order_id} - {stock_code}({stock_name}) {quantity}주 @{price:,.0f}원")
             self.logger.info(f"타임아웃 설정: {timeout_seconds}초 후 ({timeout_time.strftime('%H:%M:%S')}에 취소)")
@@ -222,12 +231,15 @@ class OrderExecutorMixin:
         else:
             self.logger.error(f"매수 주문 실패: {result.message}")
             # FundManager 예약 해제
-            self._release_temp_reserve(stock_code)
+            self._release_temp_reserve(stock_code, owner_strategy)
             return None
 
-    def _release_temp_reserve(self: 'OrderManagerBase', stock_code: str) -> None:
-        """임시 FundManager 예약 해제 (종목별)"""
-        temp_id = self._temp_reserve_ids.pop(stock_code, None)
+    def _release_temp_reserve(self: 'OrderManagerBase', stock_code: str,
+                              owner_strategy: str = "") -> None:
+        """임시 FundManager 예약 해제 (종목 × 소유 전략별)"""
+        from ..fund_manager import make_reserve_id
+        temp_id = self._temp_reserve_ids.pop(
+            make_reserve_id(stock_code, owner_strategy), None)
         if temp_id and self.fund_manager:
             try:
                 self.fund_manager.cancel_order(temp_id)
@@ -235,9 +247,12 @@ class OrderExecutorMixin:
             except Exception as e:
                 self.logger.warning(f"임시 자금 예약 해제 실패: {e}")
 
-    def _transfer_temp_reserve(self: 'OrderManagerBase', stock_code: str, real_order_id: str) -> None:
-        """임시 예약을 실제 order_id로 교체 (종목별)"""
-        temp_id = self._temp_reserve_ids.pop(stock_code, None)
+    def _transfer_temp_reserve(self: 'OrderManagerBase', stock_code: str, real_order_id: str,
+                               owner_strategy: str = "") -> None:
+        """임시 예약을 실제 order_id로 교체 (종목 × 소유 전략별)"""
+        from ..fund_manager import make_reserve_id
+        temp_id = self._temp_reserve_ids.pop(
+            make_reserve_id(stock_code, owner_strategy), None)
         if temp_id and self.fund_manager:
             try:
                 if self.fund_manager.transfer_reservation(temp_id, real_order_id):

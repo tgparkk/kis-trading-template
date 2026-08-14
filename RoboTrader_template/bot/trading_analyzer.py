@@ -137,13 +137,21 @@ class TradingAnalyzer:
                             return
 
                 # FundManager 자금 예약.
-                # 키는 반드시 맨 stock_code — place_buy_order 의 H4 중복방지가
-                # has_reservation(stock_code) 로 이 예약을 감지해 2차 예약을 만들지
-                # 않도록 해야 한다. timestamped 키는 키 불일치로 2차 예약을 유발하고
-                # 1차 예약이 영구 누수된다(사전-실전 감사 BLOCKER #7, 2026-06-24).
-                # 동일 종목 동시 매수는 has_active_buy_order 가드로 차단되어 안전.
+                # 키는 반드시 make_reserve_id — place_buy_order 의 H4 중복방지가
+                # has_reservation(같은 id) 로 이 예약을 감지해 2차 예약을 만들지
+                # 않도록 해야 한다. 키가 어긋나면 2차 예약이 생기고 1차 예약이
+                # 영구 누수된다(사전-실전 감사 BLOCKER #7, 2026-06-24).
+                #
+                # 종목코드 단독 키는 두 전략이 같은 종목을 살 때 뒤에 온 쪽이
+                # "자금 예약 실패 - 매수 스킵" 으로 조용히 탈락시켰다 —
+                # 「같은 전략의 진짜 중복」과 구분이 안 됐다(2026-08-14 Fix 4).
+                # owner 는 인자(strategy_name=폴더키)가 아니라 **슬롯 객체**에서
+                # 읽는다 — order_execution.execute_buy_order 가 place_buy_order 로
+                # 넘기는 값과 문자 그대로 같아야 감지가 성립한다(표기-불변).
                 from utils.korean_time import now_kst as _now_kst
-                _reserve_id = stock_code
+                from core.fund_manager import make_reserve_id
+                _reserve_id = make_reserve_id(
+                    stock_code, trading_stock.owner_strategy_name)
                 reserve_ok = self.bot.fund_manager.reserve_funds(_reserve_id, required_amount)
                 if not reserve_ok:
                     self.logger.warning(f"{stock_code} 자금 예약 실패 - 매수 스킵")
