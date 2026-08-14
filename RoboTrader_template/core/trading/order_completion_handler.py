@@ -70,6 +70,45 @@ class OrderCompletionHandler:
                 f"OrderCompletionHandler에 {len(self.strategies_by_key)}개 전략 맵 연결"
             )
 
+    def _owner_aliases(self, owner_name) -> list:
+        """owner 표기의 동치 후보(폴더키 ↔ 클래스명)를 순서대로 반환.
+
+        같은 전략이 경로에 따라 폴더키('rs_leader')로도 클래스명
+        ('RSLeaderStrategy')으로도 표기된다(trading_context:529 는 클래스명,
+        DB 복원은 폴더키). 어느 표기로 들어와도 같은 슬롯을 찾게 한다.
+        """
+        if not owner_name:
+            return []
+        aliases = [owner_name]
+        strat = self.strategies_by_key.get(owner_name)
+        if strat is not None:
+            cls_name = getattr(strat, 'name', None)
+            if cls_name and cls_name != owner_name:
+                aliases.append(cls_name)
+        else:
+            for key, s in self.strategies_by_key.items():
+                if getattr(s, 'name', None) == owner_name and key != owner_name:
+                    aliases.append(key)
+                    break
+        return aliases
+
+    def _find_owned_stock(self, stock_code: str, owner_name):
+        """주문 owner 로 소유 슬롯을 찾는다 (폴더키/클래스명 양쪽 허용).
+
+        owner 미지정·미해석이면 종목코드 단독 폴백 — 다중소유면 임의 소유자다.
+        """
+        for key in self._owner_aliases(owner_name):
+            ts = self.state_manager.get_trading_stock(stock_code, strategy=key)
+            if ts is not None:
+                return ts
+        ts = self.state_manager.get_trading_stock(stock_code)
+        if ts is not None and owner_name:
+            self.logger.warning(
+                f"[{stock_code}] 주문 owner={owner_name!r} 슬롯 미발견 — "
+                f"종목코드 단독 폴백(다중소유면 임의 소유자다)"
+            )
+        return ts
+
     def _strategy_by_class_name(self, name):
         """클래스명(strategy.name)으로 전략 인스턴스 조회 (보조 매핑, lazy)."""
         if self._by_class_name_cache is None:
@@ -301,8 +340,11 @@ class OrderCompletionHandler:
         try:
             with self.state_manager.lock:
                 # 복합키 전환(df32514): trading_stocks 키가 (owner, code)이므로
-                # 종목 코드 단독 조회는 get_trading_stock 폴백 경로를 사용한다.
-                trading_stock = self.state_manager.get_trading_stock(order.stock_code)
+                # 종목 코드 단독 조회는 임의 소유자를 집는다. 주문이 싣고 온
+                # owner 표기로 소유 슬롯을 먼저 찾는다(2026-08-14 Fix 2).
+                trading_stock = self._find_owned_stock(
+                    order.stock_code, getattr(order, 'owner_strategy', '')
+                )
                 if trading_stock is None:
                     self.logger.warning(f"체결 콜백: 관리되지 않는 종목 {order.stock_code}")
                     return

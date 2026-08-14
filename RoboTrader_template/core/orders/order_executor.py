@@ -46,8 +46,15 @@ class OrderExecutorMixin:
     async def place_buy_order(self: 'OrderManagerBase', stock_code: str, quantity: int, price: float,
                              timeout_seconds: int = None,
                              target_profit_rate: float = None,
-                             stop_loss_rate: float = None) -> Optional[str]:
-        """매수 주문 실행"""
+                             stop_loss_rate: float = None,
+                             owner_strategy: str = "") -> Optional[str]:
+        """매수 주문 실행
+
+        Args:
+            owner_strategy: 소유 전략 표기(폴더키 또는 클래스명). Order 에 그대로
+                실려 체결 후처리(DB 기록·슬롯 조회·전략 콜백)가 종목코드 단독
+                조회로 임의 소유자를 집는 것을 막는다(2026-08-14 Fix 2).
+        """
         try:
             timeout_seconds = timeout_seconds or self.config.order_management.buy_timeout_seconds
 
@@ -97,13 +104,15 @@ class OrderExecutorMixin:
             if getattr(self.config, "paper_trading", False):
                 return await self._execute_paper_buy_order(
                     stock_code, quantity, price,
-                    target_profit_rate, stop_loss_rate
+                    target_profit_rate, stop_loss_rate,
+                    owner_strategy
                 )
 
             # 실전 매매 모드: API 호출
             return await self._execute_real_buy_order(
                 stock_code, quantity, price, timeout_seconds,
-                target_profit_rate, stop_loss_rate
+                target_profit_rate, stop_loss_rate,
+                owner_strategy
             )
 
         except Exception as e:
@@ -112,7 +121,8 @@ class OrderExecutorMixin:
 
     async def _execute_paper_buy_order(self: 'OrderManagerBase', stock_code: str, quantity: int,
                                        price: float, target_profit_rate: float,
-                                       stop_loss_rate: float) -> Optional[str]:
+                                       stop_loss_rate: float,
+                                       owner_strategy: str = "") -> Optional[str]:
         """가상매매 매수 주문 처리"""
         fake_order_id = f"VT-BUY-{stock_code}-{int(now_kst().timestamp())}"
         order = Order(
@@ -124,7 +134,8 @@ class OrderExecutorMixin:
             timestamp=now_kst(),
             status=OrderStatus.FILLED,
             remaining_quantity=0,
-            order_3min_candle_time=self._get_current_3min_candle_time()
+            order_3min_candle_time=self._get_current_3min_candle_time(),
+            owner_strategy=owner_strategy,
         )
         self.completed_orders.append(order)
         self.logger.info(f"(가상) 매수 체결: {fake_order_id} - {stock_code} {quantity}주 @{price:,.0f}원")
@@ -141,7 +152,8 @@ class OrderExecutorMixin:
     async def _execute_real_buy_order(self: 'OrderManagerBase', stock_code: str, quantity: int,
                                       price: float, timeout_seconds: int,
                                       target_profit_rate: float,
-                                      stop_loss_rate: float) -> Optional[str]:
+                                      stop_loss_rate: float,
+                                      owner_strategy: str = "") -> Optional[str]:
         """실전 매수 주문 처리"""
         from api.kis_api_manager import OrderResult
 
@@ -177,7 +189,8 @@ class OrderExecutorMixin:
                 order_3min_candle_time=self._get_current_3min_candle_time(),
                 target_profit_rate=target_profit_rate,
                 stop_loss_rate=stop_loss_rate,
-                stock_name=stock_name
+                stock_name=stock_name,
+                owner_strategy=owner_strategy,
             )
 
             # 미체결 관리에 추가
@@ -236,11 +249,14 @@ class OrderExecutorMixin:
 
     async def place_sell_order(self: 'OrderManagerBase', stock_code: str, quantity: int, price: float,
                               timeout_seconds: int = None, market: bool = False,
-                              force: bool = False) -> Optional[str]:
+                              force: bool = False,
+                              owner_strategy: str = "") -> Optional[str]:
         """매도 주문 실행
 
         Args:
             force: True이면 시간대 검사를 건너뜀 (EOD 청산 등)
+            owner_strategy: 소유 전략 표기(폴더키 또는 클래스명). Order 에 실려
+                실전 매도 DB 기록이 임의 소유자로 귀속되는 것을 막는다.
         """
         try:
             timeout_seconds = timeout_seconds or self.config.order_management.sell_timeout_seconds
@@ -271,17 +287,20 @@ class OrderExecutorMixin:
 
             # 가상매매 모드: 즉시 체결로 시뮬레이션
             if getattr(self.config, "paper_trading", False):
-                return await self._execute_paper_sell_order(stock_code, quantity, price, market)
+                return await self._execute_paper_sell_order(
+                    stock_code, quantity, price, market, owner_strategy)
 
             # 실전 매매 모드: API 호출
-            return await self._execute_real_sell_order(stock_code, quantity, price, timeout_seconds, market)
+            return await self._execute_real_sell_order(
+                stock_code, quantity, price, timeout_seconds, market, owner_strategy)
 
         except Exception as e:
             self.logger.error(f"매도 주문 예외: {e}")
             return None
 
     async def _execute_paper_sell_order(self: 'OrderManagerBase', stock_code: str, quantity: int,
-                                        price: float, market: bool) -> Optional[str]:
+                                        price: float, market: bool,
+                                        owner_strategy: str = "") -> Optional[str]:
         """가상매매 매도 주문 처리"""
         fake_order_id = f"VT-SELL-{stock_code}-{int(now_kst().timestamp())}"
         order = Order(
@@ -292,7 +311,8 @@ class OrderExecutorMixin:
             quantity=quantity,
             timestamp=now_kst(),
             status=OrderStatus.FILLED,
-            remaining_quantity=0
+            remaining_quantity=0,
+            owner_strategy=owner_strategy,
         )
         self.completed_orders.append(order)
         order_type_str = '시장가' if market else '지정가'
@@ -308,7 +328,8 @@ class OrderExecutorMixin:
         return fake_order_id
 
     async def _execute_real_sell_order(self: 'OrderManagerBase', stock_code: str, quantity: int,
-                                       price: float, timeout_seconds: int, market: bool) -> Optional[str]:
+                                       price: float, timeout_seconds: int, market: bool,
+                                       owner_strategy: str = "") -> Optional[str]:
         """실전 매도 주문 처리"""
         from api.kis_api_manager import OrderResult
         from utils.price_utils import round_to_tick
@@ -362,7 +383,8 @@ class OrderExecutorMixin:
                 timestamp=now_kst(),
                 status=OrderStatus.PENDING,
                 remaining_quantity=quantity,
-                stock_name=stock_name
+                stock_name=stock_name,
+                owner_strategy=owner_strategy,
             )
 
             # 미체결 관리에 추가
@@ -513,13 +535,15 @@ class OrderExecutorMixin:
                     new_order_id = await self.place_buy_order(
                         order.stock_code,
                         order.remaining_quantity,
-                        new_price
+                        new_price,
+                        owner_strategy=getattr(order, "owner_strategy", "") or ""
                     )
                 else:
                     new_order_id = await self.place_sell_order(
                         order.stock_code,
                         order.remaining_quantity,
-                        new_price
+                        new_price,
+                        owner_strategy=getattr(order, "owner_strategy", "") or ""
                     )
 
                 if new_order_id:

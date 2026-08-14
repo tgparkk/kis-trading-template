@@ -216,6 +216,11 @@ class OrderExecution:
                 trading_stock.is_buying = True
                 trading_stock.order_processed = False  # 새 주문이므로 리셋
 
+                # 주문에 실을 owner 표기는 **슬롯 객체**에서 읽는다(표기-불변).
+                # 인자 strategy 는 None 폴백이 있어 무기명이 될 수 있고, 그러면
+                # 체결 후처리가 다시 종목코드 단독 조회로 떨어진다.
+                _owner_for_order = trading_stock.owner_strategy_name or ""
+
                 # 매수 주문 중 상태로 변경
                 self.state_manager.change_stock_state(
                     stock_code, StockState.BUY_PENDING, f"매수 주문: {reason}",
@@ -226,7 +231,9 @@ class OrderExecution:
                 self.data_collector.add_candidate_stock(stock_code, trading_stock.stock_name)
 
             # 매수 주문 실행
-            order_id = await self.order_manager.place_buy_order(stock_code, quantity, price)
+            order_id = await self.order_manager.place_buy_order(
+                stock_code, quantity, price, owner_strategy=_owner_for_order
+            )
 
             if order_id:
                 with self.state_manager.lock:
@@ -356,6 +363,9 @@ class OrderExecution:
                 # - 타임아웃 시: handle_order_timeout에서 해제
                 trading_stock.is_selling = True
 
+                # 주문에 실을 owner 표기는 **슬롯 객체**에서 읽는다(표기-불변).
+                _owner_for_order = trading_stock.owner_strategy_name or ""
+
                 # 매도 주문 중 상태로 변경
                 self.state_manager.change_stock_state(
                     stock_code, StockState.SELL_PENDING, f"매도 주문: {reason}",
@@ -364,7 +374,8 @@ class OrderExecution:
 
             # 매도 주문 실행
             order_id = await self.order_manager.place_sell_order(
-                stock_code, quantity, price, market=market, force=force
+                stock_code, quantity, price, market=market, force=force,
+                owner_strategy=_owner_for_order
             )
 
             if order_id:

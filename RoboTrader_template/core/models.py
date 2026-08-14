@@ -105,6 +105,12 @@ class Order:
     stop_loss_rate: Optional[float] = None  # 🆕 목표 손절률 (DB 기록용)
     stock_name: Optional[str] = None  # 🆕 종목명 (DB 기록용)
     original_quantity: int = 0  # 원본 주문 수량 (부분 체결 시 변경 전 보존용)
+    # 소유 전략 표기 — 주문 접수 시 TradingStock.owner_strategy_name 을 그대로 복사.
+    # 실전 체결 후처리(DB 기록·슬롯 조회·전략 콜백)가 종목코드 단독 조회로
+    # 임의 소유자를 집는 것을 막는다(2026-08-14 실매매 전환 감사 Fix 2).
+    # ⚠️ 표기는 폴더키('rs_leader')일 수도 클래스명('RSLeaderStrategy')일 수도
+    # 있다 — 소비 측은 두 표기를 모두 허용해야 한다.
+    owner_strategy: str = ""
 
     def __post_init__(self) -> None:
         """초기화 후 처리"""

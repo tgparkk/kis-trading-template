@@ -231,6 +231,15 @@ class TestDailyLossTotalStillWorks:
 class TestUnknownStrategyWarningInOrderDb:
     """trading_stock.strategy_name이 비어 있으면 'unknown' 반환 + WARNING 로그."""
 
+    # 2026-08-14 Fix 2: 조회 키가 stock_code → order 로 바뀌었다(주문이 owner 를
+    # 싣고 다닌다). 아래는 owner 미지정 «레거시 주문» = 종전 계약 그대로.
+    def _legacy_order(self, stock_code="005930", owner=""):
+        from core.models import Order, OrderType
+        from utils.korean_time import now_kst
+        return Order(order_id="OID", stock_code=stock_code,
+                     order_type=OrderType.BUY, price=70_000.0, quantity=1,
+                     timestamp=now_kst(), owner_strategy=owner)
+
     def _make_handler(self, strategy_name_on_ts: str):
         """OrderDBHandlerMixin의 _get_strategy_name_for_order를 직접 테스트하기 위한 mock."""
         from core.orders.order_db_handler import OrderDBHandlerMixin
@@ -249,21 +258,26 @@ class TestUnknownStrategyWarningInOrderDb:
         handler.logger = logger_mock
 
         # 실제 메서드를 언바운드로 호출
+        handler._get_owned_trading_stock = (
+            lambda order: OrderDBHandlerMixin._get_owned_trading_stock(
+                handler, order
+            )
+        )
         handler._get_strategy_name_for_order = (
-            lambda stock_code: OrderDBHandlerMixin._get_strategy_name_for_order(
-                handler, stock_code
+            lambda order: OrderDBHandlerMixin._get_strategy_name_for_order(
+                handler, order
             )
         )
         return handler
 
     def test_empty_strategy_name_returns_unknown(self):
         handler = self._make_handler("")
-        result = handler._get_strategy_name_for_order("005930")
+        result = handler._get_strategy_name_for_order(self._legacy_order())
         assert result == "unknown"
 
     def test_empty_strategy_name_logs_warning(self):
         handler = self._make_handler("")
-        handler._get_strategy_name_for_order("005930")
+        handler._get_strategy_name_for_order(self._legacy_order())
         handler.logger.warning.assert_called_once()
         warn_msg = handler.logger.warning.call_args[0][0]
         assert "005930" in warn_msg
@@ -271,9 +285,18 @@ class TestUnknownStrategyWarningInOrderDb:
 
     def test_filled_strategy_name_no_warning(self):
         handler = self._make_handler("SampleStrategy")
-        result = handler._get_strategy_name_for_order("005930")
+        result = handler._get_strategy_name_for_order(self._legacy_order())
         assert result == "SampleStrategy"
         handler.logger.warning.assert_not_called()
+
+    def test_order_owner_wins_over_slot_lookup(self):
+        """주문이 owner 를 싣고 있으면 슬롯 조회 없이 그 값으로 기록한다."""
+        handler = self._make_handler("SampleStrategy")
+        result = handler._get_strategy_name_for_order(
+            self._legacy_order(owner="rs_leader"))
+        assert result == "rs_leader"
+        assert result != "SampleStrategy"
+        handler.trading_manager.get_trading_stock.assert_not_called()
 
     def test_no_trading_manager_returns_unknown_with_warning(self):
         from core.orders.order_db_handler import OrderDBHandlerMixin
@@ -282,10 +305,17 @@ class TestUnknownStrategyWarningInOrderDb:
         handler.trading_manager = None
         handler.config = None
         handler.logger = MagicMock()
+        handler._get_owned_trading_stock = (
+            lambda order: OrderDBHandlerMixin._get_owned_trading_stock(
+                handler, order
+            )
+        )
         handler._get_strategy_name_for_order = (
-            lambda sc: OrderDBHandlerMixin._get_strategy_name_for_order(handler, sc)
+            lambda order: OrderDBHandlerMixin._get_strategy_name_for_order(
+                handler, order
+            )
         )
 
-        result = handler._get_strategy_name_for_order("005930")
+        result = handler._get_strategy_name_for_order(self._legacy_order())
         assert result == "unknown"
         handler.logger.warning.assert_called_once()
