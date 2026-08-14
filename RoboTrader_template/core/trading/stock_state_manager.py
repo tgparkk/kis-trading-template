@@ -21,6 +21,24 @@ _VALID_TRANSITIONS: Dict[StockState, List[StockState]] = {
     StockState.FAILED: [StockState.SELECTED, StockState.COMPLETED],
 }
 
+# 복원(restoring=True)이 «경고 출력»을 건너뛰는 전이 쌍 — 정확히 «복원이 실제로
+# 만드는 것» 하나뿐이다. add_selected_stock 이 SELECTED 를 만든 직후 POSITIONED
+# 로 올리는 그 조합.
+#
+# 🔴 「restoring 이면 무슨 전이든 침묵」으로 두면 안 된다. 기본값 False 는
+# 극성이 안전하지만(배선이 끊기면 «시끄러워진다») 억제 «범위»는 극성이 반대라,
+# 예상 못 한 전이 쌍이 조용해진다. 특히 COMPLETED → POSITIONED 는 이미 청산된
+# 슬롯을 되살리는 전이 — 복원이 거기 발화하면 «가장 시끄러워야 할» 사고인데
+# 넓은 형태에서는 그것이 침묵한다.
+#
+# 그리고 복원 상태가 POSITIONED 라는 보장은 «주석»뿐이다: bot/state_restorer.py
+# 는 리터럴이 아니라 변수(restore_state)를 넘기고, 그 상수성의 근거인
+# 「기동 시 미체결 전량 취소」는 get_pending_orders — 미완결 P0 서브시스템 —
+# 에 기댄다. 근거가 흔들리면 «침묵»이 아니라 «경고»가 나와야 한다.
+_RESTORE_SUPPRESSED_TRANSITIONS = frozenset({
+    (StockState.SELECTED, StockState.POSITIONED),
+})
+
 
 class StockStateManager:
     """
@@ -155,6 +173,8 @@ class StockStateManager:
             strategy: 소유 전략(미지정 시 종목 코드만으로 매칭)
             restoring: DB/계좌 복원 경로에서의 전이임을 호출자가 선언한다.
                 True 면 «비정상 전이 경고 출력만» 건너뛴다(전이 자체는 동일).
+                ⚠️ 그것도 _RESTORE_SUPPRESSED_TRANSITIONS 에 등재된 쌍에서만이다
+                — 복원이 다른 쌍을 만들면 선언이 있어도 경고가 나온다.
                 복원은 SELECTED(=add_selected_stock 직후) → POSITIONED 를
                 포지션마다 수행하는데 이 조합은 _VALID_TRANSITIONS 에 없어,
                 기동할 때마다 복원 건수만큼 WARNING 이 쌓였다(2026-08-14
@@ -186,8 +206,12 @@ class StockStateManager:
 
             # 상태 전이 규칙 검증 (비정상 전이는 경고만, 차단하지 않음)
             # restoring=True 는 «경고 출력»만 건너뛴다 — 아래 전이 로직은 불변.
+            # 게다가 «선언된 그 쌍»에서만 건너뛴다(_RESTORE_SUPPRESSED_TRANSITIONS).
+            # 복원이 예상 밖 전이를 만들면 조용해지는 게 아니라 경고가 나온다.
             valid_next_states = _VALID_TRANSITIONS.get(old_state, [])
-            if new_state not in valid_next_states and not restoring:
+            if new_state not in valid_next_states and not (
+                restoring and (old_state, new_state) in _RESTORE_SUPPRESSED_TRANSITIONS
+            ):
                 self.logger.warning(
                     f"[비정상 상태전이] {stock_code} {old_state.value} → {new_state.value} "
                     f"(허용: {[s.value for s in valid_next_states]}) | 사유: {reason}"
