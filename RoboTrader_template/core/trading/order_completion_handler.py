@@ -142,17 +142,29 @@ class OrderCompletionHandler:
         """
         if owner_strategy is not None:
             return owner_strategy
-        if owner_name and self.strategies_by_key:
-            target = self.strategies_by_key.get(owner_name)
-            if target is not None:
-                return target
-            target = self._strategy_by_class_name(owner_name)
-            if target is not None:
-                return target
-            self.logger.error(
-                f"[체결 owner 미해석] owner={owner_name!r} — 폴더키·클래스명 모두 불일치 "
-                f"(등록 전략: {list(self.strategies_by_key.keys())})"
-            )
+        if self.strategies_by_key:
+            if owner_name:
+                target = self.strategies_by_key.get(owner_name)
+                if target is not None:
+                    return target
+                target = self._strategy_by_class_name(owner_name)
+                if target is not None:
+                    return target
+                self.logger.error(
+                    f"[체결 owner 미해석] owner={owner_name!r} — 폴더키·클래스명 모두 불일치 "
+                    f"(등록 전략: {list(self.strategies_by_key.keys())})"
+                )
+            else:
+                # 무기명 체결. 종전에는 `if owner_name and ...` 가 이 블록 전체를
+                # 감싸고 있어 «ERROR 한 줄 없이» self.strategy 로 떨어졌다 —
+                # 다전략에서는 그게 곧 조용한 오귀속이다(2026-08-14 리뷰 R4).
+                # 도달 경로: 복원 슬롯은 owner_strategy_name 만 세팅하고
+                # owner_strategy(인스턴스)는 세팅하지 않으므로, DB 라벨이 공백인
+                # 행이 이름도 인스턴스도 없이 여기로 온다.
+                self.logger.error(
+                    f"[체결 owner 미지정] 소유 전략 표기가 비어 있다 "
+                    f"(등록 전략: {list(self.strategies_by_key.keys())})"
+                )
             if len(self.strategies_by_key) > 1:
                 return None
         return self.strategy

@@ -217,3 +217,59 @@ class TestRealEntryPointRouting:
 
         a.on_order_filled.assert_called_once()
         b.on_order_filled.assert_not_called()
+
+
+class TestUnnamedOwnerDoesNotFallBack:
+    """owner 표기가 «비어 있을» 때도 다전략에서는 추측하지 않는다.
+
+    리뷰 R4: `if owner_name and self.strategies_by_key:` 가 ERROR·무통보 블록
+    전체를 감싸고 있어, owner_name 이 ''/None 이면 그 블록을 통째로 건너뛰고
+    `return self.strategy` 로 떨어졌다 — ERROR 한 줄 없는 조용한 오귀속이다.
+
+    도달 경로: 복원 슬롯은 owner_strategy_name 만 세팅하고 owner_strategy
+    (인스턴스)는 세팅하지 않으므로, DB 라벨이 공백인 행이 그대로 여기로 온다.
+    """
+
+    def test_blank_owner_notifies_nobody_in_multi_strategy(self):
+        h, a, b = _wired_handler()
+
+        h._notify_strategy_order_filled(_order(), owner_name='')
+
+        a.on_order_filled.assert_not_called()
+        b.on_order_filled.assert_not_called()
+
+    def test_none_owner_notifies_nobody_in_multi_strategy(self):
+        h, a, b = _wired_handler()
+
+        h._notify_strategy_order_filled(_order(), owner_name=None)
+
+        a.on_order_filled.assert_not_called()
+        b.on_order_filled.assert_not_called()
+
+    def test_blank_owner_logs_error(self):
+        h, _a, _b = _wired_handler()
+        h.logger = Mock()
+
+        h._notify_strategy_order_filled(_order(), owner_name='')
+
+        assert h.logger.error.called, "무기명 체결이 ERROR 없이 지나갔다"
+
+    def test_blank_owner_still_falls_back_with_one_strategy(self):
+        """대칭: 전략 1개면 모호성이 없으므로 레거시 폴백을 보존한다."""
+        h = _handler()
+        only = Mock(); only.name = CLS_A
+        h.set_strategy(only)
+        h.set_strategies({KEY_A: only})
+
+        h._notify_strategy_order_filled(_order(), owner_name='')
+
+        only.on_order_filled.assert_called_once()
+
+    def test_blank_owner_with_instance_still_routes(self):
+        """대칭: 인스턴스가 실려 있으면 이름이 없어도 정상 통보된다."""
+        h, a, b = _wired_handler()
+
+        h._notify_strategy_order_filled(_order(), owner_name='', owner_strategy=a)
+
+        a.on_order_filled.assert_called_once()
+        b.on_order_filled.assert_not_called()
