@@ -633,3 +633,28 @@ class TestRescanAfterStrategyInit:
                                    'entry_time': None}}})
 
         assert len(r.rescan_orphans_after_init()) == 1   # no raise
+
+
+# ---------------------------------------------------------------------------
+# 7. 배선 순서 불변식 (F4) — strategies 가 복원보다 먼저 채워져야 한다
+# ---------------------------------------------------------------------------
+
+def test_strategies_are_loaded_before_state_restorer_is_built():
+    """`_owner_group_key` 는 인스턴스 기준으로 라벨을 접으므로 복원 시점에
+    self.strategies 가 «이미 채워져» 있어야 한다.
+
+    리뷰 정정(F4): 배선을 뒤집으면 모든 라벨이 하나의 ('U','') 버킷으로
+    collapse 하지만, `_owner_group_key` 와 `_classify_orphan_legs` 가 같은
+    `_resolve_owner_strategy` 를 쓰므로 collapse ⇒ 고아 판정 ⇒ 게이트 발화다.
+    조용한 실패가 아니라 시끄러운 실패 — 그래도 순서 자체를 못박아 둔다.
+    """
+    import inspect as _inspect
+    import main as _main
+
+    src = _inspect.getsource(_main.DayTradingBot.__init__)
+    load_at = src.index('self._load_strategies()')
+    build_at = src.index('self.state_restoration_helper = StateRestorer(')
+    assert load_at < build_at, (
+        "StateRestorer 가 _load_strategies() 보다 먼저 생성된다 — "
+        "복원 시점에 strategies 가 비어 모든 owner 라벨이 한 버킷으로 접힌다"
+    )

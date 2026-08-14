@@ -41,6 +41,12 @@ class OrderManager(
     - 매수/매도 주문 실행 (place_buy_order, place_sell_order)
     - 주문 취소 (cancel_order)
     - 미체결 주문 모니터링 (start_monitoring, stop_monitoring)
+      ⚠️ start_monitoring 은 «공개 API 로 광고돼 있지만 프로덕션 호출자가
+      0» 이다(2026-08-14 리뷰 F7). 켜면 order_executor.py 의 실주문 경로에
+      실제 레이스가 열린다: `await telegram.notify_order_placed` 의 yield
+      지점이 pending_orders 삽입과 trading_context:529 의 라벨 뒤집기 «사이»에
+      있어, 그 창에서 체결 콜백이 돌면 레지스트리 엔트리가 잔류한다(리뷰가
+      재현). 켜기 전에 그 창부터 닫을 것.
     - 주문 상태 조회 (get_pending_orders, get_completed_orders, get_order_summary)
 
     사용 예:

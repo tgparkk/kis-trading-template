@@ -320,3 +320,95 @@ class TestFillCallbackPicksOwnersSlot:
         assert slots[KEY_A].state == StockState.BUY_PENDING
         b.on_order_filled.assert_called_once()
         a.on_order_filled.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 5. 문서화된 불변식 고정 (F6) — 변이가 조용히 살아남던 자리들
+# ---------------------------------------------------------------------------
+
+class TestDocumentedInvariantsArePinned:
+    """리뷰 F6: 주석이 「반드시 슬롯 객체에서 읽어라」라고 적어 둔 세 자리가
+    변이를 견디지 못하는데 아무 테스트도 안 잡았다.
+
+    셋 다 형태가 같다 — «인자(폴더키)» 가 아니라 «슬롯 객체» 를 읽어야 한다.
+    인자는 None 폴백이 있어 무기명이 될 수 있고, 그러면 소유권이 증발한다.
+    """
+
+    def test_execute_buy_order_reads_owner_from_the_slot_not_the_argument(self):
+        """order_execution.py:219 — strategy 인자와 슬롯 라벨이 «다를» 때."""
+        sm = StockStateManager()
+        # 슬롯 라벨은 클래스명(라이브 매수 후 형상), 호출 인자는 폴더키
+        ts = TradingStock(stock_code=CODE, stock_name='삼성전자',
+                          state=StockState.SELECTED, selected_time=now_kst(),
+                          owner_strategy_name=CLS_A)
+        sm.register_stock(ts)
+        ex, om = _execution_with_two_owners(sm)
+
+        # 인자는 «미지정»(None 폴백) — 주석이 경고하는 바로 그 형태다.
+        # 슬롯에서 읽으면 CLS_A, 인자에서 파생하면 무기명("")이 된다.
+        ok = asyncio.run(ex.execute_buy_order(
+            CODE, 10, 70_000.0, reason='테스트', strategy=None))
+
+        assert ok is True
+        assert om.place_buy_order.call_args[1]['owner_strategy'] == CLS_A
+        assert om.place_buy_order.call_args[1]['owner_strategy'] != ""
+
+    def test_execute_sell_order_reads_owner_from_the_slot_not_the_argument(self):
+        """order_execution.py:366 — 매도 레그도 같은 규칙."""
+        sm = StockStateManager()
+        ts = TradingStock(stock_code=CODE, stock_name='삼성전자',
+                          state=StockState.POSITIONED, selected_time=now_kst(),
+                          owner_strategy_name=CLS_B)
+        ts.set_position(10, 60_000.0)
+        sm.register_stock(ts)
+        ex, om = _execution_with_two_owners(sm)
+        sm.change_stock_state(CODE, StockState.SELL_CANDIDATE, '테스트',
+                              strategy=CLS_B)
+
+        ok = asyncio.run(ex.execute_sell_order(
+            CODE, 10, 70_000.0, reason='테스트', strategy=None))
+
+        assert ok is True
+        assert om.place_sell_order.call_args[1]['owner_strategy'] == CLS_B
+        assert om.place_sell_order.call_args[1]['owner_strategy'] != ""
+
+    def test_reserve_id_is_derived_from_the_slot_not_the_argument(self):
+        """trading_analyzer.py:153 — make_reserve_id 독스트링이 «그» 불변식이라
+        부르는 자리. 예약(analyzer)과 감지(place_buy_order)가 같은 키를
+        만들어야 하고, place_buy_order 는 슬롯에서 읽은 값을 받는다.
+        """
+        import pandas as pd
+        from unittest.mock import AsyncMock
+        from bot.trading_analyzer import TradingAnalyzer
+        from core.fund_manager import make_reserve_id
+        from core.models import TradingStock as TS
+
+        bot = Mock()
+        bot.trading_manager.get_stocks_by_state.return_value = []
+        bot.trading_manager.get_trading_stock.return_value = None
+        bot.trading_manager._change_stock_state = Mock()
+        bot.db_manager.price_repo.get_daily_prices.return_value = pd.DataFrame({
+            'date': [f'202401{i + 1:02d}' for i in range(25)],
+            'close': [50000] * 25})
+        bot.strategies = {}
+        bot.decision_engine.is_virtual_mode = True
+        bot.decision_engine.analyze_buy_decision = AsyncMock(return_value=(
+            True, 'r', {'buy_price': 50000, 'quantity': 10,
+                        'max_buy_amount': 500000, 'signal': None}))
+        bot.decision_engine.execute_virtual_buy = AsyncMock(return_value=True)
+        bot.fund_manager.get_status.return_value = {
+            'total_funds': 10_000_000, 'available_funds': 1_000_000}
+        bot.fund_manager.get_max_buy_amount.return_value = 1_000_000
+        bot.fund_manager.reserve_funds.return_value = True
+        bot.intraday_manager.get_cached_current_price.return_value = None
+
+        # 슬롯 라벨(클래스명) ≠ strategy_name 인자(폴더키)
+        stock = TS(stock_code=CODE, stock_name='삼성전자',
+                   state=StockState.SELECTED, selected_time=now_kst(),
+                   owner_strategy_name=CLS_A)
+        asyncio.run(TradingAnalyzer(bot).analyze_buy_decision(
+            stock, available_funds=1_000_000, strategy_name=KEY_A))
+
+        used = bot.fund_manager.reserve_funds.call_args[0][0]
+        assert used == make_reserve_id(CODE, CLS_A)
+        assert used != make_reserve_id(CODE, KEY_A), "인자에서 파생됐다"
