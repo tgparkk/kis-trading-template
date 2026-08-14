@@ -46,6 +46,8 @@ class OrderCompletionHandler:
         self.strategy = None
         # 다중전략 맵 (폴더키 → 전략 인스턴스). 실매매 체결을 소유 전략으로 라우팅.
         self.strategies_by_key: dict = {}
+        # 클래스명(strategy.name) → 인스턴스 보조 매핑 (lazy, set_strategies 시 무효화)
+        self._by_class_name_cache = None
 
     def set_strategy(self, strategy: Any) -> None:
         """전략 연결 (on_order_filled 콜백용)"""
@@ -62,26 +64,65 @@ class OrderCompletionHandler:
         (사전-실전 감사 BLOCKER #2, 2026-06-24).
         """
         self.strategies_by_key = strategies_by_key or {}
+        self._by_class_name_cache = None  # 맵 교체 시 클래스명 보조 매핑 무효화
         if self.strategies_by_key:
             self.logger.info(
                 f"OrderCompletionHandler에 {len(self.strategies_by_key)}개 전략 맵 연결"
             )
 
-    def _resolve_owner_strategy(self, owner_name):
-        """owner 폴더키로 소유 전략 인스턴스 해석.
+    def _strategy_by_class_name(self, name):
+        """클래스명(strategy.name)으로 전략 인스턴스 조회 (보조 매핑, lazy)."""
+        if self._by_class_name_cache is None:
+            self._by_class_name_cache = {
+                s.name: s
+                for s in self.strategies_by_key.values()
+                if getattr(s, 'name', None)
+            }
+        return self._by_class_name_cache.get(name)
 
-        미해석(맵 없음·미등록 owner)이면 self.strategy(레거시 단일전략 fallback).
+    def _resolve_owner_strategy(self, owner_name=None, owner_strategy=None):
+        """체결을 통보할 소유 전략 인스턴스를 해석한다.
+
+        전략 정체성 표기는 서로 바꿔 쓸 수 없는 세 키로 갈린다 —
+        폴더키('rs_leader') / 클래스명('RSLeaderStrategy') / None. 해석 순서:
+
+          0. owner_strategy — trading_stock 에 바인딩된 **인스턴스**
+             (trading_context:530). 이름을 거치지 않으므로 표기 분열에 무관.
+          1. strategies_by_key[owner_name] — 폴더키
+          2. 클래스명 보조 매핑 (bot/state_restorer._resolve_owner_strategy 와 동일 2단)
+
+        ⚠️ 종전 구현은 1단(폴더키)만 있었는데, 라이브 매수는
+        trading_context:529 가 owner 를 **클래스명**으로 써 넣어 항상 miss →
+        조용히 self.strategy(=config 첫 전략)로 폴백했다. 2전략 실매매에서
+        그 폴백은 «첫 전략이 유령 포지션을 받고 진짜 owner 는 보유 사실을
+        모른다» = 자기 전략 청산(trail/max_hold/trend_flip)이 영영 미발동
+        (2026-08-14 실매매 전환 감사 Fix 1).
+
+        미해석 시 self.strategy 폴백은 **전략이 1개 이하일 때만** 허용한다.
+        다전략에서 추측은 오귀속이고, 오귀속은 무통보보다 나쁘다.
         """
+        if owner_strategy is not None:
+            return owner_strategy
         if owner_name and self.strategies_by_key:
             target = self.strategies_by_key.get(owner_name)
             if target is not None:
                 return target
+            target = self._strategy_by_class_name(owner_name)
+            if target is not None:
+                return target
+            self.logger.error(
+                f"[체결 owner 미해석] owner={owner_name!r} — 폴더키·클래스명 모두 불일치 "
+                f"(등록 전략: {list(self.strategies_by_key.keys())})"
+            )
+            if len(self.strategies_by_key) > 1:
+                return None
         return self.strategy
 
-    def _notify_strategy_order_filled(self, order, owner_name=None) -> None:
+    def _notify_strategy_order_filled(self, order, owner_name=None,
+                                      owner_strategy=None) -> None:
         """전략의 on_order_filled 콜백 호출 (소유 전략으로 라우팅)"""
         try:
-            target = self._resolve_owner_strategy(owner_name)
+            target = self._resolve_owner_strategy(owner_name, owner_strategy)
             if target and hasattr(target, 'on_order_filled'):
                 # OrderInfo 객체로 변환하여 전달 (strategy.on_order_filled는 OrderInfo를 기대)
                 order_type = order.order_type
@@ -156,7 +197,10 @@ class OrderCompletionHandler:
                         # 실거래 매수 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
 
                         # 전략 콜백 호출
-                        self._notify_strategy_order_filled(order, trading_stock.owner_strategy_name)
+                        self._notify_strategy_order_filled(
+                            order, trading_stock.owner_strategy_name,
+                            owner_strategy=trading_stock.owner_strategy,
+                        )
 
                         self.logger.info(f"{trading_stock.stock_code} 매수 완료")
 
@@ -218,7 +262,10 @@ class OrderCompletionHandler:
                             profit_rate = ((float(order.get_filled_price()) - _buy_price) / _buy_price) * 100
 
                         # 전략 콜백 호출
-                        self._notify_strategy_order_filled(order, trading_stock.owner_strategy_name)
+                        self._notify_strategy_order_filled(
+                            order, trading_stock.owner_strategy_name,
+                            owner_strategy=trading_stock.owner_strategy,
+                        )
 
                         self.logger.info(
                             f"{trading_stock.stock_code} 매도 완료 (수익률: {profit_rate:.2f}%)"
@@ -316,7 +363,10 @@ class OrderCompletionHandler:
             # 실거래 매수 기록은 OrderMonitor._handle_full_fill()에서 저장 (중복 방지)
 
             # 전략 콜백 호출
-            self._notify_strategy_order_filled(order, trading_stock.owner_strategy_name)
+            self._notify_strategy_order_filled(
+                order, trading_stock.owner_strategy_name,
+                owner_strategy=trading_stock.owner_strategy,
+            )
 
             self.logger.debug(f"매수 체결 처리 완료 (콜백): {trading_stock.stock_code}")
         else:
@@ -350,7 +400,10 @@ class OrderCompletionHandler:
                 profit_rate = ((float(order.get_filled_price()) - _buy_price) / _buy_price) * 100
 
             # 전략 콜백 호출
-            self._notify_strategy_order_filled(order, trading_stock.owner_strategy_name)
+            self._notify_strategy_order_filled(
+                order, trading_stock.owner_strategy_name,
+                owner_strategy=trading_stock.owner_strategy,
+            )
 
             self.logger.debug(
                 f"매도 체결 처리 완료 (콜백): {trading_stock.stock_code} "
