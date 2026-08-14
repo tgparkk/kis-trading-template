@@ -192,14 +192,32 @@ class TestCallersThreadOwner:
 # 3. 실전 DB 기록이 «주문 자신의» owner 로 저장된다
 # ---------------------------------------------------------------------------
 
+def _real_trading_manager(sm, strategies_by_key):
+    """진짜 TradingStockManager facade 를 만들어 실제 해석 규칙을 태운다.
+
+    ⚠️ 맨 Mock 으로 find_owned_stock 을 흉내내면 «계약을 발명한 mock» 이 되고
+    (hasattr 이 항상 True), 프로덕션이 isinstance 로 실체를 검사하므로 그 가짜는
+    이제 조용히 무시된다 — 그래서 실물을 쓴다(2026-08-14 리뷰 F5).
+    """
+    from core.trading_stock_manager import TradingStockManager
+    intraday = Mock()
+    intraday.add_selected_stock = AsyncMock(return_value=True)
+    tm = TradingStockManager(intraday_manager=intraday, data_collector=Mock(),
+                             order_manager=Mock())
+    tm._state_manager = sm
+    tm._completion_handler.state_manager = sm
+    tm.set_strategies(strategies_by_key)
+    return tm
+
+
 def _db_order_manager_with_two_owners(slot_owner_a=KEY_A, slot_owner_b=KEY_B):
     om = _order_manager(paper=False)
     sm = StockStateManager()
     _two_owner_slots(sm, state=StockState.POSITIONED, with_position=True,
                      owner_a=slot_owner_a, owner_b=slot_owner_b)
-    tm = Mock()
-    tm.get_trading_stock.side_effect = sm.get_trading_stock
-    om.trading_manager = tm
+    _a = Mock(); _a.name = CLS_A
+    _b = Mock(); _b.name = CLS_B
+    om.trading_manager = _real_trading_manager(sm, {KEY_A: _a, KEY_B: _b})
     db = Mock()
     db.save_real_buy.return_value = 42
     db.save_real_sell.return_value = True

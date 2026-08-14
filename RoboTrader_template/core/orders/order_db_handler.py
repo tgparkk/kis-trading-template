@@ -31,7 +31,14 @@ class OrderDBHandlerMixin:
         # 표기-불변 조회를 쓸 수 있으면 그것부터. 주문에 실린 표기는 «주문 접수
         # 시점의» 슬롯 값이라, 매수 성공 직후 trading_context:529 가 슬롯 owner 를
         # 클래스명으로 덮어쓰면 폴더키 정확일치가 빗나간다(2026-08-14).
-        if owner and hasattr(tm, 'find_owned_stock'):
+        #
+        # ⚠️ hasattr 로 덕타이핑하지 않는다 — 맨 Mock 은 hasattr 이 무조건 True 라
+        # find_owned_stock 이 Mock 을 돌려주고, 테스트가 «계약을 발명한» mock 위에서
+        # green 이 된다(2026-08-14 리뷰 F5, 실제로 3개 fixture 가 이 함정에 걸렸다).
+        # 실체 검사로 바꾸면 가짜 facade 가 조용히 통과하지 못한다
+        # (trading_decision_engine.py:485 와 동일 관례).
+        from core.trading_stock_manager import TradingStockManager
+        if owner and isinstance(tm, TradingStockManager):
             try:
                 ts = tm.find_owned_stock(stock_code, owner)
                 if inspect.iscoroutine(ts):
@@ -64,28 +71,36 @@ class OrderDBHandlerMixin:
         """주문 DB 저장 시 순수 전략 이름 조회
 
         우선순위:
-        1. order.owner_strategy (주문 접수 시 슬롯에서 복사한 소유 전략 표기)
-        2. trading_stock.strategy_name (owner 지정 조회 → 레거시 폴백)
+        1. **체결 시점 소유 슬롯**의 owner_strategy_name (단일 진실원천)
+        2. order.owner_strategy (슬롯 소실 시 폴백 — 접수 시점 스냅샷)
         3. "unknown" + WARNING (다전략 환경에서 오귀속 방지)
 
-        ⚠️ 종전 구현은 1번이 없고 2번을 **strategy 인자 없이** 조회해, 두 전략이
-        같은 종목을 보유하면 임의 소유자의 이름으로 실전 체결을 기록했다.
-        주문 자신이 owner 를 싣고 다니면 조회 자체가 필요 없다.
+        ⚠️ 1·2 의 «순서» 가 핵심이다(2026-08-14 리뷰 F1). 주문에 실린 표기는
+        «주문 접수 시점» 스냅샷(=폴더키)인데 `trading_context.py:529` 가 매수
+        성공 직후 슬롯 라벨을 클래스명으로 뒤집고, 체결은 그 «뒤»에 온다.
+        스냅샷을 1순위로 쓰면 같은 포지션의 BUY 행은 폴더키, SELL 행은
+        클래스명으로 남아 **전략별 손익과 일일 리포트가 갈린다** — 슬롯마다
+        첫 매수에서 무조건 발생한다. 게다가 두 표기가 한 포지션에 공존하게
+        되어, 표기를 접지 않는 유일한 소비자(get_last_open_real_buy)의
+        오귀속이 되살아난다.
+
+        order_monitor.py:373 이 보유 레지스트리 owner 에 이미 같은 규칙
+        («체결 시점 슬롯»)을 쓴다 — 원장 라벨도 같은 원천을 봐야 한다.
 
         Note: config.strategy.name fallback은 단일 전략 환경에서만 의미가 있어
               다전략 환경에서 잘못된 전략으로 기록될 수 있으므로 제거.
         """
         stock_code = order.stock_code
 
-        # 1. 주문에 실린 소유 전략 표기 (SSOT)
+        # 1. 체결 시점 소유 슬롯의 라벨 (SSOT)
+        ts = self._get_owned_trading_stock(order)
+        if ts is not None and getattr(ts, 'owner_strategy_name', ''):
+            return ts.owner_strategy_name
+
+        # 2. 슬롯 소실(청산 후 등) — 주문이 실어온 표기로 폴백
         owner = (getattr(order, 'owner_strategy', '') or '').strip()
         if owner:
             return owner
-
-        # 2. 슬롯 조회 (owner 미지정 레거시 주문)
-        ts = self._get_owned_trading_stock(order)
-        if ts is not None and getattr(ts, 'strategy_name', ''):
-            return ts.strategy_name
 
         # 3. strategy_name 미설정 — 다전략 환경에서 오귀속 위험
         self.logger.warning(

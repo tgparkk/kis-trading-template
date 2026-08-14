@@ -245,7 +245,11 @@ class TestUnknownStrategyWarningInOrderDb:
         from core.orders.order_db_handler import OrderDBHandlerMixin
 
         ts_mock = MagicMock()
+        # 2026-08-14 리뷰 F1: 라벨의 원천이 «체결 시점 슬롯» 으로 바뀌었다.
+        # TradingStock 에서 strategy_name 은 owner_strategy_name 의 별칭이지만
+        # MagicMock 에선 갈리므로 둘 다 맞춘다.
         ts_mock.strategy_name = strategy_name_on_ts
+        ts_mock.owner_strategy_name = strategy_name_on_ts
 
         tm_mock = MagicMock()
         tm_mock.get_trading_stock.return_value = ts_mock
@@ -289,14 +293,33 @@ class TestUnknownStrategyWarningInOrderDb:
         assert result == "SampleStrategy"
         handler.logger.warning.assert_not_called()
 
-    def test_order_owner_wins_over_slot_lookup(self):
-        """주문이 owner 를 싣고 있으면 슬롯 조회 없이 그 값으로 기록한다."""
+    def test_slot_label_wins_over_order_snapshot(self):
+        """2026-08-14 리뷰 F1: 우선순위가 뒤집혔다 — 슬롯이 이긴다.
+
+        주문에 실린 표기는 «접수 시점» 스냅샷이고 trading_context:529 가 그
+        사이에 슬롯 라벨을 뒤집는다. 스냅샷을 쓰면 같은 포지션의 BUY/SELL 이
+        다른 라벨로 기록돼 전략별 원장이 갈린다.
+        """
         handler = self._make_handler("SampleStrategy")
         result = handler._get_strategy_name_for_order(
             self._legacy_order(owner="rs_leader"))
-        assert result == "rs_leader"
-        assert result != "SampleStrategy"
-        handler.trading_manager.get_trading_stock.assert_not_called()
+        assert result == "SampleStrategy"
+        assert result != "rs_leader"
+
+    def test_order_snapshot_is_used_only_when_the_slot_is_gone(self):
+        """대칭: 슬롯이 없으면(청산 후) 주문 표기로 폴백한다."""
+        from core.orders.order_db_handler import OrderDBHandlerMixin
+        handler = MagicMock(spec=OrderDBHandlerMixin)
+        handler.trading_manager = None
+        handler.config = None
+        handler.logger = MagicMock()
+        handler._get_owned_trading_stock = (
+            lambda order: OrderDBHandlerMixin._get_owned_trading_stock(handler, order))
+        handler._get_strategy_name_for_order = (
+            lambda order: OrderDBHandlerMixin._get_strategy_name_for_order(handler, order))
+
+        assert handler._get_strategy_name_for_order(
+            self._legacy_order(owner="rs_leader")) == "rs_leader"
 
     def test_no_trading_manager_returns_unknown_with_warning(self):
         from core.orders.order_db_handler import OrderDBHandlerMixin

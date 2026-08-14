@@ -23,7 +23,7 @@
 import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -38,6 +38,24 @@ from utils.korean_time import now_kst
 KEY_A = 'rs_leader'
 KEY_B = 'elder_ema_pullback'
 CODE = '005930'
+
+
+def _real_trading_manager(sm, strategies_by_key):
+    """진짜 TradingStockManager facade 를 만들어 실제 해석 규칙을 태운다.
+
+    ⚠️ 맨 Mock 으로 find_owned_stock 을 흉내내면 «계약을 발명한 mock» 이 되고
+    (hasattr 이 항상 True), 프로덕션이 isinstance 로 실체를 검사하므로 그 가짜는
+    이제 조용히 무시된다 — 그래서 실물을 쓴다(2026-08-14 리뷰 F5).
+    """
+    from core.trading_stock_manager import TradingStockManager
+    intraday = Mock()
+    intraday.add_selected_stock = AsyncMock(return_value=True)
+    tm = TradingStockManager(intraday_manager=intraday, data_collector=Mock(),
+                             order_manager=Mock())
+    tm._state_manager = sm
+    tm._completion_handler.state_manager = sm
+    tm.set_strategies(strategies_by_key)
+    return tm
 
 
 def _om_with_two_owner_slots():
@@ -60,18 +78,9 @@ def _om_with_two_owner_slots():
         ts.set_position(10, 70_000.0)
         sm.register_stock(ts)
         slots[owner] = ts
-    # ⚠️ 맨 Mock 은 hasattr 이 무조건 True 라 find_owned_stock 이 Mock 을 돌려준다
-    # (계약을 발명한 mock). 실제 해석 규칙에 위임한다.
-    from core.trading.order_completion_handler import OrderCompletionHandler
     a = Mock(); a.name = 'RSLeaderStrategy'
     b = Mock(); b.name = 'ElderEmaPullbackStrategy'
-    handler = OrderCompletionHandler(state_manager=sm, order_manager=om)
-    handler.set_strategies({KEY_A: a, KEY_B: b})
-
-    tm = Mock()
-    tm.get_trading_stock.side_effect = sm.get_trading_stock
-    tm.find_owned_stock.side_effect = handler._find_owned_stock
-    om.trading_manager = tm
+    om.trading_manager = _real_trading_manager(sm, {KEY_A: a, KEY_B: b})
 
     db = Mock()
     db.save_real_buy.return_value = 4242
@@ -210,3 +219,80 @@ class TestCallerThreadsStrategy:
         passed = list(_args) + list(kwargs.values())
         assert KEY_A in passed
         assert KEY_B not in passed
+
+
+# ---------------------------------------------------------------------------
+# 4. 라벨은 «체결 시점의 슬롯» 에서 — 접수 스냅샷을 쓰면 BUY/SELL 이 갈린다 (F1)
+# ---------------------------------------------------------------------------
+
+class TestDbLabelComesFromTheSlotAtFillTime:
+    """리뷰 F1: `order.owner_strategy` 를 1순위로 쓰면 원장이 쪼개진다.
+
+    그 값은 «주문 접수 시점» 스냅샷(=폴더키)인데 `trading_context.py:529` 가
+    매수 성공 직후 슬롯 라벨을 클래스명으로 뒤집는다. 체결은 그 «뒤»에 온다.
+
+        ca1ba2d : BUY 'RSLeaderStrategy'  SELL 'RSLeaderStrategy'   일관
+        24f2f16 : BUY 'rs_leader'         SELL 'RSLeaderStrategy'   ***분열***
+
+    슬롯마다 «첫 매수»에서 무조건 발생하므로 전략별 손익·일일 리포트가 갈린다.
+    게다가 이 브랜치는 두 표기가 «같은 포지션에 공존»하게 만들어, 표기를 접지
+    않는 유일한 소비자인 get_last_open_real_buy 의 R3 결함을 되살린다.
+
+    ⇒ 라벨의 단일 진실원천은 «체결 시점의 슬롯» 이다
+      (order_monitor.py:373 이 이미 같은 규칙을 쓴다).
+    """
+
+    def _fill_with_flip(self, om, side, order_owner, slot, slot_label_at_fill):
+        """접수(주문에 폴더키가 실림) → :529 라벨 뒤집힘 → 체결 순서를 재현."""
+        order = _order(side, order_owner, order_id=f'OID-{side}')
+        slot.owner_strategy_name = slot_label_at_fill   # trading_context:529
+        asyncio.run(om._save_real_trade_to_db(order, 70_000.0))
+        return order
+
+    def test_buy_and_sell_rows_carry_the_same_label(self):
+        om, db, slots = _om_with_two_owner_slots()
+        slot = slots[KEY_A]
+
+        self._fill_with_flip(om, OrderType.BUY, KEY_A, slot, 'RSLeaderStrategy')
+        buy_label = db.save_real_buy.call_args[1]['strategy']
+
+        self._fill_with_flip(om, OrderType.SELL, 'RSLeaderStrategy', slot,
+                             'RSLeaderStrategy')
+        sell_label = db.save_real_sell.call_args[1]['strategy']
+
+        assert buy_label == sell_label, (
+            f"같은 포지션의 BUY/SELL 이 다른 라벨로 기록됐다: "
+            f"{buy_label!r} vs {sell_label!r}"
+        )
+        assert buy_label == 'RSLeaderStrategy'
+
+    def test_label_follows_the_slot_not_the_order_snapshot(self):
+        om, db, slots = _om_with_two_owner_slots()
+        slot = slots[KEY_A]
+
+        self._fill_with_flip(om, OrderType.BUY, KEY_A, slot, 'RSLeaderStrategy')
+
+        label = db.save_real_buy.call_args[1]['strategy']
+        assert label == 'RSLeaderStrategy'
+        assert label != KEY_A, "접수 시점 스냅샷(폴더키)이 기록됐다"
+
+    def test_other_owners_label_never_leaks(self):
+        """대칭: A 의 체결이 B 의 라벨로 기록되지 않는다."""
+        om, db, slots = _om_with_two_owner_slots()
+
+        self._fill_with_flip(om, OrderType.BUY, KEY_A, slots[KEY_A],
+                             'RSLeaderStrategy')
+
+        label = db.save_real_buy.call_args[1]['strategy']
+        assert label == 'RSLeaderStrategy'
+        assert label not in (KEY_B, 'ElderEmaPullbackStrategy')
+
+    def test_falls_back_to_order_label_when_slot_is_gone(self):
+        """대칭: 슬롯이 없으면(청산 후 등) 주문이 실어온 표기로 폴백한다."""
+        om, db, _slots = _om_with_two_owner_slots()
+        om.trading_manager = None
+
+        asyncio.run(om._save_real_trade_to_db(
+            _order(OrderType.BUY, KEY_A), 70_000.0))
+
+        assert db.save_real_buy.call_args[1]['strategy'] == KEY_A

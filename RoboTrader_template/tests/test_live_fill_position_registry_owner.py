@@ -32,7 +32,7 @@
 import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -78,20 +78,27 @@ def _slots(sm, *owners, avg_price=70_000.0):
     return made
 
 
-def _wire(om, sm, strategies_by_key):
-    """실배선 재현 — trading_manager 는 표기-불변 조회를 «실제로» 제공한다.
+def _real_trading_manager(sm, strategies_by_key):
+    """진짜 TradingStockManager facade 를 만들어 실제 해석 규칙을 태운다.
 
-    ⚠️ 맨 Mock 을 쓰면 hasattr 이 무조건 True 라 find_owned_stock 이 Mock 을
-    돌려주고, 계약을 발명한 mock 위에서 테스트가 green 이 된다
-    (tests/broker_contract.py 가 경고하는 그 형태다). 그래서 실제
-    OrderCompletionHandler 의 해석 규칙에 위임한다.
+    ⚠️ 맨 Mock 으로 find_owned_stock 을 흉내내면 «계약을 발명한 mock» 이 되고
+    (hasattr 이 항상 True), 프로덕션이 isinstance 로 실체를 검사하므로 그 가짜는
+    이제 조용히 무시된다 — 그래서 실물을 쓴다(2026-08-14 리뷰 F5).
     """
-    handler = OrderCompletionHandler(state_manager=sm, order_manager=om)
-    handler.set_strategies(strategies_by_key)
+    from core.trading_stock_manager import TradingStockManager
+    intraday = Mock()
+    intraday.add_selected_stock = AsyncMock(return_value=True)
+    tm = TradingStockManager(intraday_manager=intraday, data_collector=Mock(),
+                             order_manager=Mock())
+    tm._state_manager = sm
+    tm._completion_handler.state_manager = sm
+    tm.set_strategies(strategies_by_key)
+    return tm
 
-    tm = Mock()
-    tm.get_trading_stock.side_effect = sm.get_trading_stock
-    tm.find_owned_stock.side_effect = handler._find_owned_stock
+
+def _wire(om, sm, strategies_by_key):
+    """실배선 재현 — trading_manager 는 진짜 TradingStockManager 다."""
+    tm = _real_trading_manager(sm, strategies_by_key)
     om.trading_manager = tm
     return tm
 
