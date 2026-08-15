@@ -10,7 +10,8 @@ def _stub_flow_stages(monkeypatch):
     🔑 이 픽스처가 없으면 새 단계가 붙는 순간 기존 테스트가 «네트워크를 타서» 깨진다 —
        단계 추가 시 테스트가 조용히 통합테스트로 변하는 걸 막는다.
     """
-    for nm in ("collect_investor_trend", "collect_program_trade", "collect_short_sale"):
+    for nm in ("collect_investor_trend", "collect_program_trade", "collect_short_sale",
+               "collect_credit_balance", "collect_overtime"):
         monkeypatch.setattr(eod, nm, lambda d=None: {"skipped": True})
 
 
@@ -34,6 +35,8 @@ def test_run_data_collection_calls_all_stages(monkeypatch):
     assert out["investor_trend"] == {"skipped": True}
     assert out["program_trade"] == {"skipped": True}
     assert out["short_sale"] == {"skipped": True}
+    assert out["credit_balance"] == {"skipped": True}
+    assert out["overtime"] == {"skipped": True}
     assert out["daily"] == {"rows": 1}
     assert out["foreign_flow"] == {"rows": 3}
     assert out["corp_events"] == {"rows": 4}

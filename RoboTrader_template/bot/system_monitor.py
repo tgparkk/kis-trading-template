@@ -625,7 +625,8 @@ class SystemMonitor:
         market_map = result.get("stock_market", {})
         foreign = result.get("foreign_flow", {})
         # 수급 3축(investor·program·short) — 신선도 가드가 붙어 있어 보통은 {"skipped": ...} 다.
-        flow = {k: result.get(k, {}) for k in ("investor_trend", "program_trade", "short_sale")}
+        flow = {k: result.get(k, {}) for k in ("investor_trend", "program_trade", "short_sale",
+                          "credit_balance", "overtime")}
         rec = result.get("reconcile", {})
         self.logger.info(
             f"EOD 데이터 수집 완료: 일봉 {daily} · 분봉 {minute} · 지수 {index}"

@@ -631,6 +631,65 @@ def get_program_trade_daily(stock_code: str,
         return None
 
 
+def get_credit_balance_daily(stock_code: str,
+                             base_date: str = "") -> Optional[pd.DataFrame]:
+    """종목별 신용잔고 일별추이 (TR: FHPST04760000)
+
+    융자(loan)·대주(stln)의 신규/상환/잔고 수량·금액과 **잔고비율·공여율**을 준다.
+    🔑 신용융자 잔고는 «개인 레버리지가 몰린 종목»을 가른다 — 급등주 특성에 직결된다.
+
+    ⚠️ `FID_COND_SCR_DIV_CODE` 가 **필수**다(빠지면 `OPSQ2001 INPUT FIELD NOT FOUND`).
+       실측으로 `20476` 이 통했다.
+    ⚠️ **최근 30 거래일 롤링** — 놓치면 영구 결손.
+    ⚠️ 날짜 컬럼이 `stck_bsop_date` 가 아니라 **`deal_date`** 다.
+    """
+    url = '/uapi/domestic-stock/v1/quotations/daily-credit-balance'
+    tr_id = "FHPST04760000"
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "J",
+        "FID_COND_SCR_DIV_CODE": "20476",
+        "FID_INPUT_ISCD": stock_code,
+        "FID_INPUT_DATE_1": base_date or now_kst().strftime("%Y%m%d"),
+    }
+    try:
+        res = kis._url_fetch(url, tr_id, "", params)
+        if not (res and res.isOK()):
+            logger.warning(f"⚠️ {stock_code} 신용잔고 조회 실패")
+            return None
+        out = getattr(res.getBody(), 'output', None)
+        if not out:
+            return None
+        return pd.DataFrame(out if isinstance(out, list) else [out])
+    except Exception as e:
+        logger.error(f"❌ {stock_code} 신용잔고 오류: {e}")
+        return None
+
+
+def get_overtime_daily(stock_code: str) -> Optional[pd.DataFrame]:
+    """종목별 시간외 단일가 일별추이 (TR: FHPST02320000)
+
+    시간외 단일가의 가격·거래량·거래대금. 🔑 급등주는 정규장이 끝난 뒤에도 움직인다 —
+    정규장 종가만 보면 안 보이는 축이다.
+
+    ⚠️ **최근 30 거래일 롤링** — 놓치면 영구 결손.
+    """
+    url = '/uapi/domestic-stock/v1/quotations/inquire-daily-overtimeprice'
+    tr_id = "FHPST02320000"
+    params = {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock_code}
+    try:
+        res = kis._url_fetch(url, tr_id, "", params)
+        if not (res and res.isOK()):
+            logger.warning(f"⚠️ {stock_code} 시간외 일별 조회 실패")
+            return None
+        out = getattr(res.getBody(), 'output2', None)
+        if not out:
+            return None
+        return pd.DataFrame(out if isinstance(out, list) else [out])
+    except Exception as e:
+        logger.error(f"❌ {stock_code} 시간외 일별 오류: {e}")
+        return None
+
+
 def get_market_overview() -> Optional[Dict[str, Any]]:
     """
     종합 시장 개요 정보 조회

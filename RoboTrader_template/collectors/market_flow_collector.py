@@ -28,7 +28,10 @@ if str(REPO) not in sys.path:
 import psycopg2  # noqa: E402
 from psycopg2.extras import Json  # noqa: E402
 
-from api.kis_market_api import get_program_trade_daily, get_short_sale_daily  # noqa: E402
+from api.kis_market_api import (  # noqa: E402
+    get_credit_balance_daily, get_overtime_daily,
+    get_program_trade_daily, get_short_sale_daily,
+)
 from collectors.investor_trend_collector import (  # noqa: E402
     CALL_INTERVAL, dsn, universe, with_retry,
 )
@@ -49,10 +52,39 @@ _PROG_COLS = {
     "shnu_tr_pbmn": "whol_smtn_shnu_tr_pbmn", "ntby_tr_pbmn": "whol_smtn_ntby_tr_pbmn",
 }
 
-KINDS = {
-    "short":   ("short_sale_daily", _SHORT_COLS),
-    "program": ("program_trade_daily", _PROG_COLS),
+_CREDIT_COLS = {
+    "close": "stck_prpr", "acml_vol": "acml_vol",
+    "loan_new_stcn": "whol_loan_new_stcn", "loan_rdmp_stcn": "whol_loan_rdmp_stcn",
+    "loan_rmnd_stcn": "whol_loan_rmnd_stcn", "loan_rmnd_amt": "whol_loan_rmnd_amt",
+    "loan_rmnd_rate": "whol_loan_rmnd_rate", "loan_gvrt": "whol_loan_gvrt",
+    "stln_new_stcn": "whol_stln_new_stcn", "stln_rdmp_stcn": "whol_stln_rdmp_stcn",
+    "stln_rmnd_stcn": "whol_stln_rmnd_stcn", "stln_rmnd_amt": "whol_stln_rmnd_amt",
+    "stln_rmnd_rate": "whol_stln_rmnd_rate", "stln_gvrt": "whol_stln_gvrt",
 }
+_OVTM_COLS = {
+    "ovtm_close": "ovtm_untp_prpr", "ovtm_vol": "ovtm_untp_vol",
+    "ovtm_tr_pbmn": "ovtm_untp_tr_pbmn", "ovtm_ctrt": "ovtm_untp_prdy_ctrt",
+    "reg_close": "stck_clpr",
+}
+
+# (테이블, 컬럼맵, **날짜 필드명**) — 🔑 신용잔고만 `deal_date` 다. 하드코딩하면 조용히 0행이 된다.
+KINDS = {
+    "short":   ("short_sale_daily", _SHORT_COLS, "stck_bsop_date"),
+    "program": ("program_trade_daily", _PROG_COLS, "stck_bsop_date"),
+    "credit":  ("credit_balance_daily", _CREDIT_COLS, "deal_date"),
+    "ovtm":    ("overtime_daily", _OVTM_COLS, "stck_bsop_date"),
+}
+
+
+def _fetch(kind: str, code: str, d1: str, d2: str):
+    """kind 별 공급 함수 호출 (재시도 포함)."""
+    if kind == "short":
+        return with_retry(get_short_sale_daily, code, d1, d2, what=f"short {code}")
+    if kind == "program":
+        return with_retry(get_program_trade_daily, code, d2, what=f"program {code}")
+    if kind == "credit":
+        return with_retry(get_credit_balance_daily, code, d2, what=f"credit {code}")
+    return with_retry(get_overtime_daily, code, what=f"ovtm {code}")
 
 
 def _num(v):
@@ -78,7 +110,7 @@ def _collect(kind: str, d1: str, d2: str) -> dict:
 
     from collectors.investor_trend_collector import is_stale
 
-    table, colmap = KINDS[kind]
+    table, colmap, datefld = KINDS[kind]
     sql = upsert_sql(table, colmap)
     conn = psycopg2.connect(**dsn())
     conn.autocommit = True
@@ -93,14 +125,12 @@ def _collect(kind: str, d1: str, d2: str) -> dict:
         ok = fail = rows = 0
         failed: list[str] = []
         for code in codes:
-            df = (with_retry(get_short_sale_daily, code, d1, d2, what=f"short {code}")
-                  if kind == "short"
-                  else with_retry(get_program_trade_daily, code, d2, what=f"program {code}"))
+            df = _fetch(kind, code, d1, d2)
             n = 0
             if df is not None and not df.empty:
                 with conn.cursor() as cur:
                     for _, r in df.iterrows():
-                        ymd = str(r.get("stck_bsop_date", "")).strip()
+                        ymd = str(r.get(datefld, "")).strip()
                         if len(ymd) != 8 or not ymd.isdigit():
                             continue
                         row = {"stock_code": code,
@@ -139,6 +169,20 @@ def collect_program_trade(trade_date: str = None) -> dict:
     return _collect("program", end, end)
 
 
+def collect_credit_balance(trade_date: str = None) -> dict:
+    """EOD 단계 — 신용잔고. ⚠️ 30일 롤링이라 거른 날은 복구 불가."""
+    from datetime import date as _date
+    end = (trade_date or _date.today().strftime("%Y%m%d")).replace("-", "")
+    return _collect("credit", end, end)
+
+
+def collect_overtime(trade_date: str = None) -> dict:
+    """EOD 단계 — 시간외 단일가. ⚠️ 30일 롤링이라 거른 날은 복구 불가."""
+    from datetime import date as _date
+    end = (trade_date or _date.today().strftime("%Y%m%d")).replace("-", "")
+    return _collect("ovtm", end, end)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--kind", choices=sorted(KINDS), required=True)
@@ -154,7 +198,7 @@ def main() -> int:
         print("🔴 KIS 인증 실패")
         return 2
 
-    table, colmap = KINDS[a.kind]
+    table, colmap, datefld = KINDS[a.kind]
     sql = upsert_sql(table, colmap)
 
     conn = psycopg2.connect(**dsn())
@@ -174,9 +218,11 @@ def main() -> int:
     ok = fail = rows_tot = 0
     failed_codes: list[str] = []
     for i, code in enumerate(codes, 1):
-        df = (with_retry(get_short_sale_daily, code, a.d1, a.d2, what=f"short {code}")
-              if a.kind == "short"
-              else with_retry(get_program_trade_daily, code, a.d2, what=f"program {code}"))
+        # 🔴 여기서 kind 분기를 손으로 다시 쓰면 새 kind 가 조용히 «다른 데이터»로 흐른다.
+        #    실측(2026-08-15): credit 이 program 공급 함수로 흘러 0행이 됐다. 날짜 필드가
+        #    같았다면 프로그램매매 데이터가 credit 테이블에 들어갔을 것이다.
+        #    ⇒ 분기는 `_fetch` 한 곳에만 둔다.
+        df = _fetch(a.kind, code, a.d1, a.d2)
         if df is None or df.empty:
             fail += 1
             failed_codes.append(code)
@@ -184,7 +230,7 @@ def main() -> int:
             n = 0
             with conn.cursor() as cur:
                 for _, r in df.iterrows():
-                    ymd = str(r.get("stck_bsop_date", "")).strip()
+                    ymd = str(r.get(datefld, "")).strip()
                     if len(ymd) != 8 or not ymd.isdigit():
                         continue
                     row = {"stock_code": code,

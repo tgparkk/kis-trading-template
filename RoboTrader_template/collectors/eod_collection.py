@@ -19,7 +19,9 @@ from collectors.corp_events_collector import collect_corp_events, reconcile_corp
 #    된다. 그래서 EOD 에 붙인다. 다만 매일 2,763종목을 때리면 과하므로 각 수집기가
 #    **신선도 가드**(마지막 적재일이 5일 이상 낡았을 때만 실행)를 스스로 건다.
 from collectors.investor_trend_collector import collect_investor_trend  # noqa: E402
-from collectors.market_flow_collector import collect_program_trade, collect_short_sale  # noqa: E402
+from collectors.market_flow_collector import (  # noqa: E402
+    collect_credit_balance, collect_overtime, collect_program_trade, collect_short_sale,
+)
 from config.constants import KIS_DATA_SOURCE  # noqa: E402
 from utils.logger import setup_logger  # noqa: E402
 
@@ -45,6 +47,8 @@ def run_data_collection(trade_date: str = None) -> dict:
         "investor_trend": _safe(collect_investor_trend, trade_date),
         "program_trade": _safe(collect_program_trade, trade_date),
         "short_sale": _safe(collect_short_sale, trade_date),
+        "credit_balance": _safe(collect_credit_balance, trade_date),
+        "overtime": _safe(collect_overtime, trade_date),
         "reconcile": {},
     }
     # 매핑이 실제로 갱신된 경우에만 프로세스 캐시를 무효화한다.
