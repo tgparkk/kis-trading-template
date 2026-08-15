@@ -53,7 +53,12 @@ resolve_minute_source_db()  # 분봉 → 기본 "kis_template"  (minute_candles)
 - 레거시 `robotrader`/`robotrader_quant`는 형제 봇 중단으로 **2026-07-10 동결**(갱신 안 됨). `kis_template`이 상위집합.
 - **기본값이 `new`인 이유**: `.env`는 gitignore 대상이라 연구 프로세스(clean checkout·워크트리·CI)엔 없다.
   기본값이 `legacy`였을 때 **연구만 조용히 동결된 죽은 DB를 읽고 있었다**.
-- ⚠️ **`adj_factor`를 곱하지 말 것** — `close`는 이미 분할조정된 연속 시세. 곱하면 분할일 가짜 절벽(거짓 99% MaxDD).
+- ⚠️ **가격(`open/high/low/close`)에 `adj_factor`를 곱하지 말 것** — 이미 분할조정된 연속 시세다. 곱하면 분할일 가짜 절벽(거짓 99% MaxDD).
+- 🔑 **반대로 `volume`에는 «곱해야» 한다** (2026-08-15 감사) — `close`는 조정 저장인데 **`volume`은 원본 저장**이라 단위가 어긋난다.
+  안 맞추면 ①`close×volume`(거래대금)이 분할 이전 구간에서 `adj_factor`배 과소평가 ②거래량 **비율** 룰이 분할 경계에서 깨진다
+  (daytrading 「20봉평균×2 폭증」이 분할 직후 20봉간 **가짜로 성립**). ⇒ **읽기 계층에서 이미 적용됨**
+  (`db/quant_daily_reader.py` · `db/repositories/price.py`) — 소비자는 그냥 쓰면 된다. **직접 다시 곱하지 말 것(이중조정).**
+  기계검사 `tests/test_adj_factor_no_arithmetic.py`(가격 금지·volume 허용, SQL 한정) · 회귀 `tests/test_adj_factor_volume_units.py`.
 - ⚠️ **재무(`financial_statements`·`quant_*`)는 `robotrader_quant` 유지 = 의도된 예외** — kis_template엔 테이블 자체가 없다.
   (`lib/signals/roe_filter.py`, `pit_reader.read_financial_ratio`)
 

@@ -109,6 +109,47 @@ _H = r"[^\S\n]*"  # 수평 공백만
 _SQL_BEFORE = re.compile(rf"[*/]{_H}(?:COALESCE{_H}\({_H})?{_H}[\"']?adj_factor")
 _SQL_AFTER = re.compile(rf"adj_factor[\"']?{_H}(?:::[a-zA-Z]+)?{_H}\)?{_H}[*/]")
 
+# ---------------------------------------------------------------------------
+# ★ volume 예외 (2026-08-15 추가) — 규약은 «가격»에 대한 것이다
+#
+# 이 파일 7행의 규약은 **open/high/low/close** 를 대상으로 한다. 2026-08-03 전수 감사가
+# 「올바른 호출처 0개」라고 결론지은 것도 **가격 소비자만** 훑은 결과였다.
+#
+# 그런데 volume 은 «반대»다. 실측(035720 카카오 5:1 분할, 2026-08-15 감사):
+#
+#     close  : 조정 저장  (adj_close = raw_close / adj_factor)  → 곱하면 «틀린다»
+#     volume : 원본 저장  (조정 안 됨)                          → 곱해야 «맞는다»
+#
+#     2021-04-08  close 109,992 · volume 912,514
+#       그대로 곱한 거래대금 =   1,004억   ← 인접 정상일(4/20) 3,528억 대비 비현실적
+#       volume×adj_factor    =   5,020억   ← raw 거래대금(= raw_close 550,000 × 912,514)
+#
+# 안 맞추면 두 가지가 깨진다:
+#   ① `close × volume`(거래대금)이 분할 이전 구간에서 adj_factor 배 과소평가
+#   ② 거래량 «비율» 비교가 분할 경계에서 왜곡 — daytrading_3methods 의
+#      「당일 거래량 ≥ 직전 20봉 평균 × 2」가 분할 직후 20봉간 **가짜로 성립**한다
+#      (평균에 조정 안 된 5배 작은 값이 섞이므로). minervini dry-up 은 반대로 억제된다.
+#
+# ⇒ **`volume`(및 거래대금 계열) 에 «곱하는» 것만** 예외로 허용한다.
+#    🔴 `close × adj_factor` 는 `AS volume` 으로 별칭을 붙여도 여전히 위반이다 —
+#       판정 기준은 «별칭»이 아니라 **adj_factor 바로 옆 피연산자**다.
+#    🔴 나눗셈(`/`)은 volume 이라도 허용하지 않는다. 옳은 방향은 곱하기 하나뿐이다.
+# ---------------------------------------------------------------------------
+# 🔴 아래 예외는 **SQL 문자열 한정**이다(파이썬 산술은 계속 전면 금지 — find_offenses (1) 주석 참조).
+_VOL_TOKENS = r"volume|trading_value|amount|turnover"
+
+# `volume * COALESCE(adj_factor,1)` / `COALESCE(adj_factor,1) * volume` 양방향.
+_SQL_VOLUME_ADJ = re.compile(
+    rf"\b(?:{_VOL_TOKENS})\b{_H}\*{_H}(?:COALESCE{_H}\({_H})?[\"']?adj_factor[\"']?"
+    rf"|[\"']?adj_factor[\"']?{_H}(?:,{_H}[0-9.]+{_H})?\)?{_H}\*{_H}\b(?:{_VOL_TOKENS})\b"
+)
+
+
+def _strip_volume_adj(s: str) -> str:
+    """허용되는 volume×adj_factor 만 지운다. 남은 adj_factor 산술은 여전히 위반."""
+    return _SQL_VOLUME_ADJ.sub(" VOLADJ ", s)
+
+
 # 인라인 opt-out. 규약을 **검사하는** 코드는 규약 위반 문자열을 리터럴로 가질 수밖에
 # 없다(예: test_research_data_source.py 의 `assert "* COALESCE(adj_factor" not in text`).
 # 그런 줄에만 붙인다 — 실제 가격 산술을 여기로 숨기지 말 것.
@@ -219,6 +260,10 @@ def find_offenses(path: Path) -> list[tuple[int, str]]:
     for node in ast.walk(tree):
         if not (isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Mult, ast.Div))):
             continue
+        # 🔴 volume 예외는 **SQL 한정**이다(아래 (3)). 파이썬 산술에는 적용하지 않는다 —
+        #    `df["volume"] = df["volume"] * df["adj_factor"]` 는 대입 대상 `df` 를 통째로
+        #    오염 변수로 만들어(_tainted_names) 좌변까지 걸리므로 정밀한 예외를 줄 수 없다.
+        #    조정은 «읽기 계층(SQL)에서 한 번» 하면 되므로 파이썬 쪽은 계속 금지한다.
         for operand in (node.left, node.right):
             seg = ast.get_source_segment(src, operand) or ""
             hit = _refs_adj_factor_value(operand) or any(
@@ -257,7 +302,8 @@ def find_offenses(path: Path) -> list[tuple[int, str]]:
             continue
         if tok.start[0] in doc_lines:
             continue
-        body = _strip_sql_comments(tok.string)
+        # ★ volume 예외를 «먼저» 지운다. 지운 뒤에도 adj_factor 산술이 남으면 위반.
+        body = _strip_volume_adj(_strip_sql_comments(tok.string))
         if _SQL_BEFORE.search(body) or _SQL_AFTER.search(body):
             for i, line in enumerate(body.split("\n")):
                 if _SQL_BEFORE.search(line) or _SQL_AFTER.search(line):
@@ -329,6 +375,22 @@ _DETECTOR_CASES: dict[str, tuple[str, bool]] = {
         'SQL = """SELECT COUNT(*) FILTER (WHERE adj_factor IS NOT NULL) FROM t"""\n', False),
     "docstring_mention": ('"""규약: adj_close = raw_close / adj_factor 이다."""\n', False),
     "comparison_only": ('SQL = """SELECT * FROM t WHERE adj_factor <> 1.0"""\n', False),
+    # --- ★ volume 예외 (2026-08-15). volume 은 원본 저장이라 «곱해야» 맞는다 ---
+    "sql_volume_mul_ok": (                       # 허용 — 라이브 리더가 쓰는 형태
+        'SQL = """SELECT (volume * COALESCE(adj_factor, 1))::double precision '
+        'AS volume FROM daily_prices"""\n', False),
+    "sql_turnover_mul_ok": (                     # 허용 — 거래대금 = close × 조정 volume
+        'SQL = """SELECT COALESCE((close * (volume * COALESCE(adj_factor, 1)))::numeric, 0) '
+        'AS trading_value FROM t"""\n', False),
+    "py_volume_mul_still_bad": (                 # 🔴 예외는 SQL 한정 — 파이썬은 계속 금지
+        'df["volume"] = df["volume"] * df["adj_factor"]\n', True),
+    # --- 🔴 예외를 악용하는 형태는 «여전히» 잡혀야 한다 ---
+    "sql_close_mul_aliased_as_volume": (         # 별칭으로 속이기 → 잡힘
+        'SQL = """SELECT (close * adj_factor) AS volume FROM t"""\n', True),
+    "sql_volume_div_still_bad": (                # 나눗셈은 volume 이라도 금지
+        'SQL = """SELECT volume / adj_factor AS volume FROM t"""\n', True),
+    "py_close_mul_assigned_to_volume": (         # 파이썬에서 별칭 속이기 → 잡힘
+        'df["volume"] = df["close"] * df["adj_factor"]\n', True),
 }
 
 

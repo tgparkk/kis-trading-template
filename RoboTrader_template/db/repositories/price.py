@@ -111,13 +111,22 @@ class PriceRepository(BaseRepository):
             return False
 
     def get_daily_prices(self, stock_code: str, days: int = 30) -> pd.DataFrame:
-        """일봉 데이터 조회"""
+        """일봉 데이터 조회. volume 은 **분할조정된 값**이다.
+
+        🔑 close 는 이미 조정 저장(`adj_close = raw_close / adj_factor`)인데 volume 은
+        원본이라 단위가 어긋난다 ⇒ 읽기 시점에 volume 에 adj_factor 를 곱해 맞춘다.
+        안 맞추면 거래량 «비율» 룰(daytrading 20봉평균×2 · minervini dry-up)이
+        분할 경계 20~40봉 동안 왜곡되고 `close×volume` 거래대금도 틀린다.
+        🔴 close 에는 곱하면 «안 된다»(가짜 분할 절벽). 방향이 반대인 두 규칙이다.
+        상세 → tests/test_adj_factor_volume_units.py (2026-08-15 감사)
+        """
         try:
             start_date = now_kst() - timedelta(days=days)
 
             with self._get_connection() as conn:
                 query = '''
-                    SELECT date, open, high, low, close, volume
+                    SELECT date, open, high, low, close,
+                           (volume * COALESCE(adj_factor, 1))::double precision AS volume
                     FROM daily_prices
                     WHERE stock_code = %s AND date >= %s
                     ORDER BY date ASC
@@ -275,8 +284,11 @@ class PriceRepository(BaseRepository):
             with self._get_connection() as conn:
                 cursor = conn.cursor()
 
+                # volume 조정은 get_daily_prices 와 동일 규약(최신 행은 adj_factor=1 이라
+                # 사실상 무변화지만, 두 경로가 «다른 단위»를 주는 일이 없도록 맞춘다).
                 cursor.execute('''
-                    SELECT date, open, high, low, close, volume
+                    SELECT date, open, high, low, close,
+                           (volume * COALESCE(adj_factor, 1))::double precision AS volume
                     FROM daily_prices
                     WHERE stock_code = %s
                     ORDER BY date DESC

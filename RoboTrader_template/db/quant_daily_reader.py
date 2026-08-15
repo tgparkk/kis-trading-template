@@ -78,8 +78,16 @@ class QuantDailyReader:
             with self._conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
+                        # 거래대금도 volume 과 같은 단위 규약을 따른다. 저장된 `trading_value`
+                        # 컬럼은 실측상 «조정 close × 원본 volume» 과 «완전히 동일»해서
+                        # (035720 2021-04-08 둘 다 100,369,239,888) 분할 이전 구간이
+                        # adj_factor 배 과소평가돼 있다 ⇒ 저장값을 쓰지 않고
+                        # 「조정 close × 조정 volume」 = 원시 거래대금으로 직접 계산한다.
+                        # 최신 행은 adj_factor=1 이라 라이브에선 무변화이고, 과거 scan_date 로
+                        # 호출하는 경로(백테스트·재현)에서만 값이 갈린다.
                         "SELECT stock_code, COALESCE(market_cap,0), "
-                        "COALESCE(NULLIF(trading_value,0), (close*volume)::numeric, 0) "
+                        "COALESCE((close * (volume * COALESCE(adj_factor, 1)))::numeric, 0) "
+                        "  AS trading_value "
                         "FROM daily_prices "
                         "WHERE date = (SELECT max(date) FROM daily_prices "
                         "              WHERE date <= %s AND market_cap IS NOT NULL) "
@@ -135,11 +143,25 @@ class QuantDailyReader:
         except Exception:
             pass
 
+    # 🔑 volume 단위 정합 (2026-08-15 감사) — `daily_prices` 는 close 를 «조정»해 저장하고
+    #    (`adj_close = raw_close / adj_factor`, collectors/adj_factors.py:16) volume 은
+    #    **원본 그대로** 저장한다. 두 컬럼을 그대로 쓰면 단위가 어긋난다:
+    #      · `close × volume`(거래대금)이 분할 «이전» 구간에서 adj_factor 배 과소평가
+    #      · 거래량 «비율» 비교가 분할 경계에서 깨짐 → daytrading 「20봉 평균 ×2 폭증」이
+    #        분할 직후 20봉간 가짜로 성립(실측: 카카오 5:1 → 5배 부풀림)
+    #    ⇒ 읽기 시점에 volume 에 adj_factor 를 곱해 close 와 단위를 맞춘다.
+    #    🔴 close 에는 곱하면 «안 된다» — 분할일 가짜 절벽(−78.5%)이 생긴다.
+    #       방향이 정반대인 두 규칙이 공존한다. tests/test_adj_factor_volume_units.py 참조.
+    _SELECT_OHLCV = ("SELECT date, open, high, low, close, "
+                     "(volume * COALESCE(adj_factor, 1))::double precision AS volume "
+                     "FROM daily_prices ")
+
     def get_daily_prices(self, stock_code: str, end_date=None, days: int = 120) -> pd.DataFrame:
         """stock_code 의 일봉 최근 days행(end_date 이하). 오름차순 DataFrame.
 
         DB의 date 컬럼은 text('YYYY-MM-DD')이지만,
         반환 DataFrame의 date는 datetime64로 변환된다.
+        volume 은 **분할조정된 값**이다(위 `_SELECT_OHLCV` 주석 참조).
         """
         end = None
         if end_date is not None:
@@ -149,13 +171,13 @@ class QuantDailyReader:
                 with conn.cursor() as cur:
                     if end:
                         cur.execute(
-                            "SELECT date, open, high, low, close, volume FROM daily_prices "
+                            self._SELECT_OHLCV +
                             "WHERE stock_code = %s AND date <= %s ORDER BY date DESC LIMIT %s",
                             (stock_code, end, int(days)),
                         )
                     else:
                         cur.execute(
-                            "SELECT date, open, high, low, close, volume FROM daily_prices "
+                            self._SELECT_OHLCV +
                             "WHERE stock_code = %s ORDER BY date DESC LIMIT %s",
                             (stock_code, int(days)),
                         )
