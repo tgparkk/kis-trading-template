@@ -12,7 +12,8 @@
     "PREREG_SELLTIMING.md",
     "PREREG_MINUTE_FLOW.md",
     "PREREG_CONDITIONAL.md",
-    "PREREG_LEG_STRUCTURE.md"
+    "PREREG_LEG_STRUCTURE.md",
+    "PREREG_INTRADAY_PICK.md"
   ],
   "artifacts": {
     "RESULTS_COMMON_BAND.md": {
