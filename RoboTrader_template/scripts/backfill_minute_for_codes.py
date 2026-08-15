@@ -98,7 +98,17 @@ def existing_rows(conn, code: str, ymd: str) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="적재하지 않고 수신량만 본다")
+    ap.add_argument("--codes", help="쉼표 구분 종목코드 (기본: 위 TARGETS 7건)")
+    ap.add_argument("--from", dest="d_from", help="시작일 YYYY-MM-DD (--codes 와 함께)")
+    ap.add_argument("--to", dest="d_to", default=END_DATE, help="종료일 YYYY-MM-DD")
+    ap.add_argument("--skip-complete", action="store_true",
+                    help="이미 300행 이상 있는 (종목,날짜)는 API 호출 자체를 건너뛴다")
     args = ap.parse_args()
+
+    # --codes 를 주면 (코드, 시작일) 쌍을 그 인자로 만든다.
+    targets = ([(c.strip(), args.d_from) for c in args.codes.split(",") if c.strip()]
+               if args.codes else TARGETS)
+    pre_days = 0 if args.codes else PRE_DAYS   # --codes 는 시작일을 그대로 쓴다
 
     from api.kis_auth import auth
     from collectors.minute_writer import df_to_minute_rows, replace_minute_day
@@ -111,12 +121,15 @@ def main() -> int:
     conn.autocommit = True
     tot_new = tot_skip = tot_fail = 0
 
-    for code, reg in TARGETS:
-        d0 = (date.fromisoformat(reg) - timedelta(days=PRE_DAYS)).isoformat()
-        days = trading_days(conn, code, d0, END_DATE)
-        print(f"\n=== {code} · 등록 {reg} · 창 {d0}~{END_DATE} · 거래일 {len(days)}일 ===")
+    for code, reg in targets:
+        d0 = (date.fromisoformat(reg) - timedelta(days=pre_days)).isoformat()
+        days = trading_days(conn, code, d0, args.d_to)
+        print(f"\n=== {code} · 창 {d0}~{args.d_to} · 거래일 {len(days)}일 ===")
         for ymd in days:
             before = existing_rows(conn, code, ymd)
+            # 🔑 이미 온전한 날은 API 를 아예 안 때린다 — 유량과 시간을 아낀다.
+            if args.skip_complete and before >= 300:
+                continue
             df = _fetch_day(code, ymd)
             if df is None:
                 print(f"  🔴 {ymd} 수신 실패/빈 응답 (기존 {before}행 유지)")

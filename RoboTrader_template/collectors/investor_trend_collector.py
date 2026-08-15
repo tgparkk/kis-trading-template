@@ -40,6 +40,29 @@ PSEUDO = ("KOSPI", "KOSDAQ", "KS11", "KQ11")
 
 CALL_INTERVAL = 0.08     # 초. KIS 유량제한 여유분.
 
+# 🔴 재시도는 선택이 아니다. 실측(2026-08-15): 유니버스 수집에서 공매도 3종목이 실패했는데
+#    개별 재시도하니 **3/3 이 정상 32행**을 돌려줬다 — 일시 오류였다. 재시도가 없으면
+#    ***일시 실패가 조용한 영구 결손이 된다***. 이 TR 들은 롤링 창이라 나중에 못 채운다.
+RETRY = 3
+RETRY_BACKOFF = 1.0      # 초. 시도마다 배로 늘린다.
+
+
+def with_retry(fn, *args, what: str = "", **kwargs):
+    """None/빈 결과를 실패로 보고 재시도한다. 마지막 시도까지 실패하면 None."""
+    delay = RETRY_BACKOFF
+    for attempt in range(1, RETRY + 1):
+        try:
+            r = fn(*args, **kwargs)
+        except Exception as e:              # noqa: BLE001 - 어떤 예외든 재시도 대상
+            logger.warning(f"[retry {attempt}/{RETRY}] {what} 예외: {e}")
+            r = None
+        if r is not None and not (hasattr(r, "empty") and r.empty):
+            return r
+        if attempt < RETRY:
+            time.sleep(delay)
+            delay *= 2
+    return None
+
 _UPSERT = """
 INSERT INTO investor_trend_daily (
     stock_code, date, close, prdy_vrss,
@@ -139,10 +162,12 @@ def main() -> int:
     print(f"대상 {len(codes):,}종목")
     ok = fail = 0
     total_rows = 0
+    failed_codes = []
     for i, code in enumerate(codes, 1):
-        df = get_investor_trend_daily(code)
+        df = with_retry(get_investor_trend_daily, code, what=f"investor {code}")
         if df is None or df.empty:
             fail += 1
+            failed_codes.append(code)
         else:
             rows = rows_from_df(code, df)
             if rows:
@@ -153,13 +178,17 @@ def main() -> int:
                 ok += 1
             else:
                 fail += 1
+                failed_codes.append(code)
         if i % 200 == 0:
             print(f"  {i:,}/{len(codes):,} · 성공 {ok:,} · 실패 {fail:,} · 행 {total_rows:,}")
         time.sleep(CALL_INTERVAL)
 
     print(f"\n완료 — 종목 성공 {ok:,} / 실패 {fail:,} · 적재(upsert) {total_rows:,}행")
+    if failed_codes:
+        # 🔴 실패를 요약 숫자로만 남기면 아무도 안 본다. 코드를 찍어 재시도가 가능하게 한다.
+        print(f"🔴 실패 종목 {len(failed_codes)}개 (재시도: --codes {','.join(failed_codes)})")
     conn.close()
-    return 0
+    return 0 if not failed_codes else 1
 
 
 if __name__ == "__main__":

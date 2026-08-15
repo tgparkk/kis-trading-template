@@ -29,7 +29,9 @@ import psycopg2  # noqa: E402
 from psycopg2.extras import Json  # noqa: E402
 
 from api.kis_market_api import get_program_trade_daily, get_short_sale_daily  # noqa: E402
-from collectors.investor_trend_collector import CALL_INTERVAL, dsn, universe  # noqa: E402
+from collectors.investor_trend_collector import (  # noqa: E402
+    CALL_INTERVAL, dsn, universe, with_retry,
+)
 from utils.logger import setup_logger  # noqa: E402
 
 logger = setup_logger(__name__)
@@ -102,11 +104,14 @@ def main() -> int:
 
     print(f"[{a.kind}] 대상 {len(codes):,}종목 → {table}")
     ok = fail = rows_tot = 0
+    failed_codes: list[str] = []
     for i, code in enumerate(codes, 1):
-        df = (get_short_sale_daily(code, a.d1, a.d2) if a.kind == "short"
-              else get_program_trade_daily(code, a.d2))
+        df = (with_retry(get_short_sale_daily, code, a.d1, a.d2, what=f"short {code}")
+              if a.kind == "short"
+              else with_retry(get_program_trade_daily, code, a.d2, what=f"program {code}"))
         if df is None or df.empty:
             fail += 1
+            failed_codes.append(code)
         else:
             n = 0
             with conn.cursor() as cur:
@@ -123,14 +128,19 @@ def main() -> int:
                     n += 1
             rows_tot += n
             ok += 1 if n else 0
-            fail += 0 if n else 1
+            if not n:
+                fail += 1
+                failed_codes.append(code)
         if i % 200 == 0:
             print(f"  {i:,}/{len(codes):,} · 성공 {ok:,} · 실패 {fail:,} · 행 {rows_tot:,}")
         time.sleep(CALL_INTERVAL)
 
     print(f"\n완료 — 종목 성공 {ok:,} / 실패 {fail:,} · upsert {rows_tot:,}행")
+    if failed_codes:
+        print(f"🔴 실패 종목 {len(failed_codes)}개 "
+              f"(재시도: --kind {a.kind} --codes {','.join(failed_codes)})")
     conn.close()
-    return 0
+    return 0 if not failed_codes else 1
 
 
 if __name__ == "__main__":
