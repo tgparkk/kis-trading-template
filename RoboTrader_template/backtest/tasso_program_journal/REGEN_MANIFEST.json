@@ -33,6 +33,16 @@
       },
       "results_sha256": "2b89261bdf6cd23e3d128a3a9a9bc6049ac8fba517b2445d38339974ea148ad3"
     },
+    "RESULTS_CONDITIONAL_WIDE.md": {
+      "script": "run_conditional_wide.py",
+      "deps": {
+        "run_conditional.py": "c95297e02c8d6ba229f56deac1f2734f76c937535b6f2bcc117d800c79cd2ae7",
+        "run_conditional_wide.py": "97aadae36d15f4f34578d7f0dfff07a077e18b705e226e756001b5c33c9cad1e",
+        "run_selection.py": "76f9138cf89f6b6c6c2d89b720979100dd93ec44147ecceba77f899a14030425",
+        "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
+      },
+      "results_sha256": "d38ea67b7d393e0ddfdaa491d63055d0e4a93c7c13b55419e90056fe7a683eb0"
+    },
     "RESULTS_GAPFILL.md": {
       "script": "run_gapfill.py",
       "deps": {
@@ -51,6 +61,13 @@
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
       "results_sha256": "b7f3b0d1b531bdcbc5cdc0077d5603017089310f6aba4e20b5d783233659c30e"
+    },
+    "RESULTS_LEG_STRUCTURE.md": {
+      "script": "run_leg_structure.py",
+      "deps": {
+        "run_leg_structure.py": "32759b4c4f3ce8247c866f5fa6da0ab0025cbc6a7636d70730cd1fac0d1822af"
+      },
+      "results_sha256": "cd167cb8ee8b2d1e5fec19f863d6382cb8209a147fa2ae4fa5ef866bf5b2d2cd"
     },
     "RESULTS_MINUTE_ENTRY.md": {
       "script": "run_minute_entry.py",

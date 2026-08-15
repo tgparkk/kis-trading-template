@@ -58,6 +58,8 @@ PAIRS = {
     "RESULTS_SELECTION_FLOW.md": "run_selection_flow.py",
     "RESULTS_CONDITIONAL.md": "run_conditional.py",
     "RESULTS_GAPFILL.md": "run_gapfill.py",
+    "RESULTS_LEG_STRUCTURE.md": "run_leg_structure.py",
+    "RESULTS_CONDITIONAL_WIDE.md": "run_conditional_wide.py",
 }
 
 # 스크립트가 만들지 않는 문서 — 사람이 쓴 것. 게이트 대상 아님을 명시해 둔다.
