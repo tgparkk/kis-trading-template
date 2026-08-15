@@ -1,4 +1,17 @@
+import pytest
+
 import collectors.eod_collection as eod
+
+
+@pytest.fixture(autouse=True)
+def _stub_flow_stages(monkeypatch):
+    """수급 3축은 실제 API/DB 를 타므로 모든 테스트에서 무해한 스텁으로 고정한다.
+
+    🔑 이 픽스처가 없으면 새 단계가 붙는 순간 기존 테스트가 «네트워크를 타서» 깨진다 —
+       단계 추가 시 테스트가 조용히 통합테스트로 변하는 걸 막는다.
+    """
+    for nm in ("collect_investor_trend", "collect_program_trade", "collect_short_sale"):
+        monkeypatch.setattr(eod, nm, lambda d=None: {"skipped": True})
 
 
 def test_run_data_collection_calls_all_stages(monkeypatch):
@@ -17,6 +30,10 @@ def test_run_data_collection_calls_all_stages(monkeypatch):
     monkeypatch.setattr(eod, "KIS_DATA_SOURCE", "legacy")
     out = eod.run_data_collection("20260623")
     assert calls == ["daily", "minute", "index", "stock_market", "foreign_flow", "corp_events"]
+    # 수급 3축은 픽스처 스텁이라 calls 에 안 들어가지만 결과 키는 있어야 한다
+    assert out["investor_trend"] == {"skipped": True}
+    assert out["program_trade"] == {"skipped": True}
+    assert out["short_sale"] == {"skipped": True}
     assert out["daily"] == {"rows": 1}
     assert out["foreign_flow"] == {"rows": 3}
     assert out["corp_events"] == {"rows": 4}

@@ -71,6 +71,74 @@ def upsert_sql(table: str, cols: dict) -> str:
             f"ON CONFLICT (stock_code, date) DO UPDATE SET {upd}")
 
 
+# ── EOD 파이프라인 진입점 ────────────────────────────────────────────────────
+def _collect(kind: str, d1: str, d2: str) -> dict:
+    """신선하면 건너뛴다. 사유를 결과에 남긴다 — 조용히 넘기지 않는다."""
+    from api.kis_auth import auth
+
+    from collectors.investor_trend_collector import is_stale
+
+    table, colmap = KINDS[kind]
+    sql = upsert_sql(table, colmap)
+    conn = psycopg2.connect(**dsn())
+    conn.autocommit = True
+    try:
+        stale, why = is_stale(conn, table)
+        if not stale:
+            logger.info(f"[{kind}] 신선 — 건너뜀 ({why})")
+            return {"skipped": True, "reason": why}
+        if not auth():
+            return {"error": "KIS 인증 실패"}
+        codes = universe(conn)
+        ok = fail = rows = 0
+        failed: list[str] = []
+        for code in codes:
+            df = (with_retry(get_short_sale_daily, code, d1, d2, what=f"short {code}")
+                  if kind == "short"
+                  else with_retry(get_program_trade_daily, code, d2, what=f"program {code}"))
+            n = 0
+            if df is not None and not df.empty:
+                with conn.cursor() as cur:
+                    for _, r in df.iterrows():
+                        ymd = str(r.get("stck_bsop_date", "")).strip()
+                        if len(ymd) != 8 or not ymd.isdigit():
+                            continue
+                        row = {"stock_code": code,
+                               "date": f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}",
+                               "raw": Json(json.loads(r.to_json()))}
+                        for dst, src in colmap.items():
+                            row[dst] = _num(r.get(src))
+                        cur.execute(sql, row)
+                        n += 1
+            if n:
+                ok += 1
+                rows += n
+            else:
+                fail += 1
+                failed.append(code)
+            time.sleep(CALL_INTERVAL)
+        logger.info(f"[{kind}] 종목 {ok}/{len(codes)} · {rows:,}행 · 실패 {fail}")
+        return {"codes": ok, "rows": rows, "failed": len(failed),
+                "failed_codes": failed[:20], "trigger": why}
+    finally:
+        conn.close()
+
+
+def collect_short_sale(trade_date: str = None) -> dict:
+    """EOD 단계 — 공매도. 🟢 날짜 구간 TR 이라 과거 복구가 되므로 창을 넉넉히 잡는다."""
+    from datetime import date as _date, timedelta as _td
+    end = (trade_date or _date.today().strftime("%Y%m%d")).replace("-", "")
+    start = (_date.today() - _td(days=60)).strftime("%Y%m%d")
+    return _collect("short", start, end)
+
+
+def collect_program_trade(trade_date: str = None) -> dict:
+    """EOD 단계 — 프로그램매매. ⚠️ 30일 롤링이라 거른 날은 복구 불가."""
+    from datetime import date as _date
+    end = (trade_date or _date.today().strftime("%Y%m%d")).replace("-", "")
+    return _collect("program", end, end)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--kind", choices=sorted(KINDS), required=True)

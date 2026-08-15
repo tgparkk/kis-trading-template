@@ -15,6 +15,11 @@ from collectors.stock_market_collector import collect_stock_market  # noqa: E402
 from core.regime.market_classifier import reset_cache as reset_market_cache  # noqa: E402
 from collectors.foreign_flow_collector import collect_foreign_flow, reconcile_foreign_flow  # noqa: E402
 from collectors.corp_events_collector import collect_corp_events, reconcile_corp_events  # noqa: E402
+# 🔴 수급 3축 — investor·program 은 공급 TR 이 «최근 30 거래일»만 주므로 거른 날이 영구 결손이
+#    된다. 그래서 EOD 에 붙인다. 다만 매일 2,763종목을 때리면 과하므로 각 수집기가
+#    **신선도 가드**(마지막 적재일이 5일 이상 낡았을 때만 실행)를 스스로 건다.
+from collectors.investor_trend_collector import collect_investor_trend  # noqa: E402
+from collectors.market_flow_collector import collect_program_trade, collect_short_sale  # noqa: E402
 from config.constants import KIS_DATA_SOURCE  # noqa: E402
 from utils.logger import setup_logger  # noqa: E402
 
@@ -37,6 +42,9 @@ def run_data_collection(trade_date: str = None) -> dict:
         "stock_market": _safe(collect_stock_market),
         "foreign_flow": _safe(collect_foreign_flow, trade_date),
         "corp_events": _safe(collect_corp_events, trade_date),
+        "investor_trend": _safe(collect_investor_trend, trade_date),
+        "program_trade": _safe(collect_program_trade, trade_date),
+        "short_sale": _safe(collect_short_sale, trade_date),
         "reconcile": {},
     }
     # 매핑이 실제로 갱신된 경우에만 프로세스 캐시를 무효화한다.

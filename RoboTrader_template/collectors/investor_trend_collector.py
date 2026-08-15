@@ -134,6 +134,60 @@ def universe(conn, as_of: str = "2026-08-14") -> list[str]:
         return [r[0] for r in cur.fetchall()]
 
 
+# ── EOD 파이프라인 진입점 ────────────────────────────────────────────────────
+# 🔴 이 TR 은 **최근 30 거래일**만 준다. 하루 거른 게 30일 뒤 영구 결손이 되므로 EOD 에 붙인다.
+#    다만 매일 2,763 종목을 때리면 EOD 시간·유량을 크게 먹는다 —
+#    🔑 ***TR 이 30일치를 주므로 5일 간격이면 며칠 걸러도 결손이 안 난다.***
+#    ⇒ 「마지막 적재일이 STALE_DAYS 이상 낡았을 때만」 돈다. 며칠 쉬어도 **자동 복구**된다.
+STALE_DAYS = 5
+
+
+def is_stale(conn, table: str, days: int = STALE_DAYS) -> tuple[bool, str]:
+    from datetime import date as _date
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT max(date) FROM {table}")  # noqa: S608 - 테이블명은 코드 상수
+        m = cur.fetchone()[0]
+    if m is None:
+        return True, "비어 있음"
+    gap = (_date.today() - m).days
+    return gap >= days, f"최신 {m} · {gap}일 경과"
+
+
+def collect_investor_trend(trade_date: str = None) -> dict:
+    """EOD 단계. 신선하면 건너뛴다(결과 dict 에 사유를 남긴다 — 조용히 넘기지 않는다)."""
+    from api.kis_auth import auth
+    conn = psycopg2.connect(**dsn())
+    conn.autocommit = True
+    try:
+        stale, why = is_stale(conn, "investor_trend_daily")
+        if not stale:
+            logger.info(f"[investor_trend] 신선 — 건너뜀 ({why})")
+            return {"skipped": True, "reason": why}
+        if not auth():
+            return {"error": "KIS 인증 실패"}
+        codes = universe(conn)
+        ok = fail = rows = 0
+        failed: list[str] = []
+        for code in codes:
+            df = with_retry(get_investor_trend_daily, code, what=f"investor {code}")
+            r = rows_from_df(code, df) if df is not None and not df.empty else []
+            if not r:
+                fail += 1
+                failed.append(code)
+                continue
+            with conn.cursor() as cur:
+                for row in r:
+                    cur.execute(_UPSERT, row)
+            ok += 1
+            rows += len(r)
+            time.sleep(CALL_INTERVAL)
+        logger.info(f"[investor_trend] 종목 {ok}/{len(codes)} · {rows:,}행 · 실패 {fail}")
+        return {"codes": ok, "rows": rows, "failed": len(failed),
+                "failed_codes": failed[:20], "trigger": why}
+    finally:
+        conn.close()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--codes", help="쉼표 구분 종목코드")
