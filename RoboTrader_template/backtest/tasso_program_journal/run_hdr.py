@@ -10,6 +10,7 @@ S = P(1+r) · P 는 잔차 ≤ 0.025%p 인 feasible set (gross)
 from __future__ import annotations
 
 import itertools
+import random
 import sys
 from pathlib import Path
 
@@ -18,6 +19,10 @@ import psycopg2
 
 from reconstruct_prices import TARGETS, gross_ret, tick
 from run_tests import CODES, DSN
+
+N_NULL = 20000
+# 🔴 시드 고정 = 산출물 재현 가능. 바꾸면 백분위가 바뀌므로 바꾸지 말 것.
+NULL_SEED = 20260815
 
 BASE = Path(__file__).resolve().parent
 OUT: list[str] = []
@@ -142,11 +147,25 @@ def main():
                     "ORDER BY date DESC LIMIT 20", (code, d0))
         cand = sorted({r[0] for r in cur.fetchall() if r[0] > L})
         alts.append([(mask_of([(max(Ss) - L) / (h - L) for _, Ss in sols])) for h in cand])
-    for combo in itertools.product(*[range(len(a)) for a in alts]):
+    # 🔴 `itertools.product` 을 20000 에서 자르면 앞자리 종목의 앵커가 인덱스 0 에 못 박힌다
+    #    (solve_common_band.py 의 같은 결함 — 귀무 결함 4번째). 시드 고정 무작위 표본으로 바꾼다.
+    rng = random.Random(NULL_SEED)
+    drawn = [set() for _ in alts]
+    while len(null) < N_NULL:
+        combo = [rng.randrange(len(a)) for a in alts]
+        for i, c in enumerate(combo):
+            drawn[i].add(c)
         null.append(cov([alts[i][combo[i]] for i in range(len(alts))])[0])
-        if len(null) >= 20000:
-            break
     ge = sum(1 for x in null if x >= hit)
+
+    # 자리별 실제 표집 종수를 산출물이 스스로 인쇄한다 (절단형 귀무 재발 감지)
+    say("\n자리별 실제 표집 앵커 종수:\n")
+    say("| 종목 | 표집/전체 앵커 |")
+    say("|---|---|")
+    for i, (name, _, _, _, _) in enumerate(rows_out):
+        say(f"| {name} | {len(drawn[i])}/{len(alts[i])} |")
+    say()
+
     say(f"귀무(스케일 보존 · 대체 앵커 {len(null)}조합): 평균 {np.mean(null):.2f} · "
         f"관측 이상 {ge}/{len(null)} ⇒ 백분위 **{ge/len(null)*100:.1f}%**")
     say(f"\n**H2**: {'🟡 귀무보다 낫다' if ge/len(null) < 0.05 else '🔴 판별력 없음'}")

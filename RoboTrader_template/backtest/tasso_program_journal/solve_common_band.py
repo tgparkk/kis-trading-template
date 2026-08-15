@@ -13,6 +13,8 @@
 from __future__ import annotations
 
 import itertools
+import math
+import random
 import sys
 from pathlib import Path
 
@@ -25,6 +27,10 @@ BASE = Path(__file__).resolve().parent
 OUT: list[str] = []
 TOL = 0.025      # 레그 수익률 허용 잔차(%p) — 최소잔차 진단에서 gross 가 0.010~0.022 였다
 BAND_TOL = 0.0025  # b₁ 일치 허용폭 (±0.25%p)
+
+N_NULL = 20000
+# 🔴 시드 고정 = 산출물 재현 가능. 값을 바꾸면 백분위가 바뀌므로 바꾸지 말 것.
+NULL_SEED = 20260815
 
 
 def say(s=""):
@@ -151,17 +157,38 @@ def main():
     # (건, 대체앵커) 마스크를 미리 만들어 둔다 — 조합마다 다시 계산하지 않는다.
     pre = [[mask(a, trades[i][3]) for a in alt[i]] for i in range(len(trades))]
 
+    # 🔴 결함 이력: 여기가 `itertools.product(...)` 을 20000 에서 **자르는** 코드였다.
+    #    product 는 마지막 자리가 가장 빨리 변하므로, 전체 1억 조합 중 앞 2만 개만 쓰면
+    #    앞자리 종목들의 앵커가 **인덱스 0(= 최저 고가)에 못 박힌다**. 실측: 에스피지 1/19종 ·
+    #    솔트룩스 1/19종 · 마키나락스 2/19종. 못 박힌 값이 최저 고가라 그 종목들은 구조적으로
+    #    공통해에 못 껴 귀무 커버리지가 낮아지고 ⇒ **관측 백분위가 과소평가**된다.
+    #    (changelog 결함 ②「앵커가 최댓값이라 진짜가 유리」의 거울상 — 귀무 결함 4번째)
+    #    ⇒ 격자 절단이 아니라 **시드 고정 무작위 표본**으로 전 조합에서 균등 추출한다.
+    rng = random.Random(NULL_SEED)
     null, null_m = [], []
-    for combo in itertools.product(*[range(len(a)) for a in alt]):
+    drawn = [set() for _ in alt]
+    while len(null) < N_NULL:
+        combo = [rng.randrange(len(a)) for a in alt]
         if all(alt[i][combo[i]] == trades[i][2] for i in range(len(trades))):
             continue
+        for i, c in enumerate(combo):
+            drawn[i].add(c)
         ms = [pre[i][combo[i]] for i in range(len(trades))]
         null.append(cov_masks(ms)[0])
         null_m.append(cov_masks(ms, MEANINGFUL)[0])
-        if len(null) >= 20000:
-            break
     ge = sum(1 for x in null if x >= hit)
     ge_m = sum(1 for x in null_m if x >= hit_m)
+
+    # 🔑 자리별 실제 표집 종수를 산출물이 스스로 인쇄한다 — 절단형 귀무가 재발하면
+    #    이 표에서 「1/19」 같은 값이 눈에 띈다. 대조 작업 없이 결함이 드러나게 하는 장치.
+    total_combos = math.prod(len(a) for a in alt)
+    say(f"자리별 실제 표집 앵커 종수 (전체 조합 {total_combos:,}개 중 {len(null):,} 표본):\n")
+    say("| 종목 | 표집/전체 앵커 |")
+    say("|---|---|")
+    for i, (name, _, _, _) in enumerate(trades):
+        say(f"| {name} | {len(drawn[i])}/{len(alt[i])} |")
+    say()
+
     say(f"- 대체 앵커 조합 **{len(null)}개** · 최대 커버리지 평균 **{sum(null)/len(null):.2f}** "
         f"· 최대 **{max(null)}**")
     say(f"- 관측({hit}) 이상인 조합 **{ge}/{len(null)}** ⇒ 백분위 **{ge/len(null)*100:.1f}%**")
@@ -173,8 +200,12 @@ def main():
     if pct > 0.10 or pct_m > 0.10:
         say(f"🔴 **판정: 판별력 없음.** 같은 종목의 아무 고가나 앵커로 써도 이만큼 겹친다 ⇒ "
             "이 「공통 b₁」은 자료구조가 만든 우연이지 규칙의 증거가 아니다.")
-        say("🔑 ***귀무를 스케일 보존으로 바꾸고 격자에서 음수 b₁ 을 살리자 백분위가 "
-            "0.3% → 0.6% → 7.6% 로 계속 올라갔다*** — 앞의 두 값은 전부 **내 귀무의 결함**이었다.")
+        say("🔑 ***귀무를 고칠 때마다 백분위가 올라갔다 — "
+            "0.3% → 0.6% → 7.6% → 33.1%.*** 앞의 세 값은 전부 **내 귀무의 결함**이었다:")
+        say("① 앵커를 종목 간에 섞음(스케일을 검정한 꼴) ② 격자를 `b₁ ≥ 0` 으로 잘라 "
+            "진짜 앵커가 구조적으로 유리 ③ **`itertools.product` 를 20000 에서 절단** — "
+            "앞자리 3종목의 앵커가 최저 고가에 못 박혀 귀무가 구조적으로 불리했다.")
+        say("⇒ 🔑 ***신호가 사라질 때까지 귀무를 의심하라. 「유의하다」는 귀무의 강도에 대한 진술이다.***")
     else:
         say("🟡 **판정: 귀무보다 낫다.** 단 n 이 작아 증거로 승격하지 않는다 — "
             "`PREREG_Q1_V2.md` §3 처럼 다음 글로 out-of-sample 검정할 것.")
