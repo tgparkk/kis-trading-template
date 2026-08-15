@@ -1,0 +1,167 @@
+# -*- coding: utf-8 -*-
+"""종목별 일자별 투자자 매매동향 수집 → `investor_trend_daily`.
+
+공급: KIS TR `FHKST01010900` (`api.kis_market_api.get_investor_trend_daily`).
+
+🔴 **이 데이터는 놓치면 영영 못 채운다.** TR 이 «최근 30 거래일」만 주고 조회 시작일
+   파라미터가 없다. 하루 안 돌리면 그 하루가 30일 뒤 영구 결손이 된다.
+   ⇒ EOD 파이프라인에 붙이는 것이 정석이다(현재는 수동 실행).
+
+왜 만들었나: 기존 수급 테이블 `foreign_flow` 는 **627 종목**뿐이고 외국인 «수량» 한 컬럼이라
+   유니버스 백분위를 못 낸다. 태쏘 후보선정 역추론에서 특징 9개가 전부 가격·거래대금·변동성이고
+   **수급 축이 통째로 빠져 있었다.**
+
+실행:
+    python -m collectors.investor_trend_collector --codes 199430,058610
+    python -m collectors.investor_trend_collector --all            # 유니버스 전체
+    python -m collectors.investor_trend_collector --all --limit 50 # 부분 시험
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+import psycopg2  # noqa: E402
+
+from api.kis_market_api import get_investor_trend_daily  # noqa: E402
+from config.constants import resolve_daily_source_db  # noqa: E402
+from utils.logger import setup_logger  # noqa: E402
+
+logger = setup_logger(__name__)
+
+# 의사티커 — 유니버스에서 제외 (지수를 종목으로 세면 백분위가 오염된다)
+PSEUDO = ("KOSPI", "KOSDAQ", "KS11", "KQ11")
+
+CALL_INTERVAL = 0.08     # 초. KIS 유량제한 여유분.
+
+_UPSERT = """
+INSERT INTO investor_trend_daily (
+    stock_code, date, close, prdy_vrss,
+    prsn_ntby_qty, frgn_ntby_qty, orgn_ntby_qty,
+    prsn_ntby_tr_pbmn, frgn_ntby_tr_pbmn, orgn_ntby_tr_pbmn,
+    prsn_shnu_vol, frgn_shnu_vol, orgn_shnu_vol,
+    prsn_seln_vol, frgn_seln_vol, orgn_seln_vol)
+VALUES (%(stock_code)s, %(date)s, %(close)s, %(prdy_vrss)s,
+        %(prsn_ntby_qty)s, %(frgn_ntby_qty)s, %(orgn_ntby_qty)s,
+        %(prsn_ntby_tr_pbmn)s, %(frgn_ntby_tr_pbmn)s, %(orgn_ntby_tr_pbmn)s,
+        %(prsn_shnu_vol)s, %(frgn_shnu_vol)s, %(orgn_shnu_vol)s,
+        %(prsn_seln_vol)s, %(frgn_seln_vol)s, %(orgn_seln_vol)s)
+ON CONFLICT (stock_code, date) DO UPDATE SET
+    close = EXCLUDED.close, prdy_vrss = EXCLUDED.prdy_vrss,
+    prsn_ntby_qty = EXCLUDED.prsn_ntby_qty, frgn_ntby_qty = EXCLUDED.frgn_ntby_qty,
+    orgn_ntby_qty = EXCLUDED.orgn_ntby_qty,
+    prsn_ntby_tr_pbmn = EXCLUDED.prsn_ntby_tr_pbmn,
+    frgn_ntby_tr_pbmn = EXCLUDED.frgn_ntby_tr_pbmn,
+    orgn_ntby_tr_pbmn = EXCLUDED.orgn_ntby_tr_pbmn,
+    prsn_shnu_vol = EXCLUDED.prsn_shnu_vol, frgn_shnu_vol = EXCLUDED.frgn_shnu_vol,
+    orgn_shnu_vol = EXCLUDED.orgn_shnu_vol,
+    prsn_seln_vol = EXCLUDED.prsn_seln_vol, frgn_seln_vol = EXCLUDED.frgn_seln_vol,
+    orgn_seln_vol = EXCLUDED.orgn_seln_vol
+"""
+
+_INT_COLS = (
+    "close", "prdy_vrss",
+    "prsn_ntby_qty", "frgn_ntby_qty", "orgn_ntby_qty",
+    "prsn_ntby_tr_pbmn", "frgn_ntby_tr_pbmn", "orgn_ntby_tr_pbmn",
+    "prsn_shnu_vol", "frgn_shnu_vol", "orgn_shnu_vol",
+    "prsn_seln_vol", "frgn_seln_vol", "orgn_seln_vol",
+)
+_SRC = {"close": "stck_clpr", "prdy_vrss": "prdy_vrss"}
+
+
+def dsn() -> dict:
+    return dict(host="127.0.0.1", port=5433, user="robotrader",
+                password="1234", dbname=resolve_daily_source_db())
+
+
+def _to_int(v):
+    """KIS 는 수치를 문자열로 준다. 빈 값·부호만 있는 값은 None 으로."""
+    try:
+        s = str(v).strip().replace(",", "")
+        return int(float(s)) if s not in ("", "-", "+") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def rows_from_df(code: str, df) -> list[dict]:
+    out = []
+    for _, r in df.iterrows():
+        ymd = str(r.get("stck_bsop_date", "")).strip()
+        if len(ymd) != 8 or not ymd.isdigit():
+            continue                      # 형식 위반 행은 조용히 버리지 않고 건너뛴 뒤 아래서 센다
+        row = {"stock_code": code, "date": f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}"}
+        for c in _INT_COLS:
+            row[c] = _to_int(r.get(_SRC.get(c, c)))
+        out.append(row)
+    return out
+
+
+def universe(conn, as_of: str = "2026-08-14") -> list[str]:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT stock_code FROM daily_prices "
+            "WHERE date=%s AND stock_code <> ALL(%s) ORDER BY stock_code",
+            (as_of, list(PSEUDO)))
+        return [r[0] for r in cur.fetchall()]
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--codes", help="쉼표 구분 종목코드")
+    ap.add_argument("--all", action="store_true", help="유니버스 전체")
+    ap.add_argument("--limit", type=int, help="앞에서 N종목만 (시험용)")
+    a = ap.parse_args()
+
+    from api.kis_auth import auth
+    if not auth():
+        print("🔴 KIS 인증 실패")
+        return 2
+
+    conn = psycopg2.connect(**dsn())
+    conn.autocommit = True
+
+    if a.codes:
+        codes = [c.strip() for c in a.codes.split(",") if c.strip()]
+    elif a.all:
+        codes = universe(conn)
+    else:
+        print("🔴 --codes 또는 --all 중 하나가 필요하다")
+        return 2
+    if a.limit:
+        codes = codes[:a.limit]
+
+    print(f"대상 {len(codes):,}종목")
+    ok = fail = 0
+    total_rows = 0
+    for i, code in enumerate(codes, 1):
+        df = get_investor_trend_daily(code)
+        if df is None or df.empty:
+            fail += 1
+        else:
+            rows = rows_from_df(code, df)
+            if rows:
+                with conn.cursor() as cur:
+                    for r in rows:
+                        cur.execute(_UPSERT, r)
+                total_rows += len(rows)
+                ok += 1
+            else:
+                fail += 1
+        if i % 200 == 0:
+            print(f"  {i:,}/{len(codes):,} · 성공 {ok:,} · 실패 {fail:,} · 행 {total_rows:,}")
+        time.sleep(CALL_INTERVAL)
+
+    print(f"\n완료 — 종목 성공 {ok:,} / 실패 {fail:,} · 적재(upsert) {total_rows:,}행")
+    conn.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.exit(main())

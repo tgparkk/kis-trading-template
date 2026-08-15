@@ -508,6 +508,53 @@ def get_investor_flow_data() -> Optional[Dict[str, Any]]:
         return None
 
 
+def get_investor_trend_daily(stock_code: str) -> Optional[pd.DataFrame]:
+    """종목별 일자별 투자자 매매동향 (TR: FHKST01010900, 주식현재가 투자자)
+
+    개인/외국인/기관의 **일별** 순매수 수량·금액과 매수·매도 각각을 돌려준다.
+    위 `get_investor_flow_data`(FHPTJ04400000)는 엔드포인트가 404 로 죽어 있고 시장 전체
+    집계라 종목 축이 없다. 이 함수가 **종목별 수급**의 실제 공급원이다.
+
+    ⚠️ **최근 30 거래일만 준다.** 롤링 창이므로 과거 구간이 필요하면 «지금» 받아 적재해야 한다.
+       조회 시작일 파라미터가 없어 그보다 과거는 이 TR 로 복구할 수 없다.
+
+    Args:
+        stock_code: 종목코드 (6자리, 신형 영문 포함)
+
+    Returns:
+        pd.DataFrame: 컬럼 stck_bsop_date · stck_clpr · {prsn,frgn,orgn}_ntby_qty 등 22개.
+                      금액(`*_tr_pbmn`) 단위는 **백만원**. 실패 시 None.
+    """
+    url = '/uapi/domestic-stock/v1/quotations/inquire-investor'
+    tr_id = "FHKST01010900"  # 주식현재가 투자자
+
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "J",
+        "FID_INPUT_ISCD": stock_code,
+    }
+
+    try:
+        res = kis._url_fetch(url, tr_id, "", params)
+        if not (res and res.isOK()):
+            logger.warning(f"⚠️ {stock_code} 투자자 매매동향 조회 실패")
+            return None
+
+        output = getattr(res.getBody(), 'output', None)
+        if not output:
+            logger.debug(f"ℹ️ {stock_code} 투자자 매매동향 데이터 없음")
+            return None
+        if not isinstance(output, list):
+            output = [output]
+
+        df = pd.DataFrame(output)
+        logger.debug(f"✅ {stock_code} 투자자 매매동향 {len(df)}일")
+        return df
+
+    except Exception as e:
+        logger.error(f"❌ {stock_code} 투자자 매매동향 오류: {e}")
+        return None
+
+
 def get_market_overview() -> Optional[Dict[str, Any]]:
     """
     종합 시장 개요 정보 조회
