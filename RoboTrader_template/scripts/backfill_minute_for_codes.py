@@ -77,15 +77,22 @@ def _fetch_day(code: str, ymd: str):
 def trading_days(conn, code: str, d0: str, d1: str) -> list[str]:
     """일봉이 있는 날 = 거래일. 휴장일에 API 를 때리지 않는다.
 
+    반환: [(YYYYMMDD, volume), ...]
+
     ⚠️ `daily_prices.date` 는 **text**('YYYY-MM-DD')다 — `to_char` 를 쓰면 터진다.
        `minute_candles.date` 는 같은 text 인데 형식이 **'YYYYMMDD'** 로 달라서 변환이 필요하다.
+
+    🔑 `volume` 을 함께 돌려주는 이유: **거래정지일은 일봉이 있어도 분봉이 없다.**
+       실측(2026-08-15) `001210` 은 2026-07-15~07-30 에 volume 0 · OHLC 전부 894 고정이었고,
+       그 11일이 「수신 실패」로 집계돼 실패 13건처럼 보였다. 전부 volume=0 인 날이었다.
+       ***정상을 실패로 세면 경보가 마비된다*** — 「ERROR 현재가 정보 없음」과 같은 형태다.
     """
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT replace(date, '-', '') FROM daily_prices "
+            "SELECT replace(date, '-', ''), coalesce(volume, 0) FROM daily_prices "
             "WHERE stock_code=%s AND date BETWEEN %s AND %s ORDER BY date",
             (code, d0, d1))
-        return [r[0] for r in cur.fetchall()]
+        return [(r[0], r[1]) for r in cur.fetchall()]
 
 
 def existing_rows(conn, code: str, ymd: str) -> int:
@@ -119,20 +126,24 @@ def main() -> int:
 
     conn = psycopg2.connect(**dsn())
     conn.autocommit = True
-    tot_new = tot_skip = tot_fail = 0
+    tot_new = tot_skip = tot_fail = tot_halt = 0
 
     for code, reg in targets:
         d0 = (date.fromisoformat(reg) - timedelta(days=pre_days)).isoformat()
         days = trading_days(conn, code, d0, args.d_to)
         print(f"\n=== {code} · 창 {d0}~{args.d_to} · 거래일 {len(days)}일 ===")
-        for ymd in days:
+        for ymd, vol in days:
             before = existing_rows(conn, code, ymd)
             # 🔑 이미 온전한 날은 API 를 아예 안 때린다 — 유량과 시간을 아낀다.
             if args.skip_complete and before >= 300:
                 continue
+            # 🔑 거래정지일(volume=0)은 분봉이 «없는 게 정상»이다. 호출조차 하지 않는다.
+            if vol == 0:
+                tot_halt += 1
+                continue
             df = _fetch_day(code, ymd)
             if df is None:
-                print(f"  🔴 {ymd} 수신 실패/빈 응답 (기존 {before}행 유지)")
+                print(f"  🔴 {ymd} 수신 실패/빈 응답 (거래량 {vol:,.0f}, 기존 {before}행 유지)")
                 tot_fail += 1
                 continue
             got = len(df)
@@ -149,7 +160,8 @@ def main() -> int:
             print(f"  ✅ {ymd} 적재 {n}행 (기존 {before} → 수신 {got})")
             tot_new += n
 
-    print(f"\n적재 {tot_new:,}행 · 교체보류 {tot_skip} · 실패 {tot_fail}")
+    print(f"\n적재 {tot_new:,}행 · 교체보류 {tot_skip} · 거래정지(정상) {tot_halt} · "
+          f"🔴실패 {tot_fail}")
     conn.close()
     return 0
 
