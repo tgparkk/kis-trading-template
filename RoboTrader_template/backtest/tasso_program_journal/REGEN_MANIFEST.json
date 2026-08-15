@@ -75,6 +75,15 @@
       },
       "results_sha256": "f093464a4e643b5e32357758a4e5622b82b33dac4425bedd9e541bbdbc9c7618"
     },
+    "RESULTS_SELECTION_FLOW.md": {
+      "script": "run_selection_flow.py",
+      "deps": {
+        "run_selection.py": "76f9138cf89f6b6c6c2d89b720979100dd93ec44147ecceba77f899a14030425",
+        "run_selection_flow.py": "32ddf24896d7fe5ae1ac8af8d82211c1101269293c197d25563ec692dc260a9f",
+        "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
+      },
+      "results_sha256": "21638e208d1652d28cd81e514195ed451747816de2ead6ebf010199fd62b2729"
+    },
     "RESULTS_SELLTIMING.md": {
       "script": "run_selltiming.py",
       "deps": {

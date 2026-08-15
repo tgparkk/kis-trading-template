@@ -55,6 +55,7 @@ PAIRS = {
     "RESULTS_SELLTIMING.md": "run_selltiming.py",
     "RESULTS_MINUTE_ENTRY.md": "run_minute_entry.py",
     "RESULTS_MINUTE_SELLTIMING.md": "run_minute_selltiming.py",
+    "RESULTS_SELECTION_FLOW.md": "run_selection_flow.py",
 }
 
 # 스크립트가 만들지 않는 문서 — 사람이 쓴 것. 게이트 대상 아님을 명시해 둔다.
