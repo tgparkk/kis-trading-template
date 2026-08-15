@@ -555,6 +555,82 @@ def get_investor_trend_daily(stock_code: str) -> Optional[pd.DataFrame]:
         return None
 
 
+def get_short_sale_daily(stock_code: str, start_date: str,
+                         end_date: str) -> Optional[pd.DataFrame]:
+    """종목별 공매도 일별추이 (TR: FHPST04830000)
+
+    🟢 **날짜 구간 파라미터를 받는다** — 투자자 매매동향(30일 롤링)과 달리 과거 복구가 된다.
+
+    Args:
+        stock_code: 종목코드
+        start_date: 조회 시작일 (YYYYMMDD)
+        end_date:   조회 종료일 (YYYYMMDD)
+
+    Returns:
+        pd.DataFrame: 21개 컬럼. 핵심은 `ssts_cntg_qty`(공매도 체결수량) ·
+                      `ssts_vol_rlim`(거래량 대비 비중 %) · `ssts_tr_pbmn`(공매도 거래대금).
+                      실패 시 None.
+    """
+    url = '/uapi/domestic-stock/v1/quotations/daily-short-sale'
+    tr_id = "FHPST04830000"
+
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "J",
+        "FID_INPUT_ISCD": stock_code,
+        "FID_INPUT_DATE_1": start_date,
+        "FID_INPUT_DATE_2": end_date,
+    }
+    try:
+        res = kis._url_fetch(url, tr_id, "", params)
+        if not (res and res.isOK()):
+            logger.warning(f"⚠️ {stock_code} 공매도 일별추이 조회 실패")
+            return None
+        out = getattr(res.getBody(), 'output2', None)
+        if not out:
+            return None
+        if not isinstance(out, list):
+            out = [out]
+        return pd.DataFrame(out)
+    except Exception as e:
+        logger.error(f"❌ {stock_code} 공매도 일별추이 오류: {e}")
+        return None
+
+
+def get_program_trade_daily(stock_code: str,
+                            base_date: str = "") -> Optional[pd.DataFrame]:
+    """종목별 프로그램매매 추이 · 일별 (TR: FHPPG04650201)
+
+    ⚠️ `base_date` 를 줘도 **최근 30 거래일**을 돌려준다(롤링). 그보다 과거는 못 받는다 —
+       `get_investor_trend_daily` 와 같은 성질이므로 **놓치면 영구 결손**이다.
+
+    Returns:
+        pd.DataFrame: 15개 컬럼. 핵심은 `whol_smtn_ntby_qty`(프로그램 순매수 수량) ·
+                      `whol_smtn_ntby_tr_pbmn`(순매수 금액). 실패 시 None.
+    """
+    url = '/uapi/domestic-stock/v1/quotations/program-trade-by-stock-daily'
+    tr_id = "FHPPG04650201"
+
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "J",
+        "FID_INPUT_ISCD": stock_code,
+        "FID_INPUT_DATE_1": base_date or now_kst().strftime("%Y%m%d"),
+    }
+    try:
+        res = kis._url_fetch(url, tr_id, "", params)
+        if not (res and res.isOK()):
+            logger.warning(f"⚠️ {stock_code} 프로그램매매 조회 실패")
+            return None
+        out = getattr(res.getBody(), 'output', None)
+        if not out:
+            return None
+        if not isinstance(out, list):
+            out = [out]
+        return pd.DataFrame(out)
+    except Exception as e:
+        logger.error(f"❌ {stock_code} 프로그램매매 오류: {e}")
+        return None
+
+
 def get_market_overview() -> Optional[Dict[str, Any]]:
     """
     종합 시장 개요 정보 조회
