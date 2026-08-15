@@ -31,6 +31,26 @@
       },
       "results_sha256": "b7f3b0d1b531bdcbc5cdc0077d5603017089310f6aba4e20b5d783233659c30e"
     },
+    "RESULTS_MINUTE_ENTRY.md": {
+      "script": "run_minute_entry.py",
+      "deps": {
+        "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
+        "run_minute_entry.py": "34ebbac6604a9f021ed44ec984aacb91cb38118e09f7cfc5d0d4927640f6331c",
+        "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2",
+        "solve_common_band.py": "ee8588e5cff950aa38735c610bdb23930f030a84becdbed9dc6241de7b977d7a"
+      },
+      "results_sha256": "6a389ad34bfcec6c132e62b7ced8019aa8c3459d8e7a00dad7f7ec64a20fdc30"
+    },
+    "RESULTS_MINUTE_SELLTIMING.md": {
+      "script": "run_minute_selltiming.py",
+      "deps": {
+        "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
+        "run_minute_selltiming.py": "43112ca16baffc069c909297847e8629bb77492e195b1132666f8fce74a3415c",
+        "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2",
+        "solve_common_band.py": "ee8588e5cff950aa38735c610bdb23930f030a84becdbed9dc6241de7b977d7a"
+      },
+      "results_sha256": "a88c00d410eb51e8271f7b805789b12ffa78e5a924cc2f07ecf98b2d8f40f67e"
+    },
     "RESULTS_Q1_V2.md": {
       "script": "run_q1_v2.py",
       "deps": {
