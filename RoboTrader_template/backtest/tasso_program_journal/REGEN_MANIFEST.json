@@ -13,7 +13,8 @@
     "PREREG_MINUTE_FLOW.md",
     "PREREG_CONDITIONAL.md",
     "PREREG_LEG_STRUCTURE.md",
-    "PREREG_INTRADAY_PICK.md"
+    "PREREG_INTRADAY_PICK.md",
+    "PREREG_FLOW_NORM.md"
   ],
   "artifacts": {
     "RESULTS_COMMON_BAND.md": {
@@ -43,6 +44,15 @@
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
       "results_sha256": "d38ea67b7d393e0ddfdaa491d63055d0e4a93c7c13b55419e90056fe7a683eb0"
+    },
+    "RESULTS_FLOW_NORM.md": {
+      "script": "run_flow_norm.py",
+      "deps": {
+        "run_flow_norm.py": "7458d67f24e87cdf48554373b264d72bbc05c8b732bc38928f3c88990dd79db0",
+        "run_selection.py": "76f9138cf89f6b6c6c2d89b720979100dd93ec44147ecceba77f899a14030425",
+        "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
+      },
+      "results_sha256": "893955bf18802c9faf6781019ec1749c887c5e1f3f7aeb148535b81cfca2af90"
     },
     "RESULTS_GAPFILL.md": {
       "script": "run_gapfill.py",

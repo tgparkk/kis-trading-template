@@ -61,6 +61,7 @@ PAIRS = {
     "RESULTS_LEG_STRUCTURE.md": "run_leg_structure.py",
     "RESULTS_CONDITIONAL_WIDE.md": "run_conditional_wide.py",
     "RESULTS_INTRADAY_PICK.md": "run_intraday_pick.py",
+    "RESULTS_FLOW_NORM.md": "run_flow_norm.py",
 }
 
 # 스크립트가 만들지 않는 문서 — 사람이 쓴 것. 게이트 대상 아님을 명시해 둔다.
@@ -69,6 +70,7 @@ MANUAL_DOCS = [
     "PREREG.md", "PREREG_Q1_V2.md", "PREREG_SELECTION.md", "PREREG_HDR.md",
     "PREREG_BUYLADDER.md", "PREREG_EXIT_V2.md", "FINDING_THEME_AXIS.md", "PREREG_SELLTIMING.md",
     "PREREG_MINUTE_FLOW.md", "PREREG_CONDITIONAL.md", "PREREG_LEG_STRUCTURE.md", "PREREG_INTRADAY_PICK.md",
+    "PREREG_FLOW_NORM.md",
 ]
 
 
