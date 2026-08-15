@@ -13,8 +13,12 @@ from utils.indicators import calculate_rsi
 class MeanReversionMA20Rule:
     """④ MA20 이탈 평균회귀 — strategies/mean_reversion 템플릿 verbatim 재활용.
 
-    진입: (close-MA20)/MA20×100 <= entry_deviation_pct(-10) AND RSI14 < 30.
+    진입: (close-MA20)/MA20×100 <= entry_deviation_pct AND RSI14 < 30.
     청산: MAReversionExitAdapter (sl7/tp12/MA20×0.9 회복/mh7 — 템플릿 verbatim).
+
+    ⚠️ 아래 `entry_deviation_pct` 기본값은 **-10.0**(템플릿 유래)이지만, 라이브 `deep_mr_dev20` 은
+       config.yaml 에서 **-20.0** 으로 오버라이드한다(전략명 "dev20" 이 그 -20 이다). 게이트 검증도
+       -20 기준이다 — **코드 기본값만 보고 -10 으로 인용하지 말 것**(감사 2026-08-15).
     """
     name = "mean_reversion_ma20"
 

@@ -90,8 +90,8 @@ class MinerviniVolumeDryupStrategy(BaseStrategy):
             params.get("max_holding_days", risk.get("max_hold_days", 20))
         )
 
-        # 진입 룰 인스턴스 (백테스트와 동일 파라미터)
-        self._entry_rule = rule_volume_dryup()
+        # (2026-08-15 감사) `self._entry_rule` 선할당을 제거했다 — 아무도 읽지 않는 죽은 코드였다.
+        # 진입 평가 경로는 staticmethod `evaluate_entry` 이고, 거기서 룰을 새로 만든다(무파라미터).
 
         # 진입 지정가 밴드 (돌파형): 기준가(직전 확정 종가) 위로 추격 한도만 둔다.
         # 갭업/상한가 종목을 스테일 종가로 체결하던 허수 진입 차단(2026-06-15).

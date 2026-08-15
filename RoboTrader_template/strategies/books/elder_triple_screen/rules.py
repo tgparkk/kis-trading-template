@@ -234,9 +234,11 @@ class rule_triple_screen_ema_pullback(Rule):
     """Setup D — 단순화 EMA13 눌림 반등 (표본 최대·견고성 베이스라인).
 
     1. screen1_uptrend
-    2. low[-1] <= ema13[-1]*1.01 AND close[-1] > ema13[-1]
+    2. low[-1] <= ema13[-1]*touch_band AND close[-1] > ema13[-1]
     """
     name: str = "triple_screen_ema_pullback"
+    # ⚠️ 클래스 기본값 1.01. 라이브 elder_ema_pullback 은 config.yaml 에서 1.02 로 오버라이드
+    #    (2026-06-02 멀티버스 OOS+3국면 검증). 코드만 읽고 1.01 로 인용하지 말 것(감사 2026-08-15).
     touch_band: float = 1.01
 
     def evaluate(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> RuleResult:

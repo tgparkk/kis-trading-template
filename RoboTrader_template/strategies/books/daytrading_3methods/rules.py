@@ -262,16 +262,20 @@ class rule_floor_2support(Rule):
 
 @dataclass
 class rule_breakout_prev_high(Rule):
-    """종가가 직전 high_window(20)봉 전고점 돌파 + 거래량 직전 20봉 평균 × 2.0 양봉 → 진입.
+    """종가가 직전 high_window 봉 전고점 돌파 + 거래량 직전 vol_lookback 봉 평균 × 2.0 양봉 → 진입.
 
     진입(카탈로그 §3 장기 고점 돌파):
-      1. 종가 >= 직전 high_window(20)봉 고가 최대값 (전고점 돌파, 현재봉 제외)
-      2. 당일 거래량 >= 직전 vol_lookback(20)봉 평균 × vol_mult(2.0) (전일 대비 폭증 근사)
+      1. 종가 >= 직전 high_window 봉 고가 최대값 (전고점 돌파, 현재봉 제외)
+      2. 당일 거래량 >= 직전 vol_lookback 봉 평균 × vol_mult(2.0) (전일 대비 폭증 근사)
       3. 양봉 (close > open)
     청산 TP +10% (run 스크립트 variant B 빠른 익절).
+
+    ⚠️ 아래는 «클래스 기본값»이다 — 라이브 실효값과 다르다. 코드만 읽고 인용하지 말 것(감사 2026-08-15).
     """
     name: str = "breakout_prev_high"
+    # ⚠️ 라이브 daytrading_3methods_breakout 은 config.yaml 에서 15 로 오버라이드(ddfb187, 멀티버스 rank1).
     high_window: int = 20
+    # ⚠️ vol_lookback 은 라이브에 «배선이 없다» → 오버라이드 불가, 이 기본값 20 이 그대로 쓰인다.
     vol_lookback: int = 20
     vol_mult: float = 2.0
 

@@ -107,8 +107,9 @@ class ElderEmaPullbackStrategy(BaseStrategy):
             params.get("max_holding_days", risk.get("max_hold_days", 100))
         )
 
-        # 진입 룰 인스턴스 (백테스트와 동일 touch_band)
-        self._entry_rule = rule_triple_screen_ema_pullback(touch_band=self._touch_band)
+        # (2026-08-15 감사) `self._entry_rule` 선할당을 제거했다 — 아무도 읽지 않는 죽은 코드였다.
+        # 진입 평가 경로는 staticmethod `evaluate_entry` 이고, 거기서 `self._touch_band` 를 인자로
+        # 받아 룰을 새로 만든다(`_check_buy` → `evaluate_entry(data, touch_band=self._touch_band, ...)`).
 
         # 진입 지정가 밴드 (돌파형/매수스톱, 2026-06-24): entry_min=buy_stop(돌파 게이트),
         # entry_max=buy_stop*(1+up_pct)(갭업 추격 상한). up_pct는 config 노브로 유지.
