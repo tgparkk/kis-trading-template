@@ -151,15 +151,21 @@ def compute_range_med(hist_by_stock: dict, stock: str, buy_date: str, n: int):
     return float(np.median(ranges)), n_rows, zero_range
 
 
-def main() -> int:
+def compute_gate_data(conn):
+    """1단계 게이트 산출(PIT 전용, PnL 미조회) — `main()`(GATE.md 리포트)과 `run_results.py`
+    (2단계, PnL 필요)가 «같은» 산출을 공유하기 위해 뺀 함수. 복붙 금지 지시(작업지시서)에 따라
+    `run_results.py` 는 이 함수를 import 해서 쓴다.
+
+    반환: `buys`(전 컬럼 포함 — `gate_pass`·`excluded`·`gate_pass_B`·`excluded_B`·`range_med_20`·
+    `stop_loss_rate` 등) · `sens_excluded`(N=10/40/60 민감도, 판정에 안 씀) ·
+    `nw_df`(arm-B narrower/same/wider/floor_clamped) · `stop_loss_pct`(config, 폴더키→비율).
+    """
     stop_loss_pct = load_stop_loss_pct()
 
-    conn = psycopg2.connect(**DSN)
     buys = load_buys(conn)
     closed_ids = load_closed_buy_ids(conn)
     codes = buys["stock_code"].unique().tolist()
     hist = load_price_history(conn, codes)
-    conn.close()
 
     buys["is_closed"] = buys["id"].isin(closed_ids)
 
@@ -251,6 +257,14 @@ def main() -> int:
         )
         narrower_wider_rows.append((row.strategy, cat, floor_clamped))
     nw_df = pd.DataFrame(narrower_wider_rows, columns=["strategy", "category", "floor_clamped"])
+
+    return buys, sens_excluded, nw_df, stop_loss_pct
+
+
+def main() -> int:
+    conn = psycopg2.connect(**DSN)
+    buys, sens_excluded, nw_df, stop_loss_pct = compute_gate_data(conn)
+    conn.close()
 
     n_646 = len(buys)
     n_604 = int(buys["is_closed"].sum())
