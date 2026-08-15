@@ -168,6 +168,7 @@ resolve_minute_source_db()  # 분봉 → 기본 "kis_template"  (minute_candles)
 | [SYSTEM_FLOW.md](SYSTEM_FLOW.md) | 시스템 동작 흐름 상세 |
 | [docs/code/MODULES.md](docs/code/MODULES.md) | **코드 모듈별 상세** (main.py·framework·core·api·bot·db·utils·테스트) |
 | [docs/PAPER_STRATEGIES.md](docs/PAPER_STRATEGIES.md) | **활성 전략 운영 허브** (한눈표·자본/regime·데이터 SSOT) |
+| [docs/전략진단_쉬운설명.md](docs/전략진단_쉬운설명.md) | **「8전략은 왜 마이너스인가」 쉬운 설명판** (예시·실제 체결 사례로 풀어 씀. 엄밀본은 `backtest/*/RESULTS.md`) |
 | `strategies/{name}/README.md` | **전략별 상세** (활성 8전략) |
 | [docs/STRATEGY_GUIDE.md](docs/STRATEGY_GUIDE.md) | 전략 추가 가이드 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 아키텍처, 모듈 관계도 |
