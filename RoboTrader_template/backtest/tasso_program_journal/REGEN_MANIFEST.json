@@ -14,17 +14,45 @@
     "PREREG_CONDITIONAL.md",
     "PREREG_LEG_STRUCTURE.md",
     "PREREG_INTRADAY_PICK.md",
-    "PREREG_FLOW_NORM.md"
+    "PREREG_FLOW_NORM.md",
+    "PREREG_SELECTION_ROBUST.md"
   ],
+  "db_fingerprint": {
+    "daily_prices[2026-04-01..2026-08-14]": [
+      237992,
+      2785,
+      "2026-08-14"
+    ],
+    "minute_candles[>=20260701]": [
+      4212316,
+      681,
+      "20260814"
+    ],
+    "investor_trend_daily": [
+      82799,
+      2763,
+      "2026-08-14"
+    ],
+    "short_sale_daily": [
+      88313,
+      2763,
+      "2026-08-14"
+    ],
+    "program_trade_daily": [
+      82799,
+      2763,
+      "2026-08-14"
+    ]
+  },
   "artifacts": {
     "RESULTS_COMMON_BAND.md": {
       "script": "solve_common_band.py",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2",
-        "solve_common_band.py": "ee8588e5cff950aa38735c610bdb23930f030a84becdbed9dc6241de7b977d7a"
+        "solve_common_band.py": "84c17e5102ace2f99220bdcec63d68eaf3e051e73b4a2499a977c733e2124abc"
       },
-      "results_sha256": "bd3220c51da14ca35a0e786cab0db01e0436e97a3f902276e583eb88691324b6"
+      "results_sha256": "8b9a7b262bea8f90665a9de34084b3b132501df67337754987201fdaefe2ba67"
     },
     "RESULTS_CONDITIONAL.md": {
       "script": "run_conditional.py",
@@ -60,7 +88,7 @@
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
         "run_gapfill.py": "7c7d4655a61102b789da6cc55373ef27d060e26f5bc170d5e945c2c9a38fb904",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2",
-        "solve_common_band.py": "ee8588e5cff950aa38735c610bdb23930f030a84becdbed9dc6241de7b977d7a"
+        "solve_common_band.py": "84c17e5102ace2f99220bdcec63d68eaf3e051e73b4a2499a977c733e2124abc"
       },
       "results_sha256": "f29e8a5bb9c4d472773157aa9a8557c3781ee7d5c75e0d004784c6abe5c9b666"
     },
@@ -71,7 +99,7 @@
         "run_hdr.py": "c6a45316f37b552236a14deb4b058af4b5b4d07071db3eed8d78bf66bc0bcf7f",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "b7f3b0d1b531bdcbc5cdc0077d5603017089310f6aba4e20b5d783233659c30e"
+      "results_sha256": "494063c8469024ec5491fca561a4a49a729312d35b15b97ca2f22d3440cda145"
     },
     "RESULTS_INTRADAY_PICK.md": {
       "script": "run_intraday_pick.py",
@@ -96,7 +124,7 @@
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
         "run_minute_entry.py": "34ebbac6604a9f021ed44ec984aacb91cb38118e09f7cfc5d0d4927640f6331c",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2",
-        "solve_common_band.py": "ee8588e5cff950aa38735c610bdb23930f030a84becdbed9dc6241de7b977d7a"
+        "solve_common_band.py": "84c17e5102ace2f99220bdcec63d68eaf3e051e73b4a2499a977c733e2124abc"
       },
       "results_sha256": "6a389ad34bfcec6c132e62b7ced8019aa8c3459d8e7a00dad7f7ec64a20fdc30"
     },
@@ -106,7 +134,7 @@
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
         "run_minute_selltiming.py": "43112ca16baffc069c909297847e8629bb77492e195b1132666f8fce74a3415c",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2",
-        "solve_common_band.py": "ee8588e5cff950aa38735c610bdb23930f030a84becdbed9dc6241de7b977d7a"
+        "solve_common_band.py": "84c17e5102ace2f99220bdcec63d68eaf3e051e73b4a2499a977c733e2124abc"
       },
       "results_sha256": "a88c00d410eb51e8271f7b805789b12ffa78e5a924cc2f07ecf98b2d8f40f67e"
     },
@@ -132,7 +160,7 @@
         "run_selection.py": "76f9138cf89f6b6c6c2d89b720979100dd93ec44147ecceba77f899a14030425",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "f093464a4e643b5e32357758a4e5622b82b33dac4425bedd9e541bbdbc9c7618"
+      "results_sha256": "b706cd0501e53b44ca71a99582e25cc3c15780b1bc9a34767feb21d937f3b856"
     },
     "RESULTS_SELECTION_FLOW.md": {
       "script": "run_selection_flow.py",
@@ -143,13 +171,22 @@
       },
       "results_sha256": "21638e208d1652d28cd81e514195ed451747816de2ead6ebf010199fd62b2729"
     },
+    "RESULTS_SELECTION_ROBUST.md": {
+      "script": "run_selection_robust.py",
+      "deps": {
+        "run_selection.py": "76f9138cf89f6b6c6c2d89b720979100dd93ec44147ecceba77f899a14030425",
+        "run_selection_robust.py": "ced8d29a29514728d04859c16d9dda6fda2aa9ddfdfdbf6101f2dc13ee2b40da",
+        "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
+      },
+      "results_sha256": "52fe1a02af5e31f4d6155d82851c26b113854f70c63af5535e7d475d7585fc53"
+    },
     "RESULTS_SELLTIMING.md": {
       "script": "run_selltiming.py",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
         "run_selltiming.py": "3ad6dfa8185045ffd6190fbc91ee200f3bb4b9a18f93abf3d0b5ca515250b712",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2",
-        "solve_common_band.py": "ee8588e5cff950aa38735c610bdb23930f030a84becdbed9dc6241de7b977d7a"
+        "solve_common_band.py": "84c17e5102ace2f99220bdcec63d68eaf3e051e73b4a2499a977c733e2124abc"
       },
       "results_sha256": "2f86279e382a7cb48d9741edeb9345ff526cf8da96da912237a3935ec5c5f682"
     },
@@ -158,7 +195,7 @@
       "deps": {
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "52a12c3c11b1dfdd9dc3c9ab3fd8e565aa2daa09565d9e7ebe711076a764b667"
+      "results_sha256": "68326e54ce510ed49e7c8f1d3afe57fa0bdc4c63c7ffaf6098202446863114fd"
     }
   }
 }

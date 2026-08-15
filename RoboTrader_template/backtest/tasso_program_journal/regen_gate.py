@@ -30,6 +30,19 @@ sha256 을 매니페스트와 대조한다. 의존 폐포까지 보는 이유는
 재현 가능성 전제: 모든 산출 스크립트가 결정적이거나 시드가 고정돼 있다
 (`run_selection.py` 는 `np.random.default_rng(20260815)`, `solve_common_band.py` ·
 `run_hdr.py` 는 `random.Random(20260815)`). 시드를 바꾸면 이 게이트가 깨진다 — 그게 의도다.
+
+## 🔴 DB 지문 (2026-08-15 추가) — 이 전제엔 «구멍»이 있었다
+
+위 전제는 **거짓이었다.** 이 스크립트들은 전부 DB 를 읽으므로 **「결정적」이 아니라
+「DB 스냅샷이 고정될 때만」 결정적**이다. 실측 — 해시 대조가 **PASS** 인데
+`--rerun` 은 **17개 중 4개**를 잡았고(`SELECTION`·`HDR`·`COMMON_BAND`·`raw`),
+원인은 전부 **매드업(`0039P0`) 일봉을 같은 날 8 → 32행으로 백필한 것** 하나였다.
+`t3`(60일 고가 대비)가 100.0% → 44.2% 로, 롤링 결측이 1/33 → 0/33 으로 바뀌었다.
+
+🔑 ***재현 게이트가 「스크립트가 같은가」만 보면, 데이터가 움직인 날 저장소의 숫자가
+조용히 낡는다.*** 그래서 매니페스트에 **DB 지문**(대상 테이블 슬라이스의 행수·종목수·max(date))을
+함께 박고 `check()` 가 대조한다. DB 에 못 붙으면 **지문 검사만 건너뛰고 그 사실을 인쇄**한다
+(clean checkout·CI 에서도 해시 검사는 돌아야 하므로).
 """
 from __future__ import annotations
 
@@ -62,6 +75,7 @@ PAIRS = {
     "RESULTS_CONDITIONAL_WIDE.md": "run_conditional_wide.py",
     "RESULTS_INTRADAY_PICK.md": "run_intraday_pick.py",
     "RESULTS_FLOW_NORM.md": "run_flow_norm.py",
+    "RESULTS_SELECTION_ROBUST.md": "run_selection_robust.py",
 }
 
 # 스크립트가 만들지 않는 문서 — 사람이 쓴 것. 게이트 대상 아님을 명시해 둔다.
@@ -70,8 +84,47 @@ MANUAL_DOCS = [
     "PREREG.md", "PREREG_Q1_V2.md", "PREREG_SELECTION.md", "PREREG_HDR.md",
     "PREREG_BUYLADDER.md", "PREREG_EXIT_V2.md", "FINDING_THEME_AXIS.md", "PREREG_SELLTIMING.md",
     "PREREG_MINUTE_FLOW.md", "PREREG_CONDITIONAL.md", "PREREG_LEG_STRUCTURE.md", "PREREG_INTRADAY_PICK.md",
-    "PREREG_FLOW_NORM.md",
+    "PREREG_FLOW_NORM.md", "PREREG_SELECTION_ROBUST.md",
 ]
+
+
+# 🔴 DB 지문 — 이 디렉토리의 스크립트가 실제로 읽는 슬라이스만. 전 테이블 count(*) 는
+#    `minute_candles`(4,900만 행)에서 느리므로 **범위를 좁혀 정확하게** 잰다.
+FINGERPRINT_SQL = {
+    "daily_prices[2026-04-01..2026-08-14]":
+        "SELECT count(*), count(DISTINCT stock_code), max(date) FROM daily_prices "
+        "WHERE date BETWEEN '2026-04-01' AND '2026-08-14'",
+    "minute_candles[>=20260701]":
+        "SELECT count(*), count(DISTINCT stock_code), max(date) FROM minute_candles "
+        "WHERE date >= '20260701'",
+    "investor_trend_daily":
+        "SELECT count(*), count(DISTINCT stock_code), max(date) FROM investor_trend_daily",
+    "short_sale_daily":
+        "SELECT count(*), count(DISTINCT stock_code), max(date) FROM short_sale_daily",
+    "program_trade_daily":
+        "SELECT count(*), count(DISTINCT stock_code), max(date) FROM program_trade_daily",
+}
+
+
+def db_fingerprint():
+    """(지문, 건너뛴 사유). DB 에 못 붙으면 (None, 사유) — 해시 검사는 계속 돌게 한다."""
+    try:
+        import psycopg2  # noqa: PLC0415  (DB 없는 환경에서도 해시 검사는 돌아야 한다)
+
+        from run_tests import DSN
+        conn = psycopg2.connect(connect_timeout=5, **DSN)
+    except Exception as e:  # noqa: BLE001
+        return None, f"{type(e).__name__}: {str(e).strip().splitlines()[0][:120]}"
+    try:
+        out = {}
+        with conn.cursor() as cur:
+            for k, q in FINGERPRINT_SQL.items():
+                cur.execute(q)
+                r = cur.fetchone()
+                out[k] = [int(r[0] or 0), int(r[1] or 0), str(r[2])]
+        return out, None
+    finally:
+        conn.close()
 
 
 def sha(p: Path) -> str:
@@ -98,7 +151,7 @@ def local_deps(script: str, seen: set[str] | None = None) -> set[str]:
     return seen
 
 
-def build() -> dict:
+def build(fp=None) -> dict:
     entries = {}
     for out, script in sorted(PAIRS.items()):
         deps = sorted(local_deps(script))
@@ -107,16 +160,36 @@ def build() -> dict:
             "deps": {d: sha(BASE / d) for d in deps},
             "results_sha256": sha(BASE / out) if (BASE / out).exists() else None,
         }
-    return {"manual_docs": MANUAL_DOCS, "artifacts": entries}
+    return {"manual_docs": MANUAL_DOCS, "db_fingerprint": fp, "artifacts": entries}
 
 
 def check() -> int:
     if not MANIFEST.exists():
         print("🔴 REGEN_MANIFEST.json 이 없다 — `--update` 로 먼저 만들 것.")
         return 2
-    old = json.loads(MANIFEST.read_text(encoding="utf-8"))["artifacts"]
+    man = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    old = man["artifacts"]
     new = build()["artifacts"]
     fails = []
+
+    # ── DB 지문 대조 (해시가 못 잡는 축) ────────────────────────────────────
+    fp_old = man.get("db_fingerprint")
+    fp_new, why = db_fingerprint()
+    if fp_new is None:
+        print(f"  ⚠️ DB 지문 검사 건너뜀 — {why}")
+        print("     (해시 검사만 돈다. 「스크립트가 같다」는 「숫자가 같다」가 아니다.)")
+    elif fp_old is None:
+        print("  ⚠️ 매니페스트에 DB 지문이 없다 — `--update` 로 기준선을 박을 것.")
+    else:
+        moved = [k for k in fp_new if fp_old.get(k) != fp_new[k]]
+        if moved:
+            for k in moved:
+                fails.append(f"DB 지문: 🔴 **`{k}` 가 움직였다** — "
+                             f"기준선 {fp_old.get(k)} → 현재 {fp_new[k]}")
+            fails.append("⇒ 🔑 **DB 가 바뀌었으면 산출물은 스크립트와 일치해도 «낡았다».** "
+                         "`--rerun` 으로 실제 재실행해 확인한 뒤 `--update`.")
+        else:
+            print(f"  ✅ DB 지문 일치 ({len(fp_new)}개 슬라이스)")
     for out in sorted(PAIRS):
         o, n = old.get(out), new[out]
         if o is None:
@@ -178,7 +251,13 @@ def main() -> int:
     ap.add_argument("--rerun", action="store_true", help="실제 재실행 + byte-diff (DB 필요)")
     a = ap.parse_args()
     if a.update:
-        MANIFEST.write_text(json.dumps(build(), ensure_ascii=False, indent=2) + "\n",
+        fp, why = db_fingerprint()
+        if fp is None:
+            # 🔴 DB 에 못 붙었다고 기준선을 «지우면» 안 된다 — 옛 지문을 그대로 물려준다.
+            print(f"  ⚠️ DB 지문을 못 읽었다 ({why}) — 기존 지문을 그대로 유지한다.")
+            if MANIFEST.exists():
+                fp = json.loads(MANIFEST.read_text(encoding="utf-8")).get("db_fingerprint")
+        MANIFEST.write_text(json.dumps(build(fp), ensure_ascii=False, indent=2) + "\n",
                             encoding="utf-8")
         print(f"[written] {MANIFEST.name}")
         return 0
