@@ -23,9 +23,12 @@ score로 → 정렬 + topK = RS 랭킹).
 - K = **10** / 종목당 **100만**
 
 ## 평판 (백테스트 / OOS)
+
+🔴 **이 숫자는 검증 러너 유니버스(`top_volume:50`)에서 나왔다 — 라이브 유니버스와 다르다.**
+라이브 매수의 97%가 그 밖이다(실측). 라이브 기대치로 인용하지 말 것 → [PAPER_STRATEGIES §0.7](../../docs/PAPER_STRATEGIES.md#07--백테스트-평판-숫자와-라이브는-다른-모집단이다-2026-08-15-감사)
 검증 조건부 (횡보장 5/5 config 강건 +5~8% · OOS 양수 ✅ / 깊은약세 부호반전 · per-trade Sharpe 0.08~0.19 ❌).
 현 백테스트는 강세장 순풍 왜곡 (2026-04/05 +8.5/+6.8%는 KOSPI +30/+28% 덕). 페이퍼 관찰 전용.
 
 ## 코드
 - 전략: `strategy.py` · 설정: `config.yaml` · EOD 스크리너: `screener.py`
-- 진입 룰(SSOT): `scripts/rs_leader/rule.py::RSLeaderRule`
+- 진입 룰(SSOT): `strategies/rs_leader/rule.py::RSLeaderRule` (2026-07-02 `scripts/rs_leader/` 에서 승격 — 라이브 엣지 -2)

@@ -48,7 +48,35 @@
 
 ### 0.3 공통 매매 경로
 - **진입**: `BaseStrategy.on_tick(ctx)` → `ctx.get_daily_data`(`_drop_unconfirmed_today_bar` 적용 = 당일 미확정봉 제외, 확정봉만) → `generate_signal()` → `ctx.buy()`(서킷브레이커·VI·시장방향 가드 내장).
-- **전 전략 진입 룰은 백테스트 룰을 1:1 재사용** (`strategies/books/**/rules*.py`, `scripts/rs_leader/rule.py`, `scripts/discovery/rules.py`를 직접 import) → 백테스트↔라이브 동등성 보장.
+- **전 전략 진입 룰은 백테스트 룰을 1:1 재사용** (`strategies/books/**/rules*.py`, `strategies/rs_leader/rule.py`, `strategies/deep_mr_dev20/rule.py`를 직접 import) → **«룰 코드» 동등성** 보장.
+  - 🔴 **이 문장을 「성과 동등성」으로 읽지 말 것** — 유니버스가 다르다. **§0.7 참조.**
+  - ⚠️ 뒤 두 룰은 2026-07-02 Phase1 에서 `scripts/rs_leader/`·`scripts/discovery/` 로부터 **승격**됐다(라이브 엣지 -2). 옛 경로를 인용하지 말 것 — `scripts/rs_leader/rule.py` 는 **이제 존재하지 않고**, `scripts/discovery/rules.py` 에는 `MeanReversionMA20Rule` 이 **더 이상 없다**.
+
+### 0.7 🔴 백테스트 평판 숫자와 라이브는 «다른 모집단»이다 (2026-08-15 감사)
+
+각 README 의 평판 숫자(`Sharpe 1.55` · `+269%` · `MaxDD 20%` 등)는 **검증 러너의 유니버스**에서 나왔다:
+
+```python
+# scripts/run_{elder_triple_screen, daytrading_3methods, minervini_vcp,
+#              haru_silijeon_daily, trading_legends_daily}.py · run_books_research.py
+_load_top_volume_universe(top_n=50)   # 기간 «전체» SUM(close*volume) 상위 50종목, 정적
+```
+
+라이브 스크리너는 **종목별 시총 컷 + 거래대금 하한**이라 기준 자체가 다르다. 실측(2026-06-01~08-14):
+
+| | 라이브 매수 | `top_volume:50` 소속 | 비중 |
+|---|---|---|---|
+| 8전략 합계 | **646건** | **17건** | **3%** |
+| 0% 인 전략 | `envelope`·`ma20`·`ma5`·`daytrading`·`deep_mr` | 0 | **0%** |
+
+🔑🔑 ***라이브 매수의 97%가 백테스트가 본 적 없는 종목이다.*** 겹치는 3%조차 우연 기대치(7.2~10.2건)와 같은 자릿수다.
+
+⇒ **평판 숫자를 라이브 기대치로 인용하지 말 것.** 같은 룰이라도 다른 유니버스에 적용하면 다른 전략이다.
+실측·재현 → [`backtest/concept_fidelity_audit/`](../backtest/concept_fidelity_audit/RESULTS.md) §3-D ·
+라이브 유니버스 재검증(3전략 진행) → [`backtest/live_universe_revalidation/PREREG.md`](../backtest/live_universe_revalidation/PREREG.md).
+
+⚠️ 함께 확인된 것: **거동도 다르다** — 백테스트 보유 중앙 10~13거래일(≤1일 2~4%)인데 라이브는 1~2일(≤1일 43~69%).
+⚠️ `top_volume:50` **자체가 룩어헤드**다(기간 전체 거래대금으로 뽑은 정적 집합) — 「정답 유니버스」가 아니다.
 - **전 전략 `holding_period = "swing"`** → EOD 일괄청산을 건너뛰고 각 전략의 청산 룰(sl/tp/trail/max_hold)로만 빠진다.
 
 ### 0.4 자본·사이징 모델 (A안 균등 K분할, 2026-06-12 발효)
@@ -81,7 +109,7 @@
 |---|---|---|---|---|---|---|---|---|
 | 1 | [`elder_ema_pullback`](../strategies/elder_ema_pullback/README.md) | Elder 삼중창 (Var A) | EMA65 상승 + EMA13 눌림회복 + 전일고가 돌파 | -8% / +30% / EMA13 trail·EMA65 추세반전 / 100일 | KOSPI / none | 20 | 50만 | 대형(시총≥5천억)·거래대금≥50억 |
 | 2 | [`book_envelope_200d`](../strategies/book_envelope_200d/README.md) | Book19 트레이딩 전략서 | 200일 신고가 + Envelope(10,10) 상단 +10% 돌파 (A~I) | -8% / +10% / 없음 / 10일 | KOSPI / none | 5 | 200만 | 거래대금≥10억 (진입평가 quant 230봉) |
-| 3 | [`daytrading_3methods_breakout`](../strategies/daytrading_3methods_breakout/README.md) | 유지윤 3대 타법 (Var B) | 직전15봉 전고점 돌파 + 거래량×2 + 양봉 | -10% / +10% / 없음 / 10일 | KOSDAQ / none | 5 | 200만 | 중소형(시총<5천억)·거래량배수순 |
+| 3 | [`daytrading_3methods_breakout`](../strategies/daytrading_3methods_breakout/README.md) | 유지윤 3대 타법 (Var B) | 직전15봉 전고점 돌파 + 거래량 ≥ 직전**20**봉평균×2 + 양봉 | -10% / +10% / 없음 / 10일 | KOSDAQ / none | 5 | 200만 | 중소형(시총<5천억)·거래량배수순 |
 | 4 | [`minervini_volume_dryup`](../strategies/minervini_volume_dryup/README.md) | Minervini VCP (Var B) | 최근10봉 평균거래량 ≤ 직전30봉의 70% (dry-up) | -8% / +12% / 없음 / 20일 | KOSPI / none | 3 | 333만 | 시총≥3천억·거래대금≥30억 |
 | 5 | [`book_pullback_ma20`](../strategies/book_pullback_ma20/README.md) | 강창권 단기트레이딩 A-07 | 30일내 +25% 급등 + 20일선 눌림 지지 양봉 | -8% / +10% / MA20 trail / 50일 | KOSPI / exclude_bear | 5 | 200만 | 중소형(시총≤3조)·KOSPI+KOSDAQ |
 | 6 | [`book_pullback_ma5`](../strategies/book_pullback_ma5/README.md) | 트레이딩의 전설 (Book15) | 20일내 +20% 급등 + 5일선 눌림 지지 양봉 | **-3%** / +15% / MA5 trail / 30일 | KOSPI / exclude_bear | 5 | 200만 | 중소형(시총≤3조)·KOSPI+KOSDAQ |
