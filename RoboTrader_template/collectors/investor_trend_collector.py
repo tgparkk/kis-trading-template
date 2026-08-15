@@ -48,7 +48,12 @@ RETRY_BACKOFF = 1.0      # 초. 시도마다 배로 늘린다.
 
 
 def with_retry(fn, *args, what: str = "", **kwargs):
-    """None/빈 결과를 실패로 보고 재시도한다. 마지막 시도까지 실패하면 None."""
+    """**None 만** 실패로 보고 재시도한다. 마지막 시도까지 실패하면 None.
+
+    🔑 빈 DataFrame 은 «API 성공 + 해당 없음»이다 — 재시도해도 영원히 비어 있고,
+       실패로 세면 경보가 마비된다. 실측(2026-08-15): 신용잔고에서 신규상장·신용
+       미대상 **55종목**이 `rt_cd=0` 에 `output` 0행을 돌려줬다.
+    """
     delay = RETRY_BACKOFF
     for attempt in range(1, RETRY + 1):
         try:
@@ -56,7 +61,7 @@ def with_retry(fn, *args, what: str = "", **kwargs):
         except Exception as e:              # noqa: BLE001 - 어떤 예외든 재시도 대상
             logger.warning(f"[retry {attempt}/{RETRY}] {what} 예외: {e}")
             r = None
-        if r is not None and not (hasattr(r, "empty") and r.empty):
+        if r is not None:
             return r
         if attempt < RETRY:
             time.sleep(delay)
@@ -166,14 +171,19 @@ def collect_investor_trend(trade_date: str = None) -> dict:
         if not auth():
             return {"error": "KIS 인증 실패"}
         codes = universe(conn)
-        ok = fail = rows = 0
+        ok = fail = rows = no_data = 0
         failed: list[str] = []
         for code in codes:
             df = with_retry(get_investor_trend_daily, code, what=f"investor {code}")
-            r = rows_from_df(code, df) if df is not None and not df.empty else []
-            if not r:
+            if df is None:                       # 🔴 진짜 실패 (재시도 3회 소진)
                 fail += 1
                 failed.append(code)
+                time.sleep(CALL_INTERVAL)
+                continue
+            r = rows_from_df(code, df) if not df.empty else []
+            if not r:                            # 🟢 해당 없음(정상) — 경보 대상 아님
+                no_data += 1
+                time.sleep(CALL_INTERVAL)
                 continue
             with conn.cursor() as cur:
                 for row in r:
@@ -181,8 +191,9 @@ def collect_investor_trend(trade_date: str = None) -> dict:
             ok += 1
             rows += len(r)
             time.sleep(CALL_INTERVAL)
-        logger.info(f"[investor_trend] 종목 {ok}/{len(codes)} · {rows:,}행 · 실패 {fail}")
-        return {"codes": ok, "rows": rows, "failed": len(failed),
+        logger.info(f"[investor_trend] 성공 {ok}/{len(codes)} · 해당없음 {no_data} · "
+                    f"{rows:,}행 · 🔴실패 {fail}")
+        return {"codes": ok, "rows": rows, "no_data": no_data, "failed": len(failed),
                 "failed_codes": failed[:20], "trigger": why}
     finally:
         conn.close()
@@ -214,14 +225,16 @@ def main() -> int:
         codes = codes[:a.limit]
 
     print(f"대상 {len(codes):,}종목")
-    ok = fail = 0
+    ok = fail = no_data = 0
     total_rows = 0
     failed_codes = []
     for i, code in enumerate(codes, 1):
         df = with_retry(get_investor_trend_daily, code, what=f"investor {code}")
-        if df is None or df.empty:
+        if df is None:
             fail += 1
             failed_codes.append(code)
+        elif df.empty:
+            no_data += 1
         else:
             rows = rows_from_df(code, df)
             if rows:

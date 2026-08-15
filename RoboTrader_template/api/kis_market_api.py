@@ -541,8 +541,10 @@ def get_investor_trend_daily(stock_code: str) -> Optional[pd.DataFrame]:
 
         output = getattr(res.getBody(), 'output', None)
         if not output:
-            logger.debug(f"ℹ️ {stock_code} 투자자 매매동향 데이터 없음")
-            return None
+            # 🔑 rt_cd=0 인데 output 이 비었으면 «해당 없음»이지 실패가 아니다.
+            #    None(실패)과 빈 DataFrame(데이터 없음)을 구분해야 재시도·경보가 정확해진다.
+            logger.debug(f"ℹ️ {stock_code} 투자자 매매동향 해당 없음")
+            return pd.DataFrame()
         if not isinstance(output, list):
             output = [output]
 
@@ -587,7 +589,7 @@ def get_short_sale_daily(stock_code: str, start_date: str,
             return None
         out = getattr(res.getBody(), 'output2', None)
         if not out:
-            return None
+            return pd.DataFrame()      # 해당 없음 ≠ 실패
         if not isinstance(out, list):
             out = [out]
         return pd.DataFrame(out)
@@ -622,7 +624,7 @@ def get_program_trade_daily(stock_code: str,
             return None
         out = getattr(res.getBody(), 'output', None)
         if not out:
-            return None
+            return pd.DataFrame()      # 해당 없음 ≠ 실패
         if not isinstance(out, list):
             out = [out]
         return pd.DataFrame(out)
@@ -658,7 +660,9 @@ def get_credit_balance_daily(stock_code: str,
             return None
         out = getattr(res.getBody(), 'output', None)
         if not out:
-            return None
+            # 🔑 실측(2026-08-15): 신규상장·신용 미대상 55종목이 rt_cd=0 · output 0행을
+            #    돌려줬다. **해당 없음이지 실패가 아니다.**
+            return pd.DataFrame()
         return pd.DataFrame(out if isinstance(out, list) else [out])
     except Exception as e:
         logger.error(f"❌ {stock_code} 신용잔고 오류: {e}")
@@ -683,7 +687,7 @@ def get_overtime_daily(stock_code: str) -> Optional[pd.DataFrame]:
             return None
         out = getattr(res.getBody(), 'output2', None)
         if not out:
-            return None
+            return pd.DataFrame()      # 해당 없음 ≠ 실패
         return pd.DataFrame(out if isinstance(out, list) else [out])
     except Exception as e:
         logger.error(f"❌ {stock_code} 시간외 일별 오류: {e}")

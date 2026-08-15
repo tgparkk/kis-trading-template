@@ -122,12 +122,21 @@ def _collect(kind: str, d1: str, d2: str) -> dict:
         if not auth():
             return {"error": "KIS 인증 실패"}
         codes = universe(conn)
-        ok = fail = rows = 0
+        ok = fail = rows = no_data = 0
         failed: list[str] = []
         for code in codes:
             df = _fetch(kind, code, d1, d2)
+            if df is None:                       # 🔴 진짜 실패
+                fail += 1
+                failed.append(code)
+                time.sleep(CALL_INTERVAL)
+                continue
+            if df.empty:                         # 🟢 해당 없음(정상) — 신용 미대상 등
+                no_data += 1
+                time.sleep(CALL_INTERVAL)
+                continue
             n = 0
-            if df is not None and not df.empty:
+            if True:
                 with conn.cursor() as cur:
                     for _, r in df.iterrows():
                         ymd = str(r.get(datefld, "")).strip()
@@ -144,11 +153,11 @@ def _collect(kind: str, d1: str, d2: str) -> dict:
                 ok += 1
                 rows += n
             else:
-                fail += 1
-                failed.append(code)
+                no_data += 1
             time.sleep(CALL_INTERVAL)
-        logger.info(f"[{kind}] 종목 {ok}/{len(codes)} · {rows:,}행 · 실패 {fail}")
-        return {"codes": ok, "rows": rows, "failed": len(failed),
+        logger.info(f"[{kind}] 성공 {ok}/{len(codes)} · 해당없음 {no_data} · "
+                    f"{rows:,}행 · 🔴실패 {fail}")
+        return {"codes": ok, "rows": rows, "no_data": no_data, "failed": len(failed),
                 "failed_codes": failed[:20], "trigger": why}
     finally:
         conn.close()
@@ -215,7 +224,7 @@ def main() -> int:
         codes = codes[:a.limit]
 
     print(f"[{a.kind}] 대상 {len(codes):,}종목 → {table}")
-    ok = fail = rows_tot = 0
+    ok = fail = rows_tot = no_data = 0
     failed_codes: list[str] = []
     for i, code in enumerate(codes, 1):
         # 🔴 여기서 kind 분기를 손으로 다시 쓰면 새 kind 가 조용히 «다른 데이터»로 흐른다.
@@ -223,9 +232,11 @@ def main() -> int:
         #    같았다면 프로그램매매 데이터가 credit 테이블에 들어갔을 것이다.
         #    ⇒ 분기는 `_fetch` 한 곳에만 둔다.
         df = _fetch(a.kind, code, a.d1, a.d2)
-        if df is None or df.empty:
+        if df is None:                # 🔴 진짜 실패 (재시도 소진)
             fail += 1
             failed_codes.append(code)
+        elif df.empty:                # 🟢 해당 없음(정상) — 신용 미대상 등
+            no_data += 1
         else:
             n = 0
             with conn.cursor() as cur:
@@ -249,7 +260,8 @@ def main() -> int:
             print(f"  {i:,}/{len(codes):,} · 성공 {ok:,} · 실패 {fail:,} · 행 {rows_tot:,}")
         time.sleep(CALL_INTERVAL)
 
-    print(f"\n완료 — 종목 성공 {ok:,} / 실패 {fail:,} · upsert {rows_tot:,}행")
+    print(f"\n완료 — 성공 {ok:,} · 해당없음(정상) {no_data:,} · 🔴실패 {fail:,}"
+          f" · upsert {rows_tot:,}행")
     if failed_codes:
         print(f"🔴 실패 종목 {len(failed_codes)}개 "
               f"(재시도: --kind {a.kind} --codes {','.join(failed_codes)})")
