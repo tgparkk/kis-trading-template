@@ -45,6 +45,8 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import pandas as pd
 
+from utils.data_sanity import describe_impossible_drop
+
 if TYPE_CHECKING:
     from core.trading_context import TradingContext  # noqa: F401 — 문자열 어노테이션용
 
@@ -634,6 +636,26 @@ class BaseStrategy(ABC):
                             "data_len": len(data),
                             "min_len": min_len,
                         })
+                continue
+            # ★ 불가능봉 가드 (2026-08-15 감사) — KRX 한도(±30%)를 넘는 «하락» 봉이 창 안에
+            #   있으면 조정되지 않은 기업행위가 남긴 인공물이다. 그 데이터로 지표를 계산하면
+            #   가짜 폭락·가짜 거래량으로 오진한다. 실측: deep_mr_dev20 매수 46건 중 4건이
+            #   이 경로였고 둘은 손절선을 뚫고 −12.4%·−16.2% 로 갭다운했다.
+            #   ⚠️ 데이터 위생이지 전략 변경이 아니다 — utils/data_sanity.py 참조.
+            _bad = describe_impossible_drop(data)
+            if _bad:
+                buy_skipped += 1
+                if self._should_log_ontick(stock.stock_code, "impossible_bar"):
+                    self.logger.warning(
+                        f"[신호없음] {stock.stock_code}: {_bad} — 미조정 기업행위 의심, 진입 제외"
+                    )
+                if ctx.tracer:
+                    await ctx.tracer.emit({
+                        "stock_code": stock.stock_code,
+                        "event_type": "skipped",
+                        "skip_reason": "impossible_bar",
+                        "detail": _bad,
+                    })
                 continue
             signal = self.generate_signal(stock.stock_code, data, timeframe='daily')
             if not signal:

@@ -9,6 +9,10 @@ import pandas as pd
 
 from strategies.screener_base import ScreenerBase
 from core.candidate_selector import CandidateStock
+from utils.data_sanity import describe_impossible_drop
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class RuleScreenerBase(ScreenerBase):
@@ -84,6 +88,15 @@ class RuleScreenerBase(ScreenerBase):
                 continue
             df = df[df["date"].dt.date <= scan_date]
             if df.empty:
+                continue
+            # ★ 불가능봉 가드 (2026-08-15 감사) — KRX 한도(±30%)를 넘는 «하락» 봉은
+            #   조정되지 않은 기업행위가 남긴 인공물이다. 그 창으로 지표를 계산하면
+            #   가짜 폭락으로 오진한다(실측: deep_mr 후보 4건이 이 경로).
+            #   ⚠️ 데이터 위생이지 전략 변경이 아니다 — utils/data_sanity.py 참조.
+            bad = describe_impossible_drop(df)
+            if bad:
+                logger.warning("[%s] %s: %s — 미조정 기업행위 의심, 후보 제외",
+                               self.strategy_name, code, bad)
                 continue
             verdict = self.match(df, merged)
             if verdict is None:
