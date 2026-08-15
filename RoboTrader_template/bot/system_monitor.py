@@ -624,12 +624,27 @@ class SystemMonitor:
         index = result.get("index", {})
         market_map = result.get("stock_market", {})
         foreign = result.get("foreign_flow", {})
+        # 수급 3축(investor·program·short) — 신선도 가드가 붙어 있어 보통은 {"skipped": ...} 다.
+        flow = {k: result.get(k, {}) for k in ("investor_trend", "program_trade", "short_sale")}
         rec = result.get("reconcile", {})
         self.logger.info(
             f"EOD 데이터 수집 완료: 일봉 {daily} · 분봉 {minute} · 지수 {index}"
-            f" · 시장매핑 {market_map} · 외국인수급 {foreign}"
+            f" · 시장매핑 {market_map} · 외국인수급 {foreign} · 수급3축 {flow}"
             + (f" · 교차비교 {rec}" if rec else " · (전환완료 비교생략)")
         )
+        # 🔴 수급 3축 실패를 요약 INFO 에 묻으면 안 된다. investor·program 은 공급 TR 이
+        #    **최근 30 거래일만** 주므로 ***실패한 그날이 30일 뒤 영구 결손***이 된다.
+        #    시장매핑과 같은 이유로 ERROR 승격한다 — 조용한 결손은 조용한 오염보다 나쁘다.
+        for _k, _v in flow.items():
+            if not isinstance(_v, dict):
+                continue
+            if "error" in _v:
+                self.logger.error(f"EOD 수급 수집 실패({_k}): {_v['error']}")
+            elif _v.get("failed"):
+                self.logger.error(
+                    f"EOD 수급 수집 부분 실패({_k}): {_v['failed']}종목 "
+                    f"— 재시도 필요 {_v.get('failed_codes')}"
+                )
         # 시장 매핑 실패는 요약 INFO 에 묻히면 안 된다. eod_collection._safe 가
         # 예외를 삼켜 {"error": ...} 로만 남기므로(:24-29), 여기서 ERROR 로
         # 승격하지 않으면 규모 하한 거부가 조용히 지나간다 — 며칠째 거부 중인데
