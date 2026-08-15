@@ -20,6 +20,8 @@
 | `ledger_trades.csv` | 매매건 33행 (등록일·체결차수·프리셋·수동개입·본전매도·분할손절 라벨) |
 | `ledger_legs.csv` | 매도레그 119행 (손실 15 · 미완결 5) |
 | `verify_ledger.py` | 회수율 게이트 G-A/B/C/D — 원문 ↔ 원장 **양방향** 대조 |
+| `regen_gate.py` | **재현 게이트** — `RESULTS_*.md` 가 현재 스크립트 판본의 출력인지 검사 |
+| `REGEN_MANIFEST.json` | 위 게이트의 기준선 (스크립트 + import 폐포의 sha256) |
 | `fetch_post.py` | 글 1건 수집 (`cat2829_common` 재사용, 라이브 트리 import 0건) |
 
 ## 🔴 원문은 저장소에 없다
@@ -50,9 +52,26 @@
 
 ```bash
 cd RoboTrader_template/backtest/tasso_program_journal
-python verify_ledger.py        # 게이트. 실패 시 비영 종료
+python verify_ledger.py        # 원장 게이트. 실패 시 비영 종료 (보관소 필요)
+python regen_gate.py           # 재현 게이트. 해시 대조만이라 DB 불필요·빠름
+python regen_gate.py --rerun   # 실제 재실행 + byte-diff (DB 필요)
 python fetch_post.py <logNo>   # 새 글 수집
 ```
+
+## 🔴 재현 게이트가 왜 생겼나 (2026-08-15)
+
+`RESULTS_COMMON_BAND.md` 가 `solve_common_band.py` 보다 **한 판 뒤처져 있었다.** 커밋 메시지와
+메모리는 `b₁ ≈ 12.0% · 귀무 0.5%` 라고 적었는데 저장소의 파일은 `1.1% · 0.6%` 였고, 그 `0.6%` 는
+changelog 가 *「내 귀무의 결함이었다」*고 **이미 철회한 값**이다.
+
+🔑 ***결과 파일이 스크립트보다 한 판 뒤처지면, 이미 철회한 숫자가 저장소에 남는다.***
+
+게이트는 산출물마다 **생성 스크립트 + 그 스크립트가 import 하는 로컬 모듈 폐포**의 sha256 을 본다.
+폐포까지 보는 이유는 `run_hdr.py` 가 `reconstruct_prices.py` 를 import 하기 때문이다 —
+후자만 고치면 전자의 산출물도 조용히 낡는다(실측으로 검출 확인).
+
+⚠️ **통과 = 「그 스크립트로 만들었다」이지 「숫자가 옳다」가 아니다.** 숫자는 `--rerun` 이 본다.
+전제는 **모든 산출 스크립트가 결정적이거나 시드 고정**이라는 것이다(`NULL_SEED = 20260815`).
 
 라이브 트리 import **0건**(표준 라이브러리 + `cat2829_common` 만). `utils/logger.py` 를 건드리지 않으므로
 `trading_YYYYMMDD.log` 를 오염시키지 않는다 — `measure_peak_lag.py` 와 같은 관례.
