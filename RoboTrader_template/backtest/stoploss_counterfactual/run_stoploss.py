@@ -190,8 +190,10 @@ def main() -> int:
     say(f"매수일부터 최대 {MAX_HOLD}거래일. 일봉 저가가 `매수가×(1−θ)` 이하면 그 가격에 청산, "
         "아니면 마지막 날 종가 청산. **손절 축만** 바꾼 근사다(익절·트레일링 미적용).\n")
     base = sells[sells.cat.isin(("손절", "익절"))]
-    say("| θ | 손절 발동 | 총손익 중앙 | 총손익 평균 |")
-    say("|---|---|---|---|")
+    # 🔑 θ 를 바꾸면 **승률과 손익비가 «함께»** 움직인다 — 총손익만 찍으면 원인을 못 가른다.
+    #    (독립 변수가 아니므로 「손익비 고정」이라는 전제 자체가 성립하지 않는다.)
+    say("| θ | 손절 발동 | 승률 | 평균이익 | 평균손실 | **손익비** | 총손익 중앙 | 총손익 평균 |")
+    say("|---|---|---|---|---|---|---|---|")
     for th in THETAS:
         rets, fired = [], 0
         for r in base.itertuples():
@@ -216,9 +218,19 @@ def main() -> int:
                 fired += 1
                 rets.append(hit / r.buy_price - 1)
         a = np.array(rets)
+        w, l = a[a > 0], a[a <= 0]
+        wr = len(w) / len(a) if len(a) else np.nan
+        aw = w.mean() if len(w) else np.nan
+        al = -l.mean() if len(l) else np.nan
+        pr = aw / al if (np.isfinite(aw) and np.isfinite(al) and al) else np.nan
         say(f"| {'없음' if th is None else f'−{th*100:.0f}%'} | {fired}/{len(a)} | "
-            f"**{np.median(a)*100:+.2f}%** | {a.mean()*100:+.2f}% |")
+            f"{wr*100:.1f}% | +{aw*100:.2f}% | −{al*100:.2f}% | **{pr:.2f}:1** | "
+            f"{np.median(a)*100:+.2f}% | **{a.mean()*100:+.2f}%** |")
     say()
+    say("🔑🔑 ***손익비를 「고정」할 수 없다 — θ 를 움직이면 승률과 손익비가 «함께» 움직인다.*** "
+        "손절을 조이면 평균 손실은 작아지지만 **더 자주 손절돼 승률이 떨어진다.** "
+        "그래서 「필요 승률 = 평균손실/(평균이익+평균손실)」 같은 항등식은 **한 설정 «안에서»만** "
+        "뜻이 있고, 설정을 바꿔 비교할 때는 쓸 수 없다.\n")
     say("🔴 **이 표를 보고 θ 를 고르면 사후적합이다.** 민감도의 «모양»을 보는 용도이고, "
         "채택은 별도 사전등록에서 한다(사전등록 §5 단서).\n")
 
