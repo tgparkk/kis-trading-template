@@ -9,7 +9,7 @@ SampleScreener 단위 테스트
   4. 어댑터 — ScreenerBase 인터페이스 준수, default_params 머지
   5. 실패 격리 — DB 조회 실패 시 raise 없이 빈 리스트 반환
 
-외부 DB(strategy_analysis)에 접속하지 않도록 historical_data 헬퍼를 monkeypatch 한다.
+외부 DB(kis_template)에 접속하지 않도록 historical_data 헬퍼를 monkeypatch 한다.
 """
 
 import sys

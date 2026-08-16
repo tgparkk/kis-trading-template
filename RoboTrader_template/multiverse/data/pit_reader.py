@@ -8,10 +8,12 @@
   - ★ adj_factor 를 곱하지 않는다 (아래 규약 참조)
   - 공시 lag 60일: quant_financial_ratio.statement_ym + 60일 이전만 반환
 
-데이터 소스 (2026-07-16 연구 소스 통일):
+데이터 소스 (2026-07-16 연구 소스 통일 + 2026-08-16 DB 통합):
   - 가격(daily_prices) = resolve_daily_source_db() → 기본 kis_template
-  - 재무(quant_financial_ratio) = robotrader_quant **의도된 예외**
-    kis_template 엔 재무 테이블 자체가 없다(실측: relation 없음).
+  - 재무(quant_financial_ratio) = 기본 kis_template
+    ✅ 2026-08-16 이관으로 「재무는 robotrader_quant 유지」 예외가 **해소됐다**
+       (그 전엔 kis_template 에 재무 테이블 자체가 없었다).
+       QUANT_FINANCIAL_DB 로 override 가능(롤백 경로 유지).
   - 운영(screener_snapshots) = TIMESCALE_DB (라이브 .env 에서 kis_template)
 
 ★ adj_factor 곱셈 금지 규약 (불변):
@@ -72,9 +74,10 @@ _DB_DEFAULTS = dict(
     password=os.getenv("TIMESCALE_PASSWORD", "1234"),
 )
 
-# robotrader_quant DB는 별도 유저 환경변수 지원.
+# 가격·재무 연결은 별도 유저 환경변수 지원.
 # GRANT 미부여 환경에서는 TIMESCALE_QUANT_USER=postgres,
 # TIMESCALE_QUANT_PASSWORD=postgres 로 덮어쓸 수 있다.
+# (이름의 QUANT 는 레거시 유래 — 지금 기본 대상은 kis_template 이다.)
 _QUANT_DB_DEFAULTS = dict(
     host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
     port=int(os.getenv("TIMESCALE_PORT", "5433")),
@@ -86,13 +89,15 @@ _QUANT_DB_DEFAULTS = dict(
 
 _ROBOTRADER_DB = os.getenv("TIMESCALE_DB", "robotrader")
 
-# 재무 전용 DB — **의도된 예외**로 kis_template 통일 대상에서 제외한다.
-# quant_financial_ratio / quant_balance_sheet / quant_income_statement /
-# financial_statements 는 robotrader_quant 에만 존재하며 kis_template 엔 테이블
-# 자체가 없다(실측 2026-07-16: kis_template 에서 조회 시 "릴레이션이 없습니다").
-# 따라서 가격 resolver 를 태우면 안 된다. 재무를 kis_template 으로 옮기려면 먼저
-# 테이블·적재 파이프라인이 있어야 한다(별건).
-_FINANCIAL_DB = os.getenv("QUANT_FINANCIAL_DB", "robotrader_quant")
+# 재무 소스 DB — 2026-08-16 통합으로 기본값이 kis_template 이 됐다.
+# ✅ 예외 해소: quant_financial_ratio / quant_balance_sheet / quant_income_statement /
+#    financial_statements 는 2026-08-16 사장님 원칙 「DB 는 kis_template 하나로」에
+#    따라 robotrader_quant → kis_template 으로 이관됐다(전행 해시 검증, 원본 미삭제).
+#    그 전에는 kis_template 에 테이블 자체가 없어 「의도된 예외」였다.
+# ⚠️ 그래도 가격 resolver(resolve_daily_source_db)를 태우지 **않는다** — 그 스위치는
+#    KIS_DATA_SOURCE=legacy 에서 동결 레거시를 가리키는 **가격 전용** 롤백 경로다.
+#    재무 롤백은 이 QUANT_FINANCIAL_DB 하나로 독립 제어한다(가격 플래그와 비결합).
+_FINANCIAL_DB = os.getenv("QUANT_FINANCIAL_DB", "kis_template")
 
 
 @contextmanager
@@ -128,7 +133,10 @@ def _conn_daily():
 
 @contextmanager
 def _conn_financial():
-    """재무 소스 연결 — robotrader_quant 고정(의도된 예외). 별도 유저 환경변수 사용."""
+    """재무 소스 연결 — 기본 kis_template(2026-08-16 통합). 별도 유저 환경변수 사용.
+
+    QUANT_FINANCIAL_DB 로 override 가능(예: 이관 전 원본 대조 시 robotrader_quant).
+    """
     conn = psycopg2.connect(**_QUANT_DB_DEFAULTS, database=_FINANCIAL_DB)
     try:
         yield conn
@@ -160,10 +168,19 @@ def backtest_session():
         # 모두 동일한 psycopg2 connection을 재사용한다.
         # connect() 비용(~220ms/call)을 루프 진입 1회로 줄인다.
 
-    가격(kis_template)과 재무(robotrader_quant)가 서로 다른 DB 이므로 연결을 둘로
-    나눠 각각 재사용한다(단일 연결로는 한쪽 테이블을 찾지 못한다). 재무 연결은
-    read_financial_ratio 가 실제로 호출될 때까지 열지 않는다(지연 생성) — 재무를
-    안 쓰는 페르소나가 불필요한 connect 비용을 물지 않게 한다.
+    가격과 재무 연결을 둘로 나눠 각각 재사용한다. 재무 연결은 read_financial_ratio 가
+    실제로 호출될 때까지 열지 않는다(지연 생성) — 재무를 안 쓰는 페르소나가 불필요한
+    connect 비용을 물지 않게 한다.
+
+    ⚠️ 2026-08-16 통합 후에도 **연결을 하나로 합치지 않았다**(합칠 수 있으나 미실시).
+      기본 설정에서는 둘 다 kis_template 이라 합칠 수 있어 보이지만, 두 값은 서로
+      **독립적으로 갈라질 수 있다**:
+        · resolve_daily_source_db() 는 KIS_DATA_SOURCE=legacy 에서 robotrader_quant
+        · _FINANCIAL_DB 는 QUANT_FINANCIAL_DB 로 따로 override
+      즉 「지금 기본값이 같다」일 뿐 「항상 같다」가 아니다. 무조건 합치면 두 롤백
+      경로가 동시에 깨진다. 조건부 합치기(이름이 같을 때만 재사용)는 가능하지만
+      트랜잭션 수명이 얽혀 동작 변경 위험이 있어 이번 전환 범위에서 제외했다.
+      절감 효과도 세션당 connect 1회(~220ms)뿐이다.
 
     중첩 호출 안전: 이미 세션이 열려 있으면 그냥 통과(no-op).
     """
@@ -483,8 +500,9 @@ def read_financial_ratio(
         ORDER BY statement_ym DESC
         LIMIT 1
     """
-    # 재무는 robotrader_quant 고정(의도된 예외) — 가격 재사용 연결(kis_template)을
-    # 쓰면 quant_financial_ratio 를 찾지 못한다.
+    # 재무는 _FINANCIAL_DB(기본 kis_template) 전용 연결로 읽는다. 기본 설정에선 가격과
+    # 같은 DB 지만, QUANT_FINANCIAL_DB / KIS_DATA_SOURCE 로 갈라질 수 있으므로 가격
+    # 재사용 연결을 그대로 쓰지 않는다(backtest_session docstring 의 ⚠️ 절 참조).
     params = dict(symbol=symbol, lag_cutoff=lag_cutoff)
     reuse = _get_reuse_financial_conn()
     if reuse is not None:

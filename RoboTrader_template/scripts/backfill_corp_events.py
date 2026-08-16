@@ -15,7 +15,7 @@ corp_events 백필 스크립트 (Phase 2)
 
 환경:
   .env 파일에 OPENDART_API_KEY 필요
-  DB: 127.0.0.1:5433, robotrader / 1234, robotrader
+  DB: 127.0.0.1:5433, robotrader / 1234 — corp_events 기록=TIMESCALE_DB, 일봉 조회=kis_template
 
 절대 금지:
   - DELETE/UPDATE 없음 (INSERT ON CONFLICT DO NOTHING만)
@@ -96,12 +96,18 @@ _DB_DEFAULTS = dict(
     database=os.getenv("TIMESCALE_DB", "robotrader"),
 )
 
+# 일봉(daily_prices) 조회용 연결 — 종목목록·종목별 날짜범위를 여기서 읽는다.
+# 2026-08-16: 기본 대상이 robotrader_quant → kis_template 으로 바뀌었다.
+#   robotrader_quant 는 형제 봇 중단으로 **2026-07-10 동결**이라 그대로 두면 이 스크립트가
+#   죽은 DB 의 날짜범위로 DART 공시 창을 잡는다(= 최근 구간 공시를 통째로 놓친다).
+#   kis_template 은 갱신 중이며 일봉 상위집합이다.
+# ⚠️ 이름의 `QUANT` 는 레거시 유래 — 더 이상 DB명을 뜻하지 않는다.
 _QUANT_DB_DEFAULTS = dict(
     host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
     port=int(os.getenv("TIMESCALE_PORT", "5433")),
     user=os.getenv("TIMESCALE_USER", "robotrader"),
     password=os.getenv("TIMESCALE_PASSWORD", "1234"),
-    database="robotrader_quant",
+    database="kis_template",
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -139,7 +145,7 @@ def _insert_event(
 def _get_stock_codes_from_db(target_codes: Optional[list[str]] = None, use_quant: bool = False) -> list[str]:
     """daily_prices에서 DISTINCT stock_code 추출. target_codes가 있으면 교집합.
 
-    use_quant=True이면 robotrader_quant DB의 2,600+ 종목 전체 universe 사용.
+    use_quant=True이면 일봉 DB(kis_template)의 2,600+ 종목 전체 universe 사용.
     """
     conn = _get_quant_conn() if use_quant else _get_conn()
     try:
@@ -158,17 +164,17 @@ def _get_stock_codes_from_db(target_codes: Optional[list[str]] = None, use_quant
     return db_codes
 
 
-# 전역 날짜범위 캐시 (robotrader_quant 한 번만 쿼리)
+# 전역 날짜범위 캐시 (일봉 DB 한 번만 쿼리)
 _DATE_RANGE_CACHE: dict[str, tuple[str, str]] = {}
 _DATE_RANGE_LOADED = False
 
 
 def _load_date_range_cache() -> None:
-    """robotrader_quant daily_prices에서 전 종목 날짜범위를 한 번에 로드."""
+    """일봉 DB(daily_prices)에서 전 종목 날짜범위를 한 번에 로드."""
     global _DATE_RANGE_LOADED
     if _DATE_RANGE_LOADED:
         return
-    logger.info("[Cache] robotrader_quant daily_prices 날짜범위 일괄 로드 중...")
+    logger.info("[Cache] %s daily_prices 날짜범위 일괄 로드 중...", _QUANT_DB_DEFAULTS["database"])
     conn = _get_quant_conn()
     try:
         with conn.cursor() as cur:
@@ -188,12 +194,12 @@ def _load_date_range_cache() -> None:
 def _get_stock_date_range(stock_code: str) -> tuple[str, str]:
     """종목별 daily_prices의 최소/최대 date 반환 (YYYYMMDD 형식).
 
-    캐시가 로드된 경우 캐시에서 반환, 없으면 robotrader_quant 직접 쿼리.
+    캐시가 로드된 경우 캐시에서 반환, 없으면 일봉 DB 직접 쿼리.
     """
     if _DATE_RANGE_LOADED and stock_code in _DATE_RANGE_CACHE:
         return _DATE_RANGE_CACHE[stock_code]
 
-    # 캐시 미사용 시 직접 쿼리 (robotrader_quant 우선, fallback robotrader)
+    # 캐시 미사용 시 직접 쿼리 (일봉 DB 우선, fallback TIMESCALE_DB)
     for get_conn in [_get_quant_conn, _get_conn]:
         conn = get_conn()
         try:
@@ -652,7 +658,7 @@ def main():
         "--universe",
         choices=["default", "full"],
         default="default",
-        help="full: robotrader_quant의 2,600+ 전체 universe 사용 (default: robotrader 294종목)",
+        help="full: 일봉 DB(kis_template)의 2,600+ 전체 universe 사용 (default: TIMESCALE_DB 294종목)",
     )
     parser.add_argument("--yes", action="store_true", help="전 종목 본 적재 확인 대화 건너뜀")
     args = parser.parse_args()

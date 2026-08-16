@@ -1,7 +1,9 @@
-"""robotrader_quant.daily_prices 읽기 전용 리더 (스크리너 유니버스·일봉용).
+"""daily_prices 읽기 전용 리더 (스크리너 유니버스·일봉용).
 
-kis-template 기본 DB(robotrader)와 별개로, 전 종목·매일 갱신되는
-robotrader_quant 에서 일봉/유니버스를 읽는다. 같은 5433 서버, dbname만 다름.
+대상 DB 는 resolve_daily_source_db() 가 정한다 — **기본 kis_template**,
+KIS_DATA_SOURCE=legacy 일 때만 동결 레거시(robotrader_quant). 클래스명·모듈명의
+`quant` 는 레거시 유래 이름일 뿐 더 이상 DB명을 뜻하지 않는다.
+전 종목·매일 갱신되는 일봉/유니버스를 읽는다.
 DB의 date 컬럼은 text('YYYY-MM-DD')라 ISO 문자열 비교로 필터/정렬하지만,
 반환 DataFrame의 date는 datetime64로 변환된다.
 유니버스에 종목명 소스가 없어 CandidateStock.name=종목코드로 채움

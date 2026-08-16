@@ -33,7 +33,10 @@ sys.path.insert(0, str(_HERE))
 # ---------------------------------------------------------------------------
 os.environ.setdefault("EXTERNAL_DB_HOST", "127.0.0.1")
 os.environ.setdefault("EXTERNAL_DB_PORT", "5433")
-os.environ.setdefault("EXTERNAL_DB_USER", "postgres")
+# 2026-08-16: postgres(superuser) → robotrader. 이 스크립트의 DB 접근은 전부
+# strategies.historical_data 경유이고, 그 소스가 strategy_analysis(=robotrader 권한
+# 없음) 에서 kis_template(=robotrader 소유) 로 바뀌어 superuser 가 불필요해졌다.
+os.environ.setdefault("EXTERNAL_DB_USER", "robotrader")
 os.environ.setdefault("EXTERNAL_DB_PASSWORD", "1234")
 
 # ---------------------------------------------------------------------------
@@ -49,7 +52,7 @@ logger = logging.getLogger("run_buy_filter_grid")
 
 def main() -> None:
     # -----------------------------------------------------------------------
-    # 1. 데이터 로드 (strategy_analysis.daily_candles)
+    # 1. 데이터 로드 (kis_template.daily_prices)
     # -----------------------------------------------------------------------
     logger.info("=== Phase 2 매수 필터 그리드 탐색 시작 ===")
     logger.info("외부 DB에서 일봉 데이터 로드 중...")

@@ -189,11 +189,12 @@ del _os
 #   - tests/collectors/test_eod_collection.py 는 모듈 속성을 명시 monkeypatch 하므로
 #     기본값과 무관하게 legacy/new 양 분기를 모두 계속 검증한다.
 #
-# ★ 재무 데이터는 예외: quant_financial_ratio / quant_balance_sheet /
-#   quant_income_statement / financial_statements 는 robotrader_quant 에만 존재하고
-#   kis_template 엔 테이블 자체가 없다. 재무 경로(lib/signals/roe_filter.py,
-#   multiverse/data/pit_reader.read_financial_ratio)는 quant 를 계속 본다.
-#   이 resolver 들은 **가격 데이터(daily_prices/minute_candles) 전용**이다.
+# ★ 이 resolver 들은 **가격 데이터(daily_prices/minute_candles) 전용**이다.
+#   재무(quant_financial_ratio / quant_balance_sheet / quant_income_statement /
+#   financial_statements)는 2026-08-16 통합으로 kis_template 에 이관됐고, 재무 경로
+#   (lib/signals/roe_filter.py, multiverse/data/pit_reader.read_financial_ratio)는
+#   이제 kis_template 을 본다. 다만 재무는 이 플래그가 아니라 pit_reader 의
+#   QUANT_FINANCIAL_DB 로 **독립 제어**한다 — 가격 롤백이 재무를 끌고 가지 않도록.
 # =============================================================================
 import os as _os_data
 
