@@ -1,16 +1,23 @@
 # -*- coding: utf-8 -*-
-"""랭킹 함수 반사실 — 사전등록 `PREREG.md` 실행부. **1단계 게이트 전용.**
+"""랭킹 함수 반사실 — 사전등록 `PREREG.md` 실행부.
 
 🔴 **창은 PREREG §10-1 개정본 `2024-03-13 ~ 2026-05-31` 이다**(원 §3 은 2021-01-01~).
 `market_cap` 커버리지가 2024-03-12 **1.4%** → 2024-03-13 **99.6%** 로 절벽인데 세 전략의
 `base_filter` 가 시총 결측을 fail-closed 로 제외해, 그 이전 구간은 적격 풀이 비어 아무 arm 도
-고르지 못했다. 개정은 **1단계 산출 후·PnL 관측 «전»**에 확정됐다. §6-5 는 §10-3 으로 2단계 이관.
+고르지 못했다. 개정은 **1단계 산출 후·PnL 관측 «전»**에 확정됐다.
 
-🔴 이 파일은 지금 «1단계»(PREREG §6)만 구현한다. 유일한 실행 모드는 `--stage1` 이고
-**PnL·수익률을 계산하지 않는다** — `BookBacktester` 를 import 하지도 부르지도 않으므로
-거래당 수익률이 메모리에 들어올 경로 자체가 없다. 2단계(§4·§5)는 별도 지시로 구현한다.
-***그래서 §6-5 의 「거래 수」는 «진입 트리거 수»(= arm 이 그날 고른 종목-일 수)로 센다.***
-실현 거래 수는 청산 판정을 필요로 하고, 청산 판정은 수익률 계산이다 → 2단계 몫.
+**모드 두 개.**
+
+- `--stage1` — PREREG §6 게이트. **PnL 을 계산하지 않는다.** `BookBacktester` 는
+  «2단계 함수 안에서만» import 되므로 이 경로에서는 거래당 수익률이 메모리에 들어올 경로가
+  아예 없다. §6-5 의 「거래 수」는 «진입 트리거 수» 로 세고, 네 arm 이 정의상 같아
+  **검사가 성립하지 않는다**(§10-3 이 실현 거래 수로 2단계 이관).
+  산출물 → `GATE.md`.
+- `--stage2` — PREREG §4·§5 판정. arm 별 거래당 평균 수익률·귀무 R·라벨 판정.
+  산출물 → `RESULTS.md`(판정) · `RESULTS_raw.md`(원시 출력).
+
+🔴 **두 모드는 «같은» 선택 집합을 쓴다** — `build_cache`→`build_pools`→`select_*` 경로가
+하나라서, 2단계의 arm 선택은 1단계가 인쇄한 것과 정의상 동일하다.
 
 Arm 4개는 «랭킹 함수 하나»만 다르다 (PREREG §2):
 
@@ -51,11 +58,14 @@ ROOT = BASE.parent.parent
 sys.path.insert(0, str(ROOT))
 warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy")
 
+from strategies.base import Signal, SignalType                                          # noqa: E402
 from strategies.book_pullback_ma5.screener import BookPullbackMa5ScreenerAdapter        # noqa: E402
 from strategies.book_pullback_ma20.screener import BookPullbackMa20ScreenerAdapter      # noqa: E402
 from strategies.minervini_volume_dryup.screener import (                                # noqa: E402
     MinerviniVolumeDryupScreenerAdapter,
 )
+# 🔴 `BookBacktester` 는 **여기서 import 하지 않는다** — `--stage1` 이 「PnL 계산 경로가
+#    아예 없다」를 보증하기 위해서다. 2단계 함수(`stage2`) 안에서 지역 import 한다.
 
 DSN = dict(host="127.0.0.1", port=5433, user="robotrader", password="1234",
            dbname="kis_template")
@@ -78,6 +88,44 @@ HIST0 = "2021-01-01"
 MAX_CANDIDATES = 10                    # PREREG §2 고정
 N_SEEDS = 20                           # PREREG §2 — R 시드 0..19
 N_DECILES = 10                         # PREREG §6-4
+# 🔴 PREREG §5-1 동결. **결과를 보고 바꾸지 않는다**(§8-1). 단위 = %p.
+EPS_ECON = 0.5
+MIN_TRADES = 200                       # PREREG §7-7 표본 문턱
+DIFF_PRED_FRAC = 1.0 / 3.0             # PREREG §5-4 차등 예측 문턱
+
+# PREREG §7(1~7) + §10-4(8~13) 한계 — **결과 문서에 그대로 옮겨 적는다**(축약 없음).
+LIMITATIONS = [
+    "🔴 **생존편향** — `daily_prices` 에 상폐 종목이 사실상 없다(사다리 §6-1 실측 0.5%). "
+    "편향은 **저유동성·저가 arm(V·R)을 위로** 민다 ⇒ **`T − V` 는 과소평가되는 쪽**이다. "
+    "***(나) 결론이 나오면 이 편향을 배제할 수 없다*** — 반대로 (가)가 나오면 강하다.",
+    "🔴 **`BookBacktester` 는 sl/tp/max_hold 만 지원**한다. ma5·ma20 의 **MA 이탈 트레일링이 "
+    "없다.** 전 arm 에 동일하게 빠지므로 arm 비교엔 무해하나 **절대 수준은 라이브와 다르다.**",
+    "🔴 **포트폴리오가 아니다** — 종목당 단일 포지션 순차. 거래 «당» 분포만 유효하고 "
+    "K 한도·자금 배분은 재현되지 않는다.",
+    "🔴 **`market_cap` 스냅샷 제약** — `base_filter` 가 시총을 쓰므로 시총 결측일은 전 arm 에서 "
+    "동일하게 빠진다(개정 창 안 결측률 0.38%, `GATE.md` §2).",
+    "⚠️ **이 문서는 「랭킹 함수」만 묻는다.** 「후보 상한 N」·「진입 룰」·「청산 파라미터」는 "
+    "별개 축이다. 🔴 ***결과를 보고 N 이나 청산을 함께 손대면 그게 사후적합이다.***",
+    "⚠️ **라이브가 실제로 겪은 국면이 아니다.** 라이브 페이퍼는 75일뿐이고 §3 에서 제외했다. "
+    "**백테스트 결론을 라이브 기대치로 인용하지 말 것**(`PAPER_STRATEGIES §0.7` 「97% 미검증」).",
+    "⚠️ **검정력.** 거래 수를 §6-5 에 인쇄하고, 전략별 거래 수 < 200 이면 그 전략은 "
+    "「표본 부족 → 판별 보류」로 병기한다.",
+    "🔴 **단일 국면이다.** 실효 창 2.2년(2024-03~2026-05)이고 5.4년이 아니다(§10-1). "
+    "***이 창의 결론을 다른 국면으로 일반화하지 말 것.***",
+    "🔴 **`market_cap` 자체의 PIT 성격을 검정하지 않았다.** 스냅샷을 과거로 방송한 값이면 "
+    "`base_filter` 에 룩어헤드가 있다. **전 arm 에 동일하게 걸리므로 arm 비교엔 무해**하나 "
+    "**절대 수준은 신뢰할 수 없다.**",
+    "⚠️ **불가능봉 가드 미적용.** 라이브 `scan()` 에는 있으나 승계 원본(사다리)에 없고 §2 고정 "
+    "목록에도 없어 넣지 않았다. **완전 중립은 아니다** — 풀에서 한 종목이 빠지면 11번째가 "
+    "들어오고 그 대체 종목이 arm 마다 다르다. 알려진 불가능봉 119건으로 미미하나 0 은 아니다.",
+    "⚠️ **종목코드 술어가 사다리와 다르다.** 이 문서 `^[0-9][0-9A-Z]{5}$`(2,788종목) vs "
+    "사다리 `^[0-9]{5}[0-9A-Z]$`(2,734종목) — 54종목 차이. "
+    "⇒ ***사다리 산출물과 숫자를 직접 비교하지 말 것.*** 내부 arm 비교에는 무해하다.",
+    "⚠️ **동점 처리** = 코드 오름차순 안정정렬(라이브는 DB 행 순서라 재현 불가). "
+    "동점이 흔한 arm **P** 에서만 실질 영향이 있다.",
+    "⚠️ **워밍업 히스토리** — 개정 창(2024-03-13~)에서는 창 이전 3년치가 확보되므로 "
+    "원 창의 한계는 **해소**됐다(실측 1,700,353행).",
+]
 
 # 전략 정의. `w`(점수 창)·`lookback`(match 에 넘기는 창)·`warmup`(룰 최소봉)은
 # 전부 라이브 코드에서 온 값이다 — 아래 `verify_strategy_params()` 가 대조·인쇄한다.
@@ -119,12 +167,32 @@ FINGERPRINT_SQL = {
         "SELECT count(*), count(DISTINCT stock_code), max(date) FROM daily_prices",
 }
 
-OUT: list[str] = []
+OUT: list[str] = []      # 원시 출력 (GATE.md / RESULTS_raw.md)
+DOC: list[str] = []      # 판정 문서 (RESULTS.md) — OUT 의 부분집합
 
 
 def say(s: str = "") -> None:
+    """원시 출력에만 남긴다."""
     print(s, flush=True)
     OUT.append(s)
+
+
+def rep(s: str = "") -> None:
+    """판정 문서 «와» 원시 출력 양쪽에 남긴다 ⇒ `RESULTS_raw.md` 는 항상 상위집합이다."""
+    print(s, flush=True)
+    OUT.append(s)
+    DOC.append(s)
+
+
+def git_sha() -> str:
+    """실행 커밋 SHA (PREREG §9). 조회 실패 시 문자열로 그 사실을 남긴다."""
+    import subprocess  # noqa: PLC0415 — 이 한 곳에서만 쓴다
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=str(ROOT),
+                              capture_output=True, text=True, timeout=10,
+                              check=True).stdout.strip()
+    except Exception as e:  # noqa: BLE001
+        return f"(조회 실패: {type(e).__name__})"
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -394,6 +462,81 @@ def changed_stock_days(selV: dict, selT: dict) -> list[tuple[str, str, str]]:
         out += [(d, c, "dropped") for c in sorted(v - t)]
         out += [(d, c, "added") for c in sorted(t - v)]
     return out
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 4b. 2단계 — 백테스트 · 판정 (PREREG §4·§5)
+# ────────────────────────────────────────────────────────────────────────────
+class ArmGated:
+    """arm 이 «그날 고른» 종목-일만 매수 신호로 바꾼다.
+
+    🔑 룰 발화 판정은 1단계 캐시가 이미 끝냈고 arm 선택은 그 부분집합이므로, 여기서는
+    `(code, date)` 조회 하나뿐이다 — **룰을 다시 평가하지 않는다.** 이것이 「arm 간 차이가
+    랭킹 함수 하나로만 생긴다」를 보장하는 장치다(PREREG §2).
+    """
+
+    def __init__(self, allowed: dict):
+        self.allowed = allowed          # {date_str: set(code)}
+
+    def generate_signal(self, stock_code, df, timeframe="daily"):
+        if stock_code in self.allowed.get(df["date"].iloc[-1], ()):
+            return Signal(signal_type=SignalType.BUY, stock_code=stock_code, confidence=60)
+        return None
+
+
+def run_arm(sel: dict, frames: dict, cfg: dict, backtester_cls) -> dict:
+    """arm 하나를 백테스트해 «거래당» 분포를 낸다.
+
+    반환 `mean`·`med` 단위는 **%** 다. 🔑 `pnl_pct` 에는 슬리피지(편도 0.1%)가 체결가에
+    반영돼 있고 **수수료 0.015%·거래세 0.18% 는 미반영**이다(= PREREG §4 의 gross,
+    승계 원본과 동일 정의). 왕복 비용 0.21%p 는 전 arm 에 동일하게 빠지므로 arm 차이엔 무해하다.
+    """
+    allowed = {d: set(v) for d, v in sel.items() if v}
+    codes = set().union(*allowed.values()) if allowed else set()
+    bt = backtester_cls(strategy=ArmGated(allowed), warmup_bars=0,
+                        stop_loss_pct=cfg["sl"], take_profit_pct=cfg["tp"],
+                        max_hold_bars=cfg["mh"], eod_liquidate=False)
+    pnl, hold, reasons = [], [], []
+    for c in sorted(codes):
+        g = frames.get(c)
+        if g is None or len(g) < 2:
+            continue
+        buy = None
+        for t in bt.run_single(c, g).trades:
+            if t["side"] == "buy":
+                buy = t
+            elif t["side"] == "sell" and buy is not None:
+                pnl.append(float(t["pnl_pct"]))
+                hold.append(int(t["idx"]) - int(buy["idx"]))
+                reasons.append(str(t["reason"]))
+                buy = None
+    if not pnl:
+        return dict(n=0, mean=float("nan"), med=float("nan"), win=float("nan"),
+                    hold=float("nan"), sl=float("nan"), tp=float("nan"),
+                    mh=float("nan"), fc=float("nan"))
+    p, r = pd.Series(pnl), pd.Series(reasons)
+    return dict(n=len(pnl), mean=p.mean() * 100, med=p.median() * 100,
+                win=(p > 0).mean() * 100, hold=float(pd.Series(hold).median()),
+                sl=(r == "stop_loss").mean() * 100, tp=(r == "take_profit").mean() * 100,
+                mh=(r == "max_hold").mean() * 100, fc=(r == "forced_close").mean() * 100)
+
+
+def frozen_labels(V: float, T: float, P: float, rmax: float) -> dict:
+    """PREREG §5-3·§5-3b·판정 규칙표의 **6개 라벨**을 그대로 평가한다.
+
+    🔴 라벨을 새로 짓지 않는다 — 여기 있는 6개 중 하나(또는 병기)를 «고르는» 것이고,
+    어느 것도 참이 아니면 「판별 불가」다. ε·N1 정의는 §5-1·§5-2 동결분이다.
+    """
+    n1T, n1V, n1P = T > rmax, V > rmax, P > rmax
+    e = EPS_ECON
+    return {
+        "(가) 랭킹 함수가 정보": (T - V >= e) and n1T and (T - P >= e),
+        "(다) 정체는 주가 수준": (T - V >= e) and n1T and (abs(T - P) < e),
+        "(다′) 가격대 단독": (P - V >= e) and n1P and (T - V < e),
+        "(라) 현행 랭킹이 «더 낫다»": (V - T >= e) and n1V,
+        "(마) 랭킹 축 자체가 무효": (abs(T - V) < e) and (abs(P - V) < e),
+        "(나) 랭킹은 정보가 아님": not n1T,
+    }
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -815,17 +958,297 @@ def stage1() -> int:
     return 0
 
 
+def stage2() -> int:
+    # 🔴 지역 import — `--stage1` 이 「PnL 계산 경로가 아예 없다」를 보증하기 위해서다.
+    from backtest.book_backtester import BookBacktester
+
+    conn = psycopg2.connect(**DSN)
+    sha = git_sha()
+    rep("# 판정 — 후보 랭킹 함수는 «정보»인가, 그냥 «저가주 선별기»인가")
+    rep("")
+    rep(f"사전등록 [`PREREG.md`](PREREG.md) 실행. 창 = **{W0} ~ {W1}**(§10-1 개정본) · "
+        f"실행 커밋 **`{sha}`**. 원시 출력 → [`RESULTS_raw.md`](RESULTS_raw.md).")
+    rep("")
+    rep(f"🔴 **ε·arm·시드·`w`·`max_candidates`·판정 규칙·라벨 6개는 `3634c3e` 동결분 그대로다.** "
+        f"ε = **{EPS_ECON}%p**(§5-1) · N1 = **`arm > R {N_SEEDS}개 전부`**(§5-2, 단측 p≈"
+        f"{1/(N_SEEDS+1):.3f}) · 판정은 **ma5·ma20 «둘 다»** 같아야 쓴다(§1). "
+        f"`minervini` 는 **판정 대상이 아니라 §5-4 차등 예측 대조군**이다.")
+    rep("")
+
+    rows = verify_strategy_params()
+    say("## 0. `config.yaml` 청산 파라미터")
+    say("")
+    say("| 전략 | config (sl/tp/max_hold) | 지시서 기대값 | 일치 |")
+    say("|---|---|---|---|")
+    for r in rows:
+        say(r)
+    say("")
+
+    fp = db_fingerprint(conn)
+    rep(f"## 0. 실행 기록 (PREREG §9)")
+    rep("")
+    rep(f"- 실행 커밋 SHA: **`{sha}`**")
+    rep(f"- 청산 파라미터는 `config.yaml` 에서 읽었다 — 3전략 모두 지시서 기대값과 **일치**"
+        f"(ma5 0.03/0.15/30 · ma20 0.08/0.10/50 · minervini 0.08/0.12/20).")
+    rep("- **등록 외 조합은 계산하지 않았다** — arm 은 V·T·R·P 넷뿐이고, 창 길이 스윕·"
+        "가중 혼합 score·거래대금 로그 변환은 이 스크립트에 구현되어 있지 않다(§8-2).")
+    rep("")
+    rep(f"DB 지문 ({len(FINGERPRINT_SQL)}슬라이스):")
+    rep("")
+    rep("| 슬라이스 | 행 수 | 종목 수 | max(date) |")
+    rep("|---|---|---|---|")
+    for k, (a, b, c) in fp.items():
+        rep(f"| `{k}` | {a:,} | {b:,} | {c} |")
+    rep("")
+
+    t0 = time.perf_counter()
+    px = load_prices(conn)
+    uni, _ = load_universe(conn)
+    conn.close()
+    print(f"[load] {len(px):,}행 · {time.perf_counter()-t0:.0f}s", flush=True)
+
+    res: dict = {}
+    for name, cfg in STRATS.items():
+        scr = cfg["screener"]()
+        print(f"\n[{name}] 룰 캐시", flush=True)
+        elig = eligible_by_date(uni, scr)
+        trig, tstats = build_cache(px, elig, scr, cfg)
+        pools = build_pools(trig, elig)
+        say(f"\n### `{name}` 준비")
+        say(f"- 룰 평가 {tstats['n_eval']:,}회 / 발화 {tstats['n_fire']:,}건 · "
+            f"{tstats['secs']:.0f}s · 적격 풀 비지 않은 날 {len(pools):,}")
+
+        sels = {"V": select_deterministic(pools, 1),
+                "T": select_deterministic(pools, 2),
+                "P": select_deterministic(pools, 3)}
+        # 🔑 2단계 프레임은 창 «안»으로 자른다. 워밍업 히스토리는 룰 평가(위)에서 이미
+        #    소비됐고, `ArmGated` 는 (code,date) 조회라 과거 봉을 보지 않는다 ⇒ 결과 동일,
+        #    비용만 줄인다. `warmup_bars=0` 은 이 절단과 짝을 이룬다.
+        frames = {}
+        for code, g in px.groupby("stock_code", sort=False):
+            g2 = g[g["date"] >= W0]
+            if len(g2) >= 2:
+                frames[code] = g2.reset_index(drop=True)
+
+        d = {}
+        for lab in ("V", "T", "P"):
+            t1 = time.perf_counter()
+            d[lab] = run_arm(sels[lab], frames, cfg, BookBacktester)
+            print(f"    {lab} n={d[lab]['n']:>5} mean={d[lab]['mean']:+.2f}% "
+                  f"{time.perf_counter()-t1:.0f}s", flush=True)
+        r_stats = []
+        for seed in range(N_SEEDS):
+            m = run_arm(select_random(pools, seed), frames, cfg, BookBacktester)
+            r_stats.append(m)
+            print(f"    R seed={seed:<2} n={m['n']:>5} mean={m['mean']:+.2f}%", flush=True)
+        d["R"] = r_stats
+        res[name] = d
+
+    # ── 표 ──────────────────────────────────────────────────────────────────
+    rep("## 1. 전체 표 — 거래당 평균 수익률 (gross · n = 실현 거래 수)")
+    rep("")
+    rep("🔑 `pnl_pct` 에 **슬리피지 편도 0.1% 는 반영**돼 있고 **수수료 0.015%·거래세 0.18% 는 "
+        "미반영**이다(= 승계 원본과 같은 gross 정의). 왕복 비용 0.21%p 는 전 arm 에 동일하게 "
+        "빠지므로 **arm 차이엔 무해**하나 **절대 수준은 net 이 아니다.**")
+    rep("")
+    rep("| 전략 | Arm | n (실현 거래) | 거래당 평균 | 중앙 | 승률 | 보유 중앙 | 손절 | 익절 | 최대보유 |")
+    rep("|---|---|---|---|---|---|---|---|---|---|")
+    for name, d in res.items():
+        role = "판정 대상" if name != "minervini_volume_dryup" else "🔑 대조군"
+        for lab in ("V", "T", "P"):
+            m = d[lab]
+            rep(f"| `{name}` ({role}) | **{lab}** | {m['n']:,} | **{m['mean']:+.2f}%** | "
+                f"{m['med']:+.2f}% | {m['win']:.0f}% | {m['hold']:.0f}일 | "
+                f"{m['sl']:.0f}% | {m['tp']:.0f}% | {m['mh']:.0f}% |")
+        rm = [x["mean"] for x in d["R"]]
+        rn = [x["n"] for x in d["R"]]
+        rep(f"| `{name}` ({role}) | **R** ({N_SEEDS}시드) | "
+            f"{int(np.mean(rn)):,} (평균) | 중앙 **{np.median(rm):+.2f}%** · "
+            f"최소 {min(rm):+.2f}% · **최대 {max(rm):+.2f}%** | | | | | | |")
+    rep("")
+
+    # ── 판정 ────────────────────────────────────────────────────────────────
+    rep("## 2. 사전등록 판정 (§5)")
+    rep("")
+    rep("| 전략 | V | T | P | R 최대 | **T−V** | **T−P** | **P−V** | N1(T) | N1(V) | N1(P) |")
+    rep("|---|---|---|---|---|---|---|---|---|---|---|")
+    L, meta = {}, {}
+    for name, d in res.items():
+        V, T, P = d["V"]["mean"], d["T"]["mean"], d["P"]["mean"]
+        rmax = max(x["mean"] for x in d["R"])
+        L[name] = frozen_labels(V, T, P, rmax)
+        meta[name] = dict(V=V, T=T, P=P, rmax=rmax, tv=T - V, tp=T - P, pv=P - V,
+                          n1T=T > rmax, n1V=V > rmax, n1P=P > rmax)
+        mk = lambda b: "✅" if b else "❌"                                    # noqa: E731
+        rep(f"| `{name}` | {V:+.2f}% | {T:+.2f}% | {P:+.2f}% | {rmax:+.2f}% | "
+            f"**{T-V:+.2f}%p** | **{T-P:+.2f}%p** | **{P-V:+.2f}%p** | "
+            f"{mk(T>rmax)} | {mk(V>rmax)} | {mk(P>rmax)} |")
+    rep("")
+    rep(f"ε = **{EPS_ECON}%p**. N1 = 그 arm 이 **R {N_SEEDS}개 전부**보다 큰가(§5-2).")
+    rep("")
+
+    rep("### 2-1. 라벨 6개 — 동결분 그대로 평가 (🔴 새 라벨을 짓지 않는다)")
+    rep("")
+    judged = ["book_pullback_ma5", "book_pullback_ma20"]
+    rep("| 라벨 (PREREG §5-3·§5-3b) | `book_pullback_ma5` | `book_pullback_ma20` | "
+        "**둘 다 성립?** | (참고) `minervini` |")
+    rep("|---|---|---|---|---|")
+    adopted = []
+    for lab in L[judged[0]]:
+        a5, a20 = L[judged[0]][lab], L[judged[1]][lab]
+        both = a5 and a20
+        if both:
+            adopted.append(lab)
+        rep(f"| {lab} | {'✅' if a5 else '❌'} | {'✅' if a20 else '❌'} | "
+            f"{'**✅ 채택**' if both else '—'} | "
+            f"{'✅' if L['minervini_volume_dryup'][lab] else '❌'} |")
+    rep("")
+    rep("🔴 `minervini` 열은 **판정에 쓰지 않는다**(§1·§8-4) — 대조군이라 참고로만 인쇄한다.")
+    rep("")
+
+    rep("### 2-2. 🔴 결론")
+    rep("")
+    if adopted:
+        for lab in adopted:
+            rep(f"# **{lab}**")
+            rep("")
+        if len(adopted) > 1:
+            rep(f"⚠️ **라벨 {len(adopted)}개가 동시에 성립해 병기한다** — PREREG §5 각주 "
+                f"*「(나)와 (마)는 다르다… 둘 다 성립할 수 있고, 그때는 병기한다」* 그대로다.")
+            rep("")
+    else:
+        rep("# **판별 불가**")
+        rep("")
+        rep("6개 라벨 중 **ma5·ma20 «둘 다»에서 성립하는 것이 하나도 없다** ⇒ 판정 규칙표의 "
+            "「그 외 · 두 전략이 갈릴 때 = 판별 불가」에 해당한다(§5).")
+        rep("")
+        for name in judged:
+            hit = [k for k, v in L[name].items() if v]
+            rep(f"- `{name}` 단독 성립: {', '.join(hit) if hit else '없음'}")
+        rep("")
+
+    n1v_fail = [n for n in judged if not meta[n]["n1V"]]
+    if n1v_fail:
+        rep("### 🔴🔴 그리고 이것이 이 문서의 가장 중요한 결과다 (§5-2)")
+        rep("")
+        detail = " · ".join(
+            "`{}` (V {:+.2f}% vs R 최대 {:+.2f}%)".format(n, meta[n]["V"], meta[n]["rmax"])
+            for n in n1v_fail)
+        rep(f"**`V > R {N_SEEDS}개 전부` 가 성립하지 않는다** — {detail}")
+        rep("")
+        rep("⇒ ***현행 랭킹(`volume.mean()`)이 이미 「무작위 10종목」과 구별되지 않는다.*** "
+            "PREREG §5-2 는 이 관측 자체를 **「그것 자체가 이 문서의 가장 중요한 결과」**라고 "
+            "미리 적어뒀다. 위 라벨 판정과 **병기**한다.")
+        rep("")
+    else:
+        rep(f"✅ **N1(V) 는 두 판정 전략 모두 성립** — 현행 랭킹은 무작위와 구별된다(§5-2).")
+        rep("")
+
+    # ── §5-4 차등 예측 ──────────────────────────────────────────────────────
+    rep("## 3. §5-4 차등 예측 — `minervini` 는 «면역»이어야 한다 (독립 증거)")
+    rep("")
+    base = float(np.mean([abs(meta[n]["tv"]) for n in judged]))
+    mv = abs(meta["minervini_volume_dryup"]["tv"])
+    thr = DIFF_PRED_FRAC * base
+    ok = mv < thr
+    rep(f"동결 문턱: `|T−V|_minervini < (1/3) × mean(|T−V|_ma5, |T−V|_ma20)`")
+    rep("")
+    rep(f"- `|T−V|` : ma5 **{abs(meta[judged[0]]['tv']):.2f}%p** · "
+        f"ma20 **{abs(meta[judged[1]]['tv']):.2f}%p** → 평균 **{base:.2f}%p**")
+    rep(f"- 문턱 = (1/3) × {base:.2f} = **{thr:.2f}%p**")
+    rep(f"- `|T−V|_minervini` = **{mv:.2f}%p**")
+    rep("")
+    if ok:
+        rep(f"⇒ ✅ **차등 예측 통과** ({mv:.2f} < {thr:.2f}). 시총 «하한»이 랭킹 편향을 이미 "
+            f"흡수했다는 메커니즘 설명과 부합한다. 🔑 이건 수렴이 아니라 «경쟁 가설이 다르게 "
+            f"예측하는 지점»이므로 **독립 증거로 센다**(§5-4).")
+    else:
+        rep(f"⇒ ❌ **차등 예측 불통과** ({mv:.2f} ≥ {thr:.2f}). "
+            f"***(가)·(다) 의 「시총 하한이 랭킹 편향을 흡수한다」는 메커니즘 설명이 틀렸다*** "
+            f"⇒ 랭킹 편향 이야기를 인용에서 뺀다. "
+            f"⚠️ 단 **T−V 판정 자체는 그대로 둔다** — 메커니즘이 틀려도 효과는 있을 수 있다(§5-4).")
+    rep("")
+
+    # ── §6-5 실현 거래 수 · §7-7 표본 ───────────────────────────────────────
+    rep("## 4. §6-5 거래 수 대칭성 — **실현 거래 수** 기준 (§10-3 이관분)")
+    rep("")
+    rep("| 전략 | V | T | P | R 평균 | 최대/최소 | 2배 이상? |")
+    rep("|---|---|---|---|---|---|---|")
+    asym = []
+    for name, d in res.items():
+        c = [d["V"]["n"], d["T"]["n"], d["P"]["n"], float(np.mean([x["n"] for x in d["R"]]))]
+        ratio = max(c) / min(c) if min(c) > 0 else float("inf")
+        if ratio >= 2.0:
+            asym.append(name)
+        rep(f"| `{name}` | {d['V']['n']:,} | {d['T']['n']:,} | {d['P']['n']:,} | "
+            f"{c[3]:,.0f} | **{ratio:.2f}배** | {'🔴 예' if ratio >= 2 else '✅ 아니오'} |")
+    rep("")
+    if asym:
+        rep(f"🔴 **{', '.join('`'+n+'`' for n in asym)} 에서 arm 간 실현 거래 수가 2배 이상 "
+            f"벌어졌다** — 비교가 「같은 전략의 두 버전」이 아니라 「다른 빈도의 두 전략」이 된다. "
+            f"**판정문에 병기한다**(§6-5).")
+    else:
+        rep("✅ 전 전략에서 arm 간 실현 거래 수가 2배 미만 — 대칭성 통과. "
+            "비교가 「같은 전략의 두 버전」으로 성립한다.")
+    rep("")
+    rep(f"### §7-7 표본 문턱 (실현 거래 수 < {MIN_TRADES} → 「표본 부족 → 판별 보류」)")
+    rep("")
+    short = []
+    for name, d in res.items():
+        lo = min(d["V"]["n"], d["T"]["n"], d["P"]["n"])
+        if lo < MIN_TRADES:
+            short.append(name)
+        rep(f"- `{name}`: V {d['V']['n']:,} · T {d['T']['n']:,} · P {d['P']['n']:,} → "
+            f"{'🔴 **표본 부족 → 판별 보류 병기**' if lo < MIN_TRADES else '✅ 충족'}")
+    rep("")
+
+    # ── 한계 ────────────────────────────────────────────────────────────────
+    rep("## 5. 🔴 한계 (PREREG §7 1~7 + §10-4 8~13, 전량 전재)")
+    rep("")
+    for i, s in enumerate(LIMITATIONS, 1):
+        rep(f"{i}. {s}")
+    rep("")
+    rep("### 🔑 생존편향 비대칭 — 판정문 옆에 붙여 읽을 것")
+    rep("")
+    rep("한계 1 이 말하는 방향은 **비대칭**이다. 생존편향은 저유동성·저가 arm(V·R)을 **위로** "
+        "밀므로 **`T − V` 를 «과소»평가**한다. 따라서:")
+    rep("")
+    rep("- **(가) 계열 결론이 나오면 «강하다»** — 편향이 반대로 미는데도 T 가 이겼다는 뜻이다.")
+    rep("- **(나)·(라) 계열 결론이면 이 편향을 «배제할 수 없다»** — 편향이 그 결론을 "
+        "밀어주는 방향이므로, 관측된 V 우위의 일부는 상폐 종목 부재가 만든 것일 수 있다.")
+    rep("")
+    if adopted:
+        pro_T = any(k.startswith(("(가)", "(다)")) for k in adopted)
+        rep(f"⇒ 이번 결론({', '.join(adopted)})은 "
+            + ("**편향이 반대로 미는데도 나온 결론이라 «강하다»**."
+               if pro_T else
+               "**편향이 «밀어주는» 방향이라 배제할 수 없다** — 채택 전 별도 검증이 필요하다"
+               "(§5-3b (라′) 주석과 같은 취지)."))
+        rep("")
+
+    Path(BASE / "RESULTS.md").write_text("\n".join(DOC) + "\n", encoding="utf-8")
+    Path(BASE / "RESULTS_raw.md").write_text("\n".join(OUT) + "\n", encoding="utf-8")
+    print("\n[written] RESULTS.md · RESULTS_raw.md", flush=True)
+    return 0
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description="랭킹 함수 반사실 — PREREG 실행부")
     ap.add_argument("--stage1", action="store_true",
-                    help="PREREG §6 1단계 게이트만 산출한다 (PnL 미조회). 현재 유일한 모드.")
+                    help="PREREG §6 1단계 게이트 (PnL 미조회) → GATE.md")
+    ap.add_argument("--stage2", action="store_true",
+                    help="PREREG §4·§5 판정 (거래당 수익률) → RESULTS.md · RESULTS_raw.md")
     a = ap.parse_args()
-    if not a.stage1:
-        print("이 스크립트는 지금 `--stage1` 만 구현되어 있다 "
-              "(PREREG §6 = PnL 을 보기 «전»에 확정하는 1단계 게이트).\n"
-              "2단계(§4·§5, 거래당 수익률)는 별도 지시로 구현한다.", flush=True)
+    if a.stage1 and a.stage2:
+        print("한 번에 하나만 실행한다 — 1단계는 「PnL 을 보기 «전»」이라야 뜻이 있다.",
+              flush=True)
         return 2
-    return stage1()
+    if a.stage1:
+        return stage1()
+    if a.stage2:
+        return stage2()
+    print("`--stage1`(게이트) 또는 `--stage2`(판정) 중 하나를 지정하라.", flush=True)
+    return 2
 
 
 if __name__ == "__main__":
