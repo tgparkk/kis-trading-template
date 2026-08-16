@@ -53,8 +53,9 @@ class TestDatabaseConfig:
         config = DatabaseConfig()
         assert config.host == 'localhost'
         assert config.port == 5432
-        assert config.database == 'robotrader'
-        assert config.user == 'robotrader'
+        # 2026-08-17: 기본 DB 가 동결 레거시 'robotrader' → 'kis_template' 로 바뀌었다.
+        assert config.database == 'kis_template'
+        assert config.user == 'robotrader'   # ← 롤명. DB명과 동음이의이며 바뀌지 않았다.
 
     @patch.dict('os.environ', {
         'TIMESCALE_HOST': 'db-server.example.com',
@@ -82,8 +83,9 @@ class TestDatabaseConfig:
         config = DatabaseConfig.from_env()
         assert config.host == 'localhost'
         assert config.port == 5432
-        assert config.database == 'robotrader'
-        assert config.user == 'robotrader'
+        # 2026-08-17: 기본 DB 가 동결 레거시 'robotrader' → 'kis_template' 로 바뀌었다.
+        assert config.database == 'kis_template'
+        assert config.user == 'robotrader'   # ← 롤명. DB명과 동음이의이며 바뀌지 않았다.
 
     @patch.dict('os.environ', {
         'TIMESCALE_HOST': 'custom-host',
@@ -96,7 +98,14 @@ class TestDatabaseConfig:
         config = DatabaseConfig.from_env()
         assert config.host == 'custom-host'
         assert config.port == 9999
-        assert config.database == 'robotrader'  # 기본값
+        # 2026-08-17: 기본 DB 가 동결 레거시 'robotrader' → 'kis_template' 로 바뀌었다.
+        # ⚠️ 이 테스트는 @patch.dict 에 clear=True 가 «없어» 실제 env 가 그대로 남는다.
+        #    전체 스위트에서는 tests/test_adj_factor_no_split_cliff.py 의 모듈 최상위
+        #    os.environ.setdefault("TIMESCALE_DB", "kis_template") 오염이 먼저 걸려
+        #    「기본값」이 아니라 「오염된 env 값」을 재고 있었다(그래서 종전엔 실패).
+        #    두 값이 우연히 같아져 지금은 통과하지만, 이 단언은 여전히 clear=True 가
+        #    아니면 「기본값」을 검증하지 못한다 — 오염 건은 별도 백로그.
+        assert config.database == 'kis_template'  # 기본값
 
 
 # ============================================================================
