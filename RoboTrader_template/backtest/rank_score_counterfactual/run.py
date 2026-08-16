@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""랭킹 함수 반사실 — 사전등록 `PREREG.md`(동결) 실행부. **1단계 게이트 전용.**
+"""랭킹 함수 반사실 — 사전등록 `PREREG.md` 실행부. **1단계 게이트 전용.**
+
+🔴 **창은 PREREG §10-1 개정본 `2024-03-13 ~ 2026-05-31` 이다**(원 §3 은 2021-01-01~).
+`market_cap` 커버리지가 2024-03-12 **1.4%** → 2024-03-13 **99.6%** 로 절벽인데 세 전략의
+`base_filter` 가 시총 결측을 fail-closed 로 제외해, 그 이전 구간은 적격 풀이 비어 아무 arm 도
+고르지 못했다. 개정은 **1단계 산출 후·PnL 관측 «전»**에 확정됐다. §6-5 는 §10-3 으로 2단계 이관.
 
 🔴 이 파일은 지금 «1단계»(PREREG §6)만 구현한다. 유일한 실행 모드는 `--stage1` 이고
 **PnL·수익률을 계산하지 않는다** — `BookBacktester` 를 import 하지도 부르지도 않으므로
@@ -61,7 +66,15 @@ DSN = dict(host="127.0.0.1", port=5433, user="robotrader", password="1234",
 STOCK_ONLY = ("stock_code ~ '^[0-9][0-9A-Z]{5}$' "
               "AND stock_code NOT IN ('KOSPI','KOSDAQ','KS11','KQ11')")
 
-W0, W1 = "2021-01-01", "2026-05-31"   # PREREG §3 — W-long 하나만. 라이브 페이퍼 구간 제외.
+# 🔴 창 — PREREG **§10-1 개정본**(2026-08-16, 1단계 산출 후·PnL 관측 «전»).
+#    원 §3 은 2021-01-01~2026-05-31 이었으나 `market_cap` 커버리지가
+#    2024-03-12 **1.4%** → 2024-03-13 **99.6%** 로 절벽이고, 세 전략의 `base_filter` 는
+#    시총 결측을 fail-closed 로 제외한다 ⇒ 그 이전엔 적격 풀이 비어 아무 arm 도 못 고른다.
+#    경계는 「커버리지가 처음 95% 를 넘은 거래일」이며 90/95/99 어디로 잡아도 같은 날이다.
+W0, W1 = "2024-03-13", "2026-05-31"   # PREREG §10-1 — 실효 창 ≈ 2.2년
+ORIG_W0 = "2021-01-01"                 # 원 §3 창 시작 (기록용 — 이제 판정에 쓰지 않는다)
+# 워밍업용 창 «이전» 히스토리. 개정 창 덕에 3년치가 확보된다(§10-4 항목 13 — 원 한계 해소).
+HIST0 = "2021-01-01"
 MAX_CANDIDATES = 10                    # PREREG §2 고정
 N_SEEDS = 20                           # PREREG §2 — R 시드 0..19
 N_DECILES = 10                         # PREREG §6-4
@@ -89,21 +102,21 @@ STRATS = {
 
 # DB 지문 — 이 스크립트가 «실제로 읽는» 슬라이스만 (`regen_gate.py` 형식 승계).
 FINGERPRINT_SQL = {
-    f"daily_prices[{W0}..{W1}] (stock-only)":
+    f"daily_prices[{HIST0}..{W1}] 적재분(워밍업 포함)":
+        f"SELECT count(*), count(DISTINCT stock_code), max(date) FROM daily_prices "
+        f"WHERE {STOCK_ONLY} AND date BETWEEN '{HIST0}' AND '{W1}'",
+    f"daily_prices[{W0}..{W1}] 개정 창":
         f"SELECT count(*), count(DISTINCT stock_code), max(date) FROM daily_prices "
         f"WHERE {STOCK_ONLY} AND date BETWEEN '{W0}' AND '{W1}'",
     f"daily_prices[{W0}..{W1}] market_cap>0":
         f"SELECT count(*), count(DISTINCT stock_code), max(date) FROM daily_prices "
         f"WHERE {STOCK_ONLY} AND date BETWEEN '{W0}' AND '{W1}' AND market_cap > 0",
-    f"daily_prices[{W0}..{W1}] adj_factor<>1":
+    f"daily_prices[{HIST0}..{W1}] adj_factor<>1":
         f"SELECT count(*), count(DISTINCT stock_code), max(date) FROM daily_prices "
-        f"WHERE {STOCK_ONLY} AND date BETWEEN '{W0}' AND '{W1}' "
+        f"WHERE {STOCK_ONLY} AND date BETWEEN '{HIST0}' AND '{W1}' "
         f"AND COALESCE(adj_factor,1) <> 1",
     "daily_prices (전체)":
         "SELECT count(*), count(DISTINCT stock_code), max(date) FROM daily_prices",
-    "daily_prices[전체] 의사티커":
-        "SELECT count(*), count(DISTINCT stock_code), max(date) FROM daily_prices "
-        "WHERE stock_code IN ('KOSPI','KOSDAQ','KS11','KQ11')",
 }
 
 OUT: list[str] = []
@@ -150,17 +163,21 @@ def db_fingerprint(conn) -> dict:
 
 
 def load_prices(conn) -> pd.DataFrame:
-    """창 구간 일봉. `vol_adj = volume * COALESCE(adj_factor,1)` 을 **여기서 한 번만** 만든다.
+    """`HIST0`~`W1` 일봉. `vol_adj = volume * COALESCE(adj_factor,1)` 을 **여기서 한 번만** 만든다.
+
+    🔑 개정 창(`W0`=2024-03-13)보다 **이르게** 읽는 이유는 워밍업이다 — 룰이 보는 창
+    (ma5 60봉 · ma20/minervini 90봉)을 창 «이전» 히스토리로 채운다(PREREG §3, §10-4 항목 13).
+    선택·룰 평가는 `W0` 이후에만 일어난다(적격 집합이 `W0`~`W1` 로만 만들어지므로 자동).
 
     이것이 라이브 읽기계층(`QuantDailyReader._SELECT_OHLCV`)과 동일한 척도다.
-    이후 어떤 계산에서도 `adj_factor` 를 다시 곱하지 않는다(PREREG §8-6).
+    이후 어떤 계산에서도 `adj_factor` 를 다시 곱하지 않는다(PREREG §8-6 · §10-5).
     OHLC 결측/비양수 보정은 `universe_lookahead_ladder/run.py` 와 동일하다.
     """
     df = pd.read_sql(f"""
         SELECT stock_code, date, open, high, low, close,
                (volume * COALESCE(adj_factor, 1))::double precision AS vol_adj
         FROM daily_prices
-        WHERE {STOCK_ONLY} AND date BETWEEN '{W0}' AND '{W1}'
+        WHERE {STOCK_ONLY} AND date BETWEEN '{HIST0}' AND '{W1}'
         ORDER BY stock_code, date
     """, conn)
     for c in ("open", "high", "low", "close", "vol_adj"):
@@ -386,7 +403,16 @@ def stage1() -> int:
     conn = psycopg2.connect(**DSN)
     say("# 랭킹 함수 반사실 — 1단계 게이트 (PREREG §6, PnL 미조회)")
     say("")
-    say("사전등록: [`PREREG.md`](PREREG.md)(동결). 창 = **W-long 2021-01-01 ~ 2026-05-31** 하나.")
+    say(f"사전등록: [`PREREG.md`](PREREG.md). "
+        f"창 = **{W0} ~ {W1}** (**§10-1 개정본**).")
+    say("")
+    say(f"🔴 **창이 개정됐다.** 원 §3 은 `{ORIG_W0} ~ {W1}`(5.4년)이었으나, "
+        f"`market_cap` 커버리지가 **2024-03-12 1.4% → 2024-03-13 99.6%** 로 절벽이고 "
+        f"세 전략의 `base_filter` 가 시총 결측을 fail-closed 로 제외하는 탓에 "
+        f"그 이전 구간에서는 적격 풀이 비어 **어떤 arm 도 아무것도 고르지 않았다**. "
+        f"경계는 「커버리지가 처음 95%를 넘은 거래일」이며 문턱을 90/95/99 중 무엇으로 잡아도 "
+        f"같은 날이다(**결과에서 유도한 경계가 아니다**). "
+        f"개정은 **1단계 산출 후·PnL 관측 «전»**에 확정됐다 — PREREG §10 참조.")
     say("")
     say("🔴 이 문서는 PREREG **§6(1단계 게이트)까지만** 다룬다. "
         "**해석·「좋다/나쁘다」 판단은 없다** — 순수 산출이다. "
@@ -394,7 +420,8 @@ def stage1() -> int:
     say("")
     say("🔑 이 실행은 `BookBacktester` 를 **import 하지도 호출하지도 않는다** — "
         "거래당 수익률이 메모리에 들어올 경로 자체가 없다. "
-        "그래서 §6-5 의 「거래 수」는 **«진입 트리거 수»**(arm 이 그날 고른 종목-일 수)로 센다.")
+        "🔴 그래서 **§6-5(거래 수 대칭성)는 §10-3 에 따라 2단계로 이관**됐다 — "
+        "1단계에서 세는 「진입 트리거 수」는 네 arm 이 정의상 같아 **검사가 성립하지 않는다**.")
     say("")
 
     # ── 0. 청산 파라미터 대조 ───────────────────────────────────────────────
@@ -410,7 +437,7 @@ def stage1() -> int:
 
     # ── DB 지문 ─────────────────────────────────────────────────────────────
     fp = db_fingerprint(conn)
-    say("## 0b. DB 지문 (`regen_gate.py` 형식 승계 · 5슬라이스)")
+    say(f"## 0b. DB 지문 (`regen_gate.py` 형식 승계 · {len(FINGERPRINT_SQL)}슬라이스)")
     say("")
     say("| 슬라이스 | 행 수 | 종목 수 | max(date) |")
     say("|---|---|---|---|")
@@ -429,22 +456,29 @@ def stage1() -> int:
 
     say("## 1. 표본 · 창 · 워밍업")
     say("")
-    say(f"- 일봉 **{len(px):,}행** / **{px.stock_code.nunique():,}종목** / "
-        f"거래일 **{len(dates_all):,}일** (창 {W0}~{W1})")
-    say(f"- 창 «이전» 히스토리: **0행** — `daily_prices` 의 최소일이 "
-        f"**{px['date'].min()}** 이라 창 시작보다 이르지 않다. "
-        f"⇒ 워밍업(ma5 25봉 · ma20 35봉 · minervini 40봉)은 **창 «안»에서 소진**된다.")
+    hist_rows = int((px["date"] < W0).sum())
+    say(f"- **개정 창 {W0}~{W1}** — 거래일 **{len(dates_all):,}일**")
+    say(f"- 적재 일봉 **{len(px):,}행** / **{px.stock_code.nunique():,}종목** "
+        f"(`{HIST0}`~`{W1}`, 워밍업 포함)")
+    say(f"- 🟢 **창 «이전» 워밍업 히스토리 {hist_rows:,}행** "
+        f"(`daily_prices` 최소일 **{px['date'].min()}**) ⇒ "
+        f"룰 창(ma5 60봉 · ma20/minervini 90봉)이 **창 시작 전에 이미 채워진다**. "
+        f"원 창에서는 이 히스토리가 0행이라 워밍업을 창 «안»에서 소진해야 했는데, "
+        f"**개정 창에서 그 한계가 해소됐다**(PREREG §10-4 항목 13).")
     say(f"- 종목코드 술어 `^[0-9][0-9A-Z]{{5}}$` · 의사티커 KOSPI/KOSDAQ/KS11/KQ11 명시 배제.")
     say("")
 
     # ── 6. market_cap 결측률 (PREREG §6-6 / §7-4) ──────────────────────────
-    say("## 2. 🔴 `market_cap` 결측률 (PREREG §6-6 · §7-4)")
+    say("## 2. `market_cap` 결측률 (PREREG §6-6 · §7-4)")
     say("")
     miss = ustats["mcap_missing"] / ustats["rows"] * 100 if ustats["rows"] else float("nan")
-    say(f"- 창 안 전체 행 **{ustats['rows']:,}** 중 `market_cap` 결측(NULL 또는 ≤0) "
-        f"**{ustats['mcap_missing']:,}** = **{miss:.1f}%**")
+    say(f"- **개정 창 안** 전체 행 **{ustats['rows']:,}** 중 `market_cap` 결측(NULL 또는 ≤0) "
+        f"**{ustats['mcap_missing']:,}** = **{miss:.2f}%**")
     say(f"- `market_cap` 이 하나라도 있는 거래일 **{ustats['days_with_mcap']:,}** / "
         f"전체 거래일 **{ustats['days_all']:,}**")
+    say("")
+    say("🔑 원 창(2021-01~) 기준 결측률은 **56.7%** 였다 — 그 56.7% 가 §10-1 창 개정의 사유다. "
+        "위 값은 **개정 창 안의** 결측률이므로 두 숫자를 같은 것으로 읽지 말 것.")
     say("")
     say("연도-월별 `market_cap>0` 종목 수(그날 몇 종목이 시총을 갖는가):")
     say("")
@@ -459,7 +493,8 @@ def stage1() -> int:
     say("")
     say("🔴 세 전략의 `base_filter` 는 시총 결측을 **fail-closed 로 제외**한다"
         "(`strategies/_rule_screener_base.py::_passes_market_cap`). "
-        "⇒ **시총이 없는 날은 적격 풀이 비고, 어떤 arm 도 아무것도 고르지 않는다.**")
+        "⇒ **시총이 없는 날은 적격 풀이 비고, 어떤 arm 도 아무것도 고르지 않는다.** "
+        "개정 창은 바로 이 조건이 해소된 구간이다.")
     say("")
 
     # ── 전략별 처리 ─────────────────────────────────────────────────────────
@@ -579,27 +614,56 @@ def stage1() -> int:
         say("")
         if ch:
             yr = Counter(d[:4] for d, _, _ in ch)
-            say("| 연도 | 바뀐 종목-일 | 비중 |")
-            say("|---|---|---|")
+            # 🔴 §10-2 — 2024 는 3월부터, 2026 은 5월까지의 «부분 연도»다. 원시 비중을
+            #    균등 기대치(1/3)와 비교하면 안 된다. 분모 = 그 해에 «변화가 일어날 수
+            #    있었던 날» = 적격 풀이 비지 않은 거래일 수. 그 비율(일당 변화 강도)을
+            #    다시 합이 100% 가 되게 정규화한다.
+            days_y = Counter(d[:4] for d in pool_days)
+            rate = {y: yr[y] / days_y[y] for y in yr if days_y.get(y)}
+            rsum = sum(rate.values())
+            norm = {y: rate[y] / rsum * 100 for y in rate} if rsum > 0 else {}
+            say("| 연도 | 바뀐 종목-일 | 원시 비중 | 선택가능일 | 일당 변화 | "
+                "**정규화 비중** |")
+            say("|---|---|---|---|---|---|")
             for y in sorted(yr):
-                say(f"| {y} | {yr[y]:,} | {yr[y]/len(ch)*100:.1f}% |")
-            top_y, top_n = max(yr.items(), key=lambda kv: kv[1])
+                say(f"| {y} | {yr[y]:,} | {yr[y]/len(ch)*100:.1f}% | "
+                    f"{days_y.get(y, 0):,} | {rate.get(y, float('nan')):.2f} | "
+                    f"**{norm.get(y, float('nan')):.1f}%** |")
             say("")
-            if top_n / len(ch) > 0.50:
-                say(f"🔴 **{top_y} 가 변화의 {top_n/len(ch)*100:.1f}% (>50%) — "
-                    f"「국면 특이 → 판별 보류」.** 2단계에서 PnL 은 조회하되 "
-                    f"결론에 «단일 국면 의존»을 명시한다 (PREREG §6-3).")
+            say("🔑 **정규화 비중** = (그 해 변화건수 / 그 해 «선택가능일» 수) 를 연도 간 "
+                "합이 100% 가 되게 재배분한 값. 🔴 **2024 는 3월부터, 2026 은 5월까지의 "
+                "부분 연도**이므로 원시 비중을 균등 기대치(1/3)와 비교하면 안 된다 "
+                "(PREREG §10-2).")
+            say("")
+            top_y, top_n = max(yr.items(), key=lambda kv: kv[1])
+            raw_top = top_n / len(ch) * 100
+            ntop_y, ntop = (max(norm.items(), key=lambda kv: kv[1]) if norm
+                            else (top_y, float("nan")))
+            say(f"- 원시 최대 연도 = **{top_y} {raw_top:.1f}%** → "
+                f"{'🔴 >50%' if raw_top > 50 else '✅ ≤50%'}")
+            say(f"- **정규화 최대 연도 = {ntop_y} {ntop:.1f}%** → "
+                f"{'🔴 >50%' if ntop > 50 else '✅ ≤50%'}")
+            say("")
+            if raw_top > 50 or (ntop == ntop and ntop > 50):
+                say(f"🔴 **「국면 특이 → 판별 보류」.** 원시·정규화 «둘 중 하나라도» 50% 를 "
+                    f"넘었다(원시 {raw_top:.1f}% · 정규화 {ntop:.1f}%). 2단계에서 PnL 은 "
+                    f"조회하되 결론에 **«단일 국면 의존»을 명시**한다 (PREREG §6-3 · §10-2).")
             else:
-                say(f"✅ 최대 연도({top_y}) 비중 **{top_n/len(ch)*100:.1f}% ≤ 50%** — "
-                    f"연도 쏠림 문턱 통과.")
+                say(f"✅ **연도 쏠림 문턱 통과 — 원시·정규화 «양쪽 모두» 50% 이하다** "
+                    f"(원시 {raw_top:.1f}% · 정규화 {ntop:.1f}%). "
+                    f"🔑 이 ✅ 는 **개정 창 안에서만** 유효하다 — 원 창 기준으로 인용하면 "
+                    f"분모가 비어서 통과한 «공허한 통과»가 된다(§10-2).")
             say("")
             mo = Counter(d[:7] for d, _, _ in ch)
-            say("<details><summary>월별 분포</summary>")
+            mdays = Counter(d[:7] for d in pool_days)
+            say("<details><summary>월별 분포 (선택가능일·일당 변화 포함)</summary>")
             say("")
-            say("| 연-월 | 바뀐 종목-일 | 비중 |")
-            say("|---|---|---|")
+            say("| 연-월 | 바뀐 종목-일 | 원시 비중 | 선택가능일 | 일당 변화 |")
+            say("|---|---|---|---|---|")
             for m in sorted(mo):
-                say(f"| {m} | {mo[m]:,} | {mo[m]/len(ch)*100:.1f}% |")
+                dm = mdays.get(m, 0)
+                say(f"| {m} | {mo[m]:,} | {mo[m]/len(ch)*100:.1f}% | {dm:,} | "
+                    f"{mo[m]/dm if dm else float('nan'):.2f} |")
             say("")
             say("</details>")
         else:
@@ -625,8 +689,9 @@ def stage1() -> int:
             "축이 «의도적으로» 유동성을 바꾸기 때문이다.")
         say("")
 
-        # ── §6-5 거래 수 대칭성 ─────────────────────────────────────────────
-        say(f"### {name} — §6-5 arm 별 진입 트리거 수 (거래 수 대칭성)")
+        # ── §6-5 → §10-3 으로 2단계 이관. 여기서는 «구조적 항등»만 기록한다. ──
+        say(f"### {name} — §6-5 진입 트리거 수 "
+            f"🔴 **구조적 항등 — 이 단계에선 검사 불성립** (PREREG §10-3)")
         say("")
         counts = {"V": sum(len(v) for v in selV.values()),
                   "T": sum(len(v) for v in selT.values()),
@@ -640,18 +705,18 @@ def stage1() -> int:
         allc = list(counts.values()) + [float(np.mean(rc))]
         lo, hi = min(allc), max(allc)
         say("")
-        if lo > 0 and hi / lo >= 2.0:
-            say(f"🔴 **arm 간 트리거 수가 {hi/lo:.2f}배 벌어졌다(≥2배)** — "
-                f"비교가 「같은 전략의 두 버전」이 아니라 「다른 빈도의 두 전략」이 된다. "
-                f"2단계 판정문에 병기할 것 (PREREG §6-5).")
-        else:
-            say(f"✅ arm 간 트리거 수 최대/최소 = **{hi/lo:.2f}배 (<2배)** — 대칭성 통과.")
+        say(f"네 arm 이 모두 그날 적격 풀에서 `min({MAX_CANDIDATES}, |풀|)` 을 고르므로 "
+            f"**진입 트리거 수는 정의상 같다** (실측 최대/최소 = **{hi/lo:.2f}배**). "
+            f"🔴 ***이 값에 ✅/🔴 를 붙이지 않는다 — 「검사를 통과했다」가 아니라 "
+            f"「이 단계에선 검사가 성립하지 않는다」이기 때문이다.***")
         say("")
-        say(f"🔑 PREREG §7-7 표본 문턱(전략별 거래 수 < 200 → 「표본 부족 → 판별 보류」): "
-            f"현재 트리거 수 기준 **{'🔴 미달' if min(counts.values()) < 200 else '✅ 충족'}** "
-            f"(V {counts['V']:,} · T {counts['T']:,} · P {counts['P']:,}). "
-            f"⚠️ 실현 거래 수는 이보다 «적다» — 종목당 단일 포지션이 겹치는 트리거를 삼킨다. "
-            f"확정은 2단계 몫이다.")
+        say("⇒ **§6-5 는 §10-3 에 따라 2단계로 이관**됐고, 거기서 **「실현 거래 수」**"
+            "(청산까지 간 건수)로 다시 정의된다. 2배 이상 벌어지면 그때 판정문에 병기한다.")
+        say("")
+        say(f"🔑 PREREG §7-7 표본 문턱(전략별 거래 수 < 200 → 「표본 부족 → 판별 보류」)도 "
+            f"**같은 이유로 2단계 몫**이다. 참고로 트리거 수는 "
+            f"V {counts['V']:,} · T {counts['T']:,} · P {counts['P']:,} 이나, "
+            f"**실현 거래 수는 이보다 적다** — 종목당 단일 포지션이 겹치는 트리거를 삼킨다.")
         say("")
 
     # ── §6-3 전략별 구성비 (판정엔 안 씀) ──────────────────────────────────
@@ -682,30 +747,30 @@ def stage1() -> int:
     say("`stop_vol_fit_gate/GATE.md` 의 같은 이름 절을 승계한다 — "
         "**결과 해석이 아니라 「사전등록을 어떻게 이행했는가」의 기록**이다.")
     say("")
-    say("### 5-1. 🔴 창이 사전등록대로 실현되지 않았다 (§3 vs 실측)")
+    say("### 5-1. 창 개정(§10-1) 이 실제로 어떻게 반영됐나")
     say("")
-    say("| 전략 | 적격일 / 1,325 | 풀 비지 않은 날 | 풀 ≤10 인 날 | 첫 선택일 | 첫 V→T 변화일 | 마지막 |")
+    say(f"| 전략 | 적격일 / {len(dates_all):,} | 풀 비지 않은 날 | 풀 ≤10 인 날 | "
+        f"첫 선택일 | 첫 V→T 변화일 | 마지막 |")
     say("|---|---|---|---|---|---|---|")
     for k, v in notes.items():
         say(f"| `{k}` | {v['elig_days']:,} | {v['pool_days']:,} | {v['saturated']:,} | "
             f"{v['first_sel']} | {v['first_change']} | {v['last_change']} |")
     say("")
-    say("PREREG §3 은 창을 **2021-01-01~2026-05-31(5.4년)** 로 동결했다. 그런데 §2 표대로 "
-        "`market_cap` 이 **2023-04-25 부터만** 존재하고 **2024-03 중순까지 하루 8종목뿐**이며, "
-        "세 전략의 `base_filter` 는 시총 결측을 fail-closed 로 제외한다. "
-        "⇒ ***창의 앞부분에서는 적격 풀이 비어 어떤 arm 도 아무것도 고르지 않는다.***")
+    say(f"창은 **{W0}~{W1}** 로 개정됐다(§10-1). 개정 «전» 실행에서는 세 전략 모두 "
+        f"**첫 V→T 변화일이 2024-03-13** 이었다 — 즉 원 창의 앞 3.2년은 산출에 "
+        f"**한 건도 기여하지 않았다**. 이번 실행은 그 구간을 애초에 읽지 않는다.")
     say("")
-    say("🔴 **따라서 §6-3 의 「연도별 비중」 분모에는 2021·2022·2023 이 «한 건도» 들어 있지 않다.** "
-        "「최대 연도 ≤50% ⇒ 쏠림 통과」는 **2024~2026 만으로 이루어진 분모 위에서 계산된 값**이다. "
-        "이 사실 없이 그 ✅ 를 인용하면 안 된다.")
+    say("🔴 **§1~§9 는 한 줄도 삭제되지 않았다.** 원 §3 창은 PREREG 안에 그대로 있고 "
+        "§10-1 이 우선한다. 이 산출물의 모든 숫자는 **개정 창 기준**이다.")
     say("")
-    say("### 5-2. 🔴 §6-5 「거래 수 대칭성」은 1단계에서 구조적으로 항상 통과한다")
+    say("### 5-2. §6-5 는 2단계로 이관됐다 (§10-3)")
     say("")
     say("네 arm 은 모두 그날 적격 풀에서 `min(max_candidates, |풀|)` 개를 고르므로 "
         "**진입 트리거 수가 정의상 완전히 같다**(실측 전부 1.00배). "
-        "⇒ ***이 절의 ✅ 는 「검사를 통과했다」가 아니라 「이 단계에서는 검사가 성립하지 않는다」는 뜻이다.*** "
+        "⇒ ***「검사를 통과했다」가 아니라 「이 단계에서는 검사가 성립하지 않는다」.*** "
         "PREREG §6-5 가 의도한 비대칭은 **실현 거래 수**에서만 나타날 수 있고, 그건 청산 판정 "
-        "= 수익률 계산을 요구하므로 **2단계 몫**이다.")
+        "= 수익률 계산을 요구하므로 **2단계 몫**이다. 위 각 전략 §6-5 절에 "
+        "「구조적 항등 — 검사 불성립」으로 적었다.")
     say("")
     say("### 5-3. 척도 — `volume × adj_factor` 를 로더에서 «한 번» 적용했다")
     say("")
@@ -732,9 +797,10 @@ def stage1() -> int:
     say("| 유니버스 스냅샷 폴백 | **재현 안 함** | "
         "라이브 `get_universe_snapshot` 은 `date <= scan_date` 중 최신 «완전 퀀트일»로 폴백한다. "
         "여기서는 그날 행만 쓴다(승계 원본과 동일). 2024-03 이후는 매일 완전 적재라 무영향 |")
-    say("| 워밍업 | **창 «안»에서 소진** | "
-        "PREREG §3 은 *「창 이전 히스토리로 채운다」* 지만 `daily_prices` 최소일이 "
-        "**2021-01-04** 라 창 이전 행이 **0**이다. 위 5-1 때문에 실질 영향은 없다 |")
+    say(f"| 워밍업 | 🟢 **창 이전 히스토리로 채움** | "
+        f"개정 창 덕에 `{HIST0}`~ 3년치를 워밍업으로 쓴다 ⇒ "
+        f"PREREG §3 의 *「창 이전 히스토리로 채운다」* 를 **이번엔 실제로 지켰다** "
+        f"(§10-4 항목 13 — 원 창의 한계가 해소됨) |")
     say("")
     say("### 5-5. 어떤 컬럼만 SELECT 했는가 — PnL 미조회 보장")
     say("")
