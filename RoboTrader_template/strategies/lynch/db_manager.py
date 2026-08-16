@@ -2,7 +2,12 @@
 Lynch 전략 DB 매니저
 ====================
 
-PostgreSQL(strategy_analysis)에 lynch_trades 테이블 자동 생성 및 CRUD.
+PostgreSQL(kis_template)에 lynch_trades 테이블 자동 생성 및 CRUD.
+
+2026-08-17 (4차 이관): 기본 DB 를 strategy_analysis → kis_template 으로 전환.
+  사장님 원칙 「DB 는 kis_template 하나로」. lynch_trades 는 원본이 0행이라
+  이관 대상이 아니었고, 아래 CREATE TABLE IF NOT EXISTS 가 kis_template 에
+  빈 테이블을 만든다(무손실). STRATEGY_DB_NAME 으로 여전히 덮어쓸 수 있다.
 """
 
 import logging
@@ -53,7 +58,7 @@ class LynchDBManager:
             port=int(os.getenv('STRATEGY_DB_PORT', os.getenv('TIMESCALE_PORT', 5433))),
             user=os.getenv('STRATEGY_DB_USER', os.getenv('TIMESCALE_USER', 'postgres')),
             password=os.getenv('STRATEGY_DB_PASSWORD', os.getenv('TIMESCALE_PASSWORD', '')),
-            dbname=os.getenv('STRATEGY_DB_NAME', 'strategy_analysis'),
+            dbname=os.getenv('STRATEGY_DB_NAME', 'kis_template'),
         )
         self._conn = None
         self._ensure_table()

@@ -4,6 +4,16 @@ BB Reversion Screener
 
 Screen stocks from low-volatility sectors with sideways (ADX < 20) conditions.
 Queries stock_sector table for sector filtering.
+
+2026-08-17 (4차 이관): 기본 DB 를 strategy_analysis → kis_template 으로 전환.
+  사장님 원칙 「DB 는 kis_template 하나로」. stock_sector(4,085행)는 2차 이관에서
+  이미 kis_template 에 있었으므로 DB명만 바꾸면 된다(이관 불필요).
+  ⚠️ 실측: 이 스크리너는 종전에도 «고장나 있지 않았다» — robotrader 롤에
+  strategy_analysis.stock_sector SELECT 권한이 명시적으로 부여돼 있어 27행을
+  정상 반환했다(같은 질의의 결과 집합 해시가 양쪽 DB에서 동일). 즉 이 변경은
+  버그 수정이 아니라 «단일 DB 로의 통합»이다. (lynch/sawkami 쪽은 실제로
+  권한이 없어 조용히 실패하고 있었다 — 그쪽과 성격이 다르다.)
+  STRATEGY_DB_NAME 으로 덮어쓰기 가능.
 """
 
 import os
@@ -42,7 +52,7 @@ class BBReversionScreener:
             "port": int(os.getenv('STRATEGY_DB_PORT', os.getenv('TIMESCALE_PORT', 5433))),
             "user": os.getenv('STRATEGY_DB_USER', os.getenv('TIMESCALE_USER', 'postgres')),
             "password": os.getenv('STRATEGY_DB_PASSWORD', os.getenv('TIMESCALE_PASSWORD', '')),
-            "dbname": os.getenv('STRATEGY_DB_NAME', 'strategy_analysis'),
+            "dbname": os.getenv('STRATEGY_DB_NAME', 'kis_template'),
         }
 
     def get_sector_stocks(self, target_sectors: List[str]) -> List[Dict]:

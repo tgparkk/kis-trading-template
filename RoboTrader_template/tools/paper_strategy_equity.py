@@ -135,7 +135,9 @@ def _db_conn():
     return psycopg2.connect(
         host=os.getenv("TIMESCALE_HOST", "localhost"),
         port=int(os.getenv("TIMESCALE_PORT", 5433)),
-        database=os.getenv("TIMESCALE_DB", "robotrader"),
+        # 2026-08-17: 기본값 'robotrader'(2026-07-10 동결 레거시) → 'kis_template'.
+        # .env 가 없는 환경에서만 발동하던 조용한 오접속을 막는다.
+        database=os.getenv("TIMESCALE_DB", "kis_template"),
         user=os.getenv("TIMESCALE_USER", "robotrader"),
         password=os.getenv("TIMESCALE_PASSWORD", "1234"),
     )

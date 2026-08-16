@@ -31,10 +31,15 @@ class DatabaseConnection:
             if cls._pool is not None:
                 return
 
+            # 2026-08-17: database 기본값 'robotrader' → 'kis_template'.
+            #   'robotrader' 는 2026-07-10 동결된 «레거시» DB 다. 라이브는 .env 에
+            #   TIMESCALE_DB=kis_template 이 있어 무해했지만, .env 가 없는 환경
+            #   (워크트리·CI·clean checkout)에서는 죽은 DB 로 풀을 열었다.
+            #   ⚠️ user 기본값 'robotrader' 는 «롤명»이라 그대로 둔다(DB명과 동음이의).
             db_config = {
                 'host': os.getenv('TIMESCALE_HOST', 'localhost'),
                 'port': int(os.getenv('TIMESCALE_PORT', 5433)),
-                'database': os.getenv('TIMESCALE_DB', 'robotrader'),
+                'database': os.getenv('TIMESCALE_DB', 'kis_template'),
                 'user': os.getenv('TIMESCALE_USER', 'robotrader'),
                 'password': os.getenv('TIMESCALE_PASSWORD', '1234')
             }

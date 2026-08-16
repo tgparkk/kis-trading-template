@@ -2,8 +2,13 @@
 사와카미 전략 DB 매니저
 ======================
 
-PostgreSQL(strategy_analysis)에 매수후보/매매 기록을 영속화.
+PostgreSQL(kis_template)에 매수후보/매매 기록을 영속화.
 DB 연결 실패 시에도 전략은 계속 동작 (graceful fallback).
+
+2026-08-17 (4차 이관): 기본 DB 를 strategy_analysis → kis_template 으로 전환.
+  사장님 원칙 「DB 는 kis_template 하나로」. sawkami_candidates(19행)/
+  sawkami_trades(315행)는 같은 날 kis_template 으로 이관됐다(전행 해시 검증,
+  원본 미삭제). STRATEGY_DB_NAME 으로 여전히 덮어쓸 수 있다.
 """
 
 import logging
@@ -31,7 +36,7 @@ class SawkamiDBManager:
             port=int(os.getenv('STRATEGY_DB_PORT', os.getenv('TIMESCALE_PORT', 5433))),
             user=os.getenv('STRATEGY_DB_USER', os.getenv('TIMESCALE_USER', 'postgres')),
             password=os.getenv('STRATEGY_DB_PASSWORD', os.getenv('TIMESCALE_PASSWORD', '')),
-            dbname=os.getenv('STRATEGY_DB_NAME', 'strategy_analysis'),
+            dbname=os.getenv('STRATEGY_DB_NAME', 'kis_template'),
         )
         self._conn = None
 

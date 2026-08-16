@@ -87,7 +87,12 @@ _QUANT_DB_DEFAULTS = dict(
     ),
 )
 
-_ROBOTRADER_DB = os.getenv("TIMESCALE_DB", "robotrader")
+# 운영 DB(screener_snapshots 등). 2026-08-17: 기본값 'robotrader' → 'kis_template'.
+#   'robotrader' 는 2026-07-10 동결 레거시라 .env 가 없는 환경에서 죽은 DB 를 읽었다.
+#   read_screener_snapshot() 의 docstring 이 이미 「라이브 .env 는 kis_template」이라
+#   적고 있었으므로 «의도»는 처음부터 kis_template 이었고 기본값만 뒤처져 있었다.
+#   ⚠️ 변수명 _ROBOTRADER_DB 는 레거시 유래 오칭이지만 archive/scripts 가 참조하므로 유지.
+_ROBOTRADER_DB = os.getenv("TIMESCALE_DB", "kis_template")
 
 # 재무 소스 DB — 2026-08-16 통합으로 기본값이 kis_template 이 됐다.
 # ✅ 예외 해소: quant_financial_ratio / quant_balance_sheet / quant_income_statement /
