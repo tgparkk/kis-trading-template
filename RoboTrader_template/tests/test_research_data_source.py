@@ -18,11 +18,16 @@
     | robotrader.minute_candles   | 1,432 | 20250224~20260710     | 55,486,380 |
     레거시 두 소스는 형제 봇 중단으로 2026-07-10 동결(더 이상 갱신 안 됨).
 
-의도된 예외 — 재무는 robotrader_quant 유지:
-    `quant_financial_ratio`(45,473행)·`quant_balance_sheet`·`quant_income_statement`·
-    `financial_statements` 는 **robotrader_quant 에만 존재**하고 kis_template 엔
-    테이블 자체가 없다(실측: kis_template 에서 조회 시 "릴레이션이 없습니다").
-    → 재무 경로만 quant 를 계속 본다. 이 예외는 test_financial_* 로 고정한다.
+재무도 kis_template 으로 통일 (2026-08-16 DB 통합):
+    과거에는 `quant_financial_ratio`(45,473행)·`quant_balance_sheet`·
+    `quant_income_statement`·`financial_statements` 가 **robotrader_quant 에만 존재**해
+    「의도된 예외」였다. 2026-08-16 사장님 원칙 「DB 는 kis_template 하나로」에 따라
+    전부 이관됐고(전행 해시 검증 통과, 원본 미삭제) 예외는 **해소**됐다.
+    → 재무 경로도 kis_template 을 본다. 이 사실을 test_financial_* 로 고정한다.
+
+    ⚠️ 단 재무는 **가격 플래그(KIS_DATA_SOURCE)를 따르지 않는다** — 롤백은
+    `QUANT_FINANCIAL_DB` 로 독립 제어한다. 가격 롤백이 재무를 끌고 가면
+    「일부 경로만 레거시로 새는」 사고가 나기 때문. 그 비결합도 아래에서 고정한다.
 """
 import importlib
 import sys
@@ -185,41 +190,61 @@ def test_pit_reader_has_no_separate_quant_db_env():
 
 
 # ===========================================================================
-# 3) 재무 = robotrader_quant 유지 (의도된 예외)
+# 3) 재무 = kis_template (2026-08-16 이관으로 예외 해소)
 # ===========================================================================
 
-def test_financial_conn_stays_on_quant():
-    """재무 경로는 kis_template 로 옮기면 안 된다 — 테이블 자체가 없다."""
+def test_financial_conn_defaults_to_kis_template():
+    """재무 경로도 kis_template 을 본다 (2026-08-16 이관 후).
+
+    이전에는 robotrader_quant 를 단언했다 — kis_template 에 재무 테이블이 아예
+    없었기 때문. 이관으로 그 전제가 사라졌으므로 단언을 새 사실로 뒤집는다.
+    """
     from multiverse.data import pit_reader
     with pit_reader._conn_financial() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT current_database()")
-            assert cur.fetchone()[0] == "robotrader_quant"
+            assert cur.fetchone()[0] == "kis_template"
 
 
 def test_financial_conn_unaffected_by_data_source_flag(monkeypatch):
-    """재무 예외는 KIS_DATA_SOURCE 와 무관하게 항상 quant (플래그 오염 방지)."""
-    monkeypatch.setenv("KIS_DATA_SOURCE", "new")
-    from multiverse.data import pit_reader
-    with pit_reader._conn_financial() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT current_database()")
-            assert cur.fetchone()[0] == "robotrader_quant"
+    """재무는 KIS_DATA_SOURCE(가격 플래그)와 **비결합**이다.
+
+    legacy 로 뒤집어도 재무는 kis_template 을 유지해야 한다 — 가격 롤백이 재무를
+    끌고 가면 「일부 경로만 레거시로 새는」 사고가 난다.
+    """
+    for flag in ("new", "legacy"):
+        monkeypatch.setenv("KIS_DATA_SOURCE", flag)
+        from multiverse.data import pit_reader
+        with pit_reader._conn_financial() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT current_database()")
+                assert cur.fetchone()[0] == "kis_template", f"KIS_DATA_SOURCE={flag}"
+
+
+def test_financial_db_env_override_still_exists():
+    """재무 롤백 스위치(QUANT_FINANCIAL_DB)는 살아 있어야 한다.
+
+    기본값만 바뀌었을 뿐 override 경로를 지운 게 아니다 — 이관 원본과 대조할 때 쓴다.
+    """
+    from pathlib import Path
+    src = Path(__import__("multiverse.data.pit_reader", fromlist=["x"]).__file__)
+    assert "QUANT_FINANCIAL_DB" in src.read_text(encoding="utf-8")
 
 
 def test_read_financial_ratio_still_works():
-    """재무 읽기가 실제로 동작한다(kis_template 로 잘못 옮기면 relation 없음 에러)."""
+    """재무 읽기가 실제로 동작한다(이관 누락이면 relation 없음 에러)."""
     from multiverse.data import pit_reader
     out = pit_reader.read_financial_ratio("005930", date(2026, 6, 1))
-    assert out is not None, "삼성전자 재무비율은 quant 에 존재해야 함"
+    assert out is not None, "삼성전자 재무비율은 kis_template 에 존재해야 함"
     assert "roe" in out
 
 
 def test_read_financial_ratio_works_inside_backtest_session():
-    """backtest_session(일봉 재사용 연결) 안에서도 재무는 quant 로 읽어야 한다.
+    """backtest_session(일봉 재사용 연결) 안에서도 재무 읽기가 동작한다.
 
-    일봉과 재무가 서로 다른 DB 로 갈라졌으므로, 단일 재사용 연결을 재무에까지
-    쓰면 kis_template 에서 quant_financial_ratio 를 찾다 실패한다(회귀 가드).
+    가격·재무 연결은 이관 후에도 분리돼 있다(두 DB 이름이 서로 독립적으로 갈라질 수
+    있으므로 — pit_reader.backtest_session docstring 참조). 그 분리가 재무 읽기를
+    깨뜨리지 않는지 고정한다.
     """
     from multiverse.data import pit_reader
     with pit_reader.backtest_session():

@@ -216,7 +216,11 @@ class _KisTemplateDailyReader:
 
 def _default_close_readers():
     """보유평가 종가 소스(우선순위 순). 1순위=kis_template(봇 자체 수집, 당일종가 신뢰),
-    2순위=robotrader_quant(과거 폴백). 1순위가 (code,date)를 주면 그 값이 권위."""
+    2순위=QuantDailyReader(과거 폴백). 1순위가 (code,date)를 주면 그 값이 권위.
+
+    ※ QuantDailyReader 는 2026-07-16 이후 resolve_daily_source_db() 를 경유하므로
+      기본값에서는 2순위도 kis_template 을 본다(이름의 quant 는 레거시 유래).
+      KIS_DATA_SOURCE=legacy 일 때만 동결 robotrader_quant 로 갈라진다."""
     from db.quant_daily_reader import QuantDailyReader
     return [_KisTemplateDailyReader(), QuantDailyReader()]
 

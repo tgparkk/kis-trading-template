@@ -434,11 +434,11 @@ class TestRoeEdgeCases:
 # ---------------------------------------------------------------------------
 
 def _db_available() -> bool:
-    """실제 DB 연결 가능 여부 확인."""
+    """실제 DB 연결 가능 여부 확인 (2026-08-16 이관 후 재무도 kis_template)."""
     try:
         import psycopg2
         conn = psycopg2.connect(
-            host="127.0.0.1", port=5433, dbname="robotrader_quant",
+            host="127.0.0.1", port=5433, dbname="kis_template",
             user="robotrader", password="1234", connect_timeout=3,
         )
         conn.close()
@@ -447,7 +447,7 @@ def _db_available() -> bool:
         return False
 
 
-@pytest.mark.skipif(not _db_available(), reason="robotrader_quant DB 연결 불가")
+@pytest.mark.skipif(not _db_available(), reason="kis_template DB 연결 불가")
 class TestRoeFilterIntegration:
     """실제 DB를 사용하는 통합 테스트 (CI skip 가능)."""
 
@@ -478,7 +478,7 @@ class TestRoeFilterIntegration:
         """5.4년치 커버리지 — 실제 데이터로 필터 적용 가능."""
         import psycopg2
         conn = psycopg2.connect(
-            host="127.0.0.1", port=5433, dbname="robotrader_quant",
+            host="127.0.0.1", port=5433, dbname="kis_template",
             user="robotrader", password="1234",
         )
         cur = conn.cursor()

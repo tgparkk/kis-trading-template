@@ -59,8 +59,10 @@ resolve_minute_source_db()  # 분봉 → 기본 "kis_template"  (minute_candles)
   (daytrading 「20봉평균×2 폭증」이 분할 직후 20봉간 **가짜로 성립**). ⇒ **읽기 계층에서 이미 적용됨**
   (`db/quant_daily_reader.py` · `db/repositories/price.py`) — 소비자는 그냥 쓰면 된다. **직접 다시 곱하지 말 것(이중조정).**
   기계검사 `tests/test_adj_factor_no_arithmetic.py`(가격 금지·volume 허용, SQL 한정) · 회귀 `tests/test_adj_factor_volume_units.py`.
-- ⚠️ **재무(`financial_statements`·`quant_*`)는 `robotrader_quant` 유지 = 의도된 예외** — kis_template엔 테이블 자체가 없다.
-  (`lib/signals/roe_filter.py`, `pit_reader.read_financial_ratio`)
+- ✅ **재무(`financial_statements`·`quant_*`)도 2026-08-16 이관 완료 → `kis_template`.** 「robotrader_quant 유지 = 의도된 예외」는 **폐기**.
+  재무 롤백은 가격 플래그가 아니라 `QUANT_FINANCIAL_DB` 로 **독립 제어**. (`lib/signals/roe_filter.py`, `pit_reader.read_financial_ratio`)
+- 섹터·연간재무도 같이 이관됐다(`stock_sector`·`yearly_fundamentals`, 구 `strategy_analysis`). ⚠️ 단 `daily_candles`는 **미이관** —
+  일봉은 `daily_prices`를 쓸 것. (`strategies/historical_data.py`)
 
 상세·실측 수치·회귀 테스트 → [docs/PAPER_STRATEGIES.md §0.2](docs/PAPER_STRATEGIES.md) · `tests/test_research_data_source.py`
 

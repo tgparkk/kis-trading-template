@@ -10,7 +10,8 @@ ROE Quintile Filter — PIT-safe Stage A Universe Filter (F-11)
 
 데이터 소스
 -----------
-- robotrader_quant.financial_statements (report_date, stock_code, roe)
+- kis_template.financial_statements (report_date, stock_code, roe)
+  ※ 2026-08-16 DB 통합 전에는 robotrader_quant 에 있었다(이관 완료).
   report_date는 'YYYY-MM-DD' 문자열 또는 date.
   연간 결산 기준 (12월/11월/6월 등 다양한 결산월).
 
@@ -46,24 +47,27 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _get_connection():
-    """robotrader_quant DB 연결 반환. 호출자가 close() 책임.
+    """kis_template DB 연결 반환. 호출자가 close() 책임.
 
-    ★ 의도된 예외 — 가격 소스 통일(kis_template) 대상이 아니다.
-      2026-07-16 연구 소스 통일은 **가격 데이터(daily_prices/minute_candles)만**
-      kis_template 으로 옮겼다. 재무 테이블(financial_statements 4,350행,
-      quant_balance_sheet/quant_financial_ratio/quant_income_statement 각 45,473행)은
-      robotrader_quant 에만 존재하고 kis_template 엔 테이블 자체가 없다
-      (kis 의 financial_data/quant_factors/quant_portfolio 는 컷오버 때 만든
-      빈 껍데기 0행). 따라서 여기서 resolve_daily_source_db() 를 쓰면 안 된다.
-      재무까지 옮기려면 먼저 kis_template 에 테이블·적재 파이프라인이 필요하다(별건).
-      같은 예외가 multiverse/data/pit_reader.read_financial_ratio 에도 적용된다.
+    ✅ 2026-08-16 통합으로 「재무는 robotrader_quant 유지」 예외가 **해소됐다.**
+      과거에는 재무 테이블이 robotrader_quant 에만 있어서 이 함수가 그 DB 를
+      하드코딩했다. 2026-08-16 사장님 원칙 「DB 는 kis_template 하나로」에 따라
+      재무 6개 테이블이 kis_template 으로 이관됐다(전행 해시 검증 통과, 원본 미삭제):
+        financial_statements 4,350 · quant_financial_ratio/quant_income_statement/
+        quant_balance_sheet 각 45,473 · quant_factors 106,728 · quant_portfolio 2,454.
+      ⇒ 더 이상 예외가 아니다. 같은 정정이 multiverse/data/pit_reader 에도 적용됐다.
+
+    ⚠️ 그래도 resolve_daily_source_db() 는 쓰지 않는다 — 그 resolver 는 **가격 전용**이라
+      KIS_DATA_SOURCE=legacy 에서 robotrader_quant 를 가리킨다. 재무 롤백 스위치는
+      pit_reader 의 QUANT_FINANCIAL_DB 하나로 충분하고, 이 모듈은 통합 원칙대로
+      kis_template 고정이다.
     """
     try:
         import psycopg2
         return psycopg2.connect(
             host="127.0.0.1",
             port=5433,
-            dbname="robotrader_quant",
+            dbname="kis_template",
             user="robotrader",
             password="1234",
         )
