@@ -5,9 +5,16 @@
 를 그대로 승계한다(`HIST0` 분리 · `(code,date)` 캐시 · `verify_strategy_params()` ·
 `db_fingerprint()` · 단독 모드 · stale prose 방지).
 
-🔴 **모드는 `--stage1` 하나뿐이다.** PnL·수익률을 계산하지 않으며 `BookBacktester` 를
-**import 하지도 부르지도 않는다** — 거래당 수익률이 메모리에 들어올 경로 자체가 없다.
-2단계(§4·§5)는 별도 지시로 구현한다.
+**모드 두 개.**
+
+- `--stage1` — PREREG §6 게이트. **PnL 을 계산하지 않는다.** `BookBacktester` 는
+  «2단계 함수 안에서만» import 되므로 이 경로에는 거래당 수익률이 들어올 길이 없다.
+  산출물 → `GATE.md`.
+- `--stage2` — PREREG §4·§5 판정. arm 별 거래당 평균·귀무 N1·Holm·분해·상호작용.
+  산출물 → `RESULTS.md`(판정) · `RESULTS_raw.md`(원시 출력).
+
+🔴 **두 모드는 «같은» 선택 집합을 쓴다** — `build_cache`→`build_pools`→`select_*` 경로가
+하나라서 2단계 arm 선택은 1단계가 인쇄한 것과 정의상 동일하다.
 
 **Arm 6개 (PREREG §2) — 진입 룰 축 «하나만» 바꾼다:**
 
@@ -54,10 +61,12 @@ from strategies.books.minervini_vcp.rules import (                              
     rule_trend_template,
     rule_volume_dryup,
 )
+from strategies.base import Signal, SignalType                                      # noqa: E402
 from strategies.minervini_volume_dryup.screener import (                            # noqa: E402
     MinerviniVolumeDryupScreenerAdapter,
 )
-# 🔴 `BookBacktester` 는 import 하지 않는다 — 1단계가 「PnL 계산 경로가 아예 없다」를 보증한다.
+# 🔴 `BookBacktester` 는 여기서 import 하지 않는다 — `--stage1` 이 「PnL 계산 경로가 아예
+#    없다」를 보증하기 위해서다. 2단계 함수(`stage2`) 안에서 지역 import 한다.
 
 DSN = dict(host="127.0.0.1", port=5433, user="robotrader", password="1234",
            dbname="kis_template")
@@ -82,6 +91,44 @@ F_GROWTH = 1.25                        # §2-2 — 원저작 이익 성장 문�
 # 지시서 기대 청산 파라미터 (2단계용 — config.yaml 이 정본이고 아래는 대조값)
 EXP_SL, EXP_TP, EXP_MH = 0.08, 0.12, 20
 
+# 🔴 PREREG §5 동결. **결과를 보고 바꾸지 않는다**(§8-1). 단위 = %p.
+EPS_ECON = 0.5
+ALPHA = 0.05                           # §5-6 Holm (주 검정 2개: TT · F)
+DISCARD_RATIO_FLAG = 2.0               # §10-5 항목 12 — 폐기율 2배 이상이면 병기
+
+# PREREG §7(1~11) + §10-5(12~13) 한계 — **결과 문서에 그대로 전재한다**(축약 없음).
+LIMITATIONS = [
+    "🔴 **`operating_income` 은 EPS 의 대리변수다.** 원저작은 **분기 EPS 성장 가속**을 "
+    "요구하는데 분기 재무가 713종목뿐이라 **연간 영업이익**으로 대체했다. "
+    "***「SEPA 펀더멘털 스크린을 검정했다」고 쓰지 말 것*** — 검정한 것은 "
+    "「연간 영업이익 25% 성장 필터」다.",
+    "🔴 **생존편향** — `daily_prices` 에 상폐 종목이 사실상 없다(0.5%). 편향은 **약한 종목을 "
+    "위로** 민다 ⇒ TT·F 는 «강한 종목을 고르는» 필터이므로 **`DT − D`·`DF − D` 가 "
+    "과소평가**되는 쪽이다. ***(나)·(다) 결론이면 이 편향을 배제할 수 없고, (가)가 나오면 강하다.***",
+    "🔴 **`BookBacktester` 는 sl/tp/max_hold 만 지원**한다. minervini 는 원래 트레일링·"
+    "trend_flip 이 없으므로 **이 전략에 한해 청산 재현이 정확**하다(다른 전략과 다른 점).",
+    "🔴 **`rcept_dt` 정정본 문제.** PK 가 `(stock_code, bsns_year)` 라 정정공시가 as-filed 를 "
+    "덮어쓴다. 🟢 **방향은 보수적이다** — 그 행은 백테스트 시점에 «안 보이므로» 룩어헤드가 "
+    "아니다. 🔴 **대신 커버리지 구멍이 생기고, 정정하는 회사는 무작위가 아니다.**",
+    "🔴 **`market_cap` 자체의 PIT 성격 미검정** — 전 arm 에 동일하게 걸리므로 arm 비교엔 "
+    "무해하나 절대 수준은 신뢰할 수 없다.",
+    "⚠️ **단일 국면 2.2년.** 일반화 금지.",
+    "⚠️ **포트폴리오가 아니다**(종목당 단일 포지션 순차). K=3 한도·자금 배분 미재현.",
+    "⚠️ **백테스트 유니버스 ≠ 라이브**(라이브 매수의 97%가 미검증). **라이브 기대치로 인용 금지.**",
+    "⚠️ **실행 효과 미반영** — 슬리피지·09:00~09:15 매수 타이밍·호가. arm 비교엔 대칭이나 "
+    "절대 수준에는 들어 있지 않다.",
+    "⚠️ **불가능봉 가드 미적용**(승계 원본과 동일). 완전 중립은 아니다 — 풀에서 한 종목이 "
+    "빠지면 다음 종목이 들어오고 그 대체가 arm 마다 다르다.",
+    "⚠️ **`rs_value` 는 「그날 `base_filter` 통과 집합」 안의 백분위**다. 전체 시장 대비 RS 가 "
+    "아니다(원저작은 전 종목 대비). 시총 ≥3천억 집합 안의 상대강도이므로 **원저작보다 좁다.**",
+    "🔴 **arm 마다 「신호 → 실현 거래」 전환율이 다를 수 있다**(§10-5). 1단계 실측: `D` 는 "
+    "트리거 55,239 에 **고유 종목 243**, `DT` 는 8,915 에 **고유 종목 414** — ***`D` 는 소수 "
+    "종목을 반복 선택하고 `DT` 는 넓게 흩뿌린다.*** 종목당 단일 포지션이므로 `D` 쪽 신호가 "
+    "「이미 보유 중」으로 더 많이 버려질 수 있다 ⇒ 실현 거래는 신호의 **비무작위 부분집합**이다. "
+    "**아래 §4 에서 폐기율을 산출했다.**",
+    "⚠️ **`rcept_dt` 정정본 446행 / 17,892 = 2.49%**(고유 292종목) — §7-4 커버리지 구멍의 실측 규모.",
+]
+
 FINGERPRINT_SQL = {
     f"daily_prices[{HIST0}..{W1}] 적재분(워밍업 포함)":
         f"SELECT count(*), count(DISTINCT stock_code), max(date) FROM daily_prices "
@@ -100,12 +147,21 @@ FINGERPRINT_SQL = {
         "FROM dart_financials_asfiled WHERE rcept_dt IS NOT NULL",
 }
 
-OUT: list[str] = []
+OUT: list[str] = []      # 원시 출력 (GATE.md / RESULTS_raw.md)
+DOC: list[str] = []      # 판정 문서 (RESULTS.md) — OUT 의 부분집합
 
 
 def say(s: str = "") -> None:
+    """원시 출력에만 남긴다."""
     print(s, flush=True)
     OUT.append(s)
+
+
+def rep(s: str = "") -> None:
+    """판정 문서 «와» 원시 출력 양쪽 ⇒ `RESULTS_raw.md` 는 항상 상위집합이다."""
+    print(s, flush=True)
+    OUT.append(s)
+    DOC.append(s)
 
 
 def git_sha() -> str:
@@ -475,6 +531,129 @@ def year_skew(items: list, pool_days: dict, label: str) -> None:
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# 6b. 2단계 — 백테스트 · 판정 (PREREG §4·§5)
+# ────────────────────────────────────────────────────────────────────────────
+class ArmGated:
+    """arm 이 «그날 고른» 종목-일만 매수 신호로 바꾼다.
+
+    🔑 진입 룰 판정은 1단계 캐시가 이미 끝냈고 arm 선택은 그 부분집합이므로 여기서는
+    `(code, date)` 조회 하나뿐이다 — **룰을 다시 평가하지 않는다.**
+    """
+
+    def __init__(self, allowed: dict):
+        self.allowed = allowed
+
+    def generate_signal(self, stock_code, df, timeframe="daily"):
+        if stock_code in self.allowed.get(df["date"].iloc[-1], ()):
+            return Signal(signal_type=SignalType.BUY, stock_code=stock_code, confidence=58)
+        return None
+
+
+def run_arm(sel: dict, frames: dict, idxmap: dict, cfg: dict, backtester_cls) -> dict:
+    """arm 하나를 백테스트해 «거래당» 분포와 «신호→실현» 전환을 낸다.
+
+    `mean`·`med` 단위는 **%**. 🔑 `pnl_pct` 에는 슬리피지(편도 0.1%)가 체결가에 반영돼 있고
+    **수수료 0.015%·거래세 0.18% 는 미반영**(= PREREG §4 의 gross, 승계 원본과 동일 정의).
+
+    🔴 **`signals`(신호 수)의 정의**(§10-5 항목 12): arm 이 고른 (code, date) 중
+    **그 종목 프레임에 실제로 존재하고 다음 봉이 있는**(체결 가능) 것의 수.
+    `BookBacktester` 는 보유 중이면 `generate_signal` 을 «부르지도 않으므로»,
+    폐기 건수는 백테스터 안에서 셀 수 없다 — 그래서 밖에서 「제시된 신호」를 세고
+    실현 매수와 대조한다. `discard = 1 − entries / signals`.
+    """
+    allowed = {d: set(v) for d, v in sel.items() if v}
+    codes = set().union(*allowed.values()) if allowed else set()
+    signals = 0
+    for d, cs in allowed.items():
+        for c in cs:
+            im = idxmap.get(c)
+            if im is not None:
+                i = im.get(d)
+                if i is not None and i <= im["__last__"] - 1:
+                    signals += 1
+    bt = backtester_cls(strategy=ArmGated(allowed), warmup_bars=0,
+                        stop_loss_pct=cfg["sl"], take_profit_pct=cfg["tp"],
+                        max_hold_bars=cfg["mh"], eod_liquidate=False)
+    pnl, hold, reasons = [], [], []
+    for c in sorted(codes):
+        g = frames.get(c)
+        if g is None or len(g) < 2:
+            continue
+        buy = None
+        for t in bt.run_single(c, g).trades:
+            if t["side"] == "buy":
+                buy = t
+            elif t["side"] == "sell" and buy is not None:
+                pnl.append(float(t["pnl_pct"]))
+                hold.append(int(t["idx"]) - int(buy["idx"]))
+                reasons.append(str(t["reason"]))
+                buy = None
+    if not pnl:
+        return dict(n=0, signals=signals, discard=float("nan"), mean=float("nan"),
+                    med=float("nan"), win=float("nan"), hold=float("nan"),
+                    sl=float("nan"), tp=float("nan"), mh=float("nan"))
+    p, r = pd.Series(pnl), pd.Series(reasons)
+    return dict(n=len(pnl), signals=signals,
+                discard=(1 - len(pnl) / signals) * 100 if signals else float("nan"),
+                mean=p.mean() * 100, med=p.median() * 100, win=(p > 0).mean() * 100,
+                hold=float(pd.Series(hold).median()),
+                sl=(r == "stop_loss").mean() * 100, tp=(r == "take_profit").mean() * 100,
+                mh=(r == "max_hold").mean() * 100)
+
+
+def perm_p(arm_mean: float, r_means: list) -> float:
+    """단측 순열 p — `(1 + #{R_i ≥ A}) / (1 + n_seeds)`. N1 성립 시 최솟값 `1/21`."""
+    return (1 + sum(1 for x in r_means if x >= arm_mean)) / (1 + len(r_means))
+
+
+def tt_labels(D: float, DT: float, n1_D: bool, n1_DT: bool) -> dict:
+    """PREREG §5-2 (Trend Template) 라벨 4개 — 동결분 그대로. 새로 짓지 않는다."""
+    e = EPS_ECON
+    return {
+        "(가) TT 는 정보다 — 연결 안 한 것이 «결함»": (DT - D >= e) and n1_DT,
+        "(다) 빼는 것이 옳았다 — 연결 안 한 것이 «결정»": (D - DT >= e) and n1_D,
+        "(나) TT 는 정보가 아니다": not n1_DT,
+        "(마) 구별 불가": abs(DT - D) < e,
+    }
+
+
+def f_labels(D: float, DF: float, n1_DF: bool) -> dict:
+    """PREREG §5-3 (재무) 라벨 4개 — 동결분 그대로. (다-F) 는 N1 을 요구하지 않는다."""
+    e = EPS_ECON
+    return {
+        "(가-F) 재무는 정보다": (DF - D >= e) and n1_DF,
+        "(다-F) 재무는 «해롭다»": (D - DF >= e),
+        "(나-F) 재무는 정보가 아니다": not n1_DF,
+        "(마-F) 구별 불가": abs(DF - D) < e,
+    }
+
+
+def decomposition(D: float, DT: float, T: float) -> dict:
+    """PREREG §5-4 분해 3라벨 — 사전 고정이므로 인용 가능(단 「유의」·「기각」 금지)."""
+    e = EPS_ECON
+    return {
+        "**dryup 이 기여하지 않는다** — TT 만으로 같은 결과": (abs(T - DT) < e) and (DT - D >= e),
+        "**둘 다 필요하다** — dryup 이 TT 위에서 값을 더한다": (DT - T >= e),
+        "🔴 **dryup 이 «해롭다»** — TT 단독이 더 낫다": (T - DT >= e),
+    }
+
+
+def holm(pairs: list, alpha: float = ALPHA) -> list:
+    """Holm 단계적 하강. `pairs=[(name, p)]` → `[(name, p, 문턱, 기각여부)]` (원래 순서)."""
+    order = sorted(range(len(pairs)), key=lambda i: pairs[i][1])
+    m = len(pairs)
+    out = [None] * m
+    stopped = False
+    for rank, i in enumerate(order):
+        thr = alpha / (m - rank)
+        rej = (not stopped) and pairs[i][1] <= thr
+        if not rej:
+            stopped = True
+        out[i] = (pairs[i][0], pairs[i][1], thr, rej)
+    return out
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # 7. stage1
 # ────────────────────────────────────────────────────────────────────────────
 def stage1() -> int:
@@ -821,17 +1000,344 @@ def stage1() -> int:
     return 0
 
 
+def stage2() -> int:
+    # 🔴 지역 import — `--stage1` 이 「PnL 계산 경로가 아예 없다」를 보증하기 위해서다.
+    from backtest.book_backtester import BookBacktester
+
+    conn = psycopg2.connect(**DSN)
+    sha = git_sha()
+    rep("# 판정 — minervini 는 원저작의 「추세·펀더멘털 전제」를 뺐다. 결함인가 결정인가")
+    rep("")
+    rep(f"사전등록 [`PREREG.md`](PREREG.md) 실행 · 가족 등록부 "
+        f"[`../REGISTRY.md`](../REGISTRY.md) **1번 문서** · 창 **{W0} ~ {W1}** · "
+        f"실행 커밋 **`{sha}`** · 1단계 게이트 → [`GATE.md`](GATE.md) · "
+        f"원시 출력 → [`RESULTS_raw.md`](RESULTS_raw.md).")
+    rep("")
+    rep(f"🔴 **ε·arm·시드·문턱·`score`·판정 규칙·라벨은 `e4c55b1` 동결분 그대로다.** "
+        f"ε = **{EPS_ECON}%p**(§5) · N1 = **`arm > R {N_SEEDS}개 전부`**(§5-1) · "
+        f"주 검정 **2개**(§5-2 TT · §5-3 F)에 문서 안에서 Holm 보정(§5-6).")
+    rep("")
+
+    rows, params = verify_strategy_params()
+    say("## 0. 설정 대조")
+    say("")
+    for r in rows:
+        say(r)
+    say("")
+
+    fp = db_fingerprint(conn)
+    rep("## 0. 실행 기록 (PREREG §9)")
+    rep("")
+    rep(f"- 실행 커밋 SHA **`{sha}`** · 청산은 `config.yaml` 에서 읽었다 "
+        f"(sl **{params['sl']}** / tp **{params['tp']}** / max_hold **{params['mh']}**, "
+        f"지시서 기대값과 일치).")
+    rep("- **등록 외 조합은 계산하지 않았다** — arm 은 D·DT·DF·DTF·T·R 여섯뿐이고 "
+        "8조건 부분집합·문턱 스윕·가중 혼합은 구현되어 있지 않다(§8-3). "
+        "`rule_trend_template` 은 **파라미터 기본값 그대로** 호출했다(§2-1).")
+    rep("")
+    rep(f"DB 지문 ({len(FINGERPRINT_SQL)}슬라이스):")
+    rep("")
+    rep("| 슬라이스 | 행 수 | 종목 수 | max |")
+    rep("|---|---|---|---|")
+    for k, (a, b, c) in fp.items():
+        rep(f"| `{k}` | {a:,} | {b:,} | {c} |")
+    rep("")
+
+    t0 = time.perf_counter()
+    px = load_prices(conn)
+    uni, _ = load_universe(conn)
+    fin, _fraw = load_fundamentals(conn)
+    conn.close()
+    dates = sorted(uni)
+    scr = MinerviniVolumeDryupScreenerAdapter()
+    elig = eligible_by_date(uni, scr)
+    pool_days = [d for d in dates if elig.get(d)]
+    print(f"[load] {len(px):,}행 · {time.perf_counter()-t0:.0f}s", flush=True)
+
+    print("[rs] 백분위", flush=True)
+    rs, _rd = build_rs(px, elig, pool_days)
+    print("[cache] 룰 평가", flush=True)
+    cache, cstats = build_cache(px, elig, rs, fin, params)
+    pools = build_pools(cache, elig)
+    sels = {a: select_top(pools[a]) for a in ARM_RULE}
+    r_sels = [select_random(pools["R"], s) for s in range(N_SEEDS)]
+    say(f"\n적격 (code,date) {cstats['n_eval']:,} · dryup {cstats['n_dry']:,} · "
+        f"TT {cstats['n_tt']:,} · F {cstats['n_f']:,}")
+
+    # 2단계 프레임 — 창 안으로 자른다(`ArmGated` 는 (code,date) 조회라 과거 봉 불필요).
+    frames, idxmap = {}, {}
+    for code, g in px.groupby("stock_code", sort=False):
+        g2 = g[g["date"] >= W0]
+        if len(g2) >= 2:
+            g2 = g2.reset_index(drop=True)
+            frames[code] = g2
+            im = {d: i for i, d in enumerate(g2["date"].to_numpy())}
+            im["__last__"] = len(g2) - 1
+            idxmap[code] = im
+
+    cfg = dict(sl=params["sl"], tp=params["tp"], mh=params["mh"])
+    res = {}
+    for a in ARM_RULE:
+        t1 = time.perf_counter()
+        res[a] = run_arm(sels[a], frames, idxmap, cfg, BookBacktester)
+        print(f"    {a:4} sig={res[a]['signals']:>6} n={res[a]['n']:>5} "
+              f"mean={res[a]['mean']:+.2f}% {time.perf_counter()-t1:.0f}s", flush=True)
+    r_stats = []
+    for s in range(N_SEEDS):
+        m = run_arm(r_sels[s], frames, idxmap, cfg, BookBacktester)
+        r_stats.append(m)
+        print(f"    R{s:<3} n={m['n']:>5} mean={m['mean']:+.2f}%", flush=True)
+    r_means = [x["mean"] for x in r_stats]
+    rmax = max(r_means)
+
+    # ── 표 ──────────────────────────────────────────────────────────────────
+    rep("## 1. 전체 표 — 거래당 평균 수익률 (gross · n = 실현 거래 수)")
+    rep("")
+    rep("🔑 `pnl_pct` 에 **슬리피지 편도 0.1% 는 반영**, **수수료 0.015%·거래세 0.18% 는 "
+        "미반영**(승계 원본과 같은 gross 정의). 왕복 비용 0.21%p 는 전 arm 에 동일하게 빠지므로 "
+        "**arm 차이엔 무해**하나 **절대 수준은 net 이 아니다.**")
+    rep("")
+    rep("| Arm | 진입 룰 | n (실현 거래) | 거래당 평균 | 중앙 | 승률 | 보유 중앙 | 손절 | 익절 | 최대보유 |")
+    rep("|---|---|---|---|---|---|---|---|---|---|")
+    desc = {"D": "dryup (현행)", "DT": "dryup ∧ TT", "DF": "dryup ∧ F",
+            "DTF": "dryup ∧ TT ∧ F", "T": "TT 만"}
+    for a in ARM_RULE:
+        m = res[a]
+        rep(f"| **{a}** | {desc[a]} | {m['n']:,} | **{m['mean']:+.2f}%** | {m['med']:+.2f}% | "
+            f"{m['win']:.0f}% | {m['hold']:.0f}일 | {m['sl']:.0f}% | {m['tp']:.0f}% | "
+            f"{m['mh']:.0f}% |")
+    rep(f"| **R** | 무작위 ({N_SEEDS}시드) | {int(np.mean([x['n'] for x in r_stats])):,} (평균) | "
+        f"중앙 **{np.median(r_means):+.2f}%** · 최소 {min(r_means):+.2f}% · "
+        f"**최대 {rmax:+.2f}%** | | | | | | |")
+    rep("")
+
+    # ── §10-5 항목 12 — 폐기율 ──────────────────────────────────────────────
+    rep("## 2. 🔴 신호 → 실현 거래 전환 · 폐기율 (§10-5 항목 12)")
+    rep("")
+    rep("**신호 수** = arm 이 고른 (종목, 날짜) 중 그 종목 프레임에 실제로 있고 «다음 봉»이 있어 "
+        "체결 가능한 것. **폐기** = 그날 이미 그 종목을 보유 중이라 `BookBacktester` 가 "
+        "`generate_signal` 을 부르지도 않은 경우. `폐기율 = 1 − 실현/신호`.")
+    rep("")
+    rep("| Arm | 신호 수 | 실현 거래 | **폐기율** |")
+    rep("|---|---|---|---|")
+    for a in ARM_RULE:
+        m = res[a]
+        rep(f"| **{a}** | {m['signals']:,} | {m['n']:,} | **{m['discard']:.1f}%** |")
+    rs_sig = int(np.mean([x["signals"] for x in r_stats]))
+    rs_n = int(np.mean([x["n"] for x in r_stats]))
+    rs_d = float(np.mean([x["discard"] for x in r_stats]))
+    rep(f"| **R** (평균) | {rs_sig:,} | {rs_n:,} | **{rs_d:.1f}%** |")
+    rep("")
+    ds = {a: res[a]["discard"] for a in ARM_RULE}
+    ds["R"] = rs_d
+    lo, hi = min(ds.values()), max(ds.values())
+    ratio = hi / lo if lo > 0 else float("inf")
+    if ratio >= DISCARD_RATIO_FLAG:
+        rep(f"🔴 **폐기율이 arm 간 {ratio:.2f}배 벌어졌다 (≥{DISCARD_RATIO_FLAG:.0f}배)** — "
+            f"최대 `{max(ds, key=lambda k: ds[k])}` {hi:.1f}% vs 최소 "
+            f"`{min(ds, key=lambda k: ds[k])}` {lo:.1f}%. "
+            f"⇒ ***실현 거래가 신호의 «비무작위» 부분집합이고 그 정도가 arm 마다 다르다*** ⇒ "
+            f"이 비교는 「같은 룰의 두 버전」이 아니라 **「다른 빈도의 두 룰」**에 가깝다. "
+            f"**판정문에 병기한다**(§10-5 항목 12).")
+    else:
+        rep(f"✅ **폐기율 최대/최소 = {ratio:.2f}배 (<{DISCARD_RATIO_FLAG:.0f}배)** — "
+            f"전환율 비대칭이 문턱 아래다. 비교가 「같은 룰의 두 버전」으로 성립한다.")
+    rep("")
+
+    # ── 판정 ────────────────────────────────────────────────────────────────
+    D, DT, DF, DTF, T = (res[a]["mean"] for a in ("D", "DT", "DF", "DTF", "T"))
+    n1 = {a: res[a]["mean"] > rmax for a in ARM_RULE}
+    pv = {a: perm_p(res[a]["mean"], r_means) for a in ARM_RULE}
+
+    rep("## 3. 귀무 N1 (§5-1) — 각 arm 이 무작위 20회 «전부»를 넘는가")
+    rep("")
+    rep("| Arm | 거래당 평균 | R 최대 | N1 | 단측 순열 p |")
+    rep("|---|---|---|---|---|")
+    for a in ARM_RULE:
+        rep(f"| **{a}** | {res[a]['mean']:+.2f}% | {rmax:+.2f}% | "
+            f"{'✅' if n1[a] else '❌'} | {pv[a]:.4f} |")
+    rep("")
+    if not n1["D"]:
+        rep("### 🔴🔴 이것이 이 문서의 «가장 중요한 결과»다 (§5-1 사전 지정)")
+        rep("")
+        rep(f"**기준선 `D` 가 N1 을 통과하지 못했다** — `D` {D:+.2f}% ≤ R 최대 {rmax:+.2f}%.")
+        rep("")
+        rep("⇒ ***현행 진입 룰(`rule_volume_dryup` 한 줄)이 이미 「그날 `base_filter` 통과 "
+            "집합에서 무작위로 10종목 고르기」와 구별되지 않는다.*** "
+            "사전등록 §5-1 이 *「그것 자체가 이 문서의 가장 중요한 결과다. 눈에 띄게 인쇄한다」* "
+            "라고 미리 지정한 관측이다. 아래 TT·F 판정과 **병기**한다.")
+        rep("")
+    else:
+        rep(f"✅ **기준선 `D` 는 N1 통과** ({D:+.2f}% > R 최대 {rmax:+.2f}%) — "
+            f"현행 진입 룰은 무작위와 구별된다(§5-1).")
+        rep("")
+
+    rep("## 4. 주 판정 — 라벨은 동결분에서 «고른다»(새로 짓지 않는다)")
+    rep("")
+    rep(f"| 지표 | 값 |")
+    rep("|---|---|")
+    rep(f"| **DT − D** (§5-2 TT) | **{DT-D:+.2f}%p** |")
+    rep(f"| **DF − D** (§5-3 재무) | **{DF-D:+.2f}%p** |")
+    rep(f"| **DT − T** (§5-4 분해) | **{DT-T:+.2f}%p** |")
+    rep(f"| ε (동결) | {EPS_ECON}%p |")
+    rep("")
+
+    ttl = tt_labels(D, DT, n1["D"], n1["DT"])
+    fl = f_labels(D, DF, n1["DF"])
+    rep("### 4-1. §5-2 Trend Template")
+    rep("")
+    rep("| 라벨 (동결) | 조건 충족 |")
+    rep("|---|---|")
+    for k, v in ttl.items():
+        rep(f"| {k} | {'✅ **성립**' if v else '❌'} |")
+    tt_hit = [k for k, v in ttl.items() if v]
+    rep("")
+    rep(f"⇒ **{' · '.join(tt_hit) if tt_hit else '판별 불가 (어느 라벨도 성립하지 않음)'}**")
+    rep("")
+
+    rep("### 4-2. §5-3 재무")
+    rep("")
+    rep("| 라벨 (동결) | 조건 충족 |")
+    rep("|---|---|")
+    for k, v in fl.items():
+        rep(f"| {k} | {'✅ **성립**' if v else '❌'} |")
+    f_hit = [k for k, v in fl.items() if v]
+    rep("")
+    rep(f"⇒ **{' · '.join(f_hit) if f_hit else '판별 불가 (어느 라벨도 성립하지 않음)'}**")
+    rep("")
+
+    # ── Holm ────────────────────────────────────────────────────────────────
+    rep("## 5. §5-6 Holm 보정 (주 검정 2개, α = .05)")
+    rep("")
+    hres = holm([("§5-2 TT (DT vs R)", pv["DT"]), ("§5-3 재무 (DF vs R)", pv["DF"])])
+    rep("| 검정 | 단측 순열 p | Holm 문턱 | 기각? |")
+    rep("|---|---|---|---|")
+    for name, p, thr, rej in hres:
+        rep(f"| {name} | {p:.4f} | {thr:.4f} | {'✅ 기각' if rej else '❌ 기각 못 함'} |")
+    rep("")
+    pmin = 1 / (N_SEEDS + 1)
+    rep(f"🔴 **구조적 사실 — 이 설계에서 Holm 의 1단계 문턱은 «도달 불가»다.** "
+        f"시드가 {N_SEEDS}개이므로 단측 순열 p 의 **최솟값은 1/{N_SEEDS+1} = {pmin:.4f}** 인데, "
+        f"Holm 의 첫 문턱은 α/2 = **{ALPHA/2:.4f}** 다. **{pmin:.4f} > {ALPHA/2:.4f}** 이므로 "
+        f"***arm 이 무작위 20회를 전부 이기더라도 Holm 은 아무것도 기각할 수 없다.*** "
+        f"이는 결과와 무관한 **동결 설계의 산술적 성질**이다(시드 수와 Holm 이 동시에 고정돼 "
+        f"있고 §8-1 이 둘 다 변경을 금지한다).")
+    rep("")
+    rep("⇒ **따라서 §5-2·§5-3 의 라벨 판정은 「N1 + ε」 규칙(§5-2·§5-3 표)으로 내리고, "
+        "Holm 결과는 「유의」 선언에만 관계한다** — 이 문서는 **어느 검정에 대해서도 "
+        "「통계적으로 유의하다」고 쓰지 않는다.**")
+    rep("")
+
+    # ── §5-4 분해 ───────────────────────────────────────────────────────────
+    rep("## 6. §5-4 분해 — 알파는 어디서 오는가")
+    rep("")
+    rep("🔑 1단계 실측 `D∩T` 겹침이 **2.10/10** 뿐이라 두 룰은 거의 다른 종목을 고른다 ⇒ "
+        "이 분해는 실질 판별력을 갖는다. 라벨 3개는 **사전 고정**이므로 인용 가능하나 "
+        "**보정 대상이 아니므로 「유의」·「기각」을 쓰지 않는다**(§5-6 · REGISTRY 규칙 2).")
+    rep("")
+    rep(f"- `T` = **{T:+.2f}%** · `DT` = **{DT:+.2f}%** · `D` = **{D:+.2f}%**")
+    rep(f"- `DT − T` = **{DT-T:+.2f}%p** · `T − DT` = **{T-DT:+.2f}%p** · "
+        f"`DT − D` = **{DT-D:+.2f}%p**")
+    rep("")
+    dec = decomposition(D, DT, T)
+    rep("| 관측 (동결 라벨) | 성립 |")
+    rep("|---|---|")
+    for k, v in dec.items():
+        rep(f"| {k} | {'✅' if v else '❌'} |")
+    dec_hit = [k for k, v in dec.items() if v]
+    rep("")
+    rep(f"⇒ **{' · '.join(dec_hit) if dec_hit else '세 라벨 어느 것도 성립하지 않음 — 분해 판별 불가'}**")
+    rep("")
+
+    # ── §5-5 상호작용 ───────────────────────────────────────────────────────
+    rep("## 7. §5-5 상호작용 — 🔴 **판별 보류** (인쇄만)")
+    rep("")
+    inter = DTF - DT - DF + D
+    rep(f"`DTF − DT − DF + D` = {DTF:+.2f} − {DT:+.2f} − {DF:+.2f} + {D:+.2f} = "
+        f"**{inter:+.2f}%p**")
+    rep("")
+    rep(f"🔴 **판별 보류.** `DTF` 는 1단계 §6-1 에서 트리거가 `D` 의 **4.4%** 로 사전 고정 문턱 "
+        f"10% 에 미달했다(`GATE.md` §5 · PREREG §10-4) ⇒ **「표본 부족 → 판별 보류」**. "
+        f"실현 거래 **{res['DTF']['n']:,}건**. "
+        f"***이 값을 어떤 결론에도 인용하지 않는다. 이 값을 보고 조합을 고르면 사후적합이다***(§5-5).")
+    rep("")
+
+    # ── 종합 ────────────────────────────────────────────────────────────────
+    rep("## 8. 🔴 종합")
+    rep("")
+    for lab in tt_hit:
+        rep(f"# {lab}")
+    for lab in f_hit:
+        rep(f"# {lab}")
+    if not tt_hit and not f_hit:
+        rep("# 판별 불가")
+    rep("")
+    if not n1["D"]:
+        rep("### 🔴 병기 — 현행 진입 룰이 무작위와 구별되지 않는다 (§5-1)")
+        rep("")
+        rep(f"`D` {D:+.2f}% ≤ R 최대 {rmax:+.2f}% ⇒ N1(D) 불성립. "
+            f"위 라벨과 **함께** 읽어야 한다.")
+        rep("")
+    if ratio >= DISCARD_RATIO_FLAG:
+        rep(f"### 🔴 병기 — 폐기율 비대칭 {ratio:.2f}배 (§10-5 항목 12)")
+        rep("")
+        rep("실현 거래가 신호의 비무작위 부분집합이고 그 정도가 arm 마다 다르다.")
+        rep("")
+    rep(f"### 🔑 생존편향 비대칭 — 판정문 옆에 붙여 읽을 것 (§7-2)")
+    rep("")
+    rep("생존편향은 **약한 종목을 위로** 민다. TT·F 는 «강한 종목을 고르는» 필터이므로 "
+        "**`DT − D`·`DF − D` 가 «과소»평가**되는 쪽이다. 따라서:")
+    rep("")
+    rep("- **(가)·(가-F) 결론이면 «강하다»** — 편향이 반대로 미는데도 나온 결과다.")
+    rep("- **(나)·(다) 계열 결론이면 이 편향을 «배제할 수 없다»** — 편향이 그 결론을 "
+        "밀어주는 방향이다.")
+    rep("")
+    pro = any(k.startswith("(가") for k in tt_hit + f_hit)
+    rep("⇒ 이번 결론은 " + ("**편향이 반대로 미는데도 나온 것이라 «강하다»**."
+                          if pro else
+                          "**편향이 «밀어주는» 방향이라 배제할 수 없다** — "
+                          "채택 전 별도 검증이 필요하다."))
+    rep("")
+    rep(f"### 가족 FWER (REGISTRY 규칙 5)")
+    rep("")
+    rep("가족 등록부 현재 등재 주 검정 **2개** ⇒ 보정 없는 FWER(α=.05) ≈ **9.8%**. "
+        "***보정을 안 거는 것과 위험이 없는 것은 다르다*** — 이 숫자를 판정문과 함께 읽을 것.")
+    rep("")
+
+    rep("## 9. 🔴 한계 (PREREG §7 1~11 + §10-5 12~13, 전량 전재)")
+    rep("")
+    for i, s in enumerate(LIMITATIONS, 1):
+        rep(f"{i}. {s}")
+    rep("")
+    rep("### §10-4 — `DTF` 문턱 미달이 판정 구조에 미치는 영향")
+    rep("")
+    rep("🟢 **주 판정 2개는 영향을 받지 않는다** — §5-2 는 `DT` vs `D`, §5-3 은 `DF` vs `D` 를 "
+        "쓰고 둘 다 1단계 문턱을 통과했다(16.1% · 24.1%). "
+        "**`DTF` 는 §5-5 상호작용(인쇄만)에만 쓰이고 「판별 보류」다.**")
+    rep("")
+
+    (BASE / "RESULTS.md").write_text("\n".join(DOC) + "\n", encoding="utf-8")
+    (BASE / "RESULTS_raw.md").write_text("\n".join(OUT) + "\n", encoding="utf-8")
+    print("\n[written] RESULTS.md · RESULTS_raw.md", flush=True)
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="minervini 개념 축 — PREREG 실행부")
     ap.add_argument("--stage1", action="store_true",
-                    help="PREREG §6 1단계 게이트 (PnL 미조회) → GATE.md. 현재 유일한 모드.")
+                    help="PREREG §6 1단계 게이트 (PnL 미조회) → GATE.md")
+    ap.add_argument("--stage2", action="store_true",
+                    help="PREREG §4·§5 판정 → RESULTS.md · RESULTS_raw.md")
     a = ap.parse_args()
-    if not a.stage1:
-        print("이 스크립트는 지금 `--stage1` 만 구현되어 있다 "
-              "(PREREG §6 = PnL 을 보기 «전»에 확정하는 1단계 게이트).\n"
-              "2단계(§4·§5, 거래당 수익률)는 별도 지시로 구현한다.", flush=True)
+    if a.stage1 and a.stage2:
+        print("한 번에 하나만 실행한다 — 1단계는 「PnL 을 보기 «전»」이라야 뜻이 있다.", flush=True)
         return 2
-    return stage1()
+    if a.stage1:
+        return stage1()
+    if a.stage2:
+        return stage2()
+    print("`--stage1`(게이트) 또는 `--stage2`(판정) 중 하나를 지정하라.", flush=True)
+    return 2
 
 
 if __name__ == "__main__":
