@@ -61,6 +61,10 @@ resolve_minute_source_db()  # 분봉 → 기본 "kis_template"  (minute_candles)
   기계검사 `tests/test_adj_factor_no_arithmetic.py`(가격 금지·volume 허용, SQL 한정) · 회귀 `tests/test_adj_factor_volume_units.py`.
 - ✅ **재무(`financial_statements`·`quant_*`)도 2026-08-16 이관 완료 → `kis_template`.** 「robotrader_quant 유지 = 의도된 예외」는 **폐기**.
   재무 롤백은 가격 플래그가 아니라 `QUANT_FINANCIAL_DB` 로 **독립 제어**. (`lib/signals/roe_filter.py`, `pit_reader.read_financial_ratio`)
+  🔧 **정정(2026-08-17)**: 위 「이관 완료」는 **부분적으로 거짓이었다** — `financial_statements.operating_cash_flow` 는 **컬럼 자체가 kis 에 없었고**
+  (54개 표 전수 컬럼 검색 0건), `robotrader` DB 에만 1,287행이 남아 있었다. 2026-08-17 `db_migration5` 로 **컬럼 추가 + 그 컬럼만** 채웠다
+  (기존 22개 컬럼 전행 해시 `e321580b…` ALTER 전·후·UPDATE 후 **불변** 확인). 🔑 ***「표를 옮겼다」는 「컬럼을 다 옮겼다」를 뜻하지 않는다*** —
+  이관 검증을 **행 수·키**로만 하면 한쪽에만 있는 컬럼은 대칭차분에 안 걸린다. 4,350행 중 non-NULL 은 1,287행뿐(나머지는 소스에도 값이 없다).
 - 섹터·연간재무도 같이 이관됐다(`stock_sector`·`yearly_fundamentals`, 구 `strategy_analysis`). ⚠️ 단 `daily_candles`는 **미이관** —
   일봉은 `daily_prices`를 쓸 것. (`strategies/historical_data.py`)
 
