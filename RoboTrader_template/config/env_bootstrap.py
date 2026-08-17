@@ -4,9 +4,11 @@
 프로젝트의 어떤 모듈보다 먼저 repo-root ``.env`` 를 읽어 ``os.environ`` 에
 주입한다. python-dotenv 미의존(봇 venv 미설치) + 무크래시 원칙.
 
-배경: ``config/constants.py`` 는 import 시점에 ``KIS_DATA_SOURCE`` 를,
-``db/connection.py`` 는 런타임에 ``TIMESCALE_DB`` 를 읽는다. main.py 가 이
-부트스트랩을 최상단에서 호출해야 ``.env`` 플립이 실제로 발효된다.
+배경: ``db/connection.py`` 는 런타임에 ``TIMESCALE_DB`` 를 읽고, KIS API 키 등
+다른 설정도 ``.env`` 에 있다. main.py 가 이 부트스트랩을 최상단에서 호출해야
+``.env`` 값이 실제로 발효된다.
+(2026-08-17: 과거엔 ``config/constants.py`` 가 import 시점에 ``KIS_DATA_SOURCE`` 를
+읽어 «순서 의존»이 있었으나, 그 플래그가 폐지되면서 해당 의존은 사라졌다.)
 """
 import os
 from pathlib import Path

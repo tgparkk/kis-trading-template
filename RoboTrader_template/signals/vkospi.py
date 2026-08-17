@@ -17,7 +17,23 @@ PIT 보장:
   - spike (z-score > 2.0): 패닉 저점 가능성 → 단기 반등 검토
 
 데이터 소스:
-  - DB: robotrader.vkospi_daily (backfill_vkospi.py 사전 백필)
+  - 표: ``vkospi_daily`` (scripts/backfill_vkospi.py 로 사전 백필)
+  - 대상 DB: ``resolve_daily_source_db()`` (= kis_template). env 불필요.
+
+🔴 2026-08-17 — 하드코딩 대상 DB 'robotrader' 제거:
+   `robotrader` 는 2026-07-10 동결된 레거시이고 곧 삭제된다.
+   같은 날 `require_explicit_target_db`(TIMESCALE_DB 명시 필수)를 거쳤다가
+   **되돌렸다** — 이건 **읽기 전용** 시그널이고, 연구 읽기 경로가 라이브 운영
+   env(`TIMESCALE_DB`, gitignore 된 `.env` 전용)를 요구하면 2026-07-16 통일이
+   고친 문제가 되살아난다. 상세 근거는
+   `scripts/feature_edge/timing/intraday_loader.py` 모듈 docstring 참조.
+   (VKOSPI 는 **일별 시장참조 시세**라 일봉 resolver 를 쓴다.)
+
+⚠️ 실측(2026-08-17): ``vkospi_daily`` 표는 **kis_template 에도 robotrader 에도
+   없다**(양쪽 0개). 즉 이 모듈은 지금 **어디서도 데이터를 못 읽는다** — 백필이
+   한 번도 적용되지 않았다는 뜻이다. DB 폐기와는 **별개 사안**이며, 라이브 호출자도
+   없다(`signals/__init__.py` 재수출뿐). 쓰려면 backfill_vkospi.py 를 먼저 돌려야 한다.
+   ⇒ resolver 로 바꾼 것도 「고쳤다」가 아니라 「죽는 방식을 하나 줄였다」에 가깝다.
 """
 from __future__ import annotations
 
@@ -31,17 +47,24 @@ import psycopg2
 
 logger = logging.getLogger(__name__)
 
+from config.constants import resolve_daily_source_db
+
+# ⚠️ user 의 'robotrader' 는 **롤명**이라 그대로 둔다(DB명과 동음이의).
 _DB_DEFAULTS = dict(
     host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
     port=int(os.getenv("TIMESCALE_PORT", "5433")),
     user=os.getenv("TIMESCALE_USER", "robotrader"),
     password=os.getenv("TIMESCALE_PASSWORD", "1234"),
-    database=os.getenv("TIMESCALE_DB", "robotrader"),
 )
 
 
 def _get_conn():
-    return psycopg2.connect(**_DB_DEFAULTS)
+    # 대상 DB 해석은 import 시점이 아니라 «연결 시점»에 한다
+    # (모듈 import 만 하는 경로 보호 + 테스트에서 몽키패치 가능).
+    return psycopg2.connect(
+        **_DB_DEFAULTS,
+        database=resolve_daily_source_db(),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -6,7 +6,8 @@ Phase 1A 분봉 데이터 로더 테스트
 - MinuteCache (hit/miss/evict)
 - UnifiedDataLoader.load_minute_data
 
-실 DB 연결 필요 (127.0.0.1:5433 / robotrader).
+실 DB 연결 필요 (127.0.0.1:5433 / 분봉 SSOT = resolve_minute_source_db()).
+(2026-08-17: 옛 문구 「robotrader」는 폐기 예정 DB — kis_template 으로 정정.)
 slow 마커 테스트는 -m "not slow" 로 제외 가능.
 """
 import sys
@@ -310,10 +311,15 @@ def test_minute_prices_bulk_100종목_30초이내():
     """100종목 1일치 bulk 조회가 30초 이내에 완료되어야 함"""
     import time
     import psycopg2
+    from config.constants import resolve_minute_source_db
 
+    # 🔴 2026-08-17: database="robotrader" 하드코딩 → resolver 경유.
+    #   PriceRepository(피시험 대상)가 읽는 DB 와 종목목록 소스가 갈라지면 안 되고,
+    #   'robotrader' 는 삭제 예정이라 그대로 두면 이 테스트가 연결 실패로 죽는다.
+    #   ⚠️ user 의 'robotrader' 는 **롤명**이라 그대로 둔다(DB명과 동음이의).
     conn = psycopg2.connect(
         host="127.0.0.1", port=5433,
-        database="robotrader", user="robotrader", password="1234"
+        database=resolve_minute_source_db(), user="robotrader", password="1234"
     )
     cur = conn.cursor()
     cur.execute(

@@ -9,9 +9,12 @@ cross-period 강건이 확인된 유일 신규 엣지 → 6번째 페이퍼 전�
 진입 신호는 백테스트와 1:1 일치를 위해 ``strategies/books/trading_strategy_book/rules.py``
 의 ``rule_envelope_200d_high`` 를 직접 재사용한다(조건식 A~I, 책 원문 verbatim 기본값).
 
-★진입 평가는 200일 신고가 계산에 200영업일 이상이 필요하다. 라이브 일봉 피드(분석기
-140달력일≈95봉, robotrader sparse)로는 부족하므로, **진입 평가용 일봉은 QuantDailyReader
-(robotrader_quant, 일봉 SSOT)에서 직접 210봉을 조회**한다(스크리너와 동일 소스).
+★진입 평가는 200일 신고가 계산에 200영업일 이상이 필요하다. 프레임워크가 전달하는
+라이브 일봉 피드(분석기 140달력일≈95봉)로는 부족하므로, **진입 평가용 일봉은
+QuantDailyReader(`db/quant_daily_reader.py` → `resolve_daily_source_db()`,
+즉 `kis_template.daily_prices` = 일봉 SSOT)에서 직접 210봉을 조회**한다
+(스크리너와 동일 소스). ※ 「robotrader_quant」로 적혀 있던 옛 문구는 2026-07-16
+소스 통일로 사실이 아니게 됐다 — 정정(2026-08-17).
 청산(sl/tp/max_hold)은 현재가·보유일만 필요하므로 프레임워크가 전달한 일봉을 사용한다.
 
 청산(고정 손익절, trailing 없음):
@@ -53,7 +56,7 @@ class BookEnvelope200dStrategy(BaseStrategy):
 
     def get_min_data_length(self) -> int:
         # ★ on_tick 게이트(`len(ctx.get_daily_data) < min_len → skip`)는 프레임워크가 전달하는
-        # robotrader 일봉(~85봉)에 적용된다. 진입 평가는 quant 230봉을 내부 조회
+        # 라이브 일봉 피드(~85봉)에 적용된다. 진입 평가는 SSOT 230봉을 내부 조회
         # (_fetch_entry_history)하므로 여기서 200봉을 요구하면 게이트에서 항상 스킵된다.
         # 따라서 게이트는 작게 두고(매도=현재가만 필요), 200봉 요구는 evaluate_entry 내부에서 강제.
         params = self.config.get("parameters", {})
@@ -88,7 +91,7 @@ class BookEnvelope200dStrategy(BaseStrategy):
 
         self._paper_trading = self.config.get("paper_trading", True)
 
-        # 진입 평가용 quant 일봉 리더 (200봉 요구 → robotrader 피드 부족분 보강)
+        # 진입 평가용 일봉 리더 (200봉 요구 → 라이브 피드 부족분 보강)
         self._quant = None
         # (code, KST date) -> 평가용 일봉 캐시 (하루 1회 DB 조회)
         self._entry_df_cache: Dict[Tuple[str, Any], Optional[pd.DataFrame]] = {}

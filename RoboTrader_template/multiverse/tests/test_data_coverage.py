@@ -9,10 +9,12 @@
   - 🔴 daily_prices 에는 **종목이 아닌 지수 행**이 섞여 있다(KOSPI·KOSDAQ·KS11·KQ11).
     「종목 수」를 세는 단언은 전부 SQL_STOCK_ONLY 로 걸러야 한다. → lib/universe_filter.py
   - 2025-10-02 ~ 2025-10-10 은 **진짜 공휴일 연휴**다(아래 사실 확인 참조).
-  - DB 연결: resolve_daily_source_db() (기본 kis_template), host 127.0.0.1:5433
+  - DB 연결: resolve_daily_source_db() (**항상** kis_template), host 127.0.0.1:5433
 
 2026-07-16(연구 소스 통일): 자체 env(TIMESCALE_QUANT_DB)로 DB 를 지정하던 것을
-공용 resolver 로 수렴했다 — 소스 스위치는 KIS_DATA_SOURCE 하나만 남는다.
+공용 resolver 로 수렴했다.
+2026-08-17: 남아 있던 공용 스위치(KIS_DATA_SOURCE)까지 폐지됐다 — 레거시 두 DB 는
+2026-07-10 동결이었고 `robotrader` 는 삭제된다. 이제 소스 스위치는 **없다**.
 
 ================================================================================
 2026-08-03 정정 — 「알려진 특이점」주석 2건이 거짓이었다
@@ -288,7 +290,7 @@ class TestFiveYearContinuity:
         아래 test_min_stock_date_is_20210112 가 그 사실을 별도로 못 박는다.
 
         이 단언 자체(테이블 전체 MIN = 2021-01-04)는 참이므로 유지한다.
-        (KIS_DATA_SOURCE=legacy 롤백 시엔 2021-01-12 가 되므로 기본 소스 기준이다.)
+        (레거시 롤백 시엔 2021-01-12 였는데, 그 롤백 경로는 2026-08-17 폐지됐다.)
         """
         with quant_conn.cursor() as cur:
             cur.execute(

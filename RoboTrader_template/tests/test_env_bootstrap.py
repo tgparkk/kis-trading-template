@@ -16,11 +16,16 @@ def _write_env(tmp_path, text):
 
 
 def test_parses_simple_key_value(tmp_path, monkeypatch):
-    monkeypatch.delenv("KIS_DATA_SOURCE", raising=False)
-    path = _write_env(tmp_path, "KIS_DATA_SOURCE=new\n")
+    # 표본 키는 «아무거나» 된다 — 이 테스트는 파서를 보는 것이지 특정 플래그를
+    # 보는 게 아니다. 예전엔 KIS_DATA_SOURCE 를 썼는데, 그 플래그가 2026-08-17
+    # 폐지되면서 「폐지 env 를 읽는 코드」 전역 가드
+    # (tests/test_research_data_source.py::test_no_lingering_duplicate_source_envs)에
+    # 걸린다. 중립 키로 교체한다.
+    monkeypatch.delenv("SAMPLE_KEY", raising=False)
+    path = _write_env(tmp_path, "SAMPLE_KEY=new\n")
     setted = load_env_file(path)
-    assert setted.get("KIS_DATA_SOURCE") == "new"
-    assert os.environ["KIS_DATA_SOURCE"] == "new"
+    assert setted.get("SAMPLE_KEY") == "new"
+    assert os.environ["SAMPLE_KEY"] == "new"
 
 
 def test_ignores_comments_and_blanks(tmp_path, monkeypatch):

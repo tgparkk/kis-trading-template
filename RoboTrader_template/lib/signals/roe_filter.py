@@ -57,10 +57,10 @@ def _get_connection():
         quant_balance_sheet 각 45,473 · quant_factors 106,728 · quant_portfolio 2,454.
       ⇒ 더 이상 예외가 아니다. 같은 정정이 multiverse/data/pit_reader 에도 적용됐다.
 
-    ⚠️ 그래도 resolve_daily_source_db() 는 쓰지 않는다 — 그 resolver 는 **가격 전용**이라
-      KIS_DATA_SOURCE=legacy 에서 robotrader_quant 를 가리킨다. 재무 롤백 스위치는
-      pit_reader 의 QUANT_FINANCIAL_DB 하나로 충분하고, 이 모듈은 통합 원칙대로
-      kis_template 고정이다.
+    ⚠️ 그래도 resolve_daily_source_db() 는 쓰지 않는다 — 그 resolver 는 **가격 전용**이다.
+      재무 롤백 스위치는 pit_reader 의 QUANT_FINANCIAL_DB 하나로 충분하고,
+      이 모듈은 통합 원칙대로 kis_template 고정이다.
+      (가격 resolver 의 KIS_DATA_SOURCE=legacy 롤백은 2026-08-17 폐지됐다.)
     """
     try:
         import psycopg2

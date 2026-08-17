@@ -9,10 +9,9 @@ corp_events 테이블이 비어 있어도 모든 함수는 정상 동작:
   event_type ∈ {split, rights_issue, bonus_issue, dividend_ex,
                 administrative, caution, warning, halt}
 
-데이터 소스 (2026-07-17 연구 소스 통일):
-  - 이벤트(corp_events) = resolve_corp_events_source_db() → 기본 kis_template
-    (KIS_DATA_SOURCE=legacy 면 robotrader — robotrader_quant 엔 테이블이 없다)
-  - 일봉(daily_prices, get_adj_factor 전용) = resolve_daily_source_db()
+데이터 소스 (2026-07-17 연구 소스 통일 · 2026-08-17 롤백 스위치 폐지):
+  - 이벤트(corp_events) = resolve_corp_events_source_db() → **항상** kis_template
+  - 일봉(daily_prices, get_adj_factor 전용) = resolve_daily_source_db() → **항상** kis_template
   DB명 하드코딩 금지. TIMESCALE_DB(라이브 운영 env)는 읽지 않는다 — 근거는
   config/constants.resolve_corp_events_source_db() docstring 참조.
 """
@@ -60,8 +59,8 @@ psycopg2.extensions.register_type(DEC2FLOAT)
 # 연결 설정
 # ------------------------------------------------------------------ #
 # 접속 정보에서 **DB명은 뺀다** — DB명은 호출 시점 resolver 가 정한다.
-# (기존: database 를 TIMESCALE_DB env 에서 기본값 "robotrader" 로 읽어 모듈 상수로
-#  굳혔다 → ① 연구가 .env 없이 돌면 동결된 robotrader 로 떨어지고
+# (기존: database 를 TIMESCALE_DB env 에서 기본값 "robotrader"(폐기된 레거시 DB)로
+#  읽어 모듈 상수로 굳혔다 → ① 연구가 .env 없이 돌면 그 동결 DB 로 떨어지고
 #          ② 값이 **import 시점**에 고정돼 import 순서/env 변경에 취약했다.
 #  resolver 는 호출 시점 env 를 읽어 두 문제를 함께 없앤다.)
 _DB_DEFAULTS = dict(
@@ -77,7 +76,7 @@ _EXCLUSION_TYPES = ("administrative", "caution", "warning", "halt")
 
 @contextmanager
 def _conn():
-    """이벤트 소스 연결 — resolver 경유(기본 kis_template, legacy 면 robotrader)."""
+    """이벤트 소스 연결 — resolver 경유(항상 kis_template)."""
     conn = psycopg2.connect(**_DB_DEFAULTS, database=resolve_corp_events_source_db())
     try:
         yield conn
@@ -217,8 +216,8 @@ def get_adj_factor(stock_code: str, as_of_date: date) -> float:
     """
     # 1순위: daily_prices.adj_factor 컬럼 조회
     # ★ daily_prices 는 **일봉 SSOT** 이므로 이벤트 소스가 아니라 일봉 resolver 를
-    #   따른다(기본 kis_template, legacy 면 robotrader_quant). 기존엔 이벤트용
-    #   _DB_DEFAULTS(=TIMESCALE_DB, 기본 robotrader)로 읽어 일봉 SSOT 를 우회했다.
+    #   따른다(항상 kis_template). 기존엔 이벤트용 _DB_DEFAULTS
+    #   (=TIMESCALE_DB, 기본 robotrader)로 읽어 일봉 SSOT 를 우회했다.
     try:
         import psycopg2 as _pg
         conn = _pg.connect(**_DB_DEFAULTS, database=resolve_daily_source_db())

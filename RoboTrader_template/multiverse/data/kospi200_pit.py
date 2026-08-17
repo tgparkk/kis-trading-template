@@ -2,7 +2,7 @@
 
 시총 상위 200 근사 방식으로 as_of_date 기준 KOSPI200 구성 종목을 반환한다.
 DB: daily_prices.market_cap — pit_reader._conn_daily() 경유(resolve_daily_source_db(),
-    기본 kis_template / KIS_DATA_SOURCE=legacy 면 robotrader_quant)
+    항상 kis_template)
 
 설계 원칙:
   - 캐시 우선: {CACHE_DIR}/{YYYY-MM}.json 에 월 단위 캐시

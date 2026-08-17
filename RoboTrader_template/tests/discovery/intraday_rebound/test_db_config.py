@@ -18,18 +18,20 @@ def test_daily_db_defaults_to_kis_template():
     assert db_module.DAILY_DB == "kis_template"
 
 
-def test_db_names_come_from_shared_resolver(monkeypatch):
-    """롤백 스위치가 공용 resolver(KIS_DATA_SOURCE) 하나로 수렴했는지 확인.
+def test_db_names_ignore_retired_legacy_switch(monkeypatch):
+    """[계약 반전] 폐지된 KIS_DATA_SOURCE=legacy 를 넣어도 kis_template 이다.
 
-    2026-07-16 이전엔 이 모듈만의 REBOUND_MINUTE_DB/REBOUND_DAILY_DB 로
-    kis_template 을 개별 지정했다. 소스 스위치가 여러 env 로 갈라져 있으면
-    일부 경로만 레거시로 새는 사고가 나므로 공용 resolver 로 통일했다.
+    이력:
+      2026-07-16 — 이 모듈만의 REBOUND_MINUTE_DB/REBOUND_DAILY_DB 를 공용
+        resolver(KIS_DATA_SOURCE) 하나로 수렴시켰다.
+      2026-08-17 — 그 공용 스위치마저 폐지됐다(레거시 동결 + `robotrader` DB 삭제).
+        이전 계약은 `MINUTE_DB == "robotrader"` 를 단언했다 — 이제 정반대를 고정한다.
     """
     monkeypatch.setenv("KIS_DATA_SOURCE", "legacy")
     importlib.reload(db_module)
     try:
-        assert db_module.MINUTE_DB == "robotrader"
-        assert db_module.DAILY_DB == "robotrader_quant"
+        assert db_module.MINUTE_DB == "kis_template"
+        assert db_module.DAILY_DB == "kis_template"
     finally:
         # reset explicitly (not just via monkeypatch teardown) so the reload
         # happens *after* the env var is gone, leaving the module back at
@@ -41,13 +43,15 @@ def test_db_names_come_from_shared_resolver(monkeypatch):
 def test_no_legacy_rebound_specific_env(monkeypatch):
     """폐지된 자체 env 는 더 이상 소스를 바꾸지 못한다(중복 스위치 제거 확인)."""
     monkeypatch.setenv("REBOUND_MINUTE_DB", "robotrader")
+    monkeypatch.setenv("MINUTE_DB", "robotrader")  # 2026-08-17 폐지된 공용 override
     importlib.reload(db_module)
     try:
         assert db_module.MINUTE_DB == "kis_template", (
-            "REBOUND_MINUTE_DB 는 폐지됨 — KIS_DATA_SOURCE 로만 전환돼야 함"
+            "REBOUND_MINUTE_DB · MINUTE_DB 는 둘 다 폐지됨 — 소스는 kis_template 고정"
         )
     finally:
         monkeypatch.delenv("REBOUND_MINUTE_DB", raising=False)
+        monkeypatch.delenv("MINUTE_DB", raising=False)
         importlib.reload(db_module)
 
 

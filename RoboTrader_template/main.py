@@ -20,8 +20,9 @@ if sys.platform == 'win32':
 sys.path.append(str(Path(__file__).parent))
 
 # .env → os.environ 부트스트랩 (반드시 config/db import 보다 먼저).
-# KIS_DATA_SOURCE 는 config.constants 가 import 시점에 읽고,
 # TIMESCALE_DB 는 db.connection 이 런타임에 읽는다. stdlib 전용·무크래시.
+# (KIS_DATA_SOURCE 롤백 플래그는 2026-08-17 폐지 — config.constants 는 이제
+#  env 를 읽지 않고 항상 kis_template 을 돌려준다.)
 from config.env_bootstrap import bootstrap as _bootstrap_env
 _bootstrap_env()
 

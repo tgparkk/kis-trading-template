@@ -113,11 +113,11 @@ def _resolve_rule_cls(rules_mod, rule_name: str):
 
 # --- 가격 소스 연결 (일봉·분봉 = kis_template) --------------------------------
 # 데이터 소스 SSOT (2026-07-16 연구 소스 통일):
-#   일봉 = resolve_daily_source_db()  → 기본 kis_template.daily_prices
-#   분봉 = resolve_minute_source_db() → 기본 kis_template.minute_candles
+#   일봉 = resolve_daily_source_db()  → 항상 kis_template.daily_prices
+#   분봉 = resolve_minute_source_db() → 항상 kis_template.minute_candles
 #   KOSPI 지수 라인 = 같은 kis_template.daily_prices (stock_code='KOSPI', 2021~ 전구간)
-# 레거시(robotrader_quant/robotrader)는 형제 봇 중단으로 2026-07-10 동결됐고
-# KIS_DATA_SOURCE=legacy 롤백 경로로만 남는다.
+# 레거시(robotrader_quant/robotrader)는 형제 봇 중단으로 2026-07-10 동결됐고,
+# 그 롤백 경로(KIS_DATA_SOURCE=legacy)는 2026-08-17 폐지됐다(DB 삭제 예정).
 # 기본 DatabaseConnection(TIMESCALE_DB)은 .env 없는 연구 프로세스에서 robotrader 로
 # 떨어져 하루 ~125종목 sparse·stale 워치리스트를 읽던 우회 지점이라 사용하지 않는다.
 

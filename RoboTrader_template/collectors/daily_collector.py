@@ -1,18 +1,20 @@
 # collectors/daily_collector.py
-"""일봉 수집 오케스트레이터 — KIS fetch → kis_template UPSERT → 파생 → adj → 교차비교.
+"""일봉 수집 오케스트레이터 — KIS fetch → kis_template UPSERT → 파생 → adj.
 
 usage:
   python -m collectors.daily_collector --limit 5            # 소수 dry-ish 수집
   python -m collectors.daily_collector                      # 전종목 수집
-  python -m collectors.daily_collector --reconcile-only 2026-06-23
+
+2026-08-17: `reconcile_daily`/`reconcile_verdict` 제거. 「새 DB vs 레거시
+  robotrader_quant」 당일 대조였는데, 레거시는 2026-07-10 동결이라 이미 휴면이었고
+  `KIS_DATA_SOURCE=legacy` 게이트 폐지 + `robotrader` DB 삭제로 도달 불가가 됐다.
+  (기록 테이블 `collection_reconciliation` 자체는 과거 이력이므로 남겨 둔다.)
 """
 import argparse
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import psycopg2  # noqa: E402
 
 from db.kis_db_connection import KisDbConnection  # noqa: E402
 from collectors.daily_writer import parse_kis_daily_row, upsert_daily_rows  # noqa: E402
@@ -25,8 +27,6 @@ from config.constants import SQL_STOCK_ONLY  # noqa: E402
 from utils.logger import setup_logger  # noqa: E402
 
 logger = setup_logger(__name__)
-COVERAGE_MIN = 0.99
-VALUE_MATCH_MIN = 0.99
 
 
 _UNIVERSE_SQL = (
@@ -113,68 +113,9 @@ def collect_daily(target_date: str = None, limit: int = None) -> dict:
             "split_factor_stamped": stamped, "corp_action_watch": watch}
 
 
-def reconcile_verdict(real_rows: int, new_rows: int, value_match: int) -> dict:
-    if real_rows == 0 and new_rows == 0:
-        return {"coverage": 1.0, "value_match_rate": 1.0, "verdict": "EMPTY"}
-    coverage = new_rows / real_rows if real_rows else 0.0
-    # value_match_rate 분모는 레거시(real_rows) 기준 — grace 교차검증은 "새 DB가 레거시
-    # 참조값을 재현하는가"를 본다. new_rows를 분모로 쓰면 새 DB가 더 넓게 수집(전체시장
-    # > 레거시 워치리스트)할 때 추가 종목이 '불일치'로 깎여 항상 거짓 FAIL이 난다
-    # (2026-06-23: 교집합 2484/2484 100%일치인데 2484/2577=0.964로 FAIL나던 결함).
-    value_match_rate = value_match / real_rows if real_rows else 0.0
-    verdict = "PASS" if coverage >= COVERAGE_MIN and value_match_rate >= VALUE_MATCH_MIN else "FAIL"
-    return {"coverage": coverage, "value_match_rate": value_match_rate, "verdict": verdict}
-
-
-def reconcile_daily(trade_date: str) -> dict:
-    """새 DB vs 레거시(robotrader_quant) 당일 일봉 비교 + collection_reconciliation 기록."""
-    legacy = psycopg2.connect(
-        host=os.getenv("KIS_DB_HOST", "localhost"), port=int(os.getenv("KIS_DB_PORT", 5433)),
-        dbname="robotrader_quant", user=os.getenv("KIS_DB_USER", "robotrader"),
-        password=os.getenv("KIS_DB_PASSWORD", "1234"))
-    try:
-        with legacy.cursor() as lc:
-            lc.execute("SELECT count(*) FROM daily_prices WHERE date = %s", (trade_date,))
-            real_rows = lc.fetchone()[0]
-        with KisDbConnection.get_connection() as conn:
-            with conn.cursor() as nc:
-                nc.execute("SELECT count(*) FROM daily_prices WHERE date = %s", (trade_date,))
-                new_rows = nc.fetchone()[0]
-            # 교집합 종가 일치 수 (cross-DB라 새DB 행을 끌어와 레거시와 대조)
-            with conn.cursor() as nc:
-                nc.execute("SELECT stock_code, close FROM daily_prices WHERE date = %s", (trade_date,))
-                new_closes = dict(nc.fetchall())
-            value_match = 0
-            with legacy.cursor() as lc:
-                lc.execute("SELECT stock_code, close FROM daily_prices WHERE date = %s", (trade_date,))
-                for sc, close in lc.fetchall():
-                    if sc in new_closes and new_closes[sc] is not None and close is not None \
-                       and abs(float(new_closes[sc]) - float(close)) < 0.5:
-                        value_match += 1
-            v = reconcile_verdict(real_rows, new_rows, value_match)
-            with conn.cursor() as nc:
-                nc.execute(
-                    "INSERT INTO collection_reconciliation "
-                    "(trade_date, dataset, real_rows, new_rows, overlap, value_match_rate, coverage, verdict) "
-                    "VALUES (%s,'daily',%s,%s,%s,%s,%s,%s) "
-                    "ON CONFLICT (trade_date, dataset) DO UPDATE SET "
-                    "real_rows=EXCLUDED.real_rows, new_rows=EXCLUDED.new_rows, overlap=EXCLUDED.overlap, "
-                    "value_match_rate=EXCLUDED.value_match_rate, coverage=EXCLUDED.coverage, verdict=EXCLUDED.verdict",
-                    (trade_date, real_rows, new_rows, value_match, v["value_match_rate"], v["coverage"], v["verdict"]))
-            conn.commit()
-        v.update({"trade_date": trade_date, "real_rows": real_rows, "new_rows": new_rows, "value_match": value_match})
-        return v
-    finally:
-        legacy.close()
-
-
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--date", default=None)
-    ap.add_argument("--reconcile-only", default=None)
     args = ap.parse_args()
-    if args.reconcile_only:
-        print(reconcile_daily(args.reconcile_only))
-    else:
-        print(collect_daily(args.date, args.limit))
+    print(collect_daily(args.date, args.limit))

@@ -14,16 +14,16 @@
 ### 0.2 데이터 소스 (SSOT) — 라이브·연구 공통 `kis_template` (2026-07-16 통일)
 
 **가격 데이터는 단일 진입점(resolver)을 통해서만 읽는다.** `config/constants.py`:
-- `resolve_daily_source_db()` → **일봉** DB명 (기본 `kis_template`)
-- `resolve_minute_source_db()` → **분봉** DB명 (기본 `kis_template`)
-- 롤백 스위치는 **`KIS_DATA_SOURCE=legacy`** 하나뿐(일봉↔분봉이 서로 다른 세대로 갈라지지 않게 공유).
+- `resolve_daily_source_db()` → **일봉** DB명 (**항상** `kis_template`)
+- `resolve_minute_source_db()` → **분봉** DB명 (**항상** `kis_template`)
+- 🔴 **롤백 스위치는 «없다»** (2026-08-17 폐지). `KIS_DATA_SOURCE`·`QUANT_DB`·`MINUTE_DB`·`CORP_EVENTS_DB`는 설정해도 **무시된다**.
 
 | 데이터 | SSOT | 비고 |
 |---|---|---|
 | **일봉** | `kis_template.daily_prices` | 2,606종목 · 2021-01-04~ · 2,823,971행 · market_cap 완비 |
 | **분봉** | `kis_template.minute_candles` | 1,445종목 · 20250224~ · 55,941,645행 |
 | **KOSPI/KOSDAQ 지수 라인** | `kis_template.daily_prices` (`stock_code='KOSPI'`) | 2021-01-04~ 전구간 1,357행 |
-| **재무** | `robotrader_quant.*` ⚠️**의도된 예외** | 아래 참조 |
+| **재무** | `kis_template.*` (2026-08-16 이관 완료) | 가격 resolver를 **안 탄다** — `QUANT_FINANCIAL_DB`로 독립 제어. 아래 참조 |
 
 - ⚠️ **가격**(`open/high/low/close`)에 `adj_factor`를 **곱하지 말 것** — close는 이미 분할조정된 연속 시세다(곱하면 분할일 가짜 절벽 → 거짓 99% MaxDD).
   실측: 035720 2021-04-14 close=112,000 `adj_factor`=5 → 곱하면 560,000 → 분할일 **-78.5% 가짜 폭락**.
@@ -45,13 +45,36 @@
 **왜 통일했나**: 형제 봇(rt·rt_quant) 중단으로 레거시 `robotrader`/`robotrader_quant`는 **2026-07-10 동결**됐고,
 `kis_template`이 양쪽의 상위집합(종목·기간·행수 모두 ≥)이며 유일하게 갱신된다. 라이브는 `.env`(`KIS_DATA_SOURCE=new`)로
 이미 kis_template을 봤지만, **`.env`는 gitignore 대상이라 연구 프로세스(clean checkout·워크트리·CI)엔 없어** 코드 기본값
-(`legacy`)으로 떨어져 **연구만 동결된 죽은 DB를 읽고 있었다**. → 기본값을 `new`로 뒤집어 env 없이 실행돼도 올바른 소스를 쓴다.
+(`legacy`)으로 떨어져 **연구만 동결된 죽은 DB를 읽고 있었다**. → 2026-07-16 기본값을 `new`로 뒤집었다.
 
-**⚠️ 재무는 `robotrader_quant` 유지 — 의도된 예외(오류 아님)**
-`financial_statements`(4,350) · `quant_balance_sheet`/`quant_financial_ratio`/`quant_income_statement`(각 45,473)는
-**robotrader_quant에만 존재**하고 kis_template엔 **테이블 자체가 없다**(kis의 `financial_data`/`quant_factors`/`quant_portfolio`는
-컷오버 때 만든 빈 껍데기 0행). 해당 경로(`lib/signals/roe_filter.py`, `multiverse/data/pit_reader.read_financial_ratio`)는
-가격 resolver를 태우면 안 된다. 재무까지 옮기려면 kis_template에 테이블·적재 파이프라인이 먼저 필요하다(별건).
+**왜 스위치까지 없앴나 (2026-08-17)**: 동결된 소스로 되돌리는 「롤백」은 애초에 쓸 수 없는 기능이었고,
+`robotrader` DB는 통합 후 **삭제 예정**이다. DB가 사라진 뒤 남은 스위치는 비상 후진 기어가 아니라
+**「누르면 죽는 버튼」**이 된다 ⇒ 삭제와 스위치 폐기는 같은 작업이어야 한다.
+라이브 런타임 동작은 **불변**이다(`.env`가 이미 `new`였다).
+
+**✅ 재무도 `kis_template` — 「의도된 예외」는 2026-08-16 DB 통합으로 «해소»됐다**
+
+🔴 **2026-08-17 정정.** 이 자리에 있던 세 문장은 **전부 거짓이었다**: ①「재무는 `robotrader_quant` 유지 = 의도된 예외」
+②「kis_template엔 **테이블 자체가 없다**」 ③「kis의 `quant_factors`/`quant_portfolio`는 **빈 껍데기 0행**」.
+`CLAUDE.md §0.2`가 「상세·실측 수치 → PAPER_STRATEGIES §0.2」로 라우팅하고 있어, **라우터가 모순 문서로 보내는 상태**였다.
+
+**실측 재확인 (2026-08-17, `psql -d kis_template`)**:
+
+| 표 | kis_template 행수 | 비고 |
+|---|---|---|
+| `financial_statements` | **4,350** | `operating_cash_flow` **1,287값**(2026-08-17 별도 백필, 나머지 3,063행은 NULL) |
+| `quant_financial_ratio` | **45,473** | |
+| `quant_income_statement` | **45,473** | |
+| `quant_balance_sheet` | **45,473** | |
+| `quant_factors` | **106,728** | ❌ 「빈 껍데기 0행」이 아니다 |
+| `quant_portfolio` | **2,454** | ❌ 「빈 껍데기 0행」이 아니다 |
+| `financial_data` | 0 | ✅ 이것만 실제로 빈 껍데기 |
+
+⚠️ **다만 가격 resolver(`resolve_daily_source_db()`)를 태우지는 않는다** — 그건 **가격 전용** 진입점이고,
+재무와 가격이 서로 독립적으로 갈라질 수 있어야 한다. 재무 대상 DB는 **`QUANT_FINANCIAL_DB` 하나로 독립 제어**한다
+(기본값 `kis_template`, `multiverse/data/pit_reader.py`). 이 override는 2026-08-17 롤백 스위치 폐기의 **대상이 아니다**.
+해당 경로: `lib/signals/roe_filter.py` · `multiverse/data/pit_reader.read_financial_ratio`.
+원본 `robotrader_quant` 사본은 **삭제하지 않았다**(전행 해시 검증 통과 후 보존).
 
 ### 0.3 공통 매매 경로
 - **진입**: `BaseStrategy.on_tick(ctx)` → `ctx.get_daily_data`(`_drop_unconfirmed_today_bar` 적용 = 당일 미확정봉 제외, 확정봉만) → `generate_signal()` → `ctx.buy()`(서킷브레이커·VI·시장방향 가드 내장).
