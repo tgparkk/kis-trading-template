@@ -568,10 +568,37 @@ def test_no_lingering_duplicate_source_envs():
 
     🔑 이게 「스위치가 정말 죽었는가」의 리포 전역 음성 대조다 — resolver 만 고쳐도
       다른 모듈이 몰래 env 를 읽고 있으면 반쯤 살아 있는 스위치가 남는다.
+
+    🔴 2026-08-17 범위·검증 보강 (탐지 규칙은 **불변** — 무엇을 위반으로 보는가는
+      그대로다. 「어디를 훑는가」와 「정말 훑었는가」만 손봤다):
+      ① **루트를 `parents[1]` → `parents[2]`(리포 루트)로 넓혔다.**
+        형제 DROP 게이트와 **같은 이유**다 — 리포 루트 `scripts/` 에도 연구 코드가
+        산다. 특히 `scripts/10pct_strategy/p0_backfill_corp_events.py` 는
+        corp_events 에 **INSERT** 하는 쓰기 스크립트라, 대상 DB를 `CORP_EVENTS_DB`
+        로 고르는 배선이 재유입되기 딱 좋은 자리인데 `parents[1]` 은 그걸 못 본다.
+        실측(2026-08-17): 넓혀서 새로 훑는 추적 .py 는 **3개뿐**이고
+          · scripts/10pct_strategy/_p0_worker.py
+          · scripts/10pct_strategy/p0_backfill_corp_events.py
+          · scripts/run_multiverse_smoke.py
+        셋 다 폐지 토큰을 **문자열로도 갖고 있지 않다**(읽기 0 · 언급 0)
+        ⇒ 넓혀도 새로 걸리는 건 없다. 지금 사는 걸 깨지 않고 「구멍만」 막는다.
+      ② **`rglob`(디스크의 .py 전부) → git 추적 .py** 로 바꿨다. 두 게이트가 같은
+        헬퍼(`_drop_gate_scan_paths`, 아래 정의)를 공유하므로 「저장소가 배포하는
+        것」의 정의가 **하나**다 — 한쪽 게이트만 스크래치에 뚫리는 사고가 구조적으로
+        불가능해진다. 종전 `rglob` 은 미추적 스크래치(`.omc/scientist/scripts/` 등)
+        까지 훑어 **체크아웃마다 답이 달랐다**(DROP 게이트가 2026-08-17 에 실제로
+        그렇게 빨개졌다. 이 게이트는 그 스크래치가 마침 폐지 env 를 안 써서
+        «우연히» 초록이었을 뿐이다).
+      ③ ⚠️ 공유 헬퍼를 쓰면 `_DROP_GATE_ALLOWED_DIRS` 의 `kis_db` 도 함께 빠진다
+        (종전 이 게이트는 `archive` 만 뺐다). 실측: allowlist 로 빠지는 추적 .py
+        90개(archive 76 + kis_db 14) 중 폐지 env **읽기는 0건** ⇒ 지금은 탐지력
+        손실이 없다. 그리고 `scripts/kis_db/` 는 레거시→kis 「이관 전용」 도구라
+        레거시 DB 를 가리키는 것이 설계다(DROP 게이트가 같은 이유로 이미 면제한다).
+      ④ **「훑은 양」을 offenders 보기 «전에» 단언**한다 — 아래 바닥값 주석 참조.
     """
     import re
     from pathlib import Path
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     banned = ("TIMESCALE_QUANT_DB", "REBOUND_MINUTE_DB", "REBOUND_DAILY_DB") \
         + _RETIRED_SOURCE_ENVS
     # 실제 env 읽기 패턴만: getenv("X" / environ["X"] / environ.get("X"
@@ -579,17 +606,49 @@ def test_no_lingering_duplicate_source_envs():
         tok: re.compile(r"""(getenv\(|environ\[|environ\.get\()\s*["']%s["']""" % tok)
         for tok in banned
     }
+
+    # 🔴 git 을 못 쓰면 **조용히 통과시키지 않는다** (DROP 게이트와 동일 처리).
+    #   추적 목록 없이 「0개 훑고 초록불」이 되는 것보다 눈에 보이는 skip 이 낫다.
+    try:
+        scanned = _drop_gate_scan_paths(root)
+    except _GitUnavailable as exc:
+        pytest.skip(
+            f"env 게이트를 실행할 수 없다 — {exc} (root={root}). "
+            "추적 목록 없이 「0개 훑고 통과」가 되는 것을 막기 위해 skip 한다."
+        )
+
+    # 🔑 「입력이 비어 있음」과 「위반이 없음」은 **같은 얼굴로** 통과한다.
+    #   root 오지정·git 이상으로 0개를 훑고도 초록불이 뜨는 게 이 프로젝트의 대표
+    #   실패 형태(「거짓 통과」)다. 그래서 **훑은 양을 offenders 보기 전에** 단언한다.
+    #
+    #   바닥값 근거(실측 2026-08-17, 이 게이트와 DROP 게이트는 «같은 목록»을 쓴다):
+    #     · 훑는 파일 1,042개 → 바닥 700. 파일 수라서 env 정리 작업으로 줄지 않는다
+    #       ⇒ **주 가드**. DROP 게이트와 입력이 동일하므로 바닥값도 같은 700 을 쓴다.
+    #     · 그중 폐지 토큰을 문자열로 보유한 후보 32개 → 바닥 10. 이 수는 정리가
+    #       진행되면 «정당하게» 줄어든다(현재 32 중 14개가 intraday_rebound 의
+    #       MINUTE_DB 로, 한 번의 정리로 함께 빠질 수 있다) ⇒ 여유를 크게 둔다.
+    assert len(scanned) >= 700, (
+        f"게이트가 훑은 추적 .py 가 {len(scanned)}개뿐이다 — «돌지 않았을» 수 있다"
+        f" (root={root}). 통과했다는 사실만으로 안심하지 말 것."
+    )
+
+    candidates = []
     offenders = []
-    for path in root.rglob("*.py"):
-        parts = path.parts
-        if "archive" in parts or "__pycache__" in parts or "venv" in parts:
-            continue
+    for path in scanned:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if not any(tok in text for tok in banned):
+            continue  # 빠른 컷 (겸 후보 집계)
+        candidates.append(path)
         if path.resolve() == Path(__file__).resolve():
             continue  # 이 테스트 자신(패턴 문자열 보유)
-        text = path.read_text(encoding="utf-8", errors="ignore")
         for tok, pat in patterns.items():
             if pat.search(text):
                 offenders.append(f"{path.relative_to(root)}:{tok}")
+
+    assert len(candidates) >= 10, (
+        f"폐지 토큰 문자열 보유 후보가 {len(candidates)}개뿐이다 — 훑는 파일 수는"
+        f" 정상인데 내용 판독이 안 되고 있을 수 있다 (root={root})."
+    )
     assert offenders == [], f"중복 소스 env 를 읽는 코드 재유입: {offenders}"
 
 
