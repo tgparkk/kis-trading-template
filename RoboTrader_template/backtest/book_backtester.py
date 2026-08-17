@@ -12,6 +12,7 @@ usage:
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -52,11 +53,35 @@ class UniverseBacktestResult:
     per_stock: Dict[str, BookBacktestResult] = field(default_factory=dict)
 
 
+# 청산 기준선 — `concept_axes/ma5_exit/PREREG.md` §2-1 LINE 계열이 쓰는 선 «전부».
+# 값 = (종류, 기간). 이 표 밖의 이름은 `BookBacktester.__init__` 이 거부한다.
+_EXIT_LINE_SPECS: Dict[str, tuple] = {
+    "SMA5": ("sma", 5),
+    "SMA10": ("sma", 10),
+    "SMA20": ("sma", 20),
+    "SMA60": ("sma", 60),
+    "EMA13": ("ema", 13),
+    "EMA65": ("ema", 65),
+}
+
+
 class BookBacktester:
     """단순화된 책 전략 백테스터.
 
     한 종목의 DataFrame을 받아 신호 발생 봉의 다음 봉 시가에 체결.
     EOD(분봉 마지막 봉) 도달 시 강제 청산.
+
+    청산 규칙은 선택 파라미터로 확장할 수 있다(`concept_axes/ma5_exit/PREREG.md`).
+    **전부 기본값이면 동작은 확장 이전과 완전히 동일하다** — 판정은 확정 봉 종가,
+    체결은 다음 봉 시가라는 구조도 그대로다.
+
+    우선순위 (PREREG §2-3 동결분):
+        1) disaster_stop   (설정 시 항상 최우선 — 마지노선)
+        2) random_exit     (귀무 `R_exit` 전용 arm)
+        3) stop_loss → take_profit   (None 이면 각각 비활성)
+        4) line_break      (exit_line 설정 시)
+        5) max_hold
+        6) eod
     """
 
     def __init__(
@@ -68,10 +93,18 @@ class BookBacktester:
         slippage_rate: float = 0.001,
         eod_liquidate: bool = True,
         warmup_bars: int = 20,
-        stop_loss_pct: float = 0.02,
-        take_profit_pct: float = 0.03,
+        stop_loss_pct: Optional[float] = 0.02,
+        take_profit_pct: Optional[float] = 0.03,
         max_hold_bars: int = 60,
+        exit_line: Optional[str] = None,
+        disaster_stop_pct: Optional[float] = None,
+        random_exit_seed: Optional[int] = None,
+        random_exit_max_bars: int = 30,
     ):
+        if exit_line is not None and exit_line not in _EXIT_LINE_SPECS:
+            raise ValueError(
+                f"exit_line must be one of {sorted(_EXIT_LINE_SPECS)}, got {exit_line!r}"
+            )
         self.strategy = strategy
         self.initial_capital = float(initial_capital)
         self.commission_rate = commission_rate
@@ -82,6 +115,46 @@ class BookBacktester:
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
         self.max_hold_bars = max_hold_bars
+        self.exit_line = exit_line
+        self.disaster_stop_pct = disaster_stop_pct
+        self.random_exit_seed = random_exit_seed
+        self.random_exit_max_bars = int(random_exit_max_bars)
+
+    def _exit_line_value(self, window: pd.DataFrame) -> float:
+        """확정 봉까지의 `close` 만으로 기준선의 «마지막» 값을 낸다 (룩어헤드 없음).
+
+        `window = df.iloc[: i + 1]` 이므로 i+1 봉 이후는 애초에 보이지 않는다.
+        워밍업이 모자라면 `NaN` 이 나오고, 그 처리는 `_is_line_broken` 이 한다.
+        """
+        kind, span = _EXIT_LINE_SPECS[self.exit_line]
+        closes = window["close"].astype(float)
+        if kind == "sma":
+            line = closes.rolling(span).mean()
+        else:
+            line = closes.ewm(span=span, adjust=False).mean()
+        return float(line.iloc[-1])
+
+    def _is_line_broken(self, window: pd.DataFrame, cur_close: float) -> bool:
+        """`close_t < line_t` 면 True. 🔴 선이 `NaN` 이면 «미발동».
+
+        `NaN` 비교가 항상 False 라는 성질에 기대지 않고 명시적으로 가드한다 —
+        부등호를 뒤집어 쓰는 순간(`not (close >= line)`) 워밍업 부족 구간이
+        전부 청산 신호로 뒤집히기 때문이다.
+        """
+        line = self._exit_line_value(window)
+        if pd.isna(line):
+            return False
+        return cur_close < line
+
+    def _random_exit_bars(self, stock_code: str, entry_idx: int) -> int:
+        """그 포지션의 청산 예정 보유봉수 `k ~ U{1..random_exit_max_bars}`.
+
+        🔴 전역 RNG 를 쓰지 않는다. 키가 `(seed, stock_code, entry_idx)` 뿐이므로
+        ***종목 순회 순서가 바뀌어도, 종목을 따로 돌려도 같은 `k`*** 가 나온다.
+        재현 게이트의 요건이다.
+        """
+        rng = random.Random(f"{self.random_exit_seed}|{stock_code}|{entry_idx}")
+        return rng.randint(1, self.random_exit_max_bars)
 
     def run_single(self, stock_code: str, df: pd.DataFrame) -> BookBacktestResult:
         if df is None or len(df) < self.warmup_bars + 2:
@@ -106,10 +179,19 @@ class BookBacktester:
                 cur_close = float(bar_now["close"])
                 ret = (cur_close - entry_price) / entry_price
                 exit_reason = None
-                if ret <= -self.stop_loss_pct:
+                random_bars = position.get("random_exit_bars")
+                # PREREG §2-3 동결 우선순위. 새 파라미터가 전부 기본값이면
+                # 아래 사슬은 stop_loss → take_profit → max_hold → eod 로 축약된다.
+                if self.disaster_stop_pct is not None and ret <= -self.disaster_stop_pct:
+                    exit_reason = "disaster_stop"
+                elif random_bars is not None and hold_bars >= random_bars:
+                    exit_reason = "random_exit"
+                elif self.stop_loss_pct is not None and ret <= -self.stop_loss_pct:
                     exit_reason = "stop_loss"
-                elif ret >= self.take_profit_pct:
+                elif self.take_profit_pct is not None and ret >= self.take_profit_pct:
                     exit_reason = "take_profit"
+                elif self.exit_line is not None and self._is_line_broken(window, cur_close):
+                    exit_reason = "line_break"
                 elif hold_bars >= self.max_hold_bars:
                     exit_reason = "max_hold"
                 elif self.eod_liquidate and i == n - 2:
@@ -149,6 +231,12 @@ class BookBacktester:
                             "entry_idx": i + 1,
                             "entry_price": fill,
                             "qty": qty,
+                            # 진입 시점에 «그 포지션의» 청산 보유봉수를 뽑아 고정한다.
+                            "random_exit_bars": (
+                                self._random_exit_bars(stock_code, i + 1)
+                                if self.random_exit_seed is not None
+                                else None
+                            ),
                         }
                         reason_str = ", ".join(signal.reasons) if signal.reasons else (
                             getattr(self.strategy, "target_rule", None) or "signal"
