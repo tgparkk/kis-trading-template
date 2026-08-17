@@ -1497,8 +1497,14 @@ def stage2() -> int:
         "거래대금": {d: {c: uni[d][c][1] for c in cs if c in uni.get(d, {})}
                  for d, cs in dpool.items()},
     }
-    ks_hot = [(k, ks(decile_hist(excl, kd), decile_hist(keep, kd))) for k, kd in keys.items()]
-    ks_hot = [(k, v) for k, v in ks_hot if (v == v) and v > KS_CONFOUND]
+    # 🔑 `ks_all` 을 «버리지 않고» 남긴다 — §6-6 병기 절이 「문턱 아래였다」까지 인쇄해야
+    #    하기 때문이다. `ks_hot` 의 정의·용도는 그대로다(교락 병기 발동 조건).
+    ks_all = [(k, ks(decile_hist(excl, kd), decile_hist(keep, kd))) for k, kd in keys.items()]
+    ks_hot = [(k, v) for k, v in ks_all if (v == v) and v > KS_CONFOUND]
+
+    # §6-5 겹침 — §5-3 이 「`D` 가 바깥」 라벨을 채택할 때 가리키는 선택 효과의 실측값.
+    tot_sp = sum(len(v) for v in sels["S+"].values())
+    in_d = sum(len(set(v) & set(sels["D"].get(d, []))) for d, v in sels["S+"].items())
 
     # 2단계 프레임 — 창 안으로 자른다(`ArmGated` 는 (code,date) 조회라 과거 봉 불필요).
     frames, idxmap = {}, {}
@@ -1580,6 +1586,20 @@ def stage2() -> int:
     else:
         rep(f"✅ **폐기율 최대/최소 = {ratio:.2f}배 (<{DISCARD_RATIO_FLAG:.0f}배)** — "
             f"전환율 비대칭이 문턱 아래다. 비교가 「같은 룰의 두 버전」으로 성립한다.")
+    rep("")
+    # 🔴 동결 규칙(≥2배 → 병기)은 «그대로» 발동시킨 채, 그 규칙이 무엇을 잡았는지를 적는다.
+    #    ***규칙을 완화하는 것과 규칙이 무엇을 잡았는지 적는 것은 다른 일이다.***
+    ds_rule = {a: res[a]["discard"] for a in ARM_PNL}
+    lo_r, hi_r = min(ds_rule.values()), max(ds_rule.values())
+    ratio_rule = hi_r / lo_r if lo_r > 0 else float("inf")
+    rep(f"🔎 **단서 — 위 배수는 `R` 을 포함해 잰 값이다.** `R` 을 빼고 룰 arm {len(ARM_PNL)}개끼리만 "
+        f"보면 최대/최소 = **{ratio_rule:.2f}배** (최대 "
+        f"`{DISP[max(ds_rule, key=lambda k: ds_rule[k])]}` {hi_r:.1f}% vs 최소 "
+        f"`{DISP[min(ds_rule, key=lambda k: ds_rule[k])]}` {lo_r:.1f}%). "
+        f"🔑 `R` 은 §2 가 **정의상** 풀을 다르게 잡은 arm(진입 룰 조건 «없음»)이므로 전환율이 "
+        f"다른 것이 **설계상 당연**하다. 🔴 **동결 규칙은 그대로 발동시킨 채로** 이 사실을 "
+        f"함께 적는다 — ***규칙을 완화하는 것과 규칙이 무엇을 잡았는지 적는 것은 다른 일이다.*** "
+        f"⚠️ 문서 1(4.08배 · 역시 `R` 이 최소)과 «같은 무게»로 읽으면 과대해석이다.")
     rep("")
 
     # ── N1 ──────────────────────────────────────────────────────────────────
@@ -1729,7 +1749,11 @@ def stage2() -> int:
     if ratio >= DISCARD_RATIO_FLAG:
         rep(f"### 🔴 병기 — 폐기율 비대칭 {ratio:.2f}배 (§7-11)")
         rep("")
-        rep("실현 거래가 신호의 비무작위 부분집합이고 그 정도가 arm 마다 다르다.")
+        rep(f"실현 거래가 신호의 비무작위 부분집합이고 그 정도가 arm 마다 다르다. "
+            f"🔎 **단, 이 배수는 `R` 을 포함해 잰 값이다** — `R` 을 빼면 룰 arm 간 최대/최소 = "
+            f"**{ratio_rule:.2f}배**이고, `R` 은 §2 가 **정의상** 풀을 다르게 잡은 arm이라 "
+            f"전환율이 다른 것이 설계상 당연하다. **동결 규칙은 그대로 발동시키되** "
+            f"문서 1(4.08배 · 역시 `R` 이 최소)과 «같은 무게»로 읽으면 과대해석이다(§2 단서).")
         rep("")
     if ks_hot:
         rep(f"### 🔴 병기 — 교락 신호 (§6-3, KS > {KS_CONFOUND:.2f})")
@@ -1739,6 +1763,50 @@ def stage2() -> int:
             "**이 문서의 축은 「형태」를 가르는 것이지 「크기·유동성」을 가르는 것이 아니므로** "
             "이 차이는 정상이 아니라 **교락 신호**다(문서 1 과 비대칭인 지점).")
         rep("")
+
+    # ── §6-6 range_pct 병기 — 🔴 «스크립트가 스스로» 인쇄한다 ────────────────
+    # 손으로 옮긴 숫자는 다음 사람이 재실행하는 순간 조용히 사라진다(stale prose).
+    # 이 값은 **2단계가 이미 쓴 (code,date) 캐시**에서 나오는 1단계 지표이므로
+    # 새 계산이 아니라 «인쇄 경로»를 여는 것이다. PnL·arm·판정 로직은 건드리지 않는다.
+    rep("### 🔴 병기 — `range_pct` 크기 차 (§6-6)")
+    rep("")
+    rep("**두 집합의 `range_pct` 가 크게 다르면 「방향」이 아니라 「크기」를 비교하게 된다** — "
+        "PREREG §6-6 이 병기를 지시한다. 아래는 **2단계가 arm 선택에 쓴 «같은» 캐시**에서 "
+        "직접 낸 값이다(1단계 [`GATE.md`](GATE.md) §8 과 같은 식 · 손으로 옮긴 숫자가 아니다).")
+    rep("")
+    dtri2 = [(d, c) for c, dd in cache.items() for d, r in dd.items() if r[1]]
+    rp = {1: [], -1: [], 0: []}
+    for d, c in dtri2:
+        rp[cache[c][d][2]].append(cache[c][d][3])
+    rep("| 집합 | n | 10분위 | **중앙** | 90분위 |")
+    rep("|---|---|---|---|---|")
+    for s, lab in ((1, "S⁺"), (-1, "S⁻")):
+        med, p10, p90 = q3(rp[s])
+        rep(f"| **{lab}** | {len(rp[s]):,} | {p10*100:.1f}% | **{med*100:.1f}%** | "
+            f"{p90*100:.1f}% |")
+    med0, p10_0, p90_0 = q3(rp[0])
+    rep(f"| `S⁰` (인쇄만) | **{len(rp[0]):,}** | {p10_0*100:.1f}% | {med0*100:.1f}% | "
+        f"{p90_0*100:.1f}% |")
+    rep("")
+    m_sp, p10_sp, p90_sp = q3(rp[1])
+    m_sm, p10_sm, p90_sm = q3(rp[-1])
+    rep(f"- 중앙값 차 `S⁺ − S⁻` = **{(m_sp-m_sm)*100:+.2f}%p** "
+        f"(비 = {m_sp/m_sm if m_sm else float('nan'):.3f}) · "
+        f"90분위 차 = **{(p90_sp-p90_sm)*100:+.2f}%p**")
+    rep("")
+    rep("🔴 **다만 「크게」에 해당하는 «수치 문턱»은 사전등록에 «없다»** ⇒ 지금 만들면 사후 "
+        "규칙이 되므로 만들지 않는다. **수치만 병기**하고 해석은 독자에게 남긴다.")
+    rep("")
+    rep(f"🔎 **§6-3 교락 축 셋**(배제 `S⁻ ∪ S⁰` vs 잔류 `S⁺` · 문턱 KS > {KS_CONFOUND:.2f}): "
+        + " · ".join(f"**{k}** KS={v:.3f}" for k, v in ks_all)
+        + (" ⇒ 🔴 **교락 신호**(위 절 참조)." if ks_hot
+           else " ⇒ ✅ **전부 문턱 이하 — 교락 신호 없음**(그래서 위에 교락 병기 절이 «없다»)."))
+    rep("")
+    rep(f"🔎 **`S⁺` 선택 중 `D` 에도 선택된 비율 = {in_d:,}/{tot_sp:,} = "
+        f"{in_d/tot_sp*100 if tot_sp else float('nan'):.1f}%**(§6-5) — §5-3 이 채택한 라벨이 "
+        f"가리키는 선택 효과의 실측값이다. **판정 언어는 쓰지 않는다.**")
+    rep("")
+
     rep("### 🔑 생존편향 비대칭 — 판정문 옆에 붙여 읽을 것 (§7-2)")
     rep("")
     rep("생존편향은 **약한 종목을 위로** 민다. `S⁻`(하락형)가 약한 쪽이므로 "
