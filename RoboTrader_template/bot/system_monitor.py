@@ -646,6 +646,28 @@ class SystemMonitor:
                     f"EOD 수급 수집 부분 실패({_k}): {_v['failed']}종목 "
                     f"— 재시도 필요 {_v.get('failed_codes')}"
                 )
+        # 🔴 외국인 수급도 같은 대열이다 — 여태 이 승격에서만 빠져 있었다.
+        #    `collectors/foreign_flow_fetcher.py:51-53` 은 네이버가 차단해도(HTTP != 200)
+        #    warning 한 줄 찍고 **빈 DataFrame** 을 돌려주므로 예외가 안 나고,
+        #    `collect_foreign_flow` 는 {"codes": 2788, "rows": 0} 을 반환한다 ⇒ `error` 키가
+        #    없어 `_safe` 도 안 걸리고 요약 INFO 한 줄로 끝난다. 조용한 결손이다.
+        #    정상은 rows ≈ 24,000(실측 24,080 / 24,320)이라 ***rows == 0 은 모호하지 않다***.
+        #    「rows 가 적다」식 비율 문턱은 종목수·거래일에 흔들려 오탐이 나므로 쓰지 않는다.
+        #    codes == 0 은 「유니버스 자체가 비었다」는 **다른 사건**이라 사유를 갈라
+        #    WARNING 으로 남긴다(외국인 수집 실패로 오귀속하면 경보가 무뎌진다).
+        #    skipped 는 신선도 가드의 **정상** 결과다 — 정상을 실패로 세면 경보가 마비된다.
+        if isinstance(foreign, dict) and not foreign.get("skipped"):
+            if "error" in foreign:
+                self.logger.error(f"EOD 외국인수급 수집 실패: {foreign['error']}")
+            elif "codes" in foreign:
+                if foreign.get("codes", 0) <= 0:
+                    self.logger.warning(
+                        f"EOD 외국인수급 유니버스 0종목 — 수집 대상이 없었다: {foreign}"
+                    )
+                elif foreign.get("rows", 0) == 0:
+                    self.logger.error(
+                        f"EOD 외국인수급 0행 — 네이버 차단 의심(정상 ≈24,000행): {foreign}"
+                    )
         # 시장 매핑 실패는 요약 INFO 에 묻히면 안 된다. eod_collection._safe 가
         # 예외를 삼켜 {"error": ...} 로만 남기므로(:24-29), 여기서 ERROR 로
         # 승격하지 않으면 규모 하한 거부가 조용히 지나간다 — 며칠째 거부 중인데
