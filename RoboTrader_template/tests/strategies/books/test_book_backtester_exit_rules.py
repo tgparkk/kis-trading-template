@@ -605,3 +605,31 @@ def test_invalid_exit_line_raises_value_error(bad):
 def test_exit_line_none_is_allowed():
     bt = BookBacktester(strategy=_strategy(_AlwaysBuy()), exit_line=None)
     assert bt.exit_line is None
+
+
+# ===========================================================================
+# 8. random_exit_max_bars 검증 — 「생성 시점」에 죽어야 한다
+# ===========================================================================
+
+@pytest.mark.parametrize("bad", [0, -1, -30])
+def test_non_positive_random_exit_max_bars_raises_at_construction(bad):
+    """🔑 `random.randint(1, 0)` 은 «첫 진입 봉»에서야 터진다 — 생성자가 먼저 막는다."""
+    with pytest.raises(ValueError, match="random_exit_max_bars"):
+        BookBacktester(
+            strategy=_strategy(_AlwaysBuy()), random_exit_seed=0, random_exit_max_bars=bad,
+        )
+
+
+def test_non_positive_random_exit_max_bars_raises_even_without_seed():
+    """시드를 안 줘도 막는다 — 「지금은 안 쓰이니까」는 가드를 끄는 이유가 못 된다."""
+    with pytest.raises(ValueError, match="random_exit_max_bars"):
+        BookBacktester(strategy=_strategy(_AlwaysBuy()), random_exit_max_bars=0)
+
+
+def test_random_exit_max_bars_one_is_accepted():
+    """🔑 대칭 단언 — 1 은 «유효한» 하한이고 실제로 매 봉 청산이 된다."""
+    bt = _rand_bt(0, random_exit_max_bars=1)
+    assert bt.random_exit_max_bars == 1
+    assert {bt._random_exit_bars("005930", j) for j in range(1, 50)} == {1}
+    result = bt.run_single("005930", _rand_df(0.0))
+    assert any(t["reason"] == "random_exit" for t in result.trades)
