@@ -105,6 +105,12 @@ class BookBacktester:
             raise ValueError(
                 f"exit_line must be one of {sorted(_EXIT_LINE_SPECS)}, got {exit_line!r}"
             )
+        # 🔴 `random.randint(1, k)` 는 `k < 1` 에서 죽는다 — 가드가 없으면 그 죽음이
+        #    «첫 진입 봉»까지 미뤄져 「생성은 됐는데 나중에 터지는」 형태가 된다.
+        if int(random_exit_max_bars) < 1:
+            raise ValueError(
+                f"random_exit_max_bars must be >= 1, got {random_exit_max_bars!r}"
+            )
         self.strategy = strategy
         self.initial_capital = float(initial_capital)
         self.commission_rate = commission_rate
