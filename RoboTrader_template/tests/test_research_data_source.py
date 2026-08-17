@@ -610,20 +610,79 @@ _HARDCODED_DB_PATTERNS = (
     r"""\(\s*["']robotrader["']""",
 )
 
-# 예외 — 여기서 걸려도 결함이 아니다.
+# 예외 — **추적되는데도** 설계상 레거시를 가리켜야 하는 곳. 여기서 걸려도 결함이 아니다.
+#
+# 🔴 2026-08-17 축소: 예전엔 여기에 `scratchpad`·`.git`·`venv`·`__pycache__`·
+#   `node_modules`·`.pytest_cache`·`site-packages`·`.worktrees` 도 있었다. 그건
+#   「소스가 아닌 것」을 **디렉터리 이름으로** 빼려는 시도였고, 바로 그 방식이
+#   2026-08-17 에 뚫렸다 — 목록에 없던 `.omc/scientist/scripts/` 하나 때문에
+#   라이브 트리에서만 게이트가 빨개졌다(워크트리엔 그 파일이 없어 초록이었다).
+#   ⇒ 이제 스캔 대상 자체를 **git 추적 파일**로 한정하므로 그 항목들은 «자동으로»
+#     빠진다(전부 미추적·gitignore 대상). 목록에 남겨두면 「다음 스크래치 폴더」를
+#     또 손으로 추가해야 한다는 착각을 준다 — 그래서 지웠다.
 _DROP_GATE_ALLOWED_DIRS = (
-    # ── 설계상 레거시를 가리켜야 하는 곳 ────────────────────────────────
     "archive",       # 동결된 과거 산출물. 되살릴 일이 없다.
     "kis_db",        # scripts/kis_db/ = 레거시→kis 「이관 전용」 도구.
                      #   DB 와 함께 죽는 것이 설계다(원본을 읽어야 이관이 성립).
-    # ── 소스가 아닌 것 ────────────────────────────────────────────────
-    # 🔑 미추적 스크래치 파일 하나로 게이트가 빨개지면 「고장난 경보」가 된다.
-    #   범위를 좁혀서가 아니라 **소스가 아닌 경로를 빼서** 그 상황을 없앤다.
-    "scratchpad",
-    ".git", "venv", ".venv", "env", "__pycache__", "node_modules",
-    ".pytest_cache", ".mypy_cache", ".ruff_cache", "site-packages",
-    ".worktrees",
 )
+
+
+class _GitUnavailable(RuntimeError):
+    """추적 목록을 git 에서 못 얻었다.
+
+    🔴 이 상태를 **통과로 접으면 안 된다** — 0개를 훑고 초록불이 뜨는 게 이 프로젝트가
+      반복해서 밟은 「거짓 통과」다. 호출부는 skip(명시) 아니면 실패로 처리한다.
+    """
+
+
+def _git_tracked_py_files(root):
+    """`git ls-files` 가 보고하는 **추적 중인** *.py 절대경로 목록.
+
+    🔑 스캔 범위를 「디스크에 있는 파일」이 아니라 「저장소가 배포하는 파일」로 바꾼다.
+      디렉터리 allowlist 는 새 스크래치 폴더가 생길 때마다 뚫리지만(정의상 목록에
+      없으니까), 추적 여부는 스크래치가 **자기 자신을 등록하지 않는 한** 뚫리지 않는다.
+
+    실패하면 조용히 빈 목록을 주지 않고 `_GitUnavailable` 을 올린다.
+    """
+    import subprocess
+    from pathlib import Path
+
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            capture_output=True, timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:  # git 부재·타임아웃 등
+        raise _GitUnavailable(
+            f"`git ls-files` 를 실행하지 못했다 ({type(exc).__name__}: {exc})") from exc
+    if proc.returncode != 0:
+        err = proc.stderr.decode("utf-8", "replace").strip()
+        raise _GitUnavailable(
+            f"`git ls-files` 가 비영 종료했다 (rc={proc.returncode}): "
+            f"{err or '(stderr 없음)'}")
+    # -z 출력은 인용되지 않은 raw 바이트다(core.quotepath 무관). 한글 경로가 실재하므로
+    # surrogateescape 로 받아 어떤 바이트열이 와도 죽지 않게 한다.
+    names = proc.stdout.decode("utf-8", "surrogateescape").split("\0")
+    return [Path(root) / n for n in names if n.endswith(".py")]
+
+
+def _drop_gate_scan_paths(root):
+    """게이트가 **실제로 훑을** 파일 목록 = 추적 .py − allowlist − 워킹트리 부재분.
+
+    「훑은 양」 단언과 실제 스캔이 같은 목록을 쓰도록 여기 한 곳에서 만든다
+    (둘이 따로 계산되면 한쪽만 0이어도 다른 쪽 단언이 통과해 버린다).
+    """
+    from pathlib import Path
+
+    root = Path(root)
+    keep = []
+    for path in _git_tracked_py_files(root):
+        if any(d in path.relative_to(root).parts for d in _DROP_GATE_ALLOWED_DIRS):
+            continue
+        if not path.is_file():
+            continue  # 인덱스엔 있으나 워킹트리에서 지워진 파일(읽을 게 없다)
+        keep.append(path)
+    return keep
 
 
 def _drop_gate_code_only_lines(text: str):
@@ -655,17 +714,29 @@ def _drop_gate_code_only_lines(text: str):
     return lines
 
 
-def _scan_hardcoded_robotrader_db(root, self_path):
-    """root 아래 *.py 에서 DB명 하드코딩을 찾아 ["경로:줄: 원문", ...] 반환."""
+def _scan_hardcoded_robotrader_db(root, self_path, paths=None):
+    """*.py 에서 DB명 하드코딩을 찾아 ["경로:줄: 원문", ...] 반환.
+
+    `paths` 를 주면 그 목록만 훑는다(리포 게이트는 **git 추적 목록**을 넘긴다).
+    안 주면 `root` 아래를 rglob 한다 — tmp_path 위에서 도는 음성 대조용 경로다
+    (거긴 git 저장소가 아니라 추적 목록이라는 개념 자체가 없다).
+    """
     import re
     from pathlib import Path
 
     pats = [re.compile(p) for p in _HARDCODED_DB_PATTERNS]
+    if paths is None:
+        paths = Path(root).rglob("*.py")
+    root = Path(root)
     offenders = []
-    for path in Path(root).rglob("*.py"):
-        parts = path.parts
-        if "__pycache__" in parts or "venv" in parts:
-            continue
+    for path in paths:
+        # 🔑 allowlist 는 **root 기준 상대경로**로 본다. 절대경로 parts 로 보면
+        #   체크아웃 «위치»가 판정에 섞인다 — 예컨대 워크트리가 `D:/GIT/archive/…`
+        #   아래 있으면 전 파일이 조용히 제외돼 「0개 훑고 통과」가 된다.
+        try:
+            parts = path.relative_to(root).parts
+        except ValueError:  # root 밖(있어선 안 되지만) → 절대경로로 보수 판정
+            parts = path.parts
         if any(d in parts for d in _DROP_GATE_ALLOWED_DIRS):
             continue
         if path.resolve() == Path(self_path).resolve():
@@ -699,34 +770,59 @@ def test_no_hardcoded_robotrader_dbname():
       · `archive/`      — 동결된 과거 산출물
       · `scripts/kis_db/` — 레거시→kis 이관 «전용» 도구. DB 와 함께 죽는 게 설계다.
       · 이력 주석·docstring — 토크나이저로 걷어낸다(위 헬퍼 참조).
+      · **git 미추적 파일 전부** — 스크래치·산출물·`venv/`·`.omc/` 등. 배포되지
+        않으므로 DROP 으로 죽을 「경로」가 아니다.
 
-    🔑 스캔 범위는 **리포 루트**다(형제 env 게이트의 `parents[1]` 보다 한 칸 위).
-      좁게 잡았다가 넓혔다 — `RoboTrader_template/` 만 훑으면 리포 루트의
-      `scripts/10pct_strategy/p0_backfill_corp_events.py`(corp_events 에 **INSERT**
-      하는 쓰기 스크립트)를 놓친다. ***가장 잡아야 할 것을 못 잡는 게이트는
-      「거짓 통과」다.*** 미추적 스크래치 파일 문제는 범위가 아니라
-      `_DROP_GATE_ALLOWED_DIRS` 로 푼다.
+    🔑 스캔 범위는 **리포 루트의 git 추적 .py 전부**다.
+      ① 루트는 형제 env 게이트의 `parents[1]` 보다 한 칸 위다 — `RoboTrader_template/`
+        만 훑으면 리포 루트의 `scripts/10pct_strategy/p0_backfill_corp_events.py`
+        (corp_events 에 **INSERT** 하는 쓰기 스크립트)를 놓친다.
+      ② 🔴 2026-08-17: 「디스크의 .py 전부」에서 「**추적되는** .py」로 바꿨다.
+        직전 방식은 디렉터리 allowlist 로 비-소스를 뺐는데, 목록에 없던
+        `RoboTrader_template/.omc/scientist/scripts/`(gitignore 된 스크래치) 하나가
+        라이브 트리에서 게이트를 빨갛게 만들었다 — **워크트리엔 그 파일이 체크아웃
+        되지 않아 초록이었다**. 즉 게이트의 답이 「어느 체크아웃에서 돌렸나」에
+        달려 있었다. allowlist 를 하나 더 추가하는 건 다음 스크래치 폴더까지 같은
+        사고를 미루는 것이다. ***배포되는 것만 훑는다*** 로 바꿔 뿌리를 끊는다.
+        실측(2026-08-17): 추적 .py 1,131개 → allowlist 제외 후 **1,041개**.
+        같은 값이 라이브 트리·워크트리에서 «동일»하다(rglob 이면 1,044 vs 1,041).
     """
     from pathlib import Path
     root = Path(__file__).resolve().parents[2]
 
+    # 🔴 git 을 못 쓰면 **조용히 통과시키지 않는다.** 0개를 훑고 초록불이 되는 것보다
+    #   눈에 보이는 skip 이 낫다(그리고 CI 는 skip 을 세면 이 상태를 잡을 수 있다).
+    try:
+        scanned = _drop_gate_scan_paths(root)
+    except _GitUnavailable as exc:
+        pytest.skip(
+            f"DROP 게이트를 실행할 수 없다 — {exc} (root={root}). "
+            "추적 목록 없이 「0개 훑고 통과」가 되는 것을 막기 위해 skip 한다."
+        )
+
     # 🔑 「입력이 비어 있음」과 「위반이 없음」은 **같은 얼굴로** 통과한다.
-    #   경로 오지정·allowlist 과잉으로 0개를 훑고도 초록불이 뜨는 게 이 프로젝트가
-    #   반복해서 밟은 「거짓 통과」다. 그래서 **훑은 양**을 먼저 단언한다.
-    #   (실측 2026-08-17: 게이트가 훑는 .py 1,041개 중 'robotrader' 문자열 보유
-    #    **후보 124개**. 바닥값은 넉넉히 30 으로 둔다 — 리포가 줄어도 안 깨지되,
-    #    root 오지정으로 0~몇 개가 되면 즉시 빨개진다.)
-    candidates = [
-        p for p in root.rglob("*.py")
-        if not any(d in p.parts for d in _DROP_GATE_ALLOWED_DIRS)
-        and "robotrader" in p.read_text(encoding="utf-8", errors="ignore")
-    ]
-    assert len(candidates) >= 30, (
-        f"스캐너가 훑은 후보가 {len(candidates)}개뿐이다 — 게이트가 «돌지 않았을» 수 있다"
+    #   경로 오지정·allowlist 과잉·git 이상으로 0개를 훑고도 초록불이 뜨는 게 이
+    #   프로젝트가 반복해서 밟은 「거짓 통과」다. 그래서 **훑은 양**을 먼저 단언한다.
+    #
+    #   바닥값 근거(실측 2026-08-17, 두 트리 동일):
+    #     · 훑는 파일 1,041개 → 바닥 700. 이 수는 `robotrader` 정리 작업으로 줄지
+    #       않는다(파일 수라서). 그래서 **주 가드**로 쓰고 문턱을 높게 잡는다.
+    #     · 그중 'robotrader' 문자열 보유 후보 124개 → 바닥 30(종전과 동일 유지).
+    #       이 수는 정리가 진행되면 «정당하게» 줄어들 수 있어 여유를 크게 둔다.
+    assert len(scanned) >= 700, (
+        f"게이트가 훑은 추적 .py 가 {len(scanned)}개뿐이다 — «돌지 않았을» 수 있다"
         f" (root={root}). 통과했다는 사실만으로 안심하지 말 것."
     )
+    candidates = [
+        p for p in scanned
+        if "robotrader" in p.read_text(encoding="utf-8", errors="ignore")
+    ]
+    assert len(candidates) >= 30, (
+        f"'robotrader' 문자열 보유 후보가 {len(candidates)}개뿐이다 — 훑는 파일 수는"
+        f" 정상인데 내용 판독이 안 되고 있을 수 있다 (root={root})."
+    )
 
-    offenders = _scan_hardcoded_robotrader_db(root, __file__)
+    offenders = _scan_hardcoded_robotrader_db(root, __file__, paths=scanned)
     assert offenders == [], (
         "DB명 'robotrader' 하드코딩 재유입 — **이 DB 는 폐기 예정이다. "
         "resolver 를 쓰라** (config.constants.resolve_daily_source_db / "
@@ -779,3 +875,48 @@ def test_drop_gate_scanner_actually_catches(tmp_path):
     caught2 = _scan_hardcoded_robotrader_db(tmp_path, __file__)
     assert len(caught2) == 3, (
         f"오탐 발생 — 롤명/이력주석/허용디렉터리까지 잡았다: {caught2}")
+
+
+def test_drop_gate_scans_tracked_files_only(tmp_path):
+    """[음성 대조] 미추적 파일은 스캔 «대상»에서 빠진다 — 2026-08-17 사고 재발 방지.
+
+    사고 재현: gitignore 된 `.omc/scientist/scripts/` 스크래치 하나가 라이브 트리에서
+    게이트를 빨갛게 만들었고, 워크트리엔 그 파일이 없어 초록이었다 = **게이트의 답이
+    체크아웃마다 달랐다**. 그 성질을 여기서 못 박는다.
+
+    🔑 「같은 내용의 두 파일 — 하나는 추적, 하나는 미추적」이 결정적 검체다. 둘 다
+      빠지거나 둘 다 잡히면 이 테스트가 통과하지 못하므로, 판정 기준이 「내용」이
+      아니라 「추적 여부」임을 실제로 갈라 보인다.
+    """
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True,
+                   capture_output=True)
+    violation = 'import psycopg2\nc = psycopg2.connect(dbname="robotrader")\n'
+    (tmp_path / "tracked.py").write_text(violation, encoding="utf-8")
+    (tmp_path / "untracked.py").write_text(violation, encoding="utf-8")
+    # 커밋까지 갈 필요 없다 — `git ls-files` 는 인덱스를 본다(신원 설정 의존 회피).
+    subprocess.run(["git", "-C", str(tmp_path), "add", "tracked.py"],
+                   check=True, capture_output=True)
+
+    listed = {p.name for p in _git_tracked_py_files(tmp_path)}
+    assert listed == {"tracked.py"}, f"추적 목록이 어긋난다: {listed}"
+
+    scanned = _drop_gate_scan_paths(tmp_path)
+    caught = _scan_hardcoded_robotrader_db(tmp_path, __file__, paths=scanned)
+    assert len(caught) == 1 and "tracked.py" in caught[0], (
+        f"추적 파일의 위반을 못 잡거나 미추적까지 잡았다: {caught}")
+
+
+def test_drop_gate_does_not_pass_silently_without_git(tmp_path):
+    """[음성 대조] git 을 못 쓰면 «조용히 통과»가 아니라 실패한다.
+
+    🔴 이 프로젝트가 반복해서 밟은 형태 = 「입력이 비어 있음」이 「위반이 없음」과
+      같은 얼굴로 초록불이 되는 것. 추적 목록 조회가 실패하면 빈 목록이 아니라
+      예외가 나와야 하고(그래야 호출부가 skip 으로 «명시»할 수 있다), 그걸 확인한다.
+
+    검체 = git 저장소가 «아닌» 디렉터리(pytest tmp_path 는 저장소 밖이다) →
+    `git ls-files` 가 rc=128 로 죽는다.
+    """
+    with pytest.raises(_GitUnavailable):
+        _git_tracked_py_files(tmp_path)
