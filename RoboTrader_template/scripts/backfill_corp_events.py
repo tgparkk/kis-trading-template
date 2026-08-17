@@ -44,7 +44,9 @@ import requests
 # ─────────────────────────────────────────────────────────────────────────────
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(_ROOT))  # kis-trading-template 루트
+sys.path.insert(0, _ROOT)                   # RoboTrader_template (config.constants)
 
+from config.constants import require_explicit_target_db  # noqa: E402
 from dotenv import load_dotenv
 load_dotenv(os.path.join(_ROOT, ".env"))
 
@@ -88,12 +90,16 @@ DART_EVENT_MAP = [
     (["유상증자"], "rights_issue"),
 ]
 
+# 🔴 corp_events 적재 대상 — `database` 기본값 **없음**(2026-08-17).
+#   옛 기본값은 동결 레거시 'robotrader' 였다. 그 DB 는 폐기되므로 기본값을 없애
+#   TIMESCALE_DB 미지정 시 **중단**시킨다. 라이브 SSOT(kis_template)를 기본값으로
+#   두면 오작동이 「라이브에 실수로 쓰기」가 되어 폭발 반경이 커진다.
+#   ⚠️ user 의 'robotrader' 는 **롤명**이라 그대로 둔다(DB명과 동음이의).
 _DB_DEFAULTS = dict(
     host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
     port=int(os.getenv("TIMESCALE_PORT", "5433")),
     user=os.getenv("TIMESCALE_USER", "robotrader"),
     password=os.getenv("TIMESCALE_PASSWORD", "1234"),
-    database=os.getenv("TIMESCALE_DB", "robotrader"),
 )
 
 # 일봉(daily_prices) 조회용 연결 — 종목목록·종목별 날짜범위를 여기서 읽는다.
@@ -115,7 +121,11 @@ _QUANT_DB_DEFAULTS = dict(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_conn():
-    return psycopg2.connect(**_DB_DEFAULTS)
+    # 대상 DB 는 «명시»해야 한다 — 미지정이면 SystemExit(조용히 다른 DB 로 가지 않음).
+    return psycopg2.connect(
+        **_DB_DEFAULTS,
+        database=require_explicit_target_db("corp_events 백필 적재 대상"),
+    )
 
 
 def _get_quant_conn():

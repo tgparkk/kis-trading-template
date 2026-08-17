@@ -1,6 +1,7 @@
 """KOSPI200 PIT 인프라 회귀 테스트.
 
-실제 DB(robotrader_quant) 연결 필요.
+실제 DB 연결 필요 — 대상은 resolve_daily_source_db()(항상 kis_template).
+(2026-08-17 정정: 옛 문구 「robotrader_quant」는 2026-07-16 소스 통일 이후 사실이 아니다.)
 캐시는 테스트 전 clear_cache()로 초기화, 테스트 후 cleanup.
 """
 from __future__ import annotations

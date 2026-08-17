@@ -99,9 +99,11 @@ _ROBOTRADER_DB = os.getenv("TIMESCALE_DB", "kis_template")
 #    financial_statements 는 2026-08-16 사장님 원칙 「DB 는 kis_template 하나로」에
 #    따라 robotrader_quant → kis_template 으로 이관됐다(전행 해시 검증, 원본 미삭제).
 #    그 전에는 kis_template 에 테이블 자체가 없어 「의도된 예외」였다.
-# ⚠️ 그래도 가격 resolver(resolve_daily_source_db)를 태우지 **않는다** — 그 스위치는
-#    KIS_DATA_SOURCE=legacy 에서 동결 레거시를 가리키는 **가격 전용** 롤백 경로다.
-#    재무 롤백은 이 QUANT_FINANCIAL_DB 하나로 독립 제어한다(가격 플래그와 비결합).
+# ⚠️ 그래도 가격 resolver(resolve_daily_source_db)를 태우지 **않는다** — 그건 **가격
+#    전용** 진입점이고, 재무와 가격은 서로 독립적으로 갈라질 수 있어야 한다.
+#    재무 롤백은 이 QUANT_FINANCIAL_DB 하나로 독립 제어한다.
+#    (가격 쪽 KIS_DATA_SOURCE=legacy 롤백 경로는 2026-08-17 폐지 — 재무 override 는
+#     그 폐기 대상이 **아니다**. 분리돼 있는 것이 의도된 설계다.)
 _FINANCIAL_DB = os.getenv("QUANT_FINANCIAL_DB", "kis_template")
 
 
@@ -121,9 +123,9 @@ def _conn(db: str):
 
 @contextmanager
 def _conn_daily():
-    """가격(daily_prices) 소스 연결 — resolver 경유(기본 kis_template).
+    """가격(daily_prices) 소스 연결 — resolver 경유(항상 kis_template).
 
-    KIS_DATA_SOURCE=legacy 로 robotrader_quant 롤백 가능.
+    레거시 robotrader_quant 롤백 경로는 2026-08-17 폐지됐다.
     """
     conn = psycopg2.connect(**_QUANT_DB_DEFAULTS, database=resolve_daily_source_db())
     try:
@@ -178,12 +180,10 @@ def backtest_session():
     connect 비용을 물지 않게 한다.
 
     ⚠️ 2026-08-16 통합 후에도 **연결을 하나로 합치지 않았다**(합칠 수 있으나 미실시).
-      기본 설정에서는 둘 다 kis_template 이라 합칠 수 있어 보이지만, 두 값은 서로
-      **독립적으로 갈라질 수 있다**:
-        · resolve_daily_source_db() 는 KIS_DATA_SOURCE=legacy 에서 robotrader_quant
-        · _FINANCIAL_DB 는 QUANT_FINANCIAL_DB 로 따로 override
-      즉 「지금 기본값이 같다」일 뿐 「항상 같다」가 아니다. 무조건 합치면 두 롤백
-      경로가 동시에 깨진다. 조건부 합치기(이름이 같을 때만 재사용)는 가능하지만
+      기본 설정에서는 둘 다 kis_template 이라 합칠 수 있어 보이지만, 재무 쪽은
+      `_FINANCIAL_DB`(env QUANT_FINANCIAL_DB)로 **독립적으로 갈라질 수 있다**.
+      즉 「지금 기본값이 같다」일 뿐 「항상 같다」가 아니다. 무조건 합치면 재무 대조
+      경로가 깨진다. 조건부 합치기(이름이 같을 때만 재사용)는 가능하지만
       트랜잭션 수명이 얽혀 동작 변경 위험이 있어 이번 전환 범위에서 제외했다.
       절감 효과도 세션당 connect 1회(~220ms)뿐이다.
 
@@ -388,8 +388,8 @@ def read_minute(
     반환 컬럼: date, time, open, high, low, close, volume
     (분당 1봉 보장 — 아래 중복 봉 dedupe 참조)
 
-    소스: resolve_minute_source_db() → 기본 kis_template.minute_candles
-          (KIS_DATA_SOURCE=legacy 면 robotrader). DB명 하드코딩 금지.
+    소스: resolve_minute_source_db() → 항상 kis_template.minute_candles.
+          DB명 하드코딩 금지 — 반드시 resolver 경유.
 
     ★ PIT 기준 컬럼 = `datetime` (timestamp), `date`/`time` 아님:
       minute_candles 엔 date/time(varchar)과 datetime(timestamp)이 **둘 다** 있다.
@@ -438,9 +438,9 @@ def read_minute(
         ORDER BY datetime DESC, trade_date ASC, idx ASC
         LIMIT %(limit)s
     """
-    # 가격 재사용 연결(_get_reuse_conn)은 쓰지 않는다 — 그 연결은 일봉 소스
-    # (resolve_daily_source_db)에 묶여 있어 legacy 롤백 시 분봉 소스와 DB 가
-    # 갈라진다(일봉 robotrader_quant vs 분봉 robotrader).
+    # 가격 재사용 연결(_get_reuse_conn)은 쓰지 않는다 — 그 연결은 **일봉** 소스
+    # (resolve_daily_source_db)에 묶여 있다. 지금은 두 resolver 가 같은 DB 를
+    # 돌려주지만, 분봉 경로가 일봉 연결에 얹히면 소스 구분이 사라진다.
     with _conn(resolve_minute_source_db()) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
@@ -506,8 +506,8 @@ def read_financial_ratio(
         LIMIT 1
     """
     # 재무는 _FINANCIAL_DB(기본 kis_template) 전용 연결로 읽는다. 기본 설정에선 가격과
-    # 같은 DB 지만, QUANT_FINANCIAL_DB / KIS_DATA_SOURCE 로 갈라질 수 있으므로 가격
-    # 재사용 연결을 그대로 쓰지 않는다(backtest_session docstring 의 ⚠️ 절 참조).
+    # 같은 DB 지만, QUANT_FINANCIAL_DB 로 갈라질 수 있으므로 가격 재사용 연결을
+    # 그대로 쓰지 않는다(backtest_session docstring 의 ⚠️ 절 참조).
     params = dict(symbol=symbol, lag_cutoff=lag_cutoff)
     reuse = _get_reuse_financial_conn()
     if reuse is not None:

@@ -48,11 +48,17 @@ resolve_daily_source_db()   # 일봉 → 기본 "kis_template"  (daily_prices)
 resolve_minute_source_db()  # 분봉 → 기본 "kis_template"  (minute_candles)
 ```
 
-- **롤백 스위치는 `KIS_DATA_SOURCE=legacy` 하나뿐** (일봉→`robotrader_quant`, 분봉→`robotrader`).
-  소스 스위치를 새 env로 늘리지 말 것 — 일부 경로만 레거시로 새는 사고가 난다.
-- 레거시 `robotrader`/`robotrader_quant`는 형제 봇 중단으로 **2026-07-10 동결**(갱신 안 됨). `kis_template`이 상위집합.
-- **기본값이 `new`인 이유**: `.env`는 gitignore 대상이라 연구 프로세스(clean checkout·워크트리·CI)엔 없다.
-  기본값이 `legacy`였을 때 **연구만 조용히 동결된 죽은 DB를 읽고 있었다**.
+- 🔴 **롤백 스위치는 «없다»**(2026-08-17 폐지). `KIS_DATA_SOURCE`·`QUANT_DB`·`MINUTE_DB`·`CORP_EVENTS_DB`는
+  설정해도 **무시된다** — resolver는 항상 `kis_template`. 레거시 `robotrader`/`robotrader_quant`는
+  **2026-07-10 동결**이라 되돌려도 죽은 데이터였고, `robotrader`는 **삭제 예정**이다.
+  소스 스위치를 새 env로 되살리지 말 것.
+- **수동 백필 스크립트의 «쓰기»는 대상 DB 기본값이 없다** — `TIMESCALE_DB` 미지정이면 **중단**한다
+  (`config.constants.require_explicit_target_db`). 기본값을 라이브 SSOT로 두면 오작동이 「라이브에 실수로 쓰기」가 된다.
+- 🔑 **그 fail-fast 는 «쓰기»에만 붙인다 — «읽기»는 resolver 를 쓴다**(2026-08-17 정정).
+  읽기는 SSOT를 오염시킬 수 없고, `TIMESCALE_DB`는 gitignore된 `.env` 전용 **라이브 운영 env**라
+  연구 읽기 경로가 요구하면 clean checkout·워크트리·CI에서 죽는다(2026-07-16 통일이 고친 문제의 재발).
+  같은 스크립트 안에서도 **읽기 연결과 쓰기 연결을 갈라서** 가드를 «쓰기» 쪽에 건다
+  (`scripts/backfill_foreign_flow.py` · `scripts/10pct_strategy/p0_apply_adj_factor.py` 참조).
 - ⚠️ **가격(`open/high/low/close`)에 `adj_factor`를 곱하지 말 것** — 이미 분할조정된 연속 시세다. 곱하면 분할일 가짜 절벽(거짓 99% MaxDD).
 - 🔑 **반대로 `volume`에는 «곱해야» 한다** (2026-08-15 감사) — `close`는 조정 저장인데 **`volume`은 원본 저장**이라 단위가 어긋난다.
   안 맞추면 ①`close×volume`(거래대금)이 분할 이전 구간에서 `adj_factor`배 과소평가 ②거래량 **비율** 룰이 분할 경계에서 깨진다

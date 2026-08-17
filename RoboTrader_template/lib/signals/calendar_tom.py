@@ -113,7 +113,7 @@ def get_trading_calendar(
     _port = int(os.getenv("TIMESCALE_PORT", str(port)))
     _user = os.getenv("TIMESCALE_USER", user)
     _pw   = os.getenv("TIMESCALE_PASSWORD", password)
-    # daily_prices 를 읽으므로 일봉 SSOT resolver 를 따른다(기본 kis_template).
+    # daily_prices 를 읽으므로 일봉 SSOT resolver 를 따른다(항상 kis_template).
     # 과거엔 database 기본값이 robotrader_quant 하드코딩 + TIMESCALE_DB(운영 DB) 로
     # override 되는 구조라, 가격 소스와 운영 DB 가 뒤섞이고 .env 없는 연구에서는
     # 동결된 레거시를 읽었다. 호출자가 database 를 명시하면 그 값이 최우선.

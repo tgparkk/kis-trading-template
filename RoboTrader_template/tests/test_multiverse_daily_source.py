@@ -5,7 +5,7 @@
   - 분봉(minute) = kis_template.minute_candles
   - KOSPI/KOSDAQ 지수 라인(레짐) = kis_template.daily_prices (stock_code='KOSPI')
   → 셋 다 resolve_daily_source_db() / resolve_minute_source_db() 경유.
-     롤백은 KIS_DATA_SOURCE=legacy 하나로.
+     롤백 스위치는 2026-08-17 폐지됐다 — resolver 는 항상 kis_template.
 
 이력:
   (1) 2026-06-05 이전 — 멀티버스가 기본 robotrader DB(하루 ~125종목 sparse·stale

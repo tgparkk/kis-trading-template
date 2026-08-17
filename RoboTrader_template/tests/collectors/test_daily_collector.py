@@ -1,36 +1,24 @@
 # tests/collectors/test_daily_collector.py
+"""일봉 수집기 테스트.
+
+🔴 2026-08-17 — `reconcile_verdict` 4개 테스트 삭제:
+   그 함수는 「새 DB vs 레거시 robotrader_quant」 대조의 판정 헬퍼였고,
+   유일한 소비자였던 reconcile_daily/index/foreign_flow 가 레거시 DB 폐기와 함께
+   제거되면서 같이 사라졌다. **없어진 함수를 계속 시험할 수는 없다.**
+   (삭제된 테스트: pass_when_full_coverage_and_match · fail_on_low_coverage ·
+    handles_zero_real · pass_when_new_db_has_broader_coverage)
+   대신 「되살아나지 않는다」를 아래 한 줄로 고정한다.
+"""
 import pandas as pd
 
 import collectors.daily_collector as dc
-from collectors.daily_collector import reconcile_verdict, collect_one
+from collectors.daily_collector import collect_one
 
 
-def test_reconcile_verdict_pass_when_full_coverage_and_match():
-    v = reconcile_verdict(real_rows=2600, new_rows=2600, value_match=2598)
-    assert v["coverage"] >= 0.99
-    assert v["value_match_rate"] >= 0.99
-    assert v["verdict"] == "PASS"
-
-
-def test_reconcile_verdict_fail_on_low_coverage():
-    v = reconcile_verdict(real_rows=2600, new_rows=1500, value_match=1500)
-    assert v["verdict"] == "FAIL"
-
-
-def test_reconcile_verdict_handles_zero_real():
-    v = reconcile_verdict(real_rows=0, new_rows=0, value_match=0)
-    assert v["verdict"] in ("PASS", "EMPTY")
-
-
-def test_reconcile_verdict_pass_when_new_db_has_broader_coverage():
-    """새 DB가 레거시보다 더 넓게 수집(전체시장 > 워치리스트)해도, 교집합 종가가
-    일치하면 PASS여야 한다. value_match_rate는 레거시(real_rows) 기준 — 새 DB의
-    추가 종목을 '불일치'로 깎으면 안 된다(2026-06-23 라이브: new2577/real2486,
-    교집합 2484/2484 100%일치인데 value_match/new_rows=0.9639로 거짓 FAIL나던 회귀)."""
-    v = reconcile_verdict(real_rows=2486, new_rows=2577, value_match=2484)
-    assert v["coverage"] >= 0.99           # 더 넓은 수집(>1.0)도 충족
-    assert v["value_match_rate"] >= 0.99    # 레거시 기준 99.9% 일치
-    assert v["verdict"] == "PASS"
+def test_legacy_reconcile_helpers_are_gone():
+    """레거시 대조 심볼 재유입 방지 — 죽은 DB 에 직접 붙던 코드다."""
+    for nm in ("reconcile_daily", "reconcile_verdict", "COVERAGE_MIN", "VALUE_MATCH_MIN"):
+        assert not hasattr(dc, nm), f"제거된 심볼이 되살아났다: {nm}"
 
 
 def test_collect_daily_stamps_split_factor_before_adj(monkeypatch):

@@ -169,99 +169,118 @@ SCREENER_SNAPSHOT_ENABLED = _os.getenv("SCREENER_SNAPSHOT_ENABLED", "false").low
 del _os
 
 # =============================================================================
-# 데이터 읽기 소스 전환 플래그 (kis_template 단일 DB)
-#   new(기본): kis_template 에서 읽기 — 라이브·연구 공통 SSOT
-#   legacy: robotrader_quant(일봉) / robotrader(분봉) 에서 읽기 + 교차비교(grace)
-#           = 롤백 전용 경로. 두 레거시 소스는 형제 봇 중단으로 2026-07-10 동결됨.
+# 데이터 읽기 소스 — kis_template **단일**. 롤백 스위치는 폐지됐다 (2026-08-17).
 #
-# 기본값이 new 인 이유 (2026-07-16, 사장님 지시 "연구도 kis_template 으로 통일"):
-#   라이브 봇은 .env(KIS_DATA_SOURCE=new)를 읽어 이미 kis_template 을 본다. 그러나
-#   .env 는 gitignore 대상이라 clean checkout·격리 워크트리·CI 엔 존재하지 않고,
-#   연구 프로세스는 main.py 부트스트랩을 타지 않아 .env 를 못 읽는다. 기본값이
-#   legacy 였을 때 연구만 조용히 죽은 레거시 DB(2026-07-10 동결)를 읽고 있었다.
-#   → 기본값을 new 로 두면 env 없이 실행돼도 올바른 소스를 쓴다.
+# 🔴 왜 없앴나 — 「롤백 스위치」가 아니라 「누르면 죽는 버튼」이 되기 때문이다:
+#   1) 두 레거시 소스(robotrader / robotrader_quant)는 형제 봇 중단으로
+#      **2026-07-10 동결**됐다. 되돌려도 죽은 데이터를 읽을 뿐이라 이 스위치는
+#      이미 「쓸 수 없는」 기능이었다.
+#   2) 2026-08-16 DB 통합으로 데이터는 전부 kis_template 에 이관됐고,
+#      `robotrader` DB 는 RENAME 후 **삭제 예정**이다. DB 가 사라진 뒤에도
+#      스위치가 남아 있으면 비상 후진 기어인 척하는 고장 경로가 된다.
+#      ⇒ **DB 삭제와 스위치 폐기는 같은 작업이어야 한다.**
 #
-# 기본값 뒤집기의 부작용 검증 (collectors reconcile 분기):
-#   이 플래그의 유일한 다른 소비자는 collectors/eod_collection.py 의
-#   `if KIS_DATA_SOURCE == "legacy"` (EOD 교차비교 게이트) 뿐이다.
-#   - 라이브 .env 는 이미 new 를 명시 → 교차비교는 이미 skip 중 = 동작 변화 없음.
-#   - 레거시 DB 가 동결된 지금 교차비교는 매 거래일 거짓 불일치만 낳는다 → skip 이 정답.
-#   - tests/collectors/test_eod_collection.py 는 모듈 속성을 명시 monkeypatch 하므로
-#     기본값과 무관하게 legacy/new 양 분기를 모두 계속 검증한다.
+#   폐지된 env — 설정해도 **아무 일도 일어나지 않는다**:
+#     KIS_DATA_SOURCE · QUANT_DB · MINUTE_DB · CORP_EVENTS_DB
+#   (tests/test_research_data_source.py · tests/db/test_data_source_flag.py 가
+#    「넣어도 무시된다」를 회귀 고정한다.)
 #
-# ★ 이 resolver 들은 **가격 데이터(daily_prices/minute_candles) 전용**이다.
+#   라이브 런타임 동작은 불변이다: 라이브 .env 는 KIS_DATA_SOURCE=new 라
+#   이미 kis_template 을 보고 있었다.
+#
+# 🔑 resolver **함수는 남긴다**(지우지 말 것). 호출자가 여럿이고
+#   (multiverse/data/pit_reader·corp_events, db/quant_daily_reader,
+#    lib/signals/calendar_tom, scripts/discovery/intraday_rebound/db …),
+#   남겨두면 나중에 소스를 바꿀 자리가 **한 곳**으로 유지된다.
+#   「DB명 하드코딩 금지, 반드시 resolver 경유」가 이 프로젝트의 SSOT 규칙이다.
+#
+# ★ 이 resolver 들은 **가격·시장참조 데이터 전용**이다.
 #   재무(quant_financial_ratio / quant_balance_sheet / quant_income_statement /
 #   financial_statements)는 2026-08-16 통합으로 kis_template 에 이관됐고, 재무 경로
 #   (lib/signals/roe_filter.py, multiverse/data/pit_reader.read_financial_ratio)는
-#   이제 kis_template 을 본다. 다만 재무는 이 플래그가 아니라 pit_reader 의
-#   QUANT_FINANCIAL_DB 로 **독립 제어**한다 — 가격 롤백이 재무를 끌고 가지 않도록.
+#   pit_reader 의 **QUANT_FINANCIAL_DB 로 독립 제어**한다. 그 override 는 이번
+#   폐기 대상이 **아니다** — 가격과 재무가 분리돼 있는 것이 의도된 설계다.
 # =============================================================================
-import os as _os_data
-
-KIS_DATA_SOURCE = _os_data.getenv("KIS_DATA_SOURCE", "new")
-del _os_data
-
-
-def _is_legacy_source() -> bool:
-    """롤백 모드 여부. 호출 시점 env 를 읽어 import 순서에 의존하지 않는다."""
-    import os as _os
-    return _os.getenv("KIS_DATA_SOURCE", "new") == "legacy"
+_KIS_TEMPLATE_DB = "kis_template"
 
 
 def resolve_daily_source_db() -> str:
     """일봉(daily_prices) 읽기 대상 DB명 — 가격 데이터 단일 진입점.
 
-    기본 kis_template. KIS_DATA_SOURCE=legacy 면 레거시(robotrader_quant).
-    레거시 DB명 자체는 QUANT_DB 로 override 가능(롤백 시 유연성).
+    항상 ``"kis_template"``. (레거시 robotrader_quant 롤백 경로는 2026-08-17 폐지)
     """
-    import os as _os
-    if _is_legacy_source():
-        return _os.getenv("QUANT_DB", "robotrader_quant")
-    return "kis_template"
+    return _KIS_TEMPLATE_DB
 
 
 def resolve_minute_source_db() -> str:
     """분봉(minute_candles) 읽기 대상 DB명 — 가격 데이터 단일 진입점.
 
-    기본 kis_template. KIS_DATA_SOURCE=legacy 면 레거시(robotrader).
-    레거시 DB명 자체는 MINUTE_DB 로 override 가능(롤백 시 유연성).
-
-    resolve_daily_source_db() 와 같은 스위치(KIS_DATA_SOURCE)를 공유해 일봉/분봉이
-    서로 다른 세대의 소스로 갈라지지 않게 한다.
+    항상 ``"kis_template"``. (레거시 robotrader 롤백 경로는 2026-08-17 폐지)
     """
-    import os as _os
-    if _is_legacy_source():
-        return _os.getenv("MINUTE_DB", "robotrader")
-    return "kis_template"
+    return _KIS_TEMPLATE_DB
 
 
 def resolve_corp_events_source_db() -> str:
     """기업이벤트(corp_events) 읽기 대상 DB명 — 시장 참조 데이터 단일 진입점.
 
-    기본 kis_template. KIS_DATA_SOURCE=legacy 면 레거시(robotrader).
-    레거시 DB명 자체는 CORP_EVENTS_DB 로 override 가능(롤백 시 유연성).
-
-    resolve_daily_source_db() / resolve_minute_source_db() 와 **같은 스위치**
-    (KIS_DATA_SOURCE)를 공유해 가격과 이벤트가 서로 다른 세대로 갈라지지 않게 한다.
-
-    ⚠️ legacy 대상이 robotrader 인 이유(일봉과 다름): robotrader_quant 엔
-      corp_events 테이블이 **없다**(실측 2026-07-17). 일봉 롤백 대상을 그대로
-      따라가면 롤백 즉시 "relation 없음" 으로 죽는다 → 분봉과 같은 robotrader.
+    항상 ``"kis_template"``. (레거시 robotrader 롤백 경로는 2026-08-17 폐지)
 
     ⚠️ TIMESCALE_DB 를 보지 않는 이유 — corp_events 는 **시장 참조 데이터**이지
       운영 산출물이 아니다(운영 산출물인 screener_snapshots 만 TIMESCALE_DB 를
-      따른다). TIMESCALE_DB 는 라이브 봇 운영 env 라 재활용하면 두 가지로 샌다:
-        1) 라이브 .env 는 gitignore 대상 → 연구·CI 엔 없다 = 코드 기본값으로
-           떨어진다. 그 기본값이 동결된 robotrader 였다(2026-05-22 stale).
-        2) scripts/kis_db/smoke_state_restore.py 가 os.environ["TIMESCALE_DB"] 를
-           테스트 DB 로 덮고 **복구하지 않는다**(알려진 이슈). TIMESCALE_DB 를
-           읽으면 연구 이벤트가 조용히 테스트 DB 를 따라간다.
-      → 가격 resolver 들과 동일하게 KIS_DATA_SOURCE 하나만 따른다.
+      따른다). TIMESCALE_DB 는 **라이브 봇 운영 env** 이고 gitignore 된 `.env`
+      전용이라, 연구 읽기 경로가 그걸 재활용하면 두 가지가 깨진다:
+        (a) clean checkout·격리 워크트리·CI 엔 `.env` 가 없어 읽기가 죽거나 엉뚱한
+            기본값으로 떨어진다(2026-07-16 통일이 고친 바로 그 문제),
+        (b) 인프로세스에서 그 env 를 갈아끼우는 코드가 있으면 연구 조회가 그걸
+            따라간다.
+      그래서 env 를 아예 보지 않고 상수를 돌려준다.
+
+    🔧 2026-08-17 정정 — 여기 적혀 있던
+      「scripts/kis_db/smoke_state_restore.py 가 TIMESCALE_DB 를 덮고 **복구하지
+      않는다**(알려진 이슈)」는 **사실이 아니다.** 직접 확인: 같은 파일 `:132-133`
+      에서 이전 값을 `_prev_timescale_db` 로 저장하고 `:176 finally:` 블록
+      `:184-187` 에서 원복한다(없었으면 pop). 그 파일 자신도 「try/finally 로
+      원복 보장」이라고 적고 있다. ⇒ 존재하지 않는 결함을 근거로 들고 있었다.
+      위 (a)·(b) 는 그 결함과 무관하게 성립하므로 결론(=env 를 보지 않는다)은 유지.
+    """
+    return _KIS_TEMPLATE_DB
+
+
+def require_explicit_target_db(purpose: str) -> str:
+    """**수동 스크립트**(백필·1회성 점검)의 대상 DB — env ``TIMESCALE_DB`` 필수.
+
+    🔴 기본값을 「바꾸지」 않고 「없앤」 이유 (2026-08-17, `robotrader` DB 폐기와 동시):
+      이 스크립트들의 기본값은 오랫동안 동결 레거시 ``robotrader`` 였다. 실수로
+      돌려도 죽은 DB 에 써서 **무해**했다. 여기서 기본값을 새 SSOT
+      (``kis_template``)로 «바꾸면» 같은 실수가 「**라이브 SSOT 에 실수로 쓰기**」가
+      되어 폭발 반경이 **반대로 커진다**.
+      ⇒ 기본값을 없앤다. 백필은 사람이 의도해서 돌리는 작업이므로, **대상을
+        명시하지 않았으면 안 도는 것이 맞다.**
+
+    ⚠️ 호출은 **모듈 import 시점이 아니라 연결 시점**(``_get_conn()`` 안 등)에서 할 것.
+      import 시점에 죽이면 그 모듈을 import 만 하는 테스트·패키지가 함께 깨진다.
+
+    Args:
+        purpose: 무엇을 하려던 참이었는지 (오류 메시지에 그대로 실린다).
+
+    Returns:
+        명시된 대상 DB명.
+
+    Raises:
+        SystemExit: ``TIMESCALE_DB`` 미설정/공백 — 조용히 다른 DB 로 가지 않는다.
     """
     import os as _os
-    if _is_legacy_source():
-        return _os.getenv("CORP_EVENTS_DB", "robotrader")
-    return "kis_template"
+    db = (_os.environ.get("TIMESCALE_DB") or "").strip()
+    if not db:
+        raise SystemExit(
+            f"[중단] 대상 DB 가 지정되지 않았습니다 — {purpose}\n"
+            f"  환경변수 TIMESCALE_DB 를 «명시»하고 다시 실행하세요:\n"
+            f"    PowerShell : $env:TIMESCALE_DB='kis_template'; python <script>\n"
+            f"    bash       : TIMESCALE_DB=kis_template python <script>\n"
+            f"  기본값은 일부러 없앴습니다 — 옛 기본값 'robotrader' 는 폐기됐고,\n"
+            f"  기본값을 라이브 SSOT(kis_template)로 두면 실수로 라이브에 쓰게 됩니다."
+        )
+    return db
 
 # =============================================================================
 # 장 시작 동시 진입 억제 (Entry Throttle)

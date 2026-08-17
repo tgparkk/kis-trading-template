@@ -15,7 +15,17 @@ Absolute rules:
   Chronological: cumulative product of future splits only
 
 Python: system Python 3.9 (no venv)
-DB: robotrader (corp_events) + robotrader_quant (daily_prices), 127.0.0.1:5433
+DB: corp_events **읽기**  = corp_events resolver (= kis_template). env 불필요.
+    daily_prices **쓰기** = robotrader_quant, 127.0.0.1:5433 — 🔴 UPDATE 를 친다.
+
+2026-08-17 — 하드코딩 'robotrader'(corp_events) 제거 + **가드 위치 정정**:
+  `robotrader` 는 2026-07-10 동결 레거시이고 곧 삭제된다.
+  🔑 같은 날 fail-fast(`require_explicit_target_db`)를 **읽기**(corp_events)에
+    달았는데, 그건 엉뚱한 연결이었다 — 위 docstring 이 스스로 「UPDATE 를 치므로
+    위험」이라 적어놓고 정작 지킨 건 조회 연결이었다. 가드는 **쓰기**(DB_PRICES)로
+    옮겼고, 읽기는 resolver 로 되돌렸다(읽기는 SSOT 를 오염시킬 수 없다).
+  ⚠️ 쓰기 대상이 동결 레거시 `robotrader_quant` 인 것 자체는 이번 `robotrader`
+    폐기 범위 «밖»이라 그대로 둔다 — 바꾸면 라이브 SSOT 에 UPDATE 가 나간다.
 """
 
 import sys
@@ -30,10 +40,42 @@ import psycopg2
 import psycopg2.extras
 import pandas as pd
 
-DB_EVENTS = dict(host="127.0.0.1", port=5433, dbname="robotrader",
-                 user="robotrader", password="1234")
-DB_PRICES = dict(host="127.0.0.1", port=5433, dbname="robotrader_quant",
-                 user="robotrader", password="1234")
+from config.constants import require_explicit_target_db, resolve_corp_events_source_db
+
+# ⚠️ user 의 'robotrader' 는 **롤명**이라 그대로 둔다(DB명과 동음이의).
+_DB_COMMON = dict(host="127.0.0.1", port=5433, user="robotrader", password="1234")
+# 🔴 **쓰기 대상** — 동결 레거시 `robotrader_quant`(2026-07-10). 이번 폐기 범위 밖이라
+#    DB 는 바꾸지 않는다. 직접 쓰지 말고 아래 `_prices_write_dsn()` 을 경유할 것.
+DB_PRICES = dict(**_DB_COMMON, dbname="robotrader_quant")
+
+
+def _prices_write_dsn() -> dict:
+    """daily_prices **쓰기/검증** 대상 DSN — 연결 전 fail-fast.
+
+    🔑 2026-08-17 정정 — 가드가 «엉뚱한 연결»에 붙어 있었다: 원래 fail-fast 는
+      `_events_dsn()`(corp_events **읽기**)에 걸려 있었다. 위험한 쪽은 `UPDATE
+      daily_prices` 를 치는 이쪽이다.
+
+    ⚠️ 반환값이 아니라 **전제조건**으로 쓴다. `require_explicit_target_db()` 의
+      리턴(=TIMESCALE_DB 값)을 그대로 dbname 에 꽂으면 TIMESCALE_DB=kis_template
+      인 셸에서 이 스크립트가 **라이브 SSOT 의 daily_prices 를 UPDATE** 한다 —
+      정확히 이 가드가 막으려던 사고다. 대상은 DB_PRICES 로 고정하고, 가드는
+      「사람이 대상 DB 를 의식하고 실행했는가」만 묻는다(미지정이면 SystemExit).
+    """
+    require_explicit_target_db(
+        "adj_factor UPDATE 실행 확인 (실제 대상은 robotrader_quant 고정)")
+    return DB_PRICES
+
+
+def _events_dsn() -> dict:
+    """corp_events **읽기** 대상 — corp_events resolver 경유(= kis_template).
+
+    2026-08-17: 하드코딩 'robotrader' → 한 번 `require_explicit_target_db` 로
+    갔다가 **resolver 로 되돌렸다**. 읽기 경로에 라이브 운영 env(TIMESCALE_DB)를
+    요구하면 clean checkout·워크트리·CI 에서 죽는다. fail-fast 는
+    `_prices_write_dsn()` 이 맡는다.
+    """
+    return dict(**_DB_COMMON, dbname=resolve_corp_events_source_db())
 
 REPORT_DIR = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "reports", "10pct_strategy")
@@ -61,7 +103,7 @@ def load_split_events() -> dict:
 
     Returns: {stock_code: [(event_date, split_factor), ...]} ascending by date
     """
-    conn = psycopg2.connect(**DB_EVENTS)
+    conn = psycopg2.connect(**_events_dsn())
     events = defaultdict(list)
 
     with conn.cursor() as cur:
@@ -182,7 +224,7 @@ def load_stock_dates(conn, stock_codes: list) -> dict:
 # ---------------------------------------------------------------------------
 def update_adj_factors(events: dict, dry_run: bool = False) -> dict:
     """Batch UPDATE in groups of BATCH_SIZE stocks."""
-    conn = psycopg2.connect(**DB_PRICES)
+    conn = psycopg2.connect(**_prices_write_dsn())
     conn.autocommit = False
 
     affected_stocks = list(events.keys())
@@ -280,7 +322,7 @@ def run_spot_checks(events: dict) -> list:
       (1) adj_factor(pre_date) == split_factor  (exact for single-split stocks)
       (2) adj_factor(post_date) == 1.0          (after effective date, no adjustment)
     """
-    conn = psycopg2.connect(**DB_PRICES)
+    conn = psycopg2.connect(**_prices_write_dsn())
     results = []
 
     for chk in SPOT_CHECKS:
@@ -355,7 +397,7 @@ def run_pit_regression(events: dict) -> dict:
     test_date = date(2022, 1, 3)   # first trading day of 2022
     test_codes = ["035720", "004090", "260970"]
 
-    conn = psycopg2.connect(**DB_PRICES)
+    conn = psycopg2.connect(**_prices_write_dsn())
     results = []
 
     for sc in test_codes:
@@ -516,7 +558,7 @@ def main():
     print("P0-2b: daily_prices.adj_factor PIT Correction")
     print("=" * 60)
 
-    conn = psycopg2.connect(**DB_PRICES)
+    conn = psycopg2.connect(**_prices_write_dsn())
     before_count = count_non_one_adj(conn)
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM daily_prices")
@@ -533,7 +575,7 @@ def main():
     print("\n[Steps 2-4] UPDATE adj_factor")
     update_stats = update_adj_factors(events, dry_run=False)
 
-    conn = psycopg2.connect(**DB_PRICES)
+    conn = psycopg2.connect(**_prices_write_dsn())
     after_count = count_non_one_adj(conn)
     conn.close()
     print(f"\n[After] adj_factor != 1.0: {after_count}")

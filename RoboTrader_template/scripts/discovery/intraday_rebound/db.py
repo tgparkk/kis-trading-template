@@ -8,10 +8,12 @@
 datetime)` 기준 중복제거, 잉여 행은 kis_template.minute_candles_dupes에 보존.
 
 2026-07-16(연구 소스 통일): 자체 env(REBOUND_MINUTE_DB/REBOUND_DAILY_DB)로
-kis_template을 개별 지정하던 것을 **공용 resolver로 수렴**했다. 같은 기본값
-(kis_template)을 유지하면서, 롤백 스위치가 프로젝트 전체에 하나(KIS_DATA_SOURCE)만
-남도록 한다 — 소스가 여러 env로 갈라지면 일부 경로만 레거시로 새는 사고가 난다.
-옛 DB 대비 비교 실행은 `KIS_DATA_SOURCE=legacy`로 수행한다.
+kis_template을 개별 지정하던 것을 **공용 resolver로 수렴**했다 — 소스가 여러 env로
+갈라지면 일부 경로만 레거시로 새는 사고가 난다.
+
+2026-08-17: 그 공용 스위치(KIS_DATA_SOURCE=legacy)마저 **폐지**됐다. 레거시
+robotrader/robotrader_quant 는 2026-07-10 동결이라 되돌려도 죽은 데이터였고,
+`robotrader` DB 는 삭제된다. 이제 MINUTE_DB/DAILY_DB 는 **항상 kis_template** 이다.
 """
 from __future__ import annotations
 

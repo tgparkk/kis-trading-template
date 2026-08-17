@@ -48,6 +48,8 @@ import numpy as np
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
+# 직접 실행(python scripts/…) 시 sys.path[0]=scripts/ 라 config 가 안 잡힌다.
+sys.path.insert(0, str(PROJECT_ROOT))
 
 REPORT_DIR = PROJECT_ROOT / "reports" / "signal_combo_aprmay"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -60,10 +62,15 @@ OUTPUT_COMP_CSV  = REPORT_DIR / "label_comparison.csv"
 # ---------------------------------------------------------------------------
 # DB 연결 설정
 # ---------------------------------------------------------------------------
+# 2026-08-17: `"database": "robotrader"` 하드코딩 → 분봉 resolver 경유(읽기 전용).
+#   그 DB 는 2026-07-10 동결 레거시이고 **삭제 예정**이라 두면 DROP 즉시 죽는다.
+#   ⚠️ user 의 'robotrader' 는 **롤명**이라 그대로 둔다(DB명과 동음이의).
+from config.constants import resolve_minute_source_db  # noqa: E402
+
 DB_MINUTE = {
     "host":     os.getenv("TIMESCALE_HOST",     "127.0.0.1"),
     "port":     int(os.getenv("TIMESCALE_PORT", 5433)),
-    "database": "robotrader",
+    "database": resolve_minute_source_db(),
     "user":     os.getenv("TIMESCALE_USER",     "robotrader"),
     "password": os.getenv("TIMESCALE_PASSWORD", "1234"),
 }

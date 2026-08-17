@@ -3,19 +3,19 @@ daily_prices 펀더멘털 유니버스 다년치 백필 스크립트
 
 기능:
   strategy_analysis.daily_candles (2021-01-12 ~ 가용 전체)
-  → robotrader.daily_prices 에 백필 (펀더멘털 유니버스 한정)
+  → 대상 DB(env TIMESCALE_DB, **명시 필수**).daily_prices 에 백필 (펀더멘털 유니버스 한정)
   → returns_1d/5d/20d, volatility_20d 윈도우 함수 재계산
 
 목적:
   책 리서치 펀더멘털 전략(Greenblatt, O'Shaughnessy)이 ~6개월 윈도우에
-  갇혀 있는 문제를 해소. 펀더멘털 유니버스 종목(robotrader.financial_statements의
+  갇혀 있는 문제를 해소. 펀더멘털 유니버스 종목(대상 DB.financial_statements 의
   131개 distinct stock_code)은 daily_prices에 2025-07+ ~200일치만 있고
   market_cap도 ~124일 윈도우만 존재. 반면 strategy_analysis.daily_candles는
   2021-2026 5년치를 market_cap 100% 채워서 보유. 이를 백필하면 다년·다국면
   펀더멘털 백테스트가 가능해짐.
 
 대상:
-  robotrader.financial_statements 에 존재하는 stock_code 만 (펀더멘털 유니버스).
+  대상 DB.financial_statements 에 존재하는 stock_code 만 (펀더멘털 유니버스).
   daily_candles 가용 전체 날짜 범위 (2021-01-12 onward).
   이미 daily_prices 에 존재하는 (stock_code, date) 행은 ON CONFLICT DO NOTHING 으로 스킵.
 
@@ -55,6 +55,9 @@ from datetime import datetime
 import psycopg2
 import psycopg2.extras
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config.constants import require_explicit_target_db  # noqa: E402
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 로깅 설정
 # ─────────────────────────────────────────────────────────────────────────────
@@ -82,7 +85,18 @@ logger = logging.getLogger(__name__)
 _DB_COMMON = dict(host="127.0.0.1", port=5433, user="postgres", password="1234")
 
 SOURCE_DSN = dict(**_DB_COMMON, dbname="strategy_analysis")
-TARGET_DSN = dict(**_DB_COMMON, dbname="robotrader")
+
+
+def _target_dsn() -> dict:
+    """백필 **적재 대상** — env TIMESCALE_DB **명시 필수**(2026-08-17).
+
+    🔴 옛 기본값은 동결 레거시 'robotrader' 였고 그 DB 는 폐기된다. 기본값을 라이브
+      SSOT(kis_template)로 «바꾸지» 않고 **없앴다** — 이 스크립트는 daily_prices 에
+      INSERT 를 치므로, 잘못된 기본값이 곧 「라이브 SSOT 에 실수로 쓰기」가 된다.
+      미지정이면 SystemExit(조용히 다른 DB 로 가지 않음).
+    """
+    return dict(**_DB_COMMON,
+                dbname=require_explicit_target_db("daily_prices 펀더멘털 백필 적재 대상"))
 
 # 백필 행에 부여할 adj_factor (기존 행/소스 모두 raw, 1.0 검증 완료)
 BACKFILL_ADJ_FACTOR = 1.0
@@ -93,8 +107,8 @@ BATCH_SIZE = 500
 # ─────────────────────────────────────────────────────────────────────────────
 # SQL
 # ─────────────────────────────────────────────────────────────────────────────
-# 펀더멘털 유니버스 = robotrader.financial_statements 의 distinct stock_code.
-# financial_statements 는 타겟 DB(robotrader)에 있으므로 종목 리스트를 먼저
+# 펀더멘털 유니버스 = 타겟 DB.financial_statements 의 distinct stock_code.
+# financial_statements 는 타겟 DB 에 있으므로 종목 리스트를 먼저
 # 타겟에서 읽어 소스 쿼리에 = ANY(%s) 로 바인딩한다.
 SQL_FUNDAMENTAL_UNIVERSE = """
 SELECT DISTINCT stock_code FROM financial_statements ORDER BY stock_code
@@ -235,7 +249,7 @@ def run_dry_run() -> None:
     t0 = time.time()
 
     # ── 타겟: 펀더멘털 유니버스 + 기존 daily_prices 현황 ───────────
-    tgt_conn = _connect(TARGET_DSN)
+    tgt_conn = _connect(_target_dsn())
     tgt_cur = tgt_conn.cursor()
 
     universe = _load_universe(tgt_conn)
@@ -361,7 +375,7 @@ def run_dry_run() -> None:
     overlap_keys = [(r[0], r[1]) for r in src_rows if (r[0], r[1]) in existing_keys]
     # 기존 행 종가는 별도 조회 필요 -> 재연결하여 비교
     if overlap_keys:
-        cmp_conn = _connect(TARGET_DSN)
+        cmp_conn = _connect(_target_dsn())
         cmp_cur = cmp_conn.cursor()
         cmp_cur.execute(
             """
@@ -444,7 +458,7 @@ def run_apply() -> None:
     t0 = time.time()
 
     # ── 0. 유니버스 로드 ──────────────────────────────────────────
-    tgt_conn = _connect(TARGET_DSN)
+    tgt_conn = _connect(_target_dsn())
     universe = _load_universe(tgt_conn)
     logger.info(f"[유니버스] 펀더멘털 종목 {len(universe):,}개")
 
@@ -580,8 +594,8 @@ def run_apply() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "strategy_analysis.daily_candles → robotrader.daily_prices "
-            "펀더멘털 유니버스 다년치 백필 (기본 dry-run)"
+            "strategy_analysis.daily_candles → $TIMESCALE_DB.daily_prices "
+            "펀더멘털 유니버스 다년치 백필 (기본 dry-run · TIMESCALE_DB 명시 필수)"
         )
     )
     parser.add_argument(

@@ -25,9 +25,16 @@
     전부 이관됐고(전행 해시 검증 통과, 원본 미삭제) 예외는 **해소**됐다.
     → 재무 경로도 kis_template 을 본다. 이 사실을 test_financial_* 로 고정한다.
 
-    ⚠️ 단 재무는 **가격 플래그(KIS_DATA_SOURCE)를 따르지 않는다** — 롤백은
-    `QUANT_FINANCIAL_DB` 로 독립 제어한다. 가격 롤백이 재무를 끌고 가면
-    「일부 경로만 레거시로 새는」 사고가 나기 때문. 그 비결합도 아래에서 고정한다.
+    ⚠️ 단 재무는 **가격 resolver 를 따르지 않는다** — 재무 override 는
+    `QUANT_FINANCIAL_DB` 로 독립 제어한다. 그 비결합도 아래에서 고정한다.
+
+🔴 2026-08-17 — 롤백 스위치 폐지로 **계약이 뒤집혔다**:
+    이 파일은 원래 「`KIS_DATA_SOURCE=legacy` 면 레거시 DB 로 되돌아간다」를 단언했다.
+    이제는 그 반대 —— **「넣어도 무시된다」**를 단언한다. 이유:
+      1) 레거시 두 소스는 2026-07-10 동결이라 되돌려도 죽은 데이터였다(쓸 수 없는 기능).
+      2) `robotrader` DB 는 통합 후 **삭제**된다. 스위치가 남으면 「누르면 죽는 버튼」이다.
+    ⇒ 옛 사실을 단언하는 테스트를 그대로 두면 이 폐기 작업이 「회귀」로 오탐된다.
+      테스트를 지우지 않고 **계약을 뒤집었다**(음성 대조 = 폐지 env 를 실제로 주입).
 """
 import importlib
 import sys
@@ -50,12 +57,16 @@ import config.constants as constants  # noqa: E402
 
 
 # ===========================================================================
-# 1) resolver 기본값 + 롤백 경로
+# 1) resolver = 항상 kis_template + **폐지된 롤백 스위치는 무시된다**
 # ===========================================================================
+
+# 2026-08-17 폐지된 소스 env 전부. 「설정해도 아무 일도 안 일어난다」를 단언하는 데 쓴다.
+_RETIRED_SOURCE_ENVS = ("KIS_DATA_SOURCE", "QUANT_DB", "MINUTE_DB", "CORP_EVENTS_DB")
+
 
 def _reload_constants(monkeypatch, **env):
     """env 를 적용한 상태로 config.constants 를 리로드해 반환."""
-    for k in ("KIS_DATA_SOURCE", "QUANT_DB", "MINUTE_DB", "CORP_EVENTS_DB"):
+    for k in _RETIRED_SOURCE_ENVS:
         monkeypatch.delenv(k, raising=False)
     for k, v in env.items():
         monkeypatch.setenv(k, v)
@@ -74,46 +85,6 @@ def test_minute_resolver_defaults_to_kis_template(monkeypatch):
     assert c.resolve_minute_source_db() == "kis_template"
 
 
-def test_daily_resolver_legacy_rollback(monkeypatch):
-    """롤백 경로 유지: KIS_DATA_SOURCE=legacy → 레거시 일봉 DB."""
-    c = _reload_constants(monkeypatch, KIS_DATA_SOURCE="legacy")
-    assert c.resolve_daily_source_db() == "robotrader_quant"
-
-
-def test_minute_resolver_legacy_rollback(monkeypatch):
-    """롤백 경로 유지: KIS_DATA_SOURCE=legacy → 레거시 분봉 DB."""
-    c = _reload_constants(monkeypatch, KIS_DATA_SOURCE="legacy")
-    assert c.resolve_minute_source_db() == "robotrader"
-
-
-def test_daily_resolver_legacy_db_name_override(monkeypatch):
-    """레거시 모드에서 DB명 자체도 override 가능(운영 유연성 유지)."""
-    c = _reload_constants(monkeypatch, KIS_DATA_SOURCE="legacy", QUANT_DB="some_other_quant")
-    assert c.resolve_daily_source_db() == "some_other_quant"
-
-
-def test_minute_resolver_legacy_db_name_override(monkeypatch):
-    c = _reload_constants(monkeypatch, KIS_DATA_SOURCE="legacy", MINUTE_DB="some_other_minute")
-    assert c.resolve_minute_source_db() == "some_other_minute"
-
-
-def test_legacy_db_name_override_ignored_in_new_mode(monkeypatch):
-    """기본(new) 모드에서는 레거시 DB명 override 가 통하지 않는다.
-
-    QUANT_DB 가 어딘가에 남아 있어도 연구가 조용히 죽은 레거시로 새지 않도록,
-    소스 선택은 KIS_DATA_SOURCE 하나로만 제어된다(단일 스위치).
-    """
-    c = _reload_constants(
-        monkeypatch,
-        QUANT_DB="robotrader_quant",
-        MINUTE_DB="robotrader",
-        CORP_EVENTS_DB="robotrader",
-    )
-    assert c.resolve_daily_source_db() == "kis_template"
-    assert c.resolve_minute_source_db() == "kis_template"
-    assert c.resolve_corp_events_source_db() == "kis_template"
-
-
 def test_corp_events_resolver_defaults_to_kis_template(monkeypatch):
     """env 가 하나도 없어도(=연구 기본 실행) 기업이벤트는 kis_template.
 
@@ -124,33 +95,81 @@ def test_corp_events_resolver_defaults_to_kis_template(monkeypatch):
     assert c.resolve_corp_events_source_db() == "kis_template"
 
 
-def test_corp_events_resolver_legacy_rollback(monkeypatch):
-    """롤백 경로: KIS_DATA_SOURCE=legacy → robotrader.
+# --- 음성 대조: 폐지된 스위치를 «실제로 넣고» 무반응을 확인 -------------------
 
-    ⚠️ 일봉 롤백 대상(robotrader_quant)이 **아니다** — robotrader_quant 엔
-      corp_events 테이블 자체가 없어(실측) 롤백 즉시 relation 없음으로 죽는다.
+def test_daily_resolver_ignores_retired_legacy_switch(monkeypatch):
+    """[계약 반전] KIS_DATA_SOURCE=legacy 를 넣어도 일봉은 kis_template.
+
+    (2026-08-17 이전: robotrader_quant 를 단언했다. 그 DB 는 2026-07-10 동결이라
+     되돌려도 죽은 데이터였고, 롤백 스위치는 `robotrader` 삭제와 함께 폐지됐다.)
     """
     c = _reload_constants(monkeypatch, KIS_DATA_SOURCE="legacy")
-    assert c.resolve_corp_events_source_db() == "robotrader"
+    assert c.resolve_daily_source_db() == "kis_template"
 
 
-def test_corp_events_resolver_legacy_db_name_override(monkeypatch):
-    """레거시 모드에서 DB명 자체도 override 가능(형제 resolver 와 동일 패턴)."""
-    c = _reload_constants(
-        monkeypatch, KIS_DATA_SOURCE="legacy", CORP_EVENTS_DB="some_other_events"
-    )
-    assert c.resolve_corp_events_source_db() == "some_other_events"
-
-
-def test_corp_events_shares_the_single_source_switch(monkeypatch):
-    """이벤트 소스는 가격과 **같은 스위치**(KIS_DATA_SOURCE)를 공유한다.
-
-    스위치가 갈라지면 일부 경로만 레거시로 새는 사고가 난다(절대 규약).
-    """
+def test_minute_resolver_ignores_retired_legacy_switch(monkeypatch):
+    """[계약 반전] KIS_DATA_SOURCE=legacy 를 넣어도 분봉은 kis_template."""
     c = _reload_constants(monkeypatch, KIS_DATA_SOURCE="legacy")
-    assert c.resolve_daily_source_db() == "robotrader_quant"
-    assert c.resolve_minute_source_db() == "robotrader"
-    assert c.resolve_corp_events_source_db() == "robotrader"
+    assert c.resolve_minute_source_db() == "kis_template"
+
+
+def test_corp_events_resolver_ignores_retired_legacy_switch(monkeypatch):
+    """[계약 반전] KIS_DATA_SOURCE=legacy 를 넣어도 이벤트는 kis_template."""
+    c = _reload_constants(monkeypatch, KIS_DATA_SOURCE="legacy")
+    assert c.resolve_corp_events_source_db() == "kis_template"
+
+
+def test_retired_db_name_override_envs_are_inert(monkeypatch):
+    """[계약 반전] 폐지된 DB명 override env 는 **전부 무시**된다.
+
+    예전엔 legacy 모드에서 QUANT_DB/MINUTE_DB/CORP_EVENTS_DB 로 대상 DB명을
+    바꿀 수 있었다. 지금은 legacy 를 켜든 안 켜든 아무 효과가 없어야 한다.
+    (스위치가 「반쯤 살아 있는」 상태가 가장 위험하므로 두 조합 모두 고정한다.)
+    """
+    for extra in ({}, {"KIS_DATA_SOURCE": "legacy"}):
+        c = _reload_constants(
+            monkeypatch,
+            QUANT_DB="some_other_quant",
+            MINUTE_DB="some_other_minute",
+            CORP_EVENTS_DB="some_other_events",
+            **extra,
+        )
+        assert c.resolve_daily_source_db() == "kis_template", extra
+        assert c.resolve_minute_source_db() == "kis_template", extra
+        assert c.resolve_corp_events_source_db() == "kis_template", extra
+
+
+def test_all_three_resolvers_agree_under_any_env(monkeypatch):
+    """세 resolver 는 어떤 env 조합에서도 **갈라지지 않는다**.
+
+    폐지 전에는 「같은 스위치를 공유한다」로 이 성질을 지켰다. 스위치가 사라진
+    지금은 상수라서 자명하지만, 누군가 resolver 하나에만 env 분기를 되살리면
+    여기서 잡힌다(그게 예전에 사고가 났던 형태다).
+    """
+    for env in ({}, {"KIS_DATA_SOURCE": "legacy"}, {"KIS_DATA_SOURCE": "new"},
+                {"KIS_DATA_SOURCE": "legacy", "MINUTE_DB": "x", "QUANT_DB": "y"}):
+        c = _reload_constants(monkeypatch, **env)
+        got = {c.resolve_daily_source_db(),
+               c.resolve_minute_source_db(),
+               c.resolve_corp_events_source_db()}
+        assert got == {"kis_template"}, f"env={env} → {got}"
+
+
+def test_retired_switch_symbols_are_gone_from_constants():
+    """소스 레벨 가드 — 폐지된 스위치가 슬쩍 되살아나지 않도록 고정.
+
+    `_is_legacy_source` / 모듈 상수 `KIS_DATA_SOURCE` / 폐지 env 읽기가
+    config/constants.py 에 다시 나타나면 실패한다.
+    """
+    import re
+    from pathlib import Path
+    text = Path(constants.__file__).read_text(encoding="utf-8")
+    assert not hasattr(constants, "_is_legacy_source"), "롤백 판정 함수가 되살아났다"
+    assert not hasattr(constants, "KIS_DATA_SOURCE"), "롤백 플래그 상수가 되살아났다"
+    for tok in _RETIRED_SOURCE_ENVS:
+        assert not re.search(
+            r"""(getenv\(|environ\[|environ\.get\()\s*["']%s["']""" % tok, text
+        ), f"폐지된 소스 env {tok} 를 다시 읽고 있다"
 
 
 # ===========================================================================
@@ -169,14 +188,19 @@ def test_pit_reader_daily_conn_targets_kis_template():
             assert cur.fetchone()[0] == "kis_template"
 
 
-def test_pit_reader_daily_conn_follows_legacy_rollback(monkeypatch):
-    """롤백: KIS_DATA_SOURCE=legacy 면 pit_reader 일봉도 레거시로 되돌아간다."""
+def test_pit_reader_daily_conn_ignores_retired_legacy_switch(monkeypatch):
+    """[계약 반전] 폐지 env 를 넣어도 pit_reader 일봉은 kis_template 에 붙는다.
+
+    (2026-08-17 이전: robotrader_quant 를 단언 = 롤백이 «작동함»을 고정했다.)
+    행동 증거 — 실제로 연결해 current_database() 를 읽는다.
+    """
     monkeypatch.setenv("KIS_DATA_SOURCE", "legacy")
+    monkeypatch.setenv("QUANT_DB", "some_other_quant")
     from multiverse.data import pit_reader
     with pit_reader._conn_daily() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT current_database()")
-            assert cur.fetchone()[0] == "robotrader_quant"
+            assert cur.fetchone()[0] == "kis_template"
 
 
 def test_pit_reader_has_no_separate_quant_db_env():
@@ -207,10 +231,10 @@ def test_financial_conn_defaults_to_kis_template():
 
 
 def test_financial_conn_unaffected_by_data_source_flag(monkeypatch):
-    """재무는 KIS_DATA_SOURCE(가격 플래그)와 **비결합**이다.
+    """재무는 가격 경로와 **비결합**이다 — 폐지된 KIS_DATA_SOURCE 에도 무반응.
 
-    legacy 로 뒤집어도 재무는 kis_template 을 유지해야 한다 — 가격 롤백이 재무를
-    끌고 가면 「일부 경로만 레거시로 새는」 사고가 난다.
+    (스위치 폐지 후에도 이 가드를 남긴다: 누군가 가격 플래그를 되살리면서 재무까지
+     끌고 가는 배선을 하면 여기서 잡힌다. 재무 override 는 QUANT_FINANCIAL_DB 하나뿐.)
     """
     for flag in ("new", "legacy"):
         monkeypatch.setenv("KIS_DATA_SOURCE", flag)
@@ -373,12 +397,20 @@ def test_calendar_tom_reads_kis_template_by_default():
     )
 
 
-def test_calendar_tom_legacy_rollback(monkeypatch):
-    """롤백 시 calendar_tom 도 레거시로 되돌아간다(동결일 이후 영업일 없음)."""
+def test_calendar_tom_ignores_retired_legacy_switch(monkeypatch):
+    """[계약 반전] 폐지 env 를 넣어도 calendar_tom 은 kis_template 을 읽는다.
+
+    (2026-08-17 이전: `max(cal) <= 2026-07-10` = 동결 레거시로 «되돌아감»을 단언했다.)
+    비-vacuous: 동결일 이후 영업일이 보이면 kis_template 이라는 행동 증거다.
+    """
     monkeypatch.setenv("KIS_DATA_SOURCE", "legacy")
+    monkeypatch.setenv("QUANT_DB", "some_other_quant")
     from lib.signals.calendar_tom import get_trading_calendar
     cal = get_trading_calendar(date(2026, 7, 1), date(2026, 7, 16))
-    assert max(cal) <= date(2026, 7, 10), "레거시는 2026-07-10 동결"
+    assert cal, "영업일 캘린더가 비면 안 됨"
+    assert max(cal) > date(2026, 7, 10), (
+        f"동결(07-10) 이후 영업일이 없다 → 폐지된 스위치가 아직 살아 있다 (max={max(cal)})"
+    )
 
 
 def test_portfolio_engine_uses_pit_reader_daily_conn():
@@ -410,19 +442,43 @@ def test_corp_events_conn_targets_kis_template():
             assert cur.fetchone()[0] == "kis_template"
 
 
-def test_corp_events_conn_follows_legacy_rollback(monkeypatch):
-    """롤백 시 이벤트도 레거시(robotrader)로 되돌아간다.
+def test_corp_events_conn_ignores_retired_legacy_switch(monkeypatch):
+    """[계약 반전] 폐지 env 를 넣어도 이벤트 연결은 kis_template 이다.
 
-    ★ 이 테스트는 **호출 시점 해석**도 함께 고정한다 — corp_events 는 이 테스트
-      이전에 이미 import 돼 있으므로, DB명이 import 시점에 굳는 구조(기존
-      _DB_DEFAULTS 모듈 상수)면 여기서 env 를 바꿔도 반영되지 않아 실패한다.
+    (2026-08-17 이전: robotrader 를 단언 = 롤백이 «작동함»을 고정했다.)
     """
     monkeypatch.setenv("KIS_DATA_SOURCE", "legacy")
+    monkeypatch.setenv("CORP_EVENTS_DB", "some_other_events")
     from multiverse.data import corp_events
     with corp_events._conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT current_database()")
-            assert cur.fetchone()[0] == "robotrader"
+            assert cur.fetchone()[0] == "kis_template"
+
+
+def test_corp_events_conn_resolves_db_at_call_time(monkeypatch):
+    """DB명은 **호출 시점**에 resolver 로 정해진다(import 시점에 굳지 않는다).
+
+    옛 `_DB_DEFAULTS` 모듈 상수 구조로 되돌아가면 여기서 잡힌다. resolver 가
+    이제 상수를 돌려주므로 env 로는 관측할 수 없어졌다 → resolver 자체를
+    가로채서 「연결할 때마다 다시 물어본다」를 확인한다(비-vacuous 유지).
+    """
+    from multiverse.data import corp_events
+    calls = []
+
+    def _spy():
+        calls.append(1)
+        return "kis_template"
+
+    monkeypatch.setattr(corp_events, "resolve_corp_events_source_db", _spy)
+    with corp_events._conn():
+        pass
+    with corp_events._conn():
+        pass
+    assert len(calls) == 2, (
+        f"연결마다 resolver 를 호출해야 한다 — 실제 {len(calls)}회 "
+        f"(0이면 DB명이 import 시점에 굳은 것)"
+    )
 
 
 def test_corp_events_does_not_read_timescale_db_env():
@@ -459,43 +515,65 @@ def test_corp_events_sees_events_newer_than_legacy_freeze():
 def test_get_adj_factor_reads_daily_price_source(monkeypatch):
     """get_adj_factor 는 daily_prices 를 읽으므로 **일봉** resolver 를 따라야 한다.
 
-    기본 모드에선 두 resolver 가 모두 kis_template 이라 구분이 안 된다 →
-    legacy 로 갈라 놓고(일봉=robotrader_quant, 이벤트=robotrader) 확인한다.
     기존엔 corp_events._DB_DEFAULTS(=TIMESCALE_DB, 기본 robotrader)로 daily_prices
-    를 읽어 **일봉 SSOT 를 우회**하고 있었다.
+    를 읽어 **일봉 SSOT 를 우회**하고 있었다. 그 회귀를 막는 테스트다.
+
+    🔑 판별력 유지 방법이 바뀌었다: 예전엔 `KIS_DATA_SOURCE=legacy` 로 두 소스를
+      서로 다른 DB(일봉=robotrader_quant / 이벤트=robotrader)로 «갈라놓고» 확인했다.
+      스위치가 폐지돼 두 resolver 가 같은 값을 돌려주는 지금 그 방법을 쓰면
+      **아무것도 구별하지 못하는 vacuous 테스트**가 된다.
+      → resolver 두 개를 서로 다른 sentinel 로 몽키패치해 갈라놓는다.
+        (실제 연결은 하지 않는다 — connect 를 가로채 DB명만 확인한다.)
     """
-    monkeypatch.setenv("KIS_DATA_SOURCE", "legacy")
     import psycopg2 as pg
     from multiverse.data import corp_events
 
+    monkeypatch.setattr(corp_events, "resolve_daily_source_db", lambda: "sentinel_daily")
+    monkeypatch.setattr(
+        corp_events, "resolve_corp_events_source_db", lambda: "sentinel_events")
+
     captured = []
-    real_connect = pg.connect
+
+    class _Boom(Exception):
+        pass
 
     def _spy(**kwargs):
         captured.append(kwargs.get("database"))
-        return real_connect(**kwargs)
+        raise _Boom("연결까지 갈 필요 없음 — DB명만 확인")
 
     monkeypatch.setattr(pg, "connect", _spy)
-    corp_events.get_adj_factor("005930", date(2026, 4, 1))
+    # 1순위(daily_prices) 조회 실패는 get_adj_factor 가 흡수하고 corp_events 폴백으로
+    # 넘어간다 → 그 폴백 연결에서 _Boom 이 다시 나 밖으로 전파된다. 여기서 잡는다:
+    # 우리가 확인하려는 건 «첫 connect 의 DB명» 뿐이다.
+    try:
+        corp_events.get_adj_factor("005930", date(2026, 4, 1))
+    except _Boom:
+        pass
 
     assert captured, "connect 가 호출되지 않음 — 테스트가 아무것도 검증 못 함"
-    assert captured[0] == "robotrader_quant", (
+    assert captured[0] == "sentinel_daily", (
         f"daily_prices 를 일봉 소스가 아닌 '{captured[0]}' 에서 읽고 있다"
+        f" (sentinel_events 면 이벤트 소스를 잘못 쓰는 것)"
     )
 
 
 def test_no_lingering_duplicate_source_envs():
     """중복 소스 env 를 **실제로 읽는** 코드가 없는지 리포 전역 가드.
 
-    TIMESCALE_QUANT_DB / REBOUND_MINUTE_DB / REBOUND_DAILY_DB 는 KIS_DATA_SOURCE
-    하나로 수렴됐다. 이력을 설명하는 주석·docstring 언급은 허용하고(그 편이 다음
-    사람에게 유용하다) `os.getenv("X")` / `os.environ["X"]` 같은 **읽기**만 잡는다.
+    TIMESCALE_QUANT_DB / REBOUND_MINUTE_DB / REBOUND_DAILY_DB 는 먼저 KIS_DATA_SOURCE
+    하나로 수렴됐고, 그 KIS_DATA_SOURCE(+ QUANT_DB / MINUTE_DB / CORP_EVENTS_DB)마저
+    2026-08-17 **폐지**됐다. 이력을 설명하는 주석·docstring 언급은 허용하고(그 편이
+    다음 사람에게 유용하다) `os.getenv("X")` / `os.environ["X"]` 같은 **읽기**만 잡는다.
     (archive/ 는 동결된 과거 산출물이라 제외.)
+
+    🔑 이게 「스위치가 정말 죽었는가」의 리포 전역 음성 대조다 — resolver 만 고쳐도
+      다른 모듈이 몰래 env 를 읽고 있으면 반쯤 살아 있는 스위치가 남는다.
     """
     import re
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
-    banned = ("TIMESCALE_QUANT_DB", "REBOUND_MINUTE_DB", "REBOUND_DAILY_DB")
+    banned = ("TIMESCALE_QUANT_DB", "REBOUND_MINUTE_DB", "REBOUND_DAILY_DB") \
+        + _RETIRED_SOURCE_ENVS
     # 실제 env 읽기 패턴만: getenv("X" / environ["X"] / environ.get("X"
     patterns = {
         tok: re.compile(r"""(getenv\(|environ\[|environ\.get\()\s*["']%s["']""" % tok)
@@ -513,3 +591,191 @@ def test_no_lingering_duplicate_source_envs():
             if pat.search(text):
                 offenders.append(f"{path.relative_to(root)}:{tok}")
     assert offenders == [], f"중복 소스 env 를 읽는 코드 재유입: {offenders}"
+
+
+# ===========================================================================
+# 6) 🔴 DROP 게이트 — DB명 'robotrader' 하드코딩 금지
+# ===========================================================================
+# 위 (5)번 게이트는 「폐지된 **env 이름**을 읽는가」만 본다. 그것과 별개로,
+# 연결 인자에 **DB명 문자열이 직박혀 있으면** `DROP DATABASE robotrader` 순간
+# 그 경로가 즉사한다 — env 게이트는 그걸 하나도 못 잡는다.
+# ---------------------------------------------------------------------------
+
+# 「값이 DB명 자리에 있는 'robotrader'」만 잡는다.
+#   · dbname="robotrader" / dbname='robotrader'
+#   · database="robotrader" / "database": "robotrader"   (dict·JSON 리터럴)
+#   · _conn("robotrader")                                (위치인자 첫 자리)
+_HARDCODED_DB_PATTERNS = (
+    r"""(?:dbname|database)["']?\s*(?:=|:)\s*["']robotrader["']""",
+    r"""\(\s*["']robotrader["']""",
+)
+
+# 예외 — 여기서 걸려도 결함이 아니다.
+_DROP_GATE_ALLOWED_DIRS = (
+    # ── 설계상 레거시를 가리켜야 하는 곳 ────────────────────────────────
+    "archive",       # 동결된 과거 산출물. 되살릴 일이 없다.
+    "kis_db",        # scripts/kis_db/ = 레거시→kis 「이관 전용」 도구.
+                     #   DB 와 함께 죽는 것이 설계다(원본을 읽어야 이관이 성립).
+    # ── 소스가 아닌 것 ────────────────────────────────────────────────
+    # 🔑 미추적 스크래치 파일 하나로 게이트가 빨개지면 「고장난 경보」가 된다.
+    #   범위를 좁혀서가 아니라 **소스가 아닌 경로를 빼서** 그 상황을 없앤다.
+    "scratchpad",
+    ".git", "venv", ".venv", "env", "__pycache__", "node_modules",
+    ".pytest_cache", ".mypy_cache", ".ruff_cache", "site-packages",
+    ".worktrees",
+)
+
+
+def _drop_gate_code_only_lines(text: str):
+    """주석·삼중따옴표 문자열을 **뺀** {lineno: 코드} 맵.
+
+    🔑 이력을 설명하는 산문은 허용해야 한다 — 「예전엔 dbname="robotrader" 였다」는
+      다음 사람에게 유용한 정보지 결함이 아니다. 그래서 순수 텍스트 grep 이 아니라
+      **토크나이저**로 (a) `#` 주석 (b) docstring(삼중따옴표 리터럴) 을 걷어내고
+      «코드로 살아 있는» 토큰만 검사한다.
+      (일반 문자열 리터럴은 남긴다 — `"database": "robotrader"` 가 바로 그 형태다.)
+    """
+    import io
+    import tokenize
+
+    lines = {}
+    try:
+        toks = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except Exception:
+        # 파싱 실패(구문오류·인코딩 등)면 원문 그대로 검사한다 — 미탐보다 과탐이 낫다.
+        return {i: ln for i, ln in enumerate(text.splitlines(), 1)}
+    for tok in toks:
+        if tok.type == tokenize.COMMENT:
+            continue
+        if tok.type == tokenize.STRING:
+            body = tok.string.lstrip("rbfuRBFU")
+            if body[:3] in ('"""', "'''"):
+                continue  # docstring/블록 산문
+        lines[tok.start[0]] = lines.get(tok.start[0], "") + tok.string
+    return lines
+
+
+def _scan_hardcoded_robotrader_db(root, self_path):
+    """root 아래 *.py 에서 DB명 하드코딩을 찾아 ["경로:줄: 원문", ...] 반환."""
+    import re
+    from pathlib import Path
+
+    pats = [re.compile(p) for p in _HARDCODED_DB_PATTERNS]
+    offenders = []
+    for path in Path(root).rglob("*.py"):
+        parts = path.parts
+        if "__pycache__" in parts or "venv" in parts:
+            continue
+        if any(d in parts for d in _DROP_GATE_ALLOWED_DIRS):
+            continue
+        if path.resolve() == Path(self_path).resolve():
+            continue  # 이 테스트 자신(패턴 문자열 보유)
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if "robotrader" not in text:
+            continue  # 빠른 컷
+        raw = text.splitlines()
+        for lineno, code in _drop_gate_code_only_lines(text).items():
+            if any(p.search(code) for p in pats):
+                src = raw[lineno - 1].strip() if lineno <= len(raw) else code
+                offenders.append(f"{path.relative_to(root)}:{lineno}: {src}")
+    return sorted(offenders)
+
+
+def test_no_hardcoded_robotrader_dbname():
+    """🔴 DROP 게이트 — DB명 `robotrader` 를 직박은 연결이 없어야 한다.
+
+    `robotrader` DB 는 2026-08-16 통합으로 데이터가 전부 kis_template 에 이관됐고
+    **삭제 예정**이다. 삭제되는 순간 이 문자열을 들고 있는 경로는 전부 즉사한다.
+    폐지된 env 를 잡는 `test_no_lingering_duplicate_source_envs` 는 이 형태를
+    **하나도 못 잡는다**(env 를 안 읽고 리터럴을 쓰니까) — 그래서 게이트가 둘이다.
+
+    ⚠️ **롤명과 구분한다.** `robotrader` 는 DB명이자 **PostgreSQL 롤명**이기도 하다:
+      `user="robotrader"` · `TIMESCALE_USER` · `KIS_DB_USER` · `EXTERNAL_DB_USER` ·
+      `psql -U robotrader` 는 **계정명이라 정상**이고 DB 삭제와 무관하다. 이걸 잡으면
+      오탐이다(리포 전역에 50곳 넘게 있다). 그래서 「dbname/database 자리」와
+      「함수 첫 위치인자」라는 **자리**로만 판정한다.
+
+    허용:
+      · `archive/`      — 동결된 과거 산출물
+      · `scripts/kis_db/` — 레거시→kis 이관 «전용» 도구. DB 와 함께 죽는 게 설계다.
+      · 이력 주석·docstring — 토크나이저로 걷어낸다(위 헬퍼 참조).
+
+    🔑 스캔 범위는 **리포 루트**다(형제 env 게이트의 `parents[1]` 보다 한 칸 위).
+      좁게 잡았다가 넓혔다 — `RoboTrader_template/` 만 훑으면 리포 루트의
+      `scripts/10pct_strategy/p0_backfill_corp_events.py`(corp_events 에 **INSERT**
+      하는 쓰기 스크립트)를 놓친다. ***가장 잡아야 할 것을 못 잡는 게이트는
+      「거짓 통과」다.*** 미추적 스크래치 파일 문제는 범위가 아니라
+      `_DROP_GATE_ALLOWED_DIRS` 로 푼다.
+    """
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+
+    # 🔑 「입력이 비어 있음」과 「위반이 없음」은 **같은 얼굴로** 통과한다.
+    #   경로 오지정·allowlist 과잉으로 0개를 훑고도 초록불이 뜨는 게 이 프로젝트가
+    #   반복해서 밟은 「거짓 통과」다. 그래서 **훑은 양**을 먼저 단언한다.
+    #   (실측 2026-08-17: 게이트가 훑는 .py 1,041개 중 'robotrader' 문자열 보유
+    #    **후보 124개**. 바닥값은 넉넉히 30 으로 둔다 — 리포가 줄어도 안 깨지되,
+    #    root 오지정으로 0~몇 개가 되면 즉시 빨개진다.)
+    candidates = [
+        p for p in root.rglob("*.py")
+        if not any(d in p.parts for d in _DROP_GATE_ALLOWED_DIRS)
+        and "robotrader" in p.read_text(encoding="utf-8", errors="ignore")
+    ]
+    assert len(candidates) >= 30, (
+        f"스캐너가 훑은 후보가 {len(candidates)}개뿐이다 — 게이트가 «돌지 않았을» 수 있다"
+        f" (root={root}). 통과했다는 사실만으로 안심하지 말 것."
+    )
+
+    offenders = _scan_hardcoded_robotrader_db(root, __file__)
+    assert offenders == [], (
+        "DB명 'robotrader' 하드코딩 재유입 — **이 DB 는 폐기 예정이다. "
+        "resolver 를 쓰라** (config.constants.resolve_daily_source_db / "
+        "resolve_minute_source_db / resolve_corp_events_source_db):\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_drop_gate_scanner_actually_catches(tmp_path):
+    """[음성 대조] 위 스캐너가 **정말로 잡는가** — 일부러 위반을 심어 확인한다.
+
+    🔑 「통과했다」는 스캐너가 돌았다는 증거가 아니다. 정규식 오타·경로 오지정으로
+      **0개를 훑고도 통과**할 수 있다. 그래서 양성 검체를 넣어 잡히는 걸 보이고,
+      같은 자리의 **롤명**은 잡히지 않는 걸(오탐 없음) 함께 고정한다.
+    """
+    (tmp_path / "offender_kwarg.py").write_text(
+        'import psycopg2\nc = psycopg2.connect(host="h", dbname="robotrader")\n',
+        encoding="utf-8")
+    (tmp_path / "offender_dict.py").write_text(
+        'DB = {"host": "h", "database": "robotrader"}\n', encoding="utf-8")
+    (tmp_path / "offender_positional.py").write_text(
+        'def _conn(n): ...\nwith _conn("robotrader") as c:\n    pass\n',
+        encoding="utf-8")
+
+    caught = _scan_hardcoded_robotrader_db(tmp_path, __file__)
+    assert len(caught) == 3, f"양성 3건을 다 못 잡았다: {caught}"
+    assert any("offender_kwarg.py:2" in c for c in caught)
+    assert any("offender_dict.py:1" in c for c in caught)
+    assert any("offender_positional.py:2" in c for c in caught)
+
+    # ── 오탐 대조: 롤명·이력 주석·docstring·허용 디렉터리는 잡히면 안 된다 ──
+    (tmp_path / "clean_role.py").write_text(
+        'import psycopg2\n'
+        'c = psycopg2.connect(dbname="kis_template", user="robotrader")\n'
+        'import subprocess\n'
+        'subprocess.run(["psql", "-U", "robotrader", "-d", "kis_template"])\n',
+        encoding="utf-8")
+    (tmp_path / "clean_history.py").write_text(
+        '"""옛 코드는 dbname="robotrader" 였다 — 2026-08-17 resolver 로 교체."""\n'
+        '# 이전: database="robotrader"\n'
+        'DB = {"database": "kis_template"}\n',
+        encoding="utf-8")
+    (tmp_path / "archive").mkdir()
+    (tmp_path / "archive" / "frozen.py").write_text(
+        'DB = {"database": "robotrader"}\n', encoding="utf-8")
+    (tmp_path / "kis_db").mkdir()
+    (tmp_path / "kis_db" / "migrate.py").write_text(
+        'c = connect(dbname="robotrader")\n', encoding="utf-8")
+
+    caught2 = _scan_hardcoded_robotrader_db(tmp_path, __file__)
+    assert len(caught2) == 3, (
+        f"오탐 발생 — 롤명/이력주석/허용디렉터리까지 잡았다: {caught2}")

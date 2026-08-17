@@ -3,9 +3,11 @@
 외국인 순매수 백필 스크립트 (Phase 5 — F-06)
 ============================================
 소스: 네이버 금융 frgn.naver (종목별 일별 외국인 순매매량)
-대상: robotrader DB daily_prices 305종목
+종목목록 **읽기**: 일봉 resolver(= kis_template).`daily_prices`
+  (2026-08-17 정정 — 옛 문구 「robotrader DB daily_prices 305종목」은 폐기 예정 DB)
 기간: 가능한 전체 (네이버 최대 약 40페이지 × 20일 = ~800일)
-DB:   robotrader_quant.foreign_flow 신규 테이블
+**쓰기**: `robotrader_quant.foreign_flow` — 🔴 **동결 레거시**(2026-07-10)에 쓴다.
+  실행 전 `TIMESCALE_DB` 를 명시해야 한다(fail-fast, `_quant_write_dsn()` 참조).
 
 PIT 보장:
 - 외국인 순매수는 T일 마감 후 발표 → T일 데이터를 T일로 저장
@@ -32,6 +34,8 @@ import pandas as pd
 # 안 잡히므로 역방향 import 직전에 repo 루트를 sys.path 에 부트스트랩한다.
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from collectors.foreign_flow_fetcher import _make_session, fetch_foreign_naver  # noqa: E402,F401
+from config.constants import (  # noqa: E402
+    require_explicit_target_db, resolve_daily_source_db)
 
 # ─────────────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -43,14 +47,46 @@ logger = logging.getLogger(__name__)
 
 PILOT_CODES = ["005930", "000660", "005380", "035420", "051910"]
 
+# 🔴 이 스크립트의 **쓰기 대상은 동결 레거시 `robotrader_quant`** 다(2026-07-10 동결,
+#    형제 봇 중단). 그 사실 자체는 이번 `robotrader` 폐기 범위 «밖»이라 대상 DB 를
+#    바꾸지 않는다 — 바꾸면 라이브 SSOT(kis_template)에 INSERT 가 나간다.
+# ⚠️ user 의 'robotrader' 는 **롤명**이라 그대로 둔다(DB명과 동음이의).
 DB_QUANT = dict(
     host="127.0.0.1", port=5433, dbname="robotrader_quant",
     user="robotrader", password="1234"
 )
-DB_RT = dict(
-    host="127.0.0.1", port=5433, dbname="robotrader",
-    user="robotrader", password="1234"
-)
+
+
+def _quant_write_dsn() -> dict:
+    """foreign_flow **쓰기** 대상 DSN — 연결 전 fail-fast.
+
+    🔑 2026-08-17 정정 — 가드가 «엉뚱한 연결»에 붙어 있었다:
+      원래 fail-fast 는 `_rt_dsn()`(종목목록 **읽기**)에 걸려 있었다. 그런데 이
+      스크립트에서 위험한 쪽은 CREATE TABLE / INSERT 를 치는 **이쪽**이다.
+      읽기는 SSOT 를 오염시킬 수 없다 ⇒ 가드를 쓰기로 옮긴다.
+
+    ⚠️ 반환값이 아니라 **전제조건**으로 쓴다. `require_explicit_target_db()` 의
+      리턴(=TIMESCALE_DB 값)을 그대로 dbname 에 꽂으면, TIMESCALE_DB=kis_template
+      인 셸에서 이 백필이 **라이브 SSOT 에 INSERT** 하게 된다 — 정확히 이 가드가
+      막으려던 사고다. 그래서 대상은 DB_QUANT 로 고정하고, 가드는 「사람이 대상
+      DB 를 의식하고 실행했는가」만 묻는다(미지정이면 SystemExit).
+    """
+    require_explicit_target_db(
+        "foreign_flow 백필 **쓰기** 실행 확인 (실제 대상은 robotrader_quant 고정)")
+    return DB_QUANT
+
+
+def _rt_dsn() -> dict:
+    """종목목록(`daily_prices`) **읽기** 대상 — 일봉 resolver 경유.
+
+    2026-08-17: 하드코딩 'robotrader' → 한 번 `require_explicit_target_db` 로
+    갔다가 **resolver 로 되돌렸다**. 읽기 경로에 라이브 운영 env(TIMESCALE_DB)를
+    요구하면 clean checkout·워크트리·CI 에서 죽는다(2026-07-16 통일이 고친 문제).
+    fail-fast 는 위 `_quant_write_dsn()` 이 맡는다.
+    ⚠️ user 의 'robotrader' 는 **롤명**이라 그대로 둔다(DB명과 동음이의).
+    """
+    return dict(host="127.0.0.1", port=5433, user="robotrader", password="1234",
+                dbname=resolve_daily_source_db())
 
 DDL = """
 CREATE TABLE IF NOT EXISTS foreign_flow (
@@ -76,7 +112,7 @@ CREATE INDEX IF NOT EXISTS ix_foreign_flow_date ON foreign_flow (date);
 # ─────────────────────────────────────────────────────────────────────────────
 
 def ensure_table() -> None:
-    conn = psycopg2.connect(**DB_QUANT)
+    conn = psycopg2.connect(**_quant_write_dsn())
     try:
         with conn.cursor() as cur:
             cur.execute(DDL)
@@ -89,7 +125,7 @@ def ensure_table() -> None:
 def get_stock_codes(pilot: bool = False) -> list[str]:
     if pilot:
         return PILOT_CODES
-    conn = psycopg2.connect(**DB_RT)
+    conn = psycopg2.connect(**_rt_dsn())
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -103,7 +139,7 @@ def get_stock_codes(pilot: bool = False) -> list[str]:
 
 
 def get_existing_dates(code: str) -> set:
-    conn = psycopg2.connect(**DB_QUANT)
+    conn = psycopg2.connect(**_quant_write_dsn())
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT date FROM foreign_flow WHERE stock_code = %s", (code,))
@@ -115,7 +151,7 @@ def get_existing_dates(code: str) -> set:
 def upsert_rows(rows: list[tuple]) -> int:
     if not rows:
         return 0
-    conn = psycopg2.connect(**DB_QUANT)
+    conn = psycopg2.connect(**_quant_write_dsn())
     try:
         with conn.cursor() as cur:
             psycopg2.extras.execute_values(
@@ -206,7 +242,7 @@ def main() -> None:
     if errors:
         logger.warning("오류 %d종목: %s", len(errors), errors[:10])
 
-    conn = psycopg2.connect(**DB_QUANT)
+    conn = psycopg2.connect(**_quant_write_dsn())
     try:
         with conn.cursor() as cur:
             cur.execute(

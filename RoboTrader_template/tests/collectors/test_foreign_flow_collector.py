@@ -109,161 +109,22 @@ def test_collect_foreign_flow_skips_empty(monkeypatch):
     assert out == {"codes": 1, "rows": 0}
 
 
-# ── reconcile_foreign_flow ────────────────────────────────────────────────────
+# ── 레거시 교차비교 제거 가드 (2026-08-17) ────────────────────────────────────
+#
+# 🔴 삭제된 테스트 8개 — `reconcile_foreign_flow` 와 그 전용 헬퍼 `_prev_trading_day`
+#    가 레거시 DB 폐기와 함께 제거됐기 때문이다. 없어진 함수는 시험할 수 없다:
+#      overlap_match_pass · legacy_frozen_no_legacy_pass · no_new_data_fail ·
+#      no_new_data_fail_even_when_legacy_empty · prev_trading_day_skips_weekend ·
+#      checks_prev_trading_day_not_today · logs_check_date_for_self_describing_row ·
+#      genuine_prev_day_gap_fails  (+ 오직 이들만 쓰던 _patch_dbs/_DateAware* 헬퍼)
+#
+# ⚠️ 잃어버린 커버리지 자기신고: 「네이버 차단으로 foreign_flow 가 0행이면 FAIL」
+#    가드가 사라진다. 다만 그 판정은 `KIS_DATA_SOURCE=legacy` 게이트 안에서만
+#    돌았으므로 라이브에서는 **이미 휴면**이었다(라이브 .env 는 new). 수집 실패는
+#    eod_collection._safe 가 {"error": ...} 로 남기고 system_monitor 가 로그에
+#    올린다 — 대체 감시 경로는 유지된다.
 
-def _patch_dbs(monkeypatch, legacy_rows, new_rows):
-    legacy_conn = _MockConn(legacy_rows)
-    # new DB: 첫 cursor = SELECT foreign_flow, 두 번째 cursor = INSERT no-op
-    new_conn = _MockConn(new_rows, [])
-    monkeypatch.setattr(ffc.psycopg2, "connect", lambda **kw: legacy_conn)
-    monkeypatch.setattr(ffc.KisDbConnection, "get_connection", lambda: _CM(new_conn))
-
-
-def test_reconcile_foreign_flow_overlap_match_pass(monkeypatch):
-    """(a) 레거시·새 DB 모두 값 존재 + 정확일치 → PASS."""
-    _patch_dbs(
-        monkeypatch,
-        legacy_rows=[("005930", 100), ("000660", -50)],
-        new_rows=[("005930", 100), ("000660", -50)],
-    )
-    result = ffc.reconcile_foreign_flow("2026-06-12")
-    assert result["verdict"] == "PASS"
-    assert result["real_rows"] == 2
-    assert result["new_rows"] == 2
-    assert result["value_match"] == 2
-
-
-def test_reconcile_foreign_flow_legacy_frozen_no_legacy_pass(monkeypatch):
-    """(b) 레거시 동결(real_rows=0) + 새 수집 성공(new_rows>0) → PASS(no-legacy)."""
-    _patch_dbs(
-        monkeypatch,
-        legacy_rows=[],
-        new_rows=[("005930", 100), ("000660", -50)],
-    )
-    result = ffc.reconcile_foreign_flow("2026-06-30")
-    assert result["verdict"] == "PASS"
-    assert result["real_rows"] == 0
-    assert result["new_rows"] == 2
-    assert result["value_match_rate"] == 1.0
-    assert result["coverage"] == 1.0
-
-
-def test_reconcile_foreign_flow_no_new_data_fail(monkeypatch):
-    """(c) 새 수집 0행(new_rows=0) → FAIL(네이버 차단/스크래핑 실패 탐지)."""
-    _patch_dbs(
-        monkeypatch,
-        legacy_rows=[("005930", 100)],
-        new_rows=[],
-    )
-    result = ffc.reconcile_foreign_flow("2026-06-30")
-    assert result["verdict"] == "FAIL"
-    assert result["new_rows"] == 0
-
-
-def test_reconcile_foreign_flow_no_new_data_fail_even_when_legacy_empty(monkeypatch):
-    """new_rows==0 은 레거시가 비어 있어도 FAIL (수집 실패가 우선)."""
-    _patch_dbs(monkeypatch, legacy_rows=[], new_rows=[])
-    result = ffc.reconcile_foreign_flow("2026-06-30")
-    assert result["verdict"] == "FAIL"
-    assert result["new_rows"] == 0
-
-
-# ── Item 1: T→T-1 reconcile (네이버 T+1 게시 지연 대응) ────────────────────────
-
-def test_prev_trading_day_skips_weekend():
-    # 2026-06-29 은 월요일 → 직전 거래일은 금요일 2026-06-26
-    assert ffc._prev_trading_day("2026-06-29") == "2026-06-26"
-    # 화요일 → 직전 거래일은 월요일
-    assert ffc._prev_trading_day("2026-06-30") == "2026-06-29"
-    # compact 형식도 허용
-    assert ffc._prev_trading_day("20260629") == "2026-06-26"
-
-
-class _DateAwareCursor:
-    """date 파라미터별로 다른 행을 돌려주는 커서 (T vs T-1 검증용)."""
-
-    def __init__(self, rows_by_date):
-        self._rows_by_date = rows_by_date
-        self._last = []
-
-    def execute(self, sql, params=None):
-        if params and "SELECT" in sql.upper():
-            self._last = self._rows_by_date.get(params[0], [])
-        else:
-            self._last = []
-
-    def fetchall(self):
-        return self._last
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        pass
-
-
-class _DateAwareConn:
-    def __init__(self, rows_by_date):
-        self._rows_by_date = rows_by_date
-
-    def cursor(self):
-        return _DateAwareCursor(self._rows_by_date)
-
-    def commit(self):
-        pass
-
-    def close(self):
-        pass
-
-
-def _patch_date_aware(monkeypatch, legacy_by_date, new_by_date):
-    monkeypatch.setattr(ffc.psycopg2, "connect", lambda **kw: _DateAwareConn(legacy_by_date))
-    monkeypatch.setattr(ffc.KisDbConnection, "get_connection", lambda: _CM(_DateAwareConn(new_by_date)))
-
-
-def test_reconcile_checks_prev_trading_day_not_today(monkeypatch):
-    """T 는 네이버 T+1 지연으로 항상 비어 있어도(정상), T-1 데이터가 있으면 FALSE-FAIL 안 함."""
-    # T=2026-06-30(화) → T-1=2026-06-29(월). new DB 는 T-1 만 채워져 있음.
-    _patch_date_aware(
-        monkeypatch,
-        legacy_by_date={},  # 레거시 동결
-        new_by_date={"2026-06-29": [("005930", 100), ("000660", -50)]},  # T-1 존재, T 없음
-    )
-    result = ffc.reconcile_foreign_flow("2026-06-30")
-    assert result["check_date"] == "2026-06-29"
-    assert result["new_rows"] == 2
-    assert result["verdict"] == "PASS"  # no-legacy PASS, 더 이상 거짓 FAIL 없음
-
-
-def test_reconcile_logs_check_date_for_self_describing_row(monkeypatch):
-    """R7: DB 행은 trade_date=T(EOD 실행일)로 기록되지만 실제 검증 대상은 T-1이다.
-    schema 에 여분 필드가 없어(collection_reconciliation 은 scripts/kis_db/schema.py
-    소유, 연구트리라 이번 하드닝 범위 밖) 로그로 자기서술성을 확보한다 — trade_date
-    와 check_date 를 모두 명시적으로 남겨 운영자가 로그만으로 어느 날짜가 실제
-    검증됐는지 알 수 있어야 한다."""
-    _patch_date_aware(
-        monkeypatch,
-        legacy_by_date={},
-        new_by_date={"2026-06-29": [("005930", 100)]},
-    )
-    logged = []
-    monkeypatch.setattr(ffc.logger, "info", lambda *a, **kw: logged.append(a))
-    ffc.reconcile_foreign_flow("2026-06-30")
-    assert logged, "reconcile_foreign_flow 는 check_date 를 명시하는 info 로그를 남겨야 한다"
-    msg_args = logged[-1]
-    joined = " ".join(str(x) for x in msg_args)
-    assert "2026-06-30" in joined  # trade_date
-    assert "2026-06-29" in joined  # check_date
-
-
-def test_reconcile_genuine_prev_day_gap_fails(monkeypatch):
-    """T-1 데이터가 실제로 비어 있으면(진짜 네이버 장애) FAIL."""
-    _patch_date_aware(
-        monkeypatch,
-        legacy_by_date={"2026-06-29": [("005930", 100)]},
-        new_by_date={"2026-06-30": [("005930", 100)]},  # T 는 있으나 T-1 은 비어 있음
-    )
-    result = ffc.reconcile_foreign_flow("2026-06-30")
-    assert result["check_date"] == "2026-06-29"
-    assert result["new_rows"] == 0
-    assert result["verdict"] == "FAIL"
+def test_legacy_reconcile_helpers_are_gone():
+    """레거시 대조 심볼 재유입 방지 — 죽은 DB(robotrader_quant)에 직접 붙던 코드다."""
+    for nm in ("reconcile_foreign_flow", "reconcile_verdict", "_prev_trading_day"):
+        assert not hasattr(ffc, nm), f"제거된 심볼이 되살아났다: {nm}"

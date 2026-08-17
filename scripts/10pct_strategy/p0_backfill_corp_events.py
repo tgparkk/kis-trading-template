@@ -1,6 +1,28 @@
 """
 P0 corp_events 백필 스크립트 (pykrx 기반)
 
+🔴 대상 DB: env ``TIMESCALE_DB`` **명시 필수**(기본값 없음 — 아래 「2026-08-17」 참조).
+
+⚠️ **`RoboTrader_template/scripts/backfill_corp_events.py` 와 혼동하지 말 것 —
+   둘은 «중복본이 아니다».** 같은 `corp_events` 표에 쓰지만 **수집 소스가 다르다**
+   (2026-08-17 실측 대조):
+
+     이 파일(pykrx)          : split(+meta.direction='merge') · dividend_ex
+     backfill_corp_events.py : split · rights_issue · bonus_issue · administrative
+                               (OpenDART + FDR + KRX)
+
+   · 정의 13개 vs 16개, **이름이 겹치는 것은 `main()` 하나뿐**(진입점이라 당연).
+     수집 로직 함수는 이름·시그니처가 전부 다르다. 1,580줄 중 1,160줄이 다르다.
+   · `meta.source` 로 갈린다 — DB 실측: `split/pykrx` **105건**(이 파일이 넣은 것,
+     kis_template·robotrader 양쪽 동일) vs `split/opendart` 77건(저쪽).
+     PK 가 `(stock_code, event_type, event_date)` 라 서로 **중복이 아니라 보완**이다.
+   · 🔑 `p0_apply_adj_factor.py` 가 읽는 `event_type='split' AND meta.split_factor`
+     행이 바로 이 파일의 산출물이다 — **죽은 코드가 아니다.**
+   · `dividend_ex` 는 **이 파일에만 있는 경로**이고 현재 **양쪽 DB 모두 0건**이다
+     (한 번도 완주하지 않았다는 뜻 — 없앨 기능이 아니라 «안 돌린» 기능).
+   ⇒ 「구버전 중복본이니 지워도 된다」는 판단은 **사실과 다르다.** 삭제 여부는
+     사장님 판단 영역이며, 지우면 `dividend_ex` 수집 수단이 사라진다.
+
 수집 대상:
   - split   : 액면분할 (액면가 감소, 예 500->100)
   - merge   : 액면병합 (액면가 증가, 예 100->500)  -- event_type 'split' 로 meta.direction='merge'
@@ -21,6 +43,15 @@ P0 corp_events 백필 스크립트 (pykrx 기반)
 소요 시간 예상:
   - split/merge: 종목당 ~0.3초 × 1,400종목 ≈ 7분
   - dividend_ex: 월별 전종목 조회 × 65개월 ≈ 20~40분 (KRX API rate)
+
+🔴 2026-08-17 — 적재 대상 DB 하드코딩 `database="robotrader"` 제거:
+  `robotrader` 는 2026-07-10 동결 레거시이고 **삭제 예정**이다. 이 스크립트는
+  `INSERT INTO corp_events` 를 치는 **쓰기** 스크립트라, 그대로 두면 DROP 즉시
+  즉사한다. 기본값을 라이브 SSOT(kis_template)로 «바꾸지» 않고 **없앴다** —
+  기본값을 새 SSOT 로 두면 실수 실행이 「라이브 SSOT 에 실수로 쓰기」가 되어
+  폭발 반경이 반대로 커진다. 미지정이면 SystemExit.
+  형제 스크립트 `RoboTrader_template/scripts/backfill_corp_events.py:127`
+  (`database=require_explicit_target_db("corp_events 백필 적재 대상")`) 와 **같은 관용구**다.
 """
 from __future__ import annotations
 
@@ -35,6 +66,13 @@ from typing import Optional
 
 import psycopg2
 import psycopg2.extras
+
+# 이 파일은 **리포 루트** scripts/ 에 있어 패키지 밖이다. `config` 를 잡으려면
+# RoboTrader_template 을 sys.path 에 올려야 한다(형제 스크립트와 동일 부트스트랩).
+from pathlib import Path as _Path  # noqa: E402
+
+sys.path.insert(0, str(_Path(__file__).resolve().parents[2] / "RoboTrader_template"))
+from config.constants import require_explicit_target_db  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
@@ -54,12 +92,13 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # 설정
 # ─────────────────────────────────────────────────────────────────────────────
+# ⚠️ user 의 'robotrader' 는 **롤명**이라 그대로 둔다(DB명과 동음이의).
+#    `database` 는 여기 두지 않는다 — 연결 시점에 require_explicit_target_db() 로 받는다.
 DB_CONF = dict(
     host="127.0.0.1",
     port=5433,
     user="robotrader",
     password="1234",
-    database="robotrader",
 )
 
 DEFAULT_START = "20210101"
@@ -87,7 +126,16 @@ PYKRX_THROTTLE = 0.25
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_conn():
-    return psycopg2.connect(**DB_CONF)
+    """corp_events **적재** 연결 — 대상 DB 미지정이면 SystemExit.
+
+    이 스크립트의 모든 연결은 쓰기 경로(INSERT ON CONFLICT)로 이어진다.
+    해석은 import 시점이 아니라 **연결 시점**에 한다 — import 만 하는 경로
+    (테스트·게이트 스캐너)를 죽이지 않기 위해서다.
+    """
+    return psycopg2.connect(
+        **DB_CONF,
+        database=require_explicit_target_db("corp_events 백필(pykrx) 적재 대상"),
+    )
 
 
 def insert_event(

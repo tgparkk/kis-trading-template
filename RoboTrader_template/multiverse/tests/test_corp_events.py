@@ -157,17 +157,25 @@ def test_is_halted_end_date_null_is_true():
 # D4: 적재 분포 검증 (실 DB)
 # ------------------------------------------------------------------ #
 
-def _try_connect_robotrader():
-    """robotrader DB 연결 시도. 실패 시 None 반환."""
+def _try_connect_events_db():
+    """이벤트 소스 DB 연결 시도. 실패 시 None 반환.
+
+    🔴 2026-08-17: `database=os.getenv("TIMESCALE_DB", "robotrader")` 를
+      **resolver 경유**로 교체했다. 옛 기본값 'robotrader' 는 2026-07-10 동결
+      레거시이고 곧 삭제된다 — 그대로 두면 이 테스트가 삭제 후 통째로 skip 되거나
+      (연결 실패) 죽은 데이터를 검증하게 된다.
+      ⚠️ user 의 'robotrader' 는 **롤명**이라 그대로 둔다(DB명과 동음이의).
+    """
     import os
     import psycopg2
+    from config.constants import resolve_corp_events_source_db
     try:
         return psycopg2.connect(
             host=os.getenv("TIMESCALE_HOST", "127.0.0.1"),
             port=int(os.getenv("TIMESCALE_PORT", "5433")),
             user=os.getenv("TIMESCALE_USER", "robotrader"),
             password=os.getenv("TIMESCALE_PASSWORD", "1234"),
-            database=os.getenv("TIMESCALE_DB", "robotrader"),
+            database=resolve_corp_events_source_db(),
         )
     except Exception:
         return None
@@ -175,10 +183,13 @@ def _try_connect_robotrader():
 
 @pytest.fixture(scope="module")
 def robotrader_conn():
-    """모듈 스코프 robotrader DB 연결."""
-    conn = _try_connect_robotrader()
+    """모듈 스코프 이벤트 소스(kis_template) DB 연결.
+
+    (픽스처 이름은 다수 테스트가 참조하므로 유지 — 이름의 robotrader 는 레거시 유래.)
+    """
+    conn = _try_connect_events_db()
     if conn is None:
-        pytest.skip("robotrader DB 연결 실패 (환경 없음)")
+        pytest.skip("이벤트 소스 DB 연결 실패 (환경 없음)")
     yield conn
     conn.close()
 

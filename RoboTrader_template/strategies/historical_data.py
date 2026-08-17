@@ -17,10 +17,11 @@ kis_template DB에서 과거 데이터를 읽는다 (2026-08-16 DB 통합 이후
 쓰도록 쿼리를 재작성했다(컬럼명·날짜타입·단위 규약이 모두 다르다. 각 함수 참조).
 
 ⚠️ resolve_daily_source_db() 를 쓰지 않는 이유:
-   가격 resolver 는 KIS_DATA_SOURCE=legacy 일 때 robotrader_quant 를 가리키는데,
-   그 DB 엔 `stock_sector`·`yearly_fundamentals` 가 **없다**. resolver 를 태우면
-   롤백 시 5개 함수 중 3개가 "relation 없음" 으로 죽는다. 이 모듈은 통합 원칙
-   「DB 는 kis_template 하나」를 그대로 따른다.
+   그 resolver 는 **가격(daily_prices/minute_candles) 전용** 진입점이고, 여기서
+   읽는 `stock_sector`·`yearly_fundamentals`·`financial_statements` 는 가격이 아니다.
+   이 모듈은 통합 원칙 「DB 는 kis_template 하나」를 그대로 따른다.
+   (과거엔 KIS_DATA_SOURCE=legacy 롤백 시 robotrader_quant 에 해당 테이블이 없어
+    5개 함수 중 3개가 죽는다는 이유도 있었는데, 그 롤백 경로는 2026-08-17 폐지됐다.)
 """
 
 import logging

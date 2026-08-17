@@ -8,8 +8,11 @@ KOSPI200 PIT × 2026-04-01~2026-05-23 stock-day 피처 추출 + 라벨링.
   - +2% 도달률이 base rate 대비 2배 이상인 신호 조합 확인 (Phase 1 게이트)
 
 데이터:
-  - 분봉: robotrader.public.minute_candles (host=127.0.0.1 port=5433)
+  - 분봉: 분봉 SSOT `resolve_minute_source_db()`.`public.minute_candles` (127.0.0.1:5433)
+    (2026-08-17 정정 — 옛 문구 「robotrader.public.minute_candles」는 폐기 예정 DB)
   - 일봉: robotrader_quant.public.daily_prices (동일 인스턴스)
+    🔴 이쪽은 아직 **동결 레거시**(2026-07-10)다 — 이번 `robotrader` 폐기 대상이
+       아니라 손대지 않았을 뿐이며, 분봉만 최신인 «반쯤 살아 있는» 상태다.
   - KOSPI200 PIT: multiverse/data/kospi200_pit.py (없으면 DB 직접 조회)
 
 룩어헤드 Hard Rule:
@@ -60,10 +63,15 @@ OUTPUT_REACH2PCT_CSV = REPORT_DIR / "reach_2pct_analysis.csv"
 # ---------------------------------------------------------------------------
 # DB 연결 설정
 # ---------------------------------------------------------------------------
+# 2026-08-17: `"database": "robotrader"` 하드코딩 → 분봉 resolver 경유(읽기 전용).
+#   그 DB 는 2026-07-10 동결 레거시이고 **삭제 예정**이라 두면 DROP 즉시 죽는다.
+#   ⚠️ user 의 'robotrader' 는 **롤명**이라 그대로 둔다(DB명과 동음이의).
+from config.constants import resolve_minute_source_db  # noqa: E402
+
 DB_MINUTE = {
     "host": os.getenv("TIMESCALE_HOST", "127.0.0.1"),
     "port": int(os.getenv("TIMESCALE_PORT", 5433)),
-    "database": "robotrader",
+    "database": resolve_minute_source_db(),
     "user": os.getenv("TIMESCALE_USER", "robotrader"),
     "password": os.getenv("TIMESCALE_PASSWORD", "1234"),
 }

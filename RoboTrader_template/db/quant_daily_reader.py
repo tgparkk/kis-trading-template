@@ -1,7 +1,7 @@
 """daily_prices 읽기 전용 리더 (스크리너 유니버스·일봉용).
 
-대상 DB 는 resolve_daily_source_db() 가 정한다 — **기본 kis_template**,
-KIS_DATA_SOURCE=legacy 일 때만 동결 레거시(robotrader_quant). 클래스명·모듈명의
+대상 DB 는 resolve_daily_source_db() 가 정한다 — **항상 kis_template**
+(레거시 robotrader_quant 롤백 경로는 2026-08-17 폐지). 클래스명·모듈명의
 `quant` 는 레거시 유래 이름일 뿐 더 이상 DB명을 뜻하지 않는다.
 전 종목·매일 갱신되는 일봉/유니버스를 읽는다.
 DB의 date 컬럼은 text('YYYY-MM-DD')라 ISO 문자열 비교로 필터/정렬하지만,
@@ -60,7 +60,7 @@ class QuantDailyReader:
         EOD 스크리너가 quant 적재(~15:35) 전에 돌거나 scan_date 가 휴장/미적재일이어도
         직전 거래일 유니버스로 폴백해 빈 유니버스가 되지 않게 한다(타이밍 무관).
 
-        추가로 ``market_cap IS NOT NULL`` 판별을 건다(DB 컷오버 KIS_DATA_SOURCE=new 대비):
+        추가로 ``market_cap IS NOT NULL`` 판별을 건다(kis_template 단일 DB 컷오버 대비):
         운영 현재가 쓰기(price.save_daily_prices_batch)는 OHLCV/volume 만 채우고
         market_cap 등 퀀트 메타는 NULL로 남긴다. 반면 퀀트 유니버스 행(수집기/이관분)만
         market_cap 이 채워진다. 병합 DB(kis_template)에서는 보유 종목 몇 개만 오늘자로

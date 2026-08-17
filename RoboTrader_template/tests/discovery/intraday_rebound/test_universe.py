@@ -77,7 +77,7 @@ def test_load_universe_uses_bounded_sql_when_end_date_given(monkeypatch):
         return pd.DataFrame({"stock_code": ["000001", "000002"]})
 
     monkeypatch.setattr(universe_module, "read_sql", _fake_read_sql)
-    codes = load_universe(dbname="robotrader", start_date="20250401",
+    codes = load_universe(dbname="kis_template", start_date="20250401",
                           end_date="20260630", min_coverage=0.9)
 
     assert captured["sql"].count("BETWEEN") == 2
@@ -94,7 +94,7 @@ def test_load_universe_uses_open_ended_sql_when_end_date_none(monkeypatch):
         return pd.DataFrame({"stock_code": ["000002", "000001"]})
 
     monkeypatch.setattr(universe_module, "read_sql", _fake_read_sql)
-    codes = load_universe(dbname="robotrader")
+    codes = load_universe(dbname="kis_template")
 
     assert "BETWEEN" not in captured["sql"]
     assert captured["params"] == ("20250401", "20250401", 0.9)
