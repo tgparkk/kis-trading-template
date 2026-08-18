@@ -1045,61 +1045,93 @@ class CandidateSelector:
         strategy_name: str,
         max_candidates: int,
     ) -> List[CandidateStock]:
-        """단일 전략의 후보를 DB 스냅샷 → 스크리너 JSON 순으로 조회.
+        """단일 전략의 후보를 **그 전략의 `screener_snapshots` 에서만** 조회한다.
 
-        DB 스냅샷이 오늘 날짜 기준으로 비어 있으면 공통 스크리너 JSON에서 로드합니다.
-        두 경로 모두 실패하면 빈 리스트를 반환합니다 (거래량 순위 API는 async이므로
-        여기서는 호출하지 않습니다 — _load_screener_candidates의 async fallback 활용).
+        🔑 **대체 명단은 없다.** 후보가 0건이면 그 전략은 그날 매수하지 않는다.
+
+        ## 왜 공통 스크리너 JSON 폴백을 없앴나 (2026-08-18)
+
+        종전에는 스냅샷이 비면 공통 `data/screener_*.json` 에서 후보를 가져왔다.
+        그 명단은 **전략과 무관**하다 — `"N일연속상승, 거래대금 N억"` 기준으로 뽑히고,
+        받는 전략의 `base_filter`(시총·거래대금)조차 적용되지 않았다.
+
+        1. **전략의 정체성은 진입 룰이다.** 룰을 안 거친 종목을 사면 그 전략이 아니다.
+        2. **성과 측정이 오염된다.** 「전략 X 수익률」에 X 가 아닌 매매가 섞인다.
+        3. 🔴 **`accepts_volume_fallback=False` 선언을 이 경로가 무시했다** —
+           `deep_mr_dev20`(「희소조건 전략 — 후보 없으면 미진입이 정합」)이 그 피해자였다.
+        4. 🔑 그런데도 «실제로» 새지 않은 이유는 설계가 아니라 **우연**이었다:
+           `data/screener_*.json` 을 쓰는 유일한 주체가 수동 연구 스크립트
+           (`scripts/run_screener.py`)뿐이라 파일이 4개월째 낡아 있었을 뿐이다
+           (`_resolve_screener_path` 는 «당일자» 파일만 받는다).
+           ⇒ ***연구 스크립트를 한 번 돌리면 라이브 후보가 바뀌는 구조였다.***
+           ⇒ ***「한 번도 발동한 적 없다」는 「막혀 있다」가 아니다.***
+
+        ⚠️ 단일/없음 전략 모드(backward compat)의 `load_from_screener` 경로는 그대로다
+        (`bot/candidate_loader.py`). 그 경로에는 「전략 고유 룰」이라는 개념이 없다.
         """
-        # 1순위: screener_snapshots DB (직전 영업일 — EOD 스냅샷은 D-1에 생성됨)
+        # 유일 경로: screener_snapshots DB (직전 영업일 — EOD 스냅샷은 D-1에 생성됨)
+        #
+        # 🔑 「조건에 맞는 종목이 없다」와 「조회가 고장났다」를 «갈라서» 처리한다.
+        #    둘은 정반대 사건인데 2026-08-18 이전에는 똑같이 「다른 명단에서 사오기」로
+        #    처리됐고, 고장 쪽 로그가 `debug` 라 라이브(INFO)에서는 «보이지도» 않았다.
+        #    ⇒ 폴백은 고장을 «대비»한 게 아니라 «감추면서» 다른 종목을 사고 있었다.
         try:
             prev_trading_day = get_previous_trading_day(now_kst())
             prev_day_str = prev_trading_day.strftime("%Y-%m-%d")
             from core.screener_snapshot_provider import make_screener_snapshot_provider
             provider = make_screener_snapshot_provider(strategy_name)
             codes = provider(strategy_name, prev_day_str)
-            if codes:
-                # code 리스트 → CandidateStock 변환 (name/score는 미상).
-                # ⚠️ 여기서 max_candidates 로 자르지 않는다. 자른 뒤 필터를 걸면
-                #    앞머리에 제외 종목이 있을 때 슬롯이 그냥 사라진다(백필 없음).
-                pool = [
-                    CandidateStock(
-                        code=code,
-                        name=code,  # 이름 정보 없음 — trading_stock 등록 시 갱신 가능
-                        market="KRX",
-                        score=50.0,
-                        reason=f"screener_snapshot({strategy_name})",
-                        prev_close=0.0,
-                    )
-                    for code in codes
-                ]
-                # 안전성 필터 (거래정지·VI·관리종목·정리매매).
-                # 이 1순위 경로는 원래 무필터로 반환해 안전필터를 통째로 우회했다.
-                #
-                # 지연 필터링(limit): 스크리너 랭크 순서대로 «안전한» 후보가
-                # max_candidates 개 모이면 즉시 멈춘다 → 슬롯이 줄지 않으면서
-                # API 호출은 (max_candidates + 도중 제외된 수)로 끝난다.
-                # load_from_screener 의 2배 버퍼 방식은 여기 쓰지 않는다 —
-                # 실측 제외율이 1.8%(110건 중 2건)라 개장 직후 호출만 2배로 늘린다.
-                # (손실 블랙리스트는 사장님 보류 결정으로 여기 적용하지 않는다.)
-                candidates = self._filter_unsafe_stocks(pool, limit=max_candidates)
-                self.logger.info(
-                    f"[E6] {strategy_name}: screener_snapshots {len(candidates)}건 확보 "
-                    f"(스냅샷 {len(codes)}건, 목표 {max_candidates}건, D-1={prev_day_str})"
-                )
-                return candidates
         except Exception as e:
-            self.logger.debug(f"[E6] {strategy_name} DB 스냅샷 조회 실패: {e}")
+            # 🔴 조회 «고장» — fail-closed. 다른 명단으로 대체하지 않는다.
+            #    여기서 다른 종목을 사면 「전략이 오늘 쉬었다」와 구별이 안 되고,
+            #    고장은 영원히 안 보인다.
+            self.logger.error(
+                f"[E6] {strategy_name}: screener_snapshots 조회 «실패» → 금일 이 전략 매수 중단 "
+                f"(fail-closed, 다른 명단으로 대체하지 않는다): {e}"
+            )
+            return []
 
-        # 2순위: 공통 스크리너 JSON
+        if not codes:
+            # 🟢 정상 — 그날 그 전략의 조건에 맞는 종목이 없었다는 뜻이다.
+            #    「후보 0건 = 미진입」이 정합이다(선례: deep_mr_dev20).
+            self.logger.info(
+                f"[E6] {strategy_name}: screener_snapshots 0건 (D-1={prev_day_str}) "
+                f"— 조건에 맞는 종목 없음, 금일 미진입"
+            )
+            return []
+
+        # code 리스트 → CandidateStock 변환 (name/score는 미상).
+        # ⚠️ 여기서 max_candidates 로 자르지 않는다. 자른 뒤 필터를 걸면
+        #    앞머리에 제외 종목이 있을 때 슬롯이 그냥 사라진다(백필 없음).
+        pool = [
+            CandidateStock(
+                code=code,
+                name=code,  # 이름 정보 없음 — trading_stock 등록 시 갱신 가능
+                market="KRX",
+                score=50.0,
+                reason=f"screener_snapshot({strategy_name})",
+                prev_close=0.0,
+            )
+            for code in codes
+        ]
+        # 안전성 필터 (거래정지·VI·관리종목·정리매매).
+        # 이 경로는 원래 무필터로 반환해 안전필터를 통째로 우회했다.
+        #
+        # 지연 필터링(limit): 스크리너 랭크 순서대로 «안전한» 후보가
+        # max_candidates 개 모이면 즉시 멈춘다 → 슬롯이 줄지 않으면서
+        # API 호출은 (max_candidates + 도중 제외된 수)로 끝난다.
+        # (손실 블랙리스트는 사장님 보류 결정으로 여기 적용하지 않는다.)
         try:
-            candidates = self.load_from_screener(max_candidates=max_candidates)
-            if candidates:
-                self.logger.info(
-                    f"[E6] {strategy_name}: 스크리너 JSON fallback {len(candidates)}건"
-                )
-                return candidates
+            candidates = self._filter_unsafe_stocks(pool, limit=max_candidates)
         except Exception as e:
-            self.logger.debug(f"[E6] {strategy_name} 스크리너 JSON 조회 실패: {e}")
+            self.logger.error(
+                f"[E6] {strategy_name}: 안전성 필터 «실패» → 금일 이 전략 매수 중단 "
+                f"(fail-closed): {e}"
+            )
+            return []
 
-        return []
+        self.logger.info(
+            f"[E6] {strategy_name}: screener_snapshots {len(candidates)}건 확보 "
+            f"(스냅샷 {len(codes)}건, 목표 {max_candidates}건, D-1={prev_day_str})"
+        )
+        return candidates

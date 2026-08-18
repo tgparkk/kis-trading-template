@@ -146,7 +146,16 @@ class CandidateLoader:
 
         # 전 전략 후보 0건일 때만 거래량 순위 안전망 폴백(전략별 무조건 폴백 제거)
         if should_use_volume_fallback(pool_by_strategy):
-            self.logger.info("[E6] 전 전략 후보 0건 → 거래량 순위 폴백(안전망)")
+            # 🔴 ERROR 로 올린다(종전 INFO). 「8전략이 «전부» 0건」은 정상 시장 상황이
+            #    아니라 **파이프라인이 통째로 죽었다**는 신호에 가깝다(EOD 스냅샷 미생성·
+            #    DB 장애 등). 그런데 그 신호가 INFO 로 묻히면, 봇은 조용히 «전략 룰을
+            #    안 거친» 거래량 상위 종목을 사고 아무도 고장난 줄 모른다.
+            #    ⚠️ 폴백 자체는 사장님 결정으로 «유지»한다 — 다만 보이게 만든다.
+            self.logger.error(
+                "[E6] 🔴 전 전략 후보 0건 — 파이프라인 이상 의심(EOD 스냅샷 미생성·DB 장애). "
+                "거래량 순위 폴백(안전망) 발동: 배정되는 종목은 «어떤 전략의 진입 룰도 "
+                "거치지 않았다»(base_filter 만 적용)."
+            )
             try:
                 fallback = await self._bot.candidate_selector.select_daily_candidates(
                     max_candidates=max_per_strategy
@@ -170,9 +179,11 @@ class CandidateLoader:
                             config=getattr(self._bot, "config", None),
                         )
                         pool_by_strategy[strategy_name] = filtered_fallback
-                        self.logger.info(
-                            f"[E6] 거래량 폴백 배정 → {strategy_name} "
-                            f"({len(filtered_fallback)}/{len(fallback)}종목, base_filter 적용)"
+                        self.logger.warning(
+                            f"[E6] ⚠️ 거래량 폴백 배정 → {strategy_name} "
+                            f"({len(filtered_fallback)}/{len(fallback)}종목, base_filter 적용). "
+                            f"이 후보들은 {strategy_name} 의 «진입 룰을 거치지 않았다» — "
+                            f"오늘 이 전략의 매매는 성과 집계에서 분리해 볼 것."
                         )
                         break
             except Exception as e:

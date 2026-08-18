@@ -57,8 +57,23 @@ class MinerviniVolumeDryupStrategy(BaseStrategy):
     author: str = "Template"
     holding_period: str = "swing"
     exit_timeframe: str = "daily"   # 일봉 청산 — 분봉 ma_break/trailing whipsaw(매수 직후 매도) 방지
-    # 거래량 수축 진입 — 거래량 상위 fallback 풀과 정합 (기본 True 유지)
-    accepts_volume_fallback: bool = True
+    # 🔴 2026-08-18 True → False. 이유는 「TT 는 매수 시점에 재검사되지 않는다」이다.
+    #
+    # 종전 근거(「거래량 상위 폴백 풀과 정합」)는 **`D`(dryup 단독) 체제에선 옳았다** —
+    # 폴백 풀은 `base_filter`(시총·거래대금)만 거치지만, 그 종목도 매수 시점에
+    # `evaluate_entry()` 가 `rule_volume_dryup` 을 «다시» 돌리므로 진입 룰이 지켜졌다.
+    #
+    # 🔑 그런데 TT 는 그 재검사에 «없다». `evaluate_entry()` 는 dryup 만 본다.
+    #    ⇒ 스크리너(TT 게이트)를 «거치지 않고» 워치리스트에 들어온 종목은
+    #      TT 를 한 번도 통과하지 않은 채 매수될 수 있다. 그 종목들만 `D` 로 매매되는데,
+    #      `D` 는 무작위 10종목 뽑기를 못 넘은 arm 이다(RESULTS.md §3, p=1.0000).
+    #      즉 「DT 전략」이라고 부르면서 일부는 D 로 사는 상태가 된다.
+    #
+    # 그래서 외부 후보 수용을 끈다. 선례: `deep_mr_dev20`(「희소조건 전략 — 후보 없으면
+    # 미진입이 정합」). TT 를 켜면 minervini 도 같은 성격이 된다.
+    # ⚠️ 오늘(shadow) 기준 동작 변화 없음 — 폴백 경로는 8전략 전부 0건일 때만 열리고
+    #    그마저 선두 수용 전략(elder)이 가져간다. 발효는 `TT_FILTER_MODE="on"` 이후다.
+    accepts_volume_fallback: bool = False
 
     # ========================================================================
     # 라이프사이클
