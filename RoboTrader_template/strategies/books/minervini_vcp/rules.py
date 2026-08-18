@@ -6,7 +6,10 @@
 - rule_vcp_contraction_breakout: (신) 책 핵심 VCP — 2~4회 연속 수축파동 단계축소 +
   contraction별 거래량 감소 + 피벗 돌파 + RVOL
 - rule_tight_closes: 3주 변동폭 ≤ 1.5%
-- rule_volume_dryup: 거래량 dry-up + tightness
+- rule_volume_dryup: 거래량 dry-up — 최근 10봉 평균거래량 ≤ 직전 30봉 평균 × 0.7.
+  🔴 **가격 조건이 «없다»** — close/high/low 를 한 번도 읽지 않으므로 하락 중 거래량 감소도 통과한다.
+  (2026-08-18 정정: 종전 이 줄은 "+ tightness" 라고 적었으나 구현에 tightness 검사가 없다.
+   tightness 는 별개 룰 `rule_tight_closes` 이고 `rule_volume_dryup` 과 결합돼 있지 않다.)
 
 헬퍼:
 - compute_rs_percentile_12w: universe 12주 수익률 백분위
