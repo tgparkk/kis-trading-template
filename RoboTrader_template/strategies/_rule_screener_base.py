@@ -76,29 +76,64 @@ class RuleScreenerBase(ScreenerBase):
     def default_params(self) -> Dict[str, Any]:
         return {"max_candidates": 10}
 
+    # ── 횡단면 컨텍스트 훅 (2026-08-18) ──────────────────────────────────────
+    # 일부 진입 룰은 «그 종목 하나»의 일봉만으로는 평가할 수 없다. Minervini
+    # Trend Template 의 8번째 조건(RS 백분위)이 그렇다 — 같은 날 유니버스 전체를
+    # 줄 세워야 나오는 값이라, 종목별 루프 «안»에서는 원리적으로 계산이 안 된다.
+    # 그래서 scan() 을 2패스로 나눈다: ①모든 적격 종목의 일봉을 먼저 모으고
+    # ②그 집합으로 컨텍스트를 만든 뒤 ③룰을 평가한다.
+    #
+    # 🔑 기본값은 「컨텍스트 없음」이라 이 훅을 안 쓰는 어댑터의 동작은 «불변»이다.
+    wants_context: bool = False
+
+    # `describe_impossible_drop` 가 훑는 창. None 이면 로드한 일봉 전체.
+    # 🔑 이게 필요한 이유: `lookback_days` 를 늘리면 위생 가드가 «더 넓은 구간»을
+    #    보게 되어 제외 종목이 늘고, 그건 진입 룰을 안 건드렸는데도 후보 집합이
+    #    바뀌는 것이다. 창을 늘리는 변경과 가드 범위를 넓히는 변경을 분리하려면
+    #    가드 창을 명시적으로 고정해야 한다. (「한 번에 한 축만 움직인다」)
+    sanity_window: Optional[int] = None
+
+    def build_context(
+        self, frames: Dict[str, pd.DataFrame], scan_date: date
+    ) -> Dict[str, Dict[str, Any]]:
+        """`{code: ctx}` 를 만든다. 기본은 빈 dict — 어댑터가 필요하면 override."""
+        return {}
+
+    def finalize_scan(self, diag: Dict[str, Any]) -> None:
+        """스캔 1회가 끝난 뒤 호출되는 진단 훅. 기본 no-op."""
+
     def scan(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
         merged = {**self.default_params(), **(params or {})}
         max_candidates = int(merged.get("max_candidates", 10))
         universe = self.base_filter(self._load_universe(scan_date))
+
+        stats = {"n_no_data": 0, "n_impossible": 0}
+
+        if self.wants_context:
+            # 2패스 — 횡단면 컨텍스트가 필요한 어댑터만. 적격 종목의 일봉을 전부
+            # 들고 있어야 하므로 메모리를 더 쓴다. 그래서 «필요한 어댑터만» 탄다.
+            frames: Dict[str, pd.DataFrame] = {}
+            meta: Dict[str, Dict[str, Any]] = {}
+            for u in universe:
+                df = self._prepare_frame(u["code"], scan_date, stats)
+                if df is None:
+                    continue
+                frames[u["code"]] = df
+                meta[u["code"]] = u
+            ctxs = self.build_context(frames, scan_date) or {}
+            pairs = ((code, df, meta[code], ctxs.get(code) or {})
+                     for code, df in frames.items())
+        else:
+            # 기존 스트리밍 경로 — 동작·메모리 프로파일 «불변».
+            pairs = ((u["code"], df, u, None) for u, df in (
+                (u, self._prepare_frame(u["code"], scan_date, stats)) for u in universe
+            ) if df is not None)
+
         scored: List[Tuple[float, CandidateStock]] = []
-        for u in universe:
-            code = u["code"]
-            df = self._load_daily(code, scan_date)
-            if df is None or df.empty:
-                continue
-            df = df[df["date"].dt.date <= scan_date]
-            if df.empty:
-                continue
-            # ★ 불가능봉 가드 (2026-08-15 감사) — KRX 한도(±30%)를 넘는 «하락» 봉은
-            #   조정되지 않은 기업행위가 남긴 인공물이다. 그 창으로 지표를 계산하면
-            #   가짜 폭락으로 오진한다(실측: deep_mr 후보 4건이 이 경로).
-            #   ⚠️ 데이터 위생이지 전략 변경이 아니다 — utils/data_sanity.py 참조.
-            bad = describe_impossible_drop(df)
-            if bad:
-                logger.warning("[%s] %s: %s — 미조정 기업행위 의심, 후보 제외",
-                               self.strategy_name, code, bad)
-                continue
-            verdict = self.match(df, merged)
+        n_evaluated = 0
+        for code, df, u, ctx in pairs:
+            n_evaluated += 1
+            verdict = self.match(df, merged) if ctx is None else self.match(df, merged, ctx)
             if verdict is None:
                 continue
             score, reason = verdict
@@ -110,7 +145,43 @@ class RuleScreenerBase(ScreenerBase):
                 score=float(score), reason=reason, prev_close=prev_close,
             )))
         scored.sort(key=lambda t: t[0], reverse=True)
-        return [c for _, c in scored[:max_candidates]]
+        selected = [c for _, c in scored[:max_candidates]]
+
+        self.finalize_scan({
+            "scan_date": scan_date,
+            "n_universe": len(universe),
+            "n_no_data": stats["n_no_data"],
+            "n_impossible": stats["n_impossible"],
+            "n_evaluated": n_evaluated,
+            "n_matched": len(scored),
+            "n_selected": len(selected),
+        })
+        return selected
+
+    def _prepare_frame(
+        self, code: str, scan_date: date, stats: Dict[str, int]
+    ) -> Optional[pd.DataFrame]:
+        """일봉 적재 + 날짜 컷 + 불가능봉 가드. 탈락이면 None."""
+        df = self._load_daily(code, scan_date)
+        if df is None or df.empty:
+            stats["n_no_data"] += 1
+            return None
+        df = df[df["date"].dt.date <= scan_date]
+        if df.empty:
+            stats["n_no_data"] += 1
+            return None
+        # ★ 불가능봉 가드 (2026-08-15 감사) — KRX 한도(±30%)를 넘는 «하락» 봉은
+        #   조정되지 않은 기업행위가 남긴 인공물이다. 그 창으로 지표를 계산하면
+        #   가짜 폭락으로 오진한다(실측: deep_mr 후보 4건이 이 경로).
+        #   ⚠️ 데이터 위생이지 전략 변경이 아니다 — utils/data_sanity.py 참조.
+        sane_view = df if self.sanity_window is None else df.iloc[-self.sanity_window:]
+        bad = describe_impossible_drop(sane_view)
+        if bad:
+            logger.warning("[%s] %s: %s — 미조정 기업행위 의심, 후보 제외",
+                           self.strategy_name, code, bad)
+            stats["n_impossible"] += 1
+            return None
+        return df
 
     def _load_universe(self, scan_date: date) -> List[Dict[str, Any]]:
         snapshot = self._quant_reader().get_universe_snapshot(scan_date)
