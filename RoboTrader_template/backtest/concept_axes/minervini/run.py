@@ -546,10 +546,17 @@ def select_random_matched(pool_all: dict, arm_pool: dict, dayret: dict, seed: in
 
     🔑 추출 풀에서 arm 자신의 선택분을 «빼지 않는다» — 빼면 귀무가
     「arm 이 «안» 고른 것들」이 되어 반대 방향으로 편향된다(§2-2 3단계).
+
+    🔴 `n_sub > 0` 은 통계량이 아니라 「`arm_pool ⊄ pool_all` 이라는 호출 계약이
+    깨졌다」는 고장 신호다. 정상 계약에서는 `arm ⊆ pool` 이므로
+    `need[b] ≤ |bucket[b]|` 이 항상 성립해 이 분기는 돌지 않는다.
     """
     rng = np.random.RandomState(seed)
     fake: dict = {}
     diag = dict(n_days=0, n_need=0, n_drawn=0, n_sub=0, n_no_ret=0)
+    diag["n_overlap"] = 0          # picked 중 arm 자신과 겹치는 건수(감쇠 계기)
+    diag["n_days_dropped"] = 0     # `cand` 가 비어 조용히 스킵된 날짜 수
+    diag["n_arm_dropped"] = 0      # arm 트리거 중 당일수익률 없어 n_need 에서 빠진 건수
 
     for d in sorted(arm_pool):
         arm_items = arm_pool.get(d) or []
@@ -560,6 +567,7 @@ def select_random_matched(pool_all: dict, arm_pool: dict, dayret: dict, seed: in
         cand = [(c, s) for c, s in allc if c in rets]
         diag["n_no_ret"] += len(allc) - len(cand)
         if not cand:
+            diag["n_days_dropped"] += 1
             continue
 
         vals = np.array([rets[c] for c, _ in cand], dtype=float)
@@ -580,6 +588,7 @@ def select_random_matched(pool_all: dict, arm_pool: dict, dayret: dict, seed: in
         for c, _ in arm_items:
             v = rets.get(c)
             if v is None:
+                diag["n_arm_dropped"] += 1
                 continue
             need[_bin(float(v))] += 1
             n_need += 1
@@ -603,11 +612,14 @@ def select_random_matched(pool_all: dict, arm_pool: dict, dayret: dict, seed: in
                 if filled:
                     break
 
+        arm_codes = {c for c, _ in arm_items}
+        diag["n_overlap"] += sum(1 for c, _ in picked if c in arm_codes)
+
         diag["n_days"] += 1
         diag["n_need"] += n_need
         diag["n_drawn"] += len(picked)
         if picked:
-            fake[d] = picked
+            fake[d] = sorted(picked)
 
     return select_top(fake), diag
 

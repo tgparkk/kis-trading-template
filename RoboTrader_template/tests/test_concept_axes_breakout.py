@@ -264,3 +264,64 @@ class TestSelectRandomMatched:
         dayret = {"D1": {"A": 0.0}}
         sel, _ = RUN.select_random_matched(pool_all, {"D1": []}, dayret, seed=0)
         assert "D1" not in sel
+
+    def test_histogram_is_reproduced_across_multiple_deciles(self):
+        """arm 의 need 가 «여러 분위»에 걸치면 R_B 의 분위 도수분포도 그것과
+        «정확히» 같아야 한다. 기존 픽스처(k=7, 전부 최상위 한 분위)는 이 단언을
+        못 한다 — 「크기만 맞추고 층화 안 함」·「도수분포를 풀 모양으로 채움」
+        변이가 그 9개를 전부 통과할 수 있었던 이유다."""
+        n = 100
+        pool_all = {"D1": [(f"C{i:03d}", float(1000 - i)) for i in range(n)]}
+        dayret = {"D1": {f"C{i:03d}": i / 100.0 for i in range(n)}}
+        arm_idx = [0, 1, 40, 41, 90, 91]           # 분위 0·4·9 에 걸쳐 2개씩
+        arm_pool = {"D1": [(f"C{i:03d}", float(1000 - i)) for i in arm_idx]}
+        sel, diag = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=5)
+        picked = sel["D1"]
+        assert len(picked) == 6
+        assert diag["n_need"] == 6
+
+        edges = np.quantile(list(dayret["D1"].values()), np.arange(1, 10) / 10.0)
+
+        def _bin(x):
+            return int(np.searchsorted(edges, x, side="right"))
+
+        need_hist = {b: 0 for b in range(10)}
+        for i in arm_idx:
+            need_hist[_bin(dayret["D1"][f"C{i:03d}"])] += 1
+
+        got_hist = {b: 0 for b in range(10)}
+        for c in picked:
+            got_hist[_bin(dayret["D1"][c])] += 1
+
+        assert got_hist == need_hist, f"분위 도수분포 불일치: need={need_hist} got={got_hist}"
+
+    def test_rb_is_not_identical_to_arm(self):
+        """`R_B` 가 매 시드마다 arm 선택과 «똑같지» 않아야 한다 — 항상 같다면
+        `select_random_matched` 이 그냥 arm 을 되돌려주는 최악의 오구현일 수 있다
+        (리뷰어 변이 테스트에서 기존 9개 중 8개가 이 오구현을 통과시켰다)."""
+        pool_all, arm_pool, dayret = self._fixture(n=100, k=7)
+        arm_codes = sorted(c for c, _ in arm_pool["D1"])
+        differs = False
+        for seed in range(20):
+            sel, _ = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=seed)
+            if sorted(sel["D1"]) != arm_codes:
+                differs = True
+                break
+        assert differs, "20개 시드 전부 R_B == arm — 귀무가 arm 자신을 그대로 돌려주고 있다"
+
+    def test_decile_edges_come_from_pool_not_arm(self):
+        """분위 «경계»는 arm 이 아니라 «풀 전체»(cand) 에서 나와야 한다(§2-2 2단계).
+        50종목을 5개씩 정확히 10등분해 최상위 분위(bin9) 의 «풀 전체 기준»
+        진짜 구성원을 arm 요구치(5개)와 «정확히» 같게 만들면, 대체 없이 그
+        5개 전부가 (시드와 무관하게) 뽑혀야 한다. edges 를 arm 자신의 값에서
+        산출하면 이 등식이 깨진다(§2-2 2단계 정면 위반)."""
+        n = 50
+        pool_all = {"D1": [(f"C{i:02d}", float(1000 - i)) for i in range(n)]}
+        dayret = {"D1": {f"C{i:02d}": i / 50.0 for i in range(n)}}
+        top5 = [45, 46, 47, 48, 49]
+        arm_pool = {"D1": [(f"C{i:02d}", float(1000 - i)) for i in top5]}
+        expect = sorted(f"C{i:02d}" for i in top5)
+        for seed in (0, 1, 2, 7):
+            sel, diag = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=seed)
+            assert sorted(sel["D1"]) == expect, f"seed={seed}: {sel['D1']}"
+            assert diag["n_sub"] == 0
