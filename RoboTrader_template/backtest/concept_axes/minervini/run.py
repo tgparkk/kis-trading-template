@@ -1240,6 +1240,85 @@ def gate_rows_breakout(pools: dict, sels: dict, dayret: dict, limitup: dict,
     return out
 
 
+def build_frames_breakout(px: pd.DataFrame):
+    """창 안으로 자른 `(frames, idxmap)`. `stage1b`·`stage2b` 가 «공유»한다.
+
+    🔑 같은 블록을 두 스테이지에 verbatim 으로 두지 않는다 — 한쪽만 고쳐지면
+    게이트와 판정이 다른 프레임을 보게 된다.
+    """
+    frames, idxmap = {}, {}
+    for code, g in px.groupby("stock_code", sort=False):
+        g2 = g[g["date"] >= W0]
+        if len(g2) >= 2:
+            g2 = g2.reset_index(drop=True)
+            frames[code] = g2
+            im = {d: i for i, d in enumerate(g2["date"].to_numpy())}
+            im["__last__"] = len(g2) - 1
+            idxmap[code] = im
+    return frames, idxmap
+
+
+def gate_exec_rows(pools: dict, frames: dict, idxmap: dict,
+                   band_up_pct: float = 0.03) -> list:
+    """실행 가능성·데이터 위생 지표 (PREREG_BREAKOUT §6-3·5·7). **PnL 미사용.**
+
+    🔴 라이브는 `entry_band_up_pct`(기본 0.03) 를 넘으면 매수를 «스킵»하는데
+    백테스트는 다음 봉 «시가»에 무조건 체결한다. 그 비대칭이 arm 마다 다르므로 센다.
+    """
+    out = []
+    for arm in [a for a in ARM_RULE_B if a in pools]:
+        n = ok = dead = imposs = 0
+        vols5 = []
+        for d, items in pools[arm].items():
+            for c, _ in items:
+                im = idxmap.get(c)
+                g = frames.get(c)
+                if im is None or g is None:
+                    continue
+                i = im.get(d)
+                if i is None or i >= im["__last__"]:
+                    continue
+                n += 1
+                close_t = float(g["close"].iloc[i])
+                if close_t <= 0:
+                    continue
+                cap = close_t * (1.0 + band_up_pct)
+                nxt_open = float(g["open"].iloc[i + 1])
+                nxt_low = float(g["low"].iloc[i + 1])
+                if nxt_open <= cap:
+                    ok += 1
+                elif nxt_low > cap:
+                    dead += 1
+                if i > 0:
+                    prev = float(g["close"].iloc[i - 1])
+                    if prev > 0 and close_t / prev > 1.31:
+                        imposs += 1
+                seg = g["close"].iloc[i + 1:i + 6].astype(float)
+                if len(seg) >= 2:
+                    vols5.append(float(seg.pct_change().dropna().std()))
+        out.append(dict(
+            arm=arm, n=n,
+            band_ok_pct=(100.0 * ok / n) if n else float("nan"),
+            band_dead_pct=(100.0 * dead / n) if n else float("nan"),
+            impossible_up=imposs,
+            vol5_med=float(np.median(vols5)) if vols5 else float("nan"),
+        ))
+    return out
+
+
+def gate_overlap(sels: dict) -> dict:
+    """arm 쌍별 «선택 종목-일» Jaccard (PREREG_BREAKOUT §6-9)."""
+    setmap = {a: {(d, c) for d, v in s.items() for c in v} for a, s in sels.items()}
+    arms = [a for a in ARM_RULE_B if a in setmap]
+    out = {}
+    for x in range(len(arms)):
+        for y in range(x + 1, len(arms)):
+            A, Bs = setmap[arms[x]], setmap[arms[y]]
+            u = len(A | Bs)
+            out[(arms[x], arms[y])] = (len(A & Bs) / u) if u else float("nan")
+    return out
+
+
 def stage1b() -> int:
     """문서 5 1단계 게이트 — PnL 미조회. `BookBacktester` 를 import 하지 않는다."""
     conn = psycopg2.connect(**DSN)
@@ -1319,6 +1398,26 @@ def stage1b() -> int:
         "5/389 불일치, 동점이 많을 때(389 중 150개 동점) 144/389 불일치). 이 게이트에서 "
         "`decile_hist` 계열로 층화를 교차검증하면 «층화가 정확해도» 차이가 0 이 아니게 "
         "나온다 — 그 차이를 「층화 실패」로도, 반대로 「차이 작으니 됐다」로도 읽지 말 것.")
+    say("")
+
+    frames, idxmap = build_frames_breakout(px)
+
+    say("## 2. 실행 가능성 · 데이터 위생 (§6-3·5·7)")
+    say("")
+    say("| arm | 신호 | 밴드 통과 | 그날 내내 불가 | 불가능 상승봉 | 진입후 5봉 변동성(중앙) |")
+    say("|---|---|---|---|---|---|")
+    for r in gate_exec_rows(pools, frames, idxmap):
+        say(f"| `{r['arm']}` | {r['n']:,} | {r['band_ok_pct']:.1f}% | "
+            f"{r['band_dead_pct']:.1f}% | **{r['impossible_up']:,}** | "
+            f"{r['vol5_med']*100:.2f}% |")
+    say("")
+    say("🔴 밴드 통과율이 arm 간 다르면 1번 문서 §7-9 의 「실행 효과는 arm 비교에 대칭」이 "
+        "**이 문서에서는 거짓**이다(§6-3).")
+    say("")
+    say("## 3. arm 간 선택 겹침 (Jaccard, §6-9)")
+    say("")
+    for (x, y), v in gate_overlap(sels).items():
+        say(f"- `{x}` ∩ `{y}` = **{v:.3f}**")
     say("")
 
     pool_days = {d: 1 for d in all_dates}

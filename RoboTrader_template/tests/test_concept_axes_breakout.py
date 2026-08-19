@@ -366,3 +366,71 @@ class TestGateRowsBreakout:
         r = rows[0]
         # 간격 [1, 7] -> ≤5 는 1/2
         assert abs(r["regap_le5_pct"] - 50.0) < 1e-9
+
+
+class TestGateExecRows:
+    def _frames(self):
+        import pandas as pd
+        g = pd.DataFrame(dict(
+            date=["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"],
+            open=[100.0, 104.0, 100.0, 100.0, 100.0, 100.0, 100.0, 136.0],
+            high=[100.0, 106.0, 101.0, 101.0, 101.0, 101.0, 140.0, 140.0],
+            low=[99.0, 103.0, 99.0, 99.0, 99.0, 99.0, 99.0, 130.0],
+            close=[100.0, 105.0, 100.0, 100.0, 100.0, 100.0, 135.0, 135.0],
+            volume=[1.0] * 8,
+        ))
+        frames = {"AAA": g}
+        im = {d: i for i, d in enumerate(g["date"])}
+        im["__last__"] = len(g) - 1
+        return frames, {"AAA": im}
+
+    def test_band_ok_when_next_open_within_3pct(self):
+        frames, idxmap = self._frames()
+        pools = {"B": {"D3": [("AAA", 1.0)]}}      # 다음봉(D4) 시가 100 vs 종가 100 -> 0%
+        rows = RUN.gate_exec_rows(pools, frames, idxmap)
+        assert rows[0]["band_ok_pct"] == 100.0
+
+    def test_band_blocked_when_next_open_above_band(self):
+        frames, idxmap = self._frames()
+        pools = {"B": {"D1": [("AAA", 1.0)]}}      # D1 종가 100 -> D2 시가 104 = +4% > 3%
+        rows = RUN.gate_exec_rows(pools, frames, idxmap)
+        assert rows[0]["band_ok_pct"] == 0.0
+
+    def test_band_dead_when_next_low_also_above_band(self):
+        """다음날 «저가»조차 밴드 위 = 그날 내내 체결 불가."""
+        frames, idxmap = self._frames()
+        pools = {"B": {"D1": [("AAA", 1.0)]}}      # D2 저가 103 > 103.0? 경계 확인
+        rows = RUN.gate_exec_rows(pools, frames, idxmap)
+        assert rows[0]["band_dead_pct"] == 0.0     # 103 <= 103.0 이므로 체결 가능
+
+    def test_impossible_up_bar_counted(self):
+        """KRX 한도(+30%) 초과 = 데이터 인공물. 가드는 «하락»만 보므로 여기서 센다."""
+        frames, idxmap = self._frames()
+        pools = {"B": {"D7": [("AAA", 1.0)]}}      # 100 -> 135 = +35% > 31%
+        # 🔑 D8 이 있으므로 「다음 봉 없음」 가드에 걸리지 않는다
+        rows = RUN.gate_exec_rows(pools, frames, idxmap)
+        assert rows[0]["impossible_up"] == 1
+
+    def test_vol5_median_is_finite(self):
+        frames, idxmap = self._frames()
+        pools = {"B": {"D1": [("AAA", 1.0)]}}
+        rows = RUN.gate_exec_rows(pools, frames, idxmap)
+        assert rows[0]["vol5_med"] == rows[0]["vol5_med"]   # not NaN
+
+
+class TestGateOverlap:
+    def test_jaccard_of_selected_pairs(self):
+        sels = {
+            "B": {"D1": ["A", "B"], "D2": ["C"]},
+            "D": {"D1": ["B"], "D2": ["C", "E"]},
+        }
+        ov = RUN.gate_overlap(sels)
+        # B = {(D1,A),(D1,B),(D2,C)} · D = {(D1,B),(D2,C),(D2,E)} -> 교집합 2 / 합집합 4
+        # 🔴 판단 지점(task-7): 키 순서는 sels 삽입순이 아니라 ARM_RULE_B 의 고정 순서
+        # (D,B,P,Q,DB) 를 따른다 — 브리프 원문은 ("B","D") 였으나 실제 산출 키는
+        # ("D","B") 다(값 0.5 는 브리프와 동일, 순서만 정정). 상세: task-7-report.md.
+        assert abs(ov[("D", "B")] - 0.5) < 1e-9
+
+    def test_identical_arms_are_one(self):
+        sels = {"B": {"D1": ["A"]}, "P": {"D1": ["A"]}}
+        assert abs(RUN.gate_overlap(sels)[("B", "P")] - 1.0) < 1e-9
