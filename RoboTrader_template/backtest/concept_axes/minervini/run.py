@@ -471,7 +471,8 @@ def build_cache_breakout(px: pd.DataFrame, elig: dict, params: dict):
         done += 1
         if done % 300 == 0:
             print(f"      ...{done}/{total} 종목 · 평가 {stats['n_eval']:,} · "
-                  f"B {stats['n_b']:,} · {time.perf_counter()-t0:.0f}s", flush=True)
+                  f"B {stats['n_b']:,} · {time.perf_counter()-t0:.0f}s",
+                  file=sys.stderr, flush=True)  # 리뷰 재승인(M3) - 로직 불변, 출력만 stderr
         g = g.reset_index(drop=True)
         dates = g["date"].to_numpy()
         closes = g["close"].to_numpy(dtype=float)
@@ -1984,9 +1985,11 @@ def stage2b() -> int:
         f"폐기율 {b_disc_realized:.1f}% vs `R_B` 중앙 n={rb_n_med:,.0f} · "
         f"폐기율 {rb_disc_med:.1f}%{empty_note} ({S_BREAKOUT}시드).")
     if _disc_gap_flag(b_disc_realized, rb_disc_med):
-        # 🔴 리뷰 반영(M4) — 사전등록된 §6-2 경고(아래 「혼합 대비」)와 헤딩을 구별한다.
-        rep(f"🔴 **귀무 빈도 대비 — 사전등록 외 추가 점검**: 폐기율 `B` {b_disc_realized:.1f}% vs "
-            f"`R_B` {rb_disc_med:.1f}% (2배 이상). "
+        # 🔴 리뷰 재정정(M4, 2026-08-20) — §11-2 「조치(동결)」가 이 검사를 §6-2 규칙의
+        # B vs R_B 적용으로 «사전등록»했다(§11-5). 「사전등록 외」는 사양과 모순되므로
+        # 「(§11-2 사전 고정)」으로 바로잡는다.
+        rep(f"🔴 **귀무 빈도 대비 — 판별 보류 병기** (§11-2 사전 고정): 폐기율 `B` "
+            f"{b_disc_realized:.1f}% vs `R_B` {rb_disc_med:.1f}% (2배 이상). "
             f"귀무와 실험군이 「같은 룰의 두 버전」이 아니라 「다른 빈도의 두 룰」에 가깝다.")
     rep("")
 
@@ -2036,6 +2039,15 @@ def stage2b() -> int:
         rep(f"| `{a}` | {decomp_label[a]} | {r['n']:,} | {r['mean']:+.2f}% | "
             f"{'✅' if n1_a else '❌'} | {note} |")
     rep("")
+    # 🔴 리뷰 반영(I2, 재리뷰) — 이 열의 N1 은 `B` 크기에 정합된 `R_B` 를 그대로
+    # 재사용한 것이며 `P`/`Q`/`DB` 각각의 트리거 수에는 정합되지 않았다. §2-2(가)에
+    # 따르면 실제보다 크게 정합된 귀무와의 비교는 anti-conservative 하다.
+    rep("🔴 이 열의 N1 은 `B` 크기에 정합된 `R_B` 를 그대로 재사용한 것이며, "
+        "`P`/`Q`/`DB` 각각의 트리거 수에는 «정합되지 않았다».")
+    rep("§2-2(가)에 따르면 실제보다 크게 정합된 귀무와의 비교는 anti-conservative 하며, "
+        "특히 `DB`(트리거 438 vs `B` 11,330 ≈ 3.9%, §10-1)에서 왜곡이 가장 크다.")
+    rep("⇒ 이 열의 ✅/❌ 는 «참고 이하»로만 읽는다. 판정 근거로 쓰지 않는다.")
+    rep("")
     rep("> `P`·`Q`·`DB` 의 수치를 `REGISTRY.md`·`MEMORY.md`·전략 README·changelog 어디에도 "
         "**«단독 결론»으로 옮겨 적지 않는다.** 옮겨 적으려면 **새 사전등록을 연다.**"
         "(§5-3 인용 금지 조항 — 그대로 전재)")
@@ -2053,6 +2065,7 @@ def stage2b() -> int:
     rep(f"- 총 소요 **{time.perf_counter() - t0:.0f}s** (실행 시작 {run_started_at})")
     rep("")
     return 0
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="minervini 개념 축 — PREREG 실행부")
