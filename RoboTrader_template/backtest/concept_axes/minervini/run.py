@@ -429,6 +429,31 @@ def build_cache(px: pd.DataFrame, elig: dict, rs: dict, fin: dict, params: dict)
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# 4b. 돌파 축 (PREREG_BREAKOUT.md 문서 5) — 문서 1 경로는 건드리지 않는다
+# ────────────────────────────────────────────────────────────────────────────
+PIVOT_WIN = 25                         # §2 동결 — rule_vcp_breakout.base_min_bars
+RVOL_MIN = 1.5                         # §2 동결 — rule_vcp_breakout.rvol_threshold
+S_BREAKOUT = 100                       # §2-2 동결 — R_B 시드 수
+GATE_MIN_SELECTED = 1500               # §6 동결 — 선택 종목-일 문턱
+
+
+def breakout_flags(high, volume, close, i: int) -> tuple:
+    """PREREG_BREAKOUT §2 — `(ok_pivot, ok_rvol)`.
+
+    base = `[i-25, i)` (**현재봉 제외**). 창 안 봉이 26개 미만이면 둘 다 False.
+    🔑 두 조건을 «따로» 돌려주는 이유: arm `P`(돌파만)·`Q`(거래량만) 분해가 §5-3 이다.
+    """
+    if i < PIVOT_WIN:
+        return False, False
+    bh = high[i - PIVOT_WIN:i]
+    bv = volume[i - PIVOT_WIN:i]
+    base_vol = float(bv.mean())
+    ok_pivot = bool(float(close[i]) > float(bh.max()))
+    ok_rvol = bool(base_vol > 0 and float(volume[i]) / base_vol >= RVOL_MIN)
+    return ok_pivot, ok_rvol
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # 5. Arm 풀 · 선택
 # ────────────────────────────────────────────────────────────────────────────
 ARM_RULE = {
