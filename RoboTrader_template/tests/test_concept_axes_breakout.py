@@ -325,3 +325,44 @@ class TestSelectRandomMatched:
             sel, diag = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=seed)
             assert sorted(sel["D1"]) == expect, f"seed={seed}: {sel['D1']}"
             assert diag["n_sub"] == 0
+
+
+class TestGateRowsBreakout:
+    def test_selected_and_truncation_and_gate_flag(self):
+        pools = {
+            "B": {"D1": [(f"C{i}", float(i)) for i in range(30)]},
+            "D": {"D1": [(f"C{i}", float(i)) for i in range(5)]},
+        }
+        sels = {"B": {"D1": [f"C{i}" for i in range(10)]},
+                "D": {"D1": [f"C{i}" for i in range(5)]}}
+        dayret = {"D1": {f"C{i}": 0.01 * i for i in range(30)}}
+        limitup = {"D1": {f"C{i}": (i == 29) for i in range(30)}}
+        rows = RUN.gate_rows_breakout(pools, sels, dayret, limitup)
+        by = {r["arm"]: r for r in rows}
+        assert by["B"]["triggers"] == 30
+        assert by["B"]["selected"] == 10
+        assert abs(by["B"]["keep_pct"] - 100 * 10 / 30) < 1e-9
+        assert by["B"]["gate_pass"] is False        # 10 < GATE_MIN_SELECTED
+        assert by["D"]["selected"] == 5
+
+    def test_limit_up_and_median_dayret(self):
+        pools = {"B": {"D1": [("A", 1.0), ("B", 2.0), ("C", 3.0)]}}
+        sels = {"B": {"D1": ["A", "B", "C"]}}
+        dayret = {"D1": {"A": 0.01, "B": 0.05, "C": 0.09}}
+        limitup = {"D1": {"A": False, "B": False, "C": True}}
+        rows = RUN.gate_rows_breakout(pools, sels, dayret, limitup)
+        r = rows[0]
+        assert abs(r["med_dayret"] - 0.05) < 1e-9
+        assert abs(r["limitup_pct"] - 100 / 3) < 1e-6
+
+    def test_regap_le5_uses_bar_gaps_within_code(self):
+        """같은 종목의 «연속 발화» 비율. 상태형(dryup)과 사건형(돌파)을 가른다."""
+        pools = {"B": {"D1": [("A", 1.0)], "D2": [("A", 1.0)], "D9": [("A", 1.0)]}}
+        sels = {"B": {}}
+        dayret = {d: {"A": 0.0} for d in ("D1", "D2", "D9")}
+        limitup = {d: {"A": False} for d in ("D1", "D2", "D9")}
+        rows = RUN.gate_rows_breakout(pools, sels, dayret, limitup,
+                                      date_index={"D1": 0, "D2": 1, "D9": 8})
+        r = rows[0]
+        # 간격 [1, 7] -> ≤5 는 1/2
+        assert abs(r["regap_le5_pct"] - 50.0) < 1e-9

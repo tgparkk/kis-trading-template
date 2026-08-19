@@ -1196,6 +1196,139 @@ def stage1() -> int:
     return 0
 
 
+def gate_rows_breakout(pools: dict, sels: dict, dayret: dict, limitup: dict,
+                       date_index: dict = None) -> list:
+    """1단계 게이트 행 (PREREG_BREAKOUT §6). **PnL 을 쓰지 않는다.**
+
+    🔴 문턱은 「트리거 수」가 아니라 **「선택 종목-일」**이다 — 1번 문서 실측에서
+    거래/트리거 비가 arm 간 10.7배 벌어져 게이트가 «없는 문제를 있다»고 말했다.
+    """
+    out = []
+    for arm in [a for a in ARM_RULE_B if a in pools]:
+        pool = pools[arm]
+        trig = [(d, c) for d, v in pool.items() for c, _ in v]
+        n_trig = len(trig)
+        sel = sels.get(arm, {})
+        n_sel = sum(len(v) for v in sel.values())
+        rets = [dayret.get(d, {}).get(c) for d, c in trig]
+        rets = [r for r in rets if r is not None]
+        lims = [limitup.get(d, {}).get(c, False) for d, c in trig]
+        by_code: dict = defaultdict(list)
+        if date_index is None:
+            order = {d: i for i, d in enumerate(sorted(pool))}
+        else:
+            order = date_index
+        for d, c in trig:
+            if d in order:
+                by_code[c].append(order[d])
+        gaps = []
+        for c, idxs in by_code.items():
+            idxs.sort()
+            gaps += [idxs[k] - idxs[k - 1] for k in range(1, len(idxs))]
+        out.append(dict(
+            arm=arm,
+            triggers=n_trig,
+            selected=n_sel,
+            keep_pct=(100.0 * n_sel / n_trig) if n_trig else float("nan"),
+            codes=len(by_code),
+            regap_le5_pct=(100.0 * sum(1 for g in gaps if g <= 5) / len(gaps))
+                          if gaps else float("nan"),
+            med_dayret=float(np.median(rets)) if rets else float("nan"),
+            limitup_pct=(100.0 * sum(lims) / n_trig) if n_trig else float("nan"),
+            gate_pass=bool(n_sel >= GATE_MIN_SELECTED),
+        ))
+    return out
+
+
+def stage1b() -> int:
+    """문서 5 1단계 게이트 — PnL 미조회. `BookBacktester` 를 import 하지 않는다."""
+    conn = psycopg2.connect(**DSN)
+    sha = git_sha()
+    say("# 돌파 축 — 1단계 게이트 (PREREG_BREAKOUT §6, PnL 미조회)")
+    say("")
+    say(f"사전등록 [`PREREG_BREAKOUT.md`](PREREG_BREAKOUT.md)(동결) · 가족 등록부 "
+        f"[`../REGISTRY.md`](../REGISTRY.md) **5번 문서** · 실행 커밋 **`{sha}`** · "
+        f"창 **{W0} ~ {W1}**.")
+    say("")
+    say("🔑 `BookBacktester` 를 **import 하지도 호출하지도 않는다** — "
+        "거래당 수익률이 메모리에 들어올 경로 자체가 없다.")
+    say("")
+    say(f"🔴 동결 파라미터: 피벗 창 **{PIVOT_WIN}봉** · RVOL **{RVOL_MIN}** · "
+        f"시드 **{S_BREAKOUT}** · 게이트 문턱 선택 종목-일 **{GATE_MIN_SELECTED:,}**.")
+    say("")
+
+    rows, params = verify_strategy_params()
+    for r in rows:
+        say(r)
+    say("")
+
+    fp = db_fingerprint(conn)
+    say("| 슬라이스 | 행 수 | 종목 수 | max |")
+    say("|---|---|---|---|")
+    for k, (a, b, c) in fp.items():
+        say(f"| `{k}` | {a:,} | {b:,} | {c} |")
+    say("")
+
+    px = load_prices(conn)
+    uni, _ = load_universe(conn)
+    conn.close()
+    scr = MinerviniVolumeDryupScreenerAdapter()
+    elig = eligible_by_date(uni, scr)
+
+    cache, cstats = build_cache_breakout(px, elig, params)
+    pools, dayret, limitup = build_pools_breakout(cache, elig)
+    sels = {a: select_top(pools[a]) for a in ARM_RULE_B if a in pools}
+
+    say(f"적격 (code,date) **{cstats['n_eval']:,}** · dryup {cstats['n_dry']:,} · "
+        f"P {cstats['n_p']:,} · Q {cstats['n_q']:,} · **B {cstats['n_b']:,}** · "
+        f"봉부족 제외 {cstats['n_short_bars']:,}")
+    say("")
+
+    all_dates = sorted({d for v in pools.values() for d in v})
+    order = {d: i for i, d in enumerate(all_dates)}
+    grows = gate_rows_breakout(pools, sels, dayret, limitup, date_index=order)
+
+    say("## 1. arm 별 게이트")
+    say("")
+    say("| arm | 트리거 | 선택 종목-일 | 잔존율 | 고유종목 | 재발화 ≤5봉 | 당일수익 중앙 | 상한가급 | 게이트 |")
+    say("|---|---|---|---|---|---|---|---|---|")
+    for r in grows:
+        say(f"| `{r['arm']}` | {r['triggers']:,} | **{r['selected']:,}** | "
+            f"{r['keep_pct']:.1f}% | {r['codes']:,} | {r['regap_le5_pct']:.1f}% | "
+            f"{r['med_dayret']*100:+.2f}% | {r['limitup_pct']:.2f}% | "
+            f"{'✅' if r['gate_pass'] else '🔴 판별 보류'} |")
+    say("")
+
+    for s in (0, 1):
+        _rb, diag = select_random_matched(pools["ALL"], pools.get("B", {}), dayret, seed=s)
+        overlap_rate = (100.0 * diag["n_overlap"] / diag["n_drawn"]) if diag["n_drawn"] else float("nan")
+        say(f"- `R_B` 시드 {s} 진단 — 필요 {diag['n_need']:,} · 추출 {diag['n_drawn']:,} · "
+            f"**층화 대체 {diag['n_sub']:,}** · 수익률 결측 제외 {diag['n_no_ret']:,} · "
+            f"겹침 **{diag['n_overlap']:,}건({overlap_rate:.1f}%)** · "
+            f"날짜 스킵 {diag['n_days_dropped']:,} · arm 결측 제외 {diag['n_arm_dropped']:,}")
+        if diag["n_sub"] > 0:
+            say(f"  🔴 ERROR: R_B 층화 대체가 발생했다(n_sub={diag['n_sub']}). 이것은 통계량이 아니라 "
+                f"「arm_pool ⊄ pool_all」 호출 계약 위반 신호다 — 게이트 산출물을 신뢰하지 말 것.")
+    say("")
+    say("⚠️ 겹침률 w 는 「귀무가 실험군을 흡수한 정도」다. 관측 효과는 참값의 (1−w) 배로 "
+        "감쇠하므로, w 가 크면 동결 ε 0.5%p 는 실효 ε/(1−w) 를 요구한다.")
+    say("")
+    say("⚠️ 분위 정의가 두 가지다 — `select_random_matched` 의 `_bin` 은 «값 기준»"
+        "(`#{j : Q_j ≤ x}`), 기존 `decile_hist` 는 «순위 기준»"
+        "(`min(floor(rank/n·10), 9)`)이다(리뷰어 실측: 값이 전부 다를 때 n=389 에서 "
+        "5/389 불일치, 동점이 많을 때(389 중 150개 동점) 144/389 불일치). 이 게이트에서 "
+        "`decile_hist` 계열로 층화를 교차검증하면 «층화가 정확해도» 차이가 0 이 아니게 "
+        "나온다 — 그 차이를 「층화 실패」로도, 반대로 「차이 작으니 됐다」로도 읽지 말 것.")
+    say("")
+
+    pool_days = {d: 1 for d in all_dates}
+    for arm in ("B", "D"):
+        if arm in pools:
+            year_skew([(d, c) for d, v in pools[arm].items() for c, _ in v],
+                      pool_days, f"arm {arm}")
+    return 0
+
+
 def stage2() -> int:
     # 🔴 지역 import — `--stage1` 이 「PnL 계산 경로가 아예 없다」를 보증하기 위해서다.
     from backtest.book_backtester import BookBacktester
