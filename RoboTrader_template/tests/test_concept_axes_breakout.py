@@ -396,12 +396,36 @@ class TestGateExecRows:
         rows = RUN.gate_exec_rows(pools, frames, idxmap)
         assert rows[0]["band_ok_pct"] == 0.0
 
-    def test_band_dead_when_next_low_also_above_band(self):
-        """다음날 «저가»조차 밴드 위 = 그날 내내 체결 불가."""
+    def test_band_dead_boundary_low_equal_to_cap_is_not_dead(self):
+        """경계: 다음날 저가가 밴드 «상한과 정확히 같으면»(> 이 아니라 ==) dead 가 아니다.
+
+        🔑 이름이 이전에 반대로 읽혔다 — 이 테스트는 「dead 다」가 아니라 «dead 가 아닌»
+        경계(103 <= 103.0)를 검사한다. 양성 케이스(진짜 dead > 0)는
+        `test_band_dead_positive_case` 가 따로 검증한다.
+        """
         frames, idxmap = self._frames()
         pools = {"B": {"D1": [("AAA", 1.0)]}}      # D2 저가 103 > 103.0? 경계 확인
         rows = RUN.gate_exec_rows(pools, frames, idxmap)
         assert rows[0]["band_dead_pct"] == 0.0     # 103 <= 103.0 이므로 체결 가능
+
+    def test_band_dead_positive_case(self):
+        """양성 케이스: 다음날 시가·저가가 «둘 다» 밴드 위 = 그날 내내 체결 불가(진짜 dead)."""
+        import pandas as pd
+        g = pd.DataFrame(dict(
+            date=["D1", "D2"],
+            open=[100.0, 110.0],
+            high=[100.0, 112.0],
+            low=[99.0, 108.0],       # 108 > cap(103) -> 장중에도 밴드 안으로 못 들어온다
+            close=[100.0, 110.0],
+            volume=[1.0, 1.0],
+        ))
+        frames = {"ZZZ": g}
+        im = {d: i for i, d in enumerate(g["date"])}
+        im["__last__"] = len(g) - 1
+        idxmap = {"ZZZ": im}
+        pools = {"B": {"D1": [("ZZZ", 1.0)]}}
+        rows = RUN.gate_exec_rows(pools, frames, idxmap)
+        assert rows[0]["band_dead_pct"] > 0.0
 
     def test_impossible_up_bar_counted(self):
         """KRX 한도(+30%) 초과 = 데이터 인공물. 가드는 «하락»만 보므로 여기서 센다."""
@@ -416,6 +440,20 @@ class TestGateExecRows:
         pools = {"B": {"D1": [("AAA", 1.0)]}}
         rows = RUN.gate_exec_rows(pools, frames, idxmap)
         assert rows[0]["vol5_med"] == rows[0]["vol5_med"]   # not NaN
+
+    def test_vol5_skips_segment_shorter_than_three(self):
+        """진입 후 남은 봉이 «2개뿐»이면 pct_change().dropna() 후 값이 1개만 남아
+        std(ddof=1) 이 NaN 을 낸다 — np.median 이 그 NaN 을 arm 전체로 전파시켜
+        vol5_med 가 통째로 사라지는 걸 막는다. D6 트리거는 뒤에 D7·D8 두 봉만
+        남아(seg 길이 2) 계산에서 빠지고 vol5_skipped 로 세어진다. D1 트리거는
+        seg 길이 5(정상)라 vol5_med 는 여전히 유한해야 한다.
+        """
+        frames, idxmap = self._frames()
+        pools = {"B": {"D1": [("AAA", 1.0)], "D6": [("AAA", 1.0)]}}
+        rows = RUN.gate_exec_rows(pools, frames, idxmap)
+        r = rows[0]
+        assert r["vol5_med"] == r["vol5_med"]      # not NaN
+        assert r["vol5_skipped"] >= 1
 
 
 class TestGateOverlap:

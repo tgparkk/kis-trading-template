@@ -1264,10 +1264,20 @@ def gate_exec_rows(pools: dict, frames: dict, idxmap: dict,
 
     🔴 라이브는 `entry_band_up_pct`(기본 0.03) 를 넘으면 매수를 «스킵»하는데
     백테스트는 다음 봉 «시가»에 무조건 체결한다. 그 비대칭이 arm 마다 다르므로 센다.
+
+    🔴 리뷰 반영(Task 7 사후): 시가는 밴드 위인데 장중 저가가 밴드 안으로 들어온
+    «낀 상태»를 `band_mid_pct` 로 따로 센다 — 안 세면 `band_ok_pct + band_dead_pct`
+    가 100% 에 못 미쳐 원인불명의 결손처럼 보인다. 세 값의 합은 100% 다.
+
+    🔴 리뷰 반영: `vol5` 표본이 «2개뿐»이면 `pct_change().dropna()` 후 값이 1개만 남아
+    `std(ddof=1)` 이 NaN 을 내고, `np.median` 이 그 NaN 을 arm 전체로 전파시켜
+    `vol5_med` 가 조용히 사라진다. 표본 3개 미만은 계산에서 제외하고(`ddof=0` 으로
+    바꿔 0.0 을 내지 않는다 — 그건 「변동성 0」이 아니라 「모른다」다) `vol5_skipped`
+    로 명시적으로 센다. 「없다」와 「고장」을 같은 값으로 보고하면 고장이 감춰진다.
     """
     out = []
     for arm in [a for a in ARM_RULE_B if a in pools]:
-        n = ok = dead = imposs = 0
+        n = ok = mid = dead = imposs = vol5_skip = 0
         vols5 = []
         for d, items in pools[arm].items():
             for c, _ in items:
@@ -1289,19 +1299,25 @@ def gate_exec_rows(pools: dict, frames: dict, idxmap: dict,
                     ok += 1
                 elif nxt_low > cap:
                     dead += 1
+                else:
+                    mid += 1
                 if i > 0:
                     prev = float(g["close"].iloc[i - 1])
                     if prev > 0 and close_t / prev > 1.31:
                         imposs += 1
                 seg = g["close"].iloc[i + 1:i + 6].astype(float)
-                if len(seg) >= 2:
+                if len(seg) >= 3:
                     vols5.append(float(seg.pct_change().dropna().std()))
+                else:
+                    vol5_skip += 1
         out.append(dict(
             arm=arm, n=n,
             band_ok_pct=(100.0 * ok / n) if n else float("nan"),
+            band_mid_pct=(100.0 * mid / n) if n else float("nan"),
             band_dead_pct=(100.0 * dead / n) if n else float("nan"),
             impossible_up=imposs,
-            vol5_med=float(np.median(vols5)) if vols5 else float("nan"),
+            vol5_med=float(np.nanmedian(vols5)) if vols5 else float("nan"),
+            vol5_skipped=vol5_skip,
         ))
     return out
 
@@ -1404,15 +1420,23 @@ def stage1b() -> int:
 
     say("## 2. 실행 가능성 · 데이터 위생 (§6-3·5·7)")
     say("")
-    say("| arm | 신호 | 밴드 통과 | 그날 내내 불가 | 불가능 상승봉 | 진입후 5봉 변동성(중앙) |")
-    say("|---|---|---|---|---|---|")
+    say("| arm | 신호 | 밴드 통과 | 밴드 낀상태 | 그날 내내 불가 | 불가능 상승봉 | "
+        "진입후 5봉 변동성(중앙) | 변동성 표본부족 |")
+    say("|---|---|---|---|---|---|---|---|")
     for r in gate_exec_rows(pools, frames, idxmap):
         say(f"| `{r['arm']}` | {r['n']:,} | {r['band_ok_pct']:.1f}% | "
-            f"{r['band_dead_pct']:.1f}% | **{r['impossible_up']:,}** | "
-            f"{r['vol5_med']*100:.2f}% |")
+            f"{r['band_mid_pct']:.1f}% | {r['band_dead_pct']:.1f}% | "
+            f"**{r['impossible_up']:,}** | {r['vol5_med']*100:.2f}% | "
+            f"{r['vol5_skipped']:,} |")
     say("")
     say("🔴 밴드 통과율이 arm 간 다르면 1번 문서 §7-9 의 「실행 효과는 arm 비교에 대칭」이 "
         "**이 문서에서는 거짓**이다(§6-3).")
+    say("")
+    say("🔑 「밴드 통과 + 밴드 낀상태 + 그날 내내 불가」 세 값의 합은 100% 다 — 시가가 밴드 "
+        "위인데 장중 저가가 밴드 안으로 들어온 «낀 상태»를 안 세면 앞 두 값의 합이 100%에 "
+        "못 미쳐 원인불명의 결손처럼 보인다(§6-5). 「변동성 표본부족」은 진입 후 남은 봉이 "
+        "3개 미만이라 5봉 변동성을 계산에서 뺀 신호 수다 — 이걸 「변동성 0」으로 적으면 "
+        "「없다」와 「고장」이 같은 값으로 보고돼 고장이 감춰진다(§6-7).")
     say("")
     say("## 3. arm 간 선택 겹침 (Jaccard, §6-9)")
     say("")
