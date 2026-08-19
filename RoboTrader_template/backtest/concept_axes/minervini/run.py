@@ -2073,6 +2073,10 @@ def main() -> int:
                     help="PREREG §6 1단계 게이트 (PnL 미조회) → GATE.md")
     ap.add_argument("--stage2", action="store_true",
                     help="PREREG §4·§5 판정 → RESULTS.md · RESULTS_raw.md")
+    ap.add_argument("--stage1b", action="store_true",
+                    help="PREREG_BREAKOUT §6 1단계 게이트 (PnL 미조회) → GATE.md")
+    ap.add_argument("--stage2b", action="store_true",
+                    help="PREREG_BREAKOUT §4·§5 판정 → RESULTS.md · RESULTS_raw.md")
     a = ap.parse_args()
     if a.stage1 and a.stage2:
         print("한 번에 하나만 실행한다 — 1단계는 「PnL 을 보기 «전»」이라야 뜻이 있다.", flush=True)
@@ -2081,6 +2085,10 @@ def main() -> int:
         return stage1()
     if a.stage2:
         return stage2()
+    if a.stage1b:
+        return stage1b()
+    if a.stage2b:
+        return stage2b()
     print("`--stage1`(게이트) 또는 `--stage2`(판정) 중 하나를 지정하라.", flush=True)
     return 2
 

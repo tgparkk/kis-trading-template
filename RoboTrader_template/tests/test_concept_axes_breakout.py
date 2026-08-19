@@ -602,3 +602,13 @@ def test_book_backtester_not_top_level_import():
     고정한다. `stage1b` 는 산출물에 이 사실을 인쇄까지 하는데 지금까지
     이를 고정하는 단언이 없었다."""
     assert not hasattr(RUN, "BookBacktester")
+
+
+class TestDoc5FrozenSignatures:
+    def test_stage1b_takes_no_args(self):
+        import inspect
+        assert list(inspect.signature(RUN.stage1b).parameters) == []
+
+    def test_stage2b_takes_no_args(self):
+        import inspect
+        assert list(inspect.signature(RUN.stage2b).parameters) == []
