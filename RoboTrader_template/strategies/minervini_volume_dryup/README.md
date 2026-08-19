@@ -82,8 +82,20 @@ sl **-8%** / tp **+12%** / max_hold **20거래일**. **trail 없음, trend_flip 
 - [ ] **① 배관** — EOD 로그 `TT게이트` 줄에서 `rs_value 확보` 와 `220봉충족` 이 **연속 5거래일** 0 이 아니다.
 - [ ] **② 발화** — 같은 5거래일 누적 `TT통과 / dryup` 이 **5~40%** 구간(백테스트 실측 **16.1%**, 라이브 재현 **16.4%**).
       0% 면 배관 결함, 90%↑ 면 룰이 안 걸린 것이다.
-- [ ] **③ 빈도 영향** — `screener_snapshots` 의 `reason` 에서 `tt=1` 비율로 **후보가 몇 건으로 줄어드는지** 산출.
+- [ ] **③ 빈도 영향** — 계기는 `screener_snapshots.reason` 이 **아니다**. **`finalize_scan()` 로그의 `TT통과`
+      (절단 전 전수)** 로 산출한다.
+      🔑 이유는 둘 — **(가)** `screener_snapshots` DDL(`scripts/kis_db/schema.py`)에 애초 `reason` 컬럼이
+      없고 INSERT 도 `metadata=None` 으로 저장한다(`db/repositories/candidate.py:134`, 라이브 실측 최근 8개
+      `scan_date` 전부 `metadata` 채워진 행 **0건**) — shadow 를 며칠 돌려도 DB 로는 0일치다.
+      **(나)** 설령 (가)를 고치더라도 `_rule_screener_base.py::scan()` 은 `scored[:max_candidates]`(상한 20)로
+      **잘린 뒤** 저장하므로, `on` 전환 시 「TT 생존자 전수에서 다시 상위 N 을 뽑으면 몇 건인가」에 스냅샷
+      상위 20건은 답이 못 된다. ⇒ **(나) 때문에 (가)를 고쳐도 로그가 정답이다.**
+      **후보 수 공식**: `on` 이면 `scored` 크기 = `TT통과`, 스냅샷 저장분 = `min(TT통과, 20)`, 라이브 소비
+      목표는 10건이므로 **실제 후보 = `min(TT통과, 10)`**.
       최종후보가 **평균 3건 미만**이면 K=3 대비 과소 — 올리기 전에 사장님 판단을 받는다.
+      🆕 1일차 실측(관측이지 판정 아님 — 하루 표본으로 「배선이 틀렸다」로 읽지 말 것): `TT통과=3` ⇒
+      후보 `min(3,10)=3`건 = **「평균 3건 미만」 경계선**. 누적 관측 원장 →
+      [SHADOW_LOG.md](../../backtest/concept_axes/minervini/SHADOW_LOG.md).
 - [ ] **④ 회귀** — `pytest RoboTrader_template/tests/test_screener_minervini.py` 전건 통과.
 - [ ] **⑤ 승인** — 라이브 매매가 바뀌므로 **사장님 승인**. 코드상 한 줄(`TT_FILTER_MODE = "on"`).
 
