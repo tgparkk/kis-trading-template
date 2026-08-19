@@ -133,3 +133,58 @@ class TestBuildCacheBreakout:
         _, stats = RUN.build_cache_breakout(px, elig, params)
         for k in ("n_eval", "n_dry", "n_p", "n_q", "n_b", "n_short_bars", "secs"):
             assert k in stats
+
+
+class TestArmRuleB:
+    def test_keys_exact(self):
+        assert set(RUN.ARM_RULE_B) == {"D", "B", "P", "Q", "DB"}
+
+    def test_truth_table(self):
+        cases = [
+            ((True, True, True), {"D", "B", "P", "Q", "DB"}),
+            ((False, True, True), {"B", "P", "Q"}),
+            ((True, True, False), {"D", "P"}),
+            ((True, False, True), {"D", "Q"}),
+            ((False, False, False), set()),
+        ]
+        for args, expect in cases:
+            fired = {a for a, fn in RUN.ARM_RULE_B.items() if fn(*args)}
+            assert fired == expect, f"{args} -> {fired}"
+
+    def test_doc1_arm_rule_untouched(self):
+        assert set(RUN.ARM_RULE) == {"D", "DT", "DF", "DTF", "T"}
+
+
+class TestBuildPoolsBreakout:
+    def _cache(self):
+        # (score, ok_dry, ok_p, ok_q, day_ret, limit_up)
+        return {
+            "AAA111": {"D1": (100.0, True, True, True, 0.07, False)},
+            "BBB222": {"D1": (200.0, True, False, False, -0.01, False)},
+            "CCC333": {"D1": (300.0, False, True, True, 0.30, True)},
+        }
+
+    def test_pools_and_all_key(self):
+        elig = {"D1": {"AAA111", "BBB222", "CCC333"}}
+        pools, dayret, limitup = RUN.build_pools_breakout(self._cache(), elig)
+        assert {c for c, _ in pools["ALL"]["D1"]} == {"AAA111", "BBB222", "CCC333"}
+        assert {c for c, _ in pools["B"]["D1"]} == {"AAA111", "CCC333"}
+        assert {c for c, _ in pools["DB"]["D1"]} == {"AAA111"}
+        assert {c for c, _ in pools["D"]["D1"]} == {"AAA111", "BBB222"}
+
+    def test_dayret_and_limitup_maps(self):
+        elig = {"D1": {"AAA111", "BBB222", "CCC333"}}
+        _, dayret, limitup = RUN.build_pools_breakout(self._cache(), elig)
+        assert abs(dayret["D1"]["AAA111"] - 0.07) < 1e-12
+        assert limitup["D1"]["CCC333"] is True
+
+    def test_nan_dayret_is_excluded(self):
+        cache = {"AAA111": {"D1": (100.0, True, True, True, float("nan"), False)}}
+        elig = {"D1": {"AAA111"}}
+        _, dayret, _ = RUN.build_pools_breakout(cache, elig)
+        assert "AAA111" not in dayret.get("D1", {})
+
+    def test_ineligible_excluded(self):
+        elig = {"D1": {"AAA111"}}
+        pools, _, _ = RUN.build_pools_breakout(self._cache(), elig)
+        assert {c for c, _ in pools["ALL"]["D1"]} == {"AAA111"}

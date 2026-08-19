@@ -507,6 +507,35 @@ def build_cache_breakout(px: pd.DataFrame, elig: dict, params: dict):
     return dict(cache), stats
 
 
+ARM_RULE_B = {
+    "D":  lambda dry, p, q: dry,              # 기준선 (문서 1 의 D 와 같은 정의)
+    "B":  lambda dry, p, q: p and q,          # 🔴 주 검정
+    "P":  lambda dry, p, q: p,                # 기술통계 — 돌파만
+    "Q":  lambda dry, p, q: q,                # 기술통계 — 거래량만
+    "DB": lambda dry, p, q: dry and p and q,  # 기술통계 — 「판별 보류」 사전 라벨
+}
+
+
+def build_pools_breakout(cache: dict, elig: dict):
+    """`(pools, dayret, limitup)` — `pools["ALL"]` 은 그날 적격 «전체»(귀무 추출 풀)."""
+    pools = {a: defaultdict(list) for a in list(ARM_RULE_B) + ["ALL"]}
+    dayret: dict = defaultdict(dict)
+    limitup: dict = defaultdict(dict)
+    for code, dd in cache.items():
+        for d, (score, ok_dry, ok_p, ok_q, day_ret, lim) in dd.items():
+            if code not in elig.get(d, ()):
+                continue
+            pools["ALL"][d].append((code, score))
+            limitup[d][code] = bool(lim)
+            if day_ret == day_ret:      # NaN 제외
+                dayret[d][code] = float(day_ret)
+            for a, fn in ARM_RULE_B.items():
+                if fn(ok_dry, ok_p, ok_q):
+                    pools[a][d].append((code, score))
+    return ({a: {d: sorted(v) for d, v in p.items() if v} for a, p in pools.items()},
+            dict(dayret), dict(limitup))
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 5. Arm 풀 · 선택
 # ────────────────────────────────────────────────────────────────────────────
