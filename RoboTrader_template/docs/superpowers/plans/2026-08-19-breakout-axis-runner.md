@@ -330,7 +330,7 @@ class TestBuildCacheBreakout:
         df = pd.DataFrame(rows)
         # AAA111 의 마지막 봉만 돌파 + 거래량 폭증
         m = (df["stock_code"] == "AAA111") & (df["date"] == "2024-01-40")
-        df.loc[m, "close"] = 120.0
+        df.loc[m, "close"] = 130.0   # 130/99 = 1.313 -> limit_up 성립
         df.loc[m, "volume"] = 3000.0
         return df
 
@@ -353,7 +353,7 @@ class TestBuildCacheBreakout:
         params = dict(recent_window=10, base_window=30, ratio_max=0.70)
         cache, _ = RUN.build_cache_breakout(px, elig, params)
         _, _, _, _, day_ret, limit_up = cache["AAA111"]["2024-01-40"]
-        assert abs(day_ret - (120.0 / 99.0 - 1.0)) < 1e-9
+        assert abs(day_ret - (130.0 / 99.0 - 1.0)) < 1e-9
         assert limit_up is True
 
     def test_ineligible_pairs_are_skipped(self):
@@ -979,6 +979,7 @@ Task 6 이 다루지 않은 사양 §6 항목 넷을 채운다. **전부 PnL 을
 **Interfaces:**
 - Consumes: `pools`(Task 4) · `px` 프레임
 - Produces:
+  - `build_frames_breakout(px) -> tuple[dict, dict]` — `(frames, idxmap)`. Task 8 도 «이것을» 쓴다
   - `gate_exec_rows(pools, frames, idxmap, band_up_pct=0.03) -> list[dict]`
     — 키: `arm` · `band_ok_pct` · `band_dead_pct` · `impossible_up` · `vol5_med`
   - `gate_overlap(sels) -> dict[tuple[str, str], float]` — arm 쌍별 선택 종목-일 Jaccard
@@ -990,12 +991,12 @@ class TestGateExecRows:
     def _frames(self):
         import pandas as pd
         g = pd.DataFrame(dict(
-            date=["D1", "D2", "D3", "D4", "D5", "D6", "D7"],
-            open=[100.0, 104.0, 100.0, 100.0, 100.0, 100.0, 100.0],
-            high=[100.0, 106.0, 101.0, 101.0, 101.0, 101.0, 140.0],
-            low=[99.0, 103.0, 99.0, 99.0, 99.0, 99.0, 99.0],
-            close=[100.0, 105.0, 100.0, 100.0, 100.0, 100.0, 135.0],
-            volume=[1.0] * 7,
+            date=["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"],
+            open=[100.0, 104.0, 100.0, 100.0, 100.0, 100.0, 100.0, 136.0],
+            high=[100.0, 106.0, 101.0, 101.0, 101.0, 101.0, 140.0, 140.0],
+            low=[99.0, 103.0, 99.0, 99.0, 99.0, 99.0, 99.0, 130.0],
+            close=[100.0, 105.0, 100.0, 100.0, 100.0, 100.0, 135.0, 135.0],
+            volume=[1.0] * 8,
         ))
         frames = {"AAA": g}
         im = {d: i for i, d in enumerate(g["date"])}
@@ -1025,6 +1026,7 @@ class TestGateExecRows:
         """KRX 한도(+30%) 초과 = 데이터 인공물. 가드는 «하락»만 보므로 여기서 센다."""
         frames, idxmap = self._frames()
         pools = {"B": {"D7": [("AAA", 1.0)]}}      # 100 -> 135 = +35% > 31%
+        # 🔑 D8 이 있으므로 「다음 봉 없음」 가드에 걸리지 않는다
         rows = RUN.gate_exec_rows(pools, frames, idxmap)
         assert rows[0]["impossible_up"] == 1
 
@@ -1058,6 +1060,24 @@ Expected: FAIL — `has no attribute 'gate_exec_rows'`
 - [ ] **Step 3: 구현**
 
 ```python
+def build_frames_breakout(px: pd.DataFrame):
+    """창 안으로 자른 `(frames, idxmap)`. `stage1b`·`stage2b` 가 «공유»한다.
+
+    🔑 같은 블록을 두 스테이지에 verbatim 으로 두지 않는다 — 한쪽만 고쳐지면
+    게이트와 판정이 다른 프레임을 보게 된다.
+    """
+    frames, idxmap = {}, {}
+    for code, g in px.groupby("stock_code", sort=False):
+        g2 = g[g["date"] >= W0]
+        if len(g2) >= 2:
+            g2 = g2.reset_index(drop=True)
+            frames[code] = g2
+            im = {d: i for i, d in enumerate(g2["date"].to_numpy())}
+            im["__last__"] = len(g2) - 1
+            idxmap[code] = im
+    return frames, idxmap
+
+
 def gate_exec_rows(pools: dict, frames: dict, idxmap: dict,
                    band_up_pct: float = 0.03) -> list:
     """실행 가능성·데이터 위생 지표 (PREREG_BREAKOUT §6-3·5·7). **PnL 미사용.**
@@ -1124,15 +1144,7 @@ def gate_overlap(sels: dict) -> dict:
 Task 6 의 `stage1b` 안, `year_skew` 호출 **바로 위**에 삽입:
 
 ```python
-    frames, idxmap = {}, {}
-    for code, g in px.groupby("stock_code", sort=False):
-        g2 = g[g["date"] >= W0]
-        if len(g2) >= 2:
-            g2 = g2.reset_index(drop=True)
-            frames[code] = g2
-            im = {d: i for i, d in enumerate(g2["date"].to_numpy())}
-            im["__last__"] = len(g2) - 1
-            idxmap[code] = im
+    frames, idxmap = build_frames_breakout(px)
 
     say("## 2. 실행 가능성 · 데이터 위생 (§6-3·5·7)")
     say("")
@@ -1174,7 +1186,7 @@ git commit -m "feat(concept-axes): 게이트 보조 지표 — 밴드·불가능
 - Test: `RoboTrader_template/tests/test_concept_axes_breakout.py` (추가)
 
 **Interfaces:**
-- Consumes: 앞 태스크 전부 + `run_arm` · `perm_p` · `ArmGated` · `BookBacktester`(지역 import)
+- Consumes: 앞 태스크 전부 + `build_frames_breakout`(Task 7) · `run_arm` · `perm_p` · `ArmGated` · `BookBacktester`(지역 import)
 - Produces:
   - `breakout_labels(B: float, D: float, r_means: list, eps: float) -> dict`
   - `stage2b() -> int`
@@ -1267,15 +1279,7 @@ def stage2b() -> int:
     pools, dayret, _limitup = build_pools_breakout(cache, elig)
     sels = {a: select_top(pools[a]) for a in ARM_RULE_B if a in pools}
 
-    frames, idxmap = {}, {}
-    for code, g in px.groupby("stock_code", sort=False):
-        g2 = g[g["date"] >= W0]
-        if len(g2) >= 2:
-            g2 = g2.reset_index(drop=True)
-            frames[code] = g2
-            im = {d: i for i, d in enumerate(g2["date"].to_numpy())}
-            im["__last__"] = len(g2) - 1
-            idxmap[code] = im
+    frames, idxmap = build_frames_breakout(px)   # Task 7 의 공유 헬퍼
 
     cfg = dict(sl=params["sl"], tp=params["tp"], mh=params["mh"])
     res = {a: run_arm(sels[a], frames, idxmap, cfg, BookBacktester) for a in sels}
