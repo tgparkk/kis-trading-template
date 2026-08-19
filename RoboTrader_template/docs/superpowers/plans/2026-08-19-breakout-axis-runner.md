@@ -1436,9 +1436,12 @@ git commit -m "feat(concept-axes): --stage1b/--stage2b CLI 배선 + 전체 회�
 
 🔴 **반드시 이 순서다. 뒤집으면 사전등록이 무의미해진다.**
 
-1. `python run.py --stage1b > GATE_BREAKOUT.md` — **PnL 미조회**
+1. `python run.py --stage1b` — **PnL 미조회**. 도구가 `GATE_BREAKOUT.md` 를 **직접 쓴다**
+   🔴 **`>` 리다이렉트를 붙이지 말 것** — 구현 중 정정됐다(문서 1 의 `stage1`/`stage2` 와 대칭).
+   리다이렉트에 의존하면 빠뜨렸을 때 산출물이 stdout 으로 흘러 사라진다(§9 가 경계한 실패).
 2. **게이트 산출물을 읽고 커밋한다.** 여기서 파라미터·arm 을 바꾸면 §8-2 위반이다
-3. 게이트 통과 arm 이 있을 때만 `python run.py --stage2b > RESULTS_BREAKOUT.md`
+3. 게이트 통과 arm 이 있을 때만 `python run.py --stage2b`
+   → `RESULTS_BREAKOUT.md` · `RESULTS_BREAKOUT_raw.md` 를 직접 쓴다
 4. `PREREG_BREAKOUT.md` §9 실행 기록을 채운다
 5. `../REGISTRY.md` 5번 문서 상태를 「판정 완료」로 갱신
 
