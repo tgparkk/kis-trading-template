@@ -76,3 +76,60 @@ class TestBreakoutFlags:
         v[:30] = 1000.0
         v[30] = 1000.0         # RVOL 1.0 -> X
         assert RUN.breakout_flags(h, v, c, 30) == (True, False)
+
+
+class TestBuildCacheBreakout:
+    def _px(self):
+        """2종목 × 40봉 합성 프레임. DB 미접속."""
+        import pandas as pd
+        rows = []
+        for code in ("AAA111", "BBB222"):
+            for i in range(40):
+                rows.append(dict(
+                    stock_code=code, date=f"2024-01-{i+1:02d}",
+                    open=100.0, high=100.0, low=99.0, close=99.0, volume=1000.0,
+                ))
+        df = pd.DataFrame(rows)
+        # AAA111 의 마지막 봉만 돌파 + 거래량 폭증
+        m = (df["stock_code"] == "AAA111") & (df["date"] == "2024-01-40")
+        df.loc[m, "close"] = 130.0   # 130/99 = 1.313 -> limit_up 성립
+        df.loc[m, "volume"] = 3000.0
+        return df
+
+    def test_cache_tuple_order_and_types(self):
+        px = self._px()
+        elig = {d: {"AAA111", "BBB222"} for d in px["date"].unique()}
+        params = dict(recent_window=10, base_window=30, ratio_max=0.70)
+        cache, stats = RUN.build_cache_breakout(px, elig, params)
+        val = cache["AAA111"]["2024-01-40"]
+        assert len(val) == 6, "캐시 튜플 길이가 바뀌면 build_pools_breakout 이 깨진다"
+        score, ok_dry, ok_p, ok_q, day_ret, limit_up = val
+        assert isinstance(score, float)
+        assert isinstance(ok_dry, bool) and isinstance(ok_p, bool)
+        assert isinstance(ok_q, bool) and isinstance(limit_up, bool)
+        assert ok_p is True and ok_q is True
+
+    def test_day_ret_is_close_over_prev_close(self):
+        px = self._px()
+        elig = {d: {"AAA111"} for d in px["date"].unique()}
+        params = dict(recent_window=10, base_window=30, ratio_max=0.70)
+        cache, _ = RUN.build_cache_breakout(px, elig, params)
+        _, _, _, _, day_ret, limit_up = cache["AAA111"]["2024-01-40"]
+        assert abs(day_ret - (130.0 / 99.0 - 1.0)) < 1e-9
+        assert limit_up is True
+
+    def test_ineligible_pairs_are_skipped(self):
+        px = self._px()
+        elig = {d: {"BBB222"} for d in px["date"].unique()}   # AAA111 부적격
+        params = dict(recent_window=10, base_window=30, ratio_max=0.70)
+        cache, stats = RUN.build_cache_breakout(px, elig, params)
+        assert "AAA111" not in cache
+        assert stats["n_eval"] == 40
+
+    def test_stats_keys(self):
+        px = self._px()
+        elig = {d: {"AAA111", "BBB222"} for d in px["date"].unique()}
+        params = dict(recent_window=10, base_window=30, ratio_max=0.70)
+        _, stats = RUN.build_cache_breakout(px, elig, params)
+        for k in ("n_eval", "n_dry", "n_p", "n_q", "n_b", "n_short_bars", "secs"):
+            assert k in stats

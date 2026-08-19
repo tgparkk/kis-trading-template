@@ -453,6 +453,60 @@ def breakout_flags(high, volume, close, i: int) -> tuple:
     return ok_pivot, ok_rvol
 
 
+def build_cache_breakout(px: pd.DataFrame, elig: dict, params: dict):
+    """`{code: {date: (score, ok_dry, ok_p, ok_q, day_ret, limit_up)}}` (PREREG_BREAKOUT §2).
+
+    🔴 문서 1 의 `build_cache` 와 «별도» 함수다. 값 튜플 길이가 달라 섞으면 즉시 깨지므로
+    섞지 않는다. 창 길이·`score` 정의·적격 판정은 문서 1 과 동일하게 둔다(비교 가능성).
+    """
+    dry = rule_volume_dryup(recent_window=int(params["recent_window"]),
+                            base_window=int(params["base_window"]),
+                            ratio_max=float(params["ratio_max"]))
+    cache: dict = defaultdict(dict)
+    stats = dict(n_eval=0, n_dry=0, n_p=0, n_q=0, n_b=0, n_short_bars=0)
+    t0 = time.perf_counter()
+    done = 0
+    total = px["stock_code"].nunique()
+    for code, g in px.groupby("stock_code", sort=False):
+        done += 1
+        if done % 300 == 0:
+            print(f"      ...{done}/{total} 종목 · 평가 {stats['n_eval']:,} · "
+                  f"B {stats['n_b']:,} · {time.perf_counter()-t0:.0f}s", flush=True)
+        g = g.reset_index(drop=True)
+        dates = g["date"].to_numpy()
+        closes = g["close"].to_numpy(dtype=float)
+        highs = g["high"].to_numpy(dtype=float)
+        vols = g["volume"].to_numpy(dtype=float)
+        for i in range(len(g)):
+            d = dates[i]
+            if code not in elig.get(d, ()):
+                continue
+            stats["n_eval"] += 1
+            lo = max(0, i + 1 - LOOKBACK)
+            win = g.iloc[lo:i + 1]
+            ok_dry = bool(getattr(dry.evaluate(win, {}), "triggered", False))
+            if (i - lo + 1) < PIVOT_WIN + 1:
+                stats["n_short_bars"] += 1
+                ok_p = ok_q = False
+            else:
+                ok_p, ok_q = breakout_flags(highs, vols, closes, i)
+            stats["n_dry"] += ok_dry
+            stats["n_p"] += ok_p
+            stats["n_q"] += ok_q
+            stats["n_b"] += (ok_p and ok_q)
+            if i > 0 and closes[i - 1] > 0:
+                day_ret = float(closes[i] / closes[i - 1] - 1.0)
+                limit_up = bool(closes[i] / closes[i - 1] >= 1.28)
+            else:
+                day_ret = float("nan")
+                limit_up = False
+            a = max(0, i + 1 - SCORE_WINDOW)
+            cache[code][d] = (float(vols[a:i + 1].mean()), ok_dry, ok_p, ok_q,
+                              day_ret, limit_up)
+    stats["secs"] = time.perf_counter() - t0
+    return dict(cache), stats
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 5. Arm 풀 · 선택
 # ────────────────────────────────────────────────────────────────────────────
