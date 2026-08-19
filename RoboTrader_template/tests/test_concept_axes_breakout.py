@@ -494,10 +494,111 @@ class TestBreakoutLabels:
         assert lab["pass_vs_r"] is False
 
     def test_labels_are_mutually_exclusive(self):
-        for B, D, rs in [(1.0, 0.0, [0.5, 1.2]), (2.0, 0.0, [0.5, 0.9]),
-                         (1.2, 0.0, [0.5, 1.0, 1.1])]:
-            lab = RUN.breakout_labels(B=B, D=D, r_means=rs, eps=0.5)
-            assert lab["label"] in {"(나) 판별 불가", "(가) 돌파는 정보다", "(다) 크기 미달"}
+        """리뷰 반영(M6): 세 입력이 «서로 다른» 라벨을 내는지까지 검사한다 —
+        기존 버전은 각 라벨이 3원소 집합에 속하는지만 봐서, 세 경우 모두
+        `(나)` 를 반환하는 오구현도 통과시켰다."""
+        cases = [(1.0, 0.0, [0.5, 1.2]), (2.0, 0.0, [0.5, 0.9]),
+                 (1.2, 0.0, [0.5, 1.0, 1.1])]
+        labels = [RUN.breakout_labels(B=B, D=D, r_means=rs, eps=0.5)["label"]
+                  for B, D, rs in cases]
+        assert set(labels) == {"(나) 판별 불가", "(가) 돌파는 정보다", "(다) 크기 미달"}
+        assert len(set(labels)) == len(labels), f"라벨이 겹친다: {labels}"
 
     def test_perm_p_min_with_100_seeds(self):
         assert abs(RUN.perm_p(9.9, [0.0] * 100) - 1 / 101) < 1e-12
+
+    def test_empty_r_means_raises(self):
+        """리뷰 반영(I6): `r_means` 가 비면 귀무가 한 번도 산출되지 않은 고장
+        상태다 — 「(나) 판별 불가」로 조용히 접지 않고 예외를 던진다."""
+        with pytest.raises(ValueError):
+            RUN.breakout_labels(B=1.0, D=0.0, r_means=[], eps=0.5)
+
+
+class TestTrimmedMean:
+    """리뷰 반영(I4) — `trimmed_mean` 전용 테스트(기존엔 0개였다)."""
+
+    def test_empty_list_is_nan(self):
+        v = RUN.trimmed_mean([])
+        assert v != v          # NaN
+
+    def test_no_trim_when_k_is_zero(self):
+        """n=99, trim=0.01(기본값) -> k=int(99*0.01)=0 -> 절사 0개 = 원 평균."""
+        vals = [float(i) - 49.0 for i in range(99)]
+        assert int(99 * 0.01) == 0
+        assert abs(RUN.trimmed_mean(vals) - float(np.mean(vals)) * 100) < 1e-9
+
+    def test_n1000_trims_10_each_side(self):
+        vals = [float(i) for i in range(1000)]
+        core = vals[10:990]
+        assert abs(RUN.trimmed_mean(vals) - float(np.mean(core)) * 100) < 1e-9
+
+    def test_scale_is_percent(self):
+        vals = [0.01, 0.02, 0.03]
+        assert abs(RUN.trimmed_mean(vals) - float(np.mean(vals)) * 100) < 1e-9
+
+    def test_uses_full_list_when_trim_removes_everything(self):
+        """n=2, trim=0.5 -> k=1, n-2k=0 <= 0 -> 절사 없이 «전체» 평균으로 되돌아간다."""
+        vals = [1.0, 100.0]
+        assert abs(RUN.trimmed_mean(vals, trim=0.5) - float(np.mean(vals)) * 100) < 1e-9
+
+
+class _FakeTradeResult:
+    def __init__(self, trades):
+        self.trades = trades
+
+
+class _FakeBacktester:
+    """`run_arm`·`_pnl_list` 양쪽이 요구하는 최소 인터페이스만 흉내낸다 — DB·실제
+    체결 로직 없이 code 별 고정 거래 결과를 돌려준다(리뷰 반영 I4)."""
+
+    _FIXED_PNL = {"AAA111": 0.05, "BBB222": -0.02, "CCC333": 0.10}
+
+    def __init__(self, strategy, warmup_bars, stop_loss_pct, take_profit_pct,
+                 max_hold_bars, eod_liquidate):
+        self.strategy = strategy
+
+    def run_single(self, code, df):
+        p = self._FIXED_PNL.get(code, 0.0)
+        return _FakeTradeResult([
+            {"side": "buy", "idx": 0, "reason": "", "pnl_pct": 0.0},
+            {"side": "sell", "idx": 1, "reason": "take_profit", "pnl_pct": p},
+        ])
+
+
+class TestPnlListMatchesRunArm:
+    """리뷰 반영(I4) — `_pnl_list` 는 `run_arm`(748행)의 거래 수집 루프를 손으로
+    베낀 사본이고 둘 사이에 링크가 없다. 가짜 백테스터로 두 값의 «평균이
+    같은지»를 고정해, 한쪽만 고쳐지면 조용히 어긋나는 것을 잡는다."""
+
+    def _frames(self):
+        import pandas as pd
+        g = pd.DataFrame(dict(date=["D1", "D2"], open=[1.0, 1.0], high=[1.0, 1.0],
+                               low=[1.0, 1.0], close=[1.0, 1.0], volume=[1.0, 1.0]))
+        return {c: g for c in ("AAA111", "BBB222", "CCC333")}
+
+    def test_mean_and_count_match_run_arm(self):
+        frames = self._frames()
+        idxmap = {c: {"D1": 0, "D2": 1, "__last__": 1} for c in frames}
+        sel = {"D1": ["AAA111", "BBB222", "CCC333"]}
+        cfg = dict(sl=0.08, tp=0.12, mh=20)
+
+        pnls = RUN._pnl_list(sel, frames, cfg, _FakeBacktester)
+        arm = RUN.run_arm(sel, frames, idxmap, cfg, _FakeBacktester)
+
+        assert len(pnls) == arm["n"] == 3
+        assert abs(float(np.mean(pnls)) * 100 - arm["mean"]) < 1e-9
+
+    def test_skips_codes_without_frame(self):
+        frames = self._frames()
+        sel = {"D1": ["AAA111", "NOPE000"]}   # NOPE000 은 frames 에 없다
+        cfg = dict(sl=0.08, tp=0.12, mh=20)
+        pnls = RUN._pnl_list(sel, frames, cfg, _FakeBacktester)
+        assert len(pnls) == 1
+        assert abs(pnls[0] - 0.05) < 1e-12
+
+
+def test_book_backtester_not_top_level_import():
+    """리뷰 반영(I5) — 1단계 PnL 무접근 보증의 «전부» 인 불변식을 테스트로
+    고정한다. `stage1b` 는 산출물에 이 사실을 인쇄까지 하는데 지금까지
+    이를 고정하는 단언이 없었다."""
+    assert not hasattr(RUN, "BookBacktester")
