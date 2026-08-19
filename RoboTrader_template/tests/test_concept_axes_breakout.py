@@ -612,3 +612,43 @@ class TestDoc5FrozenSignatures:
     def test_stage2b_takes_no_args(self):
         import inspect
         assert list(inspect.signature(RUN.stage2b).parameters) == []
+
+
+class TestCliWiring:
+    """CLI 배선 실제 동작 검증 — 시그니처 테스트는 함수 존재만 보증하고,
+    배선 자체(add_argument 두 줄과 if 분기 두 줄)를 검증하지 못한다."""
+
+    def test_stage1b_argument_in_source(self):
+        """--stage1b 문자열이 run.py 의 main() 안에 있는가?"""
+        import inspect
+        src = inspect.getsource(RUN.main)
+        assert '--stage1b' in src, "문자열 '--stage1b'가 main() 소스에 없다"
+        assert 'add_argument' in src, "argparse 사용이 없다"
+
+    def test_stage2b_argument_in_source(self):
+        """--stage2b 문자열이 run.py 의 main() 안에 있는가?"""
+        import inspect
+        src = inspect.getsource(RUN.main)
+        assert '--stage2b' in src, "문자열 '--stage2b'가 main() 소스에 없다"
+
+    def test_stage1_still_exists(self):
+        """문서 1 의 기존 --stage1 이 여전히 있는가? (삭제 검사)"""
+        import inspect
+        src = inspect.getsource(RUN.main)
+        assert '--stage1' in src, "기존 --stage1이 삭제됐다"
+        assert 'stage1()' in src, "stage1() 호출이 없다"
+
+    def test_stage2_still_exists(self):
+        """문서 1 의 기존 --stage2 가 여전히 있는가? (삭제 검사)"""
+        import inspect
+        src = inspect.getsource(RUN.main)
+        assert '--stage2' in src, "기존 --stage2가 삭제됐다"
+        assert 'stage2()' in src, "stage2() 호출이 없다"
+
+    def test_stage1b_callable(self):
+        """stage1b() 가 호출 가능한가?"""
+        assert callable(RUN.stage1b), "stage1b가 호출 불가능하다"
+
+    def test_stage2b_callable(self):
+        """stage2b() 가 호출 가능한가?"""
+        assert callable(RUN.stage2b), "stage2b가 호출 불가능하다"
