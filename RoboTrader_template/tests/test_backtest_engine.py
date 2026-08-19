@@ -451,15 +451,32 @@ class TestScreenerSnapshotProviderHelper:
         # DB 조회는 한 번만
         assert mock_repo_instance.get_snapshot_date_range.call_count == 1
 
-    def test_provider_returns_empty_on_db_error(self):
-        """DB 에러 시 빈 리스트를 반환하고 예외를 전파하지 않음."""
+    def test_provider_raises_on_db_error(self):
+        """🔴 계약 변경(2026-08-19): DB 조회 «고장» 은 삼키지 않고 전파한다.
+
+        종전 이 테스트는 「빈 리스트를 반환하고 예외를 전파하지 않음」을 단언해
+        ***결함을 「사양」으로 못박고 있었다.*** 그 삼킴 때문에
+        `core/candidate_selector.py` 의 fail-closed `except` 가 도달 불가였고,
+        DB 고장이 `[E6] ... 조건에 맞는 종목 없음`(정상 INFO)으로 보고됐다.
+
+        🔑 ***테스트가 「올바른 순서」로 쓰여 있으면 프로덕션의 「틀린 순서」를 못 잡는다*** —
+        여기서는 한 발 더 나아가 «틀린 동작을 단언»하고 있었다.
+        상세 → `tests/test_screener_provider_fail_closed.py`
+        """
         with patch("core.screener_snapshot_provider.CandidateRepository") as MockRepo:
-            MockRepo.side_effect = Exception("DB 연결 실패")
+            MockRepo.side_effect = RuntimeError("DB 연결 실패")
 
             provider = make_screener_snapshot_provider("SampleStrategy")
-            codes = provider("SampleStrategy", "2024-04-30")
+            with pytest.raises(RuntimeError, match="DB 연결 실패"):
+                provider("SampleStrategy", "2024-04-30")
 
-        assert codes == []
+    def test_provider_returns_empty_when_snapshot_absent(self):
+        """🟢 반대편 — 스냅샷이 «없는» 날은 여전히 [] 다(정상). 예외가 아니다."""
+        with patch("core.screener_snapshot_provider.CandidateRepository") as MockRepo:
+            MockRepo.return_value.get_snapshot_date_range.return_value = pd.DataFrame()
+
+            provider = make_screener_snapshot_provider("SampleStrategy")
+            assert provider("SampleStrategy", "2024-04-30") == []
 
 
 class TestCandidatePoolHitsCounted:

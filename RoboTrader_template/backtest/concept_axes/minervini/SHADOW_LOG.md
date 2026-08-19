@@ -61,8 +61,17 @@ grep "TT게이트" RoboTrader_template/logs/robotrader_template_*.log
 - ⬜ `db/repositories/candidate.py:134` 의 `metadata=None` — 고치면 스냅샷에도 `reason` 이 남는다.
   **단 이건 «편의»이지 ③의 정답이 아니다** — 잘린 뒤 저장되는 구조(`scored[:max_candidates]`)는 고쳐도
   그대로이기 때문이다. 라이브 코드 수정이라 별도 승인 필요.
-- ⬜ `core/screener_snapshot_provider.py` 의 `except Exception` 이 조회 실패를 삼켜 `[]` 를 돌려주므로,
-  `core/candidate_selector.py` 의 fail-closed ERROR 가 **도달 불가일 가능성**이 있다.
-  ⚠️ **미확정** — 해당 로거(`backtest.screener_provider`)가 로그파일에 등장한 횟수가 **0회**인데, 이는
-  「고장이 없었다」와 「고장이 나도 안 보인다」를 구별하지 못한다.
-  🔴 **`on` 으로 켜면 정상(3건)과 파손(0건)이 같은 자릿수가 되므로 이 항목의 위험도가 올라간다.**
+- ✅ ~~`core/screener_snapshot_provider.py` 의 `except Exception` 이 조회 실패를 삼킨다~~
+  **2026-08-19 확정 → 수정 완료.** 「도달 불가일 가능성」이 아니라 **도달 불가가 맞았다**.
+  코드 독해로 확정하고 통합 테스트로 재현했다 — DB 고장이
+  `[E6] ... 조건에 맞는 종목 없음, 금일 미진입`(**INFO/정상**)으로 보고됐다.
+  🔑 ***가드의 ERROR 문구가 「screener_snapshots 조회 «실패»」인데 정작 그 조회 실패는
+  거기 도달하지 못했다*** — 가드가 자기가 못 잡는 케이스의 이름을 달고 있었다.
+  ⇒ provider 가 예외를 **전파**하도록 고쳤다(「없다」=`[]` 유지, 「고장」=raise).
+  실패 캐시(`_cache[scan_date] = []`)도 제거 — 순간 장애 하나가 그날을 통째로 죽였다.
+  🔑 계열: `68b542f` 가 호출자 층에서 고친 **같은 결함이 한 층 아래에서 재발**한 것.
+  테스트 → `tests/test_screener_provider_fail_closed.py`
+
+  ⚠️ **남은 위험은 그대로다**: `on` 으로 켜면 정상(3건)과 파손(0건)이 같은 자릿수다.
+  이제 파손은 ERROR 로 «보이지만», 「후보가 3건뿐이라 성과가 안 난다」와
+  「실은 며칠째 0건이었다」를 구별하려면 **일별 후보 수를 원장에 남기는 습관**이 필요하다.

@@ -13,7 +13,6 @@ candidate_provider 콜백 팩토리.
 
 from __future__ import annotations
 
-import logging
 from datetime import date as DateType
 from typing import Callable, Dict, List, Optional
 
@@ -51,7 +50,20 @@ def make_screener_snapshot_provider(
 
     Returns:
         (strategy_name: str, scan_date: str) → List[str] 형태의 콜백.
-        DB 조회 실패 또는 스냅샷 없는 날짜는 빈 리스트를 반환합니다.
+
+        🔑 **「스냅샷이 없다」와 「조회가 고장났다」를 «갈라서» 돌려줍니다.**
+
+        - 스냅샷 없는 날짜 → `[]` (**정상**. 그날 조건에 맞는 종목이 없었다는 뜻)
+        - DB 조회 실패     → **예외를 그대로 올려보냅니다** (호출자가 판단한다)
+
+        ⚠️ 2026-08-19 이전에는 예외를 삼키고 `[]` 를 돌려줬습니다. 그 결과
+        `core/candidate_selector.py` 의 fail-closed `except` 가 **도달 불가**였고,
+        DB 고장이 `[E6] ... 조건에 맞는 종목 없음, 금일 미진입` 이라는 **INFO(정상)**
+        메시지로 보고됐습니다. 즉 ***폴백이 고장을 「대비」한 게 아니라 「감췄습니다」.***
+
+        ⚠️ 백테스트(`backtest/engine.py:321`)도 이 콜백을 감싸지 않고 호출하므로,
+        DB 고장 시 백테스트는 이제 **조용히 후보 0건으로 진행하지 않고 중단**됩니다.
+        연구 산출물이 조용히 오염되는 것보다 시끄럽게 멈추는 편이 맞습니다.
     """
     # 조회 결과를 날짜별로 캐싱해 반복 DB 호출 방지
     _cache: Dict[str, List[str]] = {}
@@ -60,33 +72,30 @@ def make_screener_snapshot_provider(
         if scan_date in _cache:
             return _cache[scan_date]
 
-        try:
-            if CandidateRepository is None:
-                raise ImportError("db.repositories.candidate 패키지를 사용할 수 없습니다")
+        # 🔴 예외를 «삼키지 않는다». 여기서 [] 로 뭉개면 「없다」와 「고장」이
+        #    같은 값이 되고, 호출자는 고장을 정상으로 보고하게 된다.
+        if CandidateRepository is None:
+            raise ImportError("db.repositories.candidate 패키지를 사용할 수 없습니다")
 
-            repo = CandidateRepository()
-            parsed_date = DateType.fromisoformat(scan_date)
+        repo = CandidateRepository()
+        parsed_date = DateType.fromisoformat(scan_date)
 
-            if params_hash:
-                rows = repo.get_screener_snapshot(strategy_name, parsed_date, params_hash)
-                codes = [r["stock_code"] for r in rows]
-            else:
-                df = repo.get_snapshot_date_range(
-                    strategy=strategy_name,
-                    start_date=parsed_date,
-                    end_date=parsed_date,
-                    params_hash=None,
-                )
-                codes = df["stock_code"].tolist() if not df.empty else []
-
-            _cache[scan_date] = codes
-            return codes
-
-        except Exception as e:
-            logging.getLogger("backtest.screener_provider").warning(
-                f"screener_snapshots 조회 실패 [{scan_date}]: {e}"
+        if params_hash:
+            rows = repo.get_screener_snapshot(strategy_name, parsed_date, params_hash)
+            codes = [r["stock_code"] for r in rows]
+        else:
+            df = repo.get_snapshot_date_range(
+                strategy=strategy_name,
+                start_date=parsed_date,
+                end_date=parsed_date,
+                params_hash=None,
             )
-            _cache[scan_date] = []
-            return []
+            # 빈 결과는 «정상» — 그날 스냅샷이 없었다는 뜻이다.
+            codes = df["stock_code"].tolist() if not df.empty else []
+
+        # 🔑 «성공만» 캐시한다. 실패를 캐시하면 순간 장애 한 번이
+        #    프로세스 수명 동안 그 날짜를 통째로 죽여 재시도가 봉쇄된다.
+        _cache[scan_date] = codes
+        return codes
 
     return _provider
