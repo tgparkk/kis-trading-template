@@ -1774,6 +1774,172 @@ def stage2() -> int:
     return 0
 
 
+def breakout_labels(B: float, D: float, r_means: list, eps: float) -> dict:
+    """PREREG_BREAKOUT §5-2 — 라벨은 상호배타이며 위에서부터 우선한다."""
+    n1 = bool(r_means) and all(B > x for x in r_means)
+    med_r = float(np.median(r_means)) if r_means else float("nan")
+    pass_vs_d = bool(B - D >= eps)
+    pass_vs_r = bool(B - med_r >= eps)
+    if not n1:
+        label = "(나) 판별 불가"
+    elif pass_vs_d and pass_vs_r:
+        label = "(가) 돌파는 정보다"
+    else:
+        label = "(다) 크기 미달"
+    return dict(label=label, n1=n1, med_r=med_r,
+                pass_vs_d=pass_vs_d, pass_vs_r=pass_vs_r,
+                p=perm_p(B, r_means))
+
+
+def _pnl_list(sel: dict, frames: dict, cfg: dict, backtester_cls) -> list:
+    """`run_arm` 과 같은 방식으로 거래를 재현해 «개별» `pnl_pct` 리스트만 뽑는다.
+
+    🔴 task-8 추가요구 (나) 전용 보조 헬퍼다. `run_arm` 이 개별 거래를 돌려주지
+    않고 `run_arm` 자체는(불가침) 고치지 않으므로, 절사평균 계산에 필요한
+    원시 pnl 목록만 옆에 다시 뽑는다 — `run_arm`(748행)의 거래 수집 루프를
+    그대로 따른다(신호/폐기 집계만 빠진다, 여기선 필요 없다).
+    """
+    allowed = {d: set(v) for d, v in sel.items() if v}
+    codes = set().union(*allowed.values()) if allowed else set()
+    bt = backtester_cls(strategy=ArmGated(allowed), warmup_bars=0,
+                        stop_loss_pct=cfg["sl"], take_profit_pct=cfg["tp"],
+                        max_hold_bars=cfg["mh"], eod_liquidate=False)
+    pnl = []
+    for c in sorted(codes):
+        g = frames.get(c)
+        if g is None or len(g) < 2:
+            continue
+        buy = None
+        for t in bt.run_single(c, g).trades:
+            if t["side"] == "buy":
+                buy = t
+            elif t["side"] == "sell" and buy is not None:
+                pnl.append(float(t["pnl_pct"]))
+                buy = None
+    return pnl
+
+
+def trimmed_mean(values: list, trim: float = 0.01) -> float:
+    """상하 `trim` 비율씩 절사한 평균(%, `run_arm`의 `mean`과 같은 척도).
+
+    §6-5 — 참고 인쇄 전용이다. 🔴 **판정에는 원 평균을 쓴다**(사양이 동결한
+    통계량은 거래당 평균) — 이 값은 위생 가드가 «하락»만 봐서 미조정 상승
+    절벽이 만드는 가짜 트리거가 극단값으로 평균을 밀어 올렸는지 참고로
+    점검하는 용도다.
+    """
+    if not values:
+        return float("nan")
+    v = sorted(values)
+    n = len(v)
+    k = int(n * trim)
+    core = v[k: n - k] if n - 2 * k > 0 else v
+    return float(np.mean(core)) * 100
+
+
+def stage2b() -> int:
+    """문서 5 2단계 판정. 🔴 `stage1b` 가 끝난 «뒤»에만 돌린다."""
+    from backtest.book_backtester import BookBacktester
+
+    conn = psycopg2.connect(**DSN)
+    sha = git_sha()
+    rep("# 판정 — 「돌파 방아쇠」는 정보인가")
+    rep("")
+    rep(f"사전등록 [`PREREG_BREAKOUT.md`](PREREG_BREAKOUT.md) 실행 · **5번 문서** · "
+        f"창 **{W0} ~ {W1}** · 실행 커밋 **`{sha}`**.")
+    rep("")
+    rep(f"🔴 ε = **{EPS_ECON}%p** · N1 = **`B > R_B {S_BREAKOUT}개 전부`** · "
+        f"주 검정 **1개** · 귀무는 **크기정합+당일수익률 층화** `R_B` 다(§2-2).")
+    rep("")
+    rep("🔴 **이 축은 「원저작 복원」이 아니다** — 파라미터는 저장소 dataclass 기본값이고 "
+        "해당 룰에 저장소가 붙인 라벨은 「(구) 조잡 proxy」다(§ 머리말).")
+    rep("")
+
+    rows, params = verify_strategy_params()
+    px = load_prices(conn)
+    uni, _ = load_universe(conn)
+    conn.close()
+    elig = eligible_by_date(uni, MinerviniVolumeDryupScreenerAdapter())
+
+    cache, cstats = build_cache_breakout(px, elig, params)
+    pools, dayret, _limitup = build_pools_breakout(cache, elig)
+    sels = {a: select_top(pools[a]) for a in ARM_RULE_B if a in pools}
+
+    frames, idxmap = build_frames_breakout(px)   # Task 7 의 공유 헬퍼
+
+    cfg = dict(sl=params["sl"], tp=params["tp"], mh=params["mh"])
+    res = {a: run_arm(sels[a], frames, idxmap, cfg, BookBacktester) for a in sels}
+
+    r_means, r_stats = [], []
+    for s in range(S_BREAKOUT):
+        rb, _diag = select_random_matched(pools["ALL"], pools.get("B", {}), dayret, seed=s)
+        st = run_arm(rb, frames, idxmap, cfg, BookBacktester)
+        r_stats.append(st)
+        r_means.append(st["mean"])
+        if (s + 1) % 10 == 0:
+            print(f"[R_B] {s+1}/{S_BREAKOUT}", flush=True)
+
+    rep("## 1. arm 별 결과")
+    rep("")
+    rep("| arm | n | 거래당 평균 | 중앙 | 승률 | 폐기율 |")
+    rep("|---|---|---|---|---|---|")
+    for a in sels:
+        r = res[a]
+        rep(f"| `{a}` | {r['n']:,} | **{r['mean']:+.2f}%** | {r['med']:+.2f}% | "
+            f"{r['win']:.0f}% | {r['discard']:.1f}% |")
+    rep("")
+
+    # ── task-8 추가요구 (나) — `B` 거래당 평균의 절사평균(상하 1%) 참고 병기 (§6-5) ──
+    b_pnls = _pnl_list(sels["B"], frames, cfg, BookBacktester)
+    b_trim = trimmed_mean(b_pnls, trim=0.01)
+    rep(f"- 참고(§6-5, 판정에는 미사용): `B` 거래당 평균의 **절사평균(상하 1%)** = "
+        f"{b_trim:+.2f}% (원 평균 **{res['B']['mean']:+.2f}%**, n={len(b_pnls):,}) — "
+        f"위생 가드는 «하락»만 보므로 미조정 상승 절벽이 만드는 가짜 트리거가 "
+        f"극단값으로 평균을 밀어 올렸는지 참고로 점검한다.")
+    rep("")
+
+    # ── task-8 추가요구 (가) — `R_B` 의 실현 거래 수·폐기율 중앙값을 `B` 와 병기 (§2-2) ──
+    rb_n_med = float(np.median([st["n"] for st in r_stats])) if r_stats else float("nan")
+    rb_disc_med = float(np.median([st["discard"] for st in r_stats])) if r_stats else float("nan")
+    b_n_realized, b_disc_realized = res["B"]["n"], res["B"]["discard"]
+    rep(f"- 🔴 **실현 거래 수·폐기율 병기(§2-2)**: `B` n={b_n_realized:,} · "
+        f"폐기율 {b_disc_realized:.1f}% vs `R_B` 중앙 n={rb_n_med:,.0f} · "
+        f"폐기율 {rb_disc_med:.1f}% ({S_BREAKOUT}시드).")
+    if (b_disc_realized == b_disc_realized and rb_disc_med == rb_disc_med
+            and max(b_disc_realized, rb_disc_med) >= 2 * min(b_disc_realized, rb_disc_med)):
+        rep(f"🔴 **혼합 대비 — 판별 보류 병기**: 폐기율 `B` {b_disc_realized:.1f}% vs "
+            f"`R_B` {rb_disc_med:.1f}% (2배 이상). "
+            f"귀무와 실험군이 「같은 룰의 두 버전」이 아니라 「다른 빈도의 두 룰」에 가깝다.")
+    rep("")
+
+    lab = breakout_labels(res["B"]["mean"], res["D"]["mean"], r_means, EPS_ECON)
+    rep(f"- N1(`B` > `R_B` {S_BREAKOUT}개 전부): **{'성립' if lab['n1'] else '불성립'}** "
+        f"· 순열 p = **{lab['p']:.4f}**")
+    rep(f"- `B − D` = {res['B']['mean'] - res['D']['mean']:+.2f}%p "
+        f"(ε={EPS_ECON}) → {'✅' if lab['pass_vs_d'] else '❌'}")
+    rep(f"- `B − median(R_B)` = {res['B']['mean'] - lab['med_r']:+.2f}%p → "
+        f"{'✅' if lab['pass_vs_r'] else '❌'}")
+    rep(f"- **판정: {lab['label']}**")
+    rep("")
+    rep("⚠️ 검정력 약 70%(§7-6) — **음성 결과를 「돌파는 정보가 아니다」로 읽지 않는다.**")
+    rep("")
+
+    d_disc, b_disc = res["D"]["discard"], res["B"]["discard"]
+    if d_disc == d_disc and b_disc == b_disc and max(d_disc, b_disc) >= 2 * min(d_disc, b_disc):
+        rep(f"🔴 **혼합 대비 — 판별 보류 병기**: 폐기율 `D` {d_disc:.1f}% vs `B` {b_disc:.1f}% "
+            f"(2배 이상, §6-2 사전 고정).")
+        rep("")
+
+    rep("## 2. 🔴 `R_B` 시드 전량 (§9 — 사후 크기 검증용)")
+    rep("")
+    rep("| 시드 | 거래당 평균 | n |")
+    rep("|---|---|---|")
+    for s, st in enumerate(r_stats):
+        rep(f"| {s} | {st['mean']:+.4f}% | {st['n']:,} |")
+    rep("")
+    rep("🔑 1번 문서는 시드 평균을 stdout 으로만 찍어 **사후에 검정의 크기를 검증할 수 없었다.**")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="minervini 개념 축 — PREREG 실행부")
     ap.add_argument("--stage1", action="store_true",

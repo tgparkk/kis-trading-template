@@ -472,3 +472,32 @@ class TestGateOverlap:
     def test_identical_arms_are_one(self):
         sels = {"B": {"D1": ["A"]}, "P": {"D1": ["A"]}}
         assert abs(RUN.gate_overlap(sels)[("B", "P")] - 1.0) < 1e-9
+
+
+class TestBreakoutLabels:
+    def test_n1_fail_yields_label_na(self):
+        lab = RUN.breakout_labels(B=1.0, D=0.0, r_means=[0.5, 1.2, 0.8], eps=0.5)
+        assert lab["label"] == "(나) 판별 불가"
+        assert lab["n1"] is False
+
+    def test_both_conditions_pass(self):
+        lab = RUN.breakout_labels(B=2.0, D=0.0, r_means=[0.5, 0.9, 1.0], eps=0.5)
+        assert lab["n1"] is True
+        assert lab["label"] == "(가) 돌파는 정보다"
+
+    def test_second_contrast_can_veto(self):
+        """무작위 중앙(1.0)보다 0.5%p 이상 크지 않으면 (가) 가 아니다."""
+        lab = RUN.breakout_labels(B=1.2, D=0.0, r_means=[0.5, 1.0, 1.1], eps=0.5)
+        assert lab["n1"] is True          # 1.2 > max(1.1)
+        assert lab["label"] == "(다) 크기 미달"
+        assert lab["pass_vs_d"] is True
+        assert lab["pass_vs_r"] is False
+
+    def test_labels_are_mutually_exclusive(self):
+        for B, D, rs in [(1.0, 0.0, [0.5, 1.2]), (2.0, 0.0, [0.5, 0.9]),
+                         (1.2, 0.0, [0.5, 1.0, 1.1])]:
+            lab = RUN.breakout_labels(B=B, D=D, r_means=rs, eps=0.5)
+            assert lab["label"] in {"(나) 판별 불가", "(가) 돌파는 정보다", "(다) 크기 미달"}
+
+    def test_perm_p_min_with_100_seeds(self):
+        assert abs(RUN.perm_p(9.9, [0.0] * 100) - 1 / 101) < 1e-12
