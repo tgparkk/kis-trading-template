@@ -1450,6 +1450,8 @@ def stage1b() -> int:
         if arm in pools:
             year_skew([(d, c) for d, v in pools[arm].items() for c, _ in v],
                       pool_days, f"arm {arm}")
+    (BASE / "GATE_BREAKOUT.md").write_text("\n".join(OUT) + "\n", encoding="utf-8")
+    print("\n[written] GATE_BREAKOUT.md", flush=True)
     return 0
 
 
@@ -2064,6 +2066,9 @@ def stage2b() -> int:
 
     rep(f"- 총 소요 **{time.perf_counter() - t0:.0f}s** (실행 시작 {run_started_at})")
     rep("")
+    (BASE / "RESULTS_BREAKOUT.md").write_text("\n".join(DOC) + "\n", encoding="utf-8")
+    (BASE / "RESULTS_BREAKOUT_raw.md").write_text("\n".join(OUT) + "\n", encoding="utf-8")
+    print("\n[written] RESULTS_BREAKOUT.md · RESULTS_BREAKOUT_raw.md", flush=True)
     return 0
 
 

@@ -645,6 +645,18 @@ class TestCliWiring:
         assert '--stage2' in src, "기존 --stage2가 삭제됐다"
         assert 'stage2()' in src, "stage2() 호출이 없다"
 
+    def test_stage1b_dispatch_call_in_source(self):
+        """stage1b() 호출 디스패치가 main() 소스에 있는가? (help 텍스트가 아니라 실제 호출)"""
+        import inspect
+        src = inspect.getsource(RUN.main)
+        assert 'stage1b()' in src, "호출 'stage1b()'이 main() 소스에 없다"
+
+    def test_stage2b_dispatch_call_in_source(self):
+        """stage2b() 호출 디스패치가 main() 소스에 있는가? (help 텍스트가 아니라 실제 호출)"""
+        import inspect
+        src = inspect.getsource(RUN.main)
+        assert 'stage2b()' in src, "호출 'stage2b()'이 main() 소스에 없다"
+
     def test_stage1b_callable(self):
         """stage1b() 가 호출 가능한가?"""
         assert callable(RUN.stage1b), "stage1b가 호출 불가능하다"
