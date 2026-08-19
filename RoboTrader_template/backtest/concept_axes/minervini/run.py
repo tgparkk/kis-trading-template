@@ -536,6 +536,82 @@ def build_pools_breakout(cache: dict, elig: dict):
             dict(dayret), dict(limitup))
 
 
+def select_random_matched(pool_all: dict, arm_pool: dict, dayret: dict, seed: int):
+    """크기 정합 + 당일수익률 10분위 층화 귀무 `R_B` (PREREG_BREAKOUT §2-2).
+
+    문서 1 의 `select_random` 과 다른 점 셋:
+      ① 뽑는 «개수» 를 그날 arm 트리거 수 `k_d` 에 맞춘다 (크기 정합)
+      ② 당일수익률 10분위 «도수분포» 를 arm 과 같게 맞춘다 (모멘텀 교란 제거)
+      ③ 뽑은 「가짜 트리거 집합」에 `select_top` 을 태워 arm 과 같은 랭킹·절단을 받게 한다
+
+    🔑 추출 풀에서 arm 자신의 선택분을 «빼지 않는다» — 빼면 귀무가
+    「arm 이 «안» 고른 것들」이 되어 반대 방향으로 편향된다(§2-2 3단계).
+    """
+    rng = np.random.RandomState(seed)
+    fake: dict = {}
+    diag = dict(n_days=0, n_need=0, n_drawn=0, n_sub=0, n_no_ret=0)
+
+    for d in sorted(arm_pool):
+        arm_items = arm_pool.get(d) or []
+        if not arm_items:
+            continue
+        allc = pool_all.get(d) or []
+        rets = dayret.get(d, {})
+        cand = [(c, s) for c, s in allc if c in rets]
+        diag["n_no_ret"] += len(allc) - len(cand)
+        if not cand:
+            continue
+
+        vals = np.array([rets[c] for c, _ in cand], dtype=float)
+        edges = np.quantile(vals, np.arange(1, 10) / 10.0)
+
+        def _bin(x: float) -> int:
+            return int(np.searchsorted(edges, x, side="right"))
+
+        buckets = {b: [] for b in range(10)}
+        for (c, s), v in zip(cand, vals):
+            buckets[_bin(v)].append((c, s))
+        for b in range(10):                       # 시드 고정 셔플
+            order = rng.permutation(len(buckets[b]))
+            buckets[b] = [buckets[b][j] for j in order]
+
+        need = {b: 0 for b in range(10)}
+        n_need = 0
+        for c, _ in arm_items:
+            v = rets.get(c)
+            if v is None:
+                continue
+            need[_bin(float(v))] += 1
+            n_need += 1
+
+        picked, shortfalls = [], []
+        for b in range(10):
+            take = min(need[b], len(buckets[b]))
+            for _ in range(take):
+                picked.append(buckets[b].pop())
+            shortfalls += [b] * (need[b] - take)
+
+        for b0 in shortfalls:                     # 가장 «가까운» 분위로 대체
+            for off in range(1, 10):
+                filled = False
+                for bb in (b0 - off, b0 + off):
+                    if 0 <= bb < 10 and buckets[bb]:
+                        picked.append(buckets[bb].pop())
+                        diag["n_sub"] += 1
+                        filled = True
+                        break
+                if filled:
+                    break
+
+        diag["n_days"] += 1
+        diag["n_need"] += n_need
+        diag["n_drawn"] += len(picked)
+        if picked:
+            fake[d] = picked
+
+    return select_top(fake), diag
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 5. Arm 풀 · 선택
 # ────────────────────────────────────────────────────────────────────────────

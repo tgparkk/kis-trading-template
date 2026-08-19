@@ -188,3 +188,79 @@ class TestBuildPoolsBreakout:
         elig = {"D1": {"AAA111"}}
         pools, _, _ = RUN.build_pools_breakout(self._cache(), elig)
         assert {c for c, _ in pools["ALL"]["D1"]} == {"AAA111"}
+
+
+class TestSelectRandomMatched:
+    def _fixture(self, n=100, k=7):
+        """1일치. 풀 n종목, arm 이 «상위 수익률» k종목을 고른 상황."""
+        pool_all = {"D1": [(f"C{i:04d}", float(1000 - i)) for i in range(n)]}
+        dayret = {"D1": {f"C{i:04d}": (n - i) / 1000.0 for i in range(n)}}
+        arm_pool = {"D1": [(f"C{i:04d}", float(1000 - i)) for i in range(k)]}
+        return pool_all, arm_pool, dayret
+
+    def test_size_matches_arm_trigger_count(self):
+        pool_all, arm_pool, dayret = self._fixture(n=100, k=7)
+        sel, diag = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=0)
+        # k=7 < MAX_CANDIDATES=10 이므로 절단 없이 7개
+        assert len(sel["D1"]) == 7
+        assert diag["n_need"] == 7
+
+    def test_select_top_cap_applied(self):
+        pool_all, arm_pool, dayret = self._fixture(n=100, k=40)
+        sel, _ = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=0)
+        assert len(sel["D1"]) == RUN.MAX_CANDIDATES
+
+    def test_stratification_matches_decile_histogram(self):
+        """arm 이 최상위 분위에만 있으면 R_B 도 그 분위에서만 뽑혀야 한다."""
+        pool_all, arm_pool, dayret = self._fixture(n=100, k=7)
+        sel, _ = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=3)
+        picked = sel["D1"]
+        vals = [dayret["D1"][c] for c in picked]
+        # arm 7개는 전부 상위 10% 안. 뽑힌 것도 상위 10% 경계 위여야 한다.
+        import numpy as np
+        edge = np.quantile(list(dayret["D1"].values()), 0.9)
+        assert all(v >= edge for v in vals), f"층화 실패: {vals}"
+
+    def test_deterministic_for_same_seed(self):
+        pool_all, arm_pool, dayret = self._fixture()
+        a, _ = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=11)
+        b, _ = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=11)
+        assert a == b
+
+    def test_different_seeds_differ(self):
+        pool_all, arm_pool, dayret = self._fixture(n=200, k=15)
+        a, _ = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=1)
+        b, _ = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=2)
+        assert a != b
+
+    def test_arm_own_picks_are_not_excluded_from_pool(self):
+        """§2-2 3단계 — arm 자신이 고른 종목을 빼면 «반대 방향»으로 편향된다."""
+        pool_all = {"D1": [("X1", 10.0), ("X2", 9.0)]}
+        dayret = {"D1": {"X1": 0.05, "X2": 0.05}}
+        arm_pool = {"D1": [("X1", 10.0), ("X2", 9.0)]}
+        sel, _ = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=0)
+        assert set(sel["D1"]) == {"X1", "X2"}
+
+    def test_substitution_counted_when_bucket_short(self):
+        """한 분위에 필요한 만큼 없으면 인접 분위로 대체하고 «센다»."""
+        pool_all = {"D1": [(f"C{i}", float(i)) for i in range(10)]}
+        dayret = {"D1": {f"C{i}": i / 100.0 for i in range(10)}}
+        # arm 이 같은 분위에서 3개를 요구하지만 그 분위엔 1개뿐인 상황을 만든다
+        arm_pool = {"D1": [("C9", 9.0), ("C9", 9.0), ("C9", 9.0)]}
+        sel, diag = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=0)
+        assert diag["n_sub"] >= 1
+        assert len(sel["D1"]) == 3
+
+    def test_no_dayret_codes_are_counted_and_skipped(self):
+        pool_all = {"D1": [("A", 1.0), ("B", 2.0), ("C", 3.0)]}
+        dayret = {"D1": {"A": 0.01}}          # B, C 는 수익률 없음
+        arm_pool = {"D1": [("A", 1.0)]}
+        sel, diag = RUN.select_random_matched(pool_all, arm_pool, dayret, seed=0)
+        assert diag["n_no_ret"] == 2
+        assert sel["D1"] == ["A"]
+
+    def test_empty_arm_day_produces_no_entry(self):
+        pool_all = {"D1": [("A", 1.0)]}
+        dayret = {"D1": {"A": 0.0}}
+        sel, _ = RUN.select_random_matched(pool_all, {"D1": []}, dayret, seed=0)
+        assert "D1" not in sel
