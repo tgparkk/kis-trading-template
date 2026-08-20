@@ -1,0 +1,214 @@
+"""adj_repair 순수 함수 — DB·KIS 에 붙지 않는다."""
+import json
+
+from collectors.adj_repair import (
+    derive_factors, build_repair_rows, needs_repair, fetch_both, count_impossible,
+    load_targets, EXTRA_CODES,
+)
+
+
+def _row(close, vol):
+    return (close, close, close, close, vol)
+
+
+def test_factor_is_adj_over_raw_not_the_inverse():
+    """🔴 방향 고정 — 054940 실측(2026-05-29 raw vol 357,326 / adj vol 71,465).
+
+    저장 규약은 adj_close = raw_close / adj_factor 이고 읽기 계층은 volume * adj_factor 다.
+    따라서 factor = vol_adj / vol_raw = 0.2 여야 한다. 5.0 이면 25배 틀린다.
+    """
+    raw = {"2026-05-29": _row(760, 357326)}
+    adj = {"2026-05-29": _row(3800, 71465)}
+    f, diag = derive_factors(raw, adj)
+    # NOTE(agent deviation): brief used tolerance 1e-9, but 71465/357326 == 0.19999944...
+    # (integer-rounded real volumes can't divide to exactly 0.2). Widened to 1e-4 —
+    # still 3+ orders of magnitude tighter than the 0.2-vs-5.0 direction distinction
+    # this test exists to pin. See task-A-report.md.
+    assert abs(f["2026-05-29"] - 0.2) < 1e-4
+    assert diag["n_derived"] == 1
+
+
+def test_zero_volume_day_is_filled_from_neighbour_with_same_factor():
+    """거래정지 패딩(vol=0)은 계수를 못 구한다 → 같은 값을 가진 이웃에서 채운다."""
+    raw = {"2026-08-10": _row(760, 1000), "2026-08-11": _row(760, 0),
+           "2026-08-12": _row(3815, 2000)}
+    adj = {"2026-08-10": _row(3800, 200), "2026-08-11": _row(3800, 0),
+           "2026-08-12": _row(3815, 2000)}
+    f, diag = derive_factors(raw, adj)
+    assert abs(f["2026-08-10"] - 0.2) < 1e-9
+    assert abs(f["2026-08-12"] - 1.0) < 1e-9
+    assert abs(f["2026-08-11"] - 0.2) < 1e-9   # 이전 유효값(같은 구간)
+    assert diag["n_zero_vol"] == 1 and diag["n_filled"] == 1
+
+
+def test_no_derivable_factor_returns_empty_and_flags():
+    """계수를 하나도 못 구하면 «빈 결과» 다 — 1.0 으로 때우지 않는다(fail-closed)."""
+    raw = {"2026-08-11": _row(760, 0)}
+    adj = {"2026-08-11": _row(3800, 0)}
+    f, diag = derive_factors(raw, adj)
+    assert f == {}
+    assert diag["n_derived"] == 0
+
+
+def test_date_present_in_only_one_feed_is_skipped():
+    raw = {"2026-05-29": _row(760, 100), "2026-05-30": _row(770, 100)}
+    adj = {"2026-05-29": _row(3800, 20)}
+    f, diag = derive_factors(raw, adj)
+    assert set(f) == {"2026-05-29"}
+    assert diag["n_dates"] == 1
+
+
+def test_ohlc_comes_from_adjusted_feed_volume_from_raw_feed():
+    """🔴 컬럼별 출처를 섞지 않는다 — OHLC=조정, volume=원본."""
+    raw = {"2026-05-29": (750, 770, 740, 760, 357326)}
+    adj = {"2026-05-29": (3750, 3850, 3700, 3800, 71465)}
+    rows = build_repair_rows("054940", raw, adj, {"2026-05-29": 0.2})
+    r = rows[0]
+    assert (r["open"], r["high"], r["low"], r["close"]) == (3750.0, 3850.0, 3700.0, 3800.0)
+    assert r["volume"] == 357326          # 원본
+    assert r["adj_factor"] == 0.2
+    assert r["stock_code"] == "054940" and r["date"] == "2026-05-29"
+
+
+def test_row_without_factor_is_dropped():
+    raw = {"2026-05-29": (0, 0, 0, 760, 100), "2026-05-30": (0, 0, 0, 770, 100)}
+    adj = {"2026-05-29": (0, 0, 0, 3800, 20), "2026-05-30": (0, 0, 0, 3850, 20)}
+    rows = build_repair_rows("X", raw, adj, {"2026-05-29": 0.2})
+    assert [r["date"] for r in rows] == ["2026-05-29"]
+
+
+def test_already_correct_rows_are_skipped():
+    """멱등 — 가격이 이미 조정본이면 건드리지 않는다."""
+    new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+            "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
+    db_same = {"2026-05-29": (3750.0, 3850.0, 3700.0, 3800.0, 357326, 0.2)}
+    assert needs_repair(db_same, new) == []
+
+
+def test_wrong_factor_alone_still_triggers_repair():
+    """🔴 가격이 맞아도 계수가 틀리면 고쳐야 한다 — 003620 형태(큐가 못 잡는 부류)."""
+    new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+            "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
+    db_badfactor = {"2026-05-29": (3750.0, 3850.0, 3700.0, 3800.0, 357326, 5.0)}
+    assert len(needs_repair(db_badfactor, new)) == 1
+
+
+def test_null_adj_factor_in_db_triggers_repair():
+    """계수가 NULL 이면 「같다」가 아니다 — 고쳐야 한다(전체의 11.7%가 이 상태)."""
+    new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+            "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
+    db_nullfactor = {"2026-05-29": (3750.0, 3850.0, 3700.0, 3800.0, 357326, None)}
+    assert len(needs_repair(db_nullfactor, new)) == 1
+
+
+def test_null_volume_in_db_does_not_crash_and_triggers_repair():
+    """🔴 volume 이 NULL 인 행에서 `float(None)` 으로 죽지 않는다.
+
+    다른 컬럼은 전부 `same()` 이 None 을 받아 「다름」으로 처리하는데 volume 만
+    `float()` 을 먼저 걸어 **한 층 아래서** TypeError 로 죽었다. NULL close 가드가
+    막는 건 `_close_seq` 쪽이라 이 자리는 못 막는다.
+    """
+    new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+            "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
+    db_nullvol = {"2026-05-29": (3750.0, 3850.0, 3700.0, 3800.0, None, 0.2)}
+    got = needs_repair(db_nullvol, new)          # TypeError 가 나면 여기서 실패한다
+    assert len(got) == 1
+
+
+def test_date_absent_from_db_is_dropped_never_inserted():
+    """🔴 DB 에 «없는» 날짜는 후보에서 뺀다 — 이건 보정 도구지 백필 도구가 아니다.
+
+    UPSERT 가 INSERT 를 하면 복원 SQL(`UPDATE ... FROM backup`)이 그 행을 «지울 수
+    없어» --restore 가 원상복구가 아니게 되고, 사양 §6-4 의 「행 수 불변」도 깨진다.
+    """
+    new = [
+        {"stock_code": "A", "date": "2026-05-28", "open": 1.0, "high": 1.0,
+         "low": 1.0, "close": 1.0, "volume": 10, "adj_factor": 0.2},   # DB 에 없다
+        {"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+         "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2},
+    ]
+    db = {"2026-05-29": (760.0, 770.0, 740.0, 760.0, 357326, None)}
+    got = needs_repair(db, new)
+    assert [r["date"] for r in got] == ["2026-05-29"]
+    # 게이트가 단순 등호가 되려면 「todo ⊆ db 의 날짜」가 성립해야 한다.
+    assert all(r["date"] in db for r in got)
+
+
+def test_empty_db_yields_nothing_to_repair():
+    """DB 에 그 종목이 «한 행도» 없으면 할 일이 없다 — 전 이력을 INSERT 하지 않는다."""
+    new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+            "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
+    assert needs_repair({}, new) == []
+
+
+def test_fetch_both_requests_raw_and_adjusted_and_keys_by_iso_date():
+    calls = []
+
+    def fake(code, start, end, adj_prc):
+        calls.append(adj_prc)
+        px = 760 if adj_prc == "1" else 3800
+        vol = 357326 if adj_prc == "1" else 71465
+        return [{"stck_bsop_date": "20260529", "stck_oprc": px, "stck_hgpr": px,
+                 "stck_lwpr": px, "stck_clpr": px, "acml_vol": vol}]
+
+    raw, adj = fetch_both("054940", "20210101", "20260820", fake)
+    assert sorted(calls) == ["0", "1"]
+    assert raw["2026-05-29"][3] == 760.0
+    assert adj["2026-05-29"][3] == 3800.0
+
+
+def test_rows_with_bad_date_or_nonpositive_close_are_dropped():
+    def fake(code, start, end, adj_prc):
+        return [{"stck_bsop_date": "2026", "stck_clpr": 100, "acml_vol": 1},
+                {"stck_bsop_date": "20260529", "stck_clpr": 0, "acml_vol": 1},
+                {"stck_bsop_date": "20260530", "stck_oprc": 10, "stck_hgpr": 10,
+                 "stck_lwpr": 10, "stck_clpr": 10, "acml_vol": 5}]
+
+    raw, adj = fetch_both("X", "1", "2", fake)
+    assert list(raw) == ["2026-05-30"]
+
+
+def test_counts_both_directions_beyond_krx_limits():
+    rows = [("2026-08-11", 760.0), ("2026-08-12", 3815.0)]   # +402%
+    assert count_impossible(rows) == 1
+    rows2 = [("2026-08-11", 3800.0), ("2026-08-12", 3815.0)]  # +0.4%
+    assert count_impossible(rows2) == 0
+    rows3 = [("2026-08-11", 1000.0), ("2026-08-12", 600.0)]   # -40%
+    assert count_impossible(rows3) == 1
+
+
+def test_nonpositive_previous_close_is_not_counted():
+    assert count_impossible([("2026-08-11", 0.0), ("2026-08-12", 3815.0)]) == 0
+
+
+def test_only_pending_and_eligible_entries_are_taken():
+    lines = [
+        json.dumps({"stock_code": "000001", "eligible_after": "2026-08-01", "status": "pending"}),
+        json.dumps({"stock_code": "000002", "eligible_after": "2026-09-01", "status": "pending"}),
+        json.dumps({"stock_code": "000003", "eligible_after": "2026-08-01", "status": "done"}),
+    ]
+    assert load_targets(lines, "2026-08-20", extra=[]) == ["000001"]
+
+
+def test_extra_codes_are_merged_and_deduped():
+    """🔴 큐가 «원리적으로» 못 잡는 종목(사양 §5-1)을 반드시 포함한다."""
+    lines = [json.dumps({"stock_code": "003620", "eligible_after": "2026-08-01",
+                         "status": "pending"})]
+    got = load_targets(lines, "2026-08-20")
+    assert "003620" in got
+    for c in EXTRA_CODES:
+        assert c in got
+    assert len(got) == len(set(got))
+
+
+def test_extra_codes_is_exactly_the_measured_six_without_004710():
+    """🔴 `004710` 은 «빠져 있어야» 한다.
+
+    사양 §8-5: DB(5,135)가 KIS 양쪽 피드(4,847·4,920) 어느 쪽과도 안 맞고 원인이
+    미규명이며 「확인 전에는 그 종목군을 건드리지 않는다」. 구현이 사양을 이기지
+    않는다 — 이 단언은 「빠졌나」를 «명시적으로» 고정한다(빠뜨림의 흔적이 아니라
+    의도임을 테스트가 말하게 한다).
+    """
+    assert sorted(EXTRA_CODES) == sorted([
+        "003620", "010140", "042940", "128820", "010120", "323350"])
+    assert "004710" not in EXTRA_CODES

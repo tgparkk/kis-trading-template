@@ -1,0 +1,192 @@
+"""기업행위 가격 보정 — 순수 계산. DB·KIS 에 접근하지 않는다.
+
+🔴 방향 고정: 저장 규약은 `adj_close = raw_close / adj_factor` 이고
+읽기 계층은 `volume * adj_factor` 를 한다(`db/quant_daily_reader.py`).
+⇒ **adj_factor = vol_adj / vol_raw = raw_close / adj_close.**
+사양 초안은 `vol_raw / vol_adj` 로 «뒤집혀» 있었다 — 그대로 썼으면 25배 틀렸다.
+"""
+import json
+from typing import Dict, Tuple
+
+
+def _volume(row):
+    return float(row[4])
+
+
+def derive_factors(raw: Dict[str, tuple], adj: Dict[str, tuple]) -> Tuple[dict, dict]:
+    """두 피드의 «거래량 비» 로 날짜별 adj_factor 를 구한다.
+
+    거래량을 쓰는 이유: **배당의 영향을 안 받는다.** 가격 비로 구하면 KIS 수정주가가
+    배당까지 조정하므로 순수 분할/병합 배수가 안 나온다(실측 15종목이 그 형태).
+    """
+    dates = sorted(set(raw) & set(adj))
+    diag = dict(n_dates=len(dates), n_derived=0, n_zero_vol=0, n_filled=0)
+
+    out: Dict[str, float] = {}
+    for d in dates:
+        vr, va = _volume(raw[d]), _volume(adj[d])
+        if vr <= 0 or va <= 0:
+            diag["n_zero_vol"] += 1
+            continue
+        out[d] = va / vr
+        diag["n_derived"] += 1
+
+    if not out:
+        return {}, diag
+
+    # 빈 날짜를 «이전 유효값» 으로 채운다. 정지 구간은 이벤트 «전» 에 속하므로
+    # 앞에서 가져오는 것이 맞다. 앞이 없으면 뒤에서 가져온다.
+    prev = None
+    for d in dates:
+        if d in out:
+            prev = out[d]
+            continue
+        if prev is not None:
+            out[d] = prev
+            diag["n_filled"] += 1
+    nxt = None
+    for d in reversed(dates):
+        if d in out:
+            nxt = out[d]
+        elif nxt is not None:
+            out[d] = nxt
+            diag["n_filled"] += 1
+    return out, diag
+
+
+def build_repair_rows(code: str, raw: Dict[str, tuple], adj: Dict[str, tuple],
+                      factors: Dict[str, float]) -> list:
+    """OHLC ← 조정 피드 · volume ← 원본 피드 · adj_factor ← factors.
+
+    🔑 컬럼별 출처를 섞으면 규약이 깨진다(`CLAUDE.md` — 가격은 조정 저장, volume 은 원본 저장).
+    """
+    rows = []
+    for d in sorted(set(raw) & set(adj) & set(factors)):
+        a, r = adj[d], raw[d]
+        rows.append(dict(
+            stock_code=code, date=d,
+            open=float(a[0]), high=float(a[1]), low=float(a[2]), close=float(a[3]),
+            volume=int(_volume(r)),
+            adj_factor=float(factors[d]),
+        ))
+    return rows
+
+
+def needs_repair(db_rows: Dict[str, tuple], new_rows: list,
+                 rel_tol: float = 0.01) -> list:
+    """DB 와 «이미 같은» 행은 뺀다 (멱등). **DB 에 «없는» 날짜도 뺀다.**
+
+    db_rows: {date_iso: (open, high, low, close, volume, adj_factor)}
+    🔑 `adj_factor` 도 비교 대상이다 — 가격이 맞아도 계수가 틀린 종목이 실측 9건 있다.
+
+    🔴 **이건 «보정» 도구지 «백필» 도구가 아니다.** DB 에 없던 날짜를 후보로 두면
+    UPSERT 가 INSERT 를 하는데, 복원 SQL 은 `UPDATE ... FROM backup` 이라 **그 행을
+    지울 수 없다** ⇒ ①`--restore` 가 원상복구가 아니게 되고 ②사양 §6-4 의
+    「`daily_prices` 행 수 불변」이 깨진다. 게다가 그런 날짜는 백업할 «기존 행» 자체가
+    없어서 「백업 건수 == 대상 건수」 게이트를 **무력화**한다(기댓값에서 자기가 빠진다).
+    ⇒ 아예 후보에서 뺀다. 그러면 게이트가 단순 등호가 되고 INSERT 는 원리적으로 불가능.
+
+    ⚠️ 이 필터가 예외 상황이 아니라 «상시» 조건인 이유: `adj_factor IS NULL` 인 행이
+    전체의 11.7%(368,354/3,155,643) 라 `same()` 이 NULL 을 «다름»으로 보는 순간 후보가
+    종목 전 이력으로 불어난다. 그 안엔 KIS 엔 있고 우리 DB 엔 없는 날짜가 섞인다.
+    """
+    def same(a, b):
+        if a is None or b is None:
+            return False
+        if b == 0:
+            return a == 0
+        return abs(a / b - 1.0) <= rel_tol
+
+    def num(x):
+        """None 을 «보존»한 채 float 로. 🔴 `float(None)` 은 TypeError 로 죽는다 —
+        volume 이 NULL 인 행이 그 자리였다(다른 컬럼은 전부 `same()` 이 None 을 받는다)."""
+        return None if x is None else float(x)
+
+    out = []
+    for n in new_rows:
+        cur = db_rows.get(n["date"])
+        if cur is None:
+            continue          # DB 에 없는 날짜 — 보정 대상이 아니다(위 docstring)
+        o, h, l, c, v, f = cur
+        if (same(n["open"], o) and same(n["high"], h) and same(n["low"], l)
+                and same(n["close"], c) and same(float(n["volume"]), num(v))
+                and same(n["adj_factor"], f)):
+            continue
+        out.append(n)
+    return out
+
+
+def _f(v) -> float:
+    try:
+        return float(str(v).replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _parse_feed(items) -> Dict[str, tuple]:
+    out = {}
+    for it in items or []:
+        d = str(it.get("stck_bsop_date", ""))
+        if len(d) != 8 or not d.isdigit():
+            continue
+        c = _f(it.get("stck_clpr"))
+        if c <= 0:
+            continue
+        iso = "%s-%s-%s" % (d[0:4], d[4:6], d[6:8])
+        out[iso] = (_f(it.get("stck_oprc")), _f(it.get("stck_hgpr")),
+                    _f(it.get("stck_lwpr")), c, _f(it.get("acml_vol")))
+    return out
+
+
+def fetch_both(code: str, start: str, end: str, fetcher) -> Tuple[dict, dict]:
+    """`(raw, adj)` — `fetcher` 를 «주입» 받아 테스트가 API 없이 돈다.
+
+    🔴 `adj_prc="1"` = 원주가 · `"0"` = 수정주가. 우리 수집기 전부가 기본값 `"1"` 을 써서
+    이 결함이 생겼다(사양 §2-2). 여기서는 **둘 다 명시**한다.
+    """
+    raw = _parse_feed(fetcher(code, start, end, "1"))
+    adj = _parse_feed(fetcher(code, start, end, "0"))
+    return raw, adj
+
+
+def count_impossible(rows, up: float = 0.31, down: float = -0.35) -> int:
+    """KRX 일일 한도(±30%)를 넘는 봉 수. 검증 지표 — 줄지 않으면 중단한다.
+
+    🔑 위생 가드(`utils/data_sanity.py`)는 «하락» 만 보지만 실측 불가능봉의
+    다수는 «상승» 이다(액면병합이 가격을 올리므로). 여기서는 **양방향**을 센다.
+    """
+    n = 0
+    prev = None
+    for _, c in rows:
+        if prev is not None and prev > 0:
+            r = c / prev - 1.0
+            if r >= up or r <= down:
+                n += 1
+        prev = c
+    return n
+
+
+# 🔴 사양 §5-1 실측 — 큐가 «원리적으로» 못 잡는 종목.
+# 큐는 「정지 해제 시 가격 점프」만 보므로 «가격은 연속인데 계수만 틀린» 경우를 놓친다.
+# 계수 오류 4 (003620 010140 042940 128820) + 가격 미조정 2 (010120 323350).
+#
+# 🔴 `004710` 은 **일부러 뺐다** — 사양 §8-5: DB(5,135)가 KIS 양쪽 피드(4,847·4,920)
+#    «어느 쪽과도» 안 맞고 원인이 미규명이며, 사양은 「확인 전에는 그 종목군을 건드리지
+#    않는다」고 못 박았다. 구현이 사양을 이길 수 없다 ⇒ 원인 규명 후에 별도로 넣는다.
+EXTRA_CODES = ("003620", "010140", "042940", "128820", "010120", "323350")
+
+
+def load_targets(queue_lines, today_iso: str, extra=None) -> list:
+    """큐(JSONL 줄들) + 큐 밖 목록 → 처리 대상 종목코드."""
+    codes = set(EXTRA_CODES if extra is None else extra)
+    for line in queue_lines:
+        line = (line or "").strip()
+        if not line:
+            continue
+        rec = json.loads(line)
+        if rec.get("status") != "pending":
+            continue
+        if str(rec.get("eligible_after", "")) > today_iso:
+            continue
+        codes.add(rec["stock_code"])
+    return sorted(codes)
