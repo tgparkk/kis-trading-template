@@ -74,10 +74,21 @@ def build_repair_rows(code: str, raw: Dict[str, tuple], adj: Dict[str, tuple],
 
 def needs_repair(db_rows: Dict[str, tuple], new_rows: list,
                  rel_tol: float = 0.01) -> list:
-    """DB 와 «이미 같은» 행은 뺀다 (멱등).
+    """DB 와 «이미 같은» 행은 뺀다 (멱등). **DB 에 «없는» 날짜도 뺀다.**
 
     db_rows: {date_iso: (open, high, low, close, volume, adj_factor)}
     🔑 `adj_factor` 도 비교 대상이다 — 가격이 맞아도 계수가 틀린 종목이 실측 9건 있다.
+
+    🔴 **이건 «보정» 도구지 «백필» 도구가 아니다.** DB 에 없던 날짜를 후보로 두면
+    UPSERT 가 INSERT 를 하는데, 복원 SQL 은 `UPDATE ... FROM backup` 이라 **그 행을
+    지울 수 없다** ⇒ ①`--restore` 가 원상복구가 아니게 되고 ②사양 §6-4 의
+    「`daily_prices` 행 수 불변」이 깨진다. 게다가 그런 날짜는 백업할 «기존 행» 자체가
+    없어서 「백업 건수 == 대상 건수」 게이트를 **무력화**한다(기댓값에서 자기가 빠진다).
+    ⇒ 아예 후보에서 뺀다. 그러면 게이트가 단순 등호가 되고 INSERT 는 원리적으로 불가능.
+
+    ⚠️ 이 필터가 예외 상황이 아니라 «상시» 조건인 이유: `adj_factor IS NULL` 인 행이
+    전체의 11.7%(368,354/3,155,643) 라 `same()` 이 NULL 을 «다름»으로 보는 순간 후보가
+    종목 전 이력으로 불어난다. 그 안엔 KIS 엔 있고 우리 DB 엔 없는 날짜가 섞인다.
     """
     def same(a, b):
         if a is None or b is None:
@@ -86,15 +97,19 @@ def needs_repair(db_rows: Dict[str, tuple], new_rows: list,
             return a == 0
         return abs(a / b - 1.0) <= rel_tol
 
+    def num(x):
+        """None 을 «보존»한 채 float 로. 🔴 `float(None)` 은 TypeError 로 죽는다 —
+        volume 이 NULL 인 행이 그 자리였다(다른 컬럼은 전부 `same()` 이 None 을 받는다)."""
+        return None if x is None else float(x)
+
     out = []
     for n in new_rows:
         cur = db_rows.get(n["date"])
         if cur is None:
-            out.append(n)
-            continue
+            continue          # DB 에 없는 날짜 — 보정 대상이 아니다(위 docstring)
         o, h, l, c, v, f = cur
         if (same(n["open"], o) and same(n["high"], h) and same(n["low"], l)
-                and same(n["close"], c) and same(float(n["volume"]), float(v))
+                and same(n["close"], c) and same(float(n["volume"]), num(v))
                 and same(n["adj_factor"], f)):
             continue
         out.append(n)
@@ -153,8 +168,12 @@ def count_impossible(rows, up: float = 0.31, down: float = -0.35) -> int:
 
 # 🔴 사양 §5-1 실측 — 큐가 «원리적으로» 못 잡는 종목.
 # 큐는 「정지 해제 시 가격 점프」만 보므로 «가격은 연속인데 계수만 틀린» 경우를 놓친다.
-# 계수 오류 5 (003620 004710 010140 042940 128820) + 가격 미조정 2 (010120 323350).
-EXTRA_CODES = ("003620", "004710", "010140", "042940", "128820", "010120", "323350")
+# 계수 오류 4 (003620 010140 042940 128820) + 가격 미조정 2 (010120 323350).
+#
+# 🔴 `004710` 은 **일부러 뺐다** — 사양 §8-5: DB(5,135)가 KIS 양쪽 피드(4,847·4,920)
+#    «어느 쪽과도» 안 맞고 원인이 미규명이며, 사양은 「확인 전에는 그 종목군을 건드리지
+#    않는다」고 못 박았다. 구현이 사양을 이길 수 없다 ⇒ 원인 규명 후에 별도로 넣는다.
+EXTRA_CODES = ("003620", "010140", "042940", "128820", "010120", "323350")
 
 
 def load_targets(queue_lines, today_iso: str, extra=None) -> list:

@@ -86,11 +86,59 @@ def test_already_correct_rows_are_skipped():
 
 
 def test_wrong_factor_alone_still_triggers_repair():
-    """🔴 가격이 맞아도 계수가 틀리면 고쳐야 한다 — 004710 형태(큐가 못 잡는 부류)."""
+    """🔴 가격이 맞아도 계수가 틀리면 고쳐야 한다 — 003620 형태(큐가 못 잡는 부류)."""
     new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
             "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
     db_badfactor = {"2026-05-29": (3750.0, 3850.0, 3700.0, 3800.0, 357326, 5.0)}
     assert len(needs_repair(db_badfactor, new)) == 1
+
+
+def test_null_adj_factor_in_db_triggers_repair():
+    """계수가 NULL 이면 「같다」가 아니다 — 고쳐야 한다(전체의 11.7%가 이 상태)."""
+    new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+            "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
+    db_nullfactor = {"2026-05-29": (3750.0, 3850.0, 3700.0, 3800.0, 357326, None)}
+    assert len(needs_repair(db_nullfactor, new)) == 1
+
+
+def test_null_volume_in_db_does_not_crash_and_triggers_repair():
+    """🔴 volume 이 NULL 인 행에서 `float(None)` 으로 죽지 않는다.
+
+    다른 컬럼은 전부 `same()` 이 None 을 받아 「다름」으로 처리하는데 volume 만
+    `float()` 을 먼저 걸어 **한 층 아래서** TypeError 로 죽었다. NULL close 가드가
+    막는 건 `_close_seq` 쪽이라 이 자리는 못 막는다.
+    """
+    new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+            "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
+    db_nullvol = {"2026-05-29": (3750.0, 3850.0, 3700.0, 3800.0, None, 0.2)}
+    got = needs_repair(db_nullvol, new)          # TypeError 가 나면 여기서 실패한다
+    assert len(got) == 1
+
+
+def test_date_absent_from_db_is_dropped_never_inserted():
+    """🔴 DB 에 «없는» 날짜는 후보에서 뺀다 — 이건 보정 도구지 백필 도구가 아니다.
+
+    UPSERT 가 INSERT 를 하면 복원 SQL(`UPDATE ... FROM backup`)이 그 행을 «지울 수
+    없어» --restore 가 원상복구가 아니게 되고, 사양 §6-4 의 「행 수 불변」도 깨진다.
+    """
+    new = [
+        {"stock_code": "A", "date": "2026-05-28", "open": 1.0, "high": 1.0,
+         "low": 1.0, "close": 1.0, "volume": 10, "adj_factor": 0.2},   # DB 에 없다
+        {"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+         "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2},
+    ]
+    db = {"2026-05-29": (760.0, 770.0, 740.0, 760.0, 357326, None)}
+    got = needs_repair(db, new)
+    assert [r["date"] for r in got] == ["2026-05-29"]
+    # 게이트가 단순 등호가 되려면 「todo ⊆ db 의 날짜」가 성립해야 한다.
+    assert all(r["date"] in db for r in got)
+
+
+def test_empty_db_yields_nothing_to_repair():
+    """DB 에 그 종목이 «한 행도» 없으면 할 일이 없다 — 전 이력을 INSERT 하지 않는다."""
+    new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+            "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
+    assert needs_repair({}, new) == []
 
 
 def test_fetch_both_requests_raw_and_adjusted_and_keys_by_iso_date():
@@ -143,7 +191,7 @@ def test_only_pending_and_eligible_entries_are_taken():
 
 
 def test_extra_codes_are_merged_and_deduped():
-    """🔴 큐가 «원리적으로» 못 잡는 7종목(사양 §5-1)을 반드시 포함한다."""
+    """🔴 큐가 «원리적으로» 못 잡는 종목(사양 §5-1)을 반드시 포함한다."""
     lines = [json.dumps({"stock_code": "003620", "eligible_after": "2026-08-01",
                          "status": "pending"})]
     got = load_targets(lines, "2026-08-20")
@@ -153,6 +201,14 @@ def test_extra_codes_are_merged_and_deduped():
     assert len(got) == len(set(got))
 
 
-def test_extra_codes_is_exactly_the_measured_seven():
+def test_extra_codes_is_exactly_the_measured_six_without_004710():
+    """🔴 `004710` 은 «빠져 있어야» 한다.
+
+    사양 §8-5: DB(5,135)가 KIS 양쪽 피드(4,847·4,920) 어느 쪽과도 안 맞고 원인이
+    미규명이며 「확인 전에는 그 종목군을 건드리지 않는다」. 구현이 사양을 이기지
+    않는다 — 이 단언은 「빠졌나」를 «명시적으로» 고정한다(빠뜨림의 흔적이 아니라
+    의도임을 테스트가 말하게 한다).
+    """
     assert sorted(EXTRA_CODES) == sorted([
-        "003620", "004710", "010140", "042940", "128820", "010120", "323350"])
+        "003620", "010140", "042940", "128820", "010120", "323350"])
+    assert "004710" not in EXTRA_CODES
