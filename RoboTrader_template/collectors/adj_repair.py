@@ -131,3 +131,20 @@ def fetch_both(code: str, start: str, end: str, fetcher) -> Tuple[dict, dict]:
     raw = _parse_feed(fetcher(code, start, end, "1"))
     adj = _parse_feed(fetcher(code, start, end, "0"))
     return raw, adj
+
+
+def count_impossible(rows, up: float = 0.31, down: float = -0.35) -> int:
+    """KRX 일일 한도(±30%)를 넘는 봉 수. 검증 지표 — 줄지 않으면 중단한다.
+
+    🔑 위생 가드(`utils/data_sanity.py`)는 «하락» 만 보지만 실측 불가능봉의
+    다수는 «상승» 이다(액면병합이 가격을 올리므로). 여기서는 **양방향**을 센다.
+    """
+    n = 0
+    prev = None
+    for _, c in rows:
+        if prev is not None and prev > 0:
+            r = c / prev - 1.0
+            if r >= up or r <= down:
+                n += 1
+        prev = c
+    return n

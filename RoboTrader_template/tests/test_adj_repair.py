@@ -1,5 +1,7 @@
 """adj_repair 순수 함수 — DB·KIS 에 붙지 않는다."""
-from collectors.adj_repair import derive_factors, build_repair_rows, needs_repair, fetch_both
+from collectors.adj_repair import (
+    derive_factors, build_repair_rows, needs_repair, fetch_both, count_impossible,
+)
 
 
 def _row(close, vol):
@@ -113,3 +115,16 @@ def test_rows_with_bad_date_or_nonpositive_close_are_dropped():
 
     raw, adj = fetch_both("X", "1", "2", fake)
     assert list(raw) == ["2026-05-30"]
+
+
+def test_counts_both_directions_beyond_krx_limits():
+    rows = [("2026-08-11", 760.0), ("2026-08-12", 3815.0)]   # +402%
+    assert count_impossible(rows) == 1
+    rows2 = [("2026-08-11", 3800.0), ("2026-08-12", 3815.0)]  # +0.4%
+    assert count_impossible(rows2) == 0
+    rows3 = [("2026-08-11", 1000.0), ("2026-08-12", 600.0)]   # -40%
+    assert count_impossible(rows3) == 1
+
+
+def test_nonpositive_previous_close_is_not_counted():
+    assert count_impossible([("2026-08-11", 0.0), ("2026-08-12", 3815.0)]) == 0
