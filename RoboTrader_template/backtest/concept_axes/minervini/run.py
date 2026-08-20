@@ -429,6 +429,203 @@ def build_cache(px: pd.DataFrame, elig: dict, rs: dict, fin: dict, params: dict)
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# 4b. 돌파 축 (PREREG_BREAKOUT.md 문서 5) — 문서 1 경로는 건드리지 않는다
+# ────────────────────────────────────────────────────────────────────────────
+PIVOT_WIN = 25                         # §2 동결 — rule_vcp_breakout.base_min_bars
+RVOL_MIN = 1.5                         # §2 동결 — rule_vcp_breakout.rvol_threshold
+S_BREAKOUT = 100                       # §2-2 동결 — R_B 시드 수
+GATE_MIN_SELECTED = 1500               # §6 동결 — 선택 종목-일 문턱
+
+
+def breakout_flags(high, volume, close, i: int) -> tuple:
+    """PREREG_BREAKOUT §2 — `(ok_pivot, ok_rvol)`.
+
+    base = `[i-25, i)` (**현재봉 제외**). 창 안 봉이 26개 미만이면 둘 다 False.
+    🔑 두 조건을 «따로» 돌려주는 이유: arm `P`(돌파만)·`Q`(거래량만) 분해가 §5-3 이다.
+    """
+    if i < PIVOT_WIN:
+        return False, False
+    bh = high[i - PIVOT_WIN:i]
+    bv = volume[i - PIVOT_WIN:i]
+    base_vol = float(bv.mean())
+    ok_pivot = bool(float(close[i]) > float(bh.max()))
+    ok_rvol = bool(base_vol > 0 and float(volume[i]) / base_vol >= RVOL_MIN)
+    return ok_pivot, ok_rvol
+
+
+def build_cache_breakout(px: pd.DataFrame, elig: dict, params: dict):
+    """`{code: {date: (score, ok_dry, ok_p, ok_q, day_ret, limit_up)}}` (PREREG_BREAKOUT §2).
+
+    🔴 문서 1 의 `build_cache` 와 «별도» 함수다. 값 튜플 길이가 달라 섞으면 즉시 깨지므로
+    섞지 않는다. 창 길이·`score` 정의·적격 판정은 문서 1 과 동일하게 둔다(비교 가능성).
+    """
+    dry = rule_volume_dryup(recent_window=int(params["recent_window"]),
+                            base_window=int(params["base_window"]),
+                            ratio_max=float(params["ratio_max"]))
+    cache: dict = defaultdict(dict)
+    stats = dict(n_eval=0, n_dry=0, n_p=0, n_q=0, n_b=0, n_short_bars=0)
+    t0 = time.perf_counter()
+    done = 0
+    total = px["stock_code"].nunique()
+    for code, g in px.groupby("stock_code", sort=False):
+        done += 1
+        if done % 300 == 0:
+            print(f"      ...{done}/{total} 종목 · 평가 {stats['n_eval']:,} · "
+                  f"B {stats['n_b']:,} · {time.perf_counter()-t0:.0f}s",
+                  file=sys.stderr, flush=True)  # 리뷰 재승인(M3) - 로직 불변, 출력만 stderr
+        g = g.reset_index(drop=True)
+        dates = g["date"].to_numpy()
+        closes = g["close"].to_numpy(dtype=float)
+        highs = g["high"].to_numpy(dtype=float)
+        vols = g["volume"].to_numpy(dtype=float)
+        for i in range(len(g)):
+            d = dates[i]
+            if code not in elig.get(d, ()):
+                continue
+            stats["n_eval"] += 1
+            lo = max(0, i + 1 - LOOKBACK)
+            win = g.iloc[lo:i + 1]
+            ok_dry = bool(getattr(dry.evaluate(win, {}), "triggered", False))
+            if (i - lo + 1) < PIVOT_WIN + 1:
+                stats["n_short_bars"] += 1
+                ok_p = ok_q = False
+            else:
+                ok_p, ok_q = breakout_flags(highs, vols, closes, i)
+            stats["n_dry"] += ok_dry
+            stats["n_p"] += ok_p
+            stats["n_q"] += ok_q
+            stats["n_b"] += (ok_p and ok_q)
+            if i > 0 and closes[i - 1] > 0:
+                day_ret = float(closes[i] / closes[i - 1] - 1.0)
+                limit_up = bool(closes[i] / closes[i - 1] >= 1.28)
+            else:
+                day_ret = float("nan")
+                limit_up = False
+            a = max(0, i + 1 - SCORE_WINDOW)
+            cache[code][d] = (float(vols[a:i + 1].mean()), ok_dry, ok_p, ok_q,
+                              day_ret, limit_up)
+    stats["secs"] = time.perf_counter() - t0
+    return dict(cache), stats
+
+
+ARM_RULE_B = {
+    "D":  lambda dry, p, q: dry,              # 기준선 (문서 1 의 D 와 같은 정의)
+    "B":  lambda dry, p, q: p and q,          # 🔴 주 검정
+    "P":  lambda dry, p, q: p,                # 기술통계 — 돌파만
+    "Q":  lambda dry, p, q: q,                # 기술통계 — 거래량만
+    "DB": lambda dry, p, q: dry and p and q,  # 기술통계 — 「판별 보류」 사전 라벨
+}
+
+
+def build_pools_breakout(cache: dict, elig: dict):
+    """`(pools, dayret, limitup)` — `pools["ALL"]` 은 그날 적격 «전체»(귀무 추출 풀)."""
+    pools = {a: defaultdict(list) for a in list(ARM_RULE_B) + ["ALL"]}
+    dayret: dict = defaultdict(dict)
+    limitup: dict = defaultdict(dict)
+    for code, dd in cache.items():
+        for d, (score, ok_dry, ok_p, ok_q, day_ret, lim) in dd.items():
+            if code not in elig.get(d, ()):
+                continue
+            pools["ALL"][d].append((code, score))
+            limitup[d][code] = bool(lim)
+            if day_ret == day_ret:      # NaN 제외
+                dayret[d][code] = float(day_ret)
+            for a, fn in ARM_RULE_B.items():
+                if fn(ok_dry, ok_p, ok_q):
+                    pools[a][d].append((code, score))
+    return ({a: {d: sorted(v) for d, v in p.items() if v} for a, p in pools.items()},
+            dict(dayret), dict(limitup))
+
+
+def select_random_matched(pool_all: dict, arm_pool: dict, dayret: dict, seed: int):
+    """크기 정합 + 당일수익률 10분위 층화 귀무 `R_B` (PREREG_BREAKOUT §2-2).
+
+    문서 1 의 `select_random` 과 다른 점 셋:
+      ① 뽑는 «개수» 를 그날 arm 트리거 수 `k_d` 에 맞춘다 (크기 정합)
+      ② 당일수익률 10분위 «도수분포» 를 arm 과 같게 맞춘다 (모멘텀 교란 제거)
+      ③ 뽑은 「가짜 트리거 집합」에 `select_top` 을 태워 arm 과 같은 랭킹·절단을 받게 한다
+
+    🔑 추출 풀에서 arm 자신의 선택분을 «빼지 않는다» — 빼면 귀무가
+    「arm 이 «안» 고른 것들」이 되어 반대 방향으로 편향된다(§2-2 3단계).
+
+    🔴 `n_sub > 0` 은 통계량이 아니라 「`arm_pool ⊄ pool_all` 이라는 호출 계약이
+    깨졌다」는 고장 신호다. 정상 계약에서는 `arm ⊆ pool` 이므로
+    `need[b] ≤ |bucket[b]|` 이 항상 성립해 이 분기는 돌지 않는다.
+    """
+    rng = np.random.RandomState(seed)
+    fake: dict = {}
+    diag = dict(n_days=0, n_need=0, n_drawn=0, n_sub=0, n_no_ret=0)
+    diag["n_overlap"] = 0          # picked 중 arm 자신과 겹치는 건수(감쇠 계기)
+    diag["n_days_dropped"] = 0     # `cand` 가 비어 조용히 스킵된 날짜 수
+    diag["n_arm_dropped"] = 0      # arm 트리거 중 당일수익률 없어 n_need 에서 빠진 건수
+
+    for d in sorted(arm_pool):
+        arm_items = arm_pool.get(d) or []
+        if not arm_items:
+            continue
+        allc = pool_all.get(d) or []
+        rets = dayret.get(d, {})
+        cand = [(c, s) for c, s in allc if c in rets]
+        diag["n_no_ret"] += len(allc) - len(cand)
+        if not cand:
+            diag["n_days_dropped"] += 1
+            continue
+
+        vals = np.array([rets[c] for c, _ in cand], dtype=float)
+        edges = np.quantile(vals, np.arange(1, 10) / 10.0)
+
+        def _bin(x: float) -> int:
+            return int(np.searchsorted(edges, x, side="right"))
+
+        buckets = {b: [] for b in range(10)}
+        for (c, s), v in zip(cand, vals):
+            buckets[_bin(v)].append((c, s))
+        for b in range(10):                       # 시드 고정 셔플
+            order = rng.permutation(len(buckets[b]))
+            buckets[b] = [buckets[b][j] for j in order]
+
+        need = {b: 0 for b in range(10)}
+        n_need = 0
+        for c, _ in arm_items:
+            v = rets.get(c)
+            if v is None:
+                diag["n_arm_dropped"] += 1
+                continue
+            need[_bin(float(v))] += 1
+            n_need += 1
+
+        picked, shortfalls = [], []
+        for b in range(10):
+            take = min(need[b], len(buckets[b]))
+            for _ in range(take):
+                picked.append(buckets[b].pop())
+            shortfalls += [b] * (need[b] - take)
+
+        for b0 in shortfalls:                     # 가장 «가까운» 분위로 대체
+            for off in range(1, 10):
+                filled = False
+                for bb in (b0 - off, b0 + off):
+                    if 0 <= bb < 10 and buckets[bb]:
+                        picked.append(buckets[bb].pop())
+                        diag["n_sub"] += 1
+                        filled = True
+                        break
+                if filled:
+                    break
+
+        arm_codes = {c for c, _ in arm_items}
+        diag["n_overlap"] += sum(1 for c, _ in picked if c in arm_codes)
+
+        diag["n_days"] += 1
+        diag["n_need"] += n_need
+        diag["n_drawn"] += len(picked)
+        if picked:
+            fake[d] = sorted(picked)
+
+    return select_top(fake), diag
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # 5. Arm 풀 · 선택
 # ────────────────────────────────────────────────────────────────────────────
 ARM_RULE = {
@@ -1000,6 +1197,264 @@ def stage1() -> int:
     return 0
 
 
+def gate_rows_breakout(pools: dict, sels: dict, dayret: dict, limitup: dict,
+                       date_index: dict = None) -> list:
+    """1단계 게이트 행 (PREREG_BREAKOUT §6). **PnL 을 쓰지 않는다.**
+
+    🔴 문턱은 「트리거 수」가 아니라 **「선택 종목-일」**이다 — 1번 문서 실측에서
+    거래/트리거 비가 arm 간 10.7배 벌어져 게이트가 «없는 문제를 있다»고 말했다.
+    """
+    out = []
+    for arm in [a for a in ARM_RULE_B if a in pools]:
+        pool = pools[arm]
+        trig = [(d, c) for d, v in pool.items() for c, _ in v]
+        n_trig = len(trig)
+        sel = sels.get(arm, {})
+        n_sel = sum(len(v) for v in sel.values())
+        rets = [dayret.get(d, {}).get(c) for d, c in trig]
+        rets = [r for r in rets if r is not None]
+        lims = [limitup.get(d, {}).get(c, False) for d, c in trig]
+        by_code: dict = defaultdict(list)
+        if date_index is None:
+            order = {d: i for i, d in enumerate(sorted(pool))}
+        else:
+            order = date_index
+        for d, c in trig:
+            if d in order:
+                by_code[c].append(order[d])
+        gaps = []
+        for c, idxs in by_code.items():
+            idxs.sort()
+            gaps += [idxs[k] - idxs[k - 1] for k in range(1, len(idxs))]
+        out.append(dict(
+            arm=arm,
+            triggers=n_trig,
+            selected=n_sel,
+            keep_pct=(100.0 * n_sel / n_trig) if n_trig else float("nan"),
+            codes=len(by_code),
+            regap_le5_pct=(100.0 * sum(1 for g in gaps if g <= 5) / len(gaps))
+                          if gaps else float("nan"),
+            med_dayret=float(np.median(rets)) if rets else float("nan"),
+            limitup_pct=(100.0 * sum(lims) / n_trig) if n_trig else float("nan"),
+            gate_pass=bool(n_sel >= GATE_MIN_SELECTED),
+        ))
+    return out
+
+
+def build_frames_breakout(px: pd.DataFrame):
+    """창 안으로 자른 `(frames, idxmap)`. `stage1b`·`stage2b` 가 «공유»한다.
+
+    🔑 같은 블록을 두 스테이지에 verbatim 으로 두지 않는다 — 한쪽만 고쳐지면
+    게이트와 판정이 다른 프레임을 보게 된다.
+    """
+    frames, idxmap = {}, {}
+    for code, g in px.groupby("stock_code", sort=False):
+        g2 = g[g["date"] >= W0]
+        if len(g2) >= 2:
+            g2 = g2.reset_index(drop=True)
+            frames[code] = g2
+            im = {d: i for i, d in enumerate(g2["date"].to_numpy())}
+            im["__last__"] = len(g2) - 1
+            idxmap[code] = im
+    return frames, idxmap
+
+
+def gate_exec_rows(pools: dict, frames: dict, idxmap: dict,
+                   band_up_pct: float = 0.03) -> list:
+    """실행 가능성·데이터 위생 지표 (PREREG_BREAKOUT §6-3·5·7). **PnL 미사용.**
+
+    🔴 라이브는 `entry_band_up_pct`(기본 0.03) 를 넘으면 매수를 «스킵»하는데
+    백테스트는 다음 봉 «시가»에 무조건 체결한다. 그 비대칭이 arm 마다 다르므로 센다.
+
+    🔴 리뷰 반영(Task 7 사후): 시가는 밴드 위인데 장중 저가가 밴드 안으로 들어온
+    «낀 상태»를 `band_mid_pct` 로 따로 센다 — 안 세면 `band_ok_pct + band_dead_pct`
+    가 100% 에 못 미쳐 원인불명의 결손처럼 보인다. 세 값의 합은 100% 다.
+
+    🔴 리뷰 반영: `vol5` 표본이 «2개뿐»이면 `pct_change().dropna()` 후 값이 1개만 남아
+    `std(ddof=1)` 이 NaN 을 내고, `np.median` 이 그 NaN 을 arm 전체로 전파시켜
+    `vol5_med` 가 조용히 사라진다. 표본 3개 미만은 계산에서 제외하고(`ddof=0` 으로
+    바꿔 0.0 을 내지 않는다 — 그건 「변동성 0」이 아니라 「모른다」다) `vol5_skipped`
+    로 명시적으로 센다. 「없다」와 「고장」을 같은 값으로 보고하면 고장이 감춰진다.
+    """
+    out = []
+    for arm in [a for a in ARM_RULE_B if a in pools]:
+        n = ok = mid = dead = imposs = vol5_skip = 0
+        vols5 = []
+        for d, items in pools[arm].items():
+            for c, _ in items:
+                im = idxmap.get(c)
+                g = frames.get(c)
+                if im is None or g is None:
+                    continue
+                i = im.get(d)
+                if i is None or i >= im["__last__"]:
+                    continue
+                n += 1
+                close_t = float(g["close"].iloc[i])
+                if close_t <= 0:
+                    continue
+                cap = close_t * (1.0 + band_up_pct)
+                nxt_open = float(g["open"].iloc[i + 1])
+                nxt_low = float(g["low"].iloc[i + 1])
+                if nxt_open <= cap:
+                    ok += 1
+                elif nxt_low > cap:
+                    dead += 1
+                else:
+                    mid += 1
+                if i > 0:
+                    prev = float(g["close"].iloc[i - 1])
+                    if prev > 0 and close_t / prev > 1.31:
+                        imposs += 1
+                seg = g["close"].iloc[i + 1:i + 6].astype(float)
+                if len(seg) >= 3:
+                    vols5.append(float(seg.pct_change().dropna().std()))
+                else:
+                    vol5_skip += 1
+        out.append(dict(
+            arm=arm, n=n,
+            band_ok_pct=(100.0 * ok / n) if n else float("nan"),
+            band_mid_pct=(100.0 * mid / n) if n else float("nan"),
+            band_dead_pct=(100.0 * dead / n) if n else float("nan"),
+            impossible_up=imposs,
+            vol5_med=float(np.nanmedian(vols5)) if vols5 else float("nan"),
+            vol5_skipped=vol5_skip,
+        ))
+    return out
+
+
+def gate_overlap(sels: dict) -> dict:
+    """arm 쌍별 «선택 종목-일» Jaccard (PREREG_BREAKOUT §6-9)."""
+    setmap = {a: {(d, c) for d, v in s.items() for c in v} for a, s in sels.items()}
+    arms = [a for a in ARM_RULE_B if a in setmap]
+    out = {}
+    for x in range(len(arms)):
+        for y in range(x + 1, len(arms)):
+            A, Bs = setmap[arms[x]], setmap[arms[y]]
+            u = len(A | Bs)
+            out[(arms[x], arms[y])] = (len(A & Bs) / u) if u else float("nan")
+    return out
+
+
+def stage1b() -> int:
+    """문서 5 1단계 게이트 — PnL 미조회. `BookBacktester` 를 import 하지 않는다."""
+    conn = psycopg2.connect(**DSN)
+    sha = git_sha()
+    say("# 돌파 축 — 1단계 게이트 (PREREG_BREAKOUT §6, PnL 미조회)")
+    say("")
+    say(f"사전등록 [`PREREG_BREAKOUT.md`](PREREG_BREAKOUT.md)(동결) · 가족 등록부 "
+        f"[`../REGISTRY.md`](../REGISTRY.md) **5번 문서** · 실행 커밋 **`{sha}`** · "
+        f"창 **{W0} ~ {W1}**.")
+    say("")
+    say("🔑 `BookBacktester` 를 **import 하지도 호출하지도 않는다** — "
+        "거래당 수익률이 메모리에 들어올 경로 자체가 없다.")
+    say("")
+    say(f"🔴 동결 파라미터: 피벗 창 **{PIVOT_WIN}봉** · RVOL **{RVOL_MIN}** · "
+        f"시드 **{S_BREAKOUT}** · 게이트 문턱 선택 종목-일 **{GATE_MIN_SELECTED:,}**.")
+    say("")
+
+    rows, params = verify_strategy_params()
+    for r in rows:
+        say(r)
+    say("")
+
+    fp = db_fingerprint(conn)
+    say("| 슬라이스 | 행 수 | 종목 수 | max |")
+    say("|---|---|---|---|")
+    for k, (a, b, c) in fp.items():
+        say(f"| `{k}` | {a:,} | {b:,} | {c} |")
+    say("")
+
+    px = load_prices(conn)
+    uni, _ = load_universe(conn)
+    conn.close()
+    scr = MinerviniVolumeDryupScreenerAdapter()
+    elig = eligible_by_date(uni, scr)
+
+    cache, cstats = build_cache_breakout(px, elig, params)
+    pools, dayret, limitup = build_pools_breakout(cache, elig)
+    sels = {a: select_top(pools[a]) for a in ARM_RULE_B if a in pools}
+
+    say(f"적격 (code,date) **{cstats['n_eval']:,}** · dryup {cstats['n_dry']:,} · "
+        f"P {cstats['n_p']:,} · Q {cstats['n_q']:,} · **B {cstats['n_b']:,}** · "
+        f"봉부족 제외 {cstats['n_short_bars']:,}")
+    say("")
+
+    all_dates = sorted({d for v in pools.values() for d in v})
+    order = {d: i for i, d in enumerate(all_dates)}
+    grows = gate_rows_breakout(pools, sels, dayret, limitup, date_index=order)
+
+    say("## 1. arm 별 게이트")
+    say("")
+    say("| arm | 트리거 | 선택 종목-일 | 잔존율 | 고유종목 | 재발화 ≤5봉 | 당일수익 중앙 | 상한가급 | 게이트 |")
+    say("|---|---|---|---|---|---|---|---|---|")
+    for r in grows:
+        say(f"| `{r['arm']}` | {r['triggers']:,} | **{r['selected']:,}** | "
+            f"{r['keep_pct']:.1f}% | {r['codes']:,} | {r['regap_le5_pct']:.1f}% | "
+            f"{r['med_dayret']*100:+.2f}% | {r['limitup_pct']:.2f}% | "
+            f"{'✅' if r['gate_pass'] else '🔴 판별 보류'} |")
+    say("")
+
+    for s in (0, 1):
+        _rb, diag = select_random_matched(pools["ALL"], pools.get("B", {}), dayret, seed=s)
+        overlap_rate = (100.0 * diag["n_overlap"] / diag["n_drawn"]) if diag["n_drawn"] else float("nan")
+        say(f"- `R_B` 시드 {s} 진단 — 필요 {diag['n_need']:,} · 추출 {diag['n_drawn']:,} · "
+            f"**층화 대체 {diag['n_sub']:,}** · 수익률 결측 제외 {diag['n_no_ret']:,} · "
+            f"겹침 **{diag['n_overlap']:,}건({overlap_rate:.1f}%)** · "
+            f"날짜 스킵 {diag['n_days_dropped']:,} · arm 결측 제외 {diag['n_arm_dropped']:,}")
+        if diag["n_sub"] > 0:
+            say(f"  🔴 ERROR: R_B 층화 대체가 발생했다(n_sub={diag['n_sub']}). 이것은 통계량이 아니라 "
+                f"「arm_pool ⊄ pool_all」 호출 계약 위반 신호다 — 게이트 산출물을 신뢰하지 말 것.")
+    say("")
+    say("⚠️ 겹침률 w 는 「귀무가 실험군을 흡수한 정도」다. 관측 효과는 참값의 (1−w) 배로 "
+        "감쇠하므로, w 가 크면 동결 ε 0.5%p 는 실효 ε/(1−w) 를 요구한다.")
+    say("")
+    say("⚠️ 분위 정의가 두 가지다 — `select_random_matched` 의 `_bin` 은 «값 기준»"
+        "(`#{j : Q_j ≤ x}`), 기존 `decile_hist` 는 «순위 기준»"
+        "(`min(floor(rank/n·10), 9)`)이다(리뷰어 실측: 값이 전부 다를 때 n=389 에서 "
+        "5/389 불일치, 동점이 많을 때(389 중 150개 동점) 144/389 불일치). 이 게이트에서 "
+        "`decile_hist` 계열로 층화를 교차검증하면 «층화가 정확해도» 차이가 0 이 아니게 "
+        "나온다 — 그 차이를 「층화 실패」로도, 반대로 「차이 작으니 됐다」로도 읽지 말 것.")
+    say("")
+
+    frames, idxmap = build_frames_breakout(px)
+
+    say("## 2. 실행 가능성 · 데이터 위생 (§6-3·5·7)")
+    say("")
+    say("| arm | 신호 | 밴드 통과 | 밴드 낀상태 | 그날 내내 불가 | 불가능 상승봉 | "
+        "진입후 5봉 변동성(중앙) | 변동성 표본부족 |")
+    say("|---|---|---|---|---|---|---|---|")
+    for r in gate_exec_rows(pools, frames, idxmap):
+        say(f"| `{r['arm']}` | {r['n']:,} | {r['band_ok_pct']:.1f}% | "
+            f"{r['band_mid_pct']:.1f}% | {r['band_dead_pct']:.1f}% | "
+            f"**{r['impossible_up']:,}** | {r['vol5_med']*100:.2f}% | "
+            f"{r['vol5_skipped']:,} |")
+    say("")
+    say("🔴 밴드 통과율이 arm 간 다르면 1번 문서 §7-9 의 「실행 효과는 arm 비교에 대칭」이 "
+        "**이 문서에서는 거짓**이다(§6-3).")
+    say("")
+    say("🔑 「밴드 통과 + 밴드 낀상태 + 그날 내내 불가」 세 값의 합은 100% 다 — 시가가 밴드 "
+        "위인데 장중 저가가 밴드 안으로 들어온 «낀 상태»를 안 세면 앞 두 값의 합이 100%에 "
+        "못 미쳐 원인불명의 결손처럼 보인다(§6-5). 「변동성 표본부족」은 진입 후 남은 봉이 "
+        "3개 미만이라 5봉 변동성을 계산에서 뺀 신호 수다 — 이걸 「변동성 0」으로 적으면 "
+        "「없다」와 「고장」이 같은 값으로 보고돼 고장이 감춰진다(§6-7).")
+    say("")
+    say("## 3. arm 간 선택 겹침 (Jaccard, §6-9)")
+    say("")
+    for (x, y), v in gate_overlap(sels).items():
+        say(f"- `{x}` ∩ `{y}` = **{v:.3f}**")
+    say("")
+
+    pool_days = {d: 1 for d in all_dates}
+    for arm in ("B", "D"):
+        if arm in pools:
+            year_skew([(d, c) for d, v in pools[arm].items() for c, _ in v],
+                      pool_days, f"arm {arm}")
+    (BASE / "GATE_BREAKOUT.md").write_text("\n".join(OUT) + "\n", encoding="utf-8")
+    print("\n[written] GATE_BREAKOUT.md", flush=True)
+    return 0
+
+
 def stage2() -> int:
     # 🔴 지역 import — `--stage1` 이 「PnL 계산 경로가 아예 없다」를 보증하기 위해서다.
     from backtest.book_backtester import BookBacktester
@@ -1322,21 +1777,327 @@ def stage2() -> int:
     return 0
 
 
+def breakout_labels(B: float, D: float, r_means: list, eps: float) -> dict:
+    """PREREG_BREAKOUT §5-2 — 라벨은 상호배타이며 위에서부터 우선한다.
+
+    🔴 리뷰 반영(I6, 2026-08-20): `r_means` 가 «비어 있으면» 귀무가 한 번도
+    산출되지 않은 고장 상태다. 「(나) 판별 불가」로 조용히 접지 않고 예외를
+    던진다 — 「없다」와 「고장」을 같은 값으로 보고하면 고장이 감춰진다.
+    """
+    if not r_means:
+        raise ValueError("breakout_labels: r_means 가 비어 있다 — R_B 가 한 번도 "
+                          "산출되지 않은 고장 상태다(「(나) 판별 불가」로 접지 않는다).")
+    n1 = all(B > x for x in r_means)
+    med_r = float(np.median(r_means))
+    pass_vs_d = bool(B - D >= eps)
+    pass_vs_r = bool(B - med_r >= eps)
+    if not n1:
+        label = "(나) 판별 불가"
+    elif pass_vs_d and pass_vs_r:
+        label = "(가) 돌파는 정보다"
+    else:
+        label = "(다) 크기 미달"
+    return dict(label=label, n1=n1, med_r=med_r,
+                pass_vs_d=pass_vs_d, pass_vs_r=pass_vs_r,
+                p=perm_p(B, r_means))
+
+
+def _pnl_list(sel: dict, frames: dict, cfg: dict, backtester_cls) -> list:
+    """`run_arm` 과 같은 방식으로 거래를 재현해 «개별» `pnl_pct` 리스트만 뽑는다.
+
+    🔴 task-8 추가요구 (나) 전용 보조 헬퍼다. `run_arm` 이 개별 거래를 돌려주지
+    않고 `run_arm` 자체는(불가침) 고치지 않으므로, 절사평균 계산에 필요한
+    원시 pnl 목록만 옆에 다시 뽑는다 — `run_arm`(748행)의 거래 수집 루프를
+    그대로 따른다(신호/폐기 집계만 빠진다, 여기선 필요 없다).
+    """
+    allowed = {d: set(v) for d, v in sel.items() if v}
+    codes = set().union(*allowed.values()) if allowed else set()
+    bt = backtester_cls(strategy=ArmGated(allowed), warmup_bars=0,
+                        stop_loss_pct=cfg["sl"], take_profit_pct=cfg["tp"],
+                        max_hold_bars=cfg["mh"], eod_liquidate=False)
+    pnl = []
+    for c in sorted(codes):
+        g = frames.get(c)
+        if g is None or len(g) < 2:
+            continue
+        buy = None
+        for t in bt.run_single(c, g).trades:
+            if t["side"] == "buy":
+                buy = t
+            elif t["side"] == "sell" and buy is not None:
+                pnl.append(float(t["pnl_pct"]))
+                buy = None
+    return pnl
+
+
+def trimmed_mean(values: list, trim: float = 0.01) -> float:
+    """상하 `trim` 비율씩 절사한 평균(%, `run_arm`의 `mean`과 같은 척도).
+
+    §6-5 — 참고 인쇄 전용이다. 🔴 **판정에는 원 평균을 쓴다**(사양이 동결한
+    통계량은 거래당 평균) — 이 값은 위생 가드가 «하락»만 봐서 미조정 상승
+    절벽이 만드는 가짜 트리거가 극단값으로 평균을 밀어 올렸는지 참고로
+    점검하는 용도다.
+    """
+    if not values:
+        return float("nan")
+    v = sorted(values)
+    n = len(v)
+    k = int(n * trim)
+    core = v[k: n - k] if n - 2 * k > 0 else v
+    return float(np.mean(core)) * 100
+
+
+def _disc_gap_flag(a: float, b: float) -> bool:
+    """폐기율 두 값이 「2배 이상」 벌어졌는지 여부.
+
+    🔴 리뷰 반영(M1, 2026-08-20) — 기존 `max(a,b) >= 2*min(a,b)` 식은
+    `min(a,b) == 0` 이면 `max >= 0` 으로 «항상 참»이 된다. 즉 0% vs 0%(완전히
+    같음)도 「2배 이상 벌어졌다」로 오탐했다. 값이 같으면(0=0 포함) 벌어진 게
+    아니고, `min==0` 인데 다른 쪽이 양수면 그건 진짜 무한 배율이라 그대로 True.
+    """
+    if a != a or b != b:          # NaN 가드
+        return False
+    if a == b:
+        return False
+    lo, hi = min(a, b), max(a, b)
+    if lo == 0:
+        return True
+    return hi >= 2 * lo
+
+
+def stage2b() -> int:
+    """문서 5 2단계 판정. 🔴 `stage1b` 가 끝난 «뒤»에만 돌린다."""
+    from backtest.book_backtester import BookBacktester
+
+    t0 = time.perf_counter()
+    run_started_at = time.strftime("%Y-%m-%d %H:%M:%S")
+    conn = psycopg2.connect(**DSN)
+    sha = git_sha()
+    rep("# 판정 — 「돌파 방아쇠」는 정보인가")
+    rep("")
+    rep(f"사전등록 [`PREREG_BREAKOUT.md`](PREREG_BREAKOUT.md) 실행 · **5번 문서** · "
+        f"창 **{W0} ~ {W1}** · 실행 커밋 **`{sha}`**.")
+    rep("")
+    rep(f"🔴 ε = **{EPS_ECON}%p** · N1 = **`B > R_B {S_BREAKOUT}개 전부`** · "
+        f"주 검정 **1개** · 귀무는 **크기정합+당일수익률 층화** `R_B` 다(§2-2).")
+    rep("")
+    rep("🔴 **이 축은 「원저작 복원」이 아니다** — 파라미터는 저장소 dataclass 기본값이고 "
+        "해당 룰에 저장소가 붙인 라벨은 「(구) 조잡 proxy」다(§ 머리말).")
+    rep("")
+
+    rows, params = verify_strategy_params()
+    fp = db_fingerprint(conn)          # 🔴 리뷰 반영(C2) — conn.close() «전»에 호출
+    px = load_prices(conn)
+    uni, _ = load_universe(conn)
+    conn.close()
+    elig = eligible_by_date(uni, MinerviniVolumeDryupScreenerAdapter())
+
+    cache, cstats = build_cache_breakout(px, elig, params)
+    pools, dayret, _limitup = build_pools_breakout(cache, elig)
+    sels = {a: select_top(pools[a]) for a in ARM_RULE_B if a in pools}
+
+    # ── 리뷰 반영(C2, §9) — SHA 하나만 찍고 일시·DB 지문·설정 대조·cstats 는
+    # 계산해놓고 버렸던 것을 stage2(문서1)의 「## 0. 실행 기록」을 본떠 채운다. ──
+    rep("## 0. 실행 기록 (PREREG §9)")
+    rep("")
+    rep(f"- 실행 커밋 SHA **`{sha}`** · 실행 일시 **{run_started_at}** · "
+        f"청산은 `config.yaml` 에서 읽었다 "
+        f"(sl **{params['sl']}** / tp **{params['tp']}** / max_hold **{params['mh']}**).")
+    rep("")
+    for r in rows:
+        rep(r)
+    rep("")
+    rep(f"DB 지문 ({len(FINGERPRINT_SQL)}슬라이스):")
+    rep("")
+    rep("| 슬라이스 | 행 수 | 종목 수 | max |")
+    rep("|---|---|---|---|")
+    for k, (a, b, c) in fp.items():
+        rep(f"| `{k}` | {a:,} | {b:,} | {c} |")
+    rep("")
+    rep(f"적격 (code,date) **{cstats['n_eval']:,}** · dryup {cstats['n_dry']:,} · "
+        f"P {cstats['n_p']:,} · Q {cstats['n_q']:,} · **B {cstats['n_b']:,}** · "
+        f"봉부족 제외 {cstats['n_short_bars']:,}")
+    rep("")
+
+    frames, idxmap = build_frames_breakout(px)   # Task 7 의 공유 헬퍼
+
+    cfg = dict(sl=params["sl"], tp=params["tp"], mh=params["mh"])
+    res = {a: run_arm(sels[a], frames, idxmap, cfg, BookBacktester) for a in sels}
+
+    r_means, r_stats, r_diags = [], [], []
+    for s in range(S_BREAKOUT):
+        rb, diag = select_random_matched(pools["ALL"], pools.get("B", {}), dayret, seed=s)
+        st = run_arm(rb, frames, idxmap, cfg, BookBacktester)
+        r_stats.append(st)
+        r_diags.append(diag)               # 🔴 리뷰 반영(I1) — 더 이상 버리지 않는다
+        r_means.append(st["mean"])
+        if (s + 1) % 10 == 0:
+            print(f"[R_B] {s+1}/{S_BREAKOUT}", file=sys.stderr, flush=True)  # 리뷰 반영(M3)
+
+    # ── 리뷰 반영(I1, §11) — `R_B` 100시드를 실제로 뽑는 유일한 곳이 여기다.
+    # `stage1b` 는 시드 0·1 두 개만 검사한다. 전량 집계해 고장 신호를 «감추지 않는다». ──
+    n_sub_total = sum(d["n_sub"] for d in r_diags)
+    n_sub_max = max((d["n_sub"] for d in r_diags), default=0)
+    overlap_rates = [100.0 * d["n_overlap"] / d["n_drawn"] for d in r_diags if d["n_drawn"]]
+    overlap_med = float(np.median(overlap_rates)) if overlap_rates else float("nan")
+    rep(f"- 🔴 `R_B` {S_BREAKOUT}시드 «전량» 진단(§11): 층화 대체 합계 **{n_sub_total:,}** "
+        f"(시드 최댓값 {n_sub_max:,}) · 겹침률(w) 중앙 **{overlap_med:.1f}%**"
+        f"(§11-1 감쇠 계기, {len(overlap_rates)}시드 기준).")
+    if n_sub_total > 0:
+        rep(f"🔴 ERROR: `R_B` {S_BREAKOUT}시드 중 층화 대체가 발생했다"
+            f"(합계 n_sub={n_sub_total:,}) — §11-3 에 따라 이것은 통계량이 아니라 "
+            f"「`arm_pool ⊄ pool_all`」 호출 계약 위반 신호다. 이 판정 산출물을 신뢰하지 말 것.")
+    rep("")
+
+    # ── 리뷰 반영(I2, §5-3) — 주 표는 `D`·`B` 만. `P`·`Q`·`DB` 는 아래 「## 1-1」 로 분리. ──
+    rep("## 1. 주 표 — `D`·`B` (§5-3: 분해 arm 은 별도 절)")
+    rep("")
+    rep("| arm | n | 거래당 평균 | 중앙 | 승률 | 폐기율 |")
+    rep("|---|---|---|---|---|---|")
+    for a in ("D", "B"):
+        if a not in res:
+            continue
+        r = res[a]
+        rep(f"| `{a}` | {r['n']:,} | **{r['mean']:+.2f}%** | {r['med']:+.2f}% | "
+            f"{r['win']:.0f}% | {r['discard']:.1f}% |")
+    rep("")
+
+    # ── task-8 추가요구 (나) — `B` 거래당 평균의 절사평균(상하 1%) 참고 병기 (§6-5) ──
+    b_pnls = _pnl_list(sels["B"], frames, cfg, BookBacktester)
+    b_trim = trimmed_mean(b_pnls, trim=0.01)
+    if len(b_pnls) != res["B"]["n"]:               # 🔴 리뷰 반영(I3) — 표본 동일성 가드
+        rep(f"🔴 ERROR: 절사평균 표본 {len(b_pnls):,} ≠ run_arm 표본 {res['B']['n']:,} — 병기 무효")
+    rep(f"- 참고(§6-5, 판정에는 미사용): `B` 거래당 평균의 **절사평균(상하 1%)** = "
+        f"{b_trim:+.2f}% (원 평균 **{res['B']['mean']:+.2f}%**, n={len(b_pnls):,}) — "
+        f"위생 가드는 «하락»만 보므로 미조정 상승 절벽이 만드는 가짜 트리거가 "
+        f"극단값으로 평균을 밀어 올렸는지 참고로 점검한다.")
+    rep("")
+
+    # ── task-8 추가요구 (가) — `R_B` 의 실현 거래 수·폐기율 중앙값을 `B` 와 병기 (§2-2) ──
+    # 🔴 리뷰 반영(M2) — `np.median` 은 NaN 을 전파해 거래 0건 시드가 하나만 있어도
+    # 경고가 «조용히」 꺼졌다. `np.nanmedian` + 결측 시드 수를 병기한다.
+    rb_ns = [st["n"] for st in r_stats]
+    rb_discs = [st["discard"] for st in r_stats]
+    n_empty_rb_seeds = sum(1 for x in rb_discs if x != x)
+    rb_n_med = float(np.median(rb_ns)) if rb_ns else float("nan")
+    rb_disc_med = float(np.nanmedian(rb_discs)) if rb_discs else float("nan")
+    b_n_realized, b_disc_realized = res["B"]["n"], res["B"]["discard"]
+    empty_note = f" (결측 {n_empty_rb_seeds}시드 제외)" if n_empty_rb_seeds else ""
+    rep(f"- 🔴 **실현 거래 수·폐기율 병기(§2-2)**: `B` n={b_n_realized:,} · "
+        f"폐기율 {b_disc_realized:.1f}% vs `R_B` 중앙 n={rb_n_med:,.0f} · "
+        f"폐기율 {rb_disc_med:.1f}%{empty_note} ({S_BREAKOUT}시드).")
+    if _disc_gap_flag(b_disc_realized, rb_disc_med):
+        # 🔴 리뷰 재정정(M4, 2026-08-20) — §11-2 「조치(동결)」가 이 검사를 §6-2 규칙의
+        # B vs R_B 적용으로 «사전등록»했다(§11-5). 「사전등록 외」는 사양과 모순되므로
+        # 「(§11-2 사전 고정)」으로 바로잡는다.
+        rep(f"🔴 **귀무 빈도 대비 — 판별 보류 병기** (§11-2 사전 고정): 폐기율 `B` "
+            f"{b_disc_realized:.1f}% vs `R_B` {rb_disc_med:.1f}% (2배 이상). "
+            f"귀무와 실험군이 「같은 룰의 두 버전」이 아니라 「다른 빈도의 두 룰」에 가깝다.")
+    rep("")
+
+    # ── 리뷰 반영(I6) — NaN 시드가 섞이면 N1 비교·p 값이 오도할 수 있다. 먼저 알린다. ──
+    n_nan_seeds = sum(1 for x in r_means if x != x)
+    if n_nan_seeds > 0:
+        rep(f"🔴 ERROR: `R_B` {S_BREAKOUT}시드 중 **{n_nan_seeds}개**가 거래 0건(mean=NaN)이다 — "
+            f"NaN 비교는 항상 False 로 평가되므로 「N1 불성립인데 p 는 작다」처럼 오도할 수 "
+            f"있다(§11-3 계열 — 「없다」와 「고장」을 같은 값으로 보고하지 않는다).")
+        rep("")
+
+    lab = breakout_labels(res["B"]["mean"], res["D"]["mean"], r_means, EPS_ECON)
+    rep(f"- N1(`B` > `R_B` {S_BREAKOUT}개 전부): **{'성립' if lab['n1'] else '불성립'}** "
+        f"· 순열 p = **{lab['p']:.4f}**")
+    # 🔴 리뷰 반영(C1, §5-1) — N1 불성립이면 §5-2 두 대조는 «인용하지 않는다».
+    if lab["n1"]:
+        rep(f"- `B − D` = {res['B']['mean'] - res['D']['mean']:+.2f}%p "
+            f"(ε={EPS_ECON}) → {'✅' if lab['pass_vs_d'] else '❌'}")
+        rep(f"- `B − median(R_B)` = {res['B']['mean'] - lab['med_r']:+.2f}%p → "
+            f"{'✅' if lab['pass_vs_r'] else '❌'}")
+    else:
+        rep("- 🔴 N1 불성립 — §5-1 에 따라 §5-2 두 대조는 **산출하지 않는다.**")
+    rep(f"- **판정: {lab['label']}**")
+    rep("")
+    rep("⚠️ 검정력 약 70%(§7-6) — **음성 결과를 「돌파는 정보가 아니다」로 읽지 않는다.**")
+    rep("")
+
+    if _disc_gap_flag(res["D"]["discard"], res["B"]["discard"]):   # 🔴 리뷰 반영(M1)
+        rep(f"🔴 **혼합 대비 — 판별 보류 병기**: 폐기율 `D` {res['D']['discard']:.1f}% vs "
+            f"`B` {res['B']['discard']:.1f}% (2배 이상, §6-2 사전 고정).")
+        rep("")
+
+    # ── 리뷰 반영(I2, §5-3) — 분해(P·Q·DB)는 별도 절. 사전 고정 라벨·N1·인용 금지. ──
+    rep("## 1-1. 🔴 분해 — 기술통계, 판정 언어 금지 (§5-3)")
+    rep("")
+    rep("`P`(돌파만)·`Q`(거래량만)·`DB`(dry ∧ 돌파) — 라벨은 사전 고정이며 아래는 «인쇄만» 한다.")
+    rep("")
+    rep("| arm | 라벨 | n | 거래당 평균 | N1(`R_B` 대비) | 비고 |")
+    rep("|---|---|---|---|---|---|")
+    decomp_label = {"P": "분해-돌파", "Q": "분해-거래량", "DB": "분해-결합"}
+    for a in ("P", "Q", "DB"):
+        if a not in res:
+            continue
+        r = res[a]
+        n1_a = bool(r_means) and (r["mean"] == r["mean"]) and all(r["mean"] > x for x in r_means)
+        note = "🔴 표본 부족 → 판별 보류(§6-2 사전 고정)" if a == "DB" else ""
+        rep(f"| `{a}` | {decomp_label[a]} | {r['n']:,} | {r['mean']:+.2f}% | "
+            f"{'✅' if n1_a else '❌'} | {note} |")
+    rep("")
+    # 🔴 리뷰 반영(I2, 재리뷰) — 이 열의 N1 은 `B` 크기에 정합된 `R_B` 를 그대로
+    # 재사용한 것이며 `P`/`Q`/`DB` 각각의 트리거 수에는 정합되지 않았다. §2-2(가)에
+    # 따르면 실제보다 크게 정합된 귀무와의 비교는 anti-conservative 하다.
+    rep("🔴 이 열의 N1 은 `B` 크기에 정합된 `R_B` 를 그대로 재사용한 것이며, "
+        "`P`/`Q`/`DB` 각각의 트리거 수에는 «정합되지 않았다».")
+    rep("§2-2(가)에 따르면 실제보다 크게 정합된 귀무와의 비교는 anti-conservative 하며, "
+        "특히 `DB`(트리거 438 vs `B` 11,330 ≈ 3.9%, §10-1)에서 왜곡이 가장 크다.")
+    rep("⇒ 이 열의 ✅/❌ 는 «참고 이하»로만 읽는다. 판정 근거로 쓰지 않는다.")
+    rep("")
+    rep("> `P`·`Q`·`DB` 의 수치를 `REGISTRY.md`·`MEMORY.md`·전략 README·changelog 어디에도 "
+        "**«단독 결론»으로 옮겨 적지 않는다.** 옮겨 적으려면 **새 사전등록을 연다.**"
+        "(§5-3 인용 금지 조항 — 그대로 전재)")
+    rep("")
+
+    rep("## 2. 🔴 `R_B` 시드 전량 (§9 — 사후 크기 검증용)")
+    rep("")
+    rep("| 시드 | 거래당 평균 | n |")
+    rep("|---|---|---|")
+    for s, st in enumerate(r_stats):
+        rep(f"| {s} | {st['mean']:+.4f}% | {st['n']:,} |")
+    rep("")
+    rep("🔑 1번 문서는 시드 평균을 stdout 으로만 찍어 **사후에 검정의 크기를 검증할 수 없었다.**")
+
+    rep(f"- 총 소요 **{time.perf_counter() - t0:.0f}s** (실행 시작 {run_started_at})")
+    rep("")
+    (BASE / "RESULTS_BREAKOUT.md").write_text("\n".join(DOC) + "\n", encoding="utf-8")
+    (BASE / "RESULTS_BREAKOUT_raw.md").write_text("\n".join(OUT) + "\n", encoding="utf-8")
+    print("\n[written] RESULTS_BREAKOUT.md · RESULTS_BREAKOUT_raw.md", flush=True)
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="minervini 개념 축 — PREREG 실행부")
     ap.add_argument("--stage1", action="store_true",
                     help="PREREG §6 1단계 게이트 (PnL 미조회) → GATE.md")
     ap.add_argument("--stage2", action="store_true",
                     help="PREREG §4·§5 판정 → RESULTS.md · RESULTS_raw.md")
+    ap.add_argument("--stage1b", action="store_true",
+                    help="PREREG_BREAKOUT §6 1단계 게이트 (PnL 미조회) → GATE_BREAKOUT.md")
+    ap.add_argument("--stage2b", action="store_true",
+                    help="PREREG_BREAKOUT §4·§5 판정 → RESULTS_BREAKOUT.md · RESULTS_BREAKOUT_raw.md")
     a = ap.parse_args()
     if a.stage1 and a.stage2:
+        print("한 번에 하나만 실행한다 — 1단계는 「PnL 을 보기 «전»」이라야 뜻이 있다.", flush=True)
+        return 2
+    if a.stage1b and a.stage2b:
         print("한 번에 하나만 실행한다 — 1단계는 「PnL 을 보기 «전»」이라야 뜻이 있다.", flush=True)
         return 2
     if a.stage1:
         return stage1()
     if a.stage2:
         return stage2()
-    print("`--stage1`(게이트) 또는 `--stage2`(판정) 중 하나를 지정하라.", flush=True)
+    if a.stage1b:
+        return stage1b()
+    if a.stage2b:
+        return stage2b()
+    print("`--stage1` / `--stage2` (문서 1) 또는 `--stage1b` / `--stage2b` (문서 5) 중 하나를 지정하라.", flush=True)
     return 2
 
 
