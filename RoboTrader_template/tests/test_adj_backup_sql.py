@@ -4,8 +4,11 @@
 원래 4개는 부분문자열 검사라 컬럼이 뒤바뀌어도(swap) 통과한다. 아래 구조적
 테스트는 SET 절/컬럼 목록을 실제로 파싱해 위치별로 대응시켜, 리뷰어가 지적한
 두 가지 결함(RESTORE_SQL 컬럼 뒤바뀜, BACKUP_SQL INSERT/SELECT 목록 어긋남)을
-잡아낸다. 마지막 두 테스트는 그 파싱 체크가 실제로 이빨이 있는지 로컬
-복사본을 일부러 망가뜨려 증명한다(모듈 자체는 건드리지 않는다).
+잡아낸다. 🆕 세 번째로 **RESTORE_SQL 의 조인 술어**도 파싱해 검사한다 —
+`AND dp.date = b.date` 를 지우면 백업 한 행이 그 종목의 «모든 날짜»에 발라지는데
+(복원이 아니라 이력 파괴다) 나머지 테스트는 전부 통과했다. 「이빨」 테스트들은
+그 파싱 체크가 실제로 판별하는지 로컬 복사본을 일부러 망가뜨려 증명한다
+(모듈 자체는 건드리지 않는다).
 """
 import re
 
@@ -118,6 +121,73 @@ def test_backup_insert_and_select_column_lists_align():
 # Prove the structural checks above actually discriminate — mutate a local
 # copy of the SQL string (never the module) and confirm the check rejects it.
 # ---------------------------------------------------------------------------
+
+
+def _parse_where_conditions(sql):
+    """Split the trailing WHERE clause of an UPDATE into normalised conditions."""
+    m = re.search(r"\bWHERE\b(.*)$", sql, re.DOTALL | re.IGNORECASE)
+    assert m, "no WHERE clause found in restore SQL"
+    out = []
+    for cond in re.split(r"\bAND\b", m.group(1), flags=re.IGNORECASE):
+        cond = re.sub(r"\s+", " ", cond).strip()
+        if cond:
+            out.append(cond)
+    return out
+
+
+def _equality_pairs(sql):
+    """WHERE conditions as orientation-agnostic {lhs, rhs} pairs."""
+    pairs = set()
+    for cond in _parse_where_conditions(sql):
+        lhs, sep, rhs = cond.partition("=")
+        assert sep, "non-equality condition in restore WHERE clause: {!r}".format(cond)
+        pairs.add(frozenset((lhs.strip(), rhs.strip())))
+    return pairs
+
+
+def _assert_restore_join_is_row_for_row(sql):
+    """🔴 The restore must match ONE backup row to ONE daily_prices row.
+
+    Dropping `dp.date = b.date` would smear a single backup row across *every*
+    date of that stock — a rollback that destroys history instead of restoring
+    it — and every substring/SET-clause test in this file still passes.
+    Dropping `b.batch_id = %(batch_id)s` would replay *all* batches at once.
+    """
+    pairs = _equality_pairs(sql)
+    for want in (
+        frozenset(("dp.stock_code", "b.stock_code")),
+        frozenset(("dp.date", "b.date")),
+        frozenset(("b.batch_id", "%(batch_id)s")),
+    ):
+        assert want in pairs, (
+            "restore WHERE clause is missing `{}` — found {}".format(
+                " = ".join(sorted(want)), sorted(sorted(p) for p in pairs)
+            )
+        )
+
+
+def test_restore_joins_on_stock_code_and_date_and_is_scoped_to_batch():
+    _assert_restore_join_is_row_for_row(RESTORE_SQL)
+
+
+def test_join_predicate_check_detects_missing_date_condition():
+    """Proof of teeth: without this check, deleting the date join goes unnoticed."""
+    mutated = RESTORE_SQL.replace(" AND dp.date = b.date", "")
+    assert mutated != RESTORE_SQL, "fixture did not actually mutate — test is vacuous"
+    # The pre-existing tests would all still pass on this mutant …
+    _assert_restore_columns_self_mapped(mutated)
+    for col in _DATA_COLUMNS:
+        assert col in mutated
+    # … and only the join check rejects it.
+    with pytest.raises(AssertionError):
+        _assert_restore_join_is_row_for_row(mutated)
+
+
+def test_join_predicate_check_detects_missing_batch_scope():
+    mutated = RESTORE_SQL.replace("b.batch_id = %(batch_id)s\n  AND ", "")
+    assert mutated != RESTORE_SQL, "fixture did not actually mutate — test is vacuous"
+    with pytest.raises(AssertionError):
+        _assert_restore_join_is_row_for_row(mutated)
 
 
 def test_set_clause_check_detects_swapped_columns():
