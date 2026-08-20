@@ -211,3 +211,38 @@ DB 에 실제 저장된 값도 **0.2** 다. 검산: 357,326 × 0.2 = 71,465 ✅.
 2. 이 설계 승인 → 구현 계획(`writing-plans`)
 3. 백업 테이블 + 1종목 → 10종목 → 243건
 4. 검증 통과 후 **별도 승인**으로 §7(수집 경로)
+
+## §10. 구현 기록 (2026-08-20)
+
+- **구현 커밋 범위**: `080c0a2..74e519b` (`feat/adj-repair` 브랜치, 워크트리 `D:/GIT/kis-template-wt-adjrepair`).
+  생성 파일 3개 — 순수 로직 `RoboTrader_template/collectors/adj_repair.py`(거래량 비 기반 `adj_factor` 산출·보정행 조립·불가능봉 카운터·KIS 두 피드 어댑터·대상 로더),
+  백업 `RoboTrader_template/db/adj_backup.py`(백업 테이블 DDL + 저장/복원 SQL),
+  CLI `RoboTrader_template/scripts/repair_corp_action_prices.py`(dry-run 기본 오케스트레이터 + 롤백).
+  마지막 커밋은 하드닝 5건(`batch_id` 유니크화·백업건수 검증·오해 소지 있는 rollback 안내 제거·NULL `close` 가드·`--limit 0` 처리).
+- **회귀 (Task 8, Step 1)**: 전체 pytest 실행 결과 `11 failed, 4761 passed, 4 skipped`(230.63초).
+  실패 노드 id 11건은 베이스라인(`c39578e` 측정, 아래 목록)과 **집합이 정확히 일치** — 양방향 차분 **0**
+  (신규 실패 0건 · 소멸한 실패 0건). `test_env_guard.py::test_correct_env_no_problems` 는 이 Python 인터프리터에서
+  항상 실패하는 베이스라인 항목이며 이번에도 그대로다.
+
+  ```
+  RoboTrader_template/tests/bot/test_env_guard.py::test_correct_env_no_problems
+  RoboTrader_template/tests/discovery/test_dynamic_rr_runner.py::test_load_base_params_book_pullback_ma5
+  RoboTrader_template/tests/discovery/test_dynamic_rr_runner.py::test_load_base_params_elder
+  RoboTrader_template/tests/discovery/test_live_strategy_signals.py::test_all_live_strategies_loadable
+  RoboTrader_template/tests/discovery/test_live_strategy_signals.py::test_build_signals_no_lookahead
+  RoboTrader_template/tests/discovery/test_live_strategy_signals.py::test_build_signals_runs_for_each_strategy
+  RoboTrader_template/tests/exit_multiverse/test_data_loader.py::test_load_turnover_rank_positive
+  RoboTrader_template/tests/strategies/deep_mr_dev20/test_registration.py::test_trading_config_has_deep_mr_dev20_paper
+  RoboTrader_template/tests/strategies/deep_mr_dev20/test_registration.py::test_yaml_has_s2_sizing
+  RoboTrader_template/tests/strategies/rs_leader/test_registration.py::test_trading_config_has_rs_leader_paper
+  RoboTrader_template/tests/test_book_envelope_200d.py::test_min_gate_small_so_ontick_not_skipped
+  ```
+
+  passed 는 베이스라인 **4,738 → 4,761**(+23, 이 브랜치가 추가한 신규 테스트 수와 일치).
+- **기계검사 2개 (Task 8, Step 2)**: `test_adj_factor_no_arithmetic.py` + `test_adj_factor_volume_units.py` →
+  **35 passed**, 0 failed. `adj_factor` 를 가격에 곱하지 않고 거래량에만 곱하는 저장소 전역 규약을
+  이 브랜치가 깨지 않았음을 확인.
+- 🔴 **아직 데이터베이스에는 아무것도 적용하지 않았다.** `--apply` 실행은 사장님 승인 사항이며,
+  §9 및 브리핑에 명시된 단계적 순서를 따른다: **1종목 dry-run → 1종목 apply → 10종목 → 전체**.
+  각 단계에서 불가능봉 개수가 늘면 스크립트가 스스로 중단한다(Task 7 `ABORT`).
+  되돌리기는 `--restore <BATCH_ID>`(배치 ID는 매 실행 끝에 인쇄).
