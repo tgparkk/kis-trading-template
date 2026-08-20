@@ -1,5 +1,5 @@
 """adj_repair 순수 함수 — DB·KIS 에 붙지 않는다."""
-from collectors.adj_repair import derive_factors, build_repair_rows, needs_repair
+from collectors.adj_repair import derive_factors, build_repair_rows, needs_repair, fetch_both
 
 
 def _row(close, vol):
@@ -86,3 +86,30 @@ def test_wrong_factor_alone_still_triggers_repair():
             "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
     db_badfactor = {"2026-05-29": (3750.0, 3850.0, 3700.0, 3800.0, 357326, 5.0)}
     assert len(needs_repair(db_badfactor, new)) == 1
+
+
+def test_fetch_both_requests_raw_and_adjusted_and_keys_by_iso_date():
+    calls = []
+
+    def fake(code, start, end, adj_prc):
+        calls.append(adj_prc)
+        px = 760 if adj_prc == "1" else 3800
+        vol = 357326 if adj_prc == "1" else 71465
+        return [{"stck_bsop_date": "20260529", "stck_oprc": px, "stck_hgpr": px,
+                 "stck_lwpr": px, "stck_clpr": px, "acml_vol": vol}]
+
+    raw, adj = fetch_both("054940", "20210101", "20260820", fake)
+    assert sorted(calls) == ["0", "1"]
+    assert raw["2026-05-29"][3] == 760.0
+    assert adj["2026-05-29"][3] == 3800.0
+
+
+def test_rows_with_bad_date_or_nonpositive_close_are_dropped():
+    def fake(code, start, end, adj_prc):
+        return [{"stck_bsop_date": "2026", "stck_clpr": 100, "acml_vol": 1},
+                {"stck_bsop_date": "20260529", "stck_clpr": 0, "acml_vol": 1},
+                {"stck_bsop_date": "20260530", "stck_oprc": 10, "stck_hgpr": 10,
+                 "stck_lwpr": 10, "stck_clpr": 10, "acml_vol": 5}]
+
+    raw, adj = fetch_both("X", "1", "2", fake)
+    assert list(raw) == ["2026-05-30"]

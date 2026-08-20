@@ -98,3 +98,36 @@ def needs_repair(db_rows: Dict[str, tuple], new_rows: list,
             continue
         out.append(n)
     return out
+
+
+def _f(v) -> float:
+    try:
+        return float(str(v).replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _parse_feed(items) -> Dict[str, tuple]:
+    out = {}
+    for it in items or []:
+        d = str(it.get("stck_bsop_date", ""))
+        if len(d) != 8 or not d.isdigit():
+            continue
+        c = _f(it.get("stck_clpr"))
+        if c <= 0:
+            continue
+        iso = "%s-%s-%s" % (d[0:4], d[4:6], d[6:8])
+        out[iso] = (_f(it.get("stck_oprc")), _f(it.get("stck_hgpr")),
+                    _f(it.get("stck_lwpr")), c, _f(it.get("acml_vol")))
+    return out
+
+
+def fetch_both(code: str, start: str, end: str, fetcher) -> Tuple[dict, dict]:
+    """`(raw, adj)` — `fetcher` 를 «주입» 받아 테스트가 API 없이 돈다.
+
+    🔴 `adj_prc="1"` = 원주가 · `"0"` = 수정주가. 우리 수집기 전부가 기본값 `"1"` 을 써서
+    이 결함이 생겼다(사양 §2-2). 여기서는 **둘 다 명시**한다.
+    """
+    raw = _parse_feed(fetcher(code, start, end, "1"))
+    adj = _parse_feed(fetcher(code, start, end, "0"))
+    return raw, adj
