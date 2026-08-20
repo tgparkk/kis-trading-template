@@ -51,3 +51,50 @@ def derive_factors(raw: Dict[str, tuple], adj: Dict[str, tuple]) -> Tuple[dict, 
             out[d] = nxt
             diag["n_filled"] += 1
     return out, diag
+
+
+def build_repair_rows(code: str, raw: Dict[str, tuple], adj: Dict[str, tuple],
+                      factors: Dict[str, float]) -> list:
+    """OHLC ← 조정 피드 · volume ← 원본 피드 · adj_factor ← factors.
+
+    🔑 컬럼별 출처를 섞으면 규약이 깨진다(`CLAUDE.md` — 가격은 조정 저장, volume 은 원본 저장).
+    """
+    rows = []
+    for d in sorted(set(raw) & set(adj) & set(factors)):
+        a, r = adj[d], raw[d]
+        rows.append(dict(
+            stock_code=code, date=d,
+            open=float(a[0]), high=float(a[1]), low=float(a[2]), close=float(a[3]),
+            volume=int(_volume(r)),
+            adj_factor=float(factors[d]),
+        ))
+    return rows
+
+
+def needs_repair(db_rows: Dict[str, tuple], new_rows: list,
+                 rel_tol: float = 0.01) -> list:
+    """DB 와 «이미 같은» 행은 뺀다 (멱등).
+
+    db_rows: {date_iso: (open, high, low, close, volume, adj_factor)}
+    🔑 `adj_factor` 도 비교 대상이다 — 가격이 맞아도 계수가 틀린 종목이 실측 9건 있다.
+    """
+    def same(a, b):
+        if a is None or b is None:
+            return False
+        if b == 0:
+            return a == 0
+        return abs(a / b - 1.0) <= rel_tol
+
+    out = []
+    for n in new_rows:
+        cur = db_rows.get(n["date"])
+        if cur is None:
+            out.append(n)
+            continue
+        o, h, l, c, v, f = cur
+        if (same(n["open"], o) and same(n["high"], h) and same(n["low"], l)
+                and same(n["close"], c) and same(float(n["volume"]), float(v))
+                and same(n["adj_factor"], f)):
+            continue
+        out.append(n)
+    return out

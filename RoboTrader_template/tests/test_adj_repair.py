@@ -1,5 +1,5 @@
 """adj_repair 순수 함수 — DB·KIS 에 붙지 않는다."""
-from collectors.adj_repair import derive_factors
+from collectors.adj_repair import derive_factors, build_repair_rows, needs_repair
 
 
 def _row(close, vol):
@@ -51,3 +51,38 @@ def test_date_present_in_only_one_feed_is_skipped():
     f, diag = derive_factors(raw, adj)
     assert set(f) == {"2026-05-29"}
     assert diag["n_dates"] == 1
+
+
+def test_ohlc_comes_from_adjusted_feed_volume_from_raw_feed():
+    """🔴 컬럼별 출처를 섞지 않는다 — OHLC=조정, volume=원본."""
+    raw = {"2026-05-29": (750, 770, 740, 760, 357326)}
+    adj = {"2026-05-29": (3750, 3850, 3700, 3800, 71465)}
+    rows = build_repair_rows("054940", raw, adj, {"2026-05-29": 0.2})
+    r = rows[0]
+    assert (r["open"], r["high"], r["low"], r["close"]) == (3750.0, 3850.0, 3700.0, 3800.0)
+    assert r["volume"] == 357326          # 원본
+    assert r["adj_factor"] == 0.2
+    assert r["stock_code"] == "054940" and r["date"] == "2026-05-29"
+
+
+def test_row_without_factor_is_dropped():
+    raw = {"2026-05-29": (0, 0, 0, 760, 100), "2026-05-30": (0, 0, 0, 770, 100)}
+    adj = {"2026-05-29": (0, 0, 0, 3800, 20), "2026-05-30": (0, 0, 0, 3850, 20)}
+    rows = build_repair_rows("X", raw, adj, {"2026-05-29": 0.2})
+    assert [r["date"] for r in rows] == ["2026-05-29"]
+
+
+def test_already_correct_rows_are_skipped():
+    """멱등 — 가격이 이미 조정본이면 건드리지 않는다."""
+    new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+            "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
+    db_same = {"2026-05-29": (3750.0, 3850.0, 3700.0, 3800.0, 357326, 0.2)}
+    assert needs_repair(db_same, new) == []
+
+
+def test_wrong_factor_alone_still_triggers_repair():
+    """🔴 가격이 맞아도 계수가 틀리면 고쳐야 한다 — 004710 형태(큐가 못 잡는 부류)."""
+    new = [{"stock_code": "A", "date": "2026-05-29", "open": 3750.0, "high": 3850.0,
+            "low": 3700.0, "close": 3800.0, "volume": 357326, "adj_factor": 0.2}]
+    db_badfactor = {"2026-05-29": (3750.0, 3850.0, 3700.0, 3800.0, 357326, 5.0)}
+    assert len(needs_repair(db_badfactor, new)) == 1
