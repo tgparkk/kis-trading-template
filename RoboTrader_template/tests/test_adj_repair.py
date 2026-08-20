@@ -1,6 +1,9 @@
 """adj_repair 순수 함수 — DB·KIS 에 붙지 않는다."""
+import json
+
 from collectors.adj_repair import (
     derive_factors, build_repair_rows, needs_repair, fetch_both, count_impossible,
+    load_targets, EXTRA_CODES,
 )
 
 
@@ -128,3 +131,28 @@ def test_counts_both_directions_beyond_krx_limits():
 
 def test_nonpositive_previous_close_is_not_counted():
     assert count_impossible([("2026-08-11", 0.0), ("2026-08-12", 3815.0)]) == 0
+
+
+def test_only_pending_and_eligible_entries_are_taken():
+    lines = [
+        json.dumps({"stock_code": "000001", "eligible_after": "2026-08-01", "status": "pending"}),
+        json.dumps({"stock_code": "000002", "eligible_after": "2026-09-01", "status": "pending"}),
+        json.dumps({"stock_code": "000003", "eligible_after": "2026-08-01", "status": "done"}),
+    ]
+    assert load_targets(lines, "2026-08-20", extra=[]) == ["000001"]
+
+
+def test_extra_codes_are_merged_and_deduped():
+    """🔴 큐가 «원리적으로» 못 잡는 7종목(사양 §5-1)을 반드시 포함한다."""
+    lines = [json.dumps({"stock_code": "003620", "eligible_after": "2026-08-01",
+                         "status": "pending"})]
+    got = load_targets(lines, "2026-08-20")
+    assert "003620" in got
+    for c in EXTRA_CODES:
+        assert c in got
+    assert len(got) == len(set(got))
+
+
+def test_extra_codes_is_exactly_the_measured_seven():
+    assert sorted(EXTRA_CODES) == sorted([
+        "003620", "004710", "010140", "042940", "128820", "010120", "323350"])

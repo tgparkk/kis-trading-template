@@ -5,6 +5,7 @@
 ⇒ **adj_factor = vol_adj / vol_raw = raw_close / adj_close.**
 사양 초안은 `vol_raw / vol_adj` 로 «뒤집혀» 있었다 — 그대로 썼으면 25배 틀렸다.
 """
+import json
 from typing import Dict, Tuple
 
 
@@ -148,3 +149,25 @@ def count_impossible(rows, up: float = 0.31, down: float = -0.35) -> int:
                 n += 1
         prev = c
     return n
+
+
+# 🔴 사양 §5-1 실측 — 큐가 «원리적으로» 못 잡는 종목.
+# 큐는 「정지 해제 시 가격 점프」만 보므로 «가격은 연속인데 계수만 틀린» 경우를 놓친다.
+# 계수 오류 5 (003620 004710 010140 042940 128820) + 가격 미조정 2 (010120 323350).
+EXTRA_CODES = ("003620", "004710", "010140", "042940", "128820", "010120", "323350")
+
+
+def load_targets(queue_lines, today_iso: str, extra=None) -> list:
+    """큐(JSONL 줄들) + 큐 밖 목록 → 처리 대상 종목코드."""
+    codes = set(EXTRA_CODES if extra is None else extra)
+    for line in queue_lines:
+        line = (line or "").strip()
+        if not line:
+            continue
+        rec = json.loads(line)
+        if rec.get("status") != "pending":
+            continue
+        if str(rec.get("eligible_after", "")) > today_iso:
+            continue
+        codes.add(rec["stock_code"])
+    return sorted(codes)
