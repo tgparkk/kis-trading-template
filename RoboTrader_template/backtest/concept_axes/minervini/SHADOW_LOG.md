@@ -125,3 +125,61 @@ grep "TT게이트" RoboTrader_template/logs/robotrader_template_*.log
   🔑 ***그날 산 3종목이 지금(8/19~8/21) 보유 중인 «바로 그 3종목»이다*** ⇒
   게이트가 읽는 `self.positions` 와 `sync_positions` 가 보고하는 집합이 **같지 않을 가능성**
   (재기동 후 복원분을 게이트가 못 보면 K 를 초과해 산다). **코드 독해 미수행 — 별도 조사 표적.**
+
+
+---
+
+## 체크리스트 ④ 회귀 — 실행 완료 (2026-08-21) · 8/25 차분용 베이스라인
+
+🔴 **라이브 트리에서 돌리지 않았다.** 워크트리 `D:/tmp/kis-wt-gate4`(detached `4e1cb34`) +
+VS 번들 Python(`C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_64\python.exe`),
+**cwd = 워크트리 루트**. → 절차 근거는 `reference-pytest-full-suite-invocation` 메모리.
+
+### ④ 본문 — `tests/test_screener_minervini.py`
+
+**11 passed / 2.27s ✅** — 체크리스트 ④ **충족**.
+
+커버리지(테스트 이름 그대로):
+`test_match_triggers_on_volume_dryup` · `test_base_filter_excludes_when_market_cap_unknown` ·
+`test_base_filter_min_cap_boundary_and_live_equivalence` · `test_match_none_when_volume_not_dry` ·
+`test_tt_wiring_constants_match_backtest` · **`test_shadow_mode_never_changes_the_verdict`** ·
+**`test_on_mode_gates_by_rs_percentile`** · `test_tt_is_fail_closed_without_context` ·
+`test_short_frame_cannot_pass_tt` · `test_match_records_the_mode_that_actually_ran` ·
+`test_match_works_without_scan_counters_initialised`
+
+🟢 ***`on` 경로가 이미 테스트로 덮여 있다*** — 승격은 미검증 코드로 들어가는 것이 아니다.
+
+### 관련 가드 3파일 — **26 passed ✅**
+
+`test_screener_provider_fail_closed.py` · `test_candidate_foreign_pool_gate.py` ·
+`test_state_restorer_sync_positions.py`
+(마지막 것의 출력에 `[재주입] on_init 이후 전략 포지션 재주입 완료: 1개 전략` 이 찍힌다 —
+[FINDING_k_gate_buy_drought.md](FINDING_k_gate_buy_drought.md) 가 추적한 그 경로다.)
+
+### 🔒 전체 스위트 베이스라인 — `4e1cb34` 기준
+
+**11 failed · 4,768 passed · 4 skipped · 205.01s**
+
+```
+tests/bot/test_env_guard.py::test_correct_env_no_problems
+tests/discovery/test_dynamic_rr_runner.py::test_load_base_params_elder
+tests/discovery/test_dynamic_rr_runner.py::test_load_base_params_book_pullback_ma5
+tests/discovery/test_live_strategy_signals.py::test_all_live_strategies_loadable
+tests/discovery/test_live_strategy_signals.py::test_build_signals_runs_for_each_strategy
+tests/discovery/test_live_strategy_signals.py::test_build_signals_no_lookahead
+tests/exit_multiverse/test_data_loader.py::test_load_turnover_rank_positive
+tests/strategies/deep_mr_dev20/test_registration.py::test_trading_config_has_deep_mr_dev20_paper
+tests/strategies/deep_mr_dev20/test_registration.py::test_yaml_has_s2_sizing
+tests/strategies/rs_leader/test_registration.py::test_trading_config_has_rs_leader_paper
+tests/test_book_envelope_200d.py::test_min_gate_small_so_ontick_not_skipped
+```
+
+🔑 **오늘 커밋 3건은 전부 문서다(라이브 0줄)** — 이 11건은 오늘 작업과 무관한 **사전 실패**다.
+⚠️ **정직하게**: 이 중 8건은 메모리에 기록된 「워크트리에 `.env` 없음」 환경 의존 목록과 일치하나
+(`test_env_guard`·`test_load_base_params_*`·`test_all_live_strategies_loadable`·
+`test_trading_config_has_*_paper`·`test_yaml_has_s2_sizing`), **나머지 3건은 원인 미확인**이다.
+「환경 의존이겠거니」로 접지 말 것.
+
+🔴🔴 **8/25 `TT_FILTER_MODE = "on"` 승격 시 판정 방법**:
+**같은 워크트리·같은 인터프리터·같은 cwd** 로 다시 돌려 **실패 «집합»의 양방향 차분**을 본다.
+***실패 «수» 로 비교하지 말 것*** — 환경이 다르면 사전 실패 수가 달라진다(2026-08-12 전례).
