@@ -273,3 +273,71 @@ grep -hc "MinerviniVolumeDryupStrategy.*📥 매수 체결" $L            # 당�
 (후보 3건). 위 표는 **승격 전 베이스라인**이다.
 🔑 그리고 ***빈 슬롯이 9거래일 중 «1회»뿐이라 표본이 거의 없다*** — 이 원장은 **몇 주 단위로 봐야**
 의미가 생긴다. 5거래일 안에 결론이 나올 종류의 것이 아니다.
+
+
+---
+
+## 🆕 베이스라인 미확인 4건 — 원인 규명 완료 (2026-08-21)
+
+🔑🔑 ***「환경 의존」은 «하나도» 없었다.*** 4건 중 3건은 **구조적**이고 1건은 **진짜 데이터 결함**이다.
+⇒ 「환경 의존이겠거니」로 접었으면 **테스트가 잡고 있던 데이터 결함을 그대로 지나쳤다.**
+
+### (A) 3건 — `STRATEGIES_DIR` 이 «상대경로»다
+
+```
+E  strategies.config.StrategyConfigError: Invalid strategy structure at strategies\elder_ema_pullback.
+   Strategy must have config.yaml and strategy.py
+```
+
+- `strategies/config.py:341` → **`STRATEGIES_DIR = Path("strategies")`** — 상대경로라 **cwd 에 붙는다.**
+- 폴더는 **멀쩡히 있다**(`RoboTrader_template/strategies/elder_ema_pullback/` 에 `config.yaml`·`strategy.py` 존재).
+- **판별 실험**: cwd 를 `RoboTrader_template/` 로 바꿔 같은 3건을 돌리면 **3 passed**.
+
+🔴 ***그러므로 이 3건은 「문서화된 실행법」에서 «구조적으로 항상 실패»한다.***
+전체 스위트는 **repo 루트**에서 돌려야 하는데(`testpaths` 가 루트 `pyproject.toml` 에만 있다),
+이 테스트들은 **`RoboTrader_template/` cwd** 를 요구한다. **두 요구가 서로 배타적이다.**
+
+⚠️ **라이브 영향**: 봇은 `RoboTrader_template/` 에서 기동하므로 지금은 안 물린다.
+단 ***cwd 가 바뀌면 전략 로딩이 통째로 실패***한다 — 잠재 취약점이지 현행 장애는 아니다.
+
+| 테스트 | 파일 |
+|---|---|
+| `test_build_signals_runs_for_each_strategy` | `tests/discovery/test_live_strategy_signals.py` |
+| `test_build_signals_no_lookahead` | 〃 |
+| `test_min_gate_small_so_ontick_not_skipped` | `tests/test_book_envelope_200d.py` |
+
+### (B) 1건 — `test_load_turnover_rank_positive` 는 «진짜 데이터 결함»을 잡고 있었다
+
+```python
+ranks = data_loader.load_turnover_rank("2024-01-01", "2024-12-31")   # {code: float(SUM(close*volume))}
+assert all(isinstance(v, float) and v > 0 for v in ranks.values())   # ← 여기서 False
+```
+`float(r[1])` 이므로 타입은 보장된다 ⇒ 깨지는 건 **`v > 0`**, 즉 **거래대금 합계가 0인 종목**이다.
+
+**DB 실측**(`kis_template.daily_prices`, `SQL_STOCK_ONLY = stock_code ~ '^[0-9]{5}[0-9A-Z]$'` 적용):
+
+| 기간 | 종목 수 | **거래대금 0** |
+|---|---|---|
+| 2024-01-01 ~ 2024-12-31 | 2,514 | **19** |
+| 2026-01-01 ~ 2026-08-20 | 2,732 | **54** |
+
+19건의 정체 — **전부 237봉(그 해 거래일 전부)에 `SUM(volume) = 0`**:
+- **16종목**은 종가가 상수(`7000/7000`·`499/499`·`2330/2330` …) = ***전형적인 패딩 행***
+- 🔴 **3종목은 종가가 «움직이는데» 거래량이 0**이다:
+
+| 종목 | 봉 | 종가 최저 | 종가 최고 | 배수 | `SUM(volume)` |
+|---|---|---|---|---|---|
+| `078130` | 237 | 430 | 800 | 1.9배 | **0** |
+| `377460` | 237 | 1,691 | 4,080 | 2.4배 | **0** |
+| **`101140`** | 237 | **585** | **11,700** | **20.0배** | **0** |
+
+🔑🔑 ***`101140` 은 한 해 동안 종가가 20배 움직이는데 «단 한 주도 거래되지 않았다»고 기록돼 있다.***
+미조정 기업행위(액면병합 등)가 패딩 계열에 그대로 쓰인 형태로 보인다 —
+[불가능봉/패딩 결함](../../../../..) 계열이며 **보정 도구의 표적과 같은 뿌리**일 가능성이 높다.
+⚠️ **원인 추정이다 — 기업행위 대조는 하지 않았다.**
+
+### 결론 — 8/25 차분에 미치는 영향
+
+11건 **전부 결정론적**이다(환경 7 · 구조 3 · 데이터 1). 같은 워크트리·같은 cwd·같은 인터프리터면
+**8/25 에도 그대로 재현된다** ⇒ **베이스라인으로서 유효하다.**
+🔑 다만 이제 ***「사전 실패 11건」이 아니라 「환경 7 + 구조 3 + 결함 1」로 읽어야 한다.***
