@@ -175,10 +175,21 @@ tests/test_book_envelope_200d.py::test_min_gate_small_so_ontick_not_skipped
 ```
 
 🔑 **오늘 커밋 3건은 전부 문서다(라이브 0줄)** — 이 11건은 오늘 작업과 무관한 **사전 실패**다.
-⚠️ **정직하게**: 이 중 8건은 메모리에 기록된 「워크트리에 `.env` 없음」 환경 의존 목록과 일치하나
-(`test_env_guard`·`test_load_base_params_*`·`test_all_live_strategies_loadable`·
-`test_trading_config_has_*_paper`·`test_yaml_has_s2_sizing`), **나머지 3건은 원인 미확인**이다.
-「환경 의존이겠거니」로 접지 말 것.
+⚠️ **정직하게 — 🔴 2026-08-21 정정: 「8건/3건」이 아니라 「7건/4건」이다.**
+기록된 환경 의존 목록(`test_env_guard`·`test_load_base_params_*`·`test_all_live_strategies_loadable`·
+`test_trading_config_has_*_paper`·`test_yaml_has_s2_sizing`)과 **일치하는 것은 7건**이고,
+**원인 미확인이 4건**이다:
+
+```
+test_build_signals_runs_for_each_strategy      (tests/discovery/test_live_strategy_signals.py)
+test_build_signals_no_lookahead                (tests/discovery/test_live_strategy_signals.py)
+test_load_turnover_rank_positive               (tests/exit_multiverse/test_data_loader.py)
+test_min_gate_small_so_ontick_not_skipped      (tests/test_book_envelope_200d.py)
+```
+
+🔑 처음 셀 때 같은 파일 안의 두 건(`test_build_signals_*`)을 이미 센 것으로 착각했다.
+**「환경 의존이겠거니」로 접지 말 것** — 특히 `test_build_signals_no_lookahead` 는
+**룩어헤드 가드**라 이름만으로도 확인 없이 넘길 항목이 아니다.
 
 🔴🔴 **8/25 `TT_FILTER_MODE = "on"` 승격 시 판정 방법**:
 **같은 워크트리·같은 인터프리터·같은 cwd** 로 다시 돌려 **실패 «집합»의 양방향 차분**을 본다.
