@@ -79,6 +79,7 @@ PAIRS = {
     "RESULTS_D1_OOS_NUMBERS.md": "run_d1_oos.py",
     "RESULTS_EXIT_V2_POST4_NUMBERS.md": "run_exit_v2_post4.py",
     "RESULTS_SELECTION_POST4_NUMBERS.md": "run_selection_post4.py",
+    "RESULTS_RECONSTRUCT_POST4_NUMBERS.md": "run_reconstruct_post4.py",
 }
 
 # 스크립트가 만들지 않는 문서 — 사람이 쓴 것. 게이트 대상 아님을 명시해 둔다.
@@ -89,7 +90,7 @@ MANUAL_DOCS = [
     "PREREG_MINUTE_FLOW.md", "PREREG_CONDITIONAL.md", "PREREG_LEG_STRUCTURE.md", "PREREG_INTRADAY_PICK.md",
     "PREREG_FLOW_NORM.md", "PREREG_SELECTION_ROBUST.md",
     # 2026-08-22 4번째 글 계열 — 산문은 사람이 쓴다. 숫자는 RESULTS_D1_OOS_NUMBERS.md 가 게이트 대상.
-    "INTAKE_2026-08-22_post4.md", "RESULTS_D1_OOS.md", "LABELS_2026-08-22_post4.md", "RESULTS_EXIT_V2_POST4.md", "RESULTS_SELECTION_POST4.md",
+    "INTAKE_2026-08-22_post4.md", "RESULTS_D1_OOS.md", "LABELS_2026-08-22_post4.md", "RESULTS_EXIT_V2_POST4.md", "RESULTS_SELECTION_POST4.md", "RESULTS_RECONSTRUCT_POST4.md",
     "PREREG_D1_OOS.md", "PREREG_LADDER_TRANCHE.md", "PREREG_REGDAY_MEASURE.md",
 ]
 
