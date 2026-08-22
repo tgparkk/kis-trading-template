@@ -76,6 +76,7 @@ PAIRS = {
     "RESULTS_INTRADAY_PICK.md": "run_intraday_pick.py",
     "RESULTS_FLOW_NORM.md": "run_flow_norm.py",
     "RESULTS_SELECTION_ROBUST.md": "run_selection_robust.py",
+    "RESULTS_D1_OOS_NUMBERS.md": "run_d1_oos.py",
 }
 
 # 스크립트가 만들지 않는 문서 — 사람이 쓴 것. 게이트 대상 아님을 명시해 둔다.
@@ -85,6 +86,9 @@ MANUAL_DOCS = [
     "PREREG_BUYLADDER.md", "PREREG_EXIT_V2.md", "FINDING_THEME_AXIS.md", "PREREG_SELLTIMING.md",
     "PREREG_MINUTE_FLOW.md", "PREREG_CONDITIONAL.md", "PREREG_LEG_STRUCTURE.md", "PREREG_INTRADAY_PICK.md",
     "PREREG_FLOW_NORM.md", "PREREG_SELECTION_ROBUST.md",
+    # 2026-08-22 4번째 글 계열 — 산문은 사람이 쓴다. 숫자는 RESULTS_D1_OOS_NUMBERS.md 가 게이트 대상.
+    "INTAKE_2026-08-22_post4.md", "RESULTS_D1_OOS.md",
+    "PREREG_D1_OOS.md", "PREREG_LADDER_TRANCHE.md", "PREREG_REGDAY_MEASURE.md",
 ]
 
 
