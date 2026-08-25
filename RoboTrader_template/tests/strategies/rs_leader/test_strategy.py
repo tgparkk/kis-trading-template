@@ -62,12 +62,18 @@ def test_evaluate_entry_downtrend_false():
     assert ok is False
 
 
-def test_sell_stop_loss():
+def test_sell_stop_loss_delegated_to_position_monitor():
+    """2026-08-25 2안: sl/tp 는 position_monitor 위임.
+
+    entry 10000 → 종가 9000 = -10% (구 sl -8% 충족)이지만 evaluate_sell_conditions 는
+    더 이상 손절 코드를 내지 않는다. 남은 규칙 ma_break(9000 < MA20 9950)만 발화한다.
+    """
     closes = [10000] * 25 + [9000]
     should, reasons, code = RSLeaderStrategy.evaluate_sell_conditions(
         _df(closes), entry_price=10000.0, hold_days=1,
         stop_loss_pct=0.08, max_hold_days=30, trail_ma=20)
-    assert should and code == "stop_loss"
+    assert code != "stop_loss"
+    assert should and code == "ma_break"
 
 
 def test_sell_ma20_break_unconditional():

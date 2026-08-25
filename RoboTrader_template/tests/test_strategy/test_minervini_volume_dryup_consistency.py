@@ -11,10 +11,12 @@ Variant B 청산 로직 sl/tp/max_hold)과 동일한지 검증.
      결과를 낸다 (여러 합성 시점 샘플 — trigger / no-trigger).
   2. generate_signal()이 보유중엔 청산·미보유엔 진입 분기.
   3. config 로드 (StrategyLoader).
-  4. 청산 우선순위(sl → tp → max_hold) 동작 (Variant B: trail/trend_flip 없음).
+  4. 청산 우선순위(max_hold) 동작 (Variant B: trail/trend_flip 없음)
+     — 2026-08-25 2안: sl/tp 는 position_monitor 위임.
 """
 
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
@@ -27,6 +29,7 @@ if str(ROOT) not in sys.path:
 
 from strategies.books.minervini_vcp.rules import rule_volume_dryup
 from strategies.minervini_volume_dryup.strategy import MinerviniVolumeDryupStrategy
+from utils.korean_time import now_kst
 
 
 # ----------------------------------------------------------------------------- #
@@ -140,25 +143,29 @@ class TestSellConditionConsistency:
         volumes = [1_000_000] * 30 + [400_000] * 10
         return _make_df(closes, volumes)
 
-    def test_stop_loss_first(self):
-        """-8% 이하면 stop_loss (최우선)."""
+    def test_stop_loss_delegated_to_position_monitor(self):
+        """2026-08-25 2안: sl 은 position_monitor 위임 — 이 함수는 -10% 에도 안 판다.
+
+        Variant B 는 trail/trend_flip 이 없어 남는 규칙은 max_hold 뿐(3<20) → 매도 없음.
+        """
         df = self._df()
         entry = float(df["close"].iloc[-1]) / 0.90  # 현재가가 진입가 대비 -10%
-        sell, _, reason = MinerviniVolumeDryupStrategy.evaluate_sell_conditions(
+        sell, reasons, reason = MinerviniVolumeDryupStrategy.evaluate_sell_conditions(
             df=df, entry_price=entry, hold_days=3,
         )
-        assert sell is True
-        assert reason == "stop_loss"
+        assert (sell, reasons, reason) == (False, [], "")
 
-    def test_take_profit(self):
-        """+12% 이상이면 take_profit."""
+    def test_take_profit_delegated_to_position_monitor(self):
+        """2026-08-25 2안: tp 는 position_monitor 위임 — 이 함수는 +15% 에도 안 판다.
+
+        Variant B 는 trail/trend_flip 이 없어 남는 규칙은 max_hold 뿐(3<20) → 매도 없음.
+        """
         df = self._df()
         entry = float(df["close"].iloc[-1]) / 1.15  # 현재가가 진입가 대비 +15%
-        sell, _, reason = MinerviniVolumeDryupStrategy.evaluate_sell_conditions(
+        sell, reasons, reason = MinerviniVolumeDryupStrategy.evaluate_sell_conditions(
             df=df, entry_price=entry, hold_days=3,
         )
-        assert sell is True
-        assert reason == "take_profit"
+        assert (sell, reasons, reason) == (False, [], "")
 
     def test_max_hold(self):
         """보유 거래일이 max_hold_days 이상이면 max_hold (sl/tp 미충족 시)."""
@@ -192,14 +199,15 @@ class TestSellConditionConsistency:
         assert sell is False
         assert reason == ""
 
-    def test_priority_sl_over_max_hold(self):
-        """sl과 max_hold 동시 충족 시 sl 우선."""
+    def test_priority_max_hold_only_sl_delegated(self):
+        """2026-08-25 2안: sl 이 없으니 sl+max_hold 동시 상황에서 max_hold 만 발화."""
         df = self._df()
-        entry = float(df["close"].iloc[-1]) / 0.80  # -20%
+        entry = float(df["close"].iloc[-1]) / 0.80  # -20% (구 sl 충족 상황)
         sell, _, reason = MinerviniVolumeDryupStrategy.evaluate_sell_conditions(
             df=df, entry_price=entry, hold_days=99, max_hold_days=20,
         )
-        assert reason == "stop_loss"
+        assert sell is True
+        assert reason == "max_hold"
 
 
 # ----------------------------------------------------------------------------- #
@@ -244,21 +252,25 @@ class TestGenerateSignalBranching:
         assert sig is None
 
     def test_generate_signal_sell_when_holding(self, monkeypatch):
-        """보유중이면 청산 분기 (sl 충족 시 SELL)."""
+        """보유중이면 청산 분기 — 2026-08-25 2안 이후 max_hold 로 유도.
+
+        구 픽스처는 -16.7% 손절로 SELL 을 유도했으나 sl/tp 는 position_monitor 위임이
+        되어 발화하지 않는다. _check_sell 경로 자체를 계속 커버하기 위해 entry_time 을
+        과거로 두어 max_hold(20거래일)를 넘긴다.
+        """
         from strategies.base import SignalType
         strat = self._strat(monkeypatch)
         df = _dryup_df()
         cur = float(df["close"].iloc[-1])
-        # 보유 등록: 진입가를 현재가 대비 +20%로 두면 -16.7% → stop_loss
         strat.positions["005930"] = {
             "quantity": 10,
-            "entry_price": cur / 0.80,
-            "entry_time": None,
+            "entry_price": cur / 1.03,  # +3% (구 sl/tp 어느 쪽도 아님)
+            "entry_time": now_kst() - timedelta(days=200),  # max_hold 20거래일을 크게 초과
         }
         sig = strat.generate_signal("005930", df, timeframe="daily")
         assert sig is not None
         assert sig.signal_type == SignalType.SELL
-        assert sig.metadata["exit_reason"] == "stop_loss"
+        assert sig.metadata["exit_reason"] == "max_hold"
 
     def test_generate_signal_no_entry_intraday(self, monkeypatch):
         """미보유 + timeframe != daily 면 신규 진입 안 함."""

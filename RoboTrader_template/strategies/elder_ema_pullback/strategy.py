@@ -240,11 +240,11 @@ class ElderEmaPullbackStrategy(BaseStrategy):
         trail_ema: Optional[int] = 13,
         trend_flip_exit: bool = True,
     ) -> Tuple[bool, List[str], str]:
-        """청산 조건 평가 — 백테스트 simulate_one_stock의 청산 분기를 1:1 복제.
+        """청산 조건 평가 — 라이브 전용 (백테스트는 이 함수를 호출하지 않는다).
 
-        평가 우선순위(백테스트와 동일):
-          1. stop_loss   : ret <= -stop_loss_pct
-          2. take_profit : ret >= take_profit_pct
+        평가 우선순위:
+          1. stop_loss   : 범용 position_monitor 위임 — 이 함수에서 판정 안 함
+          2. take_profit : 범용 position_monitor 위임 — 이 함수에서 판정 안 함
           3. max_hold    : hold_days >= max_hold_days
           4. trail_ema   : ret > 0 AND close < EMA(trail_ema)   (수익 중에만)
           5. trend_flip  : EMA65[-1] < EMA65[-6]
@@ -262,12 +262,8 @@ class ElderEmaPullbackStrategy(BaseStrategy):
         cur_close = float(close.iloc[-1])
         ret = (cur_close - entry_price) / entry_price
 
-        # 1) 손절
-        if ret <= -stop_loss_pct:
-            return True, [f"손절 도달 ({ret * 100:+.1f}%)"], "stop_loss"
-        # 2) 익절
-        if ret >= take_profit_pct:
-            return True, [f"익절 도달 ({ret * 100:+.1f}%)"], "take_profit"
+        # sl/tp 는 core/trading/position_monitor.py 가 라이브 현재가로 판정한다(2026-08-25 2안).
+        # 여기서 D-1 종가로 판정하면 갭 체결 시 환영 익절 — docs/prereg_2026-08-25_d1close_tp_phantom.md
         # 3) 최대 보유일
         if hold_days >= max_hold_days:
             return True, [f"최대 보유일 초과 ({hold_days}일)"], "max_hold"

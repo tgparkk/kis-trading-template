@@ -9,8 +9,8 @@ scripts/run_elder_triple_screen.py Variant A 청산 로직)과 동일한지 검�
 핵심 검증:
   1. evaluate_entry()가 백테스트 rule_triple_screen_ema_pullback.evaluate()와
      동일한 triggered 결과를 낸다 (여러 합성 시점 샘플).
-  2. evaluate_sell_conditions()가 백테스트 simulate_one_stock의 청산 우선순위
-     (sl→tp→max_hold→trail_ema→trend_flip)와 일치한다.
+  2. evaluate_sell_conditions()의 라이브 청산 우선순위
+     (max_hold→trail_ema→trend_flip) — 2026-08-25 2안: sl/tp 는 position_monitor 위임.
   3. StrategyLoader가 신규 전략을 정상 로드한다.
 """
 
@@ -151,25 +151,31 @@ class TestSellConditionConsistency:
             closes[-1] = last_close
         return _make_df(closes)
 
-    def test_stop_loss_first(self):
-        """-8% 이하면 stop_loss (최우선)."""
+    def test_stop_loss_delegated_to_position_monitor(self):
+        """2026-08-25 2안: sl 은 position_monitor 위임 — 이 함수는 -10% 에도 안 판다.
+
+        남은 규칙도 미충족(max_hold 5<100, trail_ema 는 ret>0 게이트, 상승추세라
+        trend_flip 도 불발) → 매도 없음.
+        """
         df = self._trend_df()
         entry = float(df["close"].iloc[-1]) / 0.90  # 현재가가 진입가 대비 -10%
-        sell, _, reason = ElderEmaPullbackStrategy.evaluate_sell_conditions(
+        sell, reasons, reason = ElderEmaPullbackStrategy.evaluate_sell_conditions(
             df=df, entry_price=entry, hold_days=5,
         )
-        assert sell is True
-        assert reason == "stop_loss"
+        assert (sell, reasons, reason) == (False, [], "")
 
-    def test_take_profit(self):
-        """+30% 이상이면 take_profit."""
+    def test_take_profit_delegated_to_position_monitor(self):
+        """2026-08-25 2안: tp 는 position_monitor 위임 — 이 함수는 +35% 에도 안 판다.
+
+        남은 규칙도 미충족(max_hold 5<100, 상승추세라 종가가 EMA13 위 → trail_ema
+        미발동, trend_flip 도 불발) → 매도 없음.
+        """
         df = self._trend_df()
         entry = float(df["close"].iloc[-1]) / 1.35  # 현재가가 진입가 대비 +35%
-        sell, _, reason = ElderEmaPullbackStrategy.evaluate_sell_conditions(
+        sell, reasons, reason = ElderEmaPullbackStrategy.evaluate_sell_conditions(
             df=df, entry_price=entry, hold_days=5,
         )
-        assert sell is True
-        assert reason == "take_profit"
+        assert (sell, reasons, reason) == (False, [], "")
 
     def test_max_hold(self):
         """보유일이 max_hold_days 이상이면 max_hold (sl/tp 미충족 시)."""
@@ -207,15 +213,15 @@ class TestSellConditionConsistency:
         assert sell is False
         assert reason == ""
 
-    def test_priority_sl_over_tp(self):
-        """동시 충족 불가하나 우선순위 코드 경로 확인: sl이 tp보다 먼저 평가."""
-        # ret 음수면 sl, 양수면 tp — 상호배타. 여기선 sl 경로만 재확인.
+    def test_priority_max_hold_only_sl_delegated(self):
+        """2026-08-25 2안: sl 이 없으니 sl+max_hold 동시 상황에서 max_hold 만 발화."""
         df = self._trend_df()
-        entry = float(df["close"].iloc[-1]) / 0.80  # -20%
+        entry = float(df["close"].iloc[-1]) / 0.80  # -20% (구 sl 충족 상황)
         sell, _, reason = ElderEmaPullbackStrategy.evaluate_sell_conditions(
-            df=df, entry_price=entry, hold_days=200,  # max_hold도 충족하지만 sl 우선
+            df=df, entry_price=entry, hold_days=200,  # 기본 max_hold_days=100 초과
         )
-        assert reason == "stop_loss"
+        assert sell is True
+        assert reason == "max_hold"
 
 
 # ----------------------------------------------------------------------------- #

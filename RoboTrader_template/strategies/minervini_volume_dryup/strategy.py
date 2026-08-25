@@ -225,13 +225,13 @@ class MinerviniVolumeDryupStrategy(BaseStrategy):
         stop_loss_pct: float = 0.08,
         max_hold_days: int = 20,
     ) -> Tuple[bool, List[str], str]:
-        """청산 조건 평가 (Variant B) — sl → tp → max_hold 우선순위.
+        """청산 조건 평가 (Variant B) — 라이브 전용 (백테스트는 이 함수를 호출하지 않는다).
 
         Variant A와 달리 **trail_ema / trend_flip 없음**.
 
         평가 우선순위:
-          1. stop_loss   : ret <= -stop_loss_pct
-          2. take_profit : ret >= take_profit_pct
+          1. stop_loss   : 범용 position_monitor 위임 — 이 함수에서 판정 안 함
+          2. take_profit : 범용 position_monitor 위임 — 이 함수에서 판정 안 함
           3. max_hold    : hold_days >= max_hold_days  (거래일 기준)
 
         Args:
@@ -243,16 +243,8 @@ class MinerviniVolumeDryupStrategy(BaseStrategy):
         Returns:
             (should_sell, reasons, exit_reason)  — exit_reason은 단일 사유 코드.
         """
-        close = df["close"].astype(float)
-        cur_close = float(close.iloc[-1])
-        ret = (cur_close - entry_price) / entry_price
-
-        # 1) 손절
-        if ret <= -stop_loss_pct:
-            return True, [f"손절 도달 ({ret * 100:+.1f}%)"], "stop_loss"
-        # 2) 익절
-        if ret >= take_profit_pct:
-            return True, [f"익절 도달 ({ret * 100:+.1f}%)"], "take_profit"
+        # sl/tp 는 core/trading/position_monitor.py 가 라이브 현재가로 판정한다(2026-08-25 2안).
+        # 여기서 D-1 종가로 판정하면 갭 체결 시 환영 익절 — docs/prereg_2026-08-25_d1close_tp_phantom.md
         # 3) 최대 보유일 (거래일)
         if hold_days >= max_hold_days:
             return True, [f"최대 보유일 초과 ({hold_days}거래일)"], "max_hold"

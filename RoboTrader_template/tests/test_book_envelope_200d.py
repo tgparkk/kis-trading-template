@@ -31,7 +31,11 @@ def test_evaluate_entry_matches_backtest_rule():
 
 
 def test_evaluate_sell_priority_sl_tp_mh():
-    """청산 우선순위 sl → tp → max_hold (trailing 없음)."""
+    """2026-08-25 2안: sl/tp 는 position_monitor 위임 → 남는 청산은 max_hold 뿐.
+
+    같은 입력(-8%/+10%)이라도 evaluate_sell_conditions 는 더 이상 손·익절을
+    판정하지 않는다(trailing 없음).
+    """
     from strategies.book_envelope_200d.strategy import BookEnvelope200dStrategy
 
     def df_at(close):
@@ -39,16 +43,16 @@ def test_evaluate_sell_priority_sl_tp_mh():
                              "low": [close] * 5, "close": [close] * 5,
                              "volume": [1000] * 5})
 
-    # 손절: -8%
-    s, _, r = BookEnvelope200dStrategy.evaluate_sell_conditions(
+    # 손절선(-8%) 도달해도 이 함수는 팔지 않는다 → position_monitor 담당
+    s, reasons, r = BookEnvelope200dStrategy.evaluate_sell_conditions(
         df_at(92.0), entry_price=100.0, hold_days=1,
         take_profit_pct=0.10, stop_loss_pct=0.08, max_hold_days=10)
-    assert s and r == "stop_loss"
-    # 익절: +10%
-    s, _, r = BookEnvelope200dStrategy.evaluate_sell_conditions(
+    assert (s, reasons, r) == (False, [], "")
+    # 익절선(+10%) 도달해도 이 함수는 팔지 않는다 → position_monitor 담당
+    s, reasons, r = BookEnvelope200dStrategy.evaluate_sell_conditions(
         df_at(110.0), entry_price=100.0, hold_days=1,
         take_profit_pct=0.10, stop_loss_pct=0.08, max_hold_days=10)
-    assert s and r == "take_profit"
+    assert (s, reasons, r) == (False, [], "")
     # 최대보유: 10거래일
     s, _, r = BookEnvelope200dStrategy.evaluate_sell_conditions(
         df_at(103.0), entry_price=100.0, hold_days=10,

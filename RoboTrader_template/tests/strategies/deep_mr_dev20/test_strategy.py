@@ -2,7 +2,8 @@
 
 검증 근거: 발굴 게이트 deep_mr_dev20 (reports/discovery/gate_deep_mr_dev20.md)
 백테스트 정합: 진입=scripts.discovery.rules.MeanReversionMA20Rule(-20%),
-청산=MAReversionExitAdapter 와 동일 우선순위(sl→tp→recovery→max_hold).
+청산=라이브 전용 우선순위(recovery→max_hold).
+2026-08-25 2안: sl/tp 는 position_monitor 위임 — evaluate_sell_conditions 에서 판정하지 않는다.
 """
 import numpy as np
 import pandas as pd
@@ -41,20 +42,31 @@ def test_entry_insufficient_bars():
     assert not ok
 
 
-# --- 청산 우선순위 (백테스트 MAReversionExitAdapter 정합: sl→tp→recovery→mh) ---
+# --- 청산 우선순위 (라이브 전용: recovery→max_hold) ---
 
-def test_sell_stop_loss_first():
+def test_sell_stop_loss_delegated_to_position_monitor():
+    """2026-08-25 2안: sl/tp 는 position_monitor 위임.
+
+    entry 77 → 종가 70 = -9.1% (구 sl -8% 충족)이지만 evaluate_sell_conditions 는
+    더 이상 손절을 판정하지 않는다. 남은 규칙(recovery: 70 < MA20 97.0×0.9=87.3,
+    max_hold: 1 < 7)도 미충족 → 매도 없음.
+    """
     df = _crash_df(70.0)
     should, reasons, why = DeepMrDev20Strategy.evaluate_sell_conditions(
         df, entry_price=77.0, hold_days=1)
-    assert should and why == "stop_loss"
+    assert (should, reasons, why) == (False, [], "")
 
 
-def test_sell_take_profit():
-    df = _crash_df(88.0)  # entry 77 → +14.3% ≥ tp12. recovery 보다 tp 가 우선
+def test_sell_take_profit_delegated_to_position_monitor():
+    """2026-08-25 2안: sl/tp 는 position_monitor 위임.
+
+    entry 77 → 종가 88 = +14.3% (구 tp +12% 충족)이지만 익절을 판정하지 않는다.
+    남은 규칙(recovery: 88 < MA20 97.9×0.9=88.11, max_hold: 1 < 7)도 미충족 → 매도 없음.
+    """
+    df = _crash_df(88.0)
     should, _, why = DeepMrDev20Strategy.evaluate_sell_conditions(
         df, entry_price=77.0, hold_days=1)
-    assert should and why == "take_profit"
+    assert should is False and why == ""
 
 
 def test_sell_ma_recovery():

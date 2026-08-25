@@ -12,11 +12,12 @@ rule_breakout_prev_high)과 동일한지 검증.
   2. generate_signal() 분기: 보유→매도, 미보유 daily→매수, intraday→None,
      max_positions 도달→None.
   3. config 로드 (StrategyLoader).
-  4. 청산 우선순위(sl→tp→max_hold) 동작 — variant B sl10/tp10/mh10.
+  4. 청산 우선순위(max_hold) 동작 — 2026-08-25 2안: sl/tp 는 position_monitor 위임.
   5. no-lookahead 회귀 (현재봉이 전고점/거래량을 스스로 만들어내지 않음).
 """
 
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +32,7 @@ from strategies.books.daytrading_3methods.rules import rule_breakout_prev_high
 from strategies.daytrading_3methods_breakout.strategy import (
     DayTrading3MethodsBreakoutStrategy,
 )
+from utils.korean_time import now_kst
 
 
 # ----------------------------------------------------------------------------- #
@@ -149,7 +151,7 @@ class TestEntrySignalConsistency:
 
 
 # ----------------------------------------------------------------------------- #
-# 2. 청산 우선순위 — variant B sl10/tp10/mh10
+# 2. 청산 우선순위 — 2026-08-25 2안: sl/tp 는 position_monitor 위임, 남는 건 mh10
 # ----------------------------------------------------------------------------- #
 class TestSellConditionConsistency:
 
@@ -159,18 +161,25 @@ class TestSellConditionConsistency:
             closes[-1] = last_close
         return _make_df(closes)
 
-    def test_stop_loss_minus10pct(self):
-        """-10% 이하면 stop_loss."""
+    def test_stop_loss_minus10pct_delegated_to_position_monitor(self):
+        """2026-08-25 2안: sl 은 position_monitor 위임 — 이 함수는 -12% 에도 안 판다.
+
+        구 동작이라면 stop_loss(-10%) 발동. 남은 규칙(max_hold 5<10, trail_ma 기본 None)
+        은 미충족 → 매도 없음.
+        """
         df = self._trend_df()
         entry = float(df["close"].iloc[-1]) / 0.88  # 현재가 -12%
-        sell, _, reason = DayTrading3MethodsBreakoutStrategy.evaluate_sell_conditions(
+        sell, reasons, reason = DayTrading3MethodsBreakoutStrategy.evaluate_sell_conditions(
             df=df, entry_price=entry, hold_days=5,
         )
-        assert sell is True
-        assert reason == "stop_loss"
+        assert (sell, reasons, reason) == (False, [], "")
 
     def test_stop_loss_boundary_minus8pct_no_sell(self):
-        """-8%는 sl 미충족(임계 -10% 확인)."""
+        """-8%에서 매도 없음.
+
+        2026-08-25 2안 이후 sl 은 position_monitor 위임이라 이 단언은 「임계 -10%」가
+        아니라 「손절 분기 부재」를 확인한다(단언 유지).
+        """
         df = self._trend_df()
         entry = float(df["close"].iloc[-1]) / 0.92  # -8%
         sell, _, reason = DayTrading3MethodsBreakoutStrategy.evaluate_sell_conditions(
@@ -179,15 +188,18 @@ class TestSellConditionConsistency:
         assert sell is False
         assert reason == ""
 
-    def test_take_profit_plus10pct(self):
-        """+10% 이상이면 take_profit."""
+    def test_take_profit_plus10pct_delegated_to_position_monitor(self):
+        """2026-08-25 2안: tp 는 position_monitor 위임 — 이 함수는 +12% 에도 안 판다.
+
+        구 동작이라면 take_profit(+10%) 발동. 남은 규칙(max_hold 5<10, trail_ma None)
+        은 미충족 → 매도 없음.
+        """
         df = self._trend_df()
         entry = float(df["close"].iloc[-1]) / 1.12  # +12%
-        sell, _, reason = DayTrading3MethodsBreakoutStrategy.evaluate_sell_conditions(
+        sell, reasons, reason = DayTrading3MethodsBreakoutStrategy.evaluate_sell_conditions(
             df=df, entry_price=entry, hold_days=5,
         )
-        assert sell is True
-        assert reason == "take_profit"
+        assert (sell, reasons, reason) == (False, [], "")
 
     def test_max_hold_10days(self):
         """보유 거래일이 max_hold_days(10) 이상이면 max_hold."""
@@ -209,14 +221,15 @@ class TestSellConditionConsistency:
         assert sell is False
         assert reason == ""
 
-    def test_priority_sl_over_max_hold(self):
-        """sl이 max_hold보다 먼저 평가."""
+    def test_priority_max_hold_only_sl_delegated(self):
+        """2026-08-25 2안: sl 이 없으니 sl+max_hold 동시 상황에서 max_hold 만 발화."""
         df = self._trend_df()
         entry = float(df["close"].iloc[-1]) / 0.80  # -20%
         sell, _, reason = DayTrading3MethodsBreakoutStrategy.evaluate_sell_conditions(
             df=df, entry_price=entry, hold_days=200, max_hold_days=10,
         )
-        assert reason == "stop_loss"
+        assert sell is True
+        assert reason == "max_hold"
 
 
 # ----------------------------------------------------------------------------- #
@@ -310,18 +323,24 @@ class TestStrategyLoaderIntegration:
         assert sig is None
 
     def test_generate_signal_sell_branch_for_holding(self, monkeypatch):
-        """보유 종목은 매도 분기로 진입(-10% 손절 발동)."""
+        """보유 종목은 매도 분기로 진입 — 2026-08-25 2안 이후 max_hold 로 유도.
+
+        구 픽스처는 -12% 손절로 SELL 을 유도했으나 sl/tp 는 position_monitor 위임이
+        되어 발화하지 않는다. _check_sell 경로 자체를 계속 커버하기 위해 entry_time 을
+        과거로 두어 max_hold(10거래일)를 넘긴다.
+        """
         from strategies.base import SignalType
         strat = self._build(monkeypatch)
         df = _make_df(list(np.linspace(10000, 13000, 30)))
         cur = float(df["close"].iloc[-1])
         strat.positions["005930"] = {
-            "quantity": 10, "entry_price": cur / 0.88, "entry_time": None,  # -12%
+            "quantity": 10, "entry_price": cur / 1.03,  # +3% (구 sl/tp 어느 쪽도 아님)
+            "entry_time": now_kst() - timedelta(days=200),  # ≫ max_hold 10거래일
         }
         sig = strat.generate_signal("005930", df, timeframe="daily")
         assert sig is not None
         assert sig.signal_type == SignalType.SELL
-        assert sig.metadata["exit_reason"] == "stop_loss"
+        assert sig.metadata["exit_reason"] == "max_hold"
 
 
 # ----------------------------------------------------------------------------- #

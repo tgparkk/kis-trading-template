@@ -132,15 +132,13 @@ class RSLeaderStrategy(BaseStrategy):
                                  stop_loss_pct: float = 0.08, take_profit_pct: float = 0.15,
                                  max_hold_days: int = 30, trail_ma: Optional[int] = 20
                                  ) -> Tuple[bool, List[str], str]:
-        """청산 우선순위(검증 4-bis MA20TrailExitAdapter 정합):
-        stop_loss → take_profit → ma_break(무조건) → max_hold."""
+        """청산 우선순위 — 라이브 전용 (백테스트는 이 함수를 호출하지 않는다):
+        ma_break(무조건) → max_hold. stop_loss·take_profit 은 범용
+        position_monitor 위임 — 이 함수에서 판정하지 않는다(시그니처만 유지)."""
         close = df["close"].astype(float)
         cur_close = float(close.iloc[-1])
-        ret = (cur_close - entry_price) / entry_price
-        if ret <= -stop_loss_pct:
-            return True, [f"손절 ({ret*100:+.1f}%)"], "stop_loss"
-        if ret >= take_profit_pct:
-            return True, [f"익절 ({ret*100:+.1f}%)"], "take_profit"
+        # sl/tp 는 core/trading/position_monitor.py 가 라이브 현재가로 판정한다(2026-08-25 2안).
+        # 여기서 D-1 종가로 판정하면 갭 체결 시 환영 익절 — docs/prereg_2026-08-25_d1close_tp_phantom.md
         if trail_ma is not None and len(close) >= trail_ma:
             ma_val = float(close.iloc[-trail_ma:].mean())
             if cur_close < ma_val:

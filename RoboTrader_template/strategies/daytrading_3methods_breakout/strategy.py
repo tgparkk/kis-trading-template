@@ -205,11 +205,11 @@ class DayTrading3MethodsBreakoutStrategy(BaseStrategy):
         max_hold_days: int = 10,
         trail_ma: Optional[int] = None,
     ) -> Tuple[bool, List[str], str]:
-        """청산 조건 평가 — 백테스트 청산 우선순위를 1:1 복제.
+        """청산 조건 평가 — 라이브 전용 (백테스트는 이 함수를 호출하지 않는다).
 
         평가 우선순위:
-          1. stop_loss   : ret <= -stop_loss_pct  (-10%)
-          2. take_profit : ret >= take_profit_pct  (+10%)
+          1. stop_loss   : 범용 position_monitor 위임 — 이 함수에서 판정 안 함
+          2. take_profit : 범용 position_monitor 위임 — 이 함수에서 판정 안 함
           3. max_hold    : hold_days >= max_hold_days  (거래일 기준)
           4. trail_ma    : ret > 0 AND close < SMA(trail_ma)  (수익 중에만, 기본 미사용)
 
@@ -226,12 +226,8 @@ class DayTrading3MethodsBreakoutStrategy(BaseStrategy):
         cur_close = float(close.iloc[-1])
         ret = (cur_close - entry_price) / entry_price
 
-        # 1) 손절 (-10%)
-        if ret <= -stop_loss_pct:
-            return True, [f"손절 도달 ({ret * 100:+.1f}%)"], "stop_loss"
-        # 2) 익절 (+10%)
-        if ret >= take_profit_pct:
-            return True, [f"익절 도달 ({ret * 100:+.1f}%)"], "take_profit"
+        # sl/tp 는 core/trading/position_monitor.py 가 라이브 현재가로 판정한다(2026-08-25 2안).
+        # 여기서 D-1 종가로 판정하면 갭 체결 시 환영 익절 — docs/prereg_2026-08-25_d1close_tp_phantom.md
         # 3) 최대 보유 거래일
         if hold_days >= max_hold_days:
             return True, [f"최대 보유일 초과 ({hold_days}거래일)"], "max_hold"

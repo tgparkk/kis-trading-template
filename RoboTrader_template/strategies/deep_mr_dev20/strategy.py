@@ -139,15 +139,13 @@ class DeepMrDev20Strategy(BaseStrategy):
                                  max_hold_days: int = 7, ma_period: int = 20,
                                  recovery_ratio: float = 0.9,
                                  ) -> Tuple[bool, List[str], str]:
-        """청산 우선순위(백테스트 MAReversionExitAdapter 정합):
-        stop_loss → take_profit → ma_recovery(종가≥MA20×ratio) → max_hold."""
+        """청산 우선순위 — 라이브 전용 (백테스트는 이 함수를 호출하지 않는다):
+        ma_recovery(종가≥MA20×ratio) → max_hold. stop_loss·take_profit 은 범용
+        position_monitor 위임 — 이 함수에서 판정하지 않는다(시그니처만 유지)."""
         close = df["close"].astype(float)
         cur_close = float(close.iloc[-1])
-        ret = (cur_close - entry_price) / entry_price
-        if ret <= -stop_loss_pct:
-            return True, [f"손절 ({ret*100:+.1f}%)"], "stop_loss"
-        if ret >= take_profit_pct:
-            return True, [f"익절 ({ret*100:+.1f}%)"], "take_profit"
+        # sl/tp 는 core/trading/position_monitor.py 가 라이브 현재가로 판정한다(2026-08-25 2안).
+        # 여기서 D-1 종가로 판정하면 갭 체결 시 환영 익절 — docs/prereg_2026-08-25_d1close_tp_phantom.md
         if len(close) >= ma_period:
             ma_val = float(close.iloc[-ma_period:].mean())
             if cur_close >= ma_val * recovery_ratio:
