@@ -18,7 +18,8 @@ def _dryup_df():
 def test_match_triggers_on_volume_dryup():
     a = MinerviniVolumeDryupScreenerAdapter()
     df = _dryup_df()
-    verdict = a.match(df, a.default_params())
+    # dry-up 룰 단독 검사 — TT 모드와 무관하게 판정되도록 명시(기본 모드가 on 이면 ctx 없이 fail-closed)
+    verdict = a.match(df, {**a.default_params(), "tt_filter_mode": "off"})
     assert verdict is not None
     assert "dryup" in verdict[1].lower()
 
@@ -139,4 +140,5 @@ def test_match_records_the_mode_that_actually_ran():
 def test_match_works_without_scan_counters_initialised():
     """`match()` 는 `scan()` 없이도 호출된다(단위 테스트 경로). 터지면 안 된다."""
     a = MinerviniVolumeDryupScreenerAdapter()
-    assert a.match(_dryup_df(), a.default_params()) is not None
+    # dry-up 룰 단독 검사 — TT 모드와 무관하게 판정되도록 명시(기본 모드가 on 이면 ctx 없이 fail-closed)
+    assert a.match(_dryup_df(), {**a.default_params(), "tt_filter_mode": "off"}) is not None

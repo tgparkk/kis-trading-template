@@ -39,7 +39,7 @@ logger = setup_logger(__name__)
 #    즉 배선이 틀리면 「후보 0건」이 되는데 아무 경보도 안 뜬다. shadow 로 며칠
 #    돌려 배관이 실제로 값을 공급하는지 확인한 «뒤에» "on" 으로 올린다.
 #    → 승격 조건은 이 폴더의 README.md 「TT 승격 체크리스트」 참조.
-TT_FILTER_MODE = "shadow"
+TT_FILTER_MODE = "on"
 
 # 백테스트가 룰에 넘긴 창 길이(`backtest/concept_axes/minervini/run.py:81 LOOKBACK`).
 # 🔴 라이브의 기존 `lookback_days=90` 으로는 TT 가 **항상 False** 다 — `rule_trend_template`
