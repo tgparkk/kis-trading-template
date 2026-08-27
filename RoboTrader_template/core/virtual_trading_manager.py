@@ -71,6 +71,13 @@ class VirtualTradingManager:
         # 기동마다 (capital/initial)^n 로 기하급수 축소돼 며칠 만에 매수 불가가 된다.
         # base 는 재산정이 절대 변경하지 않는다 (자본 회복 시 원래 크기로 복귀 가능).
         self._strategy_investment_base: Dict[str, float] = {}
+        # 전략별 종목당 매수 상한 (yaml risk_management.max_per_stock_amount).
+        # ⚠️ 2026-08-27 이전에는 이 선언값에 **사이징 독자가 없었다** — 유일한 독자가
+        # strategies/*/strategy.py 의 recommended_qty(표시용 메타데이터)뿐이라,
+        # 3,000,000원 상한을 선언한 전략도 실제로는 per_stock(=자본/K) 만큼 샀다.
+        # get_max_quantity 가 min(per_stock, budget, cap) 으로 함께 본다.
+        # 미설정 전략은 상한 없음 — 기존 거동 불변.
+        self._strategy_max_per_stock: Dict[str, float] = {}
         self._fallback_path = os.path.join("logs", "pending_sells_fallback.json")
         self._last_retry_time: Optional[datetime] = None
         self._last_pending_log_time: Optional[datetime] = None
@@ -266,6 +273,28 @@ class VirtualTradingManager:
         self._strategy_investment_base[strategy_name] = float(amount)
         self.logger.info(
             f"전략 종목당 투자금액 설정: {strategy_name} {float(amount):,.0f}원"
+        )
+
+    def set_strategy_max_per_stock(self, strategy_name: str, amount: float) -> None:
+        """전략별 종목당 매수 상한 설정 (yaml risk_management.max_per_stock_amount).
+
+        get_max_quantity 가 min(per_stock, budget, **이 값**) 으로 수량을 산정한다.
+        미설정/None/0 이하면 상한 없음 = 기존 거동 그대로 (설정하지 않는다).
+
+        ⚠️ per_stock(=자본/K) 산식은 이 값과 무관하게 그대로다. 상한은 min() 의
+        세 번째 항으로만 들어가며, per_stock 이 더 작으면 아무 일도 하지 않는다.
+        """
+        if not strategy_name or amount is None:
+            return
+        try:
+            value = float(amount)
+        except (TypeError, ValueError):
+            return
+        if value <= 0:
+            return
+        self._strategy_max_per_stock[strategy_name] = value
+        self.logger.info(
+            f"전략 종목당 매수 상한 설정: {strategy_name} {value:,.0f}원"
         )
 
     def recalculate_investment_amounts(self) -> None:
@@ -577,6 +606,15 @@ class VirtualTradingManager:
             per_stock = self._strategy_investment_amounts.get(
                 strategy_name, self.virtual_investment_amount)
             max_amount = min(per_stock, budget)
+            # 선언된 종목당 매수 상한(yaml max_per_stock_amount)을 같은 min() 에 넣는다.
+            # 미선언 전략은 cap=None → 아무 일도 없음(기존 거동 불변).
+            cap = self._strategy_max_per_stock.get(strategy_name)
+            if cap is not None and 0 < cap < max_amount:
+                self.logger.debug(
+                    f"종목당 매수 상한 적용: {strategy_name} "
+                    f"{max_amount:,.0f}원 → {cap:,.0f}원"
+                )
+                max_amount = cap
             qty = int(max_amount / price)
             return qty if qty > 0 else 0
         except Exception:
