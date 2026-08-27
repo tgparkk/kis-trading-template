@@ -2,7 +2,8 @@
 매매 분석 모듈
 매수/매도 판단 분석 로직을 담당합니다.
 """
-from typing import TYPE_CHECKING, Optional
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
 from core.models import StockState
 from config.constants import CANDIDATE_MIN_DAILY_DATA
@@ -14,16 +15,90 @@ if TYPE_CHECKING:
     from main import DayTradingBot
 
 
+# 거절 로그 스로틀 창 — 같은 (종목, 사유) 는 이 간격에 1회만 INFO.
+# 근거: 2026-08-19 라이브에서 '시장급락 매수차단' 이 하루 ~2,900회 발생했다.
+# 마커 제외 목록만으로는 못 막는다(사유가 늘 때마다 목록을 고쳐야 하고,
+# 무엇이 폭주할지는 사전에 모른다) → 창 기반 스로틀이 일반해다.
+# 선례: strategies/base.py:549 `_should_log_ontick` (동일 간격·동일 키 구조).
+REJECT_LOG_INTERVAL = timedelta(minutes=10)
+
+# 스로틀을 «통과해도» INFO 로 안 올리는 사유. 라이브에서는
+# '조건미충족'(core/trading_decision_engine.py:393)이 도달 불가다
+# (TradingContext.buy 는 BUY 신호일 때만 부른다) — 그래도 백테/단일전략 경로가
+# 이 문자열을 만들 수 있어 남겨 둔다. 비용이 없는 방어층이다.
+HIGH_FREQUENCY_REJECT_MARKERS = ("조건미충족",)
+
+
+def _is_high_frequency_reject(buy_reason) -> bool:
+    """거절 사유가 고빈도 사유면 True (INFO 승격 대상에서 제외)."""
+    text = str(buy_reason or "")
+    return any(marker in text for marker in HIGH_FREQUENCY_REJECT_MARKERS)
+
+
+def _reject_now() -> datetime:
+    """스로틀 기준 시계 (테스트에서 갈아끼우는 이음매)."""
+    return datetime.now()
+
+
+def reject_throttle_key(stock_code: str, buy_reason) -> Tuple[str, str]:
+    """스로틀 키 = (종목코드, 사유 «접두»).
+
+    사유 문자열에는 가격·비율 같은 가변부가 붙는다
+    (``... 스킵 (현재가 49,000 < 하한 50,000)``, ``... (KOSPI -5.29%)``).
+    괄호 앞까지만 잘라 «같은 종류의 거절» 이 같은 키가 되게 한다. 그러지 않으면
+    가격이 1틱만 달라져도 새 키가 되어 스로틀이 통째로 무력화된다.
+    """
+    text = str(buy_reason or "").strip()
+    prefix = f"{stock_code} "
+    if text.startswith(prefix):
+        text = text[len(prefix):]
+    head = text.split("(", 1)[0].strip()
+    return (str(stock_code), (head or text)[:60])
+
+
+def format_reject_log(stock_code: str, buy_reason) -> str:
+    """거절 로그 한 줄: ``[매수거절] {stock_code} {사유}``.
+
+    엔진 사유는 대부분 이미 ``"{code} ..."`` 로 시작한다
+    (core/trading_decision_engine.py:356-429). 그대로 앞에 코드를 또 붙이면
+    ``005930 005930 ...`` 이 되므로 «중복될 때만» 앞머리를 떼어낸다. 반대로
+    코드가 없는 사유(예외 경로의 ``str(e)``)에는 코드가 반드시 붙는다 —
+    종목 없는 거절 줄은 사후 추적에 쓸모가 없다.
+    """
+    text = str(buy_reason or "").strip()
+    prefix = f"{stock_code} "
+    if text.startswith(prefix):
+        text = text[len(prefix):]
+    return f"[매수거절] {stock_code} {text}".rstrip()
+
+
 class TradingAnalyzer:
     """매매 판단 분석 클래스"""
 
     def __init__(self, bot: 'DayTradingBot') -> None:
         self.bot = bot
         self.logger = RateLimitedLogger(setup_logger(__name__))
+        # 거절 로그 스로틀 상태: (종목코드, 사유접두) → 마지막 INFO 시각
+        self._reject_log_times: Dict[Tuple[str, str], datetime] = {}
 
         # FundManager를 DecisionEngine에 연결 (main.py 수정 없이)
         if hasattr(bot, 'fund_manager') and hasattr(bot, 'decision_engine'):
             bot.decision_engine.set_fund_manager(bot.fund_manager)
+
+    def _should_log_reject(self, stock_code: str, buy_reason) -> bool:
+        """같은 (종목, 사유) 거절 INFO 를 10분에 1회만 허용 (로그 폭주 방지).
+
+        strategies/base.py:549 `_should_log_ontick` 와 같은 구조다. 창의 «첫»
+        발생은 반드시 통과시킨다 — 급락게이트처럼 대량 발생하는 사유도 종목별로
+        표본이 남아야 사후에 무엇이 왜 막혔는지 셀 수 있다.
+        """
+        key = reject_throttle_key(stock_code, buy_reason)
+        now = _reject_now()
+        last = self._reject_log_times.get(key)
+        if last is None or now - last >= REJECT_LOG_INTERVAL:
+            self._reject_log_times[key] = now
+            return True
+        return False
 
     async def analyze_buy_decision(self, trading_stock, available_funds: float = None,
                                    signal=None, strategy_name: str = "") -> bool:
@@ -89,7 +164,18 @@ class TradingAnalyzer:
                 strategy_name=strategy_name
             )
 
-            self.logger.debug(f"{stock_code} 매수 판단 결과: signal={buy_signal}, reason='{buy_reason}'")
+            # 매수 거절 계기(2026-08-27) — 거절 사유를 INFO 로 올린다.
+            # 로그 파일 레벨이 INFO 라 DEBUG 로만 남기면 «거절이 로그에 한 줄도
+            # 안 남는다». 2026-08-25 「진입 밴드 거절」 조사에서 계기 부재로
+            # 확인 불가였던 자리다. 사유 문자열은 엔진 것을 그대로 실어 나른다
+            # (문자열을 바꾸면 이 사유를 참조하는 다른 코드·문서가 깨진다).
+            # 스로틀: 같은 (종목, 사유) 는 10분 1회 — '시장급락 매수차단' 이
+            # 2026-08-19 에 하루 ~2,900회 발생했다. 억제된 건도 DEBUG 로는 남는다.
+            if (not buy_signal and not _is_high_frequency_reject(buy_reason)
+                    and self._should_log_reject(stock_code, buy_reason)):
+                self.logger.info(format_reject_log(stock_code, buy_reason))
+            else:
+                self.logger.debug(f"{stock_code} 매수 판단 결과: signal={buy_signal}, reason='{buy_reason}'")
             if buy_signal and buy_info:
                 self.logger.debug(
                     f"{stock_code} 매수 정보: 가격={buy_info['buy_price']:,.0f}원, "
