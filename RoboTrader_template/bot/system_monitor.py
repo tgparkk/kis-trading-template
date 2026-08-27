@@ -310,10 +310,24 @@ class SystemMonitor:
                 except Exception as eq_err:
                     self.logger.error(f"EOD equity 스냅샷 적재 오류: {eq_err}")
 
+                # EOD 벤치마크 한 줄 (계기 전용 — 매매 판단 불변).
+                # 배치 근거: 당일 수익률을 **equity 원장 안에서만** 계산하므로
+                # «오늘자 paper_strategy_equity 행이 이미 있어야» 한다 → 위 스냅샷
+                # 뒤가 유일하게 맞는 자리다. 반대로 직전일 판정이 오늘을 주워오지
+                # 않는 근거는 «순서가 아니라» 쿼리의 엄격 부등호(trade_date < today)다.
+                # to_thread: 지수 조회가 동기 HTTP 라 최악 ~240초 블로킹이 가능하다 —
+                # 이벤트 루프(주문·체결 감시)를 그동안 세우면 안 된다.
+                try:
+                    await asyncio.to_thread(self._log_eod_benchmark, current_time)
+                except Exception as bench_err:
+                    self.logger.error(f"EOD 벤치마크 로깅 오류: {bench_err}")
+
                 # EOD regime 지수(KOSPI/KOSDAQ) 일봉 갱신 → 게이트 SSOT(daily_prices)
                 # 자동 신선화. 수동 backfill 미실행 시 게이트 stale/fail-open 방지(2026-06-24).
                 try:
-                    import asyncio
+                    # (모듈 최상단 import asyncio 를 쓴다. 여기 함수-지역 import 를
+                    #  두면 asyncio 가 이 함수 전체에서 «지역 이름» 이 되어, 이 줄보다
+                    #  앞에 있는 asyncio 사용이 UnboundLocalError 로 죽는다.)
                     await asyncio.to_thread(self._run_regime_index_refresh)
                 except Exception as ri_err:
                     self.logger.error(f"EOD regime 지수 갱신 오류: {ri_err}")
@@ -764,6 +778,24 @@ class SystemMonitor:
                 f"invested={integrity['invested_funds']:,.0f}, "
                 f"보유종목={integrity['position_count']}개"
             )
+
+    def _log_eod_benchmark(self, current_time) -> None:
+        """EOD 벤치마크 한 줄 — 포트 성과 vs KOSPI/KOSDAQ (bot/eod_benchmark.py).
+
+        페이퍼 기간 KOSPI 가 -23.6% 인데 로그엔 시장 성과가 없어 「-20% 누적」이
+        알파인지 베타인지 판별할 수 없었다(2026-08-25 자문). 그 판별을 위한 계기다.
+
+        ⚠️ **어떤 예외도 EOD 흐름을 막지 않는다** — WARNING 한 줄로 끝낸다. 이 줄은
+        관측용이지 운영 필수 단계가 아니고, 뒤에 데이터 수집·equity 스냅샷이 남아
+        있다.
+        """
+        try:
+            from bot.eod_benchmark import (collect_benchmark_inputs,
+                                           format_benchmark_line)
+            inputs = collect_benchmark_inputs(self.bot, today=current_time.date())
+            self.logger.info(format_benchmark_line(**inputs))
+        except Exception as bench_err:
+            self.logger.warning(f"[벤치마크] 계산 실패: {bench_err}")
 
     async def _save_portfolio_snapshot(self, current_time) -> None:
         """포트폴리오 스냅샷 저장 -- 미구현"""
