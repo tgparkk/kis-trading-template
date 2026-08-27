@@ -17,7 +17,10 @@ derived 전략 (Book20 아님) — 상대강도(RS) / 추세.
 > `종가 > MA60`만 요구) 매수 직후 매도되는 결함을 수정 — 상세 → `rule.py` docstring.
 
 ## 청산
-종가 < MA20 하향이탈 (**무조건**) / sl **-8%** / tp **+15%** (추세추종이라 거의 무효, 트레일이 주청산) / max_hold **30거래일**.
+- 전략 고유 청산: 종가 < MA20 하향이탈 (**무조건**) / max_hold **30거래일**.
+- sl **-8%** / tp **+15%** 는 전략이 판정하지 «않는다» — 범용 `core/trading/position_monitor.py` 가
+  `config.yaml` `risk_management`(`stop_loss_pct` / `take_profit_pct`) 값을 **라이브 현재가**로 판정한다
+  (2026-08-25 `1810cd2`, D-1 종가 익절 환영 결함 → `docs/prereg_2026-08-25_d1close_tp_phantom.md`).
 
 ## 유니버스 / regime / 사이징
 - 유니버스: 거래대금 ≥ 10억 · 시총 컷 없음 (절대상승추세 통과 → 120일수익률 RS topK)

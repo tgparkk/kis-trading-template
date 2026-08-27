@@ -2,7 +2,10 @@
 
 진입: 절대상승추세(strategies.rs_leader.rule.RSLeaderRule 단일 소스 재사용) — 횡단면 RS
 랭킹은 EOD 스크리너가 담당하고, 이 전략은 선정 풀에서 per-stock 추세 재확인 후 매수.
-청산: MA20 하향이탈(무조건, 검증 4-bis 정합) / sl -8% / max_hold 30거래일.
+청산: 전략 고유 청산은 MA20 하향이탈(무조건) / max_hold 30거래일 뿐이다.
+sl·tp 는 이 전략이 판정하지 않고 범용 core/trading/position_monitor.py 가
+config.yaml risk_management(stop_loss_pct / take_profit_pct) 값으로 라이브
+현재가 기준 판정한다(2026-08-25 1810cd2).
 holding_period="swing" → EOD 일괄청산 건너뜀. paper_trading=True.
 """
 from typing import Any, Dict, List, Optional, Tuple
