@@ -10,9 +10,11 @@
 derived 전략 (Book20 아님) — 상대강도(RS) / 추세.
 
 ## 진입 (`RSLeaderRule`)
-절대상승추세(`RSLeaderRule(ma_short=20, ma_long=60, abs_lb=60)`: 종가 > MA60 · MA20 > MA60 · 60일수익 > 0)를
-per-stock 재확인 후 매수. **횡단면 RS 랭킹은 EOD 스크리너가 담당** (절대상승추세 통과 종목의 120일 수익률을
-score로 → 정렬 + topK = RS 랭킹).
+절대상승추세(`RSLeaderRule(ma_short=20, ma_long=60, abs_lb=60)`: 종가 > MA20 · 종가 > MA60 · MA20 > MA60 ·
+60일수익 > 0)를 per-stock 재확인 후 매수. **횡단면 RS 랭킹은 EOD 스크리너가 담당** (절대상승추세 통과 종목의
+120일 수익률을 score로 → 정렬 + topK = RS 랭킹).
+> 🔧 2026-08-22: 진입에 `종가 > MA20` 추가. 청산 ma_break(무조건 `종가 < MA20`)와 진입 조건이 겹쳐(진입은
+> `종가 > MA60`만 요구) 매수 직후 매도되는 결함을 수정 — 상세 → `rule.py` docstring.
 
 ## 청산
 종가 < MA20 하향이탈 (**무조건**) / sl **-8%** / tp **+15%** (추세추종이라 거의 무효, 트레일이 주청산) / max_hold **30거래일**.

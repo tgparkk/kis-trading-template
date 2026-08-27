@@ -125,7 +125,10 @@ class RSLeaderStrategy(BaseStrategy):
         sig = rule.generate_signal("_", df, "daily")
         if sig is None:
             return False, []
-        return True, ["절대상승추세(종가>MA60·MA20>MA60·60일수익>0)"]
+        return True, [
+            f"절대상승추세(종가>MA{ma_short}·종가>MA{ma_long}·MA{ma_short}>MA{ma_long}·"
+            f"{abs_lb}일수익>0)"
+        ]
 
     @staticmethod
     def evaluate_sell_conditions(df: pd.DataFrame, entry_price: float, hold_days: int,
