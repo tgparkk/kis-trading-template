@@ -44,6 +44,9 @@
 from typing import Dict, Optional, Tuple
 
 from tools.paper_strategy_equity import DEFAULT_EPOCH, SOURCE
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 # 에포크 = tools/paper_strategy_equity.DEFAULT_EPOCH (2026-06-01, 첫 kis_template 레코드일)
 EPOCH = DEFAULT_EPOCH
@@ -137,20 +140,44 @@ def fetch_strategy_initial_capitals(bot) -> Dict[str, float]:
 
 
 def _equity_sum_for_date(cur, trade_date, expected_strategies: int) -> Optional[float]:
-    """해당 거래일의 Σequity — 단, 행 수가 배정 전략 수와 **정확히** 같을 때만.
+    """해당 거래일의 Σequity — 단, 행 수가 기대 전략 수와 **정확히** 같을 때만.
 
     ``HAVING COUNT(*) = %s`` 가 가드다. 부분 적재일(전략 하나가 아직 안 써진 날)을
     그대로 더하면 「하루 만에 -12%」 같은 가짜 급락이 찍힌다 — 없는 것을 0 으로
     세는 대신 아예 ``n/a`` 로 떨어뜨린다.
+
+    가드가 걸리면 **실제 행 수를 DEBUG 로 남긴다.** 그러지 않으면 「당일 n/a」가
+    영구히 찍히는데 왜 그런지 알 길이 없다 — 조용한 계기 고장은 이 프로젝트의
+    반복 실패 유형이다.
     """
+    expected = int(expected_strategies)
     cur.execute(
         "SELECT SUM(equity) FROM paper_strategy_equity "
         "WHERE source = %s AND trade_date = %s "
         "HAVING COUNT(*) = %s",
-        (SOURCE, trade_date, int(expected_strategies)),
+        (SOURCE, trade_date, expected),
     )
     row = cur.fetchone()
-    return _safe_float(row[0]) if row else None
+    if row:
+        return _safe_float(row[0])
+
+    # 가드에 걸린 «이유» 를 남긴다(실패 경로에서만 도는 추가 조회 1회).
+    actual = None
+    try:
+        cur.execute(
+            "SELECT COUNT(*) FROM paper_strategy_equity "
+            "WHERE source = %s AND trade_date = %s",
+            (SOURCE, trade_date),
+        )
+        diag = cur.fetchone()
+        actual = diag[0] if diag else None
+    except Exception:  # 진단이 본 기능을 죽이면 안 된다
+        pass
+    logger.debug(
+        "[벤치마크] equity 행수 불일치로 당일 n/a: trade_date=%s 기대=%s 실제=%s",
+        trade_date, expected, actual,
+    )
+    return None
 
 
 def fetch_equity_ledger_day_return(today, expected_strategies: int) -> Optional[float]:
@@ -160,9 +187,14 @@ def fetch_equity_ledger_day_return(today, expected_strategies: int) -> Optional[
 
     🔴 분자를 FundManager 총자금으로 바꿔 끼우면 안 된다 — 두 원장은 정의가 달라
     (현금주의 vs 발생주의·평가 시점) 하루 0.6~1.5% 의 가짜 등락이 생긴다.
-    이 함수가 오늘자 행을 요구하므로 호출측은 **EOD equity 스냅샷 뒤**에 불러야
-    한다. 반대로 직전일 판정이 오늘을 주워오지 않는 근거는 순서가 아니라
+    이 함수가 오늘자 행을 요구하므로 호출측은 **EOD equity 재스냅샷(데이터 수집
+    뒤) 다음**에 불러야 한다 — 1차 스냅샷 값은 보유분이 D-1 종가로 평가돼 있다.
+    반대로 직전일 판정이 오늘을 주워오지 않는 근거는 순서가 아니라
     ``trade_date < today`` 의 **엄격 부등호**다.
+
+    ``expected_strategies`` 는 «스냅샷이 실제로 쓴 전략 행 수» 여야 한다. 할당
+    원장 수를 쓰면, 갓 배정돼 아직 체결이 없는 전략에서 두 수가 영구히 어긋난다
+    (writer 는 virtual_trading_records 에 있는 전략만 쓴다).
     """
     if not expected_strategies:
         return None
@@ -236,23 +268,31 @@ def _ratio(now: Optional[float], then: Optional[float]) -> Optional[float]:
     return float(now) / float(then) - 1.0
 
 
-def collect_benchmark_inputs(bot, today=None) -> dict:
+def collect_benchmark_inputs(bot, today=None, expected_strategies=None) -> dict:
     """벤치마크 한 줄에 필요한 숫자를 모아 :func:`format_benchmark_line` 인자로 돌려준다.
 
     예외를 삼키지 않는다 — 호출측(SystemMonitor._log_eod_benchmark)이 WARNING 한 줄로
     흡수한다. ``get_index_data`` 는 자체적으로 실패를 None 으로 접으므로 지수 실패는
     ``n/a`` 로 나타난다.
+
+    ``expected_strategies``: equity 행수 가드의 기대값(스냅샷이 쓴 전략 수).
+    None/0 이면 할당 원장 수로 폴백한다.
     """
     if today is None:
         from utils.korean_time import now_kst
         today = now_kst().date()
 
     # 총자금·누적은 FundManager 원장(절대값 보고), 당일은 equity 원장(비율) —
-    # 섞지 않는다. 배정 전략 수는 두 곳(기준자본·행수 가드)의 공통 출처다.
+    # 섞지 않는다.
     capitals = fetch_strategy_initial_capitals(bot)
     base = sum(capitals.values()) if capitals else None
-    day_return = (fetch_equity_ledger_day_return(today, len(capitals))
-                  if capitals else None)
+
+    # 행수 가드 기대값: 1순위 = «스냅샷이 실제로 쓴 전략 수»(호출측이 넘긴 값),
+    # 폴백 = 할당 원장 수. 두 수는 다를 수 있다 — 스냅샷 writer 는 체결 기록이
+    # 있는 전략만 쓴다. 기준자본(base)은 폴백과 무관하게 «항상» 할당 원장 합이다.
+    expected = expected_strategies if expected_strategies else len(capitals)
+    day_return = (fetch_equity_ledger_day_return(today, int(expected))
+                  if expected else None)
 
     # 분자가 없으면 분모를 읽지 않는다 — 어차피 n/a 인데 DB 를 한 번 더 칠 이유가 없다.
     kospi_level, kospi_day = fetch_index_snapshot("0001")

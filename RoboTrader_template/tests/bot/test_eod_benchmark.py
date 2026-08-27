@@ -282,6 +282,10 @@ class _FakeCursor:
             earlier = [d for d in self.rows_by_date if d < today]
             self._result = (max(earlier),) if earlier else (None,)
             return
+        if sql.startswith("SELECT COUNT(*)"):       # 가드 실패 시 진단 조회
+            _src, trade_date = params
+            self._result = (len(self.rows_by_date.get(trade_date, [])),)
+            return
         _src, trade_date, expected = params
         rows = self.rows_by_date.get(trade_date, [])
         # HAVING COUNT(*) = expected → 불일치면 «행 없음»
@@ -356,6 +360,54 @@ def test_equity_day_return_na_without_expected_count(monkeypatch):
     """배정 전략 수를 모르면 DB 를 치지 않는다."""
     assert bm.fetch_equity_ledger_day_return(_TODAY, 0) is None
 
+
+def test_row_count_mismatch_is_diagnosable(monkeypatch, caplog):
+    """행수 가드가 걸리면 «왜» 인지 DEBUG 로 남아야 한다.
+
+    안 남기면 「당일 n/a」가 영구히 찍히는데 원인을 알 길이 없다 — 조용한 계기
+    고장은 이 프로젝트의 반복 실패 유형이다.
+    """
+    import logging
+
+    _patch_conn(monkeypatch, {_PREV: [10.0] * 8, _TODAY: [10.0] * 7})
+    bm.logger.propagate = True
+    try:
+        with caplog.at_level(logging.DEBUG, logger=bm.logger.name):
+            assert bm.fetch_equity_ledger_day_return(_TODAY, 8) is None
+    finally:
+        bm.logger.propagate = False
+
+    msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG]
+    hit = [m for m in msgs if "행수 불일치" in m]
+    assert hit, msgs
+    assert "기대=8" in hit[0] and "실제=7" in hit[0], hit[0]
+
+
+# ── 행수 가드 기대값의 «출처» ─────────────────────────────────────────
+
+def test_collect_prefers_snapshot_row_count_over_allocation(monkeypatch):
+    """기대 행수는 «스냅샷이 실제로 쓴 전략 수» 가 1순위다.
+
+    할당 원장 수를 쓰면, 갓 배정돼 아직 체결이 없는 전략에서 두 수가 영구히
+    어긋나 당일이 영원히 n/a 가 된다(스냅샷 writer 는 체결 기록 있는 전략만 쓴다).
+    """
+    calls = _patch_fetchers(monkeypatch, allocated={f"s{i}": 10_000_000.0
+                                                    for i in range(9)})
+    out = bm.collect_benchmark_inputs(object(), today=dt.date(2026, 8, 27),
+                                      expected_strategies=8)
+    assert calls["expected"] == 8, "스냅샷 행수(8)가 이겨야 한다"
+    # 기준자본은 «항상» 할당 원장 합 — 폴백과 무관하다
+    assert out["base"] == 90_000_000.0
+
+
+def test_collect_falls_back_to_allocation_count(monkeypatch):
+    """스냅샷 행수를 모르면(첫 기동·스킵) 할당 원장 수로 폴백한다."""
+    for missing in (None, 0):
+        calls = _patch_fetchers(monkeypatch)
+        bm.collect_benchmark_inputs(object(), today=dt.date(2026, 8, 27),
+                                    expected_strategies=missing)
+        assert calls["expected"] == 8
+
 # ── ② system_monitor 배선 ─────────────────────────────────────────────────
 
 class _RecLogger:
@@ -385,7 +437,7 @@ _NOW = dt.datetime(2026, 8, 27, 15, 35)
 
 def test_monitor_emits_one_info_line(monkeypatch):
     monkeypatch.setattr(bm, "collect_benchmark_inputs",
-                        lambda bot, today=None: _sample())
+                        lambda bot, today=None, expected_strategies=None: _sample())
     mon, rec = _make_monitor()
 
     mon._log_eod_benchmark(_NOW)
@@ -400,8 +452,9 @@ def test_monitor_passes_today_to_collector(monkeypatch):
     """전 거래일 조회 기준일은 EOD 시각의 날짜다(테스트 결정론 확보)."""
     seen = {}
 
-    def _collect(bot, today=None):
+    def _collect(bot, today=None, expected_strategies=None):
         seen["today"] = today
+        seen["expected"] = expected_strategies
         return _sample()
 
     monkeypatch.setattr(bm, "collect_benchmark_inputs", _collect)
@@ -412,7 +465,7 @@ def test_monitor_passes_today_to_collector(monkeypatch):
 
 def test_monitor_swallows_exception_as_single_warning(monkeypatch):
     """어떤 예외도 EOD 흐름을 막지 않는다 — WARNING 한 줄, 전파 없음."""
-    def _boom(bot, today=None):
+    def _boom(bot, today=None, expected_strategies=None):
         raise RuntimeError("DB down")
 
     monkeypatch.setattr(bm, "collect_benchmark_inputs", _boom)
@@ -428,7 +481,7 @@ def test_monitor_swallows_exception_as_single_warning(monkeypatch):
 def test_monitor_warns_when_formatting_fails(monkeypatch):
     """수집이 아니라 포맷에서 터져도 같은 경로로 흡수된다."""
     monkeypatch.setattr(bm, "collect_benchmark_inputs",
-                        lambda bot, today=None: {"bogus": 1})
+                        lambda bot, today=None, expected_strategies=None: {"bogus": 1})
     mon, rec = _make_monitor()
 
     mon._log_eod_benchmark(_NOW)
@@ -456,7 +509,7 @@ def test_postmarket_flow_emits_benchmark_after_equity_snapshot(monkeypatch):
     monkeypatch.setattr(sm, "print_today_trading_summary",
                         lambda *a, **k: order.append("summary"))
     monkeypatch.setattr(bm, "collect_benchmark_inputs",
-                        lambda bot, today=None: _sample())
+                        lambda bot, today=None, expected_strategies=None: _sample())
 
     mon, rec = _make_monitor()
     mon._last_daily_report_date = None
@@ -491,15 +544,23 @@ def test_postmarket_flow_emits_benchmark_after_equity_snapshot(monkeypatch):
     assert "benchmark" in order and "equity" in order
     assert order.index("equity") < order.index("benchmark"), (
         f"벤치마크는 오늘자 equity 스냅샷 «뒤» 여야 한다: {order}")
-    assert order.index("benchmark") < order.index("data_collection"), (
-        f"수 분짜리 데이터수집 «앞» 이어야 그날 증거가 남는다: {order}")
+    assert order.index("data_collection") < order.index("benchmark"), (
+        f"당일 종가 수집 «뒤» 여야 보유평가가 T 종가다: {order}")
+    # 재스냅샷(2번째 equity)까지 끝난 «뒤» 여야 한다 — 1차 스냅샷 값은 보유분이
+    # D-1 종가로 평가돼 있어 당일 수익률이 구조적으로 치우친다(≈ -0.7%p 실측).
+    assert order.count("equity") == 2, order
+    second_equity = len(order) - 1 - order[::-1].index("equity")
+    assert second_equity < order.index("benchmark"), (
+        f"벤치마크는 재스냅샷 «뒤» 여야 한다: {order}")
+    assert order.index("benchmark") == len(order) - 1, (
+        f"벤치마크는 EOD 블록의 마지막 단계다: {order}")
 
 
 def test_postmarket_flow_continues_when_benchmark_raises(monkeypatch):
     """벤치마크가 터져도 뒤 단계(데이터 수집·재스냅샷)는 그대로 돈다."""
     order = []
 
-    def _boom(bot, today=None):
+    def _boom(bot, today=None, expected_strategies=None):
         raise RuntimeError("DB down")
 
     monkeypatch.setattr(sm, "print_today_trading_summary", lambda *a, **k: None)
@@ -526,3 +587,55 @@ def test_postmarket_flow_continues_when_benchmark_raises(monkeypatch):
     assert "data_collection" in order, "벤치마크 실패가 EOD 를 끊으면 안 된다"
     assert order.count("equity") == 2, "재스냅샷까지 도달해야 한다"
     assert any(m == "[벤치마크] 계산 실패: DB down" for m in rec.warning), rec.warning
+
+
+# ── ④ 행수 기대값 래치: 스냅샷 → 벤치마크 배선 ───────────────────────────
+
+def test_snapshot_latches_row_count_for_benchmark(monkeypatch):
+    """`_run_equity_snapshot` 이 쓴 전략 행 수가 벤치마크 기대값으로 흘러야 한다."""
+    import contextlib
+
+    import tools.paper_strategy_equity as pse
+
+    mon, rec = _make_monitor()
+    mon._resave_paper_trading_state = lambda: None
+
+    @contextlib.contextmanager
+    def _conn():
+        yield object()
+
+    import db.connection as dbconn
+    monkeypatch.setattr(dbconn.DatabaseConnection, "get_connection",
+                        staticmethod(_conn))
+    monkeypatch.setattr(pse, "run_daily_equity_snapshot", lambda conn: {
+        "ok": True, "trade_date": dt.date(2026, 8, 27), "n_strategies": 8,
+        "total_cash": 1.0, "eod_balance": 1.0, "cash_match": True,
+    })
+
+    mon._run_equity_snapshot()
+    assert mon._last_equity_n_strategies == 8
+
+    seen = {}
+
+    def _collect(bot, today=None, expected_strategies=None):
+        seen["expected"] = expected_strategies
+        return _sample()
+
+    monkeypatch.setattr(bm, "collect_benchmark_inputs", _collect)
+    mon._log_eod_benchmark(_NOW)
+    assert seen["expected"] == 8
+
+
+def test_benchmark_survives_absent_latch(monkeypatch):
+    """스냅샷이 스킵돼 래치가 없어도 벤치마크는 돈다(폴백은 eod_benchmark 몫)."""
+    seen = {}
+
+    def _collect(bot, today=None, expected_strategies=None):
+        seen["expected"] = expected_strategies
+        return _sample()
+
+    monkeypatch.setattr(bm, "collect_benchmark_inputs", _collect)
+    mon, rec = _make_monitor()      # __init__ 우회 → 래치 속성 자체가 없다
+    mon._log_eod_benchmark(_NOW)
+    assert seen["expected"] is None
+    assert rec.warning == [] and len(rec.info) == 1

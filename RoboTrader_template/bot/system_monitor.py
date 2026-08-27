@@ -40,6 +40,9 @@ class SystemMonitor:
         self._last_regime_index_summary_date = None
         # 주입 가능한 시계(테스트 결정론). 기본 실제 KST 시계.
         self._clock = now_kst
+        # 직전 equity 스냅샷이 «실제로 쓴» 전략 행 수. 벤치마크 당일 수익률의
+        # 행수 가드 기대값으로 넘긴다(할당 원장 수와 다를 수 있다 — 아래 참조).
+        self._last_equity_n_strategies = None
 
         # 대시보드 초기화
         self._init_dashboard()
@@ -310,18 +313,6 @@ class SystemMonitor:
                 except Exception as eq_err:
                     self.logger.error(f"EOD equity 스냅샷 적재 오류: {eq_err}")
 
-                # EOD 벤치마크 한 줄 (계기 전용 — 매매 판단 불변).
-                # 배치 근거: 당일 수익률을 **equity 원장 안에서만** 계산하므로
-                # «오늘자 paper_strategy_equity 행이 이미 있어야» 한다 → 위 스냅샷
-                # 뒤가 유일하게 맞는 자리다. 반대로 직전일 판정이 오늘을 주워오지
-                # 않는 근거는 «순서가 아니라» 쿼리의 엄격 부등호(trade_date < today)다.
-                # to_thread: 지수 조회가 동기 HTTP 라 최악 ~240초 블로킹이 가능하다 —
-                # 이벤트 루프(주문·체결 감시)를 그동안 세우면 안 된다.
-                try:
-                    await asyncio.to_thread(self._log_eod_benchmark, current_time)
-                except Exception as bench_err:
-                    self.logger.error(f"EOD 벤치마크 로깅 오류: {bench_err}")
-
                 # EOD regime 지수(KOSPI/KOSDAQ) 일봉 갱신 → 게이트 SSOT(daily_prices)
                 # 자동 신선화. 수동 backfill 미실행 시 게이트 stale/fail-open 방지(2026-06-24).
                 try:
@@ -346,6 +337,25 @@ class SystemMonitor:
                     self._run_equity_snapshot()
                 except Exception as eq2_err:
                     self.logger.error(f"EOD equity 재스냅샷 적재 오류: {eq2_err}")
+
+                # EOD 벤치마크 한 줄 (계기 전용 — 매매 판단 불변). **맨 끝이다.**
+                # 배치 근거 — 당일 수익률을 equity 원장 안에서만 계산하므로 두 조건이
+                # 모두 필요하다:
+                #  ① 오늘자 paper_strategy_equity 행이 «있어야» 한다(스냅샷 뒤).
+                #  ② 그 행의 보유평가가 «T 종가» 여야 한다. 1차 스냅샷(15:35)은
+                #     당일 종가가 daily_prices 에 아직 없어(EOD 수집이 ~16:11) 보유분을
+                #     D-1 종가로 평가한다 — 바로 위 재스냅샷 주석이 말하는 stale 값이다.
+                #     포트의 ~70% 가 보유분이라 1차 값으로 찍으면 당일 수익률이
+                #     구조적으로 치우친다(2026-08-27 실측 ≈ -0.7%p).
+                #  ⇒ 데이터 수집 + 재스냅샷 «뒤» 가 유일하게 맞는 자리다.
+                # 반대로 직전일 판정이 오늘을 주워오지 않는 근거는 순서가 아니라
+                # 쿼리의 엄격 부등호(trade_date < today)다.
+                # to_thread: 지수 조회가 동기 HTTP 라 최악 ~240초 블로킹이 가능하다 —
+                # 이벤트 루프(주문·체결 감시)를 그동안 세우면 안 된다.
+                try:
+                    await asyncio.to_thread(self._log_eod_benchmark, current_time)
+                except Exception as bench_err:
+                    self.logger.error(f"EOD 벤치마크 로깅 오류: {bench_err}")
 
     def _build_current_price_lookup(self):
         """일일 매매 리포트에 넘길 **in-memory 현재가 조회자**를 만든다 (없으면 None).
@@ -473,6 +483,12 @@ class SystemMonitor:
         if not result.get("ok"):
             self.logger.warning(f"EOD equity 스냅샷 스킵: {result.get('reason')}")
             return
+        # 벤치마크 행수 가드의 기대값 = «이 스냅샷이 실제로 쓴 전략 수».
+        # 할당 원장(_strategy_initial) 수를 쓰면 안 된다 — 스냅샷 writer 는
+        # virtual_trading_records 에 «체결이 있는» 전략만 쓰므로, 갓 배정돼 아직
+        # 거래가 없는 전략이 하나라도 있으면 두 수가 영구히 어긋나 당일이
+        # 영원히 n/a 가 된다(진단 단서도 없이).
+        self._last_equity_n_strategies = result.get("n_strategies")
         if result.get("cash_match"):
             self.logger.info(
                 f"EOD equity 스냅샷 적재 완료: {result['trade_date']} "
@@ -785,14 +801,21 @@ class SystemMonitor:
         페이퍼 기간 KOSPI 가 -23.6% 인데 로그엔 시장 성과가 없어 「-20% 누적」이
         알파인지 베타인지 판별할 수 없었다(2026-08-25 자문). 그 판별을 위한 계기다.
 
+        행수 가드 기대값은 «직전 equity 스냅샷이 실제로 쓴 전략 수» 다
+        (``_run_equity_snapshot`` 이 남긴 래치). 없으면 eod_benchmark 가 할당
+        원장 수로 폴백한다.
+
         ⚠️ **어떤 예외도 EOD 흐름을 막지 않는다** — WARNING 한 줄로 끝낸다. 이 줄은
-        관측용이지 운영 필수 단계가 아니고, 뒤에 데이터 수집·equity 스냅샷이 남아
-        있다.
+        관측용이지 운영 필수 단계가 아니다(EOD 블록의 마지막 단계라 뒤따르는 작업도
+        없다 — 그래도 예외를 삼켜 두면 다음 루프 반복이 깨끗하다).
         """
         try:
             from bot.eod_benchmark import (collect_benchmark_inputs,
                                            format_benchmark_line)
-            inputs = collect_benchmark_inputs(self.bot, today=current_time.date())
+            inputs = collect_benchmark_inputs(
+                self.bot, today=current_time.date(),
+                expected_strategies=getattr(self, "_last_equity_n_strategies", None),
+            )
             self.logger.info(format_benchmark_line(**inputs))
         except Exception as bench_err:
             self.logger.warning(f"[벤치마크] 계산 실패: {bench_err}")
