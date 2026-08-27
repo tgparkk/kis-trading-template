@@ -497,6 +497,18 @@ class BotInitializer:
                 except Exception as e:
                     self.logger.warning(f"전략 종목당 투자금액 설정 실패({key}): {e}")
 
+                # 전략별 종목당 매수 상한 (yaml risk_management.max_per_stock_amount).
+                # 2026-08-27: 이 선언값은 지금까지 사이징 경로에 독자가 없었다
+                # (recommended_qty 표시용 메타데이터가 유일한 독자). 여기서 VTM 원장에
+                # 같은 폴더키로 넣어 get_max_quantity 의 min() 세 번째 항이 되게 한다.
+                # 미선언/0 이면 넣지 않는다 = 상한 없음(기존 거동 불변).
+                try:
+                    cap = risk.get("max_per_stock_amount")
+                    if cap and hasattr(vtm, "set_strategy_max_per_stock"):
+                        vtm.set_strategy_max_per_stock(key, float(cap))
+                except Exception as e:
+                    self.logger.warning(f"전략 종목당 매수 상한 설정 실패({key}): {e}")
+
             if can_allocate:
                 self.logger.info(
                     f"전략별 가상 자금 할당 완료: {list(strategies.keys())} "
