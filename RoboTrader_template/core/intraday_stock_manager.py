@@ -11,6 +11,7 @@ import threading
 
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, is_market_open
+from config.constants import MAX_MANAGED_STOCKS
 from config.market_hours import MarketHours
 from core.dynamic_batch_calculator import DynamicBatchCalculator
 from core.post_market_data_saver import PostMarketDataSaver
@@ -62,7 +63,7 @@ class IntradayStockManager:
         self.selection_history: List[Dict[str, Any]] = []
 
         # 설정
-        self.max_stocks = 80
+        self.max_stocks = MAX_MANAGED_STOCKS
 
         # 동기화
         self._lock = threading.RLock()
