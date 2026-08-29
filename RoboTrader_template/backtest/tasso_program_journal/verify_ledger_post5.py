@@ -15,9 +15,9 @@
 번호 없는 산문 항목(EXTRA_PROSE_ITEMS)의 처리 — 두 전례를 갈라 쓴다:
   · 가온칩스(07-31) = 「통계기반 자동매매」 표지행이 **있는** 무번호 항목 ⇒ 파서가 잡고,
     G-A 는 원본대로 1번 결번만 면제한다(원본 `- {1}`).
-  · SK아이이테크놀로지(08-29) = 표지행이 **없는** 본문 말미 산문 ⇒ 파서가 못 잡는다.
-    위치 함의 번호(9)를 원장에 적되, **저자 번호가 아니므로 G-A 분모에서 뺀다**.
-    G-B 분자에는 넣는다(원장에 행이 있으니까).
+  · 솔트룩스·빛과전자(08-22) · SK아이이테크놀로지(08-29) = 표지행이 **없는** 본문 말미 산문 ⇒
+    파서가 못 잡는다. 위치 함의 번호(7·8·9)를 원장에 적되, **저자 번호가 아니므로 G-A 분모에서 뺀다**.
+    G-B 분자에는 넣는다(원장에 행이 있으니까). 셋 다 수익률 시퀀스가 없어 **레그 0** 이다.
 
 라이브 트리 import 0건(표준 라이브러리 + 같은 디렉토리 모듈만).
 """
@@ -36,14 +36,13 @@ POSTS = {
     "224364189017": ("2026-07-31", [Path(r"D:/archive/tasso-program-journal-20260814"), BASE / "raw", BASE]),
     "224371400049": ("2026-08-07", [Path(r"D:/archive/tasso-program-journal-20260814"), BASE / "raw", BASE]),
     "224378680510": ("2026-08-14", [Path(r"D:/archive/tasso-program-journal-20260814"), BASE / "raw", BASE]),
+    "224385784257": ("2026-08-22", [Path(r"D:/archive/tasso-program-journal-20260822"), BASE, BASE / "raw"]),
     "224393392105": ("2026-08-29", [Path(r"D:/archive/tasso-program-journal-20260829"), BASE, BASE / "raw"]),
 }
 
-# 🔴 원장에 «아직 없는» 글 — 게이트 실패가 아니라 사전 고지다(이 작업 범위 밖).
-NOT_IN_LEDGER = {"224385784257": "2026-08-22 (4번째 글)"}
-
 # 표지행 없는 산문 항목: log_no -> [(종목, 위치 함의 item_no)]
 EXTRA_PROSE_ITEMS = {
+    "224385784257": [("솔트룩스", 7), ("빛과전자", 8)],
     "224393392105": [("SK아이이테크놀로지", 9)],
 }
 
@@ -182,10 +181,6 @@ def main(argv):
                  n_total, len(missing),
                  (" %s" % missing) if missing else "",
                  (" / 중복 %s" % dup) if dup else ""))
-
-    for log_no, label in NOT_IN_LEDGER.items():
-        print("")
-        print("[고지 · 게이트 아님] %s %s 는 **원장에 아직 없다** — 이번 작업 범위 밖." % (log_no, label))
 
     if failures:
         print("")
