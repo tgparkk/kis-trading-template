@@ -224,18 +224,35 @@ def test_exit_codes_are_five_distinct_values_and_fetch_differs_from_ok():
 # ============================================================================
 # B. 안전 게이트 — --apply 경로에서 「쓰지 않고 중단」하는 5가지
 # ============================================================================
-def test_gate1_impossible_bars_increase_aborts_without_writing(monkeypatch):
-    """게이트 1 — 불가능봉이 늘면(before < after) 그 종목은 쓰지 않는다."""
+def _fixture_gate1_impossible_bar_only():
+    """게이트 1 «만» 위반하는 fixture — P3 게이트(§5-3A)는 통과시킨다.
+
+    🔑 P3-B 가 «먼저» 발화하면 이 테스트는 게이트 1 을 재는 게 아니라 P3-B 를 재게 된다.
+    그래서 거래대금 항등을 «지키면서» 불가능봉만 늘린다:
+      · db 05-29 는 670/1000 = **0.67** — 밴드(0.69) «밖»이라 `E_last = 2026-05-29`.
+        그런데 불가능봉 문턱(-35%)은 «안» 넘으므로 `before = 0` 이다.
+        (밴드와 불가능봉의 문턱이 다르다는 사실이 이 fixture 를 가능하게 한다.)
+      · 보정 행의 날짜(05-29)가 `E_last` 보다 «뒤»가 아니므로 P3-A 창 밖 ⇒ `n_a = 0`.
+        기업행위 «당일» 행이라 P3-A 가 판정하지 않는 것이 설계 의도 그대로다.
+      · 거래대금: 670 × 1000 × 1.0 = **670,000** = 5000 × 1000 × 0.134 ⇒ `p3b_viol = 0`.
+    """
     code = "G1CODE"
     db_rows = {
-        "2026-05-28": (1000.0, 1000.0, 1000.0, 1000.0, 100, 1.0),
-        "2026-05-29": (1010.0, 1010.0, 1010.0, 1010.0, 100, 1.0),
+        "2026-05-28": (1000.0, 1000.0, 1000.0, 1000.0, 1000, 1.0),
+        "2026-05-29": (670.0, 670.0, 670.0, 670.0, 1000, 1.0),
     }
-    # 조정피드 close=5000 → 병합하면 1000→5000 (+400%) 가 새로 생긴다.
+    # 조정피드 close=5000 → 병합하면 1000→5000 (+400%) 불가능봉이 «새로» 생긴다.
+    # 원주가 피드의 close 는 안 쓰인다(OHLC 는 조정피드에서 온다) — 쓰이는 건 volume 뿐.
     feeds = {
-        (code, "1"): [_kis_row("2026-05-29", 1010, 100)],
-        (code, "0"): [_kis_row("2026-05-29", 5000, 100)],
+        (code, "1"): [_kis_row("2026-05-29", 670, 1000)],    # vol_raw=1000 → volume=1000
+        (code, "0"): [_kis_row("2026-05-29", 5000, 134)],    # adj_factor = 134/1000 = 0.134
     }
+    return code, db_rows, feeds
+
+
+def test_gate1_impossible_bars_increase_aborts_without_writing(monkeypatch):
+    """게이트 1 — 불가능봉이 늘면(before < after) 그 종목은 쓰지 않는다."""
+    code, db_rows, feeds = _fixture_gate1_impossible_bar_only()
     _install_fake_api(monkeypatch, fetch_fn=_fetcher_from_feeds(feeds))
     conn = FakeConn(db_rows={code: db_rows})
     a = _args(apply=True, codes=code)
@@ -249,15 +266,7 @@ def test_gate1_impossible_bars_increase_aborts_without_writing(monkeypatch):
 
 def test_gate1_removed_lets_the_bad_write_through(monkeypatch):
     """이빨 검증 — 게이트 1 을 빼면 같은 시나리오가 실제로 UPSERT 까지 간다."""
-    code = "G1CODE"
-    db_rows = {
-        "2026-05-28": (1000.0, 1000.0, 1000.0, 1000.0, 100, 1.0),
-        "2026-05-29": (1010.0, 1010.0, 1010.0, 1010.0, 100, 1.0),
-    }
-    feeds = {
-        (code, "1"): [_kis_row("2026-05-29", 1010, 100)],
-        (code, "0"): [_kis_row("2026-05-29", 5000, 100)],
-    }
+    code, db_rows, feeds = _fixture_gate1_impossible_bar_only()
     _install_fake_api(monkeypatch, fetch_fn=_fetcher_from_feeds(feeds))
     conn = FakeConn(db_rows={code: db_rows})
     a = _args(apply=True, codes=code)
@@ -272,8 +281,16 @@ def test_gate1_removed_lets_the_bad_write_through(monkeypatch):
     assert conn.upsert_calls != [], "가드를 빼면 정말로 UPSERT 까지 간다는 걸 못 보임 — 이빨 없음"
 
 
-def test_gate2_volume_value_change_aborts_without_writing(monkeypatch):
-    """게이트 2 — 기존 volume 이 있는데 값이 바뀌면 중단한다."""
+def test_gate2_turnover_identity_violation_aborts_without_writing(monkeypatch):
+    """게이트 2 — 거래대금 항등(P3-B)이 깨지면 중단한다.
+
+    ⚠️ 이 테스트의 «옛» 이름은 `..._volume_value_change_...` 였고 「volume 값이 바뀌면
+    중단」을 뜻했다. 그 전제는 §5-3A(D-8 안 (나))로 **교체됐다** — (P-a) 는 volume 을
+    원주가 피드값으로 «교체»하므로 값 변경 자체는 정상이고, 불변이어야 하는 것은
+    «곱»과 «거래대금»이다. 실제로 값이 100→1000 으로 바뀌어도 통과하는 것을
+    `test_gate5_*` fixture 가 보인다. 여기 fixture 는 volume 이 1000→5000 이 되면서
+    거래대금이 5배로 «어긋나므로» 중단한다 — 중단 사유가 다른 것이다.
+    """
     code = "G2CODE"
     db_rows = {"2026-05-29": (760.0, 760.0, 760.0, 760.0, 1000, 1.0)}
     feeds = {
@@ -310,28 +327,91 @@ def test_gate3_null_existing_volume_aborts_without_writing(monkeypatch):
     assert conn.backup_calls == []
 
 
-def test_gate2and3_removed_lets_the_volume_violation_through(monkeypatch):
-    """이빨 검증 — volume 불변 게이트(2·3 은 같은 `if` 한 줄)를 빼면 UPSERT 까지 간다."""
-    code = "G2CODE"
+# ---------------------------------------------------------------------------
+# 게이트 2·3 의 «새» 판정식 — §5-3A(D-8 안 (나))의 abort 식 세 항을 각각 검증한다.
+#     (a.apply and todo) and (vol_null > 0 or p3b_viol > 0
+#                             or (n_a >= 20 and p3a_viol > 0))
+# 🔑 각 fixture 는 «한 항만» 위반한다 — 두 항이 같이 켜지면 어느 항이 막았는지 모른다.
+# ---------------------------------------------------------------------------
+def _fixture_p3_only_vol_null():
+    """`vol_null` 항 «만» 위반 — 기존 volume 이 NULL 이라 전제를 «검증할 수 없다».
+
+    P3-A/P3-B 는 둘 다 「계산 불가」로 빠지므로(v is None) 위반 0 · `n_a = 0`.
+    ⇒ 이 종목을 막는 것은 오직 `vol_null` 항이다.
+    """
+    code = "PVNULL"
+    db_rows = {"2026-05-29": (760.0, 760.0, 760.0, 760.0, None, 1.0)}
+    feeds = {(code, "1"): [_kis_row("2026-05-29", 760, 1000)],
+             (code, "0"): [_kis_row("2026-05-29", 760, 1000)]}
+    return code, db_rows, feeds
+
+
+def _fixture_p3_only_p3b_viol():
+    """`p3b_viol` 항 «만» 위반 — 거래대금이 760,000 → 800,000 (5.26%) 어긋난다.
+
+    곱은 «보존»된다(1000 × 1.0 → 1000 × 1.0) ⇒ `p3a_viol = 0` · `vol_null = 0`.
+    """
+    code = "PTURN"
     db_rows = {"2026-05-29": (760.0, 760.0, 760.0, 760.0, 1000, 1.0)}
+    feeds = {(code, "1"): [_kis_row("2026-05-29", 800, 1000)],
+             (code, "0"): [_kis_row("2026-05-29", 800, 1000)]}
+    return code, db_rows, feeds
+
+
+def _fixture_p3_only_p3a_viol():
+    """`p3a_viol` 항 «만» 위반 — 읽기값의 곱이 1000 → 2000 (2배) 어긋난다.
+
+    거래대금은 항등을 지킨다(close 절반 × volume 2배) ⇒ `p3b_viol = 0` · `vol_null = 0`.
+    🔴 **25행**이라 `n_a = 25 ≥ 20` — 20행 미만이면 이 항은 «켜지지도 않는다»(§4).
+       그래서 이 fixture 만 유일하게 행이 많다: 문턱 자체가 테스트 대상의 일부다.
+    db 종가가 전부 1000 이라 밴드이탈이 없다 ⇒ `E_last = None` ⇒ 전 25행이 P3-A 창 안.
+    """
+    code = "PPROD"
+    dates = [f"2026-05-{d:02d}" for d in range(1, 26)]
+    db_rows = {d: (1000.0, 1000.0, 1000.0, 1000.0, 1000, 1.0) for d in dates}
     feeds = {
-        (code, "1"): [_kis_row("2026-05-29", 760, 5000)],
-        (code, "0"): [_kis_row("2026-05-29", 760, 5000)],
+        (code, "1"): [_kis_row(d, 1000, 1000) for d in dates],   # vol_raw = 1000
+        (code, "0"): [_kis_row(d, 500, 2000) for d in dates],    # adj_factor = 2.0
     }
+    return code, db_rows, feeds
+
+
+@pytest.mark.parametrize("term, remove_fragment, make_fixture", [
+    ("vol_null", "vol_null > 0 or ", _fixture_p3_only_vol_null),
+    ("p3b_viol", ' or j["p3b_viol"] > 0', _fixture_p3_only_p3b_viol),
+    ("p3a_viol", '\n                or (j["n_a"] >= P3A_MIN_ROWS and j["p3a_viol"] > 0)',
+     _fixture_p3_only_p3a_viol),
+])
+def test_p3_gate_each_abort_term_aborts_alone_and_has_teeth(
+        monkeypatch, term, remove_fragment, make_fixture):
+    """이빨 검증 — abort 식의 세 항을 «각각» 빼면 그 나쁜 쓰기가 UPSERT 까지 간다.
+
+    한 테스트가 두 가지를 같이 본다:
+      (a) 원본에서 그 항이 «단독»으로 중단시키는가 (fixture 가 정말 한 항만 켜는가)
+      (b) 그 항만 지우면 정말 UPSERT 까지 가는가 (그 항에 이빨이 있는가)
+    (a) 없이 (b) 만 보면, 다른 항이 대신 막고 있어도 「이빨 있음」으로 오독된다.
+    """
+    code, db_rows, feeds = make_fixture()
+
+    # (a) 원본 — 중단하고, 백업도 UPSERT 도 «전혀» 없다.
     _install_fake_api(monkeypatch, fetch_fn=_fetcher_from_feeds(feeds))
     conn = FakeConn(db_rows={code: db_rows})
-    a = _args(apply=True, codes=code)
+    rc = cli._run(_args(apply=True, codes=code), conn)
 
-    mutated_run = _mutated_run(remove="""        if vol_diff or vol_null:
-            return _abort(batch_id, code, n_committed,
-                          f"volume 이 바뀐다(값 변경 {vol_diff}건 · 기존 NULL {vol_null}건) — "
-                          f"「기존도 원본, 새것도 원본」이라는 전제가 틀렸다는 뜻이다"
-                          f"(사양 §6-4). 이 종목은 쓰지 않았다")
-""")
-    rc = mutated_run(a, conn)
+    assert rc == cli.EXIT_ABORT, (
+        f"`{term}` 항이 단독으로 발화하지 않는다 — fixture 가 명세와 어긋났다")
+    assert conn.upsert_calls == []
+    assert conn.backup_calls == []
 
-    assert rc != cli.EXIT_ABORT
-    assert conn.upsert_calls != [], "가드를 빼면 정말로 UPSERT 까지 간다는 걸 못 보임 — 이빨 없음"
+    # (b) 그 항만 빼면 — 같은 나쁜 쓰기가 통과한다.
+    _install_fake_api(monkeypatch, fetch_fn=_fetcher_from_feeds(feeds))
+    conn2 = FakeConn(db_rows={code: db_rows})
+    mutated_run = _mutated_run(remove=remove_fragment)
+    rc2 = mutated_run(_args(apply=True, codes=code), conn2)
+
+    assert rc2 != cli.EXIT_ABORT
+    assert conn2.upsert_calls != [], (
+        f"abort 식에서 `{term}` 항을 빼도 UPSERT 가 안 간다 — 그 항은 «이빨이 없다»")
 
 
 @pytest.mark.xfail(
@@ -339,8 +419,10 @@ def test_gate2and3_removed_lets_the_volume_violation_through(monkeypatch):
     reason=(
         "발견한 결함(고치지 않고 보고) — needs_repair 가 계약을 어기고 DB 에 없는 "
         "날짜를 돌려주면, 그 뒤의 「absent 게이트」(사양 §6-3의 4번째 방어선)가 "
-        "실행되기도 «전에» vol_diff/vol_null 계산의 무가드 `db[r[\"date\"]]` 색인이 "
-        "KeyError 로 먼저 죽는다. dry-run 여부와도 무관하다 — 그 줄은 "
+        "실행되기도 «전에» vol_null 계산(과 그 뒤 judge_p3)의 무가드 "
+        "`db[r[\"date\"]]` 색인이 KeyError 로 먼저 죽는다. "
+        "⚠️ §5-3A 판정식 교체 «전»에는 같은 자리가 vol_diff/vol_null 계산이었다 — "
+        "결함의 «자리»도 성격도 그대로다. dry-run 여부와도 무관하다 — 그 줄은 "
         "`if not a.apply or not todo: continue` 보다도 앞에 있다. 즉 이 코드 경로로는 "
         "absent 게이트가 «도달 불가능»하다."
     ),
@@ -401,14 +483,28 @@ def test_gate4_absent_date_actually_crashes_with_keyerror_current_reality(monkey
     assert conn.upsert_calls == []   # 어느 쪽이든(죽거나 abort 하거나) 쓰기는 없다
 
 
+def _fixture_repair_that_passes_the_p3_gate(code):
+    """P3 게이트를 «통과»하는 진짜 보정 행 — 뒤쪽 게이트를 재려면 여기까지 와야 한다.
+
+    🔑 이것이 바로 (P-a) 가 하려는 일이다: **volume 값은 100 → 1000 으로 바뀌지만**
+       읽기값의 곱과 거래대금은 그대로다. 새 게이트는 이런 행을 «막지 않는다».
+         · 곱      : 100 × 10.0 = 1000  =  1000 × 1.0        ⇒ p3a_viol = 0
+         · 거래대금: 760 × 100 × 10.0 = 760,000 = 760 × 1000 × 1.0 ⇒ p3b_viol = 0
+         · vol_null = 0 · 불가능봉 0 → 0
+       `needs_repair` 는 volume(100 vs 1000)·adj_factor(10.0 vs 1.0) 차이로 이 행을 집는다.
+    """
+    db_rows = {"2026-05-29": (760.0, 760.0, 760.0, 760.0, 100, 10.0)}
+    feeds = {
+        (code, "1"): [_kis_row("2026-05-29", 760, 1000)],
+        (code, "0"): [_kis_row("2026-05-29", 760, 1000)],
+    }
+    return db_rows, feeds
+
+
 def test_gate5_backup_row_count_mismatch_aborts_without_upserting(monkeypatch):
     """게이트 5 — 백업 확인은 «등호». 기대(len(todo))보다 적어도(0) 위반이다."""
     code = "G5CODE"
-    db_rows = {"2026-05-29": (760.0, 760.0, 760.0, 760.0, 1000, 1.0)}
-    feeds = {
-        (code, "1"): [_kis_row("2026-05-29", 800, 1000)],
-        (code, "0"): [_kis_row("2026-05-29", 800, 1000)],
-    }
+    db_rows, feeds = _fixture_repair_that_passes_the_p3_gate(code)
     _install_fake_api(monkeypatch, fetch_fn=_fetcher_from_feeds(feeds))
     conn = FakeConn(db_rows={code: db_rows}, backup_rowcount_override=0)
     a = _args(apply=True, codes=code)
@@ -423,11 +519,7 @@ def test_gate5_backup_row_count_mismatch_aborts_without_upserting(monkeypatch):
 def test_gate5_removed_lets_the_unverified_backup_through(monkeypatch):
     """이빨 검증 — 백업 등호 게이트를 빼면 확인 안 된 백업 위에 그대로 UPSERT 한다."""
     code = "G5CODE"
-    db_rows = {"2026-05-29": (760.0, 760.0, 760.0, 760.0, 1000, 1.0)}
-    feeds = {
-        (code, "1"): [_kis_row("2026-05-29", 800, 1000)],
-        (code, "0"): [_kis_row("2026-05-29", 800, 1000)],
-    }
+    db_rows, feeds = _fixture_repair_that_passes_the_p3_gate(code)
     _install_fake_api(monkeypatch, fetch_fn=_fetcher_from_feeds(feeds))
     conn = FakeConn(db_rows={code: db_rows}, backup_rowcount_override=0)
     a = _args(apply=True, codes=code)
@@ -449,11 +541,8 @@ def test_gate5_removed_lets_the_unverified_backup_through(monkeypatch):
 def test_dry_run_never_calls_ensure_table_backup_or_upsert_even_with_real_diffs(monkeypatch):
     """`--apply` 없이 돌리면 커밋이 «전혀» 없다 — 고칠 거리가 실재해도."""
     code = "DRYCODE"
-    db_rows = {"2026-05-29": (760.0, 760.0, 760.0, 760.0, 1000, 1.0)}
-    feeds = {
-        (code, "1"): [_kis_row("2026-05-29", 800, 1000)],   # 실제로 고칠 게 있다
-        (code, "0"): [_kis_row("2026-05-29", 800, 1000)],
-    }
+    # 실제로 고칠 게 있고(volume 100→1000 · adj_factor 10.0→1.0), P3 게이트도 통과하는 행.
+    db_rows, feeds = _fixture_repair_that_passes_the_p3_gate(code)
     _install_fake_api(monkeypatch, fetch_fn=_fetcher_from_feeds(feeds))
     conn = FakeConn(db_rows={code: db_rows})
     a = _args(apply=False, codes=code)
@@ -469,13 +558,13 @@ def test_dry_run_never_calls_ensure_table_backup_or_upsert_even_with_real_diffs(
 
 def test_dry_run_guard_removed_lets_a_write_happen(monkeypatch):
     """이빨 검증 — per-stock dry-run 가드(`if not a.apply or not todo: continue`)를
-    빼면 dry-run 인데도 UPSERT 까지 간다."""
+    빼면 dry-run 인데도 UPSERT 까지 간다.
+
+    🔑 fixture 는 P3 게이트를 «통과»해야 한다 — 안 그러면 가드를 빼도 P3 가 대신 막아서
+       「dry-run 가드에 이빨이 있다」를 못 보인다(막은 건 다른 게이트니까).
+    """
     code = "DRYCODE"
-    db_rows = {"2026-05-29": (760.0, 760.0, 760.0, 760.0, 1000, 1.0)}
-    feeds = {
-        (code, "1"): [_kis_row("2026-05-29", 800, 1000)],
-        (code, "0"): [_kis_row("2026-05-29", 800, 1000)],
-    }
+    db_rows, feeds = _fixture_repair_that_passes_the_p3_gate(code)
     _install_fake_api(monkeypatch, fetch_fn=_fetcher_from_feeds(feeds))
     conn = FakeConn(db_rows={code: db_rows})
     a = _args(apply=False, codes=code)

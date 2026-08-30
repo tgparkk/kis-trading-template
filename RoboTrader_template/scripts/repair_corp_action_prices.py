@@ -32,6 +32,16 @@ EXIT_ABORT = 3      # 안전 게이트 작동(사양 §6-3 — 실행 전체를 
 EXIT_FETCH = 4      # 브로커 조회 «실패» 종목이 있었다(= 미완료 실행)
 EXIT_INPUT = 5      # 실행 전제가 안 갖춰졌다(큐 파일 없음·DB 대상 불일치)
 
+# ── volume 게이트 판정 상수 — 동결 명세 출처:
+#    docs/prereg_2026-08-27_n1_correction_plan.md §5-3A(안 (나)의 판정식 명세) · §4 P3-A/P3-B
+P3_REL_TOL = 0.005      # 0.5% 단일값, 두 판정에 동일 적용. 🔴 등호 비교 금지(`>` 만 쓴다).
+#                         🔴 상한 0.01 을 «넘길 수 없다» — 0.01 은 보정 도구 자신의 동일성
+#                         허용오차(`collectors/adj_repair.py:76` `rel_tol`)라, 그보다 넓히면
+#                         도구가 「안 바뀌었다」고 건너뛰는 구간과 겹쳐 게이트가 무의미해진다(§4).
+P3A_MIN_ROWS = 20       # 🔴 판정 행 < 20 이면 P3-A 는 «판정하지 않는다» — 위반 0 이 아니라 «미검증»(§4).
+BAND_UP, BAND_DOWN = 1.45, 0.69     # 생산 상수 `collectors/corp_action_watch.py:45-46`
+BAND_FROM = "2024-01-01"            # [SQL-A] 의 하한
+
 
 class FeedFetchError(RuntimeError):
     """브로커 조회 «실패». 🔑 「데이터가 없다」와 «절대» 같은 값으로 보고하지 않는다.
@@ -108,6 +118,94 @@ def _close_seq(rows):
             continue
         out.append((d, c))
     return sorted(out)
+
+
+def _iso(d) -> str:
+    """날짜를 ISO 문자열로 — 드라이버가 `date` 객체를 줄 수도, 문자열을 줄 수도 있다.
+
+    비교는 «ISO 문자열 사전순»으로 통일한다. 두 표현을 섞어 `>` 로 비교하면
+    TypeError 로 죽거나(파이썬3) 조용히 틀린 답을 낸다.
+    """
+    return d.isoformat() if hasattr(d, "isoformat") else str(d)
+
+
+def compute_e_last(db, today_iso: str):
+    """`E_last` = `[SQL-A]` 가 이 종목에서 검출한 «마지막» 밴드이탈 봉의 날짜.
+
+    문서 §4 「P3-A 의 `E_last` 정의」 + §5-3A 「`E_last` 산출」.
+    🔴 **그 종목의 `db` 행만으로 메모리에서** 계산한다 — DB 추가 조회 없음,
+       `corp_events` 조회 없음(§6-8). 검출 0건이면 `None` = 전 구간이 판정 대상이다.
+
+    🔑 `prev_close` 는 `[SQL-A]` 의 `LAG(close)` 와 «같아야» 한다 — `close` 가 NULL 이거나
+       0 인 행도 **시퀀스에서 빼지 않고** 판정에서만 거른다. 빼면 LAG 이 한 칸 당겨져
+       다른 날짜가 나온다(`_close_seq` 는 다른 계약이라 여기 쓸 수 없다).
+    UP·DOWN 무관 · halt_run 무관 — `[SQL-A]` 의 최종 WHERE 에 halt 조건이 없다.
+    """
+    e_last = None
+    prev = None
+    for d in sorted(db, key=_iso):
+        c = db[d][3]
+        c = None if c is None else float(c)
+        iso = _iso(d)
+        if (c is not None and c > 0 and prev is not None and prev > 0
+                and BAND_FROM <= iso <= today_iso
+                and (c / prev > BAND_UP or c / prev < BAND_DOWN)):
+            if e_last is None or iso > e_last:
+                e_last = iso
+        prev = c
+    return e_last
+
+
+def judge_p3(db, todo, e_last) -> dict:
+    """행 단위 P3-A(곱 불변) · P3-B(거래대금 항등) 판정 — 문서 §5-3A 판정식 표 그대로.
+
+    🔴 **행 단위**로 「위반 행 수」를 센다 — 종목 단위 집계 금지(§6-7).
+      · P3-A: `date > E_last` 인 행에서 `volume × COALESCE(adj_factor,1)` 불변
+      · P3-B: **전 `todo` 행**에서 `close × volume × COALESCE(adj_factor,1)` 불변
+
+    🔴 나눌 수 없는 행은 «위반 0» 으로 접지 않고 **따로 센다**(§6-3a):
+      · `turn0_skipped` — `turn_before == 0`(정지봉 v=0). 문서 §5-3A 명시.
+      · `prod0_skipped` — `prod_before == 0`. ⚠️ **문서 §5-3A 미명세** — P3-B 의
+        `turn_before == 0` 규칙을 대칭 적용했다. `n_a` 에 넣지 않는다.
+      · `p3b_nocalc` — `c is None` 이라 계산 불가. ⚠️ **문서 §5-3A 미명세** — 같은
+        대칭 적용. `v is None` 은 `vol_null` 이 이미 세므로 여기서는 `p3a_nocalc`/
+        `p3b_nocalc` 에 함께 담아 로그로만 구분한다.
+    """
+    tol = P3_REL_TOL
+    out = dict(p3a_viol=0, n_a=0, p3b_viol=0, n_b=0,
+               turn0_skipped=0, prod0_skipped=0, p3a_nocalc=0, p3b_nocalc=0)
+    for r in todo:
+        o, h, l, c, v, f = db[r["date"]]
+        coal = 1.0 if f is None else float(f)
+
+        # ── P3-A — `E_last` «이후» 구간(= 보정이 닿지 않아야 하는 구간)에서만 잰다.
+        if e_last is None or _iso(r["date"]) > e_last:
+            if v is None:
+                out["p3a_nocalc"] += 1          # vol_null 이 이미 센다
+            else:
+                prod_before = float(v) * coal
+                if prod_before == 0:
+                    out["prod0_skipped"] += 1
+                else:
+                    out["n_a"] += 1
+                    prod_after = float(r["volume"]) * float(r["adj_factor"])
+                    if abs(prod_after / prod_before - 1.0) > tol:
+                        out["p3a_viol"] += 1
+
+        # ── P3-B — 전 행.
+        if v is None or c is None:
+            out["p3b_nocalc"] += 1
+        else:
+            turn_before = float(c) * float(v) * coal
+            if turn_before == 0:
+                out["turn0_skipped"] += 1
+            else:
+                out["n_b"] += 1
+                turn_after = (float(r["close"]) * float(r["volume"])
+                              * float(r["adj_factor"]))
+                if abs(turn_after / turn_before - 1.0) > tol:
+                    out["p3b_viol"] += 1
+    return out
 
 
 UPSERT = """
@@ -187,6 +285,9 @@ def _run(a, conn) -> int:
 
     tot_before = tot_after = tot_rows = n_committed = 0
     tot_backed = n_fetch_err = n_volatile = 0
+    # §5-2 산출물 ④ 「판정 행 < 20 인 종목 «명단»」이 grep 없이 배치 요약에서 나오게 한다.
+    # 🔑 판정식·abort 식은 이 목록을 «읽지 않는다» — 순수 출력용 집계다.
+    codes_p3a_unverified, codes_prod0, codes_nocalc = [], [], []
     for i, code in enumerate(targets, 1):
         # 🔧 직전 종목이 남긴 «읽기 전용» 트랜잭션을 닫는다. 안 닫으면 연결이
         #    idle in transaction 으로 몇 시간 남아 라이브 표의 VACUUM 을 막는다.
@@ -227,19 +328,41 @@ def _run(a, conn) -> int:
         tot_after += after
         tot_rows += len(todo)
 
-        # 사양 §6-4 — volume 은 «불변»이어야 한다(기존도 원본, 새것도 adj_prc="1" 원본).
-        # NULL 도 「바뀜」으로 센다: 전제를 «검증할 수 없다»를 「이상 없음」으로 접지 않는다.
-        vol_diff = sum(1 for r in todo
-                       if db[r["date"]][4] is not None
-                       and int(db[r["date"]][4]) != int(r["volume"]))
+        # 🔴 volume 게이트 — 판정식은 «곱 불변(P3-A) ∧ 거래대금 항등(P3-B)» 이다.
+        #    근거: docs/prereg_2026-08-27_n1_correction_plan.md §5-3A(안 (나)의 판정식 명세)
+        #          · §4 P3-A/P3-B (사장님 결정 D-8 = (나) — 게이트는 남기고 «거짓인 전제만» 바꾼다).
+        # ⚠️ 옛 주석이 인용하던 「사양 §6-4 — volume 불변」 전제는 (P-a) 에서 **거짓**이다:
+        #    (P-a) 는 volume 을 원주가 피드값으로 «교체»하므로 값 자체는 바뀔 수 있고,
+        #    불변이어야 하는 것은 «읽기값의 곱» `volume × COALESCE(adj_factor,1)` 과 «거래대금»이다.
+        #    (그 「사양」은 이 문서가 아닌 v1 이전 별도 사양이다 — §5-3A 「표류 명기」.)
+        # 🔴 `vol_null` 분기는 «그대로 둔다» — 「전제를 «검증할 수 없다»」를 「이상 없음」으로
+        #    접지 않는다는 원 취지가 (P-a) 에서도 유효하다(§5-3A · §6-3a).
         vol_null = sum(1 for r in todo if db[r["date"]][4] is None)
+        e_last = compute_e_last(db, date.today().isoformat())
+        j = judge_p3(db, todo, e_last)
 
         print(f"{tag} rows={len(todo)} impossible {before}->{after} "
               f"derived={diag['n_derived']} filled={diag['n_filled']} "
               f"DB에 없는 날짜 {n_absent}건 제외")
-        if vol_diff or vol_null:
-            print(f"    🔴 volume 불변 전제 위반 — 값이 바뀌는 행 {vol_diff}건 · "
-                  f"기존이 NULL 인 행 {vol_null}건")
+        if j["n_a"] < P3A_MIN_ROWS:
+            codes_p3a_unverified.append(f"{code}(n_a={j['n_a']})")
+        if j["prod0_skipped"]:
+            codes_prod0.append(f"{code}({j['prod0_skipped']})")
+        if j["p3a_nocalc"] or j["p3b_nocalc"]:
+            codes_nocalc.append(f"{code}(A{j['p3a_nocalc']}/B{j['p3b_nocalc']})")
+
+        # 🔴 `--apply` 없이도 «항상» 찍는다 — dry-run 산출물 ④가 이 줄에서 나온다(§5-2 ④).
+        # ⚠️ `E_last=`·`prod0`·`계산불가` 는 §5-3A 「로그(항상 출력)」 목록 «밖»의 추가분이다
+        #    (명세 목록은 `p3a_viol/n_a · p3b_viol/n_b · turn0_skipped · vol_null` 넷).
+        #    E_last 없이는 `n_a` 를 재현할 수 없고, 나머지 둘은 «접지 않은 잔여»를 드러낸다.
+        # 🔑 항등 `n_a + prod0 + 계산불가A = (date > E_last 인 todo 행 수)` 가 이 한 줄에서
+        #    복원된다 — 창 안의 모든 행이 셋 중 «정확히 하나»로 간다(judge_p3 참조).
+        print(f"    P3 게이트 — E_last={e_last or '없음(전 구간 판정)'} · "
+              f"P3-A 위반 {j['p3a_viol']}/{j['n_a']} · P3-B 위반 {j['p3b_viol']}/{j['n_b']} · "
+              f"turn0 {j['turn0_skipped']}건 · prod0 {j['prod0_skipped']}건 · "
+              f"계산불가 A{j['p3a_nocalc']}/B{j['p3b_nocalc']}건 · vol_null {vol_null}건"
+              + ("" if j["n_a"] >= P3A_MIN_ROWS
+                 else f" · 🔴 P3-A 미검증(n_a={j['n_a']} < {P3A_MIN_ROWS})"))
 
         if not a.apply or not todo:
             continue
@@ -247,11 +370,13 @@ def _run(a, conn) -> int:
         if after > before:
             return _abort(batch_id, code, n_committed,
                           f"불가능봉이 늘었다({before}->{after}) — 이 종목은 쓰지 않았다")
-        if vol_diff or vol_null:
+        if (vol_null > 0 or j["p3b_viol"] > 0
+                or (j["n_a"] >= P3A_MIN_ROWS and j["p3a_viol"] > 0)):
             return _abort(batch_id, code, n_committed,
-                          f"volume 이 바뀐다(값 변경 {vol_diff}건 · 기존 NULL {vol_null}건) — "
-                          f"「기존도 원본, 새것도 원본」이라는 전제가 틀렸다는 뜻이다"
-                          f"(사양 §6-4). 이 종목은 쓰지 않았다")
+                          f"volume 게이트 — P3-A 위반 {j['p3a_viol']}/{j['n_a']}건 · "
+                          f"P3-B 위반 {j['p3b_viol']}/{j['n_b']}건 · 기존 NULL {vol_null}건. "
+                          f"「곱 불변 ∧ 거래대금 항등」이 깨진다는 뜻이다"
+                          f"(문서 §5-3A 판정식). 이 종목은 쓰지 않았다")
 
         # 🔴 UPSERT 가 «INSERT» 를 하면 --restore 로 못 되돌린다(복원 SQL 은
         #    UPDATE ... FROM backup 이라 행을 «지울» 수 없다). needs_repair 가 DB 에
@@ -282,6 +407,18 @@ def _run(a, conn) -> int:
     conn.rollback()   # 마지막 종목의 읽기 트랜잭션을 닫는다
 
     print(f"\nbatch {batch_id} · rows {tot_rows} · impossible {tot_before} -> {tot_after}")
+    # §5-2 산출물 ④ — 🔴 「P3-A 미검증」은 «위반 0» 이 아니라 «아무 말도 안 한 것»이다.
+    #    그 종목은 P3-B 로만 판정됐으므로 전건을 사장님 승인 목록(§5-4)에 올린다.
+    if codes_p3a_unverified:
+        print(f"🔴 P3-A 미검증(판정 행 < {P3A_MIN_ROWS}) {len(codes_p3a_unverified)}종목 — "
+              f"P3-B 로만 판정됐다. 전건 §5-4 승인 목록에 올릴 것:")
+        print(f"   {', '.join(codes_p3a_unverified)}")
+    if codes_prod0:
+        print(f"⚠️ prod_before=0 으로 P3-A 판정에서 «뺀» 행이 있는 종목 {len(codes_prod0)}: "
+              f"{', '.join(codes_prod0)}")
+    if codes_nocalc:
+        print(f"⚠️ 계산 불가로 판정에서 «뺀» 행이 있는 종목 {len(codes_nocalc)} "
+              f"(A=P3-A·B=P3-B · volume/close 가 NULL): {', '.join(codes_nocalc)}")
     if n_volatile:
         print(f"⚠️ split 이벤트 보유 {n_volatile}종목 — 그 종목의 adj_factor 는 다음 EOD 에 "
               f"덮어써진다(사양 §7). OHLC 보정만 지속된다.")
