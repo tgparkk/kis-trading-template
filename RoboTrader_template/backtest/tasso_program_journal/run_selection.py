@@ -72,7 +72,12 @@ def build_features(df):
     df["f8_ma20dev"] = df.close / g.close.transform(
         lambda s: s.rolling(20, min_periods=10).mean()) - 1
     prev_max = g.close.transform(lambda s: s.shift(1).rolling(60, min_periods=20).max())
-    df["f9_newhigh"] = (df.close >= prev_max).astype(float)
+    # 🔴 C-17 (`PREREG_POST6.md` §5-1) — `prev_max` 가 NaN 이면 `close >= NaN` 이 False 가 되고
+    #    `.astype(float)` 이 그걸 **0.0 = 「갱신 없음」**으로 둔갑시켰다. `f5`·`f6` 은 NaN 으로
+    #    남아 결측 표시가 되는데 `f9` 만 「계산 불가」가 「관측값 0」이 됐다.
+    #    ⇒ `prev_max` 가 NaN 인 행은 **NaN 으로 남긴다.** 백분위(`f9_newhigh_pct`)는
+    #      `rank(pct=True)` 가 NaN 을 자동 제외하므로 따라온다(테스트로 확인).
+    df["f9_newhigh"] = (df.close >= prev_max).astype(float).where(prev_max.notna())
     # 일자별 백분위 (그날 유니버스 기준, 0~100)
     for f in FEATS:
         df[f + "_pct"] = df.groupby("date")[f].rank(pct=True) * 100

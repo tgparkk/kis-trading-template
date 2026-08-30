@@ -25,6 +25,8 @@ sha256 을 매니페스트와 대조한다. 의존 폐포까지 보는 이유는
 
     python regen_gate.py            # 빠른 검사 (해시 대조만, DB 불필요)
     python regen_gate.py --rerun    # 실제 재실행 + byte-diff (DB 필요, 느림)
+                                   #   🟢 **검사 전용** — 결과가 다르면 산출물을 원상복구한다.
+                                   #      동결 항목(FROZEN_STALE)은 아예 건너뛴다.
     python regen_gate.py --update   # 산출물을 재생성한 «뒤» 매니페스트 갱신
 
 재현 가능성 전제: 모든 산출 스크립트가 결정적이거나 시드가 고정돼 있다
@@ -43,6 +45,21 @@ sha256 을 매니페스트와 대조한다. 의존 폐포까지 보는 이유는
 조용히 낡는다.*** 그래서 매니페스트에 **DB 지문**(대상 테이블 슬라이스의 행수·종목수·max(date))을
 함께 박고 `check()` 가 대조한다. DB 에 못 붙으면 **지문 검사만 건너뛰고 그 사실을 인쇄**한다
 (clean checkout·CI 에서도 해시 검사는 돌아야 하므로).
+
+## 🔴 C-19 (2026-08-30 · `PREREG_POST6.md` §5-3) — 지문 자신이 「죽은 가드」였다
+
+1번 슬라이스가 `daily_prices[2026-04-01..2026-08-14]` 로 **상한 고정**이었다.
+⚠️ **실측으로 정정한다** — 사전등록 §5-3 표는 *「`count`·`max(date)` 가 안 움직인다」*고 적었지만
+2026-08-30 실측은 `[237,992 → 238,192, 2,785, '2026-08-14']` 였다: ***창 «안» 백필은 `count` 로
+잡힌다.*** 못 잡는 것은 **`max(date)` 축 = 「스냅샷이 08-14 너머로 전진했다」**이다
+(실제 DB 는 08-28 까지 가 있었는데 이 슬라이스는 계속 `'2026-08-14'` 를 보고했다).
+나머지 4개 슬라이스는 상한이 없어 `max(date)` 로 이동을 잡는다. 상한을 없앴다
+⇒ `daily_prices[>=2026-04-01]` = `[263,096, 2,791, '2026-08-28']`.
+🔑 *가드를 시험하지 않으면 그것도 장식이다* — 지문 한 글자를 흔들면 `check()` 가 실패하는지를
+`tests/test_s5_fixes.py` 가 단언한다.
+
+또 매니페스트의 `artifacts` 가 17개인데 `PAIRS` 는 21개였다(= `--update` 가 post4 이후 안 돌았다).
+post5 산출물 6종을 `PAIRS` 에, 문서 10종을 `MANUAL_DOCS` 에 등재했다.
 """
 from __future__ import annotations
 
@@ -80,6 +97,40 @@ PAIRS = {
     "RESULTS_EXIT_V2_POST4_NUMBERS.md": "run_exit_v2_post4.py",
     "RESULTS_SELECTION_POST4_NUMBERS.md": "run_selection_post4.py",
     "RESULTS_RECONSTRUCT_POST4_NUMBERS.md": "run_reconstruct_post4.py",
+    # 🔴 C-19 (`PREREG_POST6.md` §5-3-2) — post5 산출물 6종이 어디에도 등재돼 있지 않았다
+    #    (`--update` 가 post4 이후 안 돌았다). 등재 없이는 게이트가 그 파일들을 «안 본다».
+    "RESULTS_D1_OOS_POST5_NUMBERS.md": "run_d1_oos_post5.py",
+    "RESULTS_EXIT_V2_POST5_NUMBERS.md": "run_exit_v2_post5.py",
+    "RESULTS_SELECTION_POST5_NUMBERS.md": "run_selection_post5.py",
+    "RESULTS_REGDAY_POST5_NUMBERS.md": "run_regday_post5.py",
+    "RESULTS_RECONSTRUCT_POST5_NUMBERS.md": "run_reconstruct_post5.py",
+    "RESULTS_LADDER_TRANCHE_NUMBERS.md": "run_ladder_tranche.py",
+    # 🔴 §5 작업이 «새로» 만든 기계 생성 산출물 — 등재하지 않으면 §5-3 이 지적한 결함
+    #    (「post5 산출물이 어디에도 없다」)을 그 자리에서 다시 만드는 것이다.
+    "RESULTS_RECONSTRUCT_POST4_EXACT_NUMBERS.md": "run_reconstruct_post4_exact.py",   # C-22
+    "RESULTS_S5_SIDEBYSIDE.md": "run_s5_sidebyside.py",                               # C-17·18·20·21
+}
+
+# 🔴 §5(C-17·C-20) 정정으로 «스크립트는 바뀌었으나 산출물은 재생성하지 않은» 것들.
+#    `PREREG_POST6.md` §5-1-5(*「과거 산출물을 다시 재지 않는다」*) · §5-4-2(*「과거 발표값을
+#    조용히 갱신하지 않는다」*)가 재생성을 금지한다. ⇒ 게이트가 이 사실을 «조용히» 삼키지 않도록
+#    매니페스트에 사유를 박고 check() 가 매번 인쇄한다. 정정 반영값은 나란히 인쇄한 별도 산출물에 있다.
+#    🔑 여기 등재해도 «이 사유로 기록된 판본»에서 또 바뀌면 그때는 정상 FAIL 이다(deps 대조는 계속).
+FROZEN_STALE = {
+    "RESULTS_SELECTION.md":
+        "C-17(f9 NaN) — 정정 전 판본의 값. 재측정 금지(§5-1-5) · 전/후는 RESULTS_S5_SIDEBYSIDE.md",
+    "RESULTS_SELECTION_POST4_NUMBERS.md":
+        "C-17(f9 NaN)+med NaN 안전 — 재측정 금지(§5-1-5) · 전/후는 RESULTS_S5_SIDEBYSIDE.md",
+    "RESULTS_SELECTION_POST5_NUMBERS.md":
+        "C-17(f9 NaN) — post5 판정(`SEL-S3`=47.9 ✅)은 그대로 둔다(§5-1-5)",
+    "RESULTS_D1_OOS_NUMBERS.md":
+        "C-20(중앙값 관용구) — post4 `m` 중앙 2 는 분모 5(홀수)라 값 불변(§5-4-2)",
+    "RESULTS_GAPFILL.md":
+        "C-20(중앙값 관용구) — 옛 산출물. 재생성 금지(§5-4-2)",
+    "RESULTS_MINUTE_ENTRY.md":
+        "C-20(중앙값 관용구) — 옛 산출물. 재생성 금지(§5-4-2)",
+    "RESULTS_RECONSTRUCT_POST4_NUMBERS.md":
+        "C-20(중앙값 관용구) — 발표값 유지. 정확법 재계산은 RESULTS_RECONSTRUCT_POST4_EXACT_NUMBERS.md(C-22)",
 }
 
 # 스크립트가 만들지 않는 문서 — 사람이 쓴 것. 게이트 대상 아님을 명시해 둔다.
@@ -92,15 +143,25 @@ MANUAL_DOCS = [
     # 2026-08-22 4번째 글 계열 — 산문은 사람이 쓴다. 숫자는 RESULTS_D1_OOS_NUMBERS.md 가 게이트 대상.
     "INTAKE_2026-08-22_post4.md", "RESULTS_D1_OOS.md", "LABELS_2026-08-22_post4.md", "RESULTS_EXIT_V2_POST4.md", "RESULTS_SELECTION_POST4.md", "RESULTS_RECONSTRUCT_POST4.md",
     "PREREG_D1_OOS.md", "PREREG_LADDER_TRANCHE.md", "PREREG_REGDAY_MEASURE.md",
+    # 🔴 C-19 (`PREREG_POST6.md` §5-3-3) — 2026-08-29 5번째 글 계열 + 6번째 글 사전등록.
+    "INTAKE_2026-08-29_post5.md", "LABELS_2026-08-29_post5.md", "PREDECISION_2026-08-29_post5.md",
+    "RESULTS_D1_OOS_POST5.md", "RESULTS_EXIT_V2_POST5.md", "RESULTS_SELECTION_POST5.md",
+    "RESULTS_REGDAY_POST5.md", "RESULTS_RECONSTRUCT_POST5.md", "RESULTS_LADDER_TRANCHE.md",
+    "PREREG_POST6.md",
 ]
 
 
 # 🔴 DB 지문 — 이 디렉토리의 스크립트가 실제로 읽는 슬라이스만. 전 테이블 count(*) 는
 #    `minute_candles`(4,900만 행)에서 느리므로 **범위를 좁혀 정확하게** 잰다.
+#
+# 🔴 C-19 (`PREREG_POST6.md` §5-3-1) — 1번 슬라이스의 **상한이 `2026-08-14` 로 고정**돼 있었다.
+#    08-15 이후 행이 창 «밖»이라 스냅샷이 움직여도 `count`·`max(date)` 가 안 움직인다 ⇒ 그 축만
+#    못 재는 「죽은 가드」였다. 하필 이 디렉토리가 «가장 많이 읽는 표»가 `daily_prices` 다.
+#    ⇒ 상한을 없앤다. 스냅샷이 움직이면 **반드시** 지문이 움직인다.
 FINGERPRINT_SQL = {
-    "daily_prices[2026-04-01..2026-08-14]":
+    "daily_prices[>=2026-04-01]":
         "SELECT count(*), count(DISTINCT stock_code), max(date) FROM daily_prices "
-        "WHERE date BETWEEN '2026-04-01' AND '2026-08-14'",
+        "WHERE date >= '2026-04-01'",
     "minute_candles[>=20260701]":
         "SELECT count(*), count(DISTINCT stock_code), max(date) FROM minute_candles "
         "WHERE date >= '20260701'",
@@ -158,15 +219,45 @@ def local_deps(script: str, seen: set[str] | None = None) -> set[str]:
     return seen
 
 
-def build(fp=None) -> dict:
+def build(fp=None, old=None) -> dict:
+    """`old` 를 주면(= `--update`) **재기준선 시점에 이미 어긋나 있던 항목**을 자동으로 기록한다.
+
+    🔴 이게 없으면 `--update` 한 번이 그동안 쌓인 「낡았다」 신호를 **조용히 전부 지운다.**
+       2026-08-30 실측: `--update` 직전 `PAIRS` 21개 중 **일치하는 항목이 0개**였다
+       (13개는 의존 모듈이 바뀌었고 4개는 손으로 편집됐고 4개는 아예 미등재).
+       ⇒ 흡수하되 **흡수했다는 사실을 매니페스트가 이고 간다.**"""
     entries = {}
     for out, script in sorted(PAIRS.items()):
         deps = sorted(local_deps(script))
-        entries[out] = {
+        e = {
             "script": script,
             "deps": {d: sha(BASE / d) for d in deps},
             "results_sha256": sha(BASE / out) if (BASE / out).exists() else None,
         }
+        if out in FROZEN_STALE:
+            # 🔴 이 항목의 `deps` 는 「이 산출물을 만든 판본」이 **아니다.** 사유를 매니페스트에 박는다.
+            e["frozen_reason"] = FROZEN_STALE[out]
+        if old is not None:
+            o = old.get(out)
+            if o is None:
+                e["absorbed_stale"] = {
+                    "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. "
+                           "재현 확인(`--rerun`)을 거치지 않았다.",
+                    "deps_changed": [], "results_changed": False}
+            else:
+                dc = [d for d, h in e["deps"].items() if o["deps"].get(d) != h]
+                rc = o.get("results_sha256") != e["results_sha256"]
+                if o.get("absorbed_stale"):
+                    # 🔴 재생성만으로는 «안» 지운다 — 지우는 유일한 길은 `--rerun` 성공이다.
+                    #    (스크립트와 산출물을 같이 바꾸면 「고치고 재생성했다」와 구별이 안 된다.)
+                    e["absorbed_stale"] = o["absorbed_stale"]
+                elif dc or rc:
+                    e["absorbed_stale"] = {
+                        "why": "재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다"
+                               "(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다.",
+                        "deps_changed": dc, "results_changed": rc,
+                        "prev_results_sha256": o.get("results_sha256")}
+        entries[out] = e
     return {"manual_docs": MANUAL_DOCS, "db_fingerprint": fp, "artifacts": entries}
 
 
@@ -177,7 +268,8 @@ def check() -> int:
     man = json.loads(MANIFEST.read_text(encoding="utf-8"))
     old = man["artifacts"]
     new = build()["artifacts"]
-    fails = []
+    fails: list[str] = []
+    notes: list[str] = []
 
     # ── DB 지문 대조 (해시가 못 잡는 축) ────────────────────────────────────
     fp_old = man.get("db_fingerprint")
@@ -214,6 +306,16 @@ def check() -> int:
             fails.append(
                 f"{out}: 🔴 산출물이 손으로 편집됐다(스크립트는 그대로) "
                 f"⇒ 편집분을 스크립트에 넣고 재생성할 것")
+        elif out in FROZEN_STALE or o.get("frozen_reason") or o.get("absorbed_stale"):
+            notes.append(out)
+            frz = o.get("frozen_reason") or FROZEN_STALE.get(out)
+            ab = o.get("absorbed_stale")
+            print(f"  🟡 {out}  ({n['script']} + deps {len(n['deps'])}개)")
+            if frz:
+                print(f"       🔴 정정 미반영(동결): {frz}")
+            if ab:
+                print(f"       🔴 흡수: {ab['why']}"
+                      + (f" · 바뀐 모듈 {ab['deps_changed']}" if ab.get("deps_changed") else ""))
         else:
             print(f"  ✅ {out}  ({n['script']} + deps {len(n['deps'])}개)")
     if fails:
@@ -223,13 +325,38 @@ def check() -> int:
     print("\n🟢 재현 게이트 PASS — 모든 산출물이 현재 스크립트 판본과 일치한다.")
     print("⚠️ 단 이건 「그 스크립트로 만들었다」일 뿐 「숫자가 옳다」가 아니다. "
           "숫자 확인은 `--rerun`.")
+    if notes:
+        print(f"🟡 그중 **{len(notes)}건은 재생성되지 않은 채 기준선에 들어간 항목**이다 "
+              "— 위 사유를 볼 것. 🔑 ***그 항목들에 대해서는 이 PASS 가 "
+              "「이 스크립트로 만들었다」의 증거가 아니다.***")
     return 0
+
+
+def clear_absorbed(verified: list) -> list:
+    """`--rerun` 이 byte 단위로 확인한 항목의 `absorbed_stale` 을 지운다.
+
+    🔑 **재현 확인이 「흡수」를 지우는 «유일한» 길이다.** 재생성만으로는 안 지운다 —
+       스크립트와 산출물을 같이 바꾸면 「고치고 재생성했다」와 「낡은 채 흡수했다」가 구별되지 않는다."""
+    if not verified or not MANIFEST.exists():
+        return []
+    man = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    cleared = [k for k in verified if man["artifacts"].get(k, {}).pop("absorbed_stale", None)]
+    if cleared:
+        MANIFEST.write_text(json.dumps(man, ensure_ascii=False, indent=2) + "\n",
+                            encoding="utf-8")
+    return cleared
 
 
 def rerun() -> int:
     """실제 재실행 + byte-diff. 결정적/시드고정이므로 동일해야 한다."""
     fails = []
+    verified = []
     for out, script in sorted(PAIRS.items()):
+        if out in FROZEN_STALE:
+            # 🔴 `--rerun` 은 스크립트를 돌려 **산출물을 덮어쓴다.** 동결 항목은 재측정 금지
+            #    (`PREREG_POST6.md` §5-1-5·§5-4-2)이므로 아예 건너뛴다.
+            print(f"  ⏭ {out}  재실행 건너뜀 — 정정 미반영(동결): {FROZEN_STALE[out]}")
+            continue
         before = (BASE / out).read_bytes() if (BASE / out).exists() else None
         r = subprocess.run([sys.executable, script], cwd=BASE,
                            capture_output=True, text=True, encoding="utf-8",
@@ -241,9 +368,18 @@ def rerun() -> int:
         if before is None:
             fails.append(f"{out}: 산출물이 없었다 — 새로 생성됨")
         elif before != after:
-            fails.append(f"{out}: 🔴 재실행 결과가 다르다 — 커밋된 값이 낡았거나 비결정적")
+            # 🔴 **되돌린다.** `--rerun` 은 «검사»이지 갱신이 아니다 — 스크립트가 산출물을 덮어쓰므로
+            #    되돌리지 않으면 이 명령 한 번이 발표된 post4·post5 판정 숫자를 «조용히» 갈아치운다
+            #    (`PREREG_POST6.md` §5-1-5·§5-4-2 금지). 갱신은 사람이 스크립트를 직접 돌려서 한다.
+            (BASE / out).write_bytes(before)
+            fails.append(f"{out}: 🔴 재실행 결과가 다르다 — 커밋된 값이 낡았거나 비결정적 "
+                         f"(**파일은 원상복구했다**)")
         else:
             print(f"  ✅ {out}  재현 일치")
+            verified.append(out)
+    cleared = clear_absorbed(verified)
+    if cleared:
+        print(f"  🟢 재현 확인으로 「흡수」 기록을 지운 항목 {len(cleared)}건: {cleared}")
     if fails:
         print("\n".join("  " + f for f in fails))
         print(f"\n🔴 재현(--rerun) FAIL — {len(fails)}건")
@@ -259,14 +395,23 @@ def main() -> int:
     a = ap.parse_args()
     if a.update:
         fp, why = db_fingerprint()
+        prev = json.loads(MANIFEST.read_text(encoding="utf-8")) if MANIFEST.exists() else {}
         if fp is None:
             # 🔴 DB 에 못 붙었다고 기준선을 «지우면» 안 된다 — 옛 지문을 그대로 물려준다.
             print(f"  ⚠️ DB 지문을 못 읽었다 ({why}) — 기존 지문을 그대로 유지한다.")
-            if MANIFEST.exists():
-                fp = json.loads(MANIFEST.read_text(encoding="utf-8")).get("db_fingerprint")
-        MANIFEST.write_text(json.dumps(build(fp), ensure_ascii=False, indent=2) + "\n",
+            fp = prev.get("db_fingerprint")
+        man = build(fp, old=prev.get("artifacts", {}))
+        MANIFEST.write_text(json.dumps(man, ensure_ascii=False, indent=2) + "\n",
                             encoding="utf-8")
+        ab = {k: v["absorbed_stale"] for k, v in man["artifacts"].items() if "absorbed_stale" in v}
         print(f"[written] {MANIFEST.name}")
+        if ab:
+            print(f"🟡 **재생성 없이 흡수한 항목 {len(ab)}건** — 매니페스트에 사유가 박혔다:")
+            for k, v in sorted(ab.items()):
+                print(f"   · {k}: {v['why']}"
+                      + (f" · 바뀐 모듈 {v['deps_changed']}" if v.get("deps_changed") else ""))
+            print("🔑 ***`--update` 한 번이 「낡았다」 신호를 «조용히» 지우면 안 된다.*** "
+                  "위 항목은 `--rerun` 으로 확인되기 전까지 증거가 아니다.")
         return 0
     if a.rerun:
         return rerun()

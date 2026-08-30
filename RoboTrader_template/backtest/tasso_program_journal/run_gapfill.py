@@ -11,7 +11,9 @@
 from __future__ import annotations
 
 import random
+import statistics
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +35,28 @@ EARLY_END = "093000"      # G1 — 장 시작 30분
 def say(s=""):
     print(s)
     OUT.append(s)
+
+
+# 🔴 C-20 (`PREREG_POST6.md` §5-4) — `sorted(x)[len(x)//2]` 는 짝수 `n` 에서 «상위 중앙값»이다.
+#    `RESULTS_D1_OOS_POST5.md` §3 이 같은 관용구를 정정했고, 정정은 «파일»이 아니라 «관용구» 단위다.
+#    타임스탬프는 평균을 낼 수 없으니 초로 접어 `statistics.median` 을 쓰고 되돌린다
+#    (짝수 `n` 이면 두 가운데 시각의 **평균 시각**).
+_STAMP_EPOCH = datetime(2026, 1, 1)
+
+
+def _stamp_sec(st):
+    d, t = str(st[0]), str(st[1]).zfill(6)
+    return (datetime.strptime(d + t, "%Y%m%d%H%M%S") - _STAMP_EPOCH).total_seconds()
+
+
+def med_stamp(stamps):
+    """(YYYYMMDD, HHMMSS) 목록의 중앙 시각. 홀수면 실제 표본, 짝수면 두 가운데의 평균.
+
+    ⚠️ 짝수 `n` 에서 두 가운데가 «다른 날»이면 평균 시각은 **장중이 아닌 시각**(밤·휴장)일 수 있다.
+       그건 계산 오류가 아니라 「중앙값이 표본 사이에 있다」는 뜻이다 — 값 그대로 인쇄한다."""
+    dt = _STAMP_EPOCH + timedelta(seconds=round(statistics.median(
+        [_stamp_sec(s) for s in stamps])))
+    return (dt.strftime("%Y%m%d"), dt.strftime("%H%M%S"))
 
 
 def legs_prices(P, legs):
@@ -133,8 +157,8 @@ def main() -> int:
             continue
 
         n_ok += 1
-        fmin = sorted(firsts_min)[len(firsts_min) // 2]
-        fmax = sorted(firsts_max)[len(firsts_max) // 2]
+        fmin = med_stamp(firsts_min)      # 🔴 C-20
+        fmax = med_stamp(firsts_max)      # 🔴 C-20
         op = float(np.nanmedian(opens))
         e_min = fmin[1] <= EARLY_END
         e_max = fmax[1] <= EARLY_END

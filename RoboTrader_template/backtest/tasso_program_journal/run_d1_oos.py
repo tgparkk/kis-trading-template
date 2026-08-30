@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import statistics
 import sys
 from pathlib import Path
 
@@ -143,7 +144,11 @@ def main():
         m, tot = universe_m(cur, mdate, sr)
         ms.append(m)
         say(f"| {name} | {mdate} | **{m}** | {tot} |")
-    med = sorted(ms)[len(ms) // 2] if ms else None
+    # 🔴 C-20 (`PREREG_POST6.md` §5-4) — `sorted(x)[len(x)//2]` 는 짝수 `n` 에서 «상위 중앙값»이다.
+    #    `RESULTS_D1_OOS_POST5.md` §3 이 같은 관용구를 정정했다. 정정은 «파일»이 아니라 «관용구» 단위.
+    #    🟢 post4 발표값 `m` 중앙 **2** 는 분모가 5(홀수)라 **바뀌지 않는다**
+    #       — 「결함이 없었다」가 아니라 **「결함이 아직 발화하지 않았다」**이다.
+    med = statistics.median(ms) if ms else None
     say()
     say(f"- `m` 중앙값 **{med}** (문턱 {N2_DEGRADE}) ⇒ "
         f"**{'🔴 판별력 없음으로 강등' if (med or 0) >= N2_DEGRADE else '✅ 판별력 있음'}**")

@@ -12,6 +12,12 @@
   G-C  원문의 모든 퍼센트 수치 == ledger_legs 수치 (다중집합 양방향)
   G-D  ledger_trades.n_legs == ledger_legs 실제 레그 수 (건별)
 
+🔴 **P6-G-E (신설 · C-21 · `PREREG_POST6.md` §5-5-3)** — `fill_level` 축 분리 규약:
+  `fill_n == 1` **⟺** `fill_level == first_only` · `fill_level ∈ {first_only, partial, full, unknown}`
+  **위반 1건이면 게이트 실패.** backfill(`backfill_fill_n.py`) «후»의 **전 행**에 적용한다 —
+  post6 이후 행에만 적용하는 예외를 두지 않는다(§5-5-3: 현재 50행 시뮬레이션에서 위반 0이라
+  예외가 필요 없다). 🔑 *한 컬럼에 두 축이 섞이면 「몇 건인가」의 답이 판독기마다 갈린다.*
+
 번호 없는 산문 항목(EXTRA_PROSE_ITEMS)의 처리 — 두 전례를 갈라 쓴다:
   · 가온칩스(07-31) = 「통계기반 자동매매」 표지행이 **있는** 무번호 항목 ⇒ 파서가 잡고,
     G-A 는 원본대로 1번 결번만 면제한다(원본 `- {1}`).
@@ -45,6 +51,9 @@ EXTRA_PROSE_ITEMS = {
     "224385784257": [("솔트룩스", 7), ("빛과전자", 8)],
     "224393392105": [("SK아이이테크놀로지", 9)],
 }
+
+# P6-G-E — `fill_level` 이 가질 수 있는 «범주» 전부 (차수는 `fill_n` 으로 나갔다)
+FILL_CATS = ("first_only", "partial", "full", "unknown")
 
 failures: list = []
 
@@ -101,6 +110,32 @@ def parse_raw(override):
             rows.append((item_no, stock, pcts))
         out[log_no] = rows
     return out
+
+
+def gate_e(trades):
+    """P6-G-E — `fill_n == 1` ⟺ `fill_level == first_only` + `fill_level` 값 집합.
+
+    반환은 (fill_level, fill_n) 분포. 위반은 전역 `failures` 에 쌓는다."""
+    if not trades:
+        failures.append("[P6-G-E] trades 가 비었다")
+        return Counter()
+    if "fill_n" not in trades[0]:
+        failures.append("[P6-G-E] `fill_n` 컬럼이 없다 — backfill 미적용 "
+                        "(`python backfill_fill_n.py` · PREREG_POST6.md §5-5-2)")
+        return Counter()
+    for t in trades:
+        lv = (t.get("fill_level") or "").strip()
+        n = (t.get("fill_n") or "").strip()
+        key = "%s item %s %s" % (t["post_log_no"], t["item_no"], t["stock_name"])
+        if lv not in FILL_CATS:
+            failures.append("[P6-G-E] %s: fill_level=%r 이 범주 %s 밖 (정수 차수는 fill_n 으로)"
+                            % (key, lv, list(FILL_CATS)))
+        if n and not n.isdigit():
+            failures.append("[P6-G-E] %s: fill_n=%r 이 정수가 아니다" % (key, n))
+        if (n == "1") != (lv == "first_only"):
+            failures.append("[P6-G-E] %s: `fill_n==1 ⟺ fill_level==first_only` 위반 "
+                            "(fill_level=%r · fill_n=%r)" % (key, lv, n))
+    return Counter((t["fill_level"], t.get("fill_n") or "") for t in trades)
 
 
 def main(argv):
@@ -172,6 +207,15 @@ def main(argv):
     print("손실 레그 %d / 익절 레그 %d" % (loss, len(legs) - loss))
     print("미완결(~) 레그 %d" % sum(1 for l in legs if l["leg_open_ended"] == "1"))
 
+    # ---- P6-G-E: fill_level 축 분리 규약 (C-21) ----------------------------
+    dist = gate_e(trades)
+
+    print("")
+    print("=== P6-G-E `fill_level`/`fill_n` 축 분리 (C-21) ===")
+    for (lv, n), c in sorted(dist.items()):
+        print("  %-12s fill_n=%-6s %d건" % (lv, n or "(빈칸)", c))
+    print("  합 %d건 · 규약: fill_n==1 ⟺ fill_level==first_only" % sum(dist.values()))
+
     print("")
     print("=== G-A 저자 항목번호 결번 게이트 (글별) ===")
     for log_no, (n_total, got, missing, dup) in ga.items():
@@ -189,7 +233,7 @@ def main(argv):
             print(" ", f)
         return 1
     print("")
-    print("모든 게이트 통과 (G-A/B/C/D)")
+    print("모든 게이트 통과 (G-A/B/C/D + P6-G-E)")
     return 0
 
 

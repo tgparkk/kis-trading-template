@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import statistics
 import sys
 from pathlib import Path
 
@@ -96,8 +97,9 @@ def main():
     widths = [(1 - min(f) / h) - (1 - max(f) / h) for *_, h, _l, f in
               [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]) for r in results] if f]
     if widths:
+        # 🔴 C-20 (`PREREG_POST6.md` §5-4) — 짝수 `n` 에서 «상위 중앙값»이던 관용구를 정정.
         say(f"- `b₁` 구간 폭: 최소 **{100*min(widths):.2f}%p** · 중앙 "
-            f"**{100*sorted(widths)[len(widths)//2]:.2f}%p** · 최대 **{100*max(widths):.2f}%p**")
+            f"**{100*statistics.median(widths):.2f}%p** · 최대 **{100*max(widths):.2f}%p**")
     say("- 직전 표본(`RESULTS_RECONSTRUCT.md`)의 솔트룩스는 `b₁ ∈ [−0.9%, +2.47%]` = 폭 **3.37%p** 였다"
         " — 그건 **1차 체결 건**이라 C1 이 살아 있었다.")
 
@@ -165,12 +167,12 @@ def main():
             f"{smin:,.0f}~{smax:,.0f} | **{hlo:.3f}~{hhi:.3f}** | {hhi-hlo:.3f} | "
             f"{'✅' if inside else '❌'} (중점 {(hlo+hhi)/2:.3f}) |")
     if hmids:
-        m = sorted(hmids)[len(hmids) // 2] if len(hmids) % 2 else \
-            (sorted(hmids)[len(hmids)//2-1] + sorted(hmids)[len(hmids)//2]) / 2
+        m = statistics.median(hmids)     # (짝수 처리는 원래 있었다 — 관용구만 통일)
         say()
         say(f"- **중점의 중앙값 {m:.3f}** ⇒ D1 문턱 0.50~0.70 **{'✅ 안' if 0.50 <= m <= 0.70 else '❌ 밖'}**")
+        # 🔴 C-20 — `hwidths` 쪽은 짝수 처리가 «없었다».
         say(f"- 🔴 **구간 폭: 최소 {min(hwidths):.3f} · 중앙 "
-            f"{sorted(hwidths)[len(hwidths)//2]:.3f} · 최대 {max(hwidths):.3f}** — "
+            f"{statistics.median(hwidths):.3f} · 최대 {max(hwidths):.3f}** — "
             "폭이 0.20 을 넘으면 「0.50~0.70 에 든다」는 사실상 아무 값이나 든다는 뜻이다.")
         wide = sum(1 for w in hwidths if w > 0.20)
         say(f"- ⇒ 폭 > 0.20 인 건이 **{wide}/{len(hwidths)}** ⇒ "
