@@ -34,33 +34,37 @@
     "RESULTS_REGDAY_POST5.md",
     "RESULTS_RECONSTRUCT_POST5.md",
     "RESULTS_LADDER_TRANCHE.md",
-    "PREREG_POST6.md"
+    "PREREG_POST6.md",
+    "PREREG_RANKING.md",
+    "RESULTS_RANKING_TRAIN.md",
+    "FREEZE_RANKING_2026-08-31.md",
+    "RESULTS_RANKING_POST6.md"
   ],
   "db_fingerprint": {
     "daily_prices[>=2026-04-01]": [
-      263096,
+      265862,
       2791,
-      "2026-08-28"
+      "2026-08-31"
     ],
     "minute_candles[>=20260701]": [
-      5230585,
-      739,
-      "20260828"
+      5342790,
+      749,
+      "20260831"
     ],
     "investor_trend_daily": [
-      96609,
+      110413,
       2763,
-      "2026-08-24"
+      "2026-08-31"
     ],
     "short_sale_daily": [
-      121398,
+      135202,
       2763,
-      "2026-08-24"
+      "2026-08-31"
     ],
     "program_trade_daily": [
-      96609,
+      110413,
       2763,
-      "2026-08-24"
+      "2026-08-31"
     ]
   },
   "artifacts": {
@@ -316,6 +320,31 @@
         "results_changed": true,
         "prev_results_sha256": "e493cb7b27627f4c62cf6a247401313d73b78b1104f44fe166e245434454e749"
       }
+    },
+    "RESULTS_RANKING_POST6_NUMBERS.md": {
+      "script": "run_ranking.py",
+      "deps": {
+        "run_ranking.py": "4ee5e67e20d0d41067670be07f37d5908e9dfe4b464bd27eafeba7c93f8b3a68",
+        "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
+        "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
+        "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
+      },
+      "results_sha256": null,
+      "absorbed_stale": {
+        "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
+        "deps_changed": [],
+        "results_changed": false
+      }
+    },
+    "RESULTS_RANKING_TRAIN_NUMBERS.md": {
+      "script": "run_ranking.py",
+      "deps": {
+        "run_ranking.py": "4ee5e67e20d0d41067670be07f37d5908e9dfe4b464bd27eafeba7c93f8b3a68",
+        "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
+        "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
+        "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
+      },
+      "results_sha256": "e2670e7e3c16dbab6938126a5944d0c54740e02ff40dd6f028c9b30610d963ce"
     },
     "RESULTS_RECONSTRUCT.md": {
       "script": "reconstruct_prices.py",

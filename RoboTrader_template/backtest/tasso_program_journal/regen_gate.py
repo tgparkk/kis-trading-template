@@ -109,6 +109,31 @@ PAIRS = {
     #    (「post5 산출물이 어디에도 없다」)을 그 자리에서 다시 만드는 것이다.
     "RESULTS_RECONSTRUCT_POST4_EXACT_NUMBERS.md": "run_reconstruct_post4_exact.py",   # C-22
     "RESULTS_S5_SIDEBYSIDE.md": "run_s5_sidebyside.py",                               # C-17·18·20·21
+    # 🔴 `RNK-` 후보 랭킹 축 (`PREREG_RANKING.md` §5-7 이 «문언으로» 요구한 등재).
+    #    두 산출물이 같은 스크립트에서 나온다 — `--stage train` / `--stage post6`.
+    "RESULTS_RANKING_TRAIN_NUMBERS.md": "run_ranking.py",
+    "RESULTS_RANKING_POST6_NUMBERS.md": "run_ranking.py",
+}
+
+# 🔴 «아직 만들어지지 않은» 산출물 — 등재는 §5-7 이 요구하는데, 그 파일은 그 글이 와야 생긴다.
+#    ⇒ check() 가 「산출물이 없다」로 FAIL 하는 대신 **🟡 미생성(예정)** 으로 인쇄한다.
+#    🔑 이건 게이트를 «약화»시키는 게 아니다 — 반대다. 등재를 미루면 그 파일은 게이트에 «안 보이고»
+#      (§5-3 이 지적한 「post5 산출물이 하나도 등재돼 있지 않다」가 그 실패다), 등재만 하면
+#      게이트가 «상시 FAIL» 이라 아무도 안 본다. 두 실패를 다 피하는 자리가 여기다.
+#    ⚠️ 파일이 «생기면» 이 목록에서 빼야 한다 — 남겨 두면 그때부터 진짜 가드가 죽는다.
+#       (check() 가 파일이 존재하는데 PENDING 인 항목을 발견하면 FAIL 시킨다.)
+PENDING = {
+    "RESULTS_RANKING_POST6_NUMBERS.md":
+        "6번째 글은 아직 존재하지 않는다 — `PREREG_RANKING.md` §0-3 의 5단계(`fetch_post.py`)가 "
+        "4단계(동결 커밋) «뒤»에 온다. 파일이 생기면 이 항목을 PENDING 에서 뺄 것.",
+}
+
+# 🔴 `MANUAL_DOCS` 쪽의 같은 것 — 등재는 §5-7 이 요구하는데 파일은 그 글이 와야 생긴다.
+#    ⚠️ `FREEZE_RANKING_<날짜>.md` 는 여기 넣지 «않는다» — 그건 4단계에서 «지금» 만드는 파일이라
+#      없으면 진짜 FAIL 이어야 한다(이름 오타를 잡는 것이 G-1 의 목적이다).
+PENDING_DOCS = {
+    "RESULTS_RANKING_POST6.md":
+        "6번째 글의 산문 — §0-3 6단계 산출물. 그 글이 와야 생긴다. 생기면 여기서 뺄 것.",
 }
 
 # 🔴 §5(C-17·C-20) 정정으로 «스크립트는 바뀌었으나 산출물은 재생성하지 않은» 것들.
@@ -148,6 +173,12 @@ MANUAL_DOCS = [
     "RESULTS_D1_OOS_POST5.md", "RESULTS_EXIT_V2_POST5.md", "RESULTS_SELECTION_POST5.md",
     "RESULTS_REGDAY_POST5.md", "RESULTS_RECONSTRUCT_POST5.md", "RESULTS_LADDER_TRANCHE.md",
     "PREREG_POST6.md",
+    # 🔴 `RNK-` 후보 랭킹 축 (`PREREG_RANKING.md` §5-7). 산문은 사람이 쓴다 —
+    #    숫자는 RESULTS_RANKING_*_NUMBERS.md 가 PAIRS 대상이다.
+    #    ⚠️ `FREEZE_RANKING_<날짜>.md` 와 `RESULTS_RANKING_POST6.md` 는 아직 «없다»
+    #      (§0-3 의 4·6단계 산출물) — MANUAL_DOCS 는 존재를 검사하지 않으므로 미리 적어 둔다.
+    "PREREG_RANKING.md", "RESULTS_RANKING_TRAIN.md",
+    "FREEZE_RANKING_2026-08-31.md", "RESULTS_RANKING_POST6.md",
 ]
 
 
@@ -295,7 +326,17 @@ def check() -> int:
             fails.append(f"{out}: 매니페스트에 없음")
             continue
         if not (BASE / out).exists():
+            if out in PENDING:
+                notes.append(out)
+                print(f"  🟡 {out}  ({n['script']}) — **미생성(예정)**")
+                print(f"       🔴 {PENDING[out]}")
+                continue
             fails.append(f"{out}: 산출물이 없다")
+            continue
+        if out in PENDING:
+            # 🔴 파일이 «생겼는데» PENDING 에 남아 있으면 그때부터 이 항목은 진짜 죽은 가드다.
+            fails.append(f"{out}: 🔴 **산출물이 생겼는데 `PENDING` 에 남아 있다** "
+                         f"⇒ `regen_gate.py` 의 `PENDING` 에서 뺄 것")
             continue
         stale = [d for d, h in n["deps"].items() if o["deps"].get(d) != h]
         if stale:
@@ -318,6 +359,31 @@ def check() -> int:
                       + (f" · 바뀐 모듈 {ab['deps_changed']}" if ab.get("deps_changed") else ""))
         else:
             print(f"  ✅ {out}  ({n['script']} + deps {len(n['deps'])}개)")
+    # ── G-1: `MANUAL_DOCS` 존재 검사 ────────────────────────────────────────
+    # 🔴 여태 `MANUAL_DOCS` 는 매니페스트에 «적히기만» 하고 아무도 안 봤다. 파일명을 틀리게 적거나
+    #    (`FREEZE_RANKING_<날짜>.md` 처럼 날짜가 들어가는 이름이 특히 위험하다) 문서를 지워도
+    #    게이트가 «조용히» 통과한다 ⇒ 「등재했다」가 「그 파일이 있다」를 뜻하지 않았다.
+    #    🔑 이건 `PREREG_POST6.md` §5-3 이 잡은 「어디에도 등재돼 있지 않다」의 «쌍둥이» 결함이다.
+    missing_docs = [d for d in MANUAL_DOCS if not (BASE / d).exists()]
+    for d in sorted(set(PENDING_DOCS) & set(MANUAL_DOCS)):
+        if (BASE / d).exists():
+            # 🔴 PAIRS 쪽 PENDING 과 같은 반전 — 생겼는데 아직 예정으로 적혀 있으면 그때부터 죽은 가드다.
+            fails.append(f"MANUAL_DOCS: 🔴 **`{d}` 가 생겼는데 `PENDING_DOCS` 에 남아 있다** "
+                         f"⇒ `PENDING_DOCS` 에서 뺄 것")
+    for d in missing_docs:
+        if d in PENDING_DOCS:
+            notes.append(d)
+            print(f"  🟡 MANUAL_DOCS `{d}` — **미생성(예정)**")
+            print(f"       🔴 {PENDING_DOCS[d]}")
+            continue
+        fails.append(f"MANUAL_DOCS: 🔴 **`{d}` 가 없다** — 등재된 이름과 실제 파일명이 "
+                     f"어긋났거나 문서가 삭제됐다")
+    if [d for d in missing_docs if d not in PENDING_DOCS]:
+        fails.append("⇒ 🔑 **「등재했다」는 「그 파일이 있다」가 아니다.** 이름을 고치거나 "
+                     "`MANUAL_DOCS` 에서 뺄 것.")
+    elif not missing_docs:
+        print(f"  ✅ MANUAL_DOCS {len(MANUAL_DOCS)}건 전부 존재")
+
     if fails:
         print("\n".join("  " + f for f in fails))
         print(f"\n🔴 재현 게이트 FAIL — {len(fails)}건")
@@ -356,6 +422,11 @@ def rerun() -> int:
             # 🔴 `--rerun` 은 스크립트를 돌려 **산출물을 덮어쓴다.** 동결 항목은 재측정 금지
             #    (`PREREG_POST6.md` §5-1-5·§5-4-2)이므로 아예 건너뛴다.
             print(f"  ⏭ {out}  재실행 건너뜀 — 정정 미반영(동결): {FROZEN_STALE[out]}")
+            continue
+        if out in PENDING and not (BASE / out).exists():
+            # 🔴 아직 «만들어지지 않은» 산출물. 건너뛰지 않으면 아래 `read_bytes()` 가
+            #    FileNotFoundError 로 **게이트 자체를 죽인다**(검사가 아니라 크래시가 된다).
+            print(f"  ⏭ {out}  재실행 건너뜀 — 미생성(예정): {PENDING[out]}")
             continue
         before = (BASE / out).read_bytes() if (BASE / out).exists() else None
         r = subprocess.run([sys.executable, script], cwd=BASE,
