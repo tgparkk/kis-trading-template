@@ -116,6 +116,11 @@ PAIRS = {
     # 🔴 `WRC-` 가중 평단 복원 축 (`PREREG_WEIGHTED_RECON.md` §5-2 4번이 «문언으로» 요구한 등재).
     #    §0-3 의 3번(탐색 실행) 산출물이며 대상은 post4·post5 «만»이다(post6 은 아직 없다).
     "RESULTS_WRC_EXPLORE.md": "run_wrc_explore.py",
+    # 🔴 `SEC-` 섹터 동반 상승 축 (`PREREG_SECTOR_COMOVE.md` §5 7번이 «문언으로» 요구한 등재).
+    #    §0-4 의 4번(배선 점검) 산출물이며 대상은 post1~5 «만»이다(post6 은 아직 없다).
+    #    두 산출물이 같은 스크립트에서 나온다 — post6 판본은 그 글이 와야 생긴다(PENDING).
+    "RESULTS_SECTOR_DRYRUN_NUMBERS.md": "run_sector.py",
+    "RESULTS_SECTOR_POST6_NUMBERS.md": "run_sector.py",
 }
 
 # 🔴 «아직 만들어지지 않은» 산출물 — 등재는 §5-7 이 요구하는데, 그 파일은 그 글이 와야 생긴다.
@@ -129,6 +134,9 @@ PENDING = {
     "RESULTS_RANKING_POST6_NUMBERS.md":
         "6번째 글은 아직 존재하지 않는다 — `PREREG_RANKING.md` §0-3 의 5단계(`fetch_post.py`)가 "
         "4단계(동결 커밋) «뒤»에 온다. 파일이 생기면 이 항목을 PENDING 에서 뺄 것.",
+    "RESULTS_SECTOR_POST6_NUMBERS.md":
+        "6번째 글은 아직 존재하지 않는다 — `PREREG_SECTOR_COMOVE.md` §0-4 의 6단계"
+        "(`fetch_post.py`)가 5단계(동결 커밋) «뒤»에 온다. 파일이 생기면 PENDING 에서 뺄 것.",
 }
 
 # 🔴 `MANUAL_DOCS` 쪽의 같은 것 — 등재는 §5-7 이 요구하는데 파일은 그 글이 와야 생긴다.
@@ -137,6 +145,9 @@ PENDING = {
 PENDING_DOCS = {
     "RESULTS_RANKING_POST6.md":
         "6번째 글의 산문 — §0-3 6단계 산출물. 그 글이 와야 생긴다. 생기면 여기서 뺄 것.",
+    "RESULTS_SECTOR_POST6.md":
+        "6번째 글의 산문(`SEC-` 축) — `PREREG_SECTOR_COMOVE.md` §0-4 7단계 산출물. "
+        "그 글이 와야 생긴다. 생기면 여기서 뺄 것.",
 }
 
 # 🔴 §5(C-17·C-20) 정정으로 «스크립트는 바뀌었으나 산출물은 재생성하지 않은» 것들.
@@ -185,6 +196,14 @@ MANUAL_DOCS = [
     # 🔴 `WRC-` 가중 평단 복원 축 (`PREREG_WEIGHTED_RECON.md` §5-2 4번). 산문·동결문은 사람이 쓴다 —
     #    숫자는 `RESULTS_WRC_EXPLORE.md`(PAIRS 대상)에 있다. 동결문은 §0-3 **4번** 산출물이다.
     "PREREG_WEIGHTED_RECON.md", "FREEZE_WRC_2026-09-02.md",
+    # 🔴 `SEC-` 섹터 동반 상승 축 (`PREREG_SECTOR_COMOVE.md` §5 7번). 산문·동결문은 사람이 쓴다 —
+    #    숫자는 `RESULTS_SECTOR_DRYRUN_NUMBERS.md`(PAIRS 대상)에 있다.
+    #    🔒 `FREEZE_SECTOR_2026-09-03.md` 는 §0-4 의 **5단계** 산출물이며 **만드는 «순간» 등재**한다
+    #      (`FREEZE_RANKING_2026-08-31.md`·`FREEZE_WRC_2026-09-02.md` 와 같은 G-1 전례).
+    #      🔴 4단계에서는 «일부러» 등재하지 않았다 — 그때는 파일이 없었고, 이름만 먼저 박으면
+    #      G-1(존재 검사)이 «없는 파일»로 상시 FAIL 해서 진짜 가드가 죽는다.
+    "PREREG_SECTOR_COMOVE.md", "RESULTS_SECTOR_DRYRUN.md", "RESULTS_SECTOR_POST6.md",
+    "FREEZE_SECTOR_2026-09-03.md",
 ]
 
 

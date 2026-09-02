@@ -1,0 +1,83 @@
+  ✅ DB 지문 일치 (5개 슬라이스)
+  🟡 RESULTS_COMMON_BAND.md  (solve_common_band.py + deps 3개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['solve_common_band.py']
+  🟡 RESULTS_CONDITIONAL.md  (run_conditional.py + deps 3개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+  🟡 RESULTS_CONDITIONAL_WIDE.md  (run_conditional_wide.py + deps 4개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+  🟡 RESULTS_D1_OOS_NUMBERS.md  (run_d1_oos.py + deps 2개)
+       🔴 정정 미반영(동결): C-20(중앙값 관용구) — post4 `m` 중앙 2 는 분모 5(홀수)라 값 불변(§5-4-2)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_D1_OOS_POST5_NUMBERS.md  (run_d1_oos_post5.py + deps 2개)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_EXIT_V2_POST4_NUMBERS.md  (run_exit_v2_post4.py + deps 1개)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_EXIT_V2_POST5_NUMBERS.md  (run_exit_v2_post5.py + deps 1개)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_FLOW_NORM.md  (run_flow_norm.py + deps 3개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+  🟡 RESULTS_GAPFILL.md  (run_gapfill.py + deps 4개)
+       🔴 정정 미반영(동결): C-20(중앙값 관용구) — 옛 산출물. 재생성 금지(§5-4-2)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_gapfill.py', 'solve_common_band.py']
+  🟡 RESULTS_HDR.md  (run_hdr.py + deps 3개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다.
+  🟡 RESULTS_INTRADAY_PICK.md  (run_intraday_pick.py + deps 4개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+  🟡 RESULTS_LADDER_TRANCHE_NUMBERS.md  (run_ladder_tranche.py + deps 2개)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_LEG_STRUCTURE.md  (run_leg_structure.py + deps 1개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_leg_structure.py']
+  🟡 RESULTS_MINUTE_ENTRY.md  (run_minute_entry.py + deps 4개)
+       🔴 정정 미반영(동결): C-20(중앙값 관용구) — 옛 산출물. 재생성 금지(§5-4-2)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_minute_entry.py', 'solve_common_band.py']
+  🟡 RESULTS_MINUTE_SELLTIMING.md  (run_minute_selltiming.py + deps 4개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['solve_common_band.py']
+  🟡 RESULTS_Q1_V2.md  (run_q1_v2.py + deps 2개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다.
+  🟡 RESULTS_RANKING_POST6_NUMBERS.md  (run_ranking.py) — **미생성(예정)**
+       🔴 6번째 글은 아직 존재하지 않는다 — `PREREG_RANKING.md` §0-3 의 5단계(`fetch_post.py`)가 4단계(동결 커밋) «뒤»에 온다. 파일이 생기면 이 항목을 PENDING 에서 뺄 것.
+  ✅ RESULTS_RANKING_TRAIN_NUMBERS.md  (run_ranking.py + deps 4개)
+  🟡 RESULTS_RECONSTRUCT.md  (reconstruct_prices.py + deps 2개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다.
+  🟡 RESULTS_RECONSTRUCT_POST4_EXACT_NUMBERS.md  (run_reconstruct_post4_exact.py + deps 5개)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_RECONSTRUCT_POST4_NUMBERS.md  (run_reconstruct_post4.py + deps 3개)
+       🔴 정정 미반영(동결): C-20(중앙값 관용구) — 발표값 유지. 정확법 재계산은 RESULTS_RECONSTRUCT_POST4_EXACT_NUMBERS.md(C-22)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_RECONSTRUCT_POST5_NUMBERS.md  (run_reconstruct_post5.py + deps 3개)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_REGDAY_POST5_NUMBERS.md  (run_regday_post5.py + deps 2개)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_S5_SIDEBYSIDE.md  (run_s5_sidebyside.py + deps 9개)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_SECTOR_DRYRUN_NUMBERS.md  (run_sector.py + deps 5개)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_SECTOR_POST6_NUMBERS.md  (run_sector.py) — **미생성(예정)**
+       🔴 6번째 글은 아직 존재하지 않는다 — `PREREG_SECTOR_COMOVE.md` §0-4 의 6단계(`fetch_post.py`)가 5단계(동결 커밋) «뒤»에 온다. 파일이 생기면 PENDING 에서 뺄 것.
+  🟡 RESULTS_SELECTION.md  (run_selection.py + deps 2개)
+       🔴 정정 미반영(동결): C-17(f9 NaN) — 정정 전 판본의 값. 재측정 금지(§5-1-5) · 전/후는 RESULTS_S5_SIDEBYSIDE.md
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+  🟡 RESULTS_SELECTION_FLOW.md  (run_selection_flow.py + deps 3개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+  🟡 RESULTS_SELECTION_POST4_NUMBERS.md  (run_selection_post4.py + deps 3개)
+       🔴 정정 미반영(동결): C-17(f9 NaN)+med NaN 안전 — 재측정 금지(§5-1-5) · 전/후는 RESULTS_S5_SIDEBYSIDE.md
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_SELECTION_POST5_NUMBERS.md  (run_selection_post5.py + deps 3개)
+       🔴 정정 미반영(동결): C-17(f9 NaN) — post5 판정(`SEL-S3`=47.9 ✅)은 그대로 둔다(§5-1-5)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_SELECTION_ROBUST.md  (run_selection_robust.py + deps 3개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+  🟡 RESULTS_SELLTIMING.md  (run_selltiming.py + deps 4개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['solve_common_band.py']
+  🟡 RESULTS_WRC_EXPLORE.md  (run_wrc_explore.py + deps 6개)
+       🔴 흡수: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+  🟡 RESULTS_raw.md  (run_tests.py + deps 1개)
+       🔴 흡수: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다.
+  🟡 MANUAL_DOCS `RESULTS_RANKING_POST6.md` — **미생성(예정)**
+       🔴 6번째 글의 산문 — §0-3 6단계 산출물. 그 글이 와야 생긴다. 생기면 여기서 뺄 것.
+  🟡 MANUAL_DOCS `RESULTS_SECTOR_POST6.md` — **미생성(예정)**
+       🔴 6번째 글의 산문(`SEC-` 축) — `PREREG_SECTOR_COMOVE.md` §0-4 7단계 산출물. 그 글이 와야 생긴다. 생기면 여기서 뺄 것.
+
+🟢 재현 게이트 PASS — 모든 산출물이 현재 스크립트 판본과 일치한다.
+⚠️ 단 이건 「그 스크립트로 만들었다」일 뿐 「숫자가 옳다」가 아니다. 숫자 확인은 `--rerun`.
+🟡 그중 **35건은 재생성되지 않은 채 기준선에 들어간 항목**이다 — 위 사유를 볼 것. 🔑 ***그 항목들에 대해서는 이 PASS 가 「이 스크립트로 만들었다」의 증거가 아니다.***
