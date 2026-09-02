@@ -113,6 +113,9 @@ PAIRS = {
     #    두 산출물이 같은 스크립트에서 나온다 — `--stage train` / `--stage post6`.
     "RESULTS_RANKING_TRAIN_NUMBERS.md": "run_ranking.py",
     "RESULTS_RANKING_POST6_NUMBERS.md": "run_ranking.py",
+    # 🔴 `WRC-` 가중 평단 복원 축 (`PREREG_WEIGHTED_RECON.md` §5-2 4번이 «문언으로» 요구한 등재).
+    #    §0-3 의 3번(탐색 실행) 산출물이며 대상은 post4·post5 «만»이다(post6 은 아직 없다).
+    "RESULTS_WRC_EXPLORE.md": "run_wrc_explore.py",
 }
 
 # 🔴 «아직 만들어지지 않은» 산출물 — 등재는 §5-7 이 요구하는데, 그 파일은 그 글이 와야 생긴다.
@@ -179,6 +182,9 @@ MANUAL_DOCS = [
     #      (§0-3 의 4·6단계 산출물) — MANUAL_DOCS 는 존재를 검사하지 않으므로 미리 적어 둔다.
     "PREREG_RANKING.md", "RESULTS_RANKING_TRAIN.md",
     "FREEZE_RANKING_2026-08-31.md", "RESULTS_RANKING_POST6.md",
+    # 🔴 `WRC-` 가중 평단 복원 축 (`PREREG_WEIGHTED_RECON.md` §5-2 4번). 산문·동결문은 사람이 쓴다 —
+    #    숫자는 `RESULTS_WRC_EXPLORE.md`(PAIRS 대상)에 있다. 동결문은 §0-3 **4번** 산출물이다.
+    "PREREG_WEIGHTED_RECON.md", "FREEZE_WRC_2026-09-02.md",
 ]
 
 

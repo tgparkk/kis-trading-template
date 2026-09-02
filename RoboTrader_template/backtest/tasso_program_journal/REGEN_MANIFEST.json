@@ -38,18 +38,20 @@
     "PREREG_RANKING.md",
     "RESULTS_RANKING_TRAIN.md",
     "FREEZE_RANKING_2026-08-31.md",
-    "RESULTS_RANKING_POST6.md"
+    "RESULTS_RANKING_POST6.md",
+    "PREREG_WEIGHTED_RECON.md",
+    "FREEZE_WRC_2026-09-02.md"
   ],
   "db_fingerprint": {
     "daily_prices[>=2026-04-01]": [
-      265862,
+      271480,
       2791,
-      "2026-08-31"
+      "2026-09-02"
     ],
     "minute_candles[>=20260701]": [
-      5342790,
-      749,
-      "20260831"
+      5566862,
+      757,
+      "20260902"
     ],
     "investor_trend_daily": [
       110413,
@@ -535,6 +537,23 @@
         ],
         "results_changed": true,
         "prev_results_sha256": "2f86279e382a7cb48d9741edeb9345ff526cf8da96da912237a3935ec5c5f682"
+      }
+    },
+    "RESULTS_WRC_EXPLORE.md": {
+      "script": "run_wrc_explore.py",
+      "deps": {
+        "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
+        "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
+        "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
+        "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
+        "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2",
+        "run_wrc_explore.py": "56080beafaaabbaba9124649849b813aa5f3ac563d032d10946dc247bb8cbc3b"
+      },
+      "results_sha256": "2db516fa939472a8aa6be7798bec5e6bacb5e723d461d328f3fd61c044053965",
+      "absorbed_stale": {
+        "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
+        "deps_changed": [],
+        "results_changed": false
       }
     },
     "RESULTS_raw.md": {

@@ -1,0 +1,110 @@
+{
+ "seed": 20260815,
+ "nrep": 20000,
+ "note_nrep": "run_selection.py:22 는 NREP=2000",
+ "db_snapshot_max_date": "2026-09-02",
+ "branch_a_random_stock": {
+  "trials": 200000,
+  "a0_feasible": 42255,
+  "a1_feasible": 14049,
+  "N1_rate": 0.070245,
+  "band_denominator": 14049,
+  "narrow": 1515,
+  "N2_rate": 0.10783685671578049,
+  "per_case": {
+   "혜인/post5": {
+    "a0": 0,
+    "a1": 0,
+    "trials": 20000,
+    "narrow": 0
+   },
+   "한국화장품제조/post5": {
+    "a0": 1490,
+    "a1": 6,
+    "trials": 20000,
+    "narrow": 0
+   },
+   "한켐/post5": {
+    "a0": 8,
+    "a1": 8,
+    "trials": 20000,
+    "narrow": 0
+   },
+   "광전자/post5": {
+    "a0": 2812,
+    "a1": 1475,
+    "trials": 20000,
+    "narrow": 165
+   },
+   "레메디/post5": {
+    "a0": 3159,
+    "a1": 2547,
+    "trials": 20000,
+    "narrow": 151
+   },
+   "이노테크/post4": {
+    "a0": 6402,
+    "a1": 2251,
+    "trials": 20000,
+    "narrow": 359
+   },
+   "한켐/post4": {
+    "a0": 4934,
+    "a1": 1031,
+    "trials": 20000,
+    "narrow": 173
+   },
+   "금호건설/post4": {
+    "a0": 0,
+    "a1": 0,
+    "trials": 20000,
+    "narrow": 0
+   },
+   "지투파워/post4": {
+    "a0": 12229,
+    "a1": 4209,
+    "trials": 20000,
+    "narrow": 655
+   },
+   "PS일렉트로닉스/post4": {
+    "a0": 11221,
+    "a1": 2522,
+    "trials": 20000,
+    "narrow": 12
+   }
+  }
+ },
+ "branch_b_shuffled_legs": {
+  "trials": 180000,
+  "a0_feasible": 80000,
+  "a1_feasible": 40000,
+  "N1_rate": 0.2222222222222222,
+  "narrow": 0,
+  "distinct_permutations_per_case": {
+   "혜인/post5": 120,
+   "한국화장품제조/post5": 120,
+   "한켐/post5": 24,
+   "광전자/post5": 60,
+   "이노테크/post4": 12,
+   "한켐/post4": 24,
+   "금호건설/post4": 720,
+   "지투파워/post4": 6,
+   "PS일렉트로닉스/post4": 6
+  },
+  "constant_across_reps": true,
+  "why_constant": "feasible_exact 는 레그 교집합이라 순서 불변 · A1 제약은 매수 사다리에만 걸린다 ⇒ 통계량이 셔플에 불변(WRC-X1 3번 문언 해당 · §4-5)"
+ },
+ "observed": {
+  "cases": 9,
+  "a0_feasible": 4,
+  "a1_feasible": 2,
+  "band_measurable": 2,
+  "narrow": 0
+ },
+ "thresholds": {
+  "N1": 0.5,
+  "N2": 0.5,
+  "band_pp": 3.0,
+  "G1": 0.3333333333333333
+ }
+}
