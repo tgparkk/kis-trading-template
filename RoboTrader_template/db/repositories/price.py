@@ -54,34 +54,12 @@ class PriceRepository(BaseRepository):
     """가격 데이터 접근 클래스"""
 
     # ===== 일봉 데이터 메서드 (daily_prices 테이블) =====
-
-    def save_daily_price(self, stock_code: str, date_str: str,
-                         open_price: float, high_price: float,
-                         low_price: float, close_price: float,
-                         volume: int) -> bool:
-        """일봉 데이터 단건 저장"""
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-
-                cursor.execute('''
-                    INSERT INTO daily_prices
-                    (stock_code, date, open, high, low, close, volume)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (stock_code, date) DO UPDATE SET
-                        open = EXCLUDED.open,
-                        high = EXCLUDED.high,
-                        low = EXCLUDED.low,
-                        close = EXCLUDED.close,
-                        volume = EXCLUDED.volume
-                ''', (stock_code, date_str, open_price, high_price, low_price, close_price, volume))
-
-                self.logger.debug(f"{stock_code} 일봉 데이터 저장 ({date_str})")
-                return True
-
-        except Exception as e:
-            self.logger.error(f"일봉 데이터 저장 실패 ({stock_code}, {date_str}): {e}")
-            return False
+    #
+    # 🔴 `save_daily_price()`(단건 OHLC UPSERT, W8)는 2026-09-03 제거됐다 — 호출자 0건인데
+    #    `save_daily_prices_batch` 와 «같은 파일»에 있는 쌍둥이 UPSERT 라, (E′) 가드가
+    #    안 걸린 채 나중에 배선되면 원복 채널이 조용히 부활한다(사전등록 D-3 · §6-22).
+    #    단건 저장이 다시 필요하면 1행짜리 DataFrame 으로 `save_daily_prices_batch` 를
+    #    쓸 것 — 쓰기 문장은 이 파일 맨 위 두 상수뿐이어야 한다.
 
     def save_daily_prices_batch(self, stock_code: str, df_daily: pd.DataFrame,
                                 past_rows_insert_only: bool = False) -> bool:

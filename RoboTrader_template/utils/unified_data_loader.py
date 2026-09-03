@@ -203,50 +203,10 @@ class UnifiedDataLoader:
             self.logger.debug(f"파일 캐시 조회 오류: {e}")
             return None
     
-    def sync_file_to_db(self, stock_code: str, date_str: str) -> bool:
-        """
-        파일 캐시 데이터를 DB로 동기화
-
-        Args:
-            stock_code: 종목코드
-            date_str: 날짜 (YYYYMMDD)
-
-        Returns:
-            bool: 동기화 성공 여부
-        """
-        try:
-            # 파일에서 로드
-            file_data = self._load_daily_from_file(stock_code, date_str)
-            if file_data is None or file_data.empty:
-                return False
-
-            # DB에 저장
-            from db.repositories.price import PriceRepository
-            price_repo = PriceRepository()
-
-            # 데이터 형식 변환
-            if 'stck_bsop_date' in file_data.columns:
-                # KIS API 형식 변환
-                file_data['date'] = pd.to_datetime(file_data['stck_bsop_date'], format='%Y%m%d').dt.strftime('%Y-%m-%d')
-                file_data = file_data.rename(columns={
-                    'stck_oprc': 'open',
-                    'stck_hgpr': 'high',
-                    'stck_lwpr': 'low',
-                    'stck_clpr': 'close',
-                    'acml_vol': 'volume',
-                })
-
-            # DB 저장
-            success = price_repo.save_daily_prices_batch(stock_code, file_data)
-
-            if success:
-                self.logger.info(f"✅ [{stock_code}] 파일 캐시 → DB 동기화 완료: {date_str}")
-
-            return success
-
-        except Exception as e:
-            self.logger.error(f"파일→DB 동기화 오류 ({stock_code}, {date_str}): {e}")
-            return False
+    # 🔴 `sync_file_to_db()`(파일 캐시 → daily_prices UPSERT, W5)는 2026-09-03 제거됐다.
+    #    호출자 0건인 죽은 쓰기 경로였고, 되살아나면 (E′) 가드 없이 과거 행을 덮는다
+    #    (사전등록 docs/prereg_2026-09-03_write_path_rawprice_upsert.md D-3 · §1-5).
+    #    다시 필요하면 규약(원주가/수정주가)을 «먼저» 정하고 별도 승인으로 되살릴 것.
 
 
 
