@@ -15,6 +15,24 @@ ORDER_CHECK_INTERVAL = 5  # 주문 체결 확인 주기 (초)
 DATA_STABILIZATION_DELAY = 1  # 데이터 수집 후 안정화 대기 시간 (초)
 DATA_RECONFIRM_MINUTES_BACK = 3  # 데이터 재확인 범위 (분)
 
+# =============================================================================
+# (E′) 장전 일봉 쓰기 — «과거 행 INSERT-only»
+#   사전등록: docs/prereg_2026-09-03_write_path_rawprice_upsert.md (D-1 채택안)
+# =============================================================================
+# W1(장전/장초 종목추가 훅 → IntradayDataCollector._save_daily_to_db)은 KIS «원주가»
+# 최근 ~103봉을 매일 daily_prices 에 UPSERT 한다. 그래서 기업행위 보정(P-a)이 들어간
+# 과거 행이 다음 장전에 원주가로 되돌아간다(2026-09-01 P7 실측: 3종목 175행 원복).
+#
+# True 면 W1 의 쓰기는 «오늘(KST) 이전» 날짜 행에 대해 ON CONFLICT DO NOTHING 이 되어
+# 이미 있는 행을 절대 덮지 않는다. «오늘» 행은 기존대로 UPSERT 한다.
+#   · 없는 과거 행 INSERT(빈 칸 채우기)는 그대로 유지된다 — DO NOTHING 은 «있는 행»만 건너뛴다.
+#   · 당일 봉 INSERT(선정 종목 수만큼)도 그대로 일어난다 — 얼리면 최신 봉이 안 들어온다(J2).
+#   · EOD 7봉 경로(W2 = collectors/daily_writer.py)와 regime 지수 갱신(W3)은 «불변»이다
+#     (§6-16 — 시간외 오적재의 자가치유가 W2 에서 나온다).
+# 🔴 롤백은 이 값을 False 로 되돌리는 것 «하나»뿐이다. 단 롤백이 데이터를 되돌리지는
+#    않는다 — 그 사이 지워진 보정은 재적용이 필요하다(사전등록 §5-⑧).
+W1_PAST_ROWS_INSERT_ONLY = True
+
 # 시간 관련
 OHLCV_LOOKBACK_DAYS = 120  # 일봉 조회 기간 (달력일, 영업일 환산 약 85일 — Elder EMA 눌림 전략 70봉 요구 충족)
 BUY_DECISION_AFTER_CANDLE_CLOSE = 10  # 3분봉 완성 후 매수 판단까지 최소 대기 시간 (초)

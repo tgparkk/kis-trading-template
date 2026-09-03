@@ -79,7 +79,12 @@ def has_split_event(conn, code) -> bool:
     `collectors/daily_collector.py:102` 가 매일 `update_adj_factors(conn)` 를 부르고,
     그 경로(`collectors/daily_adj.py`)는 split 이벤트가 있는 종목의 **모든 날짜**
     `adj_factor` 를 이벤트 기준으로 «다시 쓴다»(1.0 포함). 지금 DB 에 있는 틀린 계수가
-    나온 곳이 바로 거기다. ⇒ 그 종목에 대해 **지속되는 것은 OHLC 보정뿐**이다.
+    나온 곳이 바로 거기다.
+    🔴 **「그래도 OHLC 보정은 지속된다」는 틀렸다**(2026-09-01 P7 실측: 3종목 175행 원복).
+       장전 훅(`W1`, 최근 ~103봉)·EOD 수집(`W2`, 최근 7봉)이 KIS **원주가**를 매일 다시
+       밀어 넣기 때문이다. `W1` 채널은 (E′)(`config.constants.W1_PAST_ROWS_INSERT_ONLY`)
+       가 켜져 있을 때만 닫히고, `W2` 의 최근 7봉 사정거리는 **여전히 열려 있다**
+       — 사전등록 `docs/prereg_2026-09-03_write_path_rawprice_upsert.md` §1-4 ②·§2-6.
     술어는 `daily_adj.load_split_events` 의 WHERE 절과 동일하게 맞춘다.
     """
     with conn.cursor() as cur:
@@ -198,8 +203,12 @@ def _run(a, conn) -> int:
             print(f"{tag} ⚠️ corp_events 에 split 이벤트가 있다 — 이 종목의 adj_factor 는")
             print("      «다음 EOD»에 update_adj_factors 가 전부 덮어쓴다"
                   " (daily_collector.py:102 → daily_adj.py).")
-            print("      ⇒ 지속되는 것은 OHLC 보정뿐이다. 계수를 영구히 고치려면 틀린"
-                  " corp_events 행을 고쳐야 한다(별도 승인 · 사양 §7).")
+            print("      ⇒ 🔴 OHLC 보정도 «저절로» 지속되지 않는다 — 장전 W1(~103봉)·"
+                  "EOD W2(최근 7봉)가 원주가를 다시 쓴다(2026-09-01 P7 실측).")
+            print("        W1 은 (E′) 로 막혀 있고(constants.W1_PAST_ROWS_INSERT_ONLY),"
+                  " W2 사정거리(최근 7봉) 안의 행은 여전히 되돌아간다.")
+            print("        계수를 영구히 고치려면 틀린 corp_events 행을 고쳐야 한다"
+                  "(별도 승인 · 사양 §7).")
 
         try:
             raw, adj = R.fetch_both(code, HIST0, TODAY, _kis_fetcher)
@@ -284,7 +293,8 @@ def _run(a, conn) -> int:
     print(f"\nbatch {batch_id} · rows {tot_rows} · impossible {tot_before} -> {tot_after}")
     if n_volatile:
         print(f"⚠️ split 이벤트 보유 {n_volatile}종목 — 그 종목의 adj_factor 는 다음 EOD 에 "
-              f"덮어써진다(사양 §7). OHLC 보정만 지속된다.")
+              f"덮어써진다(사양 §7). 🔴 OHLC 보정도 W2(EOD 최근 7봉) 사정거리 안이면 "
+              f"원주가로 되돌아간다 — W1(장전)만 (E′) 로 막혀 있다.")
     if n_fetch_err:
         print(f"🔴 피드 조회 «실패» {n_fetch_err}종목 — 「데이터 없음」이 아니라 «못 받았다». "
               f"이 실행은 «미완료»다. 원인 확인 후 재실행할 것.")
