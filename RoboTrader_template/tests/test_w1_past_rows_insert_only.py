@@ -14,7 +14,8 @@
    검사한다 — 판정 대상이 «쓰기 의미»이지 DB 상태가 아니기 때문이다.
 🔴 §4-4-1 대칭: 가드가 «켜지지 않은» 경로(W3 regime 지수 등)는 의미가 안 바뀌어야 한다.
 """
-from contextlib import contextmanager
+import sys
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
@@ -30,6 +31,56 @@ from db.repositories.price import (
 KST = timezone(timedelta(hours=9))
 _NOW = datetime(2026, 9, 3, 7, 40, 11, tzinfo=KST)
 _TODAY = "2026-09-03"
+
+
+@pytest.fixture(autouse=True)
+def _forbid_real_db(monkeypatch):
+    """이 파일의 어떤 테스트도 «실 DB»에 붙지 못하게 한다 — 실사고 재발 방지.
+
+    🔴 2026-09-03 실사고: `tests/test_minute_loader.py` 는 `sys.modules` 에서
+       `db.repositories.price` 를 뺐다가 되돌리는데, 그 사이 새로 임포트된 모듈이
+       **패키지 속성**(`db.repositories.price`)에 남아 sys.modules 엔트리와 «갈린다».
+       `mock.patch("db.repositories.price.PriceRepository")` 는 패키지 속성을 따라가고
+       (`mock._dot_lookup`), 프로덕션의 `from db.repositories.price import ...` 는
+       sys.modules 를 따라간다 ⇒ **패치가 빗나가고 진짜 저장소가 돈다.**
+       그 결과 아래 배선 테스트가 라이브 `daily_prices` 에 한 행을 실제로 썼다
+       (001210@2026-09-03, 사전 스냅샷 해시로 원값 복구 완료).
+    ⇒ 유닛 테스트에서 실 DB 접속은 「조용한 성공」이 아니라 «즉시 실패»여야 한다.
+    """
+    import db.connection  # noqa: F401 — 임포트 보장
+
+    def _boom(*args, **kwargs):
+        raise AssertionError(
+            "유닛 테스트가 실 DB 에 접속하려 했다 — 패치가 빗나갔다(모듈 캐시 오염?)")
+
+    # 🔑 안전망 자신도 «갈린 모듈» 함정에 빠질 수 있다 — 후보를 전부 막는다.
+    for mod in _module_candidates("db.connection", "db", "connection"):
+        cls = getattr(mod, "DatabaseConnection", None)
+        if cls is not None:
+            monkeypatch.setattr(cls, "get_connection", _boom)
+
+
+def _module_candidates(dotted, pkg_name, attr):
+    """`dotted` 로 «보일 수 있는» 모듈 객체 전부(둘일 수 있다).
+
+    sys.modules 엔트리와 패키지 속성이 갈린 상태에서도 패치가 빗나가지 않게
+    양쪽 다 돌려준다(위 fixture 의 사고 설명 참조).
+    """
+    mods = []
+    m = sys.modules.get(dotted)
+    if m is not None:
+        mods.append(m)
+    pkg = sys.modules.get(pkg_name)
+    pm = getattr(pkg, attr, None) if pkg is not None else None
+    if pm is not None and not any(pm is x for x in mods):
+        mods.append(pm)
+    return mods
+
+
+def _price_modules():
+    import db.repositories.price  # noqa: F401 — 임포트 보장
+
+    return _module_candidates("db.repositories.price", "db.repositories", "price")
 
 
 class _FakeCursor:
@@ -231,9 +282,13 @@ async def test_w1_write_path_passes_the_flag():
     repo = Mock()
     repo.save_daily_prices_batch = Mock(return_value=True)
 
-    with patch("db.repositories.price.PriceRepository", return_value=repo):
+    with ExitStack() as stack:
+        for mod in _price_modules():
+            stack.enter_context(patch.object(mod, "PriceRepository", return_value=repo))
         assert await collector._save_daily_to_db("001210", _df([_TODAY])) is True
 
+    assert repo.save_daily_prices_batch.call_args is not None, (
+        "패치가 빗나갔다 — 프로덕션이 다른 PriceRepository 를 임포트했다")
     kwargs = repo.save_daily_prices_batch.call_args.kwargs
     assert kwargs["past_rows_insert_only"] is dc.W1_PAST_ROWS_INSERT_ONLY
     assert kwargs["past_rows_insert_only"] is True
