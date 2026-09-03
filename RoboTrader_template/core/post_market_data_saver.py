@@ -7,9 +7,13 @@
    규약이 W1·W2(원주가)와 **반대**라 되살아나면 한 종목 시계열 안에 두 규약이 섞이고
    (E′) 가드도 안 걸린다 — 사전등록
    docs/prereg_2026-09-03_write_path_rawprice_upsert.md D-3 · §1-5 · §4-4-2.
-   ⚠️ 트리거(core/intraday/realtime_updater.py:405 → save_all_data)는 «살아 있다» —
-   그래서 지운 것이 클래스가 아니라 «DB 쓰기 경로»다. 분봉 텍스트 덤프는 그대로다.
-   일봉을 다시 저장해야 하면 규약을 먼저 정하고 별도 승인으로 설계할 것.
+   ⚠️ 사전등록 §6-18 의 「호출자 없음」은 **직접 호출자**(realtime_updater.py:405)가
+   실존해 부정확했으나, 그 사슬의 **머리** `batch_update_realtime_data` 는 프로덕션
+   호출자 0건이라(유일 진입점 intraday_stock_manager.py:205 도 미호출 —
+   bot/system_monitor.py:386-390 에 독립 기록) 경로는 «이중으로» 죽어 있었다.
+   ⇒ 반대 규약의 「죽었지만 배선된」 경로이므로 제거가 맞다. 지운 것은 클래스가 아니라
+   «DB 쓰기 경로»이고 분봉 텍스트 덤프는 그대로다. 일봉을 다시 저장해야 하면 규약을
+   먼저 정하고 별도 승인으로 설계할 것.
 """
 from typing import Dict, Optional
 

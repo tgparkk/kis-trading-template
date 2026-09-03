@@ -107,14 +107,17 @@ SELECT w.stock_code, e.e_j, W7D.w2_start
  ORDER BY e.e_j, w.stock_code
 """
 
-# (f) W1 직전 «전 종목» 창 스냅샷. n_null_close 는 md5 가 NULL 행을 조용히
-#     빠뜨리는 성질(string_agg 는 NULL 입력을 건너뛴다)을 보이게 하려고 같이 뜬다.
+# (f) W1 직전 «전 종목» 창 스냅샷. n_null_ohlcv 는 md5 가 그 행을 «조용히 빠뜨리는»
+#     성질을 보이게 하려고 같이 뜬다 — 연결식 `date||':'||open||…` 은 다섯 값 중
+#     «하나만» NULL 이어도 통째로 NULL 이 되고, string_agg 는 NULL 입력을 건너뛴다.
+#     ⇒ close 만 세면 open/high/low/volume 이 NULL 인 행을 못 잡는다.
 SQL_F_PRE_W1 = """
 SELECT stock_code,
        count(*) AS n_rows,
        min(date) AS min_date,
        max(date) AS max_date,
-       count(*) FILTER (WHERE close IS NULL) AS n_null_close,
+       count(*) FILTER (WHERE open IS NULL OR high IS NULL OR low IS NULL
+                           OR close IS NULL OR volume IS NULL) AS n_null_ohlcv,
        md5(string_agg(date||':'||open||':'||high||':'||low||':'||close||':'||volume,
                       ',' ORDER BY date)) AS ohlcv_md5
   FROM daily_prices
