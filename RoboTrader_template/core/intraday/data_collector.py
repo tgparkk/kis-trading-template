@@ -10,6 +10,7 @@ import pandas as pd
 
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
+from config.constants import W1_PAST_ROWS_INSERT_ONLY
 from config.market_hours import MarketHours
 from api.kis_chart_api import (
     get_inquire_time_itemchartprice,
@@ -96,12 +97,20 @@ class IntradayDataCollector:
             return False
 
     async def _save_daily_to_db(self, stock_code: str, daily_data: pd.DataFrame) -> bool:
-        """일봉 데이터를 DB에 저장"""
+        """일봉 데이터를 DB에 저장 — 이것이 사전등록의 `W1` 쓰기 경로다.
+
+        🔴 여기서 오는 값은 KIS «원주가»(`adj_prc` 기본 "1")인데 `daily_prices` 의
+           저장 계약은 「조정된 연속 시세」다. 그래서 과거 행을 덮으면 기업행위 보정이
+           하룻밤 만에 지워진다(2026-09-01 P7 실측). (E′) 가드로 과거 행은 «빈 칸만»
+           채우게 한다 — 스위치는 `config.constants.W1_PAST_ROWS_INSERT_ONLY`.
+           사전등록 `docs/prereg_2026-09-03_write_path_rawprice_upsert.md` D-1.
+        """
         try:
             from db.repositories.price import PriceRepository
             price_repo = PriceRepository()
             success = await asyncio.to_thread(
-                price_repo.save_daily_prices_batch, stock_code, daily_data
+                price_repo.save_daily_prices_batch, stock_code, daily_data,
+                past_rows_insert_only=W1_PAST_ROWS_INSERT_ONLY,
             )
             if success:
                 self.logger.info(f"💾 {stock_code} 일봉 데이터 DB 저장 완료")

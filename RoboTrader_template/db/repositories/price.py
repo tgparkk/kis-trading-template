@@ -10,6 +10,34 @@ from .base import BaseRepository
 from utils.korean_time import now_kst
 
 
+# =============================================================================
+# daily_prices OHLC 쓰기 SQL — 이 파일의 «유일한» 쓰기 계약이다.
+#   사전등록 docs/prereg_2026-09-03_write_path_rawprice_upsert.md §6-22:
+#   가드는 「살아 있는 호출자가 있는 함수」가 아니라 「그 SQL 을 실행하는 모든 함수」에
+#   건다. ⇒ 문장을 여기 한 곳에만 두고, 새 쓰기 함수를 만들 때도 이 상수를 쓴다.
+# =============================================================================
+_DAILY_INSERT_HEAD_SQL = '''
+                    INSERT INTO daily_prices
+                    (stock_code, date, open, high, low, close, volume)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+'''
+
+# 기존 규약 — 있는 행이면 OHLCV 를 덮어쓴다.
+DAILY_UPSERT_SQL = _DAILY_INSERT_HEAD_SQL + '''
+                    ON CONFLICT (stock_code, date) DO UPDATE SET
+                        open = EXCLUDED.open,
+                        high = EXCLUDED.high,
+                        low = EXCLUDED.low,
+                        close = EXCLUDED.close,
+                        volume = EXCLUDED.volume
+'''
+
+# (E′) — 있는 행은 «절대» 안 건드리고, 없는 행만 채운다(빈 칸 채우기는 유지된다).
+DAILY_INSERT_ONLY_SQL = _DAILY_INSERT_HEAD_SQL + '''
+                    ON CONFLICT (stock_code, date) DO NOTHING
+'''
+
+
 @dataclass
 class PriceRecord:
     """가격 기록"""
@@ -26,37 +54,28 @@ class PriceRepository(BaseRepository):
     """가격 데이터 접근 클래스"""
 
     # ===== 일봉 데이터 메서드 (daily_prices 테이블) =====
+    #
+    # 🔴 `save_daily_price()`(단건 OHLC UPSERT, W8)는 2026-09-03 제거됐다 — 호출자 0건인데
+    #    `save_daily_prices_batch` 와 «같은 파일»에 있는 쌍둥이 UPSERT 라, (E′) 가드가
+    #    안 걸린 채 나중에 배선되면 원복 채널이 조용히 부활한다(사전등록 D-3 · §6-22).
+    #    단건 저장이 다시 필요하면 1행짜리 DataFrame 으로 `save_daily_prices_batch` 를
+    #    쓸 것 — 쓰기 문장은 이 파일 맨 위 두 상수뿐이어야 한다.
 
-    def save_daily_price(self, stock_code: str, date_str: str,
-                         open_price: float, high_price: float,
-                         low_price: float, close_price: float,
-                         volume: int) -> bool:
-        """일봉 데이터 단건 저장"""
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
+    def save_daily_prices_batch(self, stock_code: str, df_daily: pd.DataFrame,
+                                past_rows_insert_only: bool = False) -> bool:
+        """일봉 데이터 배치 저장.
 
-                cursor.execute('''
-                    INSERT INTO daily_prices
-                    (stock_code, date, open, high, low, close, volume)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (stock_code, date) DO UPDATE SET
-                        open = EXCLUDED.open,
-                        high = EXCLUDED.high,
-                        low = EXCLUDED.low,
-                        close = EXCLUDED.close,
-                        volume = EXCLUDED.volume
-                ''', (stock_code, date_str, open_price, high_price, low_price, close_price, volume))
+        Args:
+            past_rows_insert_only: (E′) — True 면 **오늘(KST) 이전** 날짜 행은
+                `ON CONFLICT DO NOTHING` 으로 쓴다(있으면 안 건드리고, 없으면 넣는다).
+                **오늘 행은 기존대로 UPSERT** 한다(최신 봉이 안 들어오면 그게 실패다).
+                사전등록 `docs/prereg_2026-09-03_write_path_rawprice_upsert.md` D-1.
 
-                self.logger.debug(f"{stock_code} 일봉 데이터 저장 ({date_str})")
-                return True
-
-        except Exception as e:
-            self.logger.error(f"일봉 데이터 저장 실패 ({stock_code}, {date_str}): {e}")
-            return False
-
-    def save_daily_prices_batch(self, stock_code: str, df_daily: pd.DataFrame) -> bool:
-        """일봉 데이터 배치 저장"""
+        🔴 기본값 False 는 «기존 호출자의 의미를 안 바꾼다»는 뜻이다 — regime 지수
+           갱신(W3)·보정 도구 계열은 과거 행을 «고치는 것»이 목적이라 얼리면 안 된다.
+           가드를 켜는 곳은 W1(장전 훅) 한 곳이고, 그 스위치가
+           `config.constants.W1_PAST_ROWS_INSERT_ONLY` 다(롤백 = 그 값 하나).
+        """
         try:
             if df_daily is None or df_daily.empty:
                 return True
@@ -91,19 +110,32 @@ class PriceRepository(BaseRepository):
                         int(row.get('volume', row.get('acml_vol', 0)))
                     ))
 
-                cursor.executemany('''
-                    INSERT INTO daily_prices
-                    (stock_code, date, open, high, low, close, volume)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (stock_code, date) DO UPDATE SET
-                        open = EXCLUDED.open,
-                        high = EXCLUDED.high,
-                        low = EXCLUDED.low,
-                        close = EXCLUDED.close,
-                        volume = EXCLUDED.volume
-                ''', rows_to_insert)
+                if past_rows_insert_only:
+                    # (E′) — 경계는 «오늘(KST)»이다. date 컬럼은 text 이고 값은 위에서
+                    # 'YYYY-MM-DD' 로 정규화됐으므로 문자열 비교가 곧 날짜 비교다.
+                    today_str = now_kst().strftime('%Y-%m-%d')
+                    past_rows = [r for r in rows_to_insert if r[1] < today_str]
+                    today_rows = [r for r in rows_to_insert if r[1] >= today_str]
 
-                self.logger.debug(f"{stock_code} 일봉 데이터 {len(rows_to_insert)}개 배치 저장")
+                    n_filled = 0
+                    if past_rows:
+                        cursor.executemany(DAILY_INSERT_ONLY_SQL, past_rows)
+                        rc = getattr(cursor, 'rowcount', None)
+                        n_filled = rc if isinstance(rc, int) and rc > 0 else 0
+                    if today_rows:
+                        cursor.executemany(DAILY_UPSERT_SQL, today_rows)
+
+                    self.logger.debug(
+                        f"{stock_code} 일봉 데이터 {len(rows_to_insert)}개 배치 저장 "
+                        f"(E′ 과거 {len(past_rows)}행 INSERT-only · 당일 {len(today_rows)}행 UPSERT)")
+                    if n_filled:
+                        # 과거 구간 «빈 칸 채우기» 실측 — 사전등록 §9 M-1 이 요구하는 값.
+                        self.logger.info(
+                            f"💾 {stock_code} 과거 구간 빈 칸 INSERT {n_filled}행 (E′)")
+                else:
+                    cursor.executemany(DAILY_UPSERT_SQL, rows_to_insert)
+                    self.logger.debug(f"{stock_code} 일봉 데이터 {len(rows_to_insert)}개 배치 저장")
+
                 return True
 
         except Exception as e:

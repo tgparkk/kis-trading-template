@@ -1,26 +1,34 @@
 """
 장 마감 후 데이터 저장 전담 모듈
-- 일봉 데이터 저장 (TimescaleDB daily_prices)
 - 텍스트 파일 저장 (디버깅용)
+
+🔴 `save_daily_data()`(선정 종목 × 최근 100봉을 **수정주가**로 daily_prices 에 UPSERT,
+   사전등록의 `W4`)는 2026-09-03 제거됐다. 로그 전수에서 발화 0건인 죽은 경로였는데,
+   규약이 W1·W2(원주가)와 **반대**라 되살아나면 한 종목 시계열 안에 두 규약이 섞이고
+   (E′) 가드도 안 걸린다 — 사전등록
+   docs/prereg_2026-09-03_write_path_rawprice_upsert.md D-3 · §1-5 · §4-4-2.
+   ⚠️ 사전등록 §6-18 의 「호출자 없음」은 **직접 호출자**(realtime_updater.py:405)가
+   실존해 부정확했으나, 그 사슬의 **머리** `batch_update_realtime_data` 는 프로덕션
+   호출자 0건이라(유일 진입점 intraday_stock_manager.py:205 도 미호출 —
+   bot/system_monitor.py:386-390 에 독립 기록) 경로는 «이중으로» 죽어 있었다.
+   ⇒ 반대 규약의 「죽었지만 배선된」 경로이므로 제거가 맞다. 지운 것은 클래스가 아니라
+   «DB 쓰기 경로»이고 분봉 텍스트 덤프는 그대로다. 일봉을 다시 저장해야 하면 규약을
+   먼저 정하고 별도 승인으로 설계할 것.
 """
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Optional
 
 from utils.logger import setup_logger
 from utils.korean_time import now_kst
-from api.kis_market_api import get_inquire_daily_itemchartprice
-from db.repositories.price import PriceRepository
 
 
 class PostMarketDataSaver:
-    """장 마감 후 데이터 저장 클래스"""
+    """장 마감 후 데이터 저장 클래스 (분봉 텍스트 덤프 전용)"""
 
     def __init__(self) -> None:
         """초기화"""
         self.logger = setup_logger(__name__)
-        self.price_repo = PriceRepository()
 
-        self.logger.info("장 마감 후 데이터 저장기 초기화 완료 (TimescaleDB)")
+        self.logger.info("장 마감 후 데이터 저장기 초기화 완료")
 
     def save_minute_data_to_file(self, intraday_manager) -> Optional[str]:
         """
@@ -72,94 +80,12 @@ class PostMarketDataSaver:
             self.logger.error(f"❌ 분봉 데이터 텍스트 파일 저장 실패: {e}")
             return None
 
-    def save_daily_data(self, stock_codes: List[str], target_date: str = None, days_back: int = 100) -> Dict[str, int]:
-        """
-        종목들의 일봉 데이터를 API로 조회하여 TimescaleDB에 저장
-
-        Args:
-            stock_codes: 저장할 종목 코드 리스트
-            target_date: 기준 날짜 (YYYYMMDD), None이면 오늘
-            days_back: 과거 몇 일치 데이터 저장 (기본 100일)
-
-        Returns:
-            Dict: {'total': 전체 종목 수, 'saved': 저장 성공 수, 'failed': 실패 수}
-        """
-        try:
-            if target_date is None:
-                target_date = now_kst().strftime('%Y%m%d')
-
-            if not stock_codes:
-                self.logger.info("일봉 저장할 종목 없음")
-                return {'total': 0, 'saved': 0, 'failed': 0}
-
-            self.logger.info(f"일봉 데이터 저장 시작: {len(stock_codes)}개 종목 (기준일: {target_date})")
-
-            saved_count = 0
-            failed_count = 0
-
-            for stock_code in stock_codes:
-                try:
-                    # 날짜 계산 (주말/휴일 고려해서 여유있게)
-                    target_date_obj = datetime.strptime(target_date, '%Y%m%d')
-                    start_date_obj = target_date_obj - timedelta(days=days_back + 50)
-
-                    start_date = start_date_obj.strftime('%Y%m%d')
-                    end_date = target_date
-
-                    self.logger.debug(f"[{stock_code}] 일봉 데이터 API 조회 중... ({start_date} ~ {end_date})")
-
-                    # KIS API로 일봉 데이터 수집
-                    daily_data = get_inquire_daily_itemchartprice(
-                        output_dv="2",
-                        div_code="J",
-                        itm_no=stock_code,
-                        inqr_strt_dt=start_date,
-                        inqr_end_dt=end_date,
-                        period_code="D",
-                        adj_prc="0"
-                    )
-
-                    if daily_data is None or daily_data.empty:
-                        self.logger.warning(f"[{stock_code}] 일봉 데이터 없음")
-                        failed_count += 1
-                        continue
-
-                    # 데이터 검증 및 최신 N일만 유지
-                    if len(daily_data) > days_back:
-                        daily_data = daily_data.tail(days_back)
-
-                    # TimescaleDB에 저장
-                    success = self.price_repo.save_daily_prices_batch(stock_code, daily_data)
-
-                    if success:
-                        saved_count += 1
-                        date_info = ""
-                        if 'stck_bsop_date' in daily_data.columns:
-                            date_info = f" ({daily_data.iloc[0]['stck_bsop_date']}~{daily_data.iloc[-1]['stck_bsop_date']})"
-                        self.logger.debug(f"[{stock_code}] 일봉 데이터 DB 저장 완료: {len(daily_data)}일치{date_info}")
-                    else:
-                        failed_count += 1
-                        self.logger.warning(f"[{stock_code}] 일봉 데이터 DB 저장 실패")
-
-                except Exception as e:
-                    self.logger.error(f"[{stock_code}] 일봉 데이터 저장 실패: {e}")
-                    failed_count += 1
-
-            self.logger.info(f"일봉 데이터 저장 완료: {saved_count}/{len(stock_codes)}개 성공, {failed_count}개 실패")
-
-            return {
-                'total': len(stock_codes),
-                'saved': saved_count,
-                'failed': failed_count
-            }
-
-        except Exception as e:
-            self.logger.error(f"일봉 데이터 저장 중 오류: {e}")
-            return {'total': 0, 'saved': 0, 'failed': 0}
-
     def save_all_data(self, intraday_manager) -> Dict[str, any]:
         """
-        장 마감 후 모든 데이터 저장 (일봉 → TimescaleDB, 분봉 → 텍스트 파일)
+        장 마감 후 데이터 저장 (분봉 → 텍스트 파일)
+
+        🔴 일봉 DB 저장 단계(`W4`)는 제거됐다 — 모듈 docstring 참조(사전등록 D-3).
+           일봉은 EOD 수집기(`collectors/eod_collection.py`, `W2`)가 전 종목으로 쓴다.
 
         Args:
             intraday_manager: IntradayStockManager 인스턴스
@@ -168,7 +94,7 @@ class PostMarketDataSaver:
             Dict: 전체 저장 결과
         """
         try:
-            self.logger.info("장 마감 후 데이터 저장 시작 (TimescaleDB)")
+            self.logger.info("장 마감 후 데이터 저장 시작 (분봉 텍스트 덤프)")
 
             # 종목 목록 가져오기
             with intraday_manager._lock:
@@ -179,26 +105,19 @@ class PostMarketDataSaver:
                 return {
                     'success': False,
                     'message': '저장할 종목 없음',
-                    'daily_data': {'total': 0, 'saved': 0, 'failed': 0},
                     'text_file': None
                 }
 
             self.logger.info(f"대상 종목: {len(stock_codes)}개 - {', '.join(stock_codes)}")
 
-            # 1. 일봉 데이터 DB 저장
-            self.logger.info("[1] 일봉 데이터 TimescaleDB 저장")
-            daily_result = self.save_daily_data(stock_codes)
-
-            # 2. 분봉 데이터 텍스트 파일 저장 (디버깅용, 선택적)
-            self.logger.info("[2] 분봉 데이터 텍스트 파일 저장 (디버깅용)")
+            # 분봉 데이터 텍스트 파일 저장 (디버깅용, 선택적)
             text_file = self.save_minute_data_to_file(intraday_manager)
 
             # 결과 요약
-            self.logger.info(f"장 마감 후 데이터 저장 완료 - 일봉: {daily_result['saved']}/{daily_result['total']}개, 텍스트: {text_file if text_file else '없음'}")
+            self.logger.info(f"장 마감 후 데이터 저장 완료 - 텍스트: {text_file if text_file else '없음'}")
 
             return {
                 'success': True,
-                'daily_data': daily_result,
                 'text_file': text_file
             }
 
@@ -207,7 +126,6 @@ class PostMarketDataSaver:
             return {
                 'success': False,
                 'error': str(e),
-                'daily_data': {'total': 0, 'saved': 0, 'failed': 0},
                 'text_file': None
             }
 
