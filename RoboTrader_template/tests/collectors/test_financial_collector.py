@@ -255,6 +255,77 @@ def test_daily_cap_hit_warns_with_exact_uncovered_count(monkeypatch):
     assert cap_msgs[0][-1] == 2, "미수집 개수가 정확히 2(B,C)여야 한다"
 
 
+# ── Item 2(b) — HTTP_FAIL 연속 5회를 무징후로 계속 두드리면 안 된다 ─────────
+
+class _HttpFailFetcher:
+    def __init__(self, *a, **kw):
+        self.calls = 0
+        self.status_counts = {}
+        self.conn_resets = 0
+
+    def fetch(self, corp_code, bsns_year, reprt_code, fs_div):
+        self.calls += 1
+        self.status_counts["HTTP_FAIL"] = self.status_counts.get("HTTP_FAIL", 0) + 1
+        return "HTTP_FAIL", {}
+
+
+def test_http_fail_streak_aborts_after_five_consecutive(monkeypatch):
+    """Item 2b — 매 대상이 HTTP_FAIL 이면 opendart 가 사실상 응답 불능이다.
+    5연속이면 중단하고 정확한 미수집 개수를 WARNING 해야 한다."""
+    warnings = []
+    monkeypatch.setattr(c, "_load_dart_key", lambda: "k")
+    monkeypatch.setattr(c, "DartFinancialFetcher", lambda *a, **kw: _HttpFailFetcher())
+    _patch_collect_no_db(monkeypatch)
+    targets = [(f"T{i}", f"C{i}") for i in range(8)]
+    monkeypatch.setattr(c, "_pending_targets", lambda conn, codes, y, r: targets)
+    monkeypatch.setattr(c.logger, "warning", lambda msg, *a: warnings.append((msg, a)))
+
+    out = c.collect_financials("2026-08-17")
+    assert out["targets_processed"] == 5, "5연속 HTTP_FAIL 뒤 중단돼야 한다"
+    assert out["aborted"] == "http_fail_streak"
+
+    streak_msgs = [a for (m, a) in warnings if "HTTP_FAIL" in m and "연속" in m]
+    assert len(streak_msgs) == 1
+    assert streak_msgs[0][-1] == 3, "8종목 중 처리된 5개를 뺀 3개가 미수집이어야 한다"
+
+
+# ── Item 2(c) — 실행 시간 상한(45분)을 넘기면 다음 대상 «전»에 멈춰야 한다 ────
+
+def test_deadline_hit_stops_before_next_target(monkeypatch):
+    """Item 2c — 시간 상한을 넘기고도 계속 돌면 EOD 파이프라인 전체를 물고 늘어진다.
+    time.monotonic 을 첫 대상 처리 «후» 상한 너머로 점프시켜 정확히 1개만 처리되고
+    중단되는지 확인한다."""
+    warnings = []
+    monkeypatch.setattr(c, "_load_dart_key", lambda: "k")
+    monkeypatch.setattr(c, "DartFinancialFetcher", lambda *a, **kw: _CapFetcher())
+    _patch_collect_no_db(monkeypatch)
+    targets = [(f"T{i}", f"C{i}") for i in range(4)]
+    monkeypatch.setattr(c, "_pending_targets", lambda conn, codes, y, r: targets)
+    monkeypatch.setattr(c.w, "upsert_filing", lambda conn, filing: None)
+    monkeypatch.setattr(c.w, "upsert_accounts", lambda conn, rows: len(rows))
+    monkeypatch.setattr(c, "append_raw", lambda path, payload: 1)
+    monkeypatch.setattr(c.logger, "warning", lambda msg, *a: warnings.append((msg, a)))
+
+    calls = {"n": 0}
+
+    def fake_monotonic():
+        calls["n"] += 1
+        # 1회차(t0)·2회차(첫 대상 검사)는 상한 이전, 3회차(둘째 대상 검사)부터 상한 초과.
+        if calls["n"] <= 2:
+            return 1000.0
+        return 1000.0 + c.COLLECT_DEADLINE_SEC + 1
+
+    monkeypatch.setattr(c.time, "monotonic", fake_monotonic)
+
+    out = c.collect_financials("2026-08-17")
+    assert out["targets_processed"] == 1
+    assert out["deadline_hit"] is True
+
+    deadline_msgs = [a for (m, a) in warnings if "실행 시간 상한" in m]
+    assert len(deadline_msgs) == 1
+    assert deadline_msgs[0][-1] == 3, "4종목 중 1개 처리 후 3개가 미수집이어야 한다"
+
+
 # ── Item 2(d) — corp_code 매핑 없는 종목을 무징후로 빼면 안 된다 ─────────────
 
 def test_unmapped_corp_code_warns_and_calls_report_mapping_coverage(monkeypatch):
@@ -331,6 +402,38 @@ def test_kis_rotation_empty_codes_returns_empty():
     assert c._kis_rotation([], 800, 123) == []
 
 
+# ── Item 4 — KIS 빈 응답([])은 성공이 아니다 ─────────────────────────────────
+
+def test_kis_empty_response_counted_and_warned(monkeypatch):
+    """Item 4 — fetch_quarterly_ratio 는 「무자료」와 「호출 실패」를 둘 다 []로 돌려준다
+    (api/kis_financial_api.py 는 수정 대상 밖). 빈 응답을 그냥 성공으로 세면 실패가
+    조용히 묻힌다 - 별도 집계 + WARNING 이 있어야 한다."""
+    warnings = []
+    monkeypatch.setattr(c, "_load_dart_key", lambda: "k")
+    monkeypatch.setattr(c, "DartFinancialFetcher", lambda *a, **kw: _NoCallFetcher())
+    _patch_collect_no_db(monkeypatch)
+    codes = ["A", "B", "C", "D", "E"]
+    monkeypatch.setattr(c, "load_map", lambda conn: {sc: sc for sc in codes})
+    monkeypatch.setattr(c, "load_universe", lambda conn: codes)
+
+    empty_for = {"A", "B", "C"}
+
+    def _fake_fetch(sc):
+        return [] if sc in empty_for else [{"stock_code": sc}]
+
+    monkeypatch.setattr(c, "fetch_quarterly_ratio", _fake_fetch)
+    monkeypatch.setattr(c.w, "upsert_kis_ratio", lambda conn, rows: len(rows))
+    monkeypatch.setattr(c.logger, "warning", lambda msg, *a: warnings.append((msg, a)))
+
+    out = c.collect_financials("2026-08-17")
+    assert out["kis_empty"] == 3, "5종목 중 3종목이 빈 응답이어야 한다"
+
+    empty_msgs = [a for (m, a) in warnings if "KIS 비율 응답 빈 값" in m]
+    assert len(empty_msgs) == 1
+    assert empty_msgs[0][0] == 3, "빈 응답 건수가 정확히 3이어야 한다"
+    assert empty_msgs[0][1] == 5, "시도한 종목 수(attempted)가 5여야 한다"
+
+
 # ── Item 6 — DartBlocked 는 quota_hit 으로 뭉개면 안 된다 ────────────────────
 
 class _BlockedFetcher:
@@ -360,6 +463,48 @@ def test_dart_blocked_reraises_and_marks_summary_blocked(monkeypatch):
     assert len(written) == 1, "재발생 «전» summary 가 기록돼야 한다"
     assert written[0]["blocked"] is True
     assert written[0]["quota_hit"] is False, "차단은 quota_hit 과 별개 플래그여야 한다"
+
+
+# ── Item 1 — 스윕 경로의 DartBlocked 를 삼키면 안 된다 ──────────────────────
+
+class _SweepBlockedFetcher:
+    """본 수집(pending target 없음)은 안 타고, 스윕의 _fetch_and_store 에서만 호출된다."""
+
+    def __init__(self, *a, **kw):
+        self.calls = 0
+        self.status_counts = {}
+        self.conn_resets = 0
+        self.min_interval = 0.0
+
+    def fetch(self, *a, **kw):
+        self.calls += 1
+        raise c.DartBlocked("simulated sweep block")
+
+
+def test_sweep_dart_blocked_propagates_and_marks_summary_blocked(monkeypatch):
+    """Item 1 — `sweep_amendments` 안에서 DartBlocked 를 `DartQuotaExceeded` 처럼
+    삼키면 IP 차단일에도 EOD 가 성공으로 보이고 reconcile 이 PASS 를 낸다.
+    실제 sweep_amendments 경로(list.json → 대상 파싱 → _fetch_and_store)를 태워
+    DartBlocked 가 collect_financials 밖으로 전파되고, summary 가 blocked=True 로
+    기록된 «뒤»에 재발생하는지 확인한다."""
+    written = []
+    monkeypatch.setattr(c, "_load_dart_key", lambda: "k")
+    monkeypatch.setattr(c, "DartFinancialFetcher", lambda *a, **kw: _SweepBlockedFetcher())
+    _patch_collect_no_db(monkeypatch)
+    # 본 수집 대상은 없음(스윕 경로만 검증) — load_map 은 스윕에서 재사용되므로 여기서 덮어쓴다.
+    monkeypatch.setattr(c, "load_map", lambda conn: {"111111": "corp1"})
+    monkeypatch.setattr(c, "_write_summary", lambda d, summary: written.append(summary))
+
+    items = [{"report_nm": "[기재정정]분기보고서 (2026.03)", "stock_code": "111111"}]
+    monkeypatch.setattr(
+        requests, "get",
+        lambda *a, **kw: _RespJS({"status": "000", "total_page": 1, "list": items}))
+
+    with pytest.raises(c.DartBlocked):
+        c.collect_financials("2026-08-17")   # 월요일, 반기 창 안 → 스윕이 돈다
+
+    assert len(written) == 1, "재발생 «전» summary 가 기록돼야 한다"
+    assert written[0]["blocked"] is True
 
 
 # ── Item 2(c)/8 — 스윕 cap 절단 경고 + fetcher 재사용 ────────────────────────
@@ -509,4 +654,74 @@ def test_reconcile_passes_when_reachable_and_not_stalled(monkeypatch):
                 cur.execute(
                     "DELETE FROM collection_reconciliation "
                     "WHERE trade_date=%s AND dataset='financials'", (trade_date,))
+            conn.commit()
+
+
+# ── Item 5 — WARN 경로가 new_rows=0 을 박아 stalled 게이트를 죽이면 안 된다 ──
+
+def test_reconcile_no_summary_warn_writes_remaining_as_new_rows(monkeypatch):
+    """Item 5 — summary 가 없어도 remaining 은 DB 읽기(DART 키 불필요)만으로 계산
+    가능하다. WARN 이라고 new_rows=0 을 박으면 stalled(3일 연속 미변동) 게이트가
+    영원히 못 뜬다 — 그 값을 그대로 new_rows 로 써야 한다."""
+    monkeypatch.setattr(c, "_load_dart_key", lambda: "k")
+    monkeypatch.setattr(c, "load_map", lambda conn: {"TESTR1": "corpr1"})
+    monkeypatch.setattr(c, "load_universe", lambda conn: ["TESTR1"])
+    monkeypatch.setattr(c, "_pending_targets", lambda conn, codes, y, r: [("TESTR1", "corpr1")])
+    d = date(1999, 9, 11)
+    trade_date = d.isoformat()
+    try:
+        os.remove(c._summary_path(d))
+    except OSError:
+        pass
+    try:
+        out = c.reconcile_financials(trade_date)
+        assert out["verdict"] == "WARN"
+        assert out["reason"] == "no_summary"
+        assert out["remaining"] == 1, "가짜 pending target 1개가 그대로 remaining 에 반영돼야 한다"
+
+        with KisDbConnection.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT new_rows FROM collection_reconciliation "
+                    "WHERE trade_date=%s AND dataset='financials'", (trade_date,))
+                row = cur.fetchone()
+        assert row is not None and row[0] == 1, "new_rows 가 0 으로 고정돼선 안 된다"
+    finally:
+        with KisDbConnection.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM collection_reconciliation "
+                    "WHERE trade_date=%s AND dataset='financials'", (trade_date,))
+            conn.commit()
+
+
+def test_reconcile_escalates_to_fail_after_three_consecutive_warn(monkeypatch):
+    """Item 5 — 3영업일 연속 WARN(no_summary) 뒤에도 오늘 또 summary 가 없으면
+    「조용히 안 돌아감」으로 보고 FAIL 로 격상해야 한다(spec §8 조건2 의 취지)."""
+    monkeypatch.setattr(c, "_load_dart_key", lambda: "k")
+    monkeypatch.setattr(c, "load_map", lambda conn: {})
+    monkeypatch.setattr(c, "load_universe", lambda conn: [])
+    monkeypatch.setattr(c, "_pending_targets", lambda conn, codes, y, r: [])
+
+    prior_dates = [date(1999, 8, 17), date(1999, 8, 18), date(1999, 8, 19)]
+    today = date(1999, 8, 20)
+    today_iso = today.isoformat()
+    all_dates = [pd_.isoformat() for pd_ in prior_dates] + [today_iso]
+    try:
+        for pd_ in prior_dates:
+            c._write_recon(pd_.isoformat(), 5, "WARN")
+        try:
+            os.remove(c._summary_path(today))
+        except OSError:
+            pass
+
+        out = c.reconcile_financials(today_iso)
+        assert out["verdict"] == "FAIL"
+        assert out["reason"] == "no_summary_3d"
+    finally:
+        with KisDbConnection.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM collection_reconciliation "
+                    "WHERE dataset='financials' AND trade_date IN %s", (tuple(all_dates),))
             conn.commit()

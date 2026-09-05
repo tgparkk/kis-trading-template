@@ -155,7 +155,7 @@ def report_mapping_coverage(conn) -> dict:
             "ORDER BY 1", (all_ids,))
         unmatched = [r[0] for r in cur.fetchall()]
     if unmatched:
-        logger.warning("[financials] 13지표 매핑 실패 종목 %d/%d — 목록은 반환값 참조",
+        logger.warning("[financials] 13지표 매핑 실패 종목 %d/%d - 목록은 반환값 참조",
                        len(unmatched), total)
     matched = total - len(unmatched)
     return {"matched": matched, "total_stocks": total, "unmatched_count": len(unmatched),

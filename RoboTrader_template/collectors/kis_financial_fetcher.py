@@ -36,7 +36,7 @@ def fetch_quarterly_ratio(stock_code: str) -> list:
         if not stac_yymm:
             stac_yymm = e.statement_ym
         if not stac_yymm:
-            logger.warning(f"⚠️ KIS 분기비율 조회: statement_ym 없음 — {stock_code}, raw stac_yymm={e.raw.get('stac_yymm') if e.raw else None}")
+            logger.warning(f"KIS 분기비율 조회: statement_ym 없음 - {stock_code}, raw stac_yymm={e.raw.get('stac_yymm') if e.raw else None}")
             continue
 
         # Extract numeric fields from raw with proper None handling
@@ -68,7 +68,7 @@ def fetch_quarterly_ratio(stock_code: str) -> list:
         if all(f is None for f in numeric_fields):
             raw_keys = sorted(e.raw.keys()) if e.raw else []
             logger.warning(
-                f"⚠️ KIS 분기비율 조회: 모든 재무비율이 None — {stock_code}, "
+                f"KIS 분기비율 조회: 모든 재무비율이 None - {stock_code}, "
                 f"stac_yymm={stac_yymm}, raw_keys={raw_keys}"
             )
 

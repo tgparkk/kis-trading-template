@@ -44,6 +44,9 @@ class DartFinancialFetcher:
         self.status_counts = {}
         self.http_errors = 0
         self.conn_resets = 0
+        # Item 2a — 지역변수면 fetch() 호출(=대상)마다 0으로 재초기화돼 연속 전송
+        # 실패가 대상에 걸쳐 누적되지 않는다. 인스턴스 속성으로 승격해 지속 장애를 잡는다.
+        self.reset_streak = 0
 
     def _bump(self, status):
         self.status_counts[status] = self.status_counts.get(status, 0) + 1
@@ -60,18 +63,19 @@ class DartFinancialFetcher:
         params = {"crtfc_key": self.key, "corp_code": corp_code,
                   "bsns_year": bsns_year, "reprt_code": reprt_code, "fs_div": fs_div}
         backoff = _BACKOFF_START
-        reset_streak = 0
         for _ in range(_MAX_TRIES):
             self._throttle()
             try:
                 r = self.session.get(url, params=params, timeout=25)
                 self.calls += 1
-            except requests.exceptions.ConnectionError:
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+                # Item 2a — ReadTimeout 은 ConnectionError 의 서브클래스가 아니다.
+                # 둘 다 전송 계층 실패이므로 같은 스트릭으로 취급해야 지속 타임아웃도 잡힌다.
                 self.conn_resets += 1
-                reset_streak += 1
-                if reset_streak >= 3:
-                    logger.error(f"DartBlocked: 연결 리셋 3연속 (corp_code={corp_code}, bsns_year={bsns_year}, reprt_code={reprt_code}, fs_div={fs_div})")
-                    raise DartBlocked("연결 리셋 3연속 — opendart IP 차단으로 판단")
+                self.reset_streak += 1
+                if self.reset_streak >= 3:
+                    logger.error(f"DartBlocked: 전송 실패 3연속 (corp_code={corp_code}, bsns_year={bsns_year}, reprt_code={reprt_code}, fs_div={fs_div})")
+                    raise DartBlocked("전송 실패 3연속 - opendart IP 차단으로 판단")
                 self.session.close()
                 time.sleep(backoff)
                 backoff = min(backoff * 2, _BACKOFF_CAP)
@@ -82,7 +86,7 @@ class DartFinancialFetcher:
                 backoff = min(backoff * 2, _BACKOFF_CAP)
                 continue
 
-            reset_streak = 0
+            self.reset_streak = 0
             if r.status_code != 200:
                 self.http_errors += 1
                 time.sleep(backoff)
