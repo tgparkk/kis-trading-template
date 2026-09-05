@@ -1,0 +1,34 @@
+[written] REGEN_MANIFEST.json
+🟡 **재생성 없이 흡수한 항목 31건** — 매니페스트에 사유가 박혔다:
+   · RESULTS_COMMON_BAND.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['solve_common_band.py']
+   · RESULTS_CONDITIONAL.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+   · RESULTS_CONDITIONAL_WIDE.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+   · RESULTS_D1_OOS_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_D1_OOS_POST5_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_EXIT_V2_POST4_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_EXIT_V2_POST5_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_FLOW_NORM.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+   · RESULTS_GAPFILL.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_gapfill.py', 'solve_common_band.py']
+   · RESULTS_HDR.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다.
+   · RESULTS_INTRADAY_PICK.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+   · RESULTS_LADDER_TRANCHE_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_LEG_STRUCTURE.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_leg_structure.py']
+   · RESULTS_MINUTE_ENTRY.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_minute_entry.py', 'solve_common_band.py']
+   · RESULTS_MINUTE_SELLTIMING.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['solve_common_band.py']
+   · RESULTS_Q1_V2.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다.
+   · RESULTS_RANKING_POST6_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_RECONSTRUCT.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다.
+   · RESULTS_RECONSTRUCT_POST4_EXACT_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_RECONSTRUCT_POST4_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_RECONSTRUCT_POST5_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_REGDAY_POST5_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_S5_SIDEBYSIDE.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_SELECTION.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+   · RESULTS_SELECTION_FLOW.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+   · RESULTS_SELECTION_POST4_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_SELECTION_POST5_NUMBERS.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_SELECTION_ROBUST.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['run_selection.py']
+   · RESULTS_SELLTIMING.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다. · 바뀐 모듈 ['solve_common_band.py']
+   · RESULTS_WRC_EXPLORE.md: 이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.
+   · RESULTS_raw.md: 재기준선 시점에 **이미 낡아 있었다** — 재생성하지 않고 흡수했다(`PREREG_POST6.md` §5-3-4). 🔴 「이 스크립트로 만들었다」의 증거가 아니다.
+🔑 ***`--update` 한 번이 「낡았다」 신호를 «조용히» 지우면 안 된다.*** 위 항목은 `--rerun` 으로 확인되기 전까지 증거가 아니다.

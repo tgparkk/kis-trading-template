@@ -1,0 +1,109 @@
+{
+ "seed": 20260815,
+ "nrep": 20000,
+ "note_nrep": "run_selection.py 는 NREP=2000",
+ "db_snapshot_max_date": "2026-09-04",
+ "branch_a_random_stock": {
+  "trials": 100000,
+  "a0_feasible": 2424,
+  "a1_feasible": 1003,
+  "N1_rate": 0.01003,
+  "band_denominator": 1003,
+  "narrow": 230,
+  "N2_rate": 0.22931206380857427,
+  "per_case": {
+   "한라캐스트": {
+    "a0": 0,
+    "a1": 0,
+    "trials": 20000,
+    "narrow": 0
+   },
+   "원익": {
+    "a0": 0,
+    "a1": 0,
+    "trials": 20000,
+    "narrow": 0
+   },
+   "지투파워": {
+    "a0": 1782,
+    "a1": 1003,
+    "trials": 20000,
+    "narrow": 230
+   },
+   "우리기술투자": {
+    "a0": 642,
+    "a1": 0,
+    "trials": 20000,
+    "narrow": 0
+   },
+   "비에이치": {
+    "a0": 0,
+    "a1": 0,
+    "trials": 20000,
+    "narrow": 0
+   }
+  },
+  "distinct_codes_per_case": {
+   "한라캐스트": 2762,
+   "원익": 2764,
+   "지투파워": 2766,
+   "우리기술투자": 2766,
+   "비에이치": 2763
+  },
+  "constant_cases": [
+   "한라캐스트",
+   "원익",
+   "비에이치"
+  ]
+ },
+ "branch_b_shuffled_legs": {
+  "status": "⛔ 무정보 강등 — FREEZE_WRC_2026-09-02.md §3 확정 (교집합은 순서 불변 · A1 제약은 매수 사다리에만 걸린다) ⇒ 이 회차는 돌리지 않았다. 재명세는 별도 사전등록 개정."
+ },
+ "observed": {
+  "cases": 5,
+  "a0_feasible": 1,
+  "a1_feasible": 1,
+  "band_measurable": 1,
+  "narrow": 0
+ },
+ "guards": {
+  "G1": 0.8,
+  "G1_threshold": 0.3333333333333333,
+  "G1_fired": true,
+  "Z3": 0.2,
+  "Z3_threshold": 0.5,
+  "Z3_fired": false,
+  "G1_by_slice": {
+   "include": 0.8,
+   "no_oe": 1.0,
+   "no_re": 1.0,
+   "no_both": 1.0
+  },
+  "G1_flip_slices": [],
+  "Z3_by_slice": {
+   "include": 0.2,
+   "no_oe": 0.5,
+   "no_re": 0.25,
+   "no_both": 0.5
+  },
+  "Z3_flip_slices": [
+   "no_oe",
+   "no_both"
+  ],
+  "P1_numerator": 0,
+  "P1_denominator": 1,
+  "P1_needed_majority": 1,
+  "P1_verdict": "판정 불가"
+ },
+ "thresholds": {
+  "N1": 0.5,
+  "N2": 0.5,
+  "band_pp": 3.0,
+  "G1": 0.3333333333333333,
+  "residual": [
+   0.02,
+   0.022
+  ],
+  "Z3": 0.5
+ }
+}

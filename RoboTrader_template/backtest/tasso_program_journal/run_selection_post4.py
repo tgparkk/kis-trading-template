@@ -58,7 +58,10 @@ def load_ext():
 
 
 def med(xs):
-    s = sorted(x for x in xs if x is not None)
+    # 🔴 C-17 (`PREREG_POST6.md` §5-1-3) — `f9_newhigh` 가 NaN 을 보존하게 되면서 **NaN 이
+    #    분모에 들어올 수 있다.** `sorted()` 는 NaN 을 조용히 잘못 정렬하므로 여기서 뺀다
+    #    (`run_selection_post5.py:125` 의 `med()` 가 이미 같은 처리다 — 관용구 단위 정정).
+    s = sorted(x for x in xs if x is not None and x == x)
     if not s:
         return None
     n = len(s)

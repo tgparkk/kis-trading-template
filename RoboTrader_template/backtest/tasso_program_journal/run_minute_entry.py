@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import random
+import statistics
 import sys
 from pathlib import Path
 
@@ -51,6 +52,26 @@ def say(s=""):
 def hhmm(t: str) -> str:
     t = str(t).zfill(6)
     return f"{t[:2]}:{t[2:4]}"
+
+
+# 🔴 C-20 (`PREREG_POST6.md` §5-4) — `hit[len(hit)//2]` 는 짝수 `n` 에서 «상위 중앙값»이다.
+#    시각은 평균을 낼 수 없으니 초로 접어 `statistics.median` 을 쓴다. `t` 와 `P` 는
+#    **짝지어진 값**이라(같은 해의 도달시각·평단) 가운데 «원소»에 대해 성분별로 중앙값을 낸다
+#    — `hit` 이 `t` 로 정렬돼 있으므로 `t` 쪽은 전체 목록의 `statistics.median` 과 같다.
+def tsec(t) -> int:
+    s = str(t).zfill(6)
+    return int(s[:2]) * 3600 + int(s[2:4]) * 60 + int(s[4:6])
+
+
+def hhmm_sec(x) -> str:
+    m = int(x) // 60
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def mid_items(seq):
+    """정렬된 목록의 «가운데 원소» — 홀수면 1개, 짝수면 2개."""
+    n = len(seq)
+    return seq[(n - 1) // 2:n // 2 + 1]
 
 
 def first_touch(bars, price):
@@ -115,11 +136,12 @@ def main() -> int:
             continue
 
         hit.sort(key=lambda x: x[1])
-        t_med = hit[len(hit) // 2][1]                  # t(P) 의 중앙값
-        P_med = hit[len(hit) // 2][0]
+        mid = mid_items(hit)                           # 🔴 C-20
+        t_med = statistics.median([tsec(t) for _P, t in mid])   # t(P) 의 중앙값(초)
+        P_med = statistics.median([P for P, _t in mid])
         pos = (P_med - day_lo) / (day_hi - day_lo) if day_hi > day_lo else float("nan")
-        verdict = "앞(추격)" if t_med < t_high else "뒤(밴드)"
-        rows.append((name, f"{len(hit)}/{len(Ps)}", hhmm(t_med), hhmm(t_high),
+        verdict = "앞(추격)" if t_med < tsec(t_high) else "뒤(밴드)"
+        rows.append((name, f"{len(hit)}/{len(Ps)}", hhmm_sec(t_med), hhmm(t_high),
                      verdict, f"{pos:.2f}"))
 
     say("| 종목 | P 도달 해 | t(P) 중앙 | t_high | 판정 | P 위치 |")

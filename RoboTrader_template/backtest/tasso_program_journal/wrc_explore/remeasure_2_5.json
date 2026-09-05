@@ -1,0 +1,135 @@
+[
+ {
+  "post": "post4",
+  "name": "이노테크",
+  "code": "469610",
+  "reg": "2026-08-13",
+  "doc_P": 15535.25,
+  "doc_lo": 15020,
+  "in_denom": true,
+  "frozen": [
+   15535.253748306159,
+   15020.0
+  ],
+  "now": [
+   15535.253748306159,
+   14430.0
+  ],
+  "doc_reproduced_at_frozen_window": true,
+  "cut_now": false
+ },
+ {
+  "post": "post4",
+  "name": "한켐",
+  "code": "457370",
+  "reg": "2026-08-12",
+  "doc_P": 7975.32,
+  "doc_lo": 7460,
+  "in_denom": true,
+  "frozen": [
+   7975.322991640217,
+   7460.0
+  ],
+  "now": [
+   7975.322991640217,
+   7460.0
+  ],
+  "doc_reproduced_at_frozen_window": true,
+  "cut_now": false
+ },
+ {
+  "post": "post4",
+  "name": "지투파워",
+  "code": "388050",
+  "reg": "2026-08-13",
+  "doc_P": 8000.0,
+  "doc_lo": 8030,
+  "in_denom": true,
+  "frozen": [
+   8000.000000000001,
+   8030.0
+  ],
+  "now": [
+   8000.000000000001,
+   8030.0
+  ],
+  "doc_reproduced_at_frozen_window": true,
+  "cut_now": true
+ },
+ {
+  "post": "post4",
+  "name": "PS일렉트로닉스",
+  "code": "332570",
+  "reg": "2026-08-13",
+  "doc_P": 9811.18,
+  "doc_lo": 8530,
+  "in_denom": true,
+  "frozen": [
+   9811.17570749051,
+   8530.0
+  ],
+  "now": [
+   7908.518714265122,
+   6870.0
+  ],
+  "doc_reproduced_at_frozen_window": true,
+  "cut_now": false
+ },
+ {
+  "post": "post4",
+  "name": "코데즈컴바인",
+  "code": "047770",
+  "reg": "2026-08-19",
+  "doc_P": 3306.35,
+  "doc_lo": 3320,
+  "in_denom": false,
+  "frozen": [
+   3306.3458320141117,
+   3320.0
+  ],
+  "now": [
+   3062.291490315192,
+   3075.0
+  ],
+  "doc_reproduced_at_frozen_window": true,
+  "cut_now": true
+ },
+ {
+  "post": "post5",
+  "name": "코데즈컴바인",
+  "code": "047770",
+  "reg": "2026-08-21",
+  "doc_P": 3102.25,
+  "doc_lo": 3075,
+  "in_denom": false,
+  "frozen": [
+   3102.249014607002,
+   3075.0
+  ],
+  "now": [
+   3102.249014607002,
+   3075.0
+  ],
+  "doc_reproduced_at_frozen_window": true,
+  "cut_now": false
+ },
+ {
+  "post": "post5",
+  "name": "삼양바이오팜",
+  "code": "0120G0",
+  "reg": "2026-08-21",
+  "doc_P": 46903.73,
+  "doc_lo": 52300,
+  "in_denom": false,
+  "frozen": [
+   46903.72629030088,
+   52300.0
+  ],
+  "now": [
+   46186.26967400565,
+   51500.0
+  ],
+  "doc_reproduced_at_frozen_window": true,
+  "cut_now": true
+ }
+]

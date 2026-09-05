@@ -1,0 +1,129 @@
+{
+ "post_log_no": "224401108114",
+ "post_date": "2026-09-04",
+ "db_snapshot_max_date": "2026-09-04",
+ "main_branch": {
+  "N": 3,
+  "measure": "SEC-M1"
+ },
+ "denominator_exact": 10,
+ "measurable": 10,
+ "excluded_none_rows": [
+  "광전자",
+  "삼양바이오팜"
+ ],
+ "gates": {
+  "min_exact": {
+   "threshold": 3,
+   "n": 10,
+   "open": true
+  },
+  "SEC-G1": {
+   "threshold": 0.3333333333333333,
+   "rate": 0.0,
+   "open": true
+  },
+  "SEC-B1_fire": {
+   "q_top_max": 0.02040816326530612,
+   "q_top_threshold": 0.135,
+   "k": 10,
+   "p_ceiling": 8.188605929965347e-07,
+   "open": true
+  },
+  "SEC-X1": {
+   "lt05_N1": 0.02,
+   "lt05_B1": 0.025,
+   "z_N1": -1.9466570535691505,
+   "z_B1": -1.6222142113076254,
+   "open": true
+  }
+ },
+ "SEC-P1": {
+  "components": {
+   "SEC-N1": 0.15075,
+   "SEC-B1": 0.31275,
+   "SEC-B2": 0.8
+  },
+  "thresholds": {
+   "SEC-N1": 0.05,
+   "SEC-B1": 0.05,
+   "SEC-B2": 0.5
+  },
+  "passed": {
+   "SEC-N1": false,
+   "SEC-B1": false,
+   "SEC-B2": true
+  },
+  "verdict": false
+ },
+ "SEC-P2": {
+  "note": "기록만 — 검정 통계량 아님",
+  "n_judgements": 1,
+  "n_support": 0
+ },
+ "SEC-V1": {
+  "split": true,
+  "by_branch": {
+   "1|`N = 2`": false,
+   "1|`N = 3`": false,
+   "1|`N = 5` (🔴 구조적 미정 80.0% 병기)": null,
+   "2|`SEC-M1`": false,
+   "2|`SEC-M2`": false,
+   "2|`SEC-M3`": false,
+   "3|글 단위 중앙": false,
+   "3|건 pooled 중앙": false,
+   "4|`exact` 만": false,
+   "4|`approx` 포함": false
+  }
+ },
+ "reentry_sensitivity": {
+  "excluded_codes": [
+   "004310",
+   "388050"
+  ],
+  "P6_PRIOR_CYCLE_IN_WINDOW": {
+   "388050": 1,
+   "004310": 0
+  },
+  "verdict_kept": false,
+  "verdict_excluded": false,
+  "main_kept": 54.140127388535035,
+  "main_excluded": 52.547770700636946
+ },
+ "SEC-O1": {
+  "frozen_train": {
+   "main": 67.0,
+   "pooled": 69.4,
+   "N1": 0.0382,
+   "B1": 0.3258,
+   "B2": 0.6,
+   "B2_wins": 9,
+   "B2_n": 15,
+   "G1": 0.16666666666666666,
+   "n_measurable": 15,
+   "n_items": 18,
+   "db_snapshot": "2026-09-02"
+  },
+  "recomputed_train": {
+   "main": 66.9807707812626,
+   "SEC-N1": 0.03825,
+   "SEC-B1": 0.3258,
+   "SEC-B2": 0.6,
+   "SEC-G1": 0.16666666666666666,
+   "n_items": 18,
+   "n_measurable": 15
+  },
+  "drift_items": [
+   "관측",
+   "`SEC-N1`"
+  ]
+ },
+ "_notation": [
+  "1. 🔴 **「라이브 채택 금지 · 성과·엣지 추정 금지」** — 이 문서가 만드는 어떤 섹터 지표도 라이브 전략·파라미터 변경의 근거가 아니다(`PREREG_SECTOR_COMOVE.md` §0-1 · `PREREG.md` §0). 산출물은 **기록**이지 전략 후보가 아니다.",
+  "2. 🔴 **「+15%」 문턱이 이 축 «안»에 남아 있다** — `n_up`(대조 풀)과 `SEC-M2` 가 `고가 ≥ 전일종가 × 1.15` 를 쓴다(`run_regday_post5.py:13`·`:327` 승계 · §2-2). **`SEL-S1` 기각은 그대로 유지된다** — 이 값은 «판정 문턱»이 아니라 «대조 풀·측정자 입력»이고, **등록일 당일 저자 종목에 걸지 않는다**(동료에게만 건다).",
+  "3. 🔴 **`SEC-P1` 불성립을 「테마가 아니다」로 읽지 않는다** — 거짓 음성이 구조적이다(에코프로 4종목이 KSIC 에서 «세 칸»으로 흩어진다 · §0-2 · §9). 성립도 「섹터 동반성이 존재한다」까지이며 「테마로 고른다」의 확증이 아니다.",
+  "4. 🔴 **`SEC-N1` 은 «`SEC-B1` 없이는» 증거가 아니다** — 저자 종목은 정의상 급등주이고, 급등주가 섹터 동반성이 높다면 `SEC-N1` 은 그 사실만 되비춘다(= `REG-M4` 재진술). **정보는 `SEC-B1`·`SEC-B2` 에 있다**(§4-1).",
+  "5. 🔒 **여기 있는 값이 «판정»이다**(`SEC-P1`·`SEC-P2` · §0-4 7번) — 분모는 **post6 신규 `exact` 건**이며, **훈련(post1~5) 값은 분모에 «넣지 않는다»**(`SEC-O1` · §4-5). 훈련 열은 🔬 «탐색적 표기»로 나란히 두기만 한다. 그리고 이 축의 최대치는 **「기술」**이다(승/패 대조 3회 연속 미실시 · §0-2 ③).",
+  "6. 🔴 **잣대는 이 실행 «전»에 동결됐다** — `SEC-D1`(`N = 3`)·`SEC-D2`(`SEC-M1`) 사장님 확정 2026-09-02(§0-6) · 배선 점검 2026-09-02 · 동결 커밋 `FREEZE_SECTOR_2026-09-03.md` · 그 «뒤»인 2026-09-04 에 `fetch_post.py` 가 돌았다(`PREDECISION_2026-09-04_post6.md` PD-0). 🔴 **이 실행은 잣대를 하나도 바꾸지 않는다** — 값을 보고 바꾸면 그게 사후적합이다."
+ ]
+}

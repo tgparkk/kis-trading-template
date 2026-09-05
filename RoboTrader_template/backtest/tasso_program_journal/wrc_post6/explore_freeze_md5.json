@@ -1,0 +1,179 @@
+{
+ "rows": [
+  {
+   "file": "run_wrc_explore.py",
+   "frozen": "b63f90349c7dcfcbfb6ccb1129b4cad0",
+   "now": "9c597207a6f16d4897928b04afc998dd",
+   "match": false,
+   "kind": "declared",
+   "expected_change": true,
+   "dirty": true
+  },
+  {
+   "file": "RESULTS_WRC_EXPLORE.md",
+   "frozen": "1280c0eeec1fa1a6b6de1679112e8718",
+   "now": "1280c0eeec1fa1a6b6de1679112e8718",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  },
+  {
+   "file": "wrc_explore/bands.tsv",
+   "frozen": "7384df63ac6978a0496a10936b878733",
+   "now": "7384df63ac6978a0496a10936b878733",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  },
+  {
+   "file": "wrc_explore/controls_summary.json",
+   "frozen": "e855c53812181714ca7b66917231735b",
+   "now": "e855c53812181714ca7b66917231735b",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  },
+  {
+   "file": "wrc_explore/universe_snapshot.json",
+   "frozen": "8e264fb37c5be6de1b33fc1ff4626bdf",
+   "now": "8e264fb37c5be6de1b33fc1ff4626bdf",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  },
+  {
+   "file": "wrc_explore/remeasure_2_5.json",
+   "frozen": "dedd0981bd8fb97ba5a56b3c223c0b12",
+   "now": "dedd0981bd8fb97ba5a56b3c223c0b12",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  },
+  {
+   "file": "PREREG_WEIGHTED_RECON.md",
+   "frozen": "827c6f7080f2e6ad1a132ce4f1dff16f",
+   "now": "827c6f7080f2e6ad1a132ce4f1dff16f",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  },
+  {
+   "file": "regen_gate.py",
+   "frozen": "a614028767367eac0c800ba452d62576",
+   "now": "04a63365bdd90574b75c97801f8ce71e",
+   "match": false,
+   "kind": "declared",
+   "expected_change": true,
+   "dirty": true
+  },
+  {
+   "file": "reconstruct_prices.py",
+   "frozen": "dc2d69d3c07cfb84147a3692bd16f13e",
+   "now": "dc2d69d3c07cfb84147a3692bd16f13e",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  },
+  {
+   "file": "run_reconstruct_post5.py",
+   "frozen": "11228c0bfc32f7136d9478656563aa32",
+   "now": "11228c0bfc32f7136d9478656563aa32",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  },
+  {
+   "file": "run_reconstruct_post4.py",
+   "frozen": "3ab144b4e3c46fa1c6c8824830b327a2",
+   "now": "3ab144b4e3c46fa1c6c8824830b327a2",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  },
+  {
+   "file": "run_selection.py",
+   "frozen": "fa366edf5f8beca0b22560e810fc5f34",
+   "now": "fa366edf5f8beca0b22560e810fc5f34",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  },
+  {
+   "file": "run_tests.py",
+   "frozen": "a122eecd3f17e7a8ded9af48d2fd6dfe",
+   "now": "a122eecd3f17e7a8ded9af48d2fd6dfe",
+   "match": true,
+   "kind": "same",
+   "expected_change": false,
+   "dirty": false
+  }
+ ],
+ "explore_artifacts_clean_vs_HEAD": true,
+ "git_status_porcelain": [
+  "M RoboTrader_template/backtest/tasso_program_journal/ledger_legs.csv",
+  " M RoboTrader_template/backtest/tasso_program_journal/ledger_trades.csv",
+  " M RoboTrader_template/backtest/tasso_program_journal/run_wrc_explore.py"
+ ],
+ "expected_change": {
+  "run_wrc_explore.py": "이 회차가 **post6 «명시» 제외 필터**를 넣었다 — §0-2 에 전문 인쇄",
+  "regen_gate.py": "post6 **최종 레인의 `C-23` 수리**(`PAIRS` 인자화 · `FROZEN_STALE` 스킵 · `ART_DIRS` 스냅샷) — 이 축 «밖»의 작업이며 이 축의 판정 수치를 «입력으로 쓰지 않는다**(`regen_gate.py` 는 산출물 등재·재현 게이트 전용이다). 🔴 이 회차는 그 파일의 **수정 금지** 대상이라 손대지 않았다"
+ },
+ "ledger_fingerprints": {
+  "ledger_trades.csv:prefix51": "5d603de7d0ac1ed853eaaf960c1f0883",
+  "ledger_legs.csv:prefix170": "f195e260587865ad2a36102412874897",
+  "trades:RNK_KEY(post6)": "9f4603847d2582673bf0292a3a33d512",
+  "trades:WRC_KEY(post6)": "5f52bdf14e29fa4ed39826a0b2cebd38",
+  "legs:LEG_KEY(post6)": "ce8a6ab4c94a29a88e31ca981c804b58"
+ },
+ "ledger_prefix_frozen": {
+  "ledger_trades.csv": {
+   "lines": 51,
+   "frozen_md5": "5d603de7d0ac1ed853eaaf960c1f0883"
+  },
+  "ledger_legs.csv": {
+   "lines": 170,
+   "frozen_md5": "f195e260587865ad2a36102412874897"
+  }
+ },
+ "ledger_key_columns": {
+  "RNK_KEY": [
+   "post_log_no",
+   "post_date",
+   "item_no",
+   "stock_name",
+   "reg_date",
+   "reg_date_precision",
+   "all_loss"
+  ],
+  "WRC_KEY": [
+   "post_log_no",
+   "post_date",
+   "prog_ver",
+   "item_no",
+   "stock_name",
+   "open_ended",
+   "reg_date",
+   "reg_date_precision",
+   "fill_level",
+   "fill_n",
+   "preset"
+  ],
+  "LEG_KEY": [
+   "post_log_no",
+   "item_no",
+   "leg_idx",
+   "ret_pct"
+  ],
+  "note": "narrative 는 어느 지문에도 없다 — 이 축은 그 열을 읽지 않는다"
+ }
+}
