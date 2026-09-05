@@ -57,6 +57,42 @@ def test_quarterly_cumulative_amount_is_captured():
     assert accounts[0]["thstrm_add_amount"] == 300
 
 
+def test_malformed_ord_skipped(monkeypatch):
+    """🔴 malformed ord 는 PK 충돌로 침묵 덮어쓴다 — 스킵 + 경고 필수.
+    ord 가 정수 아니면 계정을 드롭하고 WARNING 을 남긴다."""
+    resp = {"status": "000", "list": [
+        {"rcept_no": "20260515000001", "reprt_code": "11013", "bsns_year": "2026",
+         "corp_code": "00126380", "sj_div": "BS", "account_id": "ifrs-full_Assets",
+         "account_nm": "자산총계", "thstrm_amount": "1000", "ord": "1", "currency": "KRW"},
+        # malformed ord
+        {"rcept_no": "20260515000001", "reprt_code": "11013", "bsns_year": "2026",
+         "corp_code": "00126380", "sj_div": "BS", "account_id": "ifrs-full_Liabilities",
+         "account_nm": "부채총계", "thstrm_amount": "2000", "ord": "x", "currency": "KRW"},
+    ]}
+
+    # Verify logger.warning is called with the right parameters
+    logger_warnings = []
+    def capture_warning(msg, *args, **kwargs):
+        logger_warnings.append((msg, args))
+
+    monkeypatch.setattr(w.logger, "warning", capture_warning)
+    filing, accounts = w.rows_from_dart_response(resp, "005930", "CFS")
+
+    # 오직 good item 만 살아남음
+    assert len(accounts) == 1
+    assert accounts[0]["account_id"] == "ifrs-full_Assets"
+    assert accounts[0]["ord"] == 1
+
+    # WARNING 로그 호출 확인: rcept_no, account_id, 그리고 원본 ord 값 포함
+    assert len(logger_warnings) == 1
+    msg_template, args = logger_warnings[0]
+    # msg_template = "[financial_writer] ord 무효 계정 스킵: rcept_no=%s account_id=%s ord=%r"
+    # args = ("20260515000001", "ifrs-full_Liabilities", "x")
+    assert args[0] == "20260515000001"  # rcept_no
+    assert args[1] == "ifrs-full_Liabilities"  # account_id
+    assert args[2] == "x"  # raw ord
+
+
 def test_upsert_accounts_rolls_back_on_cursor_error():
     """cursor.execute가 실패하면 conn.rollback()이 호출되어야 한다."""
     class FakeCursor:
