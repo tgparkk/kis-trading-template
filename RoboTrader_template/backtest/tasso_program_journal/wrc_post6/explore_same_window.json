@@ -1,0 +1,92 @@
+{
+ "window_end": "2026-09-04",
+ "note": "🔬 탐색 표본(post4·post5)을 이 실행의 창에서 재측정한 값 — 판정 분모가 아니다(WRC-O1)",
+ "rows": [
+  {
+   "post": "post5",
+   "name": "혜인",
+   "code": "003010",
+   "a0": false,
+   "a1": false,
+   "band_median_w": null,
+   "anchor_below_window_high": true
+  },
+  {
+   "post": "post5",
+   "name": "한국화장품제조",
+   "code": "003350",
+   "a0": false,
+   "a1": false,
+   "band_median_w": null,
+   "anchor_below_window_high": true
+  },
+  {
+   "post": "post5",
+   "name": "한켐",
+   "code": "457370",
+   "a0": false,
+   "a1": false,
+   "band_median_w": null,
+   "anchor_below_window_high": false
+  },
+  {
+   "post": "post5",
+   "name": "광전자",
+   "code": "017900",
+   "a0": false,
+   "a1": false,
+   "band_median_w": null,
+   "anchor_below_window_high": true
+  },
+  {
+   "post": "post5",
+   "name": "레메디",
+   "code": null
+  },
+  {
+   "post": "post4",
+   "name": "이노테크",
+   "code": "469610",
+   "a0": true,
+   "a1": true,
+   "band_median_w": 13.14314824248599,
+   "anchor_below_window_high": false
+  },
+  {
+   "post": "post4",
+   "name": "한켐",
+   "code": "457370",
+   "a0": true,
+   "a1": false,
+   "band_median_w": null,
+   "anchor_below_window_high": true
+  },
+  {
+   "post": "post4",
+   "name": "금호건설",
+   "code": "002990",
+   "a0": false,
+   "a1": false,
+   "band_median_w": null,
+   "anchor_below_window_high": true
+  },
+  {
+   "post": "post4",
+   "name": "지투파워",
+   "code": "388050",
+   "a0": true,
+   "a1": true,
+   "band_median_w": 7.382550335570475,
+   "anchor_below_window_high": true
+  },
+  {
+   "post": "post4",
+   "name": "PS일렉트로닉스",
+   "code": "332570",
+   "a0": true,
+   "a1": false,
+   "band_median_w": null,
+   "anchor_below_window_high": true
+  }
+ ]
+}

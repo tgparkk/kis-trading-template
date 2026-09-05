@@ -1,8 +1,16 @@
 # -*- coding: utf-8 -*-
 """`PREREG_RANKING.md` 실행 — 후보 랭킹(「어느 급등주냐」) 축 · 접두 `RNK-`.
 
-이 스크립트는 **§0-3 표의 3단계(훈련·선택)** 를 돌린다. 대상은 **post1~5 «만»**이다.
-🔴 **6번째 글은 아직 존재하지 않는다** — `--stage post6` 은 의도적으로 «거부»한다(§0-3 5단계 전).
+이 스크립트는 **§0-3 표의 3단계(훈련·선택)** 와 **5~6단계(post6 검증)** 를 `--stage` 로 나눠 돈다.
+  · `--stage train`(기본) — 대상 **post1~5 «만»** · 산출물 `RESULTS_RANKING_TRAIN_NUMBERS.md`
+  · `--stage post6`       — 대상 **6번째 글** · 산출물 `RESULTS_RANKING_POST6_NUMBERS.md`
+
+⚠️ **정정(2026-09-05)**: 여기 있던 *「6번째 글은 아직 존재하지 않는다 — `--stage post6` 은
+의도적으로 «거부»한다」*는 **더는 사실이 아니다**(`main()` :1465-1473 참조). 그 거부는
+「동결 커밋이 fetch 보다 앞선다」를 강제하던 장치였고, 조건은 2026-09-04 에 소멸했다
+(동결 `8d28e14` 08-31 22:24 → fetch `post_224401108114.*` 09-04 18:50). 순서 증거는 이제
+**git 해시**가 이고 간다 — 이 문장이 코드보다 뒤처져 있었다.
+🔑 ***docstring 이 「막는다」고 적었는데 코드가 안 막으면, 읽은 사람은 없는 가드를 믿는다.***
 
 동결 문언 준수 사항 (문서 → 코드 대응은 `RESULTS_RANKING_TRAIN.md` 의 대조표):
   · §2-1 `RNK-R1`  유니버스 = 등록일 `market_cap>0 ∧ close>0` **전체** · 의사티커 제외
@@ -54,6 +62,56 @@ NUP_MULT = 1.15          # `n_up` 민감도 갈래 전용(§2-1) — 판정 갈�
 DROP_RATE_FLAG = 0.01    # §6 말미 — «표기 가드»이지 판정 게이트가 아니다
 A5_CALIB_K = 200         # `RNK-N1` 보정 검사의 독립 실현 수 (문턱이 아니라 «표본 크기»다)
 
+# ═══ 6번째 글(post6) 검증 모드 — 상수 ═════════════════════════════════════
+# 🔴 **훈련 모드 보호.** 원장(`ledger_trades.csv`)은 append-only 이고 2026-09-04 에 post6 12행이
+#    붙었다. `--stage train` 이 그 행을 읽으면 §0-3 3단계의 훈련 표본(post1~5 · `exact` 18)이
+#    «뒤에 온 글» 때문에 달라진다 — 그건 홀드아웃의 정의를 깨는 것이다.
+#    ⇒ 훈련 모드는 **동결 시점까지의 행만** 읽는다. 아래 상수가 그 시점을 기록한다.
+TRAIN_FREEZE_DATE = "2026-08-31"   # `FREEZE_RANKING_2026-08-31.md` 동결 시점 (§0-3 4단계)
+POST6_LOG_NO = "224401108114"      # 6번째 글 · 발행 2026-09-04(금) · 프로그램 1.0.40
+POST6_POST_DATE = "2026-09-04"     # 그 글의 `post_date`(원장) — 훈련 배제 술어의 대조값
+SELECTED_RULE = "RNK-A1"           # 🔒 `FREEZE_RANKING_2026-08-31.md` §1 동결 선택 (계수 없음)
+
+# 6번째 글 신규 10건의 종목코드 — `INTAKE_2026-09-04_post6.md` §1 표(동결 · verifier 4패스
+# APPROVE)에서 **그대로 옮겨 적은 것**이다. 이 스크립트가 만든 매핑이 아니며, 실행 시
+# `stock_info` 이름검색으로 대조해 인쇄한다(사유 ① 실측 재현과 같은 장치).
+# ⚠️ 후속 2건(광전자 · 삼양바이오팜)은 `reg_date` 가 비어 있어 `exact` 분모 밖이다(PD-2 2번).
+POST6_CODES = {
+    "한라캐스트": "125490", "헥토파이낸셜": "234340", "아난티": "025980",
+    "아이티센글로벌": "124500", "현대약품": "004310", "원익": "032940",
+    "쿠콘": "294570", "지투파워": "388050", "우리기술투자": "041190",
+    "비에이치": "090460",
+}
+POST6_REENTRY = {"현대약품", "지투파워"}            # PD-3 · `PREREG_POST6.md` §1-5 (분모 포함 + 제외 민감도)
+POST6_PRIOR_CYCLE = {"지투파워": 1, "현대약품": 0}  # `P6-PRIOR_CYCLE_IN_WINDOW` (PD-3 표 그대로)
+
+# `RESULTS_RANKING_TRAIN_NUMBERS.md`(동결본)가 **발표한** 훈련값 — 문서에서 옮겨 적은 상수이며
+# **재계산이 아니다**(`run_selection_post6.py` 의 `PUB` 와 같은 처리). `RNK-O1` 병기 전용.
+TRAIN_PUB = {
+    "RNK-A1": dict(loo=18.5, per_fold=(27.0, 17.0, 8.0, 20.0), pctl=99.33, null_p=0.00000,
+                   null_p2=0.00000, m_n=17, m_uniq=13, m_min=2.0, m_med=17.0, m_max=49.0, lost=1),
+    "RNK-A2": dict(loo=23.5, per_fold=(19.0, 40.0, 18.5, 28.0), pctl=99.06, null_p=0.00000,
+                   null_p2=0.00000, m_n=16, m_uniq=16, m_min=3.0, m_med=28.5, m_max=154.0, lost=2),
+    "RNK-A3": dict(loo=20.5, per_fold=(26.0, 20.0, 21.0, 14.0), pctl=99.18, null_p=0.00000,
+                   null_p2=0.00000, m_n=16, m_uniq=13, m_min=0.0, m_med=20.0, m_max=201.0, lost=2),
+    "RNK-A4": dict(loo=23.2, per_fold=(16.5, 48.0, 10.5, 30.0), pctl=99.07, null_p=0.00000,
+                   null_p2=0.00000, m_n=16, m_uniq=14, m_min=3.0, m_med=27.5, m_max=78.0, lost=2),
+    "RNK-A5": dict(loo=1327.2, per_fold=(1668.5, 594.0, 986.0, 1988.5), pctl=49.67,
+                   null_p=0.51520, null_p2=0.51345, m_n=17, m_uniq=17, m_min=204.0,
+                   m_med=1301.0, m_max=2371.0, lost=1),
+}
+TRAIN_N = 18             # 훈련 `exact` 건수(분모) — 위 `lost` 와 같은 분모
+# 훈련 산출물 «재현성» 프로브 — `RESULTS_RANKING_TRAIN_NUMBERS.md` §1 이 발표한 두 값.
+# 🔴 이 둘은 **순수 DB 집계**다(원장·코드와 무관). 오늘 DB 에서 재현되지 않으면
+#    그 동결 산출물은 «같은 스크립트로도» 재생성되지 않는다 = FROZEN_STALE 의 근거.
+TRAIN_PROBE_DATE = "2026-07-28"
+TRAIN_PROBE_COMPOSE = (2572, 2572, 2570)   # (그날 전 종목, `close>0`, 유니버스)
+TRAIN_PROBE_HOLE_DAY = "2026-08-05"
+TRAIN_PROBE_COHORT = 191                   # 그날 창 안 «첫 봉» 코호트
+N2_THRESH = 30           # `RNK-N2` 강등 문턱 (`PREREG_D1_OOS.md` §4 N2 «차용»)
+G1_THRESH = 1.0 / 3.0    # `RNK-G1` 게이트 (`RESULTS_RECONSTRUCT_POST4.md` §6 Y3 «차용»)
+P_THRESH = 0.05          # 귀무 백분위 문턱 (`PREREG_REGDAY_MEASURE.md` §4-1)
+
 BANNER = [
     "> 🔴 **라이브 채택 금지 · 성과·엣지 추정 금지** — 이 산출물은 **기록**이지 전략 후보가 아니다",
     ">   (`PREREG_RANKING.md` §0-1 · `PREREG.md` §0). 라이브 전략·파라미터 변경의 근거가 아니다.",
@@ -93,6 +151,22 @@ def md5(p: Path) -> str:
     return hashlib.md5(p.read_bytes()).hexdigest()
 
 
+def md5_crlf(p: Path) -> str:
+    """같은 «내용»을 CRLF 형태로 환산한 md5.
+
+    🔴 md5 는 «내용»이 아니라 «바이트»의 지문이다 — Windows·`core.autocrlf=input` 아래에서
+    같은 파일이 **체크아웃되면 LF · 갓 쓰이면 CRLF** 라서 두 값이 «항상» 다르다.
+    ⇒ 동결 표와 대조할 때 잣대를 맞출 수 있도록 두 형태를 다 인쇄한다(§10).
+    """
+    b = p.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    return hashlib.md5(b).hexdigest()
+
+
+def nl_form(p: Path) -> str:
+    b = p.read_bytes()
+    return "CRLF" if b.count(b"\r\n") else "LF"
+
+
 # 🔴 **난수 스트림 분리** — 시드는 `20260815` 하나지만, 「관측(`RNK-A5` 무작위 순위)」과
 #    「귀무(재추출)」와 「순열」을 **같은 시드로 각각 `default_rng(SEED)` 해서 쓰면 두 계열이
 #    우연히 얽힐 수 있다**(그리고 얽혔는지 «확인할 방법이 없다»). `SeedSequence.spawn` 으로
@@ -123,19 +197,36 @@ def day_of(df, d):
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. 원장 · 종목코드
 # ═══════════════════════════════════════════════════════════════════════════
-def load_ledger():
-    """`ledger_trades.csv` 를 **이름 기준**으로 읽는다(§5-2 — 브랜치판은 17필드다)."""
+def load_ledger(stage="train"):
+    """`ledger_trades.csv` 를 **이름 기준**으로 읽는다(§5-2 — 브랜치판은 17필드다).
+
+    🔴 **훈련 모드는 동결 시점(`TRAIN_FREEZE_DATE`)까지의 행만 읽는다.** 원장은 append-only 라
+    새 글이 오면 뒤에 붙는데, 훈련 표본은 §0-3 3단계에서 **post1~5 로 동결**됐다.
+    거르지 않으면 「뒤에 온 글」이 훈련 산출물을 바꾼다 — 홀드아웃의 정의를 깨는 동작이다.
+    """
     rows = list(csv.DictReader((BASE / "ledger_trades.csv").open(encoding="utf-8")))
+    if stage == "train":
+        kept = [r for r in rows if r["post_date"] <= TRAIN_FREEZE_DATE]
+        # stdout 전용 고지 — 산출물 «본문»에는 넣지 않는다(동결 산출물의 byte 를 흔들지 않기 위해).
+        print("[train] 원장 %d행 중 %d행 사용 — `post_date <= %s`(동결 시점) 밖 %d행 제외"
+              % (len(rows), len(kept), TRAIN_FREEZE_DATE, len(rows) - len(kept)))
+        return kept
     return rows
 
 
-def build_codes():
-    """종목코드 = `run_tests.CODES` ∪ post4·post5 계열이 확정한 코드. 새 매핑 0건."""
+def build_codes(include_post6=False):
+    """종목코드 = `run_tests.CODES` ∪ post4·post5 계열이 확정한 코드. 새 매핑 0건.
+
+    `include_post6=True` 면 `INTAKE_2026-09-04_post6.md` §1 표(동결)의 10건을 «옮겨 적은 대로» 더한다.
+    """
     codes = dict(CODES)
     reg_from_series = {}
     for nm, code, reg in list(RG_POST4) + list(RG_POST5):
         codes[nm] = code
         reg_from_series[(nm, reg)] = code
+    if include_post6:
+        for nm, code in POST6_CODES.items():
+            codes[nm] = code
     return codes, reg_from_series
 
 
@@ -602,24 +693,803 @@ def fmt(x, nd=1):
     return ("%%.%df" % nd) % x
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 10. post6 «검증» 모드 (§0-3 6단계) — 규칙은 고르지 않는다. 이미 동결됐다.
+# ═══════════════════════════════════════════════════════════════════════════
+def p6_median(items, res, key):
+    """글 단위 중앙값. 🔴 post6 은 «한 글»이라 「글 단위 중앙」과 「건 pooled 중앙」이 **구성상 같다**."""
+    return med([res[(it["post"], it["item_no"])][key] for it in items])
+
+
+def p6_lost(items, res):
+    """측정 불가 건 목록 [(종목, 사유)] — `RNK-G1` 의 분자(§4-4 2번)."""
+    out = []
+    for it in items:
+        e = res[(it["post"], it["item_no"])]
+        if e["m"] is None:
+            out.append((it["name"], e["reason"]))
+    return out
+
+
+def post6_main(a):
+    from collections import Counter
+
+    conn = psycopg2.connect(**DSN)
+    upto = a.upto or snapshot_upto(conn)
+    pseudo_all = pseudo_audit(conn)
+
+    rows = load_ledger("post6")
+    codes, _sr = build_codes(include_post6=True)
+    codes_prior, _ = build_codes()          # post6 이름을 «더하기 전» 사전 — 충돌 대조용
+    items_all, post_idx = exact_items(rows, codes)
+    if POST6_LOG_NO not in post_idx:
+        print("🔴 원장에 post6(`%s`) 행이 없다 — 원장 append 가 먼저다." % POST6_LOG_NO)
+        return 2
+    P6 = post_idx[POST6_LOG_NO]
+    items = [it for it in items_all if it["post"] == P6]
+    ap_items6 = [it for it in approx_items(rows, codes, post_idx) if it["post"] == P6]
+    p6rows = [r for r in rows if r["post_log_no"] == POST6_LOG_NO]
+    prec6 = Counter(r["reg_date_precision"] for r in p6rows)
+
+    missing = sorted({it["name"] for it in items + ap_items6 if it["code"] is None})
+    name_probe = {nm: name_search_absent(conn, nm) for nm in missing}
+
+    # 종목코드 대조 — `INTAKE` 표 ↔ DB(`stock_info`) ↔ post4·5 계열이 이미 쓰던 코드
+    code_audit = []
+    for nm in sorted(POST6_CODES):
+        cd = POST6_CODES[nm]
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT count(*) FROM stock_info WHERE stock_code=%s AND stock_name=%s",
+                        (cd, nm))
+            hit = str(int(cur.fetchone()[0]))
+        except Exception as e:                # noqa: BLE001
+            conn.rollback()
+            hit = "ERR:%s" % type(e).__name__
+        code_audit.append((nm, cd, hit, codes_prior.get(nm)))
+
+    df = load(conn, upto)
+    dates6 = sorted({it["reg"] for it in items + ap_items6})
+    compose = {}
+    cur = conn.cursor()
+    for d in dates6:
+        cur.execute("SELECT count(*), count(*) FILTER (WHERE close > 0), "
+                    "count(*) FILTER (WHERE close > 0 AND market_cap IS NOT NULL "
+                    "AND market_cap > 0) FROM daily_prices WHERE date = %s "
+                    "AND NOT (stock_code = ANY(%s))", (d, list(PSEUDO)))
+        compose[d] = cur.fetchone()
+    # 훈련 산출물 재현성 프로브 — 같은 SQL 을 동결 시점 창에 다시 던진다(§10).
+    cur.execute("SELECT count(*), count(*) FILTER (WHERE close > 0), "
+                "count(*) FILTER (WHERE close > 0 AND market_cap IS NOT NULL "
+                "AND market_cap > 0) FROM daily_prices WHERE date = %s "
+                "AND NOT (stock_code = ANY(%s))", (TRAIN_PROBE_DATE, list(PSEUDO)))
+    probe_compose = cur.fetchone()
+    cur.execute("SELECT count(*) FROM (SELECT stock_code FROM daily_prices "
+                "  WHERE date BETWEEN %s AND %s AND close > 0 "
+                "  AND NOT (stock_code = ANY(%s)) "
+                "  GROUP BY stock_code HAVING min(date) = %s) t",
+                (START, TRAIN_FREEZE_DATE, list(PSEUDO), TRAIN_PROBE_HOLE_DAY))
+    probe_cohort = int(cur.fetchone()[0])
+    conn.close()
+    df = build_features(df)
+
+    # A5 무작위 순위 — 날짜별·종목코드 정렬 순서로 결정적으로 뽑는다(train 과 같은 전용 스트림).
+    rand_rng = stream("a5_scores")
+    rand_by_date = {}
+    for d in dates6:
+        rand_by_date[d] = dict(zip(sorted(day_of(df, d).stock_code),
+                                   rand_rng.random(len(day_of(df, d)))))
+
+    # ── `n_up` 민감도 갈래 + §5-2(C-18) 5열 ────────────────────────────────
+    tdates = list(pd.DatetimeIndex(sorted(df.date.unique())))
+    prev_of = {d: tdates[i - 1] for i, d in enumerate(tdates) if i > 0}
+    nup_info, nup_masks = {}, {}
+    for d in dates6:
+        D = pd.Timestamp(d)
+        full = day_of(df, d)
+        if D not in prev_of:
+            nup_masks[d] = None
+            nup_info[d] = dict(n_all=len(full), n_test=0, n_drop=len(full), n_up=0, prev="—")
+            continue
+        prev = df[df.date == prev_of[D]]
+        pc = dict(zip(prev.stock_code, prev.close))
+
+        def mask(day, _pc=pc):
+            pcv = day.stock_code.map(_pc).to_numpy(dtype=float)
+            return (np.isfinite(pcv)) & (day.high.to_numpy(dtype=float) >= pcv * NUP_MULT)
+
+        nup_masks[d] = mask
+        pcv = full.stock_code.map(pc).to_numpy(dtype=float)
+        ok = np.isfinite(pcv)
+        nup_info[d] = dict(n_all=len(full), n_test=int(ok.sum()), n_drop=int((~ok).sum()),
+                           n_up=int((ok & (full.high.to_numpy(dtype=float)
+                                           >= pcv * NUP_MULT)).sum()),
+                           prev=str(prev_of[D].date()))
+
+    def nup_mask_fn(day):
+        if day.empty:
+            return np.zeros(0, dtype=bool)
+        d = str(pd.Timestamp(day.date.iloc[0]).date())
+        m = nup_masks.get(d)
+        return m(day) if m is not None else np.zeros(len(day), dtype=bool)
+
+    # ── 측정 ────────────────────────────────────────────────────────────────
+    # 🔴 `RNK-A3` 은 **동결 계수가 «없다»** — `FREEZE_RANKING_2026-08-31.md` §2
+    #    (*「계수 = **없음**(`RNK-A3` 미선택 ⇒ `RANKING_A3_COEFS.json` 미생성)」*).
+    #    지금 적합하면 그건 post6 을 «보고» 만든 규칙이다 ⇒ 측정 대상에서 뺀다(커버리지 손실 아님).
+    RULES_M = [r for r in RULES if r != "RNK-A3"]
+    res = {r: measure(df, items, r, rand_by_date=rand_by_date) for r in RULES_M}
+    res_nup = {r: measure(df, items, r, rand_by_date=rand_by_date,
+                          universe_mask=nup_mask_fn) for r in RULES_M}
+
+    sel = SELECTED_RULE
+    m_med = p6_median(items, res[sel], "m")
+    pctl_med = p6_median(items, res[sel], "pctl")
+    obs_r, _nl, p_res = null_pctl(items, res[sel], [P6], stream("null_resample"))
+    _o2, _n2, p_ana = null_pctl(items, res[sel], [P6], stream("null_analytic"), analytic=True)
+
+    lost = {r: p6_lost(items, res[r]) for r in RULES_M}
+    lost_nup = {r: p6_lost(items, res_nup[r]) for r in RULES_M}
+    n_den = len(items)
+    g1_rate = len(lost[sel]) / n_den if n_den else np.nan
+    g1_open = g1_rate >= G1_THRESH
+
+    # 민감도 — 재진입 제외(PD-3) · `n_up` · 해석적 귀무 · 건 pooled · `approx` 포함
+    items_ex = [it for it in items if it["name"] not in POST6_REENTRY]
+    m_med_ex = p6_median(items_ex, res[sel], "m")
+    _oe, _ne, p_ex = null_pctl(items_ex, res[sel], [P6], stream("null_resample"))
+    m_med_nup = p6_median(items, res_nup[sel], "m")
+    _on, _nn, p_nup = null_pctl(items, res_nup[sel], [P6], stream("null_resample"))
+
+    def verdict(mm, pp):
+        """`RNK-P1` 의 두 문턱 AND — 값이 문턱을 넘는지만 본다(선언은 §4-3 (다)가 막는다)."""
+        return bool(np.isfinite(pp) and pp < P_THRESH and np.isfinite(mm) and mm < N2_THRESH)
+
+    v_main = verdict(m_med, p_res)
+    v_nup = verdict(m_med_nup, p_nup)
+    v_ana = verdict(m_med, p_ana)
+    v_pool = v_main          # 글이 하나 ⇒ 건 pooled 중앙 = 글 단위 중앙 (구성상 항등)
+    v_ap = v_main            # post6 `approx` 0건 ⇒ 갈래가 «같은 표본»이다 (구성상 항등)
+    v_reent = verdict(m_med_ex, p_ex)
+
+    # ═══ 인쇄 ═══════════════════════════════════════════════════════════════
+    say("# `RNK-` 후보 랭킹 — **6번째 글 검증** 수치 원본 (post6 `%s`)\n" % POST6_LOG_NO)
+    for b in BANNER[:4]:
+        say(b)
+    say("> 🔴🔴 **이 축은 «닫혀 있다»** — 동결 선택이 `RNK-A1`(`f1` 단독)이므로 "
+        "`PREREG_RANKING.md` §4-3 (다)에 의해 **「새 정보 없음 = `REG-M4` 재진술」**이다.")
+    say(">   ***`RNK-P1` 이 문턱을 넘어도 «지지»로 선언하지 않는다*** "
+        "(`FREEZE_RANKING_2026-08-31.md` §1·§5). 아래 값은 전부 **기록**이다.")
+    say("> 🔴 **승/패 대조가 3회 연속 미실시다** ⇒ 이 축의 최대치는 「기술」이지 「선정 규칙」이 아니다(§0-2 ③).")
+    say(BANNER[5])
+    say("")
+    say("| 항목 | 값 |")
+    say("|---|---|")
+    say("| 사전등록 | `PREREG_RANKING.md`(818줄 · 동결 `8e97577`) |")
+    say("| 동결 | `FREEZE_RANKING_2026-08-31.md` — 🔒 선택 규칙 **`%s`** · 계수 없음 |" % sel)
+    say("| 인테이크 | `INTAKE_2026-09-04_post6.md` · 결정 `PREDECISION_2026-09-04_post6.md` |")
+    say("| 실행 브랜치 | `fix/tasso-post6-s5-fixes`(C-17~C-22 반영) |")
+    say("| **DB 스냅샷 최신 봉** | **`%s`** (`daily_prices` `max(date)`) |" % upto)
+    say("| 🔴 창 종료 | **`%s` = 발행 당일 봉 «포함»** (PD-1) |" % upto)
+    say("| 유니버스 창 | `%s` ~ `%s` (시작일 고정 · §5-3) |" % (START, upto))
+    say("| 유니버스 술어 | `market_cap>0 ∧ close>0` · 의사티커 제외 · `prev_close` **미사용**(판정 갈래) |")
+    say("| 시드 · 반복 | `%d` · **%d회** — ⚠️ `run_selection.NREP = 2000` 과 «다르다»(§8-4) |"
+        % (SEED, NREP))
+    say("| 특징 정의 | `run_selection.build_features` **import**(재구현 0줄 · C-17 f9 NaN 포함) |")
+    say("| `adj_factor` | 🔴 **곱하지도 나누지도 않았다**(§5-5) |")
+    say("| 판정 분모 | post6 신규 `exact` **%d건** (≥ 3 ⇒ 게이트 열림 · §2-5) |" % n_den)
+    say("")
+
+    # ── 0. 실행 전 점검 ─────────────────────────────────────────────────────
+    say("## 0. 실행 전 점검\n")
+    say("### 의사티커 전수 재확인 (§7-B #15)\n")
+    say("- 실측 = **%s** (%d개) · `run_selection.py:23` `PSEUDO` = %s (%d개)"
+        % (", ".join("`%s`" % c for c in pseudo_all), len(pseudo_all),
+           ", ".join("`%s`" % c for c in PSEUDO), len(PSEUDO)))
+    extra = [c for c in pseudo_all if c not in PSEUDO]
+    say("- 차집합(실측 − `PSEUDO`) = **%s**" % (extra if extra else "없음 ⇒ 🟢 4개로 «전수»다"))
+    say("")
+    say("### 종목코드 — `INTAKE` 표를 «옮겨 적은 것»이 맞는지 대조\n")
+    say("🔴 이 스크립트는 **새 매핑을 만들지 않는다**(§2-2 문형 승계). 아래는 "
+        "`INTAKE_2026-09-04_post6.md` §1 표의 코드를 **DB `stock_info`(코드+이름 동시 일치)** 와, "
+        "그리고 **post4·post5 계열이 이미 쓰던 코드**와 대조한 것이다.")
+    say("")
+    say("| 종목 | `INTAKE` 코드 | `stock_info` 동시일치 행 | 계열 기존 코드 | 판정 |")
+    say("|---|---|---|---|---|")
+    for nm, cd, hit, prev in code_audit:
+        if prev is None:
+            pv, ver = "—(이 글이 처음)", ("🟢 DB 일치" if hit == "1" else "🔴 **대조 실패**")
+        else:
+            pv = "`%s`" % prev
+            ver = ("🟢 계열과 «같은» 코드 · DB 일치" if (prev == cd and hit == "1")
+                   else "🔴 **불일치 — 멈출 것**")
+        say("| %s | `%s` | %s | %s | %s |" % (nm, cd, hit, pv, ver))
+    say("")
+    say("### 사유 ① 실측 재현 — DB 종목코드 부재\n")
+    if not name_probe:
+        say("🟢 **해당 없음** — post6 `exact` %d건 전부 코드가 확정된다"
+            "(훈련 표본의 레메디형 결손 0건). ⇒ `RNK-G1` 의 사유 ① 분자 = **0**." % n_den)
+    for nm, r in name_probe.items():
+        say("- **%s**: `stock_info` 이름검색 **%s행** · `stock_industry` 이름검색 **%s행** "
+            "⇒ 종목코드 확정 불가 ⇒ `daily_prices` 조회가 성립하지 않는다" % (nm, r["stock_info"], r["stock_industry"]))
+    say("")
+
+    # ── 1. 판정 표본 ────────────────────────────────────────────────────────
+    say("## 1. 판정 표본 — 원장 실측 (§2-5)\n")
+    say("post6 원장 **%d행** · `exact` **%d** · `approx` **%d** · `after` **%d** · `none` **%d**"
+        % (len(p6rows), prec6["exact"], prec6["approx"], prec6["after"], prec6["none"]))
+    say("")
+    say("| 정밀도 | 건 | 이 축에서의 처리 | 출처 |")
+    say("|---|---|---|---|")
+    say("| `exact` | **%d** | ✅ **판정 분모** | §2-5 |" % prec6["exact"])
+    say("| `approx` | %d | 판정 분모 «밖» · 의무 민감도 | §2-5 |" % prec6["approx"])
+    say("| `after` | %d | 제외 | §2-5 · `PREREG_SELECTION.md` §5 |" % prec6["after"])
+    say("| `none` | **%d** | 제외 — **후속 2건**(광전자 post5#6 · 삼양바이오팜 post5#5) |"
+        " PD-2 2번(이중계상 금지) |" % prec6["none"])
+    say("")
+    say("🔴 **`none` 2건은 「값이 나빠서」 빠진 것이 아니다** — `reg_date` 가 «비어 있어» "
+        "어느 날의 유니버스인지 정할 수 없다. PD-2 2번이 값을 보기 «전»에 "
+        "*「등록일 축 전부 … 신규 분모에서 «제외»」*로 못 박았고, 그 사건은 **post5 신규 분모에서 "
+        "이미 계상됐다**(이중계상 금지).")
+    say("")
+    say("| # | 종목 | 코드 | 등록일 | 창 `[%s, D]` 봉수 | 재진입 | `P6-PRIOR_CYCLE_IN_WINDOW` |"
+        % START)
+    say("|---|---|---|---|---|---|---|")
+    bars_of = {}
+    for it in items:
+        nb = int(((df.stock_code == it["code"]) & (df.date <= pd.Timestamp(it["reg"]))).sum())
+        bars_of[(it["post"], it["item_no"])] = nb
+        say("| %s | %s | `%s` | %s | **%d** | %s | %s |"
+            % (it["item_no"], it["name"], it["code"], it["reg"], nb,
+               "🔂 **예**" if it["name"] in POST6_REENTRY else "—",
+               POST6_PRIOR_CYCLE.get(it["name"], "—")))
+    say("")
+    say("🔂 **재진입 2건**(현대약품 · 지투파워 — PD-3): **분모에 넣는다**(`PREREG_POST6.md` §1-5 1번) · "
+        "**제외 민감도는 §7 에 의무 인쇄** · **`P6-PRIOR_CYCLE_IN_WINDOW` 건수 = %d**"
+        "(지투파워만 — 현대약품은 직전 등록일 미상이라 «구성상» 0)."
+        % sum(POST6_PRIOR_CYCLE.get(it["name"], 0) for it in items))
+    say("")
+    say("### 유니버스 구성 — 등록일별 (🔴 «상수가 아니다»)\n")
+    say("| 등록일 | 그날 전 종목(의사티커 제외) | `close>0` | **`market_cap>0 ∧ close>0` = 유니버스** | 시총 결손 |")
+    say("|---|---|---|---|---|")
+    for d in dates6:
+        n_all, n_cl, n_uni = compose[d]
+        say("| %s | %d | %d | **%d** | %d (%.1f%%) |"
+            % (d, n_all, n_cl, n_uni, n_cl - n_uni, (n_cl - n_uni) / n_cl * 100))
+    say("")
+    _u = [compose[d][2] for d in dates6]
+    say("⇒ 유니버스 폭 **%s ~ %s**(차 %d) — `pctl` 의 분모 `N−1` 이 건마다 다르다. "
+        "⚠️ 훈련 표본에서 신고한 **「7월 등록일이 %s종목 작다」**(창 안 첫 봉 코호트 · 2026-08-05 에 "
+        "메워진 `daily_prices` 구멍)는 **post6 등록일이 전부 08-19 이후**라 이 표본엔 걸리지 않는다. "
+        "🔑 그래도 **글 간 `pctl` 비교에는 그 사실을 계속 붙인다.**"
+        % ("{:,}".format(min(_u)), "{:,}".format(max(_u)), max(_u) - min(_u), "191"))
+    say("")
+    say("### §5-2(C-18) 5열 — 유니버스 `prev_close` 결손 공개\n")
+    say("🔴 **판정 갈래는 `prev_close` 를 쓰지 않는다**(§2-1 M-4) — 아래 5열은 "
+        "**`n_up` 민감도 갈래 전용**이며 `drop_rate` 는 «표기 가드»이지 판정 게이트가 아니다(§6 말미).")
+    say("")
+    say("| 등록일 | `universe_mcap` | `universe_test` | `dropped` | `drop_rate` | `prev_bar_date` | `n_up` |")
+    say("|---|---|---|---|---|---|---|")
+    for d in dates6:
+        i = nup_info[d]
+        dr = i["n_drop"] / i["n_all"] * 100 if i["n_all"] else np.nan
+        say("| %s | %d | %d | %d | **%.2f%%**%s | %s | **%d** |"
+            % (d, i["n_all"], i["n_test"], i["n_drop"], dr,
+               " 🔴" if dr >= DROP_RATE_FLAG * 100 else "", i["prev"], i["n_up"]))
+    say("")
+    _flag = [d for d in dates6
+             if nup_info[d]["n_all"] and nup_info[d]["n_drop"] / nup_info[d]["n_all"] >= DROP_RATE_FLAG]
+    say("- `drop_rate ≥ 1%%` 인 날 = **%s** ⇒ %s"
+        % (", ".join(_flag) if _flag else "없음",
+           "🔴 그날의 `n_up` 을 다른 날과 «직접 비교하지 말 것»" if _flag
+           else "🟢 표기 가드 미발동(그래도 판정 갈래는 애초에 이 값에 안 걸린다)"))
+    say("- **편향 방향**(§5-2 승계): 결손을 빼면 `n_up` 은 *「더 커질 뿐 작아지지 않는다」* "
+        "⇒ `n_up` 갈래의 **순위 진술은 과대**일 수 있다.")
+    say("")
+
+    # ── 2. RNK-G1 ───────────────────────────────────────────────────────────
+    say("## 2. `RNK-G1` 커버리지 가드 (§4-4) — **판정보다 «먼저» 본다**\n")
+    say("분모 = post6 신규 `exact` **%d건** · 분자 = 사유 ①②③ 중 하나로 «측정 불가»인 건. "
+        "**게이트 `≥ 1/3` ⇒ ⛔ 판정 불가**(`RESULTS_RECONSTRUCT_POST4.md` §6 Y3 «차용» — "
+        "🔴 **커버리지에 대해 검증된 적이 없는 문턱이다**)." % n_den)
+    say("")
+    say("| 규칙 | 측정 가능 | 측정 불가 | 비율 | 게이트(1/3) | 사유별 종목 |")
+    say("|---|---|---|---|---|---|")
+    for r in RULES:
+        if r == "RNK-A3":
+            say("| `RNK-A3` | — | — | — | — | ⛔ **동결 계수 없음**(미선택 ⇒ "
+                "`RANKING_A3_COEFS.json` 미생성) ⇒ **측정 대상 아님**. 지금 적합하면 그건 "
+                "post6 을 «보고» 만든 규칙이다 |")
+            continue
+        L = lost[r]
+        rate = len(L) / n_den * 100
+        say("| `%s`%s | **%d**/%d | %d | **%.1f%%** | %s | %s |"
+            % (r, " 🔒**(판정)**" if r == sel else "", n_den - len(L), n_den, len(L), rate,
+               "🔴 **발동 ⇒ ⛔**" if rate >= G1_THRESH * 100 else "미발동",
+               ", ".join("%s(%s)" % (nm, rs) for nm, rs in L) if L else "**없음**"))
+    say("")
+    say("**판정에 쓰는 비율 = «선택된 규칙»의 비율** = **%.1f%%** ⇒ %s"
+        % (g1_rate * 100,
+           "🔴 **⛔ `RNK-G1` 발동 — 판정 불가**" if g1_open
+           else "🟢 미발동 — 게이트를 연다(⛔ 경로: 측정 불가가 %d건이 되면 %.1f%% 로 발동)"
+                % (int(np.ceil(G1_THRESH * n_den)),
+                   int(np.ceil(G1_THRESH * n_den)) / n_den * 100)))
+    say("")
+    say("🔴 **편향 방향 신고(§4-4 6번)** — 측정 불가는 **신규 상장주 쪽으로 치우치고** 저자는 "
+        "신규주를 자주 고른다. ⇒ ***측정 불가가 무작위가 아니다.*** 이번 표본의 손실은 "
+        "**%s** 이지만, 그건 「편향이 없다」가 아니라 **이번 10건에 20봉 미만·DB 미편입 종목이 없었다**는 "
+        "뜻이다(우리기술투자는 `2026-04-01~08-04` 봉 **36/85** 로 «구멍» 계열이나 창 20봉은 완전 — PD-9)."
+        % ("0건" if not lost[sel] else "%d건" % len(lost[sel])))
+    say("")
+    say("### `n_up` 민감도 갈래의 커버리지 — 🔴 **여기서는 게이트가 열린다**\n")
+    say("| 규칙 | 측정 불가 / %d | 비율 | 게이트 | 사유별 종목 |" % n_den)
+    say("|---|---|---|---|---|")
+    for r in RULES_M:
+        L = lost_nup[r]
+        rate = len(L) / n_den * 100
+        say("| `%s` | %d/%d | **%.1f%%** | %s | %s |"
+            % (r, len(L), n_den, rate,
+               "🔴 **발동 ⇒ ⛔**" if rate >= G1_THRESH * 100 else "미발동",
+               ", ".join(nm for nm, _rs in L) if L else "없음"))
+    say("")
+    say("⇒ **`RNK-D1` 이 «전체 유니버스»로 확정된 근거가 이 글에서도 확인된다**(§2-1 1번). "
+        "`n_up` 한정은 「고가 +15% 미만」 종목을 구조적으로 밖에 두므로 그 갈래는 "
+        "**커버리지가 깎인 상태의 값**이다 — ⚠️ **판정에 인용하지 않는다.**")
+    say("")
+
+    # ── 3. 건별 값 ──────────────────────────────────────────────────────────
+    say("## 3. 건별 `m_rank` · `pctl` · `N` (규칙 × 건)\n")
+    say("`m_rank` = 「엄격히 좋은 종목 수 + 동률 수(자기 제외)」 — **동률을 전부 위로** = 보수적(§2-4). "
+        "`pctl = 100(N−1−m)/(N−1)` 은 **귀무 검정 전용**(§7-C 백분위 포화).")
+    say("")
+    say("| # | 종목 | 등록일 | `N`(%s) | " % sel + " | ".join("`%s` `m_rank`" % r for r in RULES_M)
+        + " | `%s` `pctl` |" % sel)
+    say("|---|---|---|---|" + "---|" * (len(RULES_M) + 1))
+    for it in items:
+        k = (it["post"], it["item_no"])
+        cells = ["**%d**" % int(res[r][k]["m"]) if res[r][k]["m"] is not None else "⛔"
+                 for r in RULES_M]
+        say("| %s | %s | %s | %s | %s | %s |"
+            % (it["item_no"], it["name"], it["reg"],
+               res[sel][k]["N"] if res[sel][k]["N"] else "—", " | ".join(cells),
+               fmt(res[sel][k]["pctl"], 2)))
+    say("")
+    say("### 규칙별 `N = |U_A(D)|` (규칙마다 다르다 — §2-4 의무 인쇄)\n")
+    say("| # | 종목 | " + " | ".join("`%s`" % r for r in RULES_M) + " |")
+    say("|---|---|" + "---|" * len(RULES_M))
+    for it in items:
+        k = (it["post"], it["item_no"])
+        say("| %s | %s | %s |" % (it["item_no"], it["name"], " | ".join(
+            str(res[r][k]["N"]) if res[r][k]["N"] else "—" for r in RULES_M)))
+    say("")
+
+    # ── 4. RNK-P1 / N1 / N2 ─────────────────────────────────────────────────
+    say("## 4. `RNK-P1` · `RNK-N1` · `RNK-N2` — 판정 (§3 표 1·3·4행)\n")
+    say("🔒 **동결 규칙 `%s`** = %s\n" % (sel, RULE_DESC[sel]))
+    say("| 항목 | 통계량 | 문턱 (출처) | **실측** | 문턱 충족 | ⛔ 판정 불가 경로 |")
+    say("|---|---|---|---|---|---|")
+    say("| **`RNK-P1`** | 글 단위 `pctl` 중앙 **∧** `m_rank` 중앙 | 귀무 백분위 **< 5%%**(`PREREG_REGDAY_MEASURE.md` §4-1) **AND** `m_rank` 중앙 **< 30**(`PREREG_D1_OOS.md` §4 N2) | `p` = **%s** · `m_rank` 중앙 = **%s** | %s | `RNK-G1`(%s) · `RNK-V1`(§7) · `RNK-X1`(§6) · `exact` < 3(%d건) · 🔴 **선택 규칙 = `RNK-A1`** |"
+        % (fmt(p_res, 5), fmt(m_med), "🟢 **둘 다 넘는다**" if v_main else "⛔ **미달**",
+           "미발동" if not g1_open else "발동", n_den))
+    say("| **`RNK-N1`** | 재추출 귀무 백분위 | **≥ 5%% ⇒ 불성립** | **%s** | %s | 해석/재추출 갈림 ⇒ `RNK-V1` |"
+        % (fmt(p_res, 5), "🟢 성립(< 5%)" if (np.isfinite(p_res) and p_res < P_THRESH) else "⛔ 불성립"))
+    say("| **`RNK-N2`** | `m_rank` 중앙 | **≥ 30 ⇒ 「판별력 없음」 강등** | **%s** | %s | 🟢 없다(`prev_close` 를 뺐다 · §2-1 M-4) |"
+        % (fmt(m_med), "🟢 강등 안 됨(< 30)" if (np.isfinite(m_med) and m_med < N2_THRESH)
+           else "🔴 **강등 — 판별력 없음**"))
+    say("")
+    say("🔴🔴 **그러나 «판정»은 이것이다 — ⛔ 「새 정보 없음 = `REG-M4` 재진술」.**")
+    say("")
+    say("- `PREREG_RANKING.md` §4-3 **(다)** 동결 문언: *「**선택된 규칙이 `RNK-A1` 이면 이 축은 "
+        "⛔ 「새 정보 없음 — `REG-M4` 재진술」로 닫고, `RNK-P1` 을 «지지»로 선언하지 않는다.**」*")
+    say("- ⇒ 위 표의 `RNK-P1` 열이 **🟢 여도 「지지」가 아니다.** 인쇄되는 내용은 "
+        "***`REG-M4` 가 이미 발표한 것(「`f1` 안 순위」)의 재진술***이다.")
+    say("- 🔑 ***이 축이 존재하는 이유는 「`f1` 을 넘어서는가」이지 「`f1` 이 높은가」가 아니다.*** "
+        "후자는 `SEL-S2` 가 이미 답했고 `REG-M4` 가 이미 판별력을 부정했다.")
+    say("- 🔴 **`RNK-N1` 통과는 «증거가 아니다»**(§4-1 자기신고) — `f1` 을 쓰는 규칙은 그 높이를 "
+        "물려받으므로 균등 귀무를 거의 항상 넘는다. ***「바닥을 통과했다」이지 「가설이 맞았다」가 아니다.***")
+    say("")
+    say("**규칙별 값 — 의무 인쇄**(판정은 `%s` 하나로만 한다)\n" % sel)
+    say("| 규칙 | `m_rank` 중앙 | `pctl` 중앙 | 재추출 귀무 `p` | 해석적(MC) `p` | `< 5%` |")
+    say("|---|---|---|---|---|---|")
+    nulls = {}
+    for r in RULES_M:
+        o, _x, q1 = null_pctl(items, res[r], [P6], stream("null_resample"))
+        _o2, _x2, q2 = null_pctl(items, res[r], [P6], stream("null_analytic"), analytic=True)
+        nulls[r] = (o, q1, q2)
+        say("| `%s`%s | **%s** | **%s** | **%s** | %s | %s |"
+            % (r, " 🔒" if r == sel else "", fmt(p6_median(items, res[r], "m")),
+               fmt(p6_median(items, res[r], "pctl"), 2), fmt(q1, 5), fmt(q2, 5),
+               ("🔴 **통과 — 그런데 «대조군»이다**(§6)" if r == "RNK-A5" else "🟢")
+               if (np.isfinite(q1) and q1 < P_THRESH) else "⛔"))
+    say("")
+    say("⚠️ 귀무는 **각 건의 등록일에 «같은 `U_A(D)`»에서 무작위 종목 1개** · **%d회 · 시드 %d** · "
+        "크기 정합(같은 날짜 집합·같은 건수 · §2-4). 해석적 갈래는 건수가 짝수라 닫힌형이 아니므로 "
+        "**몬테카를로로 대체했다**(§2-4 명문)." % (NREP, SEED))
+    say("🔑 규칙 간 귀무는 **같은 스트림 이름**을 다시 불러 «공통난수(CRN)»로 돌렸다 — 의도한 것이다"
+        "(스트림 분리는 관측·귀무·순열 «사이»에만 건다).")
+    say("")
+
+    # ── 5. RNK-B1·B2 ────────────────────────────────────────────────────────
+    say("## 5. `RNK-B1`·`RNK-B2` — ⛔ **영구 미개시**\n")
+    say("선택 규칙이 `RNK-A1` 이므로 짝 차이가 **항등적으로 0**(`Δm_rank ≡ 0`)이다.")
+    say("")
+    say("| 항목 | 값 | 근거 |")
+    say("|---|---|---|")
+    say("| 전 짝(동률 포함) | %d | 측정 가능 `exact` 건 |" % (n_den - len(lost[sel])))
+    say("| 동률(`Δ=0`) — B1 에서 버림 | **%d** | 자기 자신과의 짝이므로 전부 동률 |"
+        % (n_den - len(lost[sel])))
+    say("| **비영 짝** — B1 의 `n` | **0** (최소 5 🔴 **미달**) | §4-3 (가) 산술 유도 |")
+    say("| `RNK-B2` 승률(동률은 「못 이긴 것」) | **0.0%** ≤ 50% | §4-3 (다) |")
+    say("")
+    say("⇒ `FREEZE_RANKING_2026-08-31.md` §5 그대로 **⛔ 영구 미개시**. "
+        "🔴 **누적 짝 표본으로도 열리지 않는다** — 규칙이 바뀌지 않는 한 `Δ` 는 계속 0이다. "
+        "규칙 변경은 **새 사전등록으로만** 한다(§2-6).")
+    say("")
+
+    # ── 6. RNK-X1 ───────────────────────────────────────────────────────────
+    say("## 6. `RNK-X1` 대조군 — 가드가 «살아 있음»의 증명 (§4-6)\n")
+    say("🔴 **`RNK-X1` 은 «선택 절차»에 걸린 가드다**(*「`RNK-A5` 가 LOO 에서 **1위**면 절차 무효」* + "
+        "`FREEZE_RANKING_2026-08-31.md` §4 의 «우회 경로» 조항). ***post6 에는 선택 절차가 없다*** — "
+        "규칙은 08-31 에 동결됐다. ⇒ **재판정 대상이 아니다.** 그 대신 **대조군 값을 인쇄**해 "
+        "귀무 구현이 살아 있음을 보인다(§4-1·§4-6 의무 인쇄).")
+    say("")
+    a5o, a5p1, a5p2 = nulls["RNK-A5"]
+    say("| 항목 | `%s`(판정) | `RNK-A5`(🔬 대조군) |" % sel)
+    say("|---|---|---|")
+    say("| `m_rank` 중앙 | **%s** | **%s** |" % (fmt(m_med), fmt(p6_median(items, res["RNK-A5"], "m"))))
+    say("| `pctl` 중앙 | **%s** | **%s** |" % (fmt(pctl_med, 2), fmt(a5o, 2)))
+    say("| 재추출 귀무 `p` | **%s** | **%s** |" % (fmt(p_res, 5), fmt(a5p1, 5)))
+    say("| 해석적(MC) `p` | %s | %s |" % (fmt(p_ana, 5), fmt(a5p2, 5)))
+    say("")
+    if np.isfinite(a5p1) and a5p1 < P_THRESH:
+        say("🔴 **대조군도 통과했다 — 이 회차의 귀무 구현을 의심하라**(1종오류이거나 구현 결함이다 · §4-1 M-3). "
+            "같은 산출물의 다른 결론에 이 문장을 붙인다.")
+    else:
+        say("🟢 대조군은 통과하지 못했다. ⚠️ 단 `RNK-A5` 는 **정의상 약 5% 확률로 통과한다** — "
+            "「정의상 불통과」가 아니다(§4-1 M-3).")
+    say("")
+    say("### `RNK-N1` 보정 검사 — 🔴 **한 번의 실현으로는 「가드가 살아 있다」를 «말할 수 없다»**\n")
+    say("`RNK-A5` 는 귀무와 «같은» 분포이므로 그 `p` 는 귀무 하 `U(0,1)` 이어야 한다. "
+        "⇒ **독립 실현 %d개**를 뽑아 `p` 의 분포를 «직접» 잰다(훈련 실행과 같은 장치)." % A5_CALIB_K)
+    say("")
+    calib = np.array(a5_calibration(df, items, [P6], A5_CALIB_K))
+    err = float((calib < P_THRESH).mean())
+    say("| 항목 | 기대(귀무 하) | 실측(post6 표본 %d건) | 참고 — 훈련 표본 18건 |" % n_den)
+    say("|---|---|---|---|")
+    say("| 실현 수 | — | **%d** | 200 |" % len(calib))
+    say("| `p` 평균 | 0.500 | **%.3f** | 0.548 |" % float(calib.mean()))
+    say("| `p` 중앙 | 0.500 | **%.3f** | 0.558 |" % float(np.median(calib)))
+    say("| `p < 0.05` 비율(= 1종오류율) | **5.0%%** | **%.1f%%** (%d/%d) | 6.0%% (12/200) |"
+        % (err * 100, int((calib < P_THRESH).sum()), len(calib)))
+    say("| `p < 0.20` 비율 | 20.0%% | **%.1f%%** | 18.0%% |" % (float((calib < 0.20).mean()) * 100))
+    say("")
+    say("**판정** = %s"
+        % ("🟢 **1종오류율이 명목 5%와 어긋나지 않는다 ⇒ 귀무 구현이 «보정돼 있다»**"
+           if 0.01 <= err <= 0.12 else
+           "🔴 **1종오류율이 명목 5%%와 크게 어긋난다(%.1f%%) ⇒ 귀무 구현을 의심하라**" % (err * 100)))
+    if np.isfinite(a5p1) and a5p1 < P_THRESH:
+        say("")
+        say("🔴🔴 **두 문장이 «같은 실행»에서 나왔다 — 어느 쪽도 지우지 않는다.**")
+        say("")
+        say("- 위 §6 머리: *「대조군도 통과했다 — 이 회차의 귀무 구현을 «의심하라»」*(§4-1 M-3 문언).")
+        say("- 바로 이 보정 검사: *「1종오류율이 명목 5%%와 어긋나지 않는다 ⇒ 구현이 «보정돼 있다»」* "
+            "(독립 실현 %d개 · 실측 %.1f%%)." % (A5_CALIB_K, err * 100))
+        say("- 🔑 ***두 진술은 «다른 것»에 대한 것이다*** — 보정 검사는 **구현**에 대한 진술이고, "
+            "M-3 의 경고는 **이 회차의 한 실현**에 대한 진술이다. 보정이 정상이라는 것은 "
+            "***「그러니 이번 통과는 1종오류일 가능성이 높다」***까지만 말해 주며, "
+            "**「그러니 경고를 지워도 된다」를 뜻하지 않는다.**")
+        say("- 🔴 **그래서 M-3 문언대로 경고를 이 산출물의 다른 결론에도 붙인다.** "
+            "⚠️ 단 이 회차의 «판정»은 애초에 §4-3 (다)로 닫혀 있으므로, 이 경고가 뒤집을 «지지»가 없다 — "
+            "그 사실도 함께 적는다(경고를 축소하는 것이 아니라 **적용 대상이 비어 있다**는 뜻이다).")
+        say("")
+    say("⚠️ **분모가 10건이라 `m_rank` 이산성이 더 굵게 들어온다** — 훈련(18건)보다 «덜 매끄러운» "
+        "분포다. 훈련에서 신고한 «`p` 평균이 0.5 보다 약간 높다」의 원인(등호 포함 + 이산 동률)은 "
+        "여기서도 같은 방향(보수적)이다.")
+    say("")
+
+    # ── 7. RNK-V1 · 민감도 ──────────────────────────────────────────────────
+    say("## 7. `RNK-V1` 민감도 (§4-7) — 판정이 잣대에 종속되나\n")
+    say("**4축을 «항상» 나란히 인쇄한다. 하나라도 판정을 가르면 ⇒ ⛔ 어느 쪽도 선언하지 않는다.**")
+    say("")
+    say("| 축 | 갈래 | 판정 갈래인가 | `m_rank` 중앙 | 귀무 `p` | 두 문턱 AND |")
+    say("|---|---|---|---|---|---|")
+    say("| 유니버스 | 전체(`market_cap>0 ∧ close>0`) | ✅ **판정**(`RNK-D1` 확정) | **%s** | **%s** | %s |"
+        % (fmt(m_med), fmt(p_res, 5), "🟢" if v_main else "⛔"))
+    say("| 유니버스 | `n_up`(+`prev_close`) | 민감도 | %s | %s | %s |"
+        % (fmt(m_med_nup), fmt(p_nup, 5), "🟢" if v_nup else "⛔"))
+    say("| 집계 | 글 단위 중앙 | ✅ **판정** | **%s** | **%s** | %s |"
+        % (fmt(m_med), fmt(p_res, 5), "🟢" if v_main else "⛔"))
+    say("| 집계 | 건 단위 pooled 중앙 | 민감도 | %s | %s | %s |"
+        % (fmt(m_med), fmt(p_res, 5), "🟢" if v_pool else "⛔"))
+    say("| 귀무 | 재추출 %d | ✅ **판정** | — | **%s** | %s |"
+        % (NREP, fmt(p_res, 5), "🟢" if v_main else "⛔"))
+    say("| 귀무 | 해석적(MC 대체) | 민감도 | — | %s | %s |" % (fmt(p_ana, 5), "🟢" if v_ana else "⛔"))
+    say("| 등록일 정밀도 | `exact` 만 | ✅ **판정** | **%s** | **%s** | %s |"
+        % (fmt(m_med), fmt(p_res, 5), "🟢" if v_main else "⛔"))
+    say("| 등록일 정밀도 | `approx` 포함 | 민감도 | %s | %s | %s |"
+        % (fmt(m_med), fmt(p_res, 5), "🟢" if v_ap else "⛔"))
+    say("")
+    vs = {v_main, v_nup, v_ana, v_pool, v_ap}
+    say("**갈림 판정** = %s"
+        % ("🟢 **4축 전부 같은 답을 준다** ⇒ `RNK-V1` 미발동" if len(vs) == 1 else
+           "🔴 **갈린다** ⇒ ⛔ `RNK-V1` — 어느 쪽도 선언하지 않는다"))
+    say("")
+    say("🔴🔴 **그러나 «4축이 같은 답을 줬다»를 «4축이 판별력을 가졌다»로 읽지 않는다 — "
+        "이번 회차에 «두 축»은 구성상 항등이다.**")
+    say("")
+    say("| 축 | 이번 회차의 지위 | 왜 |")
+    say("|---|---|---|")
+    say("| 집계(글 단위 ↔ 건 pooled) | 🔴 **구성상 항등 = 판별력 0** | post6 은 **글이 하나**다. "
+        "「글 단위 값들의 중앙」의 인자가 하나뿐이라 건 pooled 중앙과 **같은 수**가 된다 |")
+    say("| 등록일 정밀도(`exact` ↔ `approx` 포함) | 🔴 **구성상 항등 = 판별력 0** | post6 `approx` = **%d건** "
+        "⇒ 두 갈래가 «같은 표본»이다 |" % prec6["approx"])
+    say("| 유니버스(전체 ↔ `n_up`) | 🟢 살아 있다 | 두 갈래의 `m_rank` 가 실제로 다르다(%s ↔ %s) |"
+        % (fmt(m_med), fmt(m_med_nup)))
+    if fmt(p_res, 5) == fmt(p_ana, 5):
+        say("| 귀무(재추출 ↔ 해석적) | ⚠️ **이번 회차엔 표시상 구분 안 됨** | 두 값이 **표시 정밀도에서 같다**"
+            "(둘 다 %s) ⇒ 「갈릴 수 있었는데 안 갈렸다」를 이 축의 값으로는 «못 보인다». "
+            "🟢 **갈릴 수 있음은 대조군이 보인다** — `RNK-A5` 는 재추출 %s ↔ 해석적 %s 로 다르다 |"
+            % (fmt(p_res, 5), fmt(a5p1, 5), fmt(a5p2, 5)))
+    else:
+        say("| 귀무(재추출 ↔ 해석적) | 🟢 살아 있다 | 두 값이 실제로 다르다(%s ↔ %s) |"
+            % (fmt(p_res, 5), fmt(p_ana, 5)))
+    say("")
+    say("🔑 ***「민감도가 안 갈렸다」는 「민감도가 갈릴 수 있었는데 안 갈렸다」일 때만 정보다.*** "
+        "위 두 축은 **갈릴 수 «없었다»** — 그 사실을 값과 같은 무게로 적는다. "
+        "⚠️ 이건 사전등록의 결함이 아니라 **표본의 성질**이다(글이 하나 · `approx` 0). "
+        "🔴 **문턱을 바꾸지도, 축을 빼지도 않는다** — 다음 글에서 `approx` 가 오면 그 축은 살아난다.")
+    say("")
+    say("### 재진입 제외 민감도 (PD-3 · `PREREG_POST6.md` §1-5 2번 — «의무»)\n")
+    say("| 갈래 | 건수 | `m_rank` 중앙 | 귀무 `p` | 두 문턱 AND |")
+    say("|---|---|---|---|---|")
+    say("| **포함**(판정) | %d | **%s** | **%s** | %s |"
+        % (n_den, fmt(m_med), fmt(p_res, 5), "🟢" if v_main else "⛔"))
+    say("| 제외(현대약품 · 지투파워) | %d | %s | %s | %s |"
+        % (len(items_ex), fmt(m_med_ex), fmt(p_ex, 5), "🟢" if v_reent else "⛔"))
+    say("")
+    say("⇒ %s" % ("🟢 **두 값이 판정을 가르지 않는다** — 「재진입 의존」이 아니다"
+                  if v_reent == v_main else
+                  "🔴 **판정이 갈린다 ⇒ 「재진입 의존」으로 적고 어느 쪽도 지지로 선언하지 않는다**"
+                  "(`PREREG_POST6.md` §1-5 2번)"))
+    if np.isfinite(m_med_ex) and np.isfinite(m_med):
+        say("⚠️ 🔴 **「안 갈렸다」를 「여유가 있다」로 쓰지 않는다** — 제외 시 `m_rank` 중앙이 "
+            "**%s → %s** 로 움직였고, 강등 문턱 **30** 까지 남은 거리가 **%s → %s** 다. "
+            "***2건을 빼는 것만으로 이만큼 움직이는 통계량이다.***"
+            % (fmt(m_med), fmt(m_med_ex), fmt(N2_THRESH - m_med), fmt(N2_THRESH - m_med_ex)))
+    say("⚠️ **`P6-PRIOR_CYCLE_IN_WINDOW` 는 「제외」가 아니다** — *「이 건은 규칙상 통과할 수 없다」는 "
+        "사실을 판정과 같은 무게로 인쇄하는 장치」*다(§1-5 3번). 이번 건수 = **%d**"
+        "(지투파워 · 직전 사이클 08-13 이 창 `[07-29, 08-26]` 안)."
+        % sum(POST6_PRIOR_CYCLE.get(it["name"], 0) for it in items))
+    say("")
+
+    # ── 8. RNK-O1 ───────────────────────────────────────────────────────────
+    say("## 8. `RNK-O1` 과적합 신고 (§4-5) — 훈련과 검증을 «항상» 나란히\n")
+    say("🔴 **훈련값은 `RESULTS_RANKING_TRAIN_NUMBERS.md`(동결본)에서 «옮겨 적은 상수»다 — "
+        "재계산이 아니다.** 🔬 **탐색적 표기이며 판정 분모에 «넣지 않는다»**(§4-5 · `PREREG_POST6.md` §2-1 ③).")
+    say("")
+    say("| 규칙 | 훈련 LOO `m_rank` 중앙(post1~5) | **검증 `m_rank` 중앙(post6)** | 훈련 귀무 `p` | **검증 귀무 `p`** | 훈련 커버리지 손실 | **검증 커버리지 손실** |")
+    say("|---|---|---|---|---|---|---|")
+    for r in RULES:
+        t = TRAIN_PUB[r]
+        if r == "RNK-A3":
+            say("| `RNK-A3` | %s | ⛔ **계수 미동결 ⇒ 측정 안 함** | %s | ⛔ | %d/%d | ⛔ |"
+                % (fmt(t["loo"]), fmt(t["null_p"], 5), t["lost"], TRAIN_N))
+            continue
+        L = len(lost[r])
+        say("| `%s`%s | %s | **%s** | %s | **%s** | %d/%d (%.1f%%) | **%d/%d (%.1f%%)** |"
+            % (r, " 🔒" if r == sel else "", fmt(t["loo"]),
+               fmt(p6_median(items, res[r], "m")), fmt(t["null_p"], 5), fmt(nulls[r][1], 5),
+               t["lost"], TRAIN_N, t["lost"] / TRAIN_N * 100, L, n_den, L / n_den * 100))
+    say("")
+    t = TRAIN_PUB[sel]
+    tr_ok = t["loo"] < N2_THRESH
+    va_ok = bool(np.isfinite(m_med) and m_med < N2_THRESH)
+    say("**`RNK-N2`(30) 기준 괴리 점검 — 선택 규칙 `%s`**\n" % sel)
+    say("| 갈래 | `m_rank` 중앙 | `< 30` |")
+    say("|---|---|---|")
+    say("| 훈련 LOO(글 단위 중앙의 중앙 · 4폴드 %s) | **%s** | %s |"
+        % (" · ".join(fmt(x) for x in t["per_fold"]), fmt(t["loo"]), "🟢" if tr_ok else "🔴"))
+    say("| 훈련 건 pooled 중앙(18건 중 %d건 측정) | %s | %s |"
+        % (t["m_n"], fmt(t["m_med"]), "🟢" if t["m_med"] < N2_THRESH else "🔴"))
+    say("| **검증 post6**(%d건 중 %d건 측정) | **%s** | %s |"
+        % (n_den, n_den - len(lost[sel]), fmt(m_med), "🟢" if va_ok else "🔴"))
+    say("")
+    if tr_ok != va_ok:
+        say("🔴🔴 **⛔ 「과적합 의심」 — 훈련과 검증이 `RNK-N2` 문턱(30)을 «가른다».** "
+            "§4-5 대로 **어느 쪽도 지지로 선언하지 않는다.**")
+    else:
+        say("🟢 **훈련과 검증이 문턱(30)의 «같은 쪽»에 있다** ⇒ 「과적합 의심」 인쇄 조건 미충족. "
+            "⚠️ 🔴 **그래도 「과적합이 없다」가 아니다** — 선택된 `RNK-A1` 은 **자유모수 0**이라 "
+            "애초에 적합할 것이 없었다. ***이 항목이 진짜 방어선이 되는 것은 `RNK-A3` 이 선택됐을 "
+            "때뿐이고, 그 일은 일어나지 않았다***(§4-5 말미).")
+    say("")
+    say("⚠️ **두 값은 «다른 잣대»다** — 훈련 LOO 는 **4개 글의 글 단위 중앙의 중앙**이고 검증은 "
+        "**한 글의 중앙**이다. 🔑 계열 규칙(*「잣대가 다른 열은 «방향 참고»로만」*)대로 "
+        "**차이의 크기를 해석하지 않는다** — 문턱(30)의 «어느 쪽»인지만 본다.")
+    say("")
+
+    # ── 9. 미해소·천장 ──────────────────────────────────────────────────────
+    say("## 9. 천장·미해소 (§0-2 ③ · §6)\n")
+    all_loss_new = [it["name"] for it in items if str(it["all_loss"]) == "1"]
+    say("| 항목 | 상태 |")
+    say("|---|---|")
+    say("| 승/패 대조(`PREREG_SELECTION.md` §4) | ⛔ **3회 연속 미실시** — post6 신규 `exact` %d건에 "
+        "`all_loss = 1` 이 **%d건**(post4 = 1회 · post5 = 2회 · **post6 = 3회**) |"
+        % (n_den, len(all_loss_new)))
+    say("| ⇒ 그 귀결 | 🔴 ***이 축의 최대치는 「기술」이다 — 「선정 규칙」이라 부를 수 없다***"
+        "(§0-2 ③ · `PREREG_SELECTION.md` §4 *「§3 결과를 「선정 규칙」으로 인용 금지」*) |")
+    say("| `RNK-B1`·`B2` | ⛔ **영구 미개시**(§5) |")
+    say("| `RNK-P1` | ⛔ **지지 선언 금지**(§4-3 (다)) — 값만 기록 |")
+    say("| `RNK-P2`(글 넘어 반복) | **기록만** — 검정 통계량 아님(`RESULTS_D1_OOS_POST5.md` §8). "
+        "부호 누계: 훈련(🔬 탐색) 성립 · post6 %s |"
+        % ("문턱 충족" if v_main else "문턱 미달"))
+    say("| `RNK-A3` | ⛔ 계수 미동결 ⇒ **이 글에서도 열리지 않는다** |")
+    say("| 유니버스 구멍(191종목 코호트) | 🔴 **가드 없음** — post6 등록일(08-19~09-01)은 구멍 창 밖이라 "
+        "이번 표본엔 안 걸리지만, **글 간 `pctl` 비교에는 계속 붙인다** |")
+    say("")
+    say("🔴 **랭킹은 «등록일 종가가 확정된 뒤»의 정보로 매긴다**(§9 한계) — `f1`(당일 거래대금/시총)은 "
+        "**장 마감 후에야 확정**되는데 저자는 장중에 골랐을 수 있다. "
+        "⇒ ***이 축은 라이브에서 재현할 수 없는 순위다.***")
+    say("🔴 **테마·재료가 특징에 없다**(§9 · `PREREG_SELECTION.md` §6) — 저자는 매 건 재료를 적었다"
+        "(이번 글도 12/12). ⇒ 불성립해도 「저자에게 규칙이 없다」가 아니라 "
+        "「우리 9특징에 그 축이 없다」일 수 있다.")
+    say("🔴 **차용 문턱 셋**(**30** · **50%%** · **1/3**)은 전부 «다른 것을 재던 값»이며 이 대상에 대해 "
+        "검증된 적이 없다. 이 글에서 그중 하나가 판정을 갈랐다면 **「차용 문턱에 걸렸다」**고 적는다 — "
+        "이번 회차 해당 = **%s**."
+        % ("없음(30 미발동 · 1/3 미발동 · 50% 는 `RNK-A1` 자기짝이라 구성상 결정)"
+           if (not g1_open and va_ok) else "🔴 있음(위 표 참조)"))
+    say("")
+
+    # ── 10. 재현 정보 ───────────────────────────────────────────────────────
+    # 🔑 원장의 «판독 필드» 지문 — 이 축이 실제로 읽는 7열만 뽑아 정렬해 해시한다.
+    #    `narrative` 열은 읽지 않으므로 그 열 편집으로는 «움직이지 않는다»(공유 레인과 공존 가능).
+    _KEY = ("post_log_no", "post_date", "item_no", "stock_name",
+            "reg_date", "reg_date_precision", "all_loss")
+    ledger_key = hashlib.md5("\n".join(
+        sorted("|".join(r[c] for c in _KEY) for r in rows)).encode("utf-8")).hexdigest()
+
+    say("## 10. 재현 정보\n")
+    say("| 파일 | md5 |")
+    say("|---|---|")
+    # 🔴 `INTAKE_2026-09-04_post6.md` 는 **여기서 해시하지 않는다** — 그 문서 §6(「판정 현황」)은
+    #    *「이 절만 갱신」* 이라 **계산 «후»에 공유 레인이 채우는 살아 있는 문서**다.
+    #    실측: 이 스크립트를 연달아 두 번 돌리는 «사이»에 그 파일의 md5 가 움직였다
+    #    ⇒ 통째 md5 를 박으면 **내 산출물이 남의 편집 때문에 재현 불가가 된다.**
+    #    🔑 대신 이 축이 «실제로 의존하는 것»(§1 표의 종목코드 10건)은 `test_post6_ranking.py` P4a 가
+    #      축자 대조로 못 박는다 — ***파일 전체가 아니라 의존하는 부분을 고정한다.***
+    for f in ("run_ranking.py", "run_selection.py", "run_tests.py", "run_regday_post5.py",
+              "PREREG_RANKING.md", "FREEZE_RANKING_2026-08-31.md",
+              "RESULTS_RANKING_TRAIN_NUMBERS.md"):
+        say("| `%s` | `%s` |" % (f, md5(BASE / f)))
+    say("| `ledger_trades.csv` **판독 필드 지문**(아래 설명) | `%s` |" % ledger_key)
+    say("| `ledger_trades.csv` prefix 51줄(= 훈련 시점 행) | `%s` |"
+        % hashlib.md5(b"\n".join((BASE / "ledger_trades.csv").read_bytes().split(b"\n")[:51])
+                      + b"\n").hexdigest())
+    say("")
+    say("🔴 **통째 md5 를 «일부러» 안 박은 파일이 셋 있다 — `ledger_trades.csv` · "
+        "`INTAKE_2026-09-04_post6.md` · `PREDECISION_2026-09-04_post6.md`.**")
+    say("")
+    say("**실측 근거**: 이 스크립트를 연달아 돌리는 «사이»에 세 파일의 md5 가 **움직였다** "
+        "(공유 레인이 같은 시간대에 `narrative` 열과 인테이크 §6 「판정 현황」을 채우고 있다 — "
+        "그 문서 자신이 *「이 절만 갱신」* 이라 적은 대로다). "
+        "⇒ 통째 md5 를 박으면 ***남의 «판정과 무관한» 편집 때문에 내 산출물이 재현 불가가 된다.***")
+    say("")
+    say("**그래서 «의존하는 것»만 고정한다** — 파일 전체가 아니라 이 축이 실제로 읽는 것:")
+    say("")
+    say("| 파일 | 이 축이 «읽는» 것 | 고정 방법 |")
+    say("|---|---|---|")
+    say("| `ledger_trades.csv` | `post_log_no` · `post_date` · `item_no` · `stock_name` · "
+        "`reg_date` · `reg_date_precision` · `all_loss` (**`narrative` 는 안 읽는다**) | 위 "
+        "**판독 필드 지문** = 그 7열만 뽑아 정렬해 해시 · 그리고 **prefix 51줄 md5**(훈련 시점 행 불변) |")
+    say("| `INTAKE_2026-09-04_post6.md` | §1 표의 **종목코드 10건** | `test_post6_ranking.py` "
+        "**P4a** 가 표를 파싱해 `POST6_CODES` 와 축자 대조 |")
+    say("| `PREDECISION_2026-09-04_post6.md` | PD-2(후속 `none` 제외) · PD-3(재진입 2건·플래그) | "
+        "코드 상수 `POST6_REENTRY`·`POST6_PRIOR_CYCLE` + `test_post6_ranking.py` **P2**(정밀도 회계) |")
+    say("")
+    say("🔑 **계열 규칙 후보**: ***여러 레인이 같은 파일을 동시에 쓰는 동안에는 「파일 md5」가 "
+        "재현성 장치가 아니라 «재현성 파괴 장치»다*** — 박아야 할 것은 **내가 읽는 필드의 지문**이다.")
+    say("")
+    say("🔴 **md5 의 «잣대» 고지 — 줄바꿈 형태를 함께 박는다.** 위 값은 전부 **이 워크트리의 실제 "
+        "바이트**에 대한 md5 다. 이 트리는 git 체크아웃 산물이고 `core.autocrlf=input` 이라 "
+        "**추적 파일이 LF** 로 놓인다 — 실측 `run_ranking.py` = **%s**."
+        % nl_form(BASE / "run_ranking.py"))
+    say("")
+    say("| 형태 | `run_ranking.py` md5 |")
+    say("|---|---|")
+    say("| **%s**(이 트리의 실제 바이트 · 위 표의 값) | `%s` |"
+        % (nl_form(BASE / "run_ranking.py"), md5(BASE / "run_ranking.py")))
+    say("| CRLF 환산(같은 내용) | `%s` |" % md5_crlf(BASE / "run_ranking.py"))
+    say("")
+    say("⚠️ **그래서 `FREEZE_RANKING_2026-08-31.md` §2 의 `run_ranking.py` = "
+        "`1a0d19d2dd5e822054359762bfcfc9ae` 와 위 값을 «직접 비교하면 어긋난다».** "
+        "그 값은 **동결 당시 트리에서 갓 쓰인 CRLF 형태**의 md5이고 위 값은 **LF 형태**다 — "
+        "🟢 ***내용 불일치가 아니라 잣대 차이다.*** (같은 표의 `run_selection.py`·`run_tests.py`·"
+        "`run_regday_post5.py`·`PREREG_RANKING.md` 는 그때도 체크아웃 산물이라 **LF 형태**로 적혔고 "
+        "오늘 값과 그대로 일치한다 ⇒ 한 표 안에 **두 잣대가 섞여 있었다.**)")
+    say("")
+    say("🔑 **계열 규칙 후보**: ***md5 를 동결할 때는 「작업트리 md5」인지 「블롭 md5」인지를 "
+        "함께 박는다 — Windows·`autocrlf` 아래에서 두 값은 «항상» 다르다.*** "
+        "형태를 안 적으면 나중에 「파일이 바뀌었다」와 「줄바꿈이 다르다」를 구분할 수 없다.")
+    say("")
+    say("🔴 **원장은 훈련 실행 «뒤»에 자랐다** — post6 **12행** 추가(51줄 → 63줄). "
+        "🟢 **훈련 시점 행까지의 prefix(51줄) md5 는 그대로 `5d603de7d0ac1ed853eaaf960c1f0883`**"
+        "(위 표 · `FREEZE_RANKING_2026-08-31.md` §2 선언값과 일치) — 즉 **기존 51줄은 byte 불변**이고 "
+        "훈련 표본이 «고쳐진» 것이 아니다. ⇒ `--stage train` 은 `post_date <= %s` 로 "
+        "그 행들만 읽는다(위 상수)." % TRAIN_FREEZE_DATE)
+    say("")
+    say("### 🔴 훈련 산출물의 «재현성» — 동결 시점 이후 `daily_prices` 이력이 «바뀌었다»\n")
+    say("아래 둘은 **순수 DB 집계**다(원장·스크립트와 무관 · `RESULTS_RANKING_TRAIN_NUMBERS.md` §1 이 "
+        "발표한 값과 «같은 SQL·같은 창»). 재현되지 않으면 그 동결 산출물은 **같은 스크립트로도 "
+        "재생성되지 않는다.**")
+    say("")
+    say("| 프로브 | 동결본(2026-08-31) 발표값 | **오늘(%s) 실측** | 일치 |" % upto)
+    say("|---|---|---|---|")
+    say("| `%s` 그날 전 종목 / `close>0` / 유니버스 | %d / %d / %d | **%d / %d / %d** | %s |"
+        % (TRAIN_PROBE_DATE, TRAIN_PROBE_COMPOSE[0], TRAIN_PROBE_COMPOSE[1],
+           TRAIN_PROBE_COMPOSE[2], probe_compose[0], probe_compose[1], probe_compose[2],
+           "🟢" if tuple(probe_compose) == TRAIN_PROBE_COMPOSE else "🔴 **불일치**"))
+    say("| `%s` 창 안 «첫 봉» 코호트 | %d | **%d** | %s |"
+        % (TRAIN_PROBE_HOLE_DAY, TRAIN_PROBE_COHORT, probe_cohort,
+           "🟢" if probe_cohort == TRAIN_PROBE_COHORT else "🔴 **불일치**"))
+    say("")
+    if tuple(probe_compose) != TRAIN_PROBE_COMPOSE or probe_cohort != TRAIN_PROBE_COHORT:
+        say("🔴🔴 **⛔ `RESULTS_RANKING_TRAIN_NUMBERS.md` 는 «FROZEN_STALE» 이다** — 동결 이후 "
+            "`daily_prices` 의 **과거 이력**이 바뀌었고(구멍 메움·복원 계열), 그래서 그 파일은 "
+            "오늘 다시 돌려도 **byte 로 재현되지 않는다.**")
+        say("")
+        say("- 🟢 **이 축의 «동결 선택»은 영향받지 않는다** — 선택은 `RNK-A1`(f1 단독)이고 "
+            "`f1 = 거래대금/시총` 은 바뀐 이력(과거 종가·고가)에 걸리지 않는다. "
+            "그래도 그 사실은 **재실행으로 확인**해야지 논증으로 때우지 않는다.")
+        say("- 🔴 **이 산출물(post6)은 그 «바뀐» 스냅샷 위에서 계산됐다** — 훈련값과 검증값은 "
+            "***서로 다른 DB 상태에서 나온 수*** 다. `RNK-O1` 병기는 그 사실을 안고 읽는다.")
+        say("- ⇒ **처리는 최종 레인(`regen_gate.py`)에 넘긴다**: `PAIRS` 재현 실패 사유 = "
+            "**「입력 DB 가 이동」**이지 「스크립트가 바뀜」이 아니다. **동결값을 고쳐 쓰지 않는다.**")
+        say("")
+    say("**유니버스 SQL 원문**(§2-3 6번 동결 대상 · 상한만 실행 시점 스냅샷):")
+    say("")
+    say("```sql")
+    say("SELECT stock_code, date, high, low, close, trading_value, market_cap")
+    say("FROM daily_prices WHERE date BETWEEN '%s' AND '%s'" % (START, upto))
+    say("AND market_cap IS NOT NULL AND market_cap > 0 AND close > 0")
+    say("-- 그 뒤 파이썬에서 의사티커 %s 제외" % str(list(PSEUDO)))
+    say("```")
+    say("")
+    say("🔑 `RESULTS_RANKING_POST6_NUMBERS.md` 자신의 md5 는 이 파일 «밖»에서 잰다(자기참조 불가) — "
+        "`RESULTS_RANKING_POST6.md` 말미에 있다.")
+    say("")
+
+    (BASE / a.out).write_text("\n".join(OUT) + "\n", encoding="utf-8")
+    print("\n[written] %s" % a.out)
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", default="train", choices=["train", "post6"])
     ap.add_argument("--upto", default=None,
                     help="유니버스 상한을 손으로 고정한다. 🔴 **스냅샷 불변성 확인 전용**이며 "
                          "산출물을 덮어쓰지 않는다(`--out` 로 따로 받는다).")
-    ap.add_argument("--out", default="RESULTS_RANKING_TRAIN_NUMBERS.md")
+    ap.add_argument("--out", default=None)
     a = ap.parse_args()
+    # 🔴 **여기 있던 「post6 은 아직 존재하지 않는다」 거부는 «post6 존재 «전»» 이라는 조건 위에
+    #    서 있던 것이다** — `PREREG_RANKING.md` §0-3 의 5단계(`fetch_post.py`)가 4단계 동결 커밋
+    #    «뒤»에 오도록 강제하는 장치였다. 그 조건은 2026-09-04 에 «소멸»했다:
+    #      · 4단계 동결 `FREEZE_RANKING_2026-08-31.md` 커밋 `8d28e14`(08-31 22:24 · origin 푸시)
+    #      · 5단계 fetch `post_224401108114.*` 2026-09-04 18:50:04 KST
+    #      · 순서 증거 = `PREDECISION_2026-09-04_post6.md` PD-0 표(동결 4건 전부 fetch «앞»)
+    #    ⇒ 거부를 «해제»한다. 해제해도 홀드아웃은 그대로다 — 동결 커밋이 fetch 보다 앞선
+    #      해시라는 사실은 git 이 붙들고 있고, 이 파일의 `SELECTED_RULE` 은 그 동결본에서 왔다.
+    #    🔴 그 대신 «훈련 모드 보호»가 새로 필요해졌다 — `load_ledger()` 주석 참조.
     if a.stage == "post6":
-        print("🔴 6번째 글은 아직 존재하지 않는다. `PREREG_RANKING.md` §0-3 의 5단계"
-              "(`fetch_post.py`)가 «4단계 동결 커밋 뒤»에 온다 — 그 전에는 돌릴 수 없다.")
-        return 2
+        a.out = a.out or "RESULTS_RANKING_POST6_NUMBERS.md"
+        return post6_main(a)
+    a.out = a.out or "RESULTS_RANKING_TRAIN_NUMBERS.md"
 
     conn = psycopg2.connect(**DSN)
     upto = a.upto or snapshot_upto(conn)
     pseudo_all = pseudo_audit(conn)
 
-    rows = load_ledger()
+    rows = load_ledger("train")
     codes, _series_reg = build_codes()
     items, post_idx = exact_items(rows, codes)
     ap_items = approx_items(rows, codes, post_idx)

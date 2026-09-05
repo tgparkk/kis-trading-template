@@ -297,14 +297,29 @@ def test_c21_backfill_rule_is_mechanical():
     assert BF.convert("unknown") == ("unknown", "")
 
 
+# 🔴 2026-09-05 — 6번째 글(`224401108114`)의 12행이 원장에 붙어 `ledger_trades.csv` 는 62행이 됐다.
+#    아래 두 테스트가 재는 것은 *「원장이 몇 행이냐」*가 아니라 ***「§5-5-4 시뮬레이션 표에 적힌
+#    post6 «이전» 스냅샷이 그대로 있느냐」***다 ⇒ **상수를 50 → 62 로 갈면 그 가드가 죽는다**
+#    (새 글이 올 때마다 숫자를 갈아 끼우는 테스트는 아무것도 못 잡는다). 대신 **post6 행을 걸러
+#    내고** ==50 과 동결 Counter 를 «그대로» 유지한다. 다음 글도 이 목록에 log_no 를 더하면 된다.
+POST6_LOG_NO = "224401108114"
+
+
+def _pre_post6(trades):
+    """§5-5-4 스냅샷의 정의역 — post6 «전»에 원장에 있던 행만."""
+    return [t for t in trades if t["post_log_no"] != POST6_LOG_NO]
+
+
 def test_c21_ledger_matches_the_prereg_simulation_table():
-    """§5-5-4 시뮬레이션 표(현재 50행)와 **정확히** 같아야 한다."""
+    """§5-5-4 시뮬레이션 표(post6 «전» 50행)와 **정확히** 같아야 한다."""
     trades = V.load_csv("ledger_trades.csv")
-    assert len(trades) == 50
+    pre = _pre_post6(trades)
+    assert len(pre) == 50, "§5-5-4 동결 스냅샷 — post6 이전 행 수는 50 이어야 한다"
+    assert len(trades) > len(pre), "post6 행이 실제로 붙어 있어야 이 필터가 뜻을 갖는다"
     hdr = list(trades[0].keys())
     assert hdr[hdr.index("fill_level") + 1] == "fill_n", "fill_n 은 fill_level 바로 뒤(§5-5-5)"
     from collections import Counter
-    got = Counter((t["fill_level"], t["fill_n"]) for t in trades)
+    got = Counter((t["fill_level"], t["fill_n"]) for t in pre)
     assert got == Counter({("unknown", ""): 30, ("first_only", "1"): 6, ("partial", "2"): 4,
                            ("partial", "4"): 4, ("partial", "3"): 2, ("partial", "5"): 2,
                            ("full", ""): 2}), got
@@ -312,10 +327,14 @@ def test_c21_ledger_matches_the_prereg_simulation_table():
 
 
 def test_c21_gate_e_passes_on_the_current_ledger():
+    """🔴 게이트 자체는 «현재 원장 전체»(post6 12행 포함)에 건다 — 여기서 걸러 내면 새 행이
+    P6-G-E 검사를 통째로 빠져나간다. 걸러 내는 것은 §5-5-4 «스냅샷 축» 하나뿐이다."""
     VP.failures.clear()
-    dist = VP.gate_e(V.load_csv("ledger_trades.csv"))
+    trades = V.load_csv("ledger_trades.csv")
+    dist = VP.gate_e(trades)
     assert not VP.failures, VP.failures
-    assert sum(dist.values()) == 50
+    assert sum(dist.values()) == len(trades), "분포 합 = 원장 전체 행 수"
+    assert len(_pre_post6(trades)) == 50, "§5-5-4 동결 스냅샷 — post6 이전 행 수"
 
 
 @pytest.mark.parametrize("row,why", [
