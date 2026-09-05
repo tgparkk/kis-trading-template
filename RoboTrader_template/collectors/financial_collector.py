@@ -1,0 +1,421 @@
+"""재무 수집 오케스트레이터 — DART as-filed 원장 + KIS 분기비율.
+
+usage:
+  python -m collectors.financial_collector                                  # 창 기반 증분
+  python -m collectors.financial_collector --backfill --year 2026 --reprt 11013
+  python -m collectors.financial_collector --reconcile-only 2026-08-17
+  python -m collectors.financial_collector --sweep
+
+🔴 DB 쓰기는 financial_writer.py 에서만 한다(plan File Structure 경계). 이 파일은
+   창 판정·수집 오케스트레이션·reconcile 판정·백필 CLI·정정 스윕만 맡는다.
+"""
+import argparse
+import os
+import sys
+from datetime import date, timedelta
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from db.kis_db_connection import KisDbConnection  # noqa: E402
+from collectors.dart_corp_code import load_map  # noqa: E402
+from collectors.dart_financial_fetcher import (  # noqa: E402
+    DartFinancialFetcher, DartQuotaExceeded, DartBlocked, append_raw)
+from collectors.kis_financial_fetcher import fetch_quarterly_ratio  # noqa: E402
+from collectors import financial_writer as w  # noqa: E402
+from collectors import financial_metrics as fm  # noqa: E402
+from collectors.daily_collector import load_universe  # noqa: E402
+from utils.korean_time import now_kst  # noqa: E402
+from utils.logger import setup_logger  # noqa: E402
+
+logger = setup_logger(__name__)
+
+# 2026-08-12 합의 창. 법정기한 +3일 여유.
+# ⚠️ 창 시작은 반드시 영업일이어야 한다 — 08/15 는 토요일(광복절)이라 EOD 가 안 돈다.
+WINDOWS = {
+    "11011": ((4, 3), (5, 10)),    # 사업보고서 (기한 3/31)
+    "11013": ((5, 18), (6, 20)),   # 1Q       (기한 5/15)
+    "11012": ((8, 17), (9, 20)),   # 반기      (기한 8/14)
+    "11014": ((11, 17), (12, 20)),  # 3Q       (기한 11/14)
+}
+
+RAW_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "scratchpad", "financials")
+
+
+def active_reports(d: date) -> list:
+    """그 날짜에 열려 있는 reprt_code 목록 (창 경계 포함)."""
+    out = []
+    for code, ((bm, bd), (em, ed)) in WINDOWS.items():
+        if (d.month, d.day) >= (bm, bd) and (d.month, d.day) <= (em, ed):
+            out.append(code)
+    return sorted(out)
+
+
+def _to_iso(s: str) -> str:
+    return s if "-" in s else f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
+
+
+def _parse_dart_key_from_lines(lines) -> str:
+    """정확히 'OPENDART_API_KEY' 만 매칭 (corp_events_collector.py 와 동일 규약).
+    startswith 로 하면 'OPENDART_API_KEY_BACKUP' 같은 변형 키를 잘못 집는다."""
+    for line in lines:
+        line = line.strip()
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        if k.strip() == "OPENDART_API_KEY":
+            return v.strip().strip('"').strip("'")
+    return ""
+
+
+def _load_dart_key() -> str:
+    key = (os.getenv("OPENDART_API_KEY") or "").strip()
+    if key:
+        return key
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    try:
+        with open(env_path, encoding="utf-8") as f:
+            return _parse_dart_key_from_lines(f)
+    except OSError:
+        return ""
+
+
+def _pending_targets(conn, codes, bsns_year: str, reprt_code: str) -> list:
+    """아직 안 받은 (stock_code, corp_code). 이미 적재분과 «013 확정분»을 뺀다.
+
+    🔑 013(무자료)을 기록하지 않으면 매일 같은 것을 두드린다.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT stock_code FROM dart_financial_filings "
+            "WHERE bsns_year=%s AND reprt_code=%s", (bsns_year, reprt_code))
+        done = {r[0] for r in cur.fetchall()}
+        cur.execute(
+            "SELECT stock_code FROM dart_financial_nodata "
+            "WHERE bsns_year=%s AND reprt_code=%s", (bsns_year, reprt_code))
+        nodata = {r[0] for r in cur.fetchall()}
+    return [(sc, cc) for sc, cc in codes if sc not in done and sc not in nodata]
+
+
+def collect_financials(target_date: str = None, daily_cap: int = 800) -> dict:
+    """창 안이면 미수집분을 daily_cap(=DART 호출 기준)까지 수집. 창 밖이면 no-op."""
+    key = _load_dart_key()
+    if not key:
+        logger.warning("[financials] OPENDART_API_KEY 미설정 — 수집 스킵(EOD 비차단)")
+        return {"skipped": "no_dart_key", "dart_calls": 0, "filings": 0, "accounts": 0}
+
+    d = date.fromisoformat(_to_iso(target_date)) if target_date else now_kst().date()
+    reports = active_reports(d)
+    if not reports:
+        logger.info("[financials] %s 는 수집 창 밖 — no-op", d)
+        return {"skipped": "out_of_window", "dart_calls": 0, "filings": 0, "accounts": 0}
+
+    bsns_year = str(d.year)
+    fetcher = DartFinancialFetcher(key)
+    n_filings = n_accounts = n_kis = 0
+    quota_hit = False
+    raw_path = os.path.join(RAW_DIR, f"dart_{d.strftime('%Y%m%d')}.jsonl.gz")
+
+    with KisDbConnection.get_connection() as conn:
+        w.ensure_tables(conn)
+        fm.ensure_view(conn)
+        cmap = load_map(conn)
+        universe = load_universe(conn)
+        codes = [(sc, cmap[sc]) for sc in universe if sc in cmap]
+
+        for reprt_code in reports:
+            targets = _pending_targets(conn, codes, bsns_year, reprt_code)
+            logger.info("[financials] %s/%s 대상 %d종목 (cap %d)",
+                        bsns_year, reprt_code, len(targets), daily_cap)
+            for stock_code, corp_code in targets:
+                if fetcher.calls >= daily_cap:
+                    logger.info("[financials] 일일 상한 %d 도달 — 남은 %d종목은 내일",
+                                daily_cap, len(targets))
+                    break
+                try:
+                    got = _fetch_and_store(conn, fetcher, raw_path,
+                                           stock_code, corp_code, bsns_year, reprt_code)
+                except DartQuotaExceeded:
+                    logger.warning("[financials] DART 일일 한도 초과 — 중단(체크포인트는 DB 자체)")
+                    quota_hit = True
+                    break
+                except DartBlocked as e:
+                    logger.error("[financials] opendart 차단 — 중단: %s", e)
+                    quota_hit = True
+                    break
+                n_filings += got[0]
+                n_accounts += got[1]
+            if quota_hit:
+                break
+
+        # KIS 는 DART 한도와 무관하다. DART 가 막혀도 돌린다.
+        for stock_code, _ in codes[:daily_cap]:
+            try:
+                rows = fetch_quarterly_ratio(stock_code)
+            except Exception as e:  # noqa: BLE001 — 종목 하나 실패가 전체를 막지 않는다
+                logger.debug("[financials] KIS 비율 실패 %s: %s", stock_code, e)
+                continue
+            n_kis += w.upsert_kis_ratio(conn, rows)
+
+        _recompute_amendment_flags(conn)
+
+    out = {"reports": reports, "dart_calls": fetcher.calls,
+           "status_counts": fetcher.status_counts, "filings": n_filings,
+           "accounts": n_accounts, "kis_rows": n_kis, "quota_hit": quota_hit}
+
+    # 주 1회(월요일) 정정 스윕. 창과 무관하게 돈다 — 정정·지연공시는 창 밖에도 온다.
+    sweep = None
+    if d.weekday() == 0:
+        try:
+            sweep = sweep_amendments()
+        except Exception as e:  # noqa: BLE001 — 스윕 실패가 본 수집을 막지 않는다
+            logger.warning("[financials] 정정 스윕 실패(비차단): %s", e)
+            sweep = {"error": str(e)}
+    out["sweep"] = sweep
+
+    logger.info("[financials] %s", out)
+    return out
+
+
+def _fetch_and_store(conn, fetcher, raw_path, stock_code, corp_code, bsns_year, reprt_code):
+    """CFS 시도 → 013 이면 OFS 재시도. 반환 (filings, accounts)."""
+    for fs_div in ("CFS", "OFS"):
+        status, payload = fetcher.fetch(corp_code, bsns_year, reprt_code, fs_div)
+        if status == "013":
+            continue
+        if status != "000":
+            logger.warning("[financials] %s %s/%s/%s status=%s",
+                           stock_code, bsns_year, reprt_code, fs_div, status)
+            return 0, 0
+        line_no = append_raw(raw_path, payload)
+        filing, accounts = w.rows_from_dart_response(payload, stock_code, fs_div)
+        if filing is None:
+            return 0, 0
+        filing["raw_path"] = f"{os.path.basename(raw_path)}#L{line_no}"
+        filing["rcept_dt"] = _rcept_dt_from_no(filing["rcept_no"])
+        w.upsert_filing(conn, filing)
+        return 1, w.upsert_accounts(conn, accounts)
+
+    # CFS·OFS 둘 다 013 = 무자료 확정. 기록해서 내일 다시 안 두드린다.
+    w.upsert_nodata(conn, stock_code, bsns_year, reprt_code)
+    return 0, 0
+
+
+def _rcept_dt_from_no(rcept_no: str):
+    """접수번호 앞 8자리가 접수일이다 (DART 규약). 형식이 어긋나면 None."""
+    s = (rcept_no or "").strip()
+    if len(s) >= 8 and s[:8].isdigit():
+        return f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
+    return None
+
+
+def _recompute_amendment_flags(conn) -> None:
+    """is_amendment 재계산 — DB 쓰기는 financial_writer 로 위임한다."""
+    w.recompute_amendment_flags(conn)
+
+
+def reconcile_financials(trade_date: str) -> dict:
+    """창 밖은 PASS(out_of_window). 창 안은 도달성 AND 진척률.
+
+    🔑 도달성만 보면 «호출은 성공하는데 잔량이 안 줄어드는» 상태를 못 잡는다.
+       일봉 결손 49,252행이 2년 5개월간 무경보였던 게 정확히 그 형태다.
+    """
+    d = date.fromisoformat(_to_iso(trade_date))
+    reports = active_reports(d)
+    if not reports:
+        _write_recon(trade_date, 0, "PASS")
+        return {"trade_date": trade_date, "verdict": "PASS", "reason": "out_of_window"}
+
+    key = _load_dart_key()
+    if not key:
+        _write_recon(trade_date, 0, "WARN")
+        return {"trade_date": trade_date, "verdict": "WARN", "reason": "no_dart_key"}
+
+    bsns_year = str(d.year)
+    with KisDbConnection.get_connection() as conn:
+        cmap = load_map(conn)
+        universe = load_universe(conn)
+        codes = [(sc, cmap[sc]) for sc in universe if sc in cmap]
+        remaining = sum(len(_pending_targets(conn, codes, bsns_year, rc)) for rc in reports)
+        # 최근 3영업일 잔량이 «전혀» 안 줄었으면 FAIL
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT new_rows FROM collection_reconciliation "
+                "WHERE dataset='financials' AND trade_date < %s "
+                "ORDER BY trade_date DESC LIMIT 3", (trade_date,))
+            prev = [r[0] for r in cur.fetchall()]
+
+    stalled = len(prev) == 3 and remaining > 0 and all(p == remaining for p in prev)
+    verdict = "FAIL" if stalled else "PASS"
+    if stalled:
+        logger.error("[financials] 진척 정지 — 잔량 %d 가 3회 연속 동일. "
+                     "호출은 성공하는데 데이터가 안 들어오고 있다", remaining)
+    _write_recon(trade_date, remaining, verdict)
+    return {"trade_date": trade_date, "verdict": verdict,
+            "remaining": remaining, "prev": prev}
+
+
+def _write_recon(trade_date: str, remaining: int, verdict: str) -> None:
+    passed = 1.0 if verdict == "PASS" else 0.0
+    with KisDbConnection.get_connection() as conn:
+        w.upsert_reconciliation(conn, trade_date, "financials", remaining, passed, passed, verdict)
+
+
+def backfill(year: str, reprt_code: str, interval: float = 0.34, cap: int = None) -> dict:
+    """창을 무시하고 미수집분만 채운다. 수동 실행 전용.
+
+    ⚠️ 평일 16:00 EOD 와 겹치면 안 된다 — corp_events_collector 가 같은 호스트다.
+    """
+    key = _load_dart_key()
+    if not key:
+        return {"skipped": "no_dart_key"}
+    fetcher = DartFinancialFetcher(key, min_interval=interval)
+    raw_path = os.path.join(RAW_DIR, f"dart_backfill_{year}_{reprt_code}.jsonl.gz")
+    n_f = n_a = 0
+    with KisDbConnection.get_connection() as conn:
+        w.ensure_tables(conn)
+        fm.ensure_view(conn)
+        cmap = load_map(conn)
+        codes = [(sc, cmap[sc]) for sc in load_universe(conn) if sc in cmap]
+        targets = _pending_targets(conn, codes, year, reprt_code)
+        logger.info("[backfill] %s/%s 대상 %d종목 interval=%.2f", year, reprt_code,
+                    len(targets), interval)
+        for i, (sc, cc) in enumerate(targets, 1):
+            if cap and fetcher.calls >= cap:
+                logger.warning("[backfill] cap %d 도달 — 남은 %d종목 미수집",
+                               cap, len(targets) - i + 1)
+                break
+            try:
+                f_, a_ = _fetch_and_store(conn, fetcher, raw_path, sc, cc, year, reprt_code)
+            except (DartQuotaExceeded, DartBlocked) as e:
+                logger.warning("[backfill] 중단(%s) — 남은 %d종목. 자정 이후 재실행",
+                               type(e).__name__, len(targets) - i + 1)
+                break
+            n_f += f_
+            n_a += a_
+            if i % 100 == 0:
+                logger.info("[backfill] %d/%d calls=%d", i, len(targets), fetcher.calls)
+        _recompute_amendment_flags(conn)
+    return {"year": year, "reprt": reprt_code, "calls": fetcher.calls,
+            "status_counts": fetcher.status_counts, "filings": n_f, "accounts": n_a}
+
+
+def sweep_amendments(lookback_days: int = 14, cap: int = 200) -> dict:
+    """최근 lookback_days 의 정정보고서를 list.json 으로 찾아 그 접수건만 재수집.
+
+    창과 «무관하게» 돈다. 주 1회 호출 상정.
+    🔑 창 기반 증분은 정정·지연공시를 구조적으로 놓친다 —
+       3월 외 접수 16.1%, 지연 p99 735일.
+    """
+    import requests
+    key = _load_dart_key()
+    if not key:
+        return {"skipped": "no_dart_key"}
+
+    end = now_kst().date()
+    bgn = end - timedelta(days=max(1, min(lookback_days, 90)))
+    fetcher = DartFinancialFetcher(key)
+    raw_path = os.path.join(RAW_DIR, f"dart_sweep_{end.strftime('%Y%m%d')}.jsonl.gz")
+
+    items, page, total_page = [], 1, 1
+    while page <= total_page and page <= 100:
+        r = requests.get("https://opendart.fss.or.kr/api/list.json", timeout=15, params={
+            "crtfc_key": key, "bgn_de": bgn.strftime("%Y%m%d"),
+            "end_de": end.strftime("%Y%m%d"), "pblntf_ty": "A",  # A = 정기공시
+            "page_count": 100, "page_no": page})
+        r.encoding = "utf-8"
+        js = r.json()
+        st = js.get("status")
+        if st == "013":
+            break
+        if st != "000":
+            logger.warning("[sweep] list.json status=%s msg=%s", st, js.get("message"))
+            break
+        total_page = int(js.get("total_page") or 1)
+        items.extend(js.get("list") or [])
+        page += 1
+    # 무징후 절단 금지
+    if total_page > 100:
+        logger.warning("[sweep] 페이지 절단: total_page=%d > 100 — 창을 좁힐 것(누락 발생)",
+                       total_page)
+
+    # 정정본만: report_nm 에 '기재정정' 이 붙는다
+    targets = []
+    for it in items:
+        nm = it.get("report_nm", "")
+        sc = (it.get("stock_code") or "").strip()
+        if "정정" not in nm or not sc:
+            continue
+        rc = _reprt_code_from_report_nm(nm)
+        yr = _bsns_year_from_report_nm(nm)
+        if rc and yr:
+            targets.append((sc, rc, yr))
+
+    n_f = n_a = 0
+    with KisDbConnection.get_connection() as conn:
+        w.ensure_tables(conn)
+        cmap = load_map(conn)
+        for sc, rc, yr in targets[:cap]:
+            if sc not in cmap:
+                continue
+            try:
+                f_, a_ = _fetch_and_store(conn, fetcher, raw_path, sc, cmap[sc], yr, rc)
+            except (DartQuotaExceeded, DartBlocked) as e:
+                logger.warning("[sweep] 중단(%s)", type(e).__name__)
+                break
+            n_f += f_
+            n_a += a_
+        _recompute_amendment_flags(conn)
+    logger.info("[sweep] 정정 후보 %d건 → filings=%d accounts=%d calls=%d",
+                len(targets), n_f, n_a, fetcher.calls)
+    return {"candidates": len(targets), "filings": n_f, "accounts": n_a,
+            "calls": fetcher.calls}
+
+
+def _reprt_code_from_report_nm(nm: str):
+    """'[기재정정]분기보고서 (2026.03)' → 11013. 판별 불가면 None(추측하지 않는다)."""
+    if "사업보고서" in nm:
+        return "11011"
+    if "반기보고서" in nm:
+        return "11012"
+    if "분기보고서" not in nm:
+        return None
+    # 분기보고서는 1Q/3Q 를 괄호 안 월로 가른다: (YYYY.03)=1Q, (YYYY.09)=3Q
+    import re as _re
+    m = _re.search(r"\((\d{4})\.(\d{2})\)", nm)
+    if not m:
+        return None
+    return {"03": "11013", "09": "11014"}.get(m.group(2))
+
+
+def _bsns_year_from_report_nm(nm: str):
+    import re as _re
+    m = _re.search(r"\((\d{4})\.\d{2}\)", nm)
+    return m.group(1) if m else None
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--date", default=None)
+    ap.add_argument("--daily-cap", type=int, default=800)
+    ap.add_argument("--reconcile-only", default=None)
+    ap.add_argument("--backfill", action="store_true")
+    ap.add_argument("--year", default=None)
+    ap.add_argument("--reprt", default=None)
+    ap.add_argument("--interval", type=float, default=0.34)
+    ap.add_argument("--cap", type=int, default=None)
+    ap.add_argument("--sweep", action="store_true")
+    ap.add_argument("--sweep-lookback", type=int, default=14)
+    args = ap.parse_args()
+    if args.reconcile_only:
+        print(reconcile_financials(args.reconcile_only))
+    elif args.backfill:
+        if not (args.year and args.reprt):
+            ap.error("--backfill 은 --year 와 --reprt 가 필요하다")
+        print(backfill(args.year, args.reprt, args.interval, args.cap))
+    elif args.sweep:
+        print(sweep_amendments(args.sweep_lookback))
+    else:
+        print(collect_financials(args.date, args.daily_cap))

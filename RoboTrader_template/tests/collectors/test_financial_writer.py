@@ -171,3 +171,52 @@ def test_upsert_accounts_rolls_back_on_cursor_error():
 
     assert fake_conn.rolled_back, "rollback() should have been called"
     assert not fake_conn.committed, "commit() should not have been called"
+
+
+class _FailingCursor:
+    """execute() 가 항상 실패하는 커서 — R1: 새 writer 함수 3개의 rollback 경로 테스트용."""
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        pass
+    def execute(self, *args, **kwargs):
+        raise RuntimeError("execute failed")
+
+
+class _FailingConn:
+    def __init__(self):
+        self.rolled_back = False
+        self.committed = False
+    def cursor(self):
+        return _FailingCursor()
+    def rollback(self):
+        self.rolled_back = True
+    def commit(self):
+        self.committed = True
+
+
+def test_upsert_nodata_rolls_back_on_cursor_error():
+    """Task 6/R1: dart_financial_nodata INSERT 가 writer 로 옮겨졌다 — rollback 경로 확인."""
+    fake_conn = _FailingConn()
+    with pytest.raises(RuntimeError, match="execute failed"):
+        w.upsert_nodata(fake_conn, "TEST05", "2026", "11013")
+    assert fake_conn.rolled_back, "rollback() should have been called"
+    assert not fake_conn.committed, "commit() should not have been called"
+
+
+def test_recompute_amendment_flags_rolls_back_on_cursor_error():
+    """Task 6/R1: is_amendment 재계산 UPDATE 가 writer 로 옮겨졌다 — rollback 경로 확인."""
+    fake_conn = _FailingConn()
+    with pytest.raises(RuntimeError, match="execute failed"):
+        w.recompute_amendment_flags(fake_conn)
+    assert fake_conn.rolled_back, "rollback() should have been called"
+    assert not fake_conn.committed, "commit() should not have been called"
+
+
+def test_upsert_reconciliation_rolls_back_on_cursor_error():
+    """Task 6/R1: collection_reconciliation UPSERT 가 writer 로 옮겨졌다 — rollback 경로 확인."""
+    fake_conn = _FailingConn()
+    with pytest.raises(RuntimeError, match="execute failed"):
+        w.upsert_reconciliation(fake_conn, "2026-08-17", "financials", 5, 1.0, 1.0, "PASS")
+    assert fake_conn.rolled_back, "rollback() should have been called"
+    assert not fake_conn.committed, "commit() should not have been called"

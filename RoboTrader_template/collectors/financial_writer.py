@@ -76,6 +76,16 @@ CREATE TABLE IF NOT EXISTS kis_financial_ratio (
 #    KIS 응답엔 접수일이 없어 PIT 앵커를 만들 수 없다.
 #    PIT 앵커가 없는 데이터에 날짜 컬럼을 붙이면 누군가 그걸 PIT 으로 쓴다.
 
+DDL_NODATA = """
+CREATE TABLE IF NOT EXISTS dart_financial_nodata (
+    stock_code varchar(20) NOT NULL,
+    bsns_year  varchar(4)  NOT NULL,
+    reprt_code varchar(5)  NOT NULL,
+    checked_at timestamp   NOT NULL DEFAULT now(),
+    PRIMARY KEY (stock_code, bsns_year, reprt_code)
+)
+"""
+
 _NUM_RE = re.compile(r"^-?[\d,]+$")
 
 
@@ -203,6 +213,7 @@ def ensure_tables(conn) -> None:
                 cur.execute(sql)
             cur.execute(DDL_ACCOUNTS)
             cur.execute(DDL_KIS_RATIO)
+            cur.execute(DDL_NODATA)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -245,3 +256,64 @@ def upsert_kis_ratio(conn, rows: list) -> int:
         conn.rollback()
         raise
     return len(rows)
+
+
+def upsert_nodata(conn, stock_code: str, bsns_year: str, reprt_code: str) -> None:
+    """CFS·OFS 둘 다 013(무자료) 확정분 기록 — 내일 다시 안 두드리게 한다."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO dart_financial_nodata (stock_code, bsns_year, reprt_code, checked_at) "
+                "VALUES (%s,%s,%s, now()) ON CONFLICT DO NOTHING",
+                (stock_code, bsns_year, reprt_code))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def recompute_amendment_flags(conn) -> None:
+    """is_amendment 를 rcept_dt 순서로 재계산.
+
+    ⚠️ 파생값이다. 옛 접수건을 뒤늦게 받으면 뒤집히므로 «매번 다시» 계산한다.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE dart_financial_filings f SET is_amendment = sub.amend
+                FROM (
+                    SELECT rcept_no, fs_div,
+                           (row_number() OVER (PARTITION BY stock_code, bsns_year, reprt_code
+                                               ORDER BY rcept_dt, rcept_no) > 1) AS amend
+                    FROM dart_financial_filings WHERE rcept_dt IS NOT NULL
+                ) sub
+                WHERE f.rcept_no = sub.rcept_no AND f.fs_div = sub.fs_div
+                  AND f.is_amendment IS DISTINCT FROM sub.amend
+            """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+_UPSERT_RECON = """
+INSERT INTO collection_reconciliation
+  (trade_date, dataset, real_rows, new_rows, overlap, value_match_rate, coverage, verdict)
+VALUES (%s, %s, 0, %s, 0, %s, %s, %s)
+ON CONFLICT (trade_date, dataset) DO UPDATE SET
+    new_rows=EXCLUDED.new_rows, value_match_rate=EXCLUDED.value_match_rate,
+    coverage=EXCLUDED.coverage, verdict=EXCLUDED.verdict
+"""
+
+
+def upsert_reconciliation(conn, trade_date: str, dataset: str, new_rows: int,
+                           value_match_rate, coverage, verdict: str) -> None:
+    """collection_reconciliation UPSERT (financial_collector._write_recon 전용)."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_UPSERT_RECON,
+                        (trade_date, dataset, new_rows, value_match_rate, coverage, verdict))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
