@@ -51,25 +51,37 @@ def parse_corpcode_xml(xml_bytes: bytes) -> dict:
 
 
 def ensure_table(conn) -> None:
-    with conn.cursor() as cur:
-        cur.execute(DDL)
-    conn.commit()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(DDL)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def upsert_map(conn, mapping: dict, names: dict = None) -> int:
     names = names or {}
-    with conn.cursor() as cur:
-        for sc, cc in mapping.items():
-            cur.execute(_UPSERT, {"stock_code": sc, "corp_code": cc,
-                                  "corp_name": names.get(sc)})
-    conn.commit()
-    return len(mapping)
+    try:
+        with conn.cursor() as cur:
+            for sc, cc in mapping.items():
+                cur.execute(_UPSERT, {"stock_code": sc, "corp_code": cc,
+                                      "corp_name": names.get(sc)})
+        conn.commit()
+        return len(mapping)
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def load_map(conn) -> dict:
-    with conn.cursor() as cur:
-        cur.execute("SELECT stock_code, corp_code FROM dart_corp_code")
-        return {r[0]: r[1] for r in cur.fetchall()}
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT stock_code, corp_code FROM dart_corp_code")
+            return {r[0]: r[1] for r in cur.fetchall()}
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def refresh_from_dart(conn, key: str) -> int:
@@ -77,20 +89,24 @@ def refresh_from_dart(conn, key: str) -> int:
     import io
     import zipfile
     import requests
-    r = requests.get("https://opendart.fss.or.kr/api/corpCode.xml",
-                     params={"crtfc_key": key}, timeout=120)
-    r.raise_for_status()
-    body = r.content
-    # 🔴 zip 이 아니면 즉시 실패. 에러 JSON 을 xml 로 파싱하면 0건이 «성공»이 된다.
-    if body[:2] != b"PK":
-        raise RuntimeError(f"corpCode.xml 이 zip 이 아님 (len={len(body)}): {body[:200]!r}")
-    with zipfile.ZipFile(io.BytesIO(body)) as z:
-        xmls = [n for n in z.namelist() if n.lower().endswith(".xml")]
-        if not xmls:
-            raise RuntimeError(f"zip 안에 xml 없음: {z.namelist()}")
-        data = z.read(xmls[0])
-    mapping = parse_corpcode_xml(data)
-    ensure_table(conn)
-    n = upsert_map(conn, mapping)
-    logger.info("[dart_corp_code] 매핑 갱신 %d건", n)
-    return n
+    try:
+        r = requests.get("https://opendart.fss.or.kr/api/corpCode.xml",
+                         params={"crtfc_key": key}, timeout=120)
+        r.raise_for_status()
+        body = r.content
+        # 🔴 zip 이 아니면 즉시 실패. 에러 JSON 을 xml 로 파싱하면 0건이 «성공»이 된다.
+        if body[:2] != b"PK":
+            raise RuntimeError(f"corpCode.xml 이 zip 이 아님 (len={len(body)}): {body[:200]!r}")
+        with zipfile.ZipFile(io.BytesIO(body)) as z:
+            xmls = [n for n in z.namelist() if n.lower().endswith(".xml")]
+            if not xmls:
+                raise RuntimeError(f"zip 안에 xml 없음: {z.namelist()}")
+            data = z.read(xmls[0])
+        mapping = parse_corpcode_xml(data)
+        ensure_table(conn)
+        n = upsert_map(conn, mapping)
+        logger.info("[dart_corp_code] 매핑 갱신 %d건", n)
+        return n
+    except Exception:
+        conn.rollback()
+        raise

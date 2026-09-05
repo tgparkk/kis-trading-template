@@ -22,3 +22,34 @@ def test_parse_rejects_empty_result():
     """빈 결과를 «성공»으로 돌려주면 안 된다 — 매핑 전멸이 조용히 통과한다."""
     with pytest.raises(ValueError):
         m.parse_corpcode_xml(b"<?xml version='1.0'?><result></result>")
+
+
+def test_upsert_map_rolls_back_on_cursor_error():
+    """cursor.execute가 실패하면 conn.rollback()이 호출되어야 한다."""
+    class FakeCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def execute(self, *args, **kwargs):
+            raise RuntimeError("execute failed")
+
+    class FakeConn:
+        def __init__(self):
+            self.rolled_back = False
+            self.committed = False
+        def cursor(self):
+            return FakeCursor()
+        def rollback(self):
+            self.rolled_back = True
+        def commit(self):
+            self.committed = True
+
+    fake_conn = FakeConn()
+    mapping = {"005930": "00126380"}
+
+    with pytest.raises(RuntimeError, match="execute failed"):
+        m.upsert_map(fake_conn, mapping)
+
+    assert fake_conn.rolled_back, "rollback() should have been called"
+    assert not fake_conn.committed, "commit() should not have been called"
