@@ -57,3 +57,34 @@ def test_as_of_symmetric_before_and_after_amendment(conn):
 def test_no_lookahead_before_first_filing(conn):
     """🔴 최초 접수일 이전에는 «아무것도» 보이면 안 된다."""
     assert _assets_at(conn, "2026-05-14") == []
+
+
+def test_total_equity_ignores_sce_reuse_of_account_id(conn):
+    """🔴🔴 fix round 1 — SCE(자본변동표)는 ifrs-full_Equity 를 기초/기말 자본 줄에도 재사용한다.
+    sj_div 스코프가 없으면 MAX() 가 더 큰 SCE 값을 집어 total_equity 를 오염시킨다(실측 17.1%).
+    BS 값(1000)이 SCE 값(5000)보다 작아도 BS 값이 나와야 한다."""
+    w.upsert_accounts(conn, [
+        dict(rcept_no=ORIG["rcept_no"], fs_div="CFS", sj_div="BS",
+             account_id="ifrs-full_Equity", ord=2, account_nm="자본총계",
+             thstrm_amount=1000, thstrm_add_amount=None,
+             frmtrm_amount=None, bfefrmtrm_amount=None, currency="KRW"),
+        dict(rcept_no=ORIG["rcept_no"], fs_div="CFS", sj_div="SCE",
+             account_id="ifrs-full_Equity", ord=1, account_nm="기말자본",
+             thstrm_amount=5000, thstrm_add_amount=None,
+             frmtrm_amount=None, bfefrmtrm_amount=None, currency="KRW"),
+    ])
+    with conn.cursor() as cur:
+        cur.execute("SELECT total_equity FROM fn_financials_as_of(%s) WHERE stock_code='TEST02'",
+                    ("2026-06-01",))
+        rows = cur.fetchall()
+    assert rows == [(1000,)], f"SCE 재사용 계정에 오염됨(BS 아닌 값이 나왔다): {rows}"
+
+
+def test_interest_expense_prioritizes_is_cis_before_cf_proxy():
+    """🔴 CF 조정항목(dart_AdjustmentsForInterestExpenses)은 IS/CIS 표준계정이 없을 때만 쓰는
+    폴백이다 — 생성된 SQL 안에서 IS·CIS 뒤, 가장 마지막(최저 우선순위)에 와야 한다."""
+    sql = fm._metric_sql("interest_expense")
+    is_pos = sql.index("a.sj_div = 'IS'")
+    cis_pos = sql.index("a.sj_div = 'CIS'")
+    cf_pos = sql.index("a.sj_div = 'CF'")
+    assert is_pos < cis_pos < cf_pos, f"우선순위가 IS < CIS < CF(폴백) 순서가 아니다: {sql}"
