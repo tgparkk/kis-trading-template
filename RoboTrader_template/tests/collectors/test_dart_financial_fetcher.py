@@ -37,3 +37,46 @@ def test_append_raw_returns_line_number(tmp_path):
     with gzip.open(p, "rt", encoding="utf-8") as fh:
         lines = [json.loads(x) for x in fh]
     assert lines == [{"a": 1}, {"a": 2}]
+
+
+def test_three_connection_resets_raise_blocked(monkeypatch):
+    """3연속 ConnectionError 는 DartBlocked 를 raise 하고 monkeypatch seam 을 유지한다."""
+    import requests
+    fetcher = f.DartFinancialFetcher("k", min_interval=0.0)
+
+    # Track how many times the mocked get was called
+    call_count = [0]
+    def mock_get(*a, **kw):
+        call_count[0] += 1
+        raise requests.exceptions.ConnectionError("mock reset")
+
+    monkeypatch.setattr(fetcher.session, "get", mock_get)
+    monkeypatch.setattr("time.sleep", lambda x: None)  # no-op sleep
+
+    with pytest.raises(f.DartBlocked):
+        fetcher.fetch("00126380", "2026", "11013", "CFS")
+
+    # Verify the same session.get was called (not a new unpatched session)
+    assert call_count[0] == 3
+
+
+def test_throttle_enforces_min_interval(monkeypatch):
+    """min_interval 을 _throttle 이 준수하는지 확인한다."""
+    import time as time_module
+    fetcher = f.DartFinancialFetcher("k", min_interval=0.2)
+
+    # Track sleep calls
+    sleep_args = []
+    def mock_sleep(seconds):
+        sleep_args.append(seconds)
+
+    monkeypatch.setattr("time.sleep", mock_sleep)
+    monkeypatch.setattr(fetcher.session, "get", lambda *a, **kw: _Resp({"status": "013"}))
+
+    # Make two back-to-back fetches
+    fetcher.fetch("00126380", "2026", "11013", "CFS")
+    fetcher.fetch("00126380", "2026", "11014", "CFS")
+
+    # Verify sleep was called with a value between 0 and min_interval
+    assert len(sleep_args) > 0
+    assert all(0 < s <= 0.2 for s in sleep_args)

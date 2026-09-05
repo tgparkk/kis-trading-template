@@ -70,9 +70,9 @@ class DartFinancialFetcher:
                 self.conn_resets += 1
                 reset_streak += 1
                 if reset_streak >= 3:
+                    logger.error(f"DartBlocked: 연결 리셋 3연속 (corp_code={corp_code}, bsns_year={bsns_year}, reprt_code={reprt_code}, fs_div={fs_div})")
                     raise DartBlocked("연결 리셋 3연속 — opendart IP 차단으로 판단")
                 self.session.close()
-                self.session = requests.Session()
                 time.sleep(backoff)
                 backoff = min(backoff * 2, _BACKOFF_CAP)
                 continue
@@ -99,14 +99,19 @@ class DartFinancialFetcher:
             status = js.get("status")
             self._bump(status)
             if status == "020":
+                logger.error(f"DartQuotaExceeded: 일일사용한도초과 (corp_code={corp_code}, bsns_year={bsns_year}, reprt_code={reprt_code}, fs_div={fs_div})")
                 raise DartQuotaExceeded("DART 일일 사용한도 초과(status=020)")
             if status == "800":  # 시스템 점검
                 time.sleep(backoff)
                 backoff = min(backoff * 2, _BACKOFF_CAP)
                 continue
+            if status not in ("000", "013"):
+                msg = js.get("message", "")
+                logger.warning(f"Unexpected DART status={status} (corp_code={corp_code}, bsns_year={bsns_year}, reprt_code={reprt_code}, fs_div={fs_div}, message={msg})")
             return status, js
 
         self._bump("HTTP_FAIL")
+        logger.warning(f"HTTP_FAIL: retry loop exhausted (corp_code={corp_code}, bsns_year={bsns_year}, reprt_code={reprt_code}, fs_div={fs_div}, attempts={_MAX_TRIES})")
         return "HTTP_FAIL", {}
 
 
