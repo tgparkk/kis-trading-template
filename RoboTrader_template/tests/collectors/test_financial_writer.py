@@ -93,6 +93,52 @@ def test_malformed_ord_skipped(monkeypatch):
     assert args[2] == "x"  # raw ord
 
 
+def test_empty_and_missing_ord_skipped(monkeypatch):
+    """🔴 ord 가 빈값이나 누락되어도 ord=0 폴백 금지 — 스킵 + 경고.
+    missing ord, empty ord, whitespace ord 모두 같은 처리."""
+    resp = {"status": "000", "list": [
+        {"rcept_no": "20260515000001", "reprt_code": "11013", "bsns_year": "2026",
+         "corp_code": "00126380", "sj_div": "BS", "account_id": "ifrs-full_Assets",
+         "account_nm": "자산총계", "thstrm_amount": "1000", "ord": "1", "currency": "KRW"},
+        # missing ord (key not present)
+        {"rcept_no": "20260515000001", "reprt_code": "11013", "bsns_year": "2026",
+         "corp_code": "00126380", "sj_div": "BS", "account_id": "ifrs-full_Liabilities",
+         "account_nm": "부채총계", "thstrm_amount": "2000", "currency": "KRW"},
+        # empty ord
+        {"rcept_no": "20260515000001", "reprt_code": "11013", "bsns_year": "2026",
+         "corp_code": "00126380", "sj_div": "BS", "account_id": "ifrs-full_Equity",
+         "account_nm": "자본총계", "thstrm_amount": "3000", "ord": "", "currency": "KRW"},
+    ]}
+
+    # Verify logger.warning is called
+    logger_warnings = []
+    def capture_warning(msg, *args, **kwargs):
+        logger_warnings.append((msg, args))
+
+    monkeypatch.setattr(w.logger, "warning", capture_warning)
+    filing, accounts = w.rows_from_dart_response(resp, "005930", "CFS")
+
+    # 오직 good item 만 살아남음
+    assert len(accounts) == 1
+    assert accounts[0]["account_id"] == "ifrs-full_Assets"
+    assert accounts[0]["ord"] == 1
+
+    # 두 개의 경고 로그: missing + empty
+    assert len(logger_warnings) == 2
+
+    # First warning (missing ord): args = ("20260515000001", "ifrs-full_Liabilities", "")
+    msg1, args1 = logger_warnings[0]
+    assert args1[0] == "20260515000001"  # rcept_no
+    assert args1[1] == "ifrs-full_Liabilities"  # account_id
+    assert args1[2] == ""  # raw ord (empty)
+
+    # Second warning (empty ord): args = ("20260515000001", "ifrs-full_Equity", "")
+    msg2, args2 = logger_warnings[1]
+    assert args2[0] == "20260515000001"  # rcept_no
+    assert args2[1] == "ifrs-full_Equity"  # account_id
+    assert args2[2] == ""  # raw ord (empty)
+
+
 def test_upsert_accounts_rolls_back_on_cursor_error():
     """cursor.execute가 실패하면 conn.rollback()이 호출되어야 한다."""
     class FakeCursor:

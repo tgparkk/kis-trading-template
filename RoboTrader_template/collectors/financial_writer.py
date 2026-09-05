@@ -116,8 +116,17 @@ def rows_from_dart_response(payload: dict, stock_code: str, fs_div: str):
         # ord 는 PK 의 일부 — malformed ord 는 다른 행과 충돌해 ON CONFLICT 로 침묵 덮어쓴다.
         # 스킵 + 경고(조용한 드롭 금지).
         raw_ord = str(it.get("ord", "")).strip()
+        # 빈값도 유효하지 않음 — ord=0 폴백 금지
+        if not raw_ord:
+            rcept_no = filing["rcept_no"]
+            account_id = str(it.get("account_id", "")).strip()
+            logger.warning(
+                "[financial_writer] ord 무효 계정 스킵: rcept_no=%s account_id=%s ord=%r",
+                rcept_no, account_id, raw_ord,
+            )
+            continue
         try:
-            ordv = int(raw_ord or 0)
+            ordv = int(raw_ord)
         except ValueError:
             rcept_no = filing["rcept_no"]
             account_id = str(it.get("account_id", "")).strip()
