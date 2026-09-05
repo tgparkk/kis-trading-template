@@ -64,7 +64,9 @@ def test_upsert_nodata_is_idempotent(conn):
 def test_upsert_reconciliation_upserts_financials_dataset(conn):
     """R1: 새 writer 함수 `upsert_reconciliation` 의 DB 테스트 —
     같은 (trade_date, dataset) 에 두 번째 호출이 UPDATE 로 덮어써야 한다."""
-    trade_date = "2026-08-17"
+    # 실제 운영에서 쓰는 날짜(예: 08-17 반기 창 첫날)와 겹치면 진짜 reconcile 이력과
+    # 충돌할 수 있다 — 합성 과거 날짜로 격리한다(Task 6 review 지적).
+    trade_date = "1999-01-04"
     try:
         w.upsert_reconciliation(conn, trade_date, "financials", 5, 0.0, 0.0, "FAIL")
         with conn.cursor() as cur:
@@ -110,23 +112,7 @@ def test_nodata_is_excluded_from_next_run(conn):
     conn.commit()
 
 
-def test_quota_abort_leaves_existing_rows_intact(conn):
-    """🔴 스펙 테스트 #6 — 한도 초과로 중단돼도 이미 적재된 행은 무손상이어야 한다."""
-    from collectors.dart_financial_fetcher import DartQuotaExceeded
-    w.upsert_filing(conn, ORIG)
-    w.upsert_accounts(conn, [dict(rcept_no=ORIG["rcept_no"], fs_div="CFS", sj_div="BS",
-                                  account_id="ifrs-full_Assets", ord=1, account_nm="자산총계",
-                                  thstrm_amount=1000, thstrm_add_amount=None,
-                                  frmtrm_amount=None, bfefrmtrm_amount=None, currency="KRW")])
-    with conn.cursor() as cur:
-        cur.execute("SELECT count(*) FROM dart_financial_accounts WHERE rcept_no=%s",
-                    (ORIG["rcept_no"],))
-        before = cur.fetchone()[0]
-    try:
-        raise DartQuotaExceeded("simulated")
-    except DartQuotaExceeded:
-        pass
-    with conn.cursor() as cur:
-        cur.execute("SELECT count(*) FROM dart_financial_accounts WHERE rcept_no=%s",
-                    (ORIG["rcept_no"],))
-        assert cur.fetchone()[0] == before, "중단이 기적재분을 훼손했다"
+# 🔴 Task 6 review (fix round 1, 2026-09-06): `test_quota_abort_leaves_existing_rows_intact`
+# 이 자리에 있었지만 실제로는 collector 코드를 전혀 태우지 않는 vacuous 테스트였다
+# (raise/except 만 흉내). collect_financials 를 fake fetcher 로 실제로 굴리는 버전으로
+# 재작성해 tests/collectors/test_financial_collector.py 로 옮겼다.

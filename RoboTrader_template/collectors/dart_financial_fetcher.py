@@ -115,18 +115,29 @@ class DartFinancialFetcher:
         return "HTTP_FAIL", {}
 
 
+# path(절대경로) → 지금까지 쓴 줄 수. 프로세스 안에서 한 번만 gz 를 다시 읽고,
+# 그 뒤로는 메모리 카운터만 증가시킨다 — 매 호출마다 재압축해제하면 백필처럼
+# 파일 하나에 수천 번 append 할 때 O(n^2) 이 된다(Task 8 규모에서 실측 병목).
+_LINE_COUNTS: dict = {}
+
+
 def append_raw(path: str, payload: dict) -> int:
     """원본 응답을 gzip JSONL 에 append 하고 «줄 번호»(1-based)를 돌려준다.
 
     🔑 f2_raw 전례: DB 엔 7컬럼만 뽑혀 있었는데 원본엔 계정 2,461종이 있었다.
        원본을 남겼기 때문에 호출 0건으로 확장이 가능했다. 파싱은 틀릴 수 있다.
     """
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    n = 0
-    if os.path.exists(path):
-        with gzip.open(path, "rt", encoding="utf-8") as fh:
-            for _ in fh:
-                n += 1
-    with gzip.open(path, "at", encoding="utf-8") as fh:
+    abspath = os.path.abspath(path)
+    os.makedirs(os.path.dirname(abspath), exist_ok=True)
+    n = _LINE_COUNTS.get(abspath)
+    if n is None:
+        n = 0
+        if os.path.exists(abspath):
+            with gzip.open(abspath, "rt", encoding="utf-8") as fh:
+                for _ in fh:
+                    n += 1
+    with gzip.open(abspath, "at", encoding="utf-8") as fh:
         fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    return n + 1
+    n += 1
+    _LINE_COUNTS[abspath] = n
+    return n

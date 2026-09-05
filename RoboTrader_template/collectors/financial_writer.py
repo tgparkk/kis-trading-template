@@ -284,7 +284,7 @@ def recompute_amendment_flags(conn) -> None:
                 FROM (
                     SELECT rcept_no, fs_div,
                            (row_number() OVER (PARTITION BY stock_code, bsns_year, reprt_code
-                                               ORDER BY rcept_dt, rcept_no) > 1) AS amend
+                                               ORDER BY rcept_dt, rcept_no, fs_div) > 1) AS amend
                     FROM dart_financial_filings WHERE rcept_dt IS NOT NULL
                 ) sub
                 WHERE f.rcept_no = sub.rcept_no AND f.fs_div = sub.fs_div

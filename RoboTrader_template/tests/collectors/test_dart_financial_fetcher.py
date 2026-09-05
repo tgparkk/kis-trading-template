@@ -39,6 +39,26 @@ def test_append_raw_returns_line_number(tmp_path):
     assert lines == [{"a": 1}, {"a": 2}]
 
 
+def test_append_raw_does_not_reread_gz_after_first_call(tmp_path, monkeypatch):
+    """🔴 Task 6 review 수정 — 매 호출마다 gz 를 재압축해제하면 백필 규모(수천 호출)에서
+    O(n^2) 이 된다. 두 번째 호출부터는 메모리 카운터만 증가해야 하고, 그 확인은
+    두 번째 호출이 «읽기 모드로 gzip.open 을 열지 않는다»로 한다(쓰기는 매번 필요하다)."""
+    p = str(tmp_path / "dart_20260901.jsonl.gz")
+    assert f.append_raw(p, {"a": 1}) == 1  # 첫 호출 — 파일이 없으므로 읽기 시도 없음(정상)
+
+    real_gzip_open = f.gzip.open
+    read_modes = []
+
+    def _spy_open(path, mode, *a, **kw):
+        read_modes.append(mode)
+        return real_gzip_open(path, mode, *a, **kw)
+
+    monkeypatch.setattr(f.gzip, "open", _spy_open)
+    assert f.append_raw(p, {"a": 2}) == 2
+    assert "rt" not in read_modes, "캐시가 있는데도 gz 를 다시 읽었다 — O(n^2) 회귀"
+    assert "at" in read_modes
+
+
 def test_three_connection_resets_raise_blocked(monkeypatch):
     """3연속 ConnectionError 는 DartBlocked 를 raise 하고 monkeypatch seam 을 유지한다."""
     import requests
