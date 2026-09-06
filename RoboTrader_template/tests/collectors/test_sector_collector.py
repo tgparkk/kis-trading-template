@@ -176,3 +176,183 @@ def test_append_company_raw_returns_line_numbers(tmp_path):
     assert dcf.append_company_raw(p, {"a": 2}) == 2
     with open(p, encoding="utf-8") as fh:
         assert len(fh.readlines()) == 2
+
+
+from datetime import datetime, timedelta  # noqa: E402
+
+from collectors import sector_collector as sc  # noqa: E402
+from collectors import sector_writer as w  # noqa: E402
+
+TD = date(2026, 9, 7)
+NOW = datetime(2026, 9, 7, 16, 5)
+
+
+def _row(**kw):
+    r = {"valid_from": date(2026, 1, 2), "ksic_code": None, "ksic_source": None,
+         "ksic3_name": None, "corp_code": None, "ksic_checked_at": None}
+    r.update(kw)
+    return r
+
+
+def test_fill_targets_need_corp_code_and_missing_ksic():
+    """(a) 대상 = corp_code 있고 ksic_code 없는 열린 줄."""
+    opens = {"AAAAA1": _row(corp_code="00000001"),
+             "BBBBB1": _row(corp_code="00000002", ksic_code="264"),
+             "CCCCC1": _row()}
+    assert sc._fill_targets(opens, {}, NOW) == ["AAAAA1"]
+
+
+def test_parent_copied_rows_are_never_dart_targets():
+    """🔴 부모 코드로 자식을 묻지 않는다 — ksic_source LIKE 'parent:%' 는 대상 밖."""
+    opens = {"00104K": _row(corp_code="00126380", ksic_source="parent:001040")}
+    assert sc._fill_targets(opens, {}, NOW) == []
+
+
+def test_nodata_within_30_days_is_not_called():
+    """「없다」고 답한 지 30일이 안 됐으면 호출 0."""
+    opens = {"AAAAA1": _row(corp_code="00000001")}
+    assert sc._fill_targets(opens, {"AAAAA1": NOW - timedelta(days=29)}, NOW) == []
+
+
+def test_nodata_older_than_30_days_is_retried():
+    """🔑 「없다」는 답도 틀릴 수 있다(재무 082660 교훈) — 30일 지나면 다시 두드린다."""
+    opens = {"AAAAA1": _row(corp_code="00000001")}
+    assert sc._fill_targets(opens, {"AAAAA1": NOW - timedelta(days=31)}, NOW) == ["AAAAA1"]
+
+
+def test_recheck_order_is_checked_at_asc_nulls_first():
+    """재확인 순환 커서 = ksic_checked_at ASC NULLS FIRST · 대상은 dart/snapshot 만 ·
+    corp_code 가 없으면 물을 수단이 없으므로 대상이 아니다."""
+    opens = {
+        "AAAAA1": _row(ksic_code="264", ksic_source="dart", corp_code="0000000A",
+                       ksic_checked_at=datetime(2026, 8, 20, 9, 0)),
+        "BBBBB1": _row(ksic_code="264", ksic_source="snapshot_20260807",
+                       corp_code="0000000B"),
+        "CCCCC1": _row(ksic_code="264", ksic_source="dart", corp_code="0000000C",
+                       ksic_checked_at=datetime(2026, 8, 1, 9, 0)),
+        "DDDDD1": _row(ksic_code="264", ksic_source="parent:DDDDD0",
+                       corp_code="0000000D"),
+        "EEEEE1": _row(ksic_code="264", ksic_source="dart"),      # corp_code 없음
+    }
+    assert sc._recheck_targets(opens, set(), 10) == ["BBBBB1", "CCCCC1", "AAAAA1"]
+    assert sc._recheck_targets(opens, {"BBBBB1"}, 10) == ["CCCCC1", "AAAAA1"]
+    assert sc._recheck_targets(opens, set(), 2) == ["BBBBB1", "CCCCC1"]
+
+
+def test_recheck_rail_trips_on_count_and_ratio():
+    """🔴 표본 기준 레일 — 30건 초과 «또는» 20% 초과."""
+    w.check_recheck_rail(200, 30)          # 경계: 30건·15% → 통과
+    with pytest.raises(RuntimeError):
+        w.check_recheck_rail(200, 31)      # 건수 초과
+    with pytest.raises(RuntimeError):
+        w.check_recheck_rail(100, 25)      # 비율 초과(25%)
+    w.check_recheck_rail(0, 0)             # 응답 0 이면 무판정
+
+
+class _DummyCM:
+    def __enter__(self):
+        return object()
+
+    def __exit__(self, *a):
+        return False
+
+
+class _FakeFetcher:
+    """corp_code → 응답을 미리 정해 둔다. quota=<n> 이면 n번째 호출에서 020."""
+
+    def __init__(self, answers=None, quota_at=None):
+        self.answers = answers or {}
+        self.quota_at = quota_at
+        self.calls = 0
+        self.status_counts = {}
+        self.asked = []
+
+    def fetch(self, corp_code):
+        self.calls += 1
+        self.asked.append(corp_code)
+        if self.quota_at is not None and self.calls >= self.quota_at:
+            raise DartQuotaExceeded("020")
+        induty = self.answers.get(corp_code)
+        st = "000" if induty else "013"
+        self.status_counts[st] = self.status_counts.get(st, 0) + 1
+        return st, ({"status": "000", "induty_code": induty} if induty
+                    else {"status": "013"})
+
+
+def _patch_fill(monkeypatch, open_rows, nodata=None, capture=None):
+    # 🔴 `capture or {}` 는 «빈 dict»(항상 그렇다)에서 새 dict 를 만들어
+    #    호출측 cap 에 아무것도 안 남는다 — 여기서 한 번만 정규화한다.
+    capture = {} if capture is None else capture
+    monkeypatch.setattr(w, "load_open_rows", lambda conn: dict(open_rows))
+    monkeypatch.setattr(w, "load_nodata", lambda conn: dict(nodata or {}))
+    monkeypatch.setattr(w, "upsert_nodata",
+                        lambda conn, code: capture.setdefault("nodata", []).append(code))
+    monkeypatch.setattr(sc, "append_company_raw", lambda p, payload: 1)
+
+    def _apply(conn, responses, trade_date, rail=False, source="eod"):
+        capture.setdefault("applied", []).append((list(responses), rail))
+        changed = [r["stock_code"] for r in responses if r.get("ksic_code") == "999"]
+        if rail:
+            w.check_recheck_rail(len([r for r in responses if r.get("recheck")]), len(changed))
+        return {"closed": 0, "inserted": 0, "updated": len(responses),
+                "counts": {"changed": len(changed), "filled": len(responses) - len(changed),
+                           "new": 0, "unchanged": 0, "skipped_past": 0},
+                "changed_codes": changed, "guard": {}}
+
+    monkeypatch.setattr(w, "apply_ksic_updates", _apply)
+
+
+def test_no_dart_key_skips_fill(monkeypatch):
+    """키가 없으면 EOD 를 막지 않고 스킵한다(corp_events·재무 전례)."""
+    out = sc.fill_ksic(object(), TD, key="")
+    assert out["skipped"] == "no_dart_key" and out["fill_calls"] == 0
+
+
+def test_quota_stops_fill_and_records(monkeypatch):
+    """020 이면 채우기를 중단하고 «기록»한다 — 재확인도 안 돈다."""
+    cap = {}
+    opens = dict(("AAAA%02d" % i, _row(corp_code="0000000%d" % i)) for i in range(5))
+    _patch_fill(monkeypatch, opens, capture=cap)
+    f = _FakeFetcher(quota_at=3)
+    out = sc.fill_ksic(object(), TD, fetcher=f, key="k")
+    assert out["quota_hit"] is True
+    assert out["recheck_calls"] == 0, "한도 초과 뒤에 재확인을 또 돌리면 안 된다"
+
+
+def test_nodata_response_is_recorded(monkeypatch):
+    """induty_code 가 비면 nodata 기록 — 30일 뒤 재시도용 커서다."""
+    cap = {}
+    opens = {"AAAAA1": _row(corp_code="00000001")}
+    _patch_fill(monkeypatch, opens, capture=cap)
+    out = sc.fill_ksic(object(), TD, fetcher=_FakeFetcher({}), key="k")
+    assert out["nodata"] == 1 and cap["nodata"] == ["AAAAA1"]
+
+
+def test_recheck_budget_is_cap_minus_fill(monkeypatch):
+    """재확인 예산 = 300 − 채우기 호출 수."""
+    cap = {}
+    opens = {}
+    for i in range(3):
+        opens["AAAA%02d" % i] = _row(corp_code="000000A%d" % i)
+    for i in range(10):
+        opens["BBBB%02d" % i] = _row(ksic_code="264", ksic_source="dart",
+                                     corp_code="000000B%d" % i)
+    _patch_fill(monkeypatch, opens, capture=cap)
+    f = _FakeFetcher(dict(("000000A%d" % i, "264") for i in range(3)))
+    out = sc.fill_ksic(object(), TD, fetcher=f, cap=8, recheck_max=200, key="k")
+    assert out["fill_calls"] == 3
+    assert out["recheck_calls"] == 5, "예산은 cap(8) − 채우기(3) = 5 여야 한다"
+
+
+def test_recheck_rail_rolls_back_and_raises(monkeypatch):
+    """🔴 값→값 31건이면 그날 재확인분 전부 롤백 + RuntimeError(부분 집계는 보존)."""
+    cap = {}
+    opens = dict(("BBBB%03d" % i,
+                  _row(ksic_code="264", ksic_source="dart", corp_code="00000%03d" % i))
+                 for i in range(40))
+    _patch_fill(monkeypatch, opens, capture=cap)
+    f = _FakeFetcher(dict(("00000%03d" % i, "999") for i in range(40)))
+    with pytest.raises(sc.SectorStageError) as e:
+        sc.fill_ksic(object(), TD, fetcher=f, key="k")
+    assert e.value.partial["rail_tripped"] is True
+    assert e.value.partial["recheck_calls"] == 40, "부분 집계가 보존돼야 §8-4 가 그날을 본다"

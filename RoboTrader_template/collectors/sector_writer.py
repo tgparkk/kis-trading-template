@@ -409,3 +409,83 @@ def write_map(conn, plan: dict, source: str) -> dict:
         conn.rollback()
         raise
     return {"closed": n_close, "inserted": n_new, "updated": n_up}
+
+
+RECHECK_RAIL_RATIO = 0.20
+RECHECK_RAIL_COUNT = 30
+
+
+def check_recheck_rail(n_responses: int, n_changed: int) -> None:
+    """재확인 «표본» 기준 레일.
+
+    🔴 §3.1 의 5% 가드는 분모가 열린 줄 «전체»라 200건 표본에선 139건이 바뀌어야
+       걸린다 — 표본 기준 레일이 따로 필요하다.
+    """
+    if n_responses <= 0:
+        return
+    ratio = float(n_changed) / n_responses
+    if n_changed > RECHECK_RAIL_COUNT or ratio > RECHECK_RAIL_RATIO:
+        raise RuntimeError(
+            "KSIC 재확인 급변 — 그날 재확인분 전부 롤백 (%d/%d = %.1f%% · 문턱 %d건 또는 %.0f%%)"
+            % (n_changed, n_responses, 100.0 * ratio, RECHECK_RAIL_COUNT,
+               100.0 * RECHECK_RAIL_RATIO))
+
+
+def apply_ksic_updates(conn, responses, trade_date, rail=False, source="eod",
+                       create_missing=True) -> dict:
+    """DART 응답을 §3.1 규칙으로 반영한다. 계획 → (레일) → 쓰기가 «한 트랜잭션»이다.
+
+    responses: [{"stock_code", "ksic_code"(None 가능), "recheck": bool}]
+    🔴 급변 가드의 «분모»는 열린 줄 «전체»여야 한다 — 그래서 open_rows 는 전부 읽고
+       candidates 만 응답분으로 좁힌다.
+    🔴 빈 응답은 «변경 아님» — ksic_checked_at 커서만 밀어 큐가 멈추지 않게 한다.
+    🔴 create_missing=False 는 --regen-map 재생 전용이다 — 열린 줄이 없는 종목에
+       KSIC 만 있는 «유령 행»(부수 열 전부 NULL)을 만들지 않는다.
+    """
+    from utils.korean_time import now_kst
+    open_rows = load_open_rows(conn)
+    now = now_kst().replace(tzinfo=None)
+    cands = {}
+    for r in responses:
+        code = r["stock_code"]
+        if is_blank(r.get("ksic_code")):
+            cands[code] = {"ksic_checked_at": now}
+        else:
+            cands[code] = {"ksic_code": r["ksic_code"], "ksic_source": "dart",
+                           "ksic_checked_at": now}
+    plan = plan_map_changes(open_rows, cands, trade_date, create_missing=create_missing)
+    if plan["counts"].get("skipped_missing"):
+        logger.warning("[sector] 열린 줄이 없어 건너뛴 KSIC 응답 %d건",
+                       plan["counts"]["skipped_missing"])
+    if rail:
+        sample = set(r["stock_code"] for r in responses if r.get("recheck"))
+        check_recheck_rail(len(sample), len(set(plan["changed_codes"]) & sample))
+    res = write_map(conn, plan, source)
+    res["counts"] = plan["counts"]
+    res["guard"] = plan["guard"]
+    res["changed_codes"] = plan["changed_codes"]
+    return res
+
+
+def upsert_nodata(conn, stock_code: str) -> None:
+    """DART 가 「업종 없음」이라 답한 종목. 이미 있으면 checked_at 을 지금으로 갱신 —
+    🔑 30일 뒤 «다시» 두드리기 위해서다(재무 082660 교훈)."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO sector_ksic_nodata (stock_code, checked_at) "
+                        "VALUES (%s, now()) ON CONFLICT (stock_code) DO UPDATE "
+                        "SET checked_at=now()", (stock_code,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def load_nodata(conn) -> dict:
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT stock_code, checked_at FROM sector_ksic_nodata")
+            return dict((r[0], r[1]) for r in cur.fetchall())
+    except Exception:
+        conn.rollback()
+        raise
