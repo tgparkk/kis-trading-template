@@ -37,19 +37,27 @@ DDL_FILINGS_IDX = [
 ]
 
 DDL_ACCOUNTS = """
+-- 🔴 2026-09-06 실행 중 발견(Task 8 Step 2 원본↔DB 대조 실패): SCE(자본변동표)는
+-- fnlttSinglAcntAll 이 자본 항목 «열»마다 한 행을 주는데, 그 행들이 같은
+-- (sj_div, account_id, ord) 를 공유하고 account_detail 만 다르다(자본금·이익잉여금 등,
+-- 실측 8~9행/보고서). account_detail 이 PK 밖이면 ON CONFLICT DO UPDATE 가 그룹을 한
+-- 행으로 조용히 접는다(실측 SCE raw 64/160/162 → db 8/20/18, BS/IS/CIS/CF 는 정확).
+-- ord 를 키에 넣은 것과 같은 계열의 결함이다 — 기존 테이블은 이 컬럼이 없으므로
+-- «다시 만들어야»(recreate) 한다, ALTER 로 마이그레이션하지 않는다.
 CREATE TABLE IF NOT EXISTS dart_financial_accounts (
     rcept_no          varchar(14) NOT NULL,
     fs_div            varchar(3)  NOT NULL,
     sj_div            varchar(8)  NOT NULL,
     account_id        text        NOT NULL,
     ord               int         NOT NULL,
+    account_detail    text        NOT NULL DEFAULT '-',
     account_nm        text,
     thstrm_amount     bigint,
     thstrm_add_amount bigint,
     frmtrm_amount     bigint,
     bfefrmtrm_amount  bigint,
     currency          text,
-    PRIMARY KEY (rcept_no, fs_div, sj_div, account_id, ord)
+    PRIMARY KEY (rcept_no, fs_div, sj_div, account_id, ord, account_detail)
 )
 """
 
@@ -151,6 +159,7 @@ def rows_from_dart_response(payload: dict, stock_code: str, fs_div: str):
             "sj_div": str(it.get("sj_div", "")).strip(),
             "account_id": str(it.get("account_id", "")).strip(),
             "ord": ordv,
+            "account_detail": (str(it.get("account_detail", "")).strip() or "-"),
             "account_nm": it.get("account_nm"),
             "thstrm_amount": parse_amount(it.get("thstrm_amount")),
             "thstrm_add_amount": parse_amount(it.get("thstrm_add_amount")),
@@ -174,12 +183,12 @@ ON CONFLICT (rcept_no, fs_div) DO UPDATE SET
 
 _UPSERT_ACCOUNT = """
 INSERT INTO dart_financial_accounts
-  (rcept_no, fs_div, sj_div, account_id, ord, account_nm,
+  (rcept_no, fs_div, sj_div, account_id, ord, account_detail, account_nm,
    thstrm_amount, thstrm_add_amount, frmtrm_amount, bfefrmtrm_amount, currency)
-VALUES (%(rcept_no)s, %(fs_div)s, %(sj_div)s, %(account_id)s, %(ord)s, %(account_nm)s,
-        %(thstrm_amount)s, %(thstrm_add_amount)s, %(frmtrm_amount)s,
+VALUES (%(rcept_no)s, %(fs_div)s, %(sj_div)s, %(account_id)s, %(ord)s, %(account_detail)s,
+        %(account_nm)s, %(thstrm_amount)s, %(thstrm_add_amount)s, %(frmtrm_amount)s,
         %(bfefrmtrm_amount)s, %(currency)s)
-ON CONFLICT (rcept_no, fs_div, sj_div, account_id, ord) DO UPDATE SET
+ON CONFLICT (rcept_no, fs_div, sj_div, account_id, ord, account_detail) DO UPDATE SET
     account_nm=EXCLUDED.account_nm,
     thstrm_amount=EXCLUDED.thstrm_amount,
     thstrm_add_amount=EXCLUDED.thstrm_add_amount,
@@ -236,6 +245,7 @@ def upsert_accounts(conn, rows: list) -> int:
     try:
         with conn.cursor() as cur:
             for r in rows:
+                r.setdefault("account_detail", "-")
                 cur.execute(_UPSERT_ACCOUNT, r)
         conn.commit()
     except Exception:

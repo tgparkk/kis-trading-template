@@ -143,16 +143,25 @@ CREATE TABLE dart_financial_accounts (
     sj_div            varchar(8)  NOT NULL,   -- BS/IS/CIS/CF/SCE
     account_id        text        NOT NULL,   -- 'ifrs-full_Assets' 등
     ord               int         NOT NULL,   -- 응답 내 순서
+    account_detail    text        NOT NULL DEFAULT '-',  -- SCE 전용: 자본 항목 열 이름
     account_nm        text,
     thstrm_amount     bigint,                 -- 당기 (분기 IS 면 «당분기 3개월»)
     thstrm_add_amount bigint,                 -- 당기 누계 (연간 보고서엔 없음 → NULL)
     frmtrm_amount     bigint,                 -- 전기
     bfefrmtrm_amount  bigint,                 -- 전전기
     currency          text,
-    PRIMARY KEY (rcept_no, fs_div, sj_div, account_id, ord),
+    PRIMARY KEY (rcept_no, fs_div, sj_div, account_id, ord, account_detail),
     FOREIGN KEY (rcept_no, fs_div) REFERENCES dart_financial_filings (rcept_no, fs_div)
 );
 ```
+
+🔴 **2026-09-06 실행 중 발견**: SCE(자본변동표)는 자본 항목 열마다 같은 `account_id`·`ord`
+로 8~9행이 나오고 `account_detail`(자본금·이익잉여금·기타포괄손익누계액 등)만 다르다.
+`account_detail` 이 PK 에 없으면 `ON CONFLICT DO UPDATE` 가 이 그룹을 조용히 한 행으로
+접는다(실측: 3개 접수건에서 SCE raw 64/160/162 행 → db 8/20/18 행, BS/IS/CIS/CF 는
+raw==db 로 정확). `ord` 를 키에 넣은 이유(§ 아래 문단)와 같은 계열의 결함이며, 기존
+테이블에 이 컬럼을 소급 적용하려면 `ALTER` 가 아니라 **테이블을 다시 만들어야** 한다
+(운영 중 `dart_financial_accounts` 는 이 정정 전까지 SCE 데이터가 손실된 상태였다).
 
 🔴 **`thstrm_add_amount` 는 분기 손익계산서에서 필수다.** 분기 IS 에서 `thstrm_amount` 는
 **당분기 3개월**이고 `thstrm_add_amount` 가 **누계**다. 이 컬럼이 없으면 ***분기 매출액·영업이익을
