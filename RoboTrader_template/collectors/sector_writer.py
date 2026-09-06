@@ -249,7 +249,9 @@ def plan_map_changes(open_rows: dict, candidates: dict, trade_date,
             row = {}
             for f in CHANGE_FIELDS:
                 row[f] = cand.get(f) if not is_blank(cand.get(f)) else cur.get(f)
-            row.update(sets)
+            for f in SIDE_FIELDS:
+                row[f] = cur.get(f)          # 부수 열은 «항상 제자리 갱신» — 닫히는 줄에서 승계한다
+            row.update(sets)                 # 후보가 명시한 부수 열만 그 위에 덮어쓴다
             row["stock_code"] = code
             row["valid_from"] = trade_date
             row["ksic_source"] = (cand.get("ksic_source")
@@ -264,7 +266,7 @@ def plan_map_changes(open_rows: dict, candidates: dict, trade_date,
             filled += 1
         for f in hard + fills:
             sets[f] = cand.get(f)
-        if "ksic_code" in sets:
+        if "ksic_code" in sets and "ksic_source" in cand:
             sets["ksic_source"] = cand.get("ksic_source")
         if cand.get("ksic_checked_at") is not None:
             sets["ksic_checked_at"] = cand.get("ksic_checked_at")
@@ -318,7 +320,8 @@ _CLOSE_ROW = ("UPDATE stock_sector_map SET valid_to=%(valid_to)s "
 
 _OPEN_ROWS_SQL = (
     "SELECT stock_code, valid_from, ksic_code, ksic_source, ksic3_name, corp_code, "
-    "       market, source, source_asof, ksic_checked_at, last_seen_at "
+    "       market, kosdaq_dept, products, listing_date, settle_month, source, "
+    "       source_asof, ksic_checked_at, last_seen_at "
     "FROM stock_sector_map WHERE valid_to IS NULL")
 
 

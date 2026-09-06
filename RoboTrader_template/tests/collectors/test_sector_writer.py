@@ -290,3 +290,69 @@ def test_write_map_always_touches_last_seen_and_never_collected_at():
     sql = conn.log[0][0]
     assert "last_seen_at=now()" in sql
     assert "collected_at" not in sql
+
+
+def test_close_open_new_row_inherits_side_fields_from_closed_row():
+    """🔴 Fix 1 — 값→값으로 줄이 닫힐 때, 후보에 없는 부수 열은 닫힌 줄에서 승계한다
+    (부수 열은 «항상 제자리 갱신» — close+open 도 in-place 와 같은 의미여야 한다).
+    ⚠️ guard=False — 표본 1종목."""
+    cur_row = _open(vf=date(2026, 1, 2), ksic_code="264", ksic_source="dart",
+                     corp_code="00126380")
+    cur_row.update({"market": "KOSPI", "kosdaq_dept": None, "products": "반도체",
+                     "listing_date": date(2020, 1, 1), "settle_month": "12",
+                     "source_asof": date(2026, 8, 1)})
+    plan = w.plan_map_changes(
+        {"005930": cur_row},
+        {"005930": {"ksic_code": "265", "ksic_source": "dart"}},
+        D, guard=False)
+    row = plan["open_new"][0]
+    assert row["corp_code"] == "00126380"
+    assert row["market"] == "KOSPI"
+    assert row["products"] == "반도체"
+    assert row["listing_date"] == date(2020, 1, 1)
+    assert row["settle_month"] == "12"
+    assert row["source_asof"] == date(2026, 8, 1)
+
+
+def test_close_open_new_row_prefers_candidate_side_field_over_closed_row():
+    """🔴 Fix 1 — 후보가 부수 열 값을 명시하면 닫힌 줄 값 대신 그것이 이긴다.
+    ⚠️ guard=False — 표본 1종목."""
+    cur_row = _open(vf=date(2026, 1, 2), ksic_code="264", ksic_source="dart")
+    cur_row["products"] = "구제품"
+    plan = w.plan_map_changes(
+        {"005930": cur_row},
+        {"005930": {"ksic_code": "265", "ksic_source": "dart", "products": "신제품"}},
+        D, guard=False)
+    assert plan["open_new"][0]["products"] == "신제품"
+
+
+def test_ksic_source_not_nulled_when_absent_from_candidate():
+    """🔴 Fix 2 — 후보가 ksic_code 만 주고 ksic_source 를 안 주면 저장된 출처를 지우지 않는다
+    (제자리 갱신 경로 — 열린 줄이 오늘 시작이라 close+open 이 아니다).
+    ⚠️ guard=False — 표본 1종목(값→값 1건 = 100%)."""
+    plan = w.plan_map_changes(
+        {"005930": _open(vf=D, ksic_code="264", ksic_source="dart")},
+        {"005930": {"ksic_code": "265"}},
+        D, guard=False)
+    assert "ksic_source" not in plan["inplace"][0]["set"]
+
+
+def test_write_map_issues_close_and_insert_with_expected_bindings():
+    """🔴 Fix 3 — close 1건 + open_new 1건을 함께 넣고 SQL·바인딩 값을 확인한다."""
+    conn = _FakeConn()
+    plan = w.plan_map_changes(
+        {"005930": _open(vf=date(2026, 1, 2), ksic_code="264", ksic_source="dart")},
+        {"005930": {"ksic_code": "265", "ksic_source": "dart"}},
+        D, guard=False)
+    out = w.write_map(conn, plan, "eod")
+    assert out == {"closed": 1, "inserted": 1, "updated": 0}
+    close_sql, close_params = conn.log[0]
+    assert close_sql == w._CLOSE_ROW
+    assert close_params == {"stock_code": "005930", "valid_from": date(2026, 1, 2),
+                             "valid_to": date(2026, 9, 6)}
+    insert_sql, insert_params = conn.log[1]
+    assert insert_sql == w._INSERT_ROW
+    assert insert_params["stock_code"] == "005930"
+    assert insert_params["valid_from"] == D
+    assert insert_params["ksic_code"] == "265"
+    assert insert_params["ksic_source"] == "dart"
