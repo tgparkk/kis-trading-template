@@ -1825,6 +1825,44 @@ git add collectors/financial_collector.py collectors/financial_writer.py tests/c
 git commit -m "feat(collectors): 재무 수집 오케스트레이터 — 창 밖 no-op·013 확정 기록·정정 스윕·진척률 게이트"
 ```
 
+### 🔴 실행 중 정정 (2026-09-06)
+
+**결함**: 이 태스크의 Step 4 코드는 `bsns_year = str(d.year)` 를 창 안 모든 `reprt_code` 에
+동일하게 적용한다. 그런데 **사업보고서(11011) 창은 04/03~05/10 이고, 이 창에 접수되는
+사업보고서는 「전년도(Y-1)」 결산분이다** — 예: 2026-04-15 에 열리는 창은 **2025 사업연도**
+사업보고서를 받는 창이다. `bsns_year=str(d.year)` 로 두면 매번 **당해년도(아직 존재하지 않는
+결산분)** 를 조회해 전 종목이 013(무자료)로 응답하고, 그게 `dart_financial_nodata` 에
+「확정」으로 잘못 기록되어 **실제 데이터가 나온 뒤에도 다시 두드리지 않게 되는** 영구 결손이
+생긴다(추정 피해: 2,800여 종목 오기록, 5,600여 호출 낭비, reconcile 은 013 을 도달성 성공으로
+보므로 PASS — 무경보).
+
+**수정**: `bsns_year` 를 파생하는 모든 지점(`collect_financials`, `reconcile_financials`,
+`_pending_targets` 호출부)에서 아래 규칙을 쓴다. `backfill` 은 `year` 를 CLI 인자로 직접
+받으므로 파생 대상이 아니다(호출자가 올바른 연도를 넘겨야 한다 — 대신 인자 검증을 추가했다).
+
+```python
+def _bsns_year_for(d: date, reprt_code: str) -> str:
+    """사업보고서(11011) 창은 다음해 04/03~05/10 에 열리므로 FY = d.year - 1.
+    분기·반기 창은 그 해 그대로."""
+    return str(d.year - 1) if reprt_code == "11011" else str(d.year)
+```
+
+테스트: `tests/collectors/test_financial_collector.py::test_annual_report_window_uses_prior_fiscal_year`
+— 2026-04-15(11011 창)는 bsns_year `"2025"`, 2026-06-01(11013 창)는 `"2026"` 임을 확인.
+
+이 정정은 Task 6 리뷰(opus, Important #1)에서 발견되었고 컨트롤러 룰링으로 확정되었다 —
+자세한 내용은 `progress.md` 의 "Task 6: review (opus)" 및 "Rulings" 항목, 구현 세부는
+`task-6-report.md` 의 fix round 1 절 참조.
+
+**도달성 1% 허용 (2026-09-06 사장님 결정, 최종 리뷰 I7)**: `reconcile_financials` 의
+도달성 판정(spec §8 조건1)이 `status_counts` 가 `{000, 013}` 밖 상태를 «하나라도» 포함하면
+무조건 FAIL 이었는데, 점검(800)·HTTP 실패 같은 소프트 실패까지 엄격하게 잡아 과검출을
+일으킨다는 사장님 결정으로 완화한다. 순수 헬퍼 `_is_reachable(summary) -> (reachable, reason_detail)`
+와 모듈 상수 `REACH_TOLERANCE = 0.01` 을 신설: `blocked` 와 `020`(한도초과)은 비율과 무관하게
+여전히 엄격(1건이면 FAIL)이고, 그 외 소프트 실패는 그날 `calls` 대비 1% 까지 허용한다.
+테스트는 `tests/collectors/test_financial_collector.py` 에 `test_is_reachable_*` 6건
+(문턱 이내/초과·020 엄격·blocked 엄격·calls=0·경계 8·9/800) 을 단위 추가했다.
+
 ---
 
 ## Task 7: EOD 등록 (라이브 2줄)

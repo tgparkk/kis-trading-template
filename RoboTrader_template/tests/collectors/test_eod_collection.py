@@ -24,7 +24,8 @@ def _stub_flow_stages(monkeypatch):
        단계 추가 시 테스트가 조용히 통합테스트로 변하는 걸 막는다.
     """
     for nm in ("collect_investor_trend", "collect_program_trade", "collect_short_sale",
-               "collect_credit_balance", "collect_overtime"):
+               "collect_credit_balance", "collect_overtime",
+               "collect_financials", "reconcile_financials"):
         monkeypatch.setattr(eod, nm, lambda d=None: {"skipped": True})
 
 
@@ -47,6 +48,55 @@ def test_run_data_collection_calls_all_stages(monkeypatch):
     assert out["daily"] == {"rows": 1}
     assert out["foreign_flow"] == {"rows": 3}
     assert out["corp_events"] == {"rows": 4}
+
+
+def test_run_data_collection_actually_calls_financials(monkeypatch):
+    """🔑 소스 문자열 단언은 죽은 경로에서도 통과한 전례가 있다
+    (9b82eec 의 **kwargs 삼킴 · 8238f91 의 순서 역전).
+    배선은 «실제로 돌려서» 단언한다."""
+    from collectors import eod_collection as eod_mod
+    called = []
+    for name in ("collect_daily", "collect_minute", "collect_index",
+                 "collect_stock_market", "collect_foreign_flow", "collect_corp_events"):
+        monkeypatch.setattr(eod_mod, name, lambda *a, _n=name: called.append(_n) or {})
+    monkeypatch.setattr(eod_mod, "reset_market_cache", lambda: None)
+    monkeypatch.setattr(eod_mod, "collect_financials",
+                         lambda *a: called.append("collect_financials") or {"skipped": "test"})
+    monkeypatch.setattr(eod_mod, "reconcile_financials",
+                         lambda *a: called.append("reconcile_financials") or {"verdict": "PASS", "reason": "test"})
+
+    out = eod_mod.run_data_collection("2026-08-17")
+    assert "collect_financials" in called, "financials 가 EOD 호출열에 없다"
+    assert "financials" in out
+    assert "financials_reconcile" in out
+    # 순서: corp_events 다음이어야 한다 (같은 opendart 호스트, 순차 필수)
+    assert called.index("collect_financials") > called.index("collect_corp_events")
+    # 순서: reconcile 은 collect 다음이어야 한다 (같은 실행의 summary 를 읽는다)
+    assert called.index("reconcile_financials") > called.index("collect_financials")
+    # 계약 불변: 레거시 교차비교 자리는 항상 빈 dict
+    assert out["reconcile"] == {}
+
+
+def test_financials_stage_exception_is_isolated(monkeypatch):
+    """(단계격리) financials 수집 실패가 다른 단계·reconcile·EOD 흐름을 막지 않는다."""
+    monkeypatch.setattr(eod, "collect_daily", lambda d=None: {"rows": 1})
+    monkeypatch.setattr(eod, "collect_minute", lambda d=None: {"rows": 2})
+    monkeypatch.setattr(eod, "collect_index", lambda s=None: {"KOSPI": 1})
+    monkeypatch.setattr(eod, "collect_stock_market", lambda: {"KOSPI": 1, "KOSDAQ": 1})
+    monkeypatch.setattr(eod, "collect_foreign_flow", lambda d=None: {"rows": 3})
+    monkeypatch.setattr(eod, "collect_corp_events", lambda d=None: {"rows": 4})
+    monkeypatch.setattr(
+        eod, "collect_financials",
+        lambda *a: (_ for _ in ()).throw(RuntimeError("dart down")))
+    recon_calls = []
+    monkeypatch.setattr(
+        eod, "reconcile_financials",
+        lambda *a: recon_calls.append(1) or {"verdict": "PASS", "reason": "test"})
+    out = eod.run_data_collection("20260623")
+    assert "error" in out["financials"]
+    assert recon_calls == [1], "financials 실패해도 reconcile_financials 는 계속 돌아야 한다"
+    assert out["daily"] == {"rows": 1}
+    assert out["minute"] == {"rows": 2}
 
 
 def test_reconcile_key_is_present_but_always_empty(monkeypatch):
