@@ -27,7 +27,13 @@ def conn():
 
 def test_amendment_does_not_overwrite_original(conn):
     """🔴 지금 죽은 테이블이 실패하는 바로 그 지점.
-    같은 (stock, year, reprt) 인데 rcept_no 가 다르면 «두 행 다» 남아야 한다."""
+    같은 (stock, year, reprt) 인데 rcept_no 가 다르면 «두 행 다» 남아야 한다.
+
+    2026-09-06: upsert_accounts 가 account_detail 을 무조건 INSERT 하므로, 이 테스트도
+    (SCE 전용 테스트와 같은 이유로) 라이브 테이블이 재생성되기 전에는 UndefinedColumn 으로
+    깨진다 — 같은 스킵 가드를 붙인다(컨트롤러 재생성 전까지는 통과할 수 없음)."""
+    if not _account_detail_column_exists(conn):
+        pytest.skip("live table not yet recreated with account_detail — controller step")
     w.upsert_filing(conn, ORIG)
     w.upsert_accounts(conn, [dict(rcept_no=ORIG["rcept_no"], fs_div="CFS", sj_div="BS",
                                   account_id="ifrs-full_Assets", ord=1, account_nm="자산총계",
@@ -93,6 +99,62 @@ def test_upsert_reconciliation_upserts_financials_dataset(conn):
             cur.execute(
                 "DELETE FROM collection_reconciliation WHERE trade_date=%s AND dataset='financials'",
                 (trade_date,))
+        conn.commit()
+
+
+def _account_detail_column_exists(conn) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM information_schema.columns "
+            "WHERE table_name='dart_financial_accounts' AND column_name='account_detail'")
+        return cur.fetchone()[0] > 0
+
+
+def test_sce_rows_all_persist_and_upsert_is_idempotent(conn):
+    """🔴 Task 8 Step 2 원본↔DB 대조 실패의 재현/회귀 방지 — SCE 4행(3 SCE + 1 BS,
+    account_id/ord 공유·account_detail 만 다름)이 UPSERT 후 «전부» 남아야 하고
+    (실측: PK 에 account_detail 없으면 SCE 그룹이 1행으로 접혔었다), 같은 행을
+    다시 넣어도 개수가 그대로여야(멱등) 한다.
+
+    NOTE: 라이브 테이블이 account_detail 컬럼을 아직 갖지 않으면(컨트롤러가 테이블을
+    재생성하기 전) 이 테스트는 skip 한다 — 여기서 테이블을 ALTER/DROP 하지 않는다.
+    """
+    if not _account_detail_column_exists(conn):
+        pytest.skip("live table not yet recreated with account_detail — controller step")
+
+    rcept_no = "29999999000003"
+    w.upsert_filing(conn, dict(ORIG, rcept_no=rcept_no, stock_code="TEST02"))
+    rows = [
+        dict(rcept_no=rcept_no, fs_div="CFS", sj_div="SCE", account_id="ifrs-full_Equity",
+             ord=1, account_detail="자본금", account_nm="자본변동", thstrm_amount=100,
+             thstrm_add_amount=None, frmtrm_amount=None, bfefrmtrm_amount=None, currency="KRW"),
+        dict(rcept_no=rcept_no, fs_div="CFS", sj_div="SCE", account_id="ifrs-full_Equity",
+             ord=1, account_detail="이익잉여금", account_nm="자본변동", thstrm_amount=200,
+             thstrm_add_amount=None, frmtrm_amount=None, bfefrmtrm_amount=None, currency="KRW"),
+        dict(rcept_no=rcept_no, fs_div="CFS", sj_div="SCE", account_id="ifrs-full_Equity",
+             ord=1, account_detail="기타포괄손익누계액", account_nm="자본변동", thstrm_amount=300,
+             thstrm_add_amount=None, frmtrm_amount=None, bfefrmtrm_amount=None, currency="KRW"),
+        dict(rcept_no=rcept_no, fs_div="CFS", sj_div="BS", account_id="ifrs-full_Assets",
+             ord=1, account_nm="자산총계", thstrm_amount=1000,
+             thstrm_add_amount=None, frmtrm_amount=None, bfefrmtrm_amount=None, currency="KRW"),
+    ]
+    try:
+        w.upsert_accounts(conn, [dict(r) for r in rows])
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM dart_financial_accounts "
+                        "WHERE rcept_no=%s AND fs_div='CFS'", (rcept_no,))
+            assert cur.fetchone()[0] == 4, "SCE 자본 항목 열별 행이 UPSERT 로 접혔다"
+
+        # 같은 행을 다시 upsert — 멱등이어야 한다(개수 불변).
+        w.upsert_accounts(conn, [dict(r) for r in rows])
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM dart_financial_accounts "
+                        "WHERE rcept_no=%s AND fs_div='CFS'", (rcept_no,))
+            assert cur.fetchone()[0] == 4, "재실행이 멱등하지 않다"
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM dart_financial_accounts WHERE rcept_no=%s", (rcept_no,))
+            cur.execute("DELETE FROM dart_financial_filings WHERE rcept_no=%s", (rcept_no,))
         conn.commit()
 
 

@@ -1863,6 +1863,33 @@ def _bsns_year_for(d: date, reprt_code: str) -> str:
 테스트는 `tests/collectors/test_financial_collector.py` 에 `test_is_reachable_*` 6건
 (문턱 이내/초과·020 엄격·blocked 엄격·calls=0·경계 8·9/800) 을 단위 추가했다.
 
+**Task 8 Step 2 대조 실패 → account_detail PK 편입 (2026-09-06)**: 완료판정 §Step 2
+(원본 raw_rows ↔ DB db_rows 대조, `docs/superpowers/plans/2026-08-13-financial-collector.md`
+Task 8 참조)가 3건 중 SCE(자본변동표)에서 불일치를 냈다(raw 64/160/162 → db 8/20/18,
+BS/IS/CIS/CF 는 일치). 원인: `fnlttSinglAcntAll` 은 SCE 를 자본 항목 열마다 한 행으로
+주는데 그 행들이 같은 `(sj_div, account_id, ord)` 를 공유하고 `account_detail` 만
+다르다 — 이 컬럼이 PK 밖이라 `ON CONFLICT DO UPDATE` 가 그룹을 한 행으로 접었다.
+
+수정: `collectors/financial_writer.py` — `DDL_ACCOUNTS`(PK 에 `account_detail` 편입,
+`NOT NULL DEFAULT '-'`) · `rows_from_dart_response`(각 행에 `account_detail` 파싱,
+없으면 `'-'`) · `_UPSERT_ACCOUNT`(INSERT 컬럼·`ON CONFLICT` 대상에 편입) ·
+`upsert_accounts`(기존 손수 작성 행 호환을 위해 `setdefault("account_detail", "-")`).
+`collectors/financial_metrics.py` 는 손대지 않았다 — `fn_financials_as_of` 는 SCE 를
+METRIC_MAP 에서 아예 빼고 계정 컬럼을 명시적으로 SELECT 하지 않으므로 영향 없음.
+
+테스트: `tests/collectors/test_financial_writer.py::test_sce_rows_keep_account_detail_others_default_dash`
+(단위, RED→GREEN 확인) · `tests/collectors/test_financial_writer_db.py::test_sce_rows_all_persist_and_upsert_is_idempotent`
+(실DB, SCE 3행+BS 1행 UPSERT → count 4 · 재실행 멱등). ⚠️ **라이브 `dart_financial_accounts`
+는 이 정정 전 스키마라 `account_detail` 컬럼이 없다** — `ensure_tables` 는
+`CREATE TABLE IF NOT EXISTS` 라 기존 테이블을 고치지 않으므로(ALTER 마이그레이션 없음),
+**컨트롤러가 라이브 테이블을 DROP 해 다음 `ensure_tables` 호출에서 새 스키마로
+재생성**해야 한다. 그 전까지 위 DB 테스트와, 같은 원인으로 `test_amendment_does_not_overwrite_original`
+(같은 파일)도 `information_schema.columns` 로 컬럼 유무를 확인해 skip 하도록 가드를
+붙였다. 재생성 전에는 `tests/collectors/test_financial_collector.py`·
+`test_financial_metrics.py` 의 실DB 픽스처(둘 다 `upsert_accounts` 호출)도 같은
+`UndefinedColumn` 으로 깨진다 — 이 두 파일은 이번 수정 범위 밖이라 손대지 않았고,
+컨트롤러의 재생성 이후에는 코드 변경 없이 다시 통과해야 한다.
+
 ---
 
 ## Task 7: EOD 등록 (라이브 2줄)

@@ -139,6 +139,39 @@ def test_empty_and_missing_ord_skipped(monkeypatch):
     assert args2[2] == ""  # raw ord (empty)
 
 
+def test_sce_rows_keep_account_detail_others_default_dash():
+    """🔴 SCE(자본변동표)는 같은 (sj_div, account_id, ord) 를 자본 항목 열마다 공유하고
+    account_detail 만 다르다 — account_detail 이 없으면 ON CONFLICT 가 그룹을 한 행으로
+    접는다(실측 SCE 64/160/162 → db 8/20/18). 파서는 4행 모두 살려야 하고, SCE 는
+    자기 detail 문자열을, BS 는 '-' 를 가져야 한다."""
+    resp = {"status": "000", "list": [
+        {"rcept_no": "20260515000001", "reprt_code": "11013", "bsns_year": "2026",
+         "corp_code": "00126380", "sj_div": "SCE", "account_id": "ifrs-full_Equity",
+         "account_nm": "자본변동", "account_detail": "자본금",
+         "thstrm_amount": "100", "ord": "1", "currency": "KRW"},
+        {"rcept_no": "20260515000001", "reprt_code": "11013", "bsns_year": "2026",
+         "corp_code": "00126380", "sj_div": "SCE", "account_id": "ifrs-full_Equity",
+         "account_nm": "자본변동", "account_detail": "이익잉여금",
+         "thstrm_amount": "200", "ord": "1", "currency": "KRW"},
+        {"rcept_no": "20260515000001", "reprt_code": "11013", "bsns_year": "2026",
+         "corp_code": "00126380", "sj_div": "SCE", "account_id": "ifrs-full_Equity",
+         "account_nm": "자본변동", "account_detail": "기타포괄손익누계액",
+         "thstrm_amount": "300", "ord": "1", "currency": "KRW"},
+        # BS 행은 account_detail 자체가 없다 — 기본값 '-' 여야 한다.
+        {"rcept_no": "20260515000001", "reprt_code": "11013", "bsns_year": "2026",
+         "corp_code": "00126380", "sj_div": "BS", "account_id": "ifrs-full_Assets",
+         "account_nm": "자산총계", "thstrm_amount": "1000", "ord": "1", "currency": "KRW"},
+    ]}
+    _, accounts = w.rows_from_dart_response(resp, "005930", "CFS")
+    assert len(accounts) == 4
+    sce_rows = [a for a in accounts if a["sj_div"] == "SCE"]
+    bs_rows = [a for a in accounts if a["sj_div"] == "BS"]
+    assert len(sce_rows) == 3
+    assert {a["account_detail"] for a in sce_rows} == {"자본금", "이익잉여금", "기타포괄손익누계액"}
+    assert len(bs_rows) == 1
+    assert bs_rows[0]["account_detail"] == "-"
+
+
 def test_upsert_accounts_rolls_back_on_cursor_error():
     """cursor.execute가 실패하면 conn.rollback()이 호출되어야 한다."""
     class FakeCursor:
