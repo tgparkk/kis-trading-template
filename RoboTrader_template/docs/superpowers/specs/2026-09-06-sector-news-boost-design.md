@@ -1,4 +1,6 @@
-# 섹터 뉴스 부스트 (스펙 B) — 뉴스 키워드·종목매핑 → KSIC3 섹터 점수 → 매수후보 재정렬 — 설계 v1 (2026-09-06)
+# 섹터 뉴스 부스트 (스펙 B) — 뉴스 키워드·종목매핑 → KSIC3 섹터 점수 → 매수후보 재정렬 — 설계 v1.1 (2026-09-06 · 정정 2026-09-07)
+
+> **이력** — v1(2026-09-06, 사장님 승인) → **v1.1**(2026-09-07, 구현 계획 작성 중 발견한 정정 7건 — §13. 결정 10개는 불변). 구현 계획: 봇 측 `docs/superpowers/plans/2026-09-07-sector-news-boost-bot.md` · NewsQuant 측 `D:\GIT\NewsQuant\docs\superpowers\plans\2026-09-07-sector-news-boost-newsquant.md`.
 
 > 사장님 결정(2026-09-06 밤, 브레인스토밍 5문답): 섹터 기준 = **KSIC 3자리(스펙 A 위)** · 뉴스→섹터 = **키워드 사전 + 종목매핑 둘 다** · 적용 시점 = **09:00 후보 로드 시 재정렬** · 방향 = **양방향(긍정 가산·부정 감산)** · 롤아웃 = **shadow 먼저, 플래그로 live** · 계산 주체 = **NewsQuant → 공유 DB 테이블, 봇은 읽기만(1안)**.
 > 이 문서는 스펙 A(`2026-09-06-sector-data-design.md`) §3.6 소비자 계약 ②「NewsQuant 는 `news.related_stocks` → `fn_sector_map_as_of(공시일)` → `ksic3` → 조인(스펙 B)」를 구체화한 **스펙 B** 다. 두 리포(`D:\GIT\NewsQuant`, `D:\GIT\kis-trading-template`)에 각각 변경이 들어간다.
@@ -439,3 +441,21 @@ save_rerank_log 실패             → WARNING, 반환값에 영향 없음
 | **shadow** | 계산하고 기록은 남기되 실제 후보 순서는 바꾸지 않는 모드 |
 | **max_shift** | 뉴스가 아무리 좋아도(나빠도) 순위를 움직일 수 있는 최대 칸 수(3) |
 | **fail-open** | 이 기능이 실패하면 「원래대로」 진행한다는 뜻. 후보 조회 자체의 fail-closed(실패하면 매수 중단)와 반대 |
+
+---
+
+## 13. v1.1 정정 (2026-09-07 · 구현 계획 작성 중 발견)
+
+결정 10개(§1)는 그대로다. 아래는 계획을 코드 수준으로 내리면서 드러난 정제이며, 두 계획 문서가 이 정정을 기준으로 쓰였다.
+
+| # | 절 | v1 | v1.1 | 이유 |
+|---|---|---|---|---|
+| 1 | §4.1·§4.5 | 10분마다 항상 UPSERT | **평일 09:05 ≤ now < 15:30 은 쓰지 않는다(동결)** | UPSERT 가 같은 키를 덮어써서 §8-① 「09:00 이전 마지막 계산본」이 남지 않는다. 봇이 09:00 에 읽은 값을 그날 행으로 보존해야 평가가 가능하다. 15:30 부터 다음 거래일 키로 다시 쓴다 |
+| 2 | §5.2 | `key = rank − K·s` (실수) | `shift = round_half_away(K·s)` (정수) · `key = rank − shift − 0.5·sign(shift)` · 동률 = 원래 순위 | 편향 없이는 동률에서 원래 순위에 밀려 «혼자 움직일 때» K−1 칸만 간다. 정수 shift + 0.5 편향으로 정확히 K 칸. 여러 종목이 동시에 움직이면 최종 위치 차이는 K 를 넘을 수 있다(상한은 «자기 점수에 의한 이동») |
+| 3 | §2.1 | 순수 로직 = `sector_news_aggregator.py` 하나 | `sector_keywords.py`(사전 로드·검증·매칭) + `sector_news_aggregator.py`(창·기여도·집계) + `sector_news_job.py`(오케스트레이션, `db` 를 인자로) | 파일당 책임 하나 · 잡은 MagicMock db 로 단위 테스트 |
+| 4 | §4.2 | 「중복 키워드 금지」 | **한 섹터 안에서** ko∪en∪exclude 중복 금지. **섹터 사이 공유는 허용** | 「임상」이 211·212·701 에 다 있어야 「바이오 뉴스가 세 섹터에 동시에 간다」(같은 절)가 성립한다 |
+| 5 | §4.4 | `w_src = SOURCE_CREDIBILITY(sentiment_analyzer.py:150)` | 한글 사전 ∪ 영문 사전(`english_sentiment_analyzer.py:115`, 한글이 우선) · 없는 출처 0.9 | 글로벌 출처(cnbc 0.9 · marketwatch 0.85 · investing 0.8 · google 0.75~0.8)가 전부 0.9 로 뭉개지지 않게 |
+| 6 | §5.1·§5.6 | `codes = self._apply_sector_news_rerank(...)` · 텔레그램 표기 방법 미정 | `codes, sector_notes = self._apply_sector_news_rerank(...)` · **`CandidateStock.sector_note: str = ""`** 필드 추가(마지막, 기본값) · `bot/candidate_loader.format_candidate_lines()` 가 붙여 쓴다 | 표기를 나르는 통로가 필요했다. 기본값이 있어 기존 생성자 호출 전부 호환 |
+| 7 | §3.1 | — | `n_dir < MIN_N` 이어도 **행은 쓴다**(`score_signed=0`) · 귀속 0 인 섹터는 행 없음 | 「뉴스가 없었다」와 「계산이 안 돌았다」를 가른다(§3.1 에 이미 있던 문장을 규칙으로 승격) |
+
+부수: `sector_news_aggregator` 상수에 `DIR_EPS=0.1`(「방향 있는」 문턱) · `TOP_NEWS=5` · `DEFAULT_W_SRC=0.9` 이름을 준다. 봇 상수에 `SECTOR_NEWS_BOOST_MODES` · `resolve_sector_news_mode()` · `SECTOR_NEWS_BOOST_MODE_INVALID`(잘못된 env 값 원문 — 호출자가 WARNING)를 둔다.
