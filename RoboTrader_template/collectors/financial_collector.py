@@ -52,6 +52,11 @@ RAW_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # Item 2c — 실행 시간 상한. EOD 파이프라인 전체를 물고 늘어지면 안 되니 45분에서 끊는다.
 COLLECT_DEADLINE_SEC = 45 * 60
 
+# I7(2026-09-06 사장님 결정) — 도달성 판정의 "소프트 실패" 허용 비율.
+# 점검(800)·HTTP 실패 등은 그날 호출의 1% 까지 허용한다. 한도초과(020)·IP 차단은
+# 비율과 무관하게 엄격(1건이라도 있으면 불허) — REACH_TOLERANCE 대상이 아니다.
+REACH_TOLERANCE = 0.01
+
 
 def active_reports(d: date) -> list:
     """그 날짜에 열려 있는 reprt_code 목록 (창 경계 포함)."""
@@ -417,11 +422,39 @@ def _recompute_amendment_flags(conn) -> None:
     w.recompute_amendment_flags(conn)
 
 
+def _is_reachable(summary: dict):
+    """도달성 판정 (spec §8 조건1) — I7(2026-09-06 사장님 결정): 소프트 실패 1% 허용.
+
+    반환: (reachable: bool, reason_detail: str) — reason_detail 은 ERROR 로그용.
+
+    - blocked 는 status_counts 와 무관하게 불허("blocked") — 엄격.
+    - 020(한도초과)이 하나라도 있으면 비율과 무관하게 불허("quota") — 엄격.
+    - 그 외 {000,013} 아닌 상태(점검 800·HTTP 실패 등 "소프트" 실패)는 그날 호출의
+      REACH_TOLERANCE(1%) 까지는 허용한다. calls 가 0(호출 자체가 없었던 날)이면
+      실패로 볼 근거가 없으므로 도달 가능으로 본다.
+    """
+    status_counts = summary.get("status_counts") or {}
+    if summary.get("blocked"):
+        return False, "blocked"
+    if status_counts.get("020", 0) > 0:
+        return False, "quota"
+    soft = sum(count for status, count in status_counts.items()
+               if status not in {"000", "013"})
+    total = summary.get("calls") or sum(status_counts.values())
+    if total == 0:
+        return True, ""
+    ratio = soft / total
+    if ratio <= REACH_TOLERANCE:
+        return True, ""
+    return False, f"soft_fail_ratio={ratio:.3f} ({soft}/{total})"
+
+
 def reconcile_financials(trade_date: str = None) -> dict:
     """창 밖은 PASS(out_of_window). 창 안은 spec §8 두 조건을 모두 본다.
 
-    1. 도달성 — 그날 collect_financials 가 남긴 summary 의 status_counts 가
-       모두 {000, 013} 안에 있고 opendart 에 차단되지 않았어야 한다.
+    1. 도달성 — `_is_reachable()` 참조. I7(2026-09-06 사장님 결정)로 점검(800)·HTTP
+       실패 등 "소프트" 실패는 그날 호출의 1%(REACH_TOLERANCE) 까지 허용한다.
+       단 한도초과(020)·IP 차단(blocked)은 비율과 무관하게 엄격(1건이면 FAIL).
     2. 진척률 — 미수집 잔량이 3영업일 연속 안 줄면 FAIL.
 
     🔑 도달성만 보면 «호출은 성공하는데 잔량이 안 줄어드는» 상태를 못 잡는다.
@@ -476,16 +509,16 @@ def reconcile_financials(trade_date: str = None) -> dict:
         return {"trade_date": iso, "verdict": "WARN", "reason": "no_summary",
                 "remaining": remaining}
 
-    reachable = (not summary.get("blocked")) and \
-        set(summary.get("status_counts") or {}).issubset({"000", "013"})
+    reachable, reach_detail = _is_reachable(summary)
 
     stalled = len(prev) == 3 and remaining > 0 and all(p == remaining for p in prev)
 
     if not reachable:
         verdict, reason = "FAIL", "unreachable"
         logger.error(
-            "[financials] reconcile: 도달성 실패(status not in {000,013} 또는 차단) - "
-            "status_counts=%s blocked=%s", summary.get("status_counts"), summary.get("blocked"))
+            "[financials] reconcile: 도달성 실패(사유=%s) - "
+            "status_counts=%s blocked=%s", reach_detail,
+            summary.get("status_counts"), summary.get("blocked"))
     elif stalled:
         verdict, reason = "FAIL", "stalled"
         logger.error("[financials] 진척 정지 - 잔량 %d 가 3회 연속 동일. "

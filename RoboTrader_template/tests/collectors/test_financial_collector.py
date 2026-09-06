@@ -725,3 +725,58 @@ def test_reconcile_escalates_to_fail_after_three_consecutive_warn(monkeypatch):
                     "DELETE FROM collection_reconciliation "
                     "WHERE dataset='financials' AND trade_date IN %s", (tuple(all_dates),))
             conn.commit()
+
+
+# ── I7 — 도달성 판정: 소프트 실패 1% 허용 (사장님 결정 2026-09-06) ──────────
+# _is_reachable() 은 순수 함수(DB 불필요) — status_counts/calls 만 보고 판정한다.
+
+def test_is_reachable_soft_fail_within_tolerance():
+    """800(점검) 5건 / 800호출 = 0.625% ⇒ 문턱(1%) 이내라 도달 가능."""
+    summary = {"blocked": False,
+               "status_counts": {"000": 790, "013": 5, "800": 5}, "calls": 800}
+    reachable, detail = c._is_reachable(summary)
+    assert reachable is True
+
+
+def test_is_reachable_soft_fail_over_tolerance():
+    """HTTP_FAIL 20/720 = 2.78% ⇒ 문턱 초과 - 불허, 사유에 soft_fail_ratio 표기."""
+    summary = {"blocked": False,
+               "status_counts": {"000": 700, "HTTP_FAIL": 20}, "calls": 720}
+    reachable, detail = c._is_reachable(summary)
+    assert reachable is False
+    assert "soft_fail_ratio" in detail
+
+
+def test_is_reachable_quota_is_strict():
+    """020(한도초과)는 비율과 무관하게 1건이라도 있으면 불허 - 엄격."""
+    summary = {"blocked": False,
+               "status_counts": {"000": 799, "020": 1}, "calls": 800}
+    reachable, detail = c._is_reachable(summary)
+    assert reachable is False
+    assert detail == "quota"
+
+
+def test_is_reachable_blocked_is_strict():
+    """blocked 는 status_counts 와 무관하게 불허 - 엄격."""
+    summary = {"blocked": True, "status_counts": {"000": 10}, "calls": 10}
+    reachable, detail = c._is_reachable(summary)
+    assert reachable is False
+    assert detail == "blocked"
+
+
+def test_is_reachable_empty_summary_is_reachable():
+    """calls=0(호출 자체가 없었던 날)이면 도달성 실패로 볼 근거가 없다."""
+    summary = {"blocked": False, "status_counts": {}, "calls": 0}
+    reachable, detail = c._is_reachable(summary)
+    assert reachable is True
+
+
+def test_is_reachable_boundary_exactly_one_percent():
+    """8/800 = 정확히 1% ⇒ 허용(<=), 9/800 = 1.125% ⇒ 불허."""
+    ok = {"blocked": False, "status_counts": {"000": 792, "HTTP_FAIL": 8}, "calls": 800}
+    reachable_ok, _ = c._is_reachable(ok)
+    assert reachable_ok is True
+
+    bad = {"blocked": False, "status_counts": {"000": 791, "HTTP_FAIL": 9}, "calls": 800}
+    reachable_bad, _ = c._is_reachable(bad)
+    assert reachable_bad is False

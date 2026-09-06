@@ -1854,6 +1854,15 @@ def _bsns_year_for(d: date, reprt_code: str) -> str:
 자세한 내용은 `progress.md` 의 "Task 6: review (opus)" 및 "Rulings" 항목, 구현 세부는
 `task-6-report.md` 의 fix round 1 절 참조.
 
+**도달성 1% 허용 (2026-09-06 사장님 결정, 최종 리뷰 I7)**: `reconcile_financials` 의
+도달성 판정(spec §8 조건1)이 `status_counts` 가 `{000, 013}` 밖 상태를 «하나라도» 포함하면
+무조건 FAIL 이었는데, 점검(800)·HTTP 실패 같은 소프트 실패까지 엄격하게 잡아 과검출을
+일으킨다는 사장님 결정으로 완화한다. 순수 헬퍼 `_is_reachable(summary) -> (reachable, reason_detail)`
+와 모듈 상수 `REACH_TOLERANCE = 0.01` 을 신설: `blocked` 와 `020`(한도초과)은 비율과 무관하게
+여전히 엄격(1건이면 FAIL)이고, 그 외 소프트 실패는 그날 `calls` 대비 1% 까지 허용한다.
+테스트는 `tests/collectors/test_financial_collector.py` 에 `test_is_reachable_*` 6건
+(문턱 이내/초과·020 엄격·blocked 엄격·calls=0·경계 8·9/800) 을 단위 추가했다.
+
 ---
 
 ## Task 7: EOD 등록 (라이브 2줄)
