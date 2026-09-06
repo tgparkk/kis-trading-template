@@ -42,6 +42,7 @@ DART_DAILY_CAP = 300          # ≈ 102초 (0.34s × 300)
 RECHECK_MAX = 200             # 한 바퀴 ≈ 13~14 거래일 (대상 풀 ≈ 2,658)
 NODATA_RETRY_DAYS = 30
 CORP_CODE_REFRESH_DAYS = 7
+FETCH_FAIL_STREAK_MAX = 5     # 연속 실패가 이만큼이면 그날 재확인을 멈춘다(예산 보호)
 BOOTSTRAP_VALID_FROM = date(2021, 1, 4)
 _MIN_DT = datetime(1970, 1, 1)      # ksic_checked_at NULLS FIRST 정렬용 하한
 
@@ -128,96 +129,146 @@ def fill_ksic(conn, trade_date, fetcher=None, cap=DART_DAILY_CAP,
               recheck_max=RECHECK_MAX, key=None, raw_path=None) -> dict:
     """② KSIC 채우기(a) + 재확인 순환(b). 하루 총 상한 = cap(=300).
 
-    반환 summary: fill_calls·recheck_calls·recheck_changed·filled·nodata·status_counts
+    반환 summary: fill_calls·recheck_calls·recheck_changed·filled·nodata·
+                  fetch_failed·fetch_fail_stop·cap_hit·status_counts
+
+    🔴 실패(HTTP_FAIL·예상외 status)는 「없다」가 «아니다» — nodata 로 적으면 그 종목이
+       30일간 조용해져 고장을 감춘다. 건수만 세고 행은 그대로 둔다(내일 다시 시도).
+    🔴 summary 는 «어떤 경우에도» 올라간다 — 본문 전체를 try 로 감싸 어떤 예외든
+       SectorStageError(partial=out) 로 승격한다(원인 예외는 chain 으로 보존).
     """
     out = {"fill_calls": 0, "recheck_calls": 0, "recheck_changed": 0, "filled": 0,
            "nodata": 0, "status_counts": {}, "quota_hit": False, "blocked": False,
-           "rail_tripped": False, "skipped": None, "fill_targets": 0, "recheck_targets": 0}
-    key = key if key is not None else _load_dart_key()
-    if not key:
-        logger.warning("[sector] OPENDART_API_KEY 미설정 - KSIC 채우기 스킵(EOD 비차단)")
-        out["skipped"] = "no_dart_key"
-        return out
-    f = fetcher if fetcher is not None else DartCompanyFetcher(key)
-    raw_path = raw_path or os.path.join(
-        SECTOR_DIR, "dart_company_%s.jsonl" % trade_date.isoformat())
+           "rail_tripped": False, "skipped": None, "fill_targets": 0, "recheck_targets": 0,
+           "fetch_failed": 0, "fetch_fail_stop": False, "cap_hit": False}
+    try:
+        key = key if key is not None else _load_dart_key()
+        if not key:
+            logger.warning("[sector] OPENDART_API_KEY 미설정 - KSIC 채우기 스킵(EOD 비차단)")
+            out["skipped"] = "no_dart_key"
+            return out
+        f = fetcher if fetcher is not None else DartCompanyFetcher(key)
+        raw_path = raw_path or os.path.join(
+            SECTOR_DIR, "dart_company_%s.jsonl" % trade_date.isoformat())
 
-    open_rows = w.load_open_rows(conn)
-    nodata = w.load_nodata(conn)
-    now = now_kst().replace(tzinfo=None)
+        open_rows = w.load_open_rows(conn)
+        nodata = w.load_nodata(conn)
+        now = now_kst().replace(tzinfo=None)
 
-    def _ask(code, recheck):
-        status, js = f.fetch(open_rows[code]["corp_code"])
-        append_company_raw(raw_path, {"stock_code": code, "corp_code": open_rows[code]["corp_code"],
-                                      "status": status, "payload": js})
-        induty = ""
-        if status == "000":
-            induty = (js.get("induty_code") or "").strip()
-        if induty and len(induty) > 5:
-            logger.warning("[sector] %s induty_code 길이 %d(>5) - 저장은 하되 확인 필요: %s",
-                           code, len(induty), induty)
-        return {"stock_code": code, "ksic_code": induty or None, "recheck": recheck}
+        def _ask(code, recheck):
+            """응답 dict, 또는 «실패»면 None. 🔴 실패와 「업종 없음」을 같이 처리하면
+            고장이 nodata 로 묻힌다 — 013(무자료)·000+빈 induty 만 「없다」이다."""
+            status, js = f.fetch(open_rows[code]["corp_code"])
+            append_company_raw(raw_path, {"stock_code": code,
+                                          "corp_code": open_rows[code]["corp_code"],
+                                          "status": status, "payload": js})
+            if status not in ("000", "013"):
+                logger.warning("[sector] %s DART 응답 실패(status=%s) - 행 불변·내일 재시도",
+                               code, status)
+                return None
+            induty = ""
+            if status == "000":
+                induty = (js.get("induty_code") or "").strip()
+            if induty and len(induty) > 5:
+                logger.warning("[sector] %s induty_code 길이 %d(>5) - 저장은 하되 확인 필요: %s",
+                               code, len(induty), induty)
+            return {"stock_code": code, "ksic_code": induty or None, "recheck": recheck}
 
-    # (a) 채우기
-    targets_a = _fill_targets(open_rows, nodata, now)
-    out["fill_targets"] = len(targets_a)
-    resp_a = []
-    for code in targets_a:
-        if f.calls >= cap:
-            logger.warning("[sector] DART 일일 상한 %d 도달 - 채우기 %d종목 오늘 미수집(내일 재개)",
-                           cap, len(targets_a) - len(resp_a) - out["nodata"])
-            break
-        try:
-            r = _ask(code, False)
-        except DartQuotaExceeded:
-            logger.warning("[sector] DART 일일 한도 초과 - KSIC 채우기 중단")
-            out["quota_hit"] = True
-            break
-        except DartBlocked:
-            logger.error("[sector] opendart 차단 - KSIC 채우기 중단")
-            out["blocked"] = True
-            break
-        if r["ksic_code"]:
-            resp_a.append(r)
-        else:
-            w.upsert_nodata(conn, code)
-            out["nodata"] += 1
-    calls_after_a = f.calls
-    out["fill_calls"] = calls_after_a
-    if resp_a:
-        res = w.apply_ksic_updates(conn, resp_a, trade_date)
-        out["filled"] = res["counts"]["filled"]
-
-    # (b) 재확인 순환 — 잔여 예산으로
-    resp_b = []
-    if not (out["quota_hit"] or out["blocked"]):
-        budget = min(recheck_max, max(0, cap - f.calls))
-        targets_b = _recheck_targets(open_rows, set(targets_a), budget)
-        out["recheck_targets"] = len(targets_b)
-        for code in targets_b:
+        # (a) 채우기
+        targets_a = _fill_targets(open_rows, nodata, now)
+        out["fill_targets"] = len(targets_a)
+        resp_a = []
+        for code in targets_a:
+            if f.calls >= cap:
+                out["cap_hit"] = True
+                logger.warning("[sector] DART 일일 상한 %d 도달 - 채우기 %d종목 오늘 미수집(내일 재개)",
+                               cap, len(targets_a) - len(resp_a) - out["nodata"]
+                               - out["fetch_failed"])
+                break
             try:
-                resp_b.append(_ask(code, True))
+                r = _ask(code, False)
             except DartQuotaExceeded:
+                logger.warning("[sector] DART 일일 한도 초과 - KSIC 채우기 중단")
                 out["quota_hit"] = True
                 break
             except DartBlocked:
+                logger.error("[sector] opendart 차단 - KSIC 채우기 중단")
                 out["blocked"] = True
                 break
-    out["recheck_calls"] = f.calls - calls_after_a
-    out["status_counts"] = dict(f.status_counts)
-    if resp_b:
-        try:
-            res = w.apply_ksic_updates(conn, resp_b, trade_date, rail=True)
-        except RuntimeError as e:
-            out["rail_tripped"] = True
-            out["error"] = str(e)
-            logger.error("[sector] 재확인 레일 발동 - 그날 재확인분 전부 롤백: %s", e)
-            raise SectorStageError(str(e), partial=out)
-        out["recheck_changed"] = len(res["changed_codes"])
-        if out["recheck_changed"] > 10:
-            logger.warning("[sector] 재확인 값→값 %d건 - 레일 아래지만 이례적이다",
-                           out["recheck_changed"])
-    return out
+            if r is None:                       # 실패 — 「없다」로 적지 않는다
+                out["fetch_failed"] += 1
+                continue
+            if r["ksic_code"]:
+                resp_a.append(r)
+            else:
+                w.upsert_nodata(conn, code)
+                out["nodata"] += 1
+        calls_after_a = f.calls
+        out["fill_calls"] = calls_after_a
+        if resp_a:
+            res = w.apply_ksic_updates(conn, resp_a, trade_date)
+            out["filled"] = res["counts"]["filled"]
+
+        # (b) 재확인 순환 — 잔여 예산으로
+        resp_b = []
+        if not (out["quota_hit"] or out["blocked"]):
+            budget = min(recheck_max, max(0, cap - f.calls))
+            targets_b = _recheck_targets(open_rows, set(targets_a), budget)
+            out["recheck_targets"] = len(targets_b)
+            streak = 0
+            for i, code in enumerate(targets_b):
+                # 🔴 예산은 «대상 수»로 잡았지만 fetch 하나가 내부 재시도로 최대 6호출을
+                #    쓴다 — 매 호출 전 이 검사가 DART ≤300/일 의 최종 방어선이다.
+                if f.calls >= cap:
+                    out["cap_hit"] = True
+                    logger.warning("[sector] DART 일일 상한 %d 도달 - 재확인 %d종목 오늘 미확인"
+                                   "(내일 큐 앞에서 재개)", cap, len(targets_b) - i)
+                    break
+                try:
+                    r = _ask(code, True)
+                except DartQuotaExceeded:
+                    logger.warning("[sector] DART 일일 한도 초과 - 재확인 중단")
+                    out["quota_hit"] = True
+                    break
+                except DartBlocked:
+                    logger.error("[sector] opendart 차단 - 재확인 중단")
+                    out["blocked"] = True
+                    break
+                if r is None:
+                    out["fetch_failed"] += 1
+                    streak += 1
+                    if streak >= FETCH_FAIL_STREAK_MAX:
+                        out["fetch_fail_stop"] = True
+                        logger.warning("[sector] DART 연속 실패 %d회 - 재확인 %d종목 남기고 중단"
+                                       "(내일 재개)", streak, len(targets_b) - i - 1)
+                        break
+                    continue
+                streak = 0
+                resp_b.append(r)
+        out["recheck_calls"] = f.calls - calls_after_a
+        out["status_counts"] = dict(f.status_counts)
+        if resp_b:
+            try:
+                res = w.apply_ksic_updates(conn, resp_b, trade_date, rail=True)
+            except RuntimeError as e:
+                out["rail_tripped"] = True
+                out["error"] = str(e)
+                logger.error("[sector] 재확인 레일 발동 - 그날 재확인분 전부 롤백: %s", e)
+                raise SectorStageError(str(e), partial=out) from e
+            out["recheck_changed"] = len(res["changed_codes"])
+            if out["recheck_changed"] > 10:
+                logger.warning("[sector] 재확인 값→값 %d건 - 레일 아래지만 이례적이다",
+                               out["recheck_changed"])
+        return out
+    except SectorStageError:
+        raise
+    except Exception as e:
+        # 🔴 여기서 예외만 던지면 그날의 fill_calls·nodata 가 통째로 사라져
+        #    §8-5·§8-9 게이트가 그날을 «못 본다».
+        out["error"] = str(e)
+        logger.error("[sector] KSIC 채우기 중단(%s: %s) - 부분 집계를 들고 올라간다",
+                     type(e).__name__, e)
+        raise SectorStageError(str(e), partial=out) from e
 
 
 def recopy_preferred(conn, trade_date, source="eod") -> dict:
@@ -229,14 +280,10 @@ def recopy_preferred(conn, trade_date, source="eod") -> dict:
         p = w.parent_code(code)
         if p is None or p not in open_rows:
             continue
-        prow = open_rows[p]
-        c = {}
-        if not w.is_blank(prow.get("ksic_code")):
-            c["ksic_code"] = prow.get("ksic_code")
-            c["ksic_source"] = "parent:%s" % p
-            c["corp_code"] = prow.get("corp_code")
-        if not w.is_blank(prow.get("ksic3_name")):
-            c["ksic3_name"] = prow.get("ksic3_name")
+        # 🔴 복사 규칙은 sector_writer 헬퍼 «하나»다 — 필드 묶음이 두 곳에 있으면
+        #    한쪽만 고쳐 자식이 부모와 다른 업종을 갖는다.
+        #    부모가 바뀐 날의 재복사라 부모 값이 이긴다(fill_if_blank=False).
+        c = w.copy_parent_values({}, open_rows[p], p, fill_if_blank=False)
         if c:
             cands[code] = c
     if not cands:

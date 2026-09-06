@@ -161,15 +161,41 @@ def parent_code(stock_code):
     return s[:5] + "0"
 
 
+# 🔴 부모 → 자식 복사 «필드 묶음»은 여기 한 곳에만 있다. 두 벌로 두면(캐시 경로 ·
+#    EOD 재복사 경로) 한쪽만 고쳐 자식이 부모와 다른 업종을 갖는다.
+PARENT_COPY_KSIC = ("ksic_code", "corp_code")     # 한 몸 — 코드 없이 회사코드만 오지 않는다
+PARENT_COPY_NAME = ("ksic3_name",)                # KSIC 와 «독립»으로 복사한다
+
+
+def copy_parent_values(child: dict, parent_row: dict, parent: str,
+                       fill_if_blank: bool = True) -> dict:
+    """부모 값을 자식 후보에 «필드 묶음»으로 복사한 새 dict 를 돌려준다.
+
+    - ksic_code·corp_code 는 부모가 ksic_code 를 가질 때만 «함께» 온다.
+      출처는 'parent:<부모코드>' 로 못박아 ② KSIC 채우기 대상에서 빠지게 한다.
+    - ksic3_name 은 부모가 이름을 가지면 KSIC 와 «독립»으로 복사한다.
+    fill_if_blank=True  : 자식에 값이 있으면 자식이 이긴다(캐시 자기값 우선 —
+                          우선주 Industry 는 실측 전부 NULL 이다).
+    fill_if_blank=False : 부모 값이 이긴다(부모가 바뀐 날의 재복사 경로).
+    """
+    out = dict(child)
+    if not is_blank(parent_row.get("ksic_code")) and (
+            not fill_if_blank or is_blank(out.get("ksic_code"))):
+        for f in PARENT_COPY_KSIC:
+            out[f] = parent_row.get(f)
+        out["ksic_source"] = "parent:%s" % parent
+    if not is_blank(parent_row.get("ksic3_name")) and (
+            not fill_if_blank or is_blank(out.get("ksic3_name"))):
+        for f in PARENT_COPY_NAME:
+            out[f] = parent_row.get(f)
+    return out
+
+
 def apply_parent_rule(candidates: dict, universe) -> dict:
-    """우선주 후보에 부모 값을 «필드별로» 채운다.
+    """우선주 후보에 부모 값을 «필드별로» 채운다(복사 규칙은 copy_parent_values 하나).
 
     🔴 부모 규칙이 «열린 줄 값보다» 우선이다 — 부모 업종이 바뀌면 자식도 그날 바뀐다.
        그래서 호출측(collector)은 우선주 후보에 열린 줄 값을 «승계하지 않는다».
-    - ksic_code·corp_code 는 부모가 ksic_code 를 가질 때만 함께 온다(한 몸).
-      출처는 'parent:<부모코드>' 로 못박아 ② KSIC 채우기 대상에서 빠지게 한다.
-    - ksic3_name 은 부모가 이름을 가지면 KSIC 와 «독립»으로 복사한다.
-    - 자기 캐시 값이 있으면 그것이 우선한다(우선주 Industry 는 실측 전부 NULL).
     """
     universe = set(universe or ())
     out = {}
@@ -177,13 +203,7 @@ def apply_parent_rule(candidates: dict, universe) -> dict:
         p = parent_code(code)
         new = dict(cand)
         if p is not None and p in universe:
-            prow = candidates.get(p) or {}
-            if is_blank(new.get("ksic_code")) and not is_blank(prow.get("ksic_code")):
-                new["ksic_code"] = prow.get("ksic_code")
-                new["ksic_source"] = "parent:%s" % p
-                new["corp_code"] = prow.get("corp_code")
-            if is_blank(new.get("ksic3_name")) and not is_blank(prow.get("ksic3_name")):
-                new["ksic3_name"] = prow.get("ksic3_name")
+            new = copy_parent_values(new, candidates.get(p) or {}, p)
         out[code] = new
     return out
 

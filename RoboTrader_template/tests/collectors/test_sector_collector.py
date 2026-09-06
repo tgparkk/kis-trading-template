@@ -258,23 +258,38 @@ class _DummyCM:
 
 
 class _FakeFetcher:
-    """corp_code → 응답을 미리 정해 둔다. quota=<n> 이면 n번째 호출에서 020."""
+    """corp_code → 응답을 미리 정해 둔다. quota=<n> 이면 n번째 호출에서 020.
 
-    def __init__(self, answers=None, quota_at=None):
+    fails           : 그 corp_code 는 ("HTTP_FAIL", {}) — 진짜 fetcher 가 재시도를
+                      소진했을 때 돌려주는 토큰이다(013「없다」와 «다른» 것이다).
+    calls_per_fetch : fetch 한 번이 먹는 «호출» 수(진짜 fetcher 는 재시도로 최대 6).
+    """
+
+    def __init__(self, answers=None, quota_at=None, fails=None, calls_per_fetch=1):
         self.answers = answers or {}
         self.quota_at = quota_at
+        self.fails = set(fails or ())
+        self.calls_per_fetch = calls_per_fetch
         self.calls = 0
+        self.fetches = 0
         self.status_counts = {}
         self.asked = []
 
+    def _bump(self, st):
+        self.status_counts[st] = self.status_counts.get(st, 0) + 1
+
     def fetch(self, corp_code):
-        self.calls += 1
+        self.calls += self.calls_per_fetch
+        self.fetches += 1
         self.asked.append(corp_code)
         if self.quota_at is not None and self.calls >= self.quota_at:
             raise DartQuotaExceeded("020")
+        if corp_code in self.fails:
+            self._bump("HTTP_FAIL")
+            return "HTTP_FAIL", {}
         induty = self.answers.get(corp_code)
         st = "000" if induty else "013"
-        self.status_counts[st] = self.status_counts.get(st, 0) + 1
+        self._bump(st)
         return st, ({"status": "000", "induty_code": induty} if induty
                     else {"status": "013"})
 
@@ -309,14 +324,25 @@ def test_no_dart_key_skips_fill(monkeypatch):
 
 
 def test_quota_stops_fill_and_records(monkeypatch):
-    """020 이면 채우기를 중단하고 «기록»한다 — 재확인도 안 돈다."""
+    """020 이면 채우기를 중단하고 «기록»한다 — 재확인도 안 돈다.
+
+    🔴 fix 1 (#3) — 픽스처에 (b) «대상»이 없으면 recheck_calls==0 은 quota 와
+       무관하게 «자동»으로 나온다(공허한 단언). 대상 10건을 넣어 0 이 오직 quota
+       때문임을 증명한다.
+    """
     cap = {}
     opens = dict(("AAAA%02d" % i, _row(corp_code="0000000%d" % i)) for i in range(5))
+    for i in range(10):
+        opens["BBBB%02d" % i] = _row(ksic_code="264", ksic_source="dart",
+                                     corp_code="000000B%d" % i)
+    assert len(sc._recheck_targets(opens, set(), 200)) == 10, \
+        "픽스처에 재확인 대상이 있어야 단언이 공허하지 않다"
     _patch_fill(monkeypatch, opens, capture=cap)
     f = _FakeFetcher(quota_at=3)
     out = sc.fill_ksic(object(), TD, fetcher=f, key="k")
     assert out["quota_hit"] is True
-    assert out["recheck_calls"] == 0, "한도 초과 뒤에 재확인을 또 돌리면 안 된다"
+    assert out["recheck_targets"] == 0 and out["recheck_calls"] == 0, \
+        "한도 초과 뒤에 재확인을 또 돌리면 안 된다"
 
 
 def test_nodata_response_is_recorded(monkeypatch):
@@ -356,3 +382,220 @@ def test_recheck_rail_rolls_back_and_raises(monkeypatch):
         sc.fill_ksic(object(), TD, fetcher=f, key="k")
     assert e.value.partial["rail_tripped"] is True
     assert e.value.partial["recheck_calls"] == 40, "부분 집계가 보존돼야 §8-4 가 그날을 본다"
+
+
+# ---------------------------------------------------------------- Task 5 fix 1
+# #1 실패는 「없다」가 아니다 · #2 예산·연속실패 · #4 레일 실배선 · #5 summary 보존
+
+
+def test_http_fail_is_not_recorded_as_nodata(monkeypatch):
+    """🔴 #1 — 실패(HTTP_FAIL)를 nodata 로 적으면 30일 동안 조용해져 «고장을 감춘다».
+    행은 그대로 두고 건수만 센다 — 내일 다시 두드린다."""
+    cap = {}
+    opens = {"AAAAA1": _row(corp_code="00000001")}
+    _patch_fill(monkeypatch, opens, capture=cap)
+    f = _FakeFetcher(fails={"00000001"})
+    out = sc.fill_ksic(object(), TD, fetcher=f, key="k")
+    assert out["fetch_failed"] == 1
+    assert out["nodata"] == 0 and "nodata" not in cap, "실패를 「없다」로 적었다"
+    assert "applied" not in cap, "실패는 행을 만지지 않는다"
+
+
+def test_unexpected_status_is_not_recorded_as_nodata(monkeypatch):
+    """🔴 #1 — 예상외 status(013·000 아님)도 실패다. 같은 규칙을 받는다."""
+    cap = {}
+    opens = {"AAAAA1": _row(corp_code="00000001")}
+    _patch_fill(monkeypatch, opens, capture=cap)
+
+    class _OddFetcher(_FakeFetcher):
+        def fetch(self, corp_code):
+            self.calls += 1
+            self.fetches += 1
+            self._bump("100")
+            return "100", {"status": "100", "message": "필수값 누락"}
+
+    out = sc.fill_ksic(object(), TD, fetcher=_OddFetcher(), key="k")
+    assert out["fetch_failed"] == 1 and out["nodata"] == 0 and "nodata" not in cap
+
+
+def test_http_fail_in_recheck_does_not_advance_checked_at(monkeypatch):
+    """🔴 #1 — (b) 에서 실패한 종목은 응답에 넣지 않는다. 넣으면 ksic_checked_at 이
+    전진해 «못 물어본» 종목이 큐 맨 뒤로 밀린다(다음 날 재시도가 사라진다)."""
+    cap = {}
+    opens = {"BBBBB1": _row(ksic_code="264", ksic_source="dart", corp_code="0000000B"),
+             "CCCCC1": _row(ksic_code="264", ksic_source="dart", corp_code="0000000C")}
+    _patch_fill(monkeypatch, opens, capture=cap)
+    f = _FakeFetcher({"0000000C": "264"}, fails={"0000000B"})
+    out = sc.fill_ksic(object(), TD, fetcher=f, key="k")
+    assert out["fetch_failed"] == 1 and out["recheck_calls"] == 2
+    applied = [r for resp, _rail in cap["applied"] for r in resp]
+    assert [r["stock_code"] for r in applied] == ["CCCCC1"], \
+        "실패한 BBBBB1 이 응답에 섞이면 커서가 전진한다"
+
+
+def test_recheck_checks_budget_before_every_call(monkeypatch):
+    """🔴 #2 — fetch 하나가 내부 재시도로 최대 6호출을 쓴다. 예산을 «대상 수»로만
+    잡으면 200종목 × 6 = 1,200 호출이 나가 DART ≤300/일 을 깬다 —
+    매 호출 전 검사가 최종 방어선이다."""
+    cap = {}
+    opens = dict(("BBBB%02d" % i,
+                  _row(ksic_code="264", ksic_source="dart", corp_code="000000B%d" % i))
+                 for i in range(10))
+    _patch_fill(monkeypatch, opens, capture=cap)
+    f = _FakeFetcher(dict(("000000B%d" % i, "264") for i in range(10)), calls_per_fetch=3)
+    out = sc.fill_ksic(object(), TD, fetcher=f, cap=6, key="k")
+    assert f.fetches == 2, "cap 6 = 3호출짜리 fetch 2번(루프 내 검사가 없으면 6번 = 18호출)"
+    assert out["recheck_calls"] == 6
+    assert out["cap_hit"] is True, "무징후 절단 금지 — 상한에 걸린 사실이 summary 에 있어야 한다"
+
+
+def test_recheck_stops_after_consecutive_fetch_failures(monkeypatch):
+    """🔴 #2 — 연속 실패 5회면 그날 재확인을 멈춘다(예산을 태우며 조용히 실패하지 않는다)."""
+    cap = {}
+    opens = dict(("BBBB%02d" % i,
+                  _row(ksic_code="264", ksic_source="dart", corp_code="000000B%d" % i))
+                 for i in range(10))
+    _patch_fill(monkeypatch, opens, capture=cap)
+    f = _FakeFetcher(fails=set("000000B%d" % i for i in range(10)))
+    out = sc.fill_ksic(object(), TD, fetcher=f, key="k")
+    assert sc.FETCH_FAIL_STREAK_MAX == 5
+    assert f.fetches == 5 and out["fetch_failed"] == 5
+    assert out["fetch_fail_stop"] is True
+
+
+def test_writer_exception_is_promoted_to_stage_error_with_partial(monkeypatch):
+    """🔴 #5 — DB 예외도 summary 를 들고 올라간다(스펙 §4 「어떤 경우에도」).
+    예외만 던지면 그날의 fill_calls·nodata 가 통째로 사라져 게이트가 그날을 못 본다."""
+    cap = {}
+    opens = {"AAAAA1": _row(corp_code="00000001")}
+    _patch_fill(monkeypatch, opens, capture=cap)
+
+    def _boom(*a, **kw):
+        raise ValueError("DB down")
+
+    monkeypatch.setattr(w, "apply_ksic_updates", _boom)
+    f = _FakeFetcher({"00000001": "264"})
+    with pytest.raises(sc.SectorStageError) as e:
+        sc.fill_ksic(object(), TD, fetcher=f, key="k")
+    assert e.value.partial["fill_calls"] == 1
+    assert isinstance(e.value.__cause__, ValueError), "원인 예외 chain 이 끊기면 안 된다"
+
+
+# --- #4 레일 «실배선» — 패치는 DB 커서까지만. writer 를 통째로 대체하면 레일 코드가
+#     테스트에서 한 번도 실행되지 않는다.
+
+_OPEN_COLS = ("stock_code", "valid_from", "ksic_code", "ksic_source", "ksic3_name",
+              "corp_code", "market", "kosdaq_dept", "products", "listing_date",
+              "settle_month", "source", "source_asof", "ksic_checked_at", "last_seen_at")
+
+
+class _FakeCursor:
+    """열린 줄·nodata SELECT 만 답하는 커서. 쓰기 SQL 은 «로그만» 남긴다."""
+
+    def __init__(self, db):
+        self.db = db
+        self.description = None
+        self._rows = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        self.db.log.append((sql, params))
+        if "FROM stock_sector_map WHERE valid_to IS NULL" in sql:
+            self.description = [(c,) for c in _OPEN_COLS]
+            self._rows = [tuple(r.get(c) for c in _OPEN_COLS) for r in self.db.rows]
+        elif "FROM sector_ksic_nodata" in sql:
+            self.description = [("stock_code",), ("checked_at",)]
+            self._rows = []
+        else:
+            self._rows = []
+
+    def fetchall(self):
+        return list(self._rows)
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+
+class _FakeDb:
+    def __init__(self, rows):
+        self.rows = rows
+        self.log = []
+        self.commits = 0
+        self.rollbacks = 0
+
+    def cursor(self):
+        return _FakeCursor(self)
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def writes(self):
+        return [s for s, _p in self.log
+                if s.strip().upper().startswith(("INSERT", "UPDATE"))]
+
+
+def _rows_for_recheck(n, prefix="R", ksic="264"):
+    out = []
+    for i in range(n):
+        code = "%s%04d" % (prefix, i)
+        r = _row(ksic_code=ksic, ksic_source="dart", corp_code="C" + code)
+        r["stock_code"] = code
+        out.append(r)
+    return out
+
+
+def test_recheck_rail_fires_inside_real_apply_ksic_updates(monkeypatch):
+    """🔴 #4 — 표본 레일이 «진짜» apply_ksic_updates 안에서 발화하고 한 행도 안 쓴다.
+    (분모 1,000 이라 §3.1 5% 가드는 31/1000 = 3.1% 로 통과 — 걸리는 건 표본 레일이다)"""
+    rows = _rows_for_recheck(1000)
+    db = _FakeDb(rows)
+    monkeypatch.setattr(sc, "append_company_raw", lambda p, payload: 1)
+    answers = dict((r["corp_code"], "999" if i < 31 else "264")
+                   for i, r in enumerate(rows[:40]))
+    f = _FakeFetcher(answers)
+    with pytest.raises(sc.SectorStageError) as e:
+        sc.fill_ksic(db, TD, fetcher=f, recheck_max=40, key="k")
+    assert "재확인 급변" in str(e.value) and "31/40" in str(e.value)
+    assert e.value.partial["rail_tripped"] is True
+    assert e.value.partial["recheck_calls"] == 40
+    assert db.writes() == [], "레일이 걸렸는데 행이 써졌다"
+    assert db.commits == 0
+
+
+def test_five_percent_guard_fires_inside_real_apply_ksic_updates(monkeypatch):
+    """🔴 #4 — §3.1 5% 급변 가드도 실경로에서 발화한다(계획 단계에서 터져 쓰기 0).
+    6/100 = 6% > 5% 이고 표본으로는 6/40 = 15% ≤ 20% 라 «가드»가 걸린 것이 확실하다."""
+    rows = _rows_for_recheck(100)
+    db = _FakeDb(rows)
+    monkeypatch.setattr(sc, "append_company_raw", lambda p, payload: 1)
+    answers = dict((r["corp_code"], "999" if i < 6 else "264")
+                   for i, r in enumerate(rows[:40]))
+    f = _FakeFetcher(answers)
+    with pytest.raises(sc.SectorStageError) as e:
+        sc.fill_ksic(db, TD, fetcher=f, recheck_max=40, key="k")
+    assert "6/100" in str(e.value), "표본 레일이 아니라 5% 가드가 걸려야 한다"
+    assert e.value.partial["recheck_calls"] == 40, "부분 집계는 어떤 경우에도 보존된다"
+    assert db.writes() == [] and db.commits == 0
+
+
+def test_recopy_preferred_uses_shared_parent_bundle():
+    """🔴 #6 — 재복사가 sector_writer 의 «한 개짜리» 부모 복사 헬퍼를 쓴다."""
+    parent = _row(ksic_code="264", ksic_source="dart", ksic3_name="가",
+                  corp_code="00126380")
+    parent["stock_code"] = "001040"
+    child = _row()
+    child["stock_code"] = "00104K"
+    db = _FakeDb([parent, child])
+    res = sc.recopy_preferred(db, TD)
+    assert res["counts"]["filled"] == 1 and res["updated"] == 1
+    sets = [p for s, p in db.log if s.strip().upper().startswith("UPDATE")][0]
+    assert sets["ksic_code"] == "264" and sets["ksic_source"] == "parent:001040"
+    assert sets["ksic3_name"] == "가" and sets["corp_code"] == "00126380"

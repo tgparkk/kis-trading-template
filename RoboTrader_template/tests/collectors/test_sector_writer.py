@@ -69,6 +69,27 @@ def test_self_value_wins_over_parent():
     assert out["00104K"]["ksic3_name"] == "자기이름"
 
 
+def test_copy_parent_values_is_the_single_field_bundle():
+    """🔴 fix 1 (#6) — 부모 복사 «필드 묶음»의 유일한 정의. 두 벌로 두면 한쪽만 고쳐
+    자식이 부모와 다른 업종을 갖는다(apply_parent_rule 은 캐시 경로,
+    recopy_preferred 는 EOD 재복사 경로다)."""
+    prow = {"ksic_code": "264", "corp_code": "00126380", "ksic3_name": "가"}
+    # 기본(fill_if_blank=True) — 자기 값이 부모보다 우선
+    out = w.copy_parent_values({"ksic3_name": "자기이름"}, prow, "001040")
+    assert out["ksic_code"] == "264" and out["corp_code"] == "00126380"
+    assert out["ksic_source"] == "parent:001040"
+    assert out["ksic3_name"] == "자기이름"
+    # 재복사 경로(fill_if_blank=False) — 부모가 우선
+    out2 = w.copy_parent_values({"ksic_code": "999", "ksic3_name": "자기이름"},
+                                prow, "001040", fill_if_blank=False)
+    assert out2["ksic_code"] == "264" and out2["ksic3_name"] == "가"
+    assert out2["ksic_source"] == "parent:001040"
+    # 부모에 KSIC 가 없으면 이름만 온다(0220WL 실사례)
+    out3 = w.copy_parent_values({}, {"ksic3_name": "부동산 임대 및 공급업"}, "0220W0")
+    assert "ksic_code" not in out3 and "ksic_source" not in out3
+    assert out3["ksic3_name"] == "부동산 임대 및 공급업"
+
+
 def _open(vf=date(2026, 1, 2), **kw):
     row = {"valid_from": vf, "ksic_code": None, "ksic3_name": None,
            "ksic_source": None, "ksic_checked_at": None, "corp_code": None}
