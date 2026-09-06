@@ -105,3 +105,74 @@ def test_archive_false_writes_no_file(tmp_path, monkeypatch):
     assert out["archive"] is None
     assert os.listdir(str(tmp_path)) == [], "dry-run 인데 보관 파일이 생겼다"
     assert len(out["rows"]) == 1 and out["source_asof"] == date(2026, 9, 7)
+
+
+from collectors import dart_company_fetcher as dcf  # noqa: E402
+from collectors.dart_financial_fetcher import DartBlocked, DartQuotaExceeded  # noqa: E402
+
+
+class _Resp:
+    def __init__(self, status_code=200, js=None):
+        self.status_code = status_code
+        self._js = js or {}
+
+    def json(self):
+        return self._js
+
+
+class _Sess:
+    def __init__(self, seq):
+        self.seq = list(seq)
+        self.gets = []
+        self.closed = 0
+
+    def get(self, url, params=None, timeout=None):
+        self.gets.append(params)
+        nxt = self.seq.pop(0)
+        if isinstance(nxt, Exception):
+            raise nxt
+        return nxt
+
+    def close(self):
+        self.closed += 1
+
+
+def test_company_fetcher_raises_on_quota(monkeypatch):
+    """020(한도초과)은 «예외»로 올린다 — 삼키면 조용한 빈 수집이 성공으로 보인다."""
+    monkeypatch.setattr(dcf.time, "sleep", lambda s: None)
+    f = dcf.DartCompanyFetcher("k")
+    f.session = _Sess([_Resp(200, {"status": "020", "message": "한도초과"})])
+    with pytest.raises(DartQuotaExceeded):
+        f.fetch("00126380")
+
+
+def test_company_fetcher_blocks_after_three_transport_failures(monkeypatch):
+    """전송 실패 3연속 = IP 차단으로 판단(재무 fetcher 와 같은 규약)."""
+    import requests
+    monkeypatch.setattr(dcf.time, "sleep", lambda s: None)
+    f = dcf.DartCompanyFetcher("k")
+    f.session = _Sess([requests.exceptions.ConnectionError(),
+                       requests.exceptions.Timeout(),
+                       requests.exceptions.ConnectionError()])
+    monkeypatch.setattr(dcf.requests, "Session", lambda: f.session)
+    with pytest.raises(DartBlocked):
+        f.fetch("00126380")
+
+
+def test_company_fetcher_returns_induty_code(monkeypatch):
+    """정상 응답은 (status, payload) 로 그대로 돌려준다 — 파싱은 호출측 몫."""
+    monkeypatch.setattr(dcf.time, "sleep", lambda s: None)
+    f = dcf.DartCompanyFetcher("k")
+    f.session = _Sess([_Resp(200, {"status": "000", "induty_code": "2611"})])
+    status, js = f.fetch("00126380")
+    assert status == "000" and js["induty_code"] == "2611"
+    assert f.calls == 1 and f.status_counts["000"] == 1
+
+
+def test_append_company_raw_returns_line_numbers(tmp_path):
+    """§5-4 재생성의 원료 — 줄 번호가 1부터 증가해야 한다."""
+    p = str(tmp_path / "dart_company_2026-09-07.jsonl")
+    assert dcf.append_company_raw(p, {"a": 1}) == 1
+    assert dcf.append_company_raw(p, {"a": 2}) == 2
+    with open(p, encoding="utf-8") as fh:
+        assert len(fh.readlines()) == 2
