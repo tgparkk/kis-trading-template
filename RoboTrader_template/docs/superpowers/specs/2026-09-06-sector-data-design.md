@@ -282,6 +282,16 @@ summary: `{"map": {"source_asof", "open_rows", "changed", "filled", "new", "skip
 5. **부트스트랩 리포트** `RoboTrader_template/scratchpad/sector/bootstrap_report_<stamp>.txt`: U_market 대비 `ksic_code`·`ksic3_name` 커버리지(3 단계 «후») · **미라벨 종목 목록** · DART 125 응답 실측(`000`/`013`/nodata 건수) · 이름표 코드 수·점유율 < 0.8 목록 · 라이브 3표 전후.
 6. 🔴 **게이트**: 두 커버리지(`ksic_code`·`ksic3_name`) 중 **하나라도 < 98%** 면 여기서 멈추고 사장님께 보고(백필 진행 안 함). 예상 = 코드 100%(3b 후) · 이름 99.75%(critic 3차 실측). `--dry-run` 으로 먼저 돌려 리포트만 본다.
 
+> ⬜ **실행 후 채움 (Task 14)** — 아래 값은 지금 「예상」이고, 부트스트랩 실행 후 리포트 실측으로 교체한다. 이 문단 위의 스펙 문장은 손대지 않는다.
+>
+> | 스펙 자리 | 채울 값 | 출처 |
+> |---|---|---|
+> | §6.0-2 「이 시점 도달 커버리지 = 95.5%」 | `steps.coverage_after_2` 실측 | `bootstrap_report_*.txt` |
+> | §6.0-3 「예상 125」 | `ksic_fill.fill_targets` 실측 | 〃 |
+> | §6.0-3b 「기대치 2,772/2,772」 | `steps.coverage_after_3b` 실측 | 〃 |
+> | §6.0-5 「DART 125 응답 실측(000/013/nodata)」 | `ksic_fill.status_counts` + `nodata` | 〃 |
+> | §6.0-5 「이름표 코드 수·점유율<0.8」 | `names.codes` · `names.low_share` | 〃 |
+
 ### 6.1 EOD
 - 자리: `run_data_collection` 의 `"financials_reconcile"` **바로 뒤**. 소요: 캐시 CSV 수 초 + DART ≤ 102초 + 성적표 수 초 + 이름표 1초.
 - 발효: 머지 후 다음 **07:40 재기동** 뒤 첫 16:00 EOD. 첫 EOD 는 «유지» 실행이다(부트스트랩·백필은 §6.0·§6.2 에서 이미 끝나 있다).
@@ -290,6 +300,13 @@ summary: `{"map": {"source_asof", "open_rows", "changed", "filled", "new", "skip
 - `python -m collectors.sector_collector --backfill --from 2021-01-04 --to <어제>`: 거래일 순회 · **첫날 2021-01-04 는 20일 창 안에 직전 봉이 없어 성적표가 비므로 결과는 1,391일**(거래일 1,392 − 1) · 일자당 (ksic2 ~61 + ksic3 ~159 + ksic5 ~327) ≈ 550행 → **약 76만 행**. pandas 벡터 · `execute_values` 배치 · 예상 수 분. 라이브 3표 읽기만. 성적표는 명부+일봉에서 **수 분이면 전부 재생성**되므로 스키마 변경은 마이그레이션이 아니라 재계산이다.
 - 보고서: `RoboTrader_template/scratchpad/sector/backfill_report_<stamp>.txt` — 범위 · 행수 · 일자별 G 분포 · 미정 종목 수 분포 · 라이브 3표 전후 · **「2021~구축일 라벨은 현재 스냅샷 소급」 문장**.
 - **데이터 롤백**: `--delete-stats --from --to [--taxonomy]` 가 `DELETE FROM sector_daily_stats …` 를 건수와 함께 리포트에 남기고 실행(승인 필수).
+
+> ⬜ **실행 후 채움 (Task 14)** — 아래 값은 지금 「예상」이고, 백필 실행 후 리포트 실측으로 교체한다. 이 문단 위의 스펙 문장은 손대지 않는다.
+>
+> | 스펙 자리 | 채울 값 | 출처 |
+> |---|---|---|
+> | §6.2 「약 76만 행 · 예상 수 분」 | `rows` · `elapsed_sec` 실측 | `backfill_report_*.txt` |
+> | §6.2 「1,391일」 | `days_with_rows` 실측 | 〃 |
 
 ### 6.3 범위 밖
 2·5자리 KSIC 이름(통계청 분류표) · KRX 79업종 갱신 소스 탐색.
