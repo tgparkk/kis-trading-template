@@ -96,6 +96,13 @@ def _insert_row(cur, code, vf, vt, ksic, source="eod"):
         (code, vf, vt, ksic, source))
 
 
+def _insert_named(cur, code, ksic, name):
+    cur.execute(
+        "INSERT INTO stock_sector_map (stock_code, valid_from, valid_to, ksic_code, "
+        "ksic_source, ksic3_name, source) VALUES (%s, %s, NULL, %s, 'dart', %s, 'eod')",
+        (code, date(2021, 1, 4), ksic, name))
+
+
 def test_fn_sector_map_as_of_roundtrip_and_boundaries(conn):
     """`SELECT * FROM fn_sector_map_as_of(d)` 왕복 + 경계 3개.
     valid_from 당일 포함 · valid_to 당일 포함 · 그 다음날 제외."""
@@ -204,3 +211,35 @@ def test_delete_stale_stats_with_empty_keep_set_is_valid_sql(conn):
     w.upsert_stats(conn, [_stats_row("ksic2", "26", 7)])
     assert w.delete_stale_stats(conn, TEST_STATS_DATE, "ksic2", set()) == 1
     assert _read_stats(conn, "ksic2") == []
+
+
+def test_rebuild_ksic_names_picks_mode_and_warns_on_low_share(conn):
+    """T12 — ksic_code NULL/길이<3 은 제외 · 최빈 이름 · 점유율 < 0.8 은 WARNING 목록 ·
+    부모복사 우선주도 «종목»으로 센다.
+
+    ⚠️ 라이브 표를 쓰므로 합성 코드는 실 데이터와 겹치면 안 된다 — 겹치면 skip 한다
+       (부트스트랩 후 재실행 대비)."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM stock_sector_map WHERE valid_to IS NULL "
+                    "AND left(ksic_code,3) IN ('990','991')")
+        if cur.fetchone()[0]:
+            pytest.skip("실 데이터에 990/991 코드가 있어 합성 테스트를 격리할 수 없다")
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM ksic_code_name WHERE code IN ('990','991','99')")
+        # 990: '합성A'(2) vs '합성B'(1) → 최빈 '합성A' · share 2/3 = 0.667 < 0.8 → 경고
+        _insert_named(cur, "TEST9A", "9901", "합성A")
+        _insert_named(cur, "TEST9B", "99011", "합성A")
+        _insert_named(cur, "TEST9C", "9902", "합성B")
+        # 길이 2 코드는 3자리 집계에서 빠진다
+        _insert_named(cur, "TEST90", "99", "짧은코드")
+    conn.commit()
+    out = w.rebuild_ksic_names(conn)
+    with conn.cursor() as cur:
+        cur.execute("SELECT name, n_stocks, share FROM ksic_code_name WHERE code='990'")
+        name, n, share = cur.fetchone()
+    assert name == "합성A" and n == 2
+    assert abs(share - 2.0 / 3.0) < 1e-9
+    assert any(c == "990" for c, _n, _s in out["low_share"]), "점유율 0.667 이 경고 목록에 없다"
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM ksic_code_name WHERE code='99'")
+        assert cur.fetchone()[0] == 0, "길이 2 코드가 3자리 이름표에 들어왔다"

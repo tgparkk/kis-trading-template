@@ -592,3 +592,56 @@ def delete_stale_stats(conn, d, taxonomy, keep_keys) -> int:
         conn.rollback()
         raise
     return n
+
+
+_NAMES_SRC = """
+WITH src AS (
+    SELECT left(ksic_code, 3) AS code, ksic3_name AS name, count(*)::int AS n
+    FROM stock_sector_map
+    WHERE valid_to IS NULL
+      AND ksic_code IS NOT NULL AND length(ksic_code) >= 3
+      AND ksic3_name IS NOT NULL AND left(ksic_code, 3) ~ '^[0-9]{3}$'
+    GROUP BY 1, 2
+), tot AS (
+    SELECT code, sum(n) AS total FROM src GROUP BY 1
+)
+SELECT DISTINCT ON (s.code) s.code, s.name, s.n, s.n::float8 / t.total AS share
+FROM src s JOIN tot t ON t.code = s.code
+ORDER BY s.code, s.n DESC, s.name
+"""
+
+_UPSERT_NAME = """
+INSERT INTO ksic_code_name (level, code, name, n_stocks, share, built_at)
+VALUES (3, %s, %s, %s, %s, now())
+ON CONFLICT (level, code) DO UPDATE SET
+    name=EXCLUDED.name, n_stocks=EXCLUDED.n_stocks, share=EXCLUDED.share, built_at=now()
+"""
+
+
+def rebuild_ksic_names(conn) -> dict:
+    """④ 이름표 재생성 — 열린 줄의 (앞3자리, ksic3_name) 최빈 이름.
+
+    ⚠️ PIT 가 아니다(매일 재생성 · 표시 전용). 과거 성적표에 조인해도 «오늘 이름»이 붙는다.
+    🔑 부모복사 우선주도 «종목»으로 센다 — 화면 라벨의 대표성이 목적이기 때문이다.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_NAMES_SRC)
+            rows = cur.fetchall()
+            keep = set(r[0] for r in rows)
+            for code, name, n, share in rows:
+                cur.execute(_UPSERT_NAME, (code, name, int(n), float(share)))
+            if keep:
+                cur.execute("DELETE FROM ksic_code_name WHERE level=3 AND NOT (code = ANY(%s))",
+                            (sorted(keep),))
+            else:
+                cur.execute("DELETE FROM ksic_code_name WHERE level=3")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    low = [(r[0], r[1], float(r[3])) for r in rows if float(r[3]) < 0.8]
+    if low:
+        logger.warning("[sector] 이름표 점유율 < 0.8 인 코드 %d개: %s", len(low), low[:10])
+    logger.info("[sector] 이름표 재생성 %d코드 (점유율<0.8 %d개)", len(rows), len(low))
+    return {"codes": len(rows), "low_share": low}
