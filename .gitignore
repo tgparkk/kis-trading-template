@@ -49,3 +49,6 @@ RoboTrader_template/instances/*/trading_config.json
 
 # Playwright MCP browser debug artifacts (page snapshots / console logs)
 .playwright-mcp/
+
+# superpowers SDD scratch (ledger/briefs/reports)
+.superpowers/
