@@ -3,7 +3,7 @@
 스크리너 기반 후보 종목 로딩 및 거래량 순위 폴백 로직을 담당합니다.
 """
 import logging
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from utils.logger import setup_logger
 from config.constants import MAX_CANDIDATES_PER_STRATEGY
@@ -215,17 +215,24 @@ class CandidateLoader:
 
         # 텔레그램 알림
         try:
-            lines = []
-            for s_name, cands in pool_by_strategy.items():
-                if cands:
-                    lines.append(
-                        f"  [{s_name}] "
-                        + ", ".join(f"{c.code}({c.name})" for c in cands)
-                    )
+            lines = format_candidate_lines(pool_by_strategy)
             msg = f"후보 종목 등록: {total_registered}종목\n" + "\n".join(lines)
             await self._bot.telegram.notify_system_status(msg)
         except Exception:
             pass
+
+
+def format_candidate_lines(pool_by_strategy: Dict[str, list]) -> List[str]:
+    """텔레그램 후보 알림 줄. 스펙 B live 재정렬로 움직인 종목은 CandidateStock.sector_note 가 뒤에 붙는다
+    (예: '005930(삼성전자) (↑2 261 +0.8)'). shadow 에서는 note 가 비어 있어 종전과 같다."""
+    lines: List[str] = []
+    for s_name, cands in pool_by_strategy.items():
+        if cands:
+            lines.append(
+                f"  [{s_name}] "
+                + ", ".join(f"{c.code}({c.name}){getattr(c, 'sector_note', '')}" for c in cands)
+            )
+    return lines
 
 
 def should_use_volume_fallback(per_strategy_candidates: dict) -> bool:
