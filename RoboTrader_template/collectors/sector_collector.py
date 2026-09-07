@@ -475,3 +475,182 @@ def compute_stats(conn, d) -> dict:
                 d, n, len(rows), g, undefined, stale)
     return {"date": d.isoformat(), "rows": n, "universe": len(rows), "G": g,
             "undefined": undefined, "stale_deleted": stale}
+
+
+def _summary_path(d) -> str:
+    return os.path.join(SECTOR_DIR, "sector_summary_%s.json" % d.isoformat())
+
+
+def _write_summary(d, summary: dict) -> None:
+    """🔴 §8 의 «전일 대비»·«N일 연속» 게이트는 이 파일들을 읽는다.
+    저장이 없으면 그 게이트들은 「한 번도 발동 안 함」이 된다."""
+    path = _summary_path(d)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(summary, fh, ensure_ascii=False, default=str)
+    except OSError as e:
+        logger.warning("[sector] summary 파일 기록 실패(비차단): %s", e)
+
+
+def _read_summary(d):
+    try:
+        with open(_summary_path(d), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def _stale_trading_days(conn, source_asof, trade_date) -> int:
+    """source_asof «다음»부터 trade_date 까지의 거래일 수(daily_prices 고유 날짜)."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(DISTINCT date) FROM daily_prices "
+                    "WHERE date > %s AND date <= %s",
+                    (source_asof.isoformat(), trade_date.isoformat()))
+        return int(cur.fetchone()[0])
+
+
+def update_map(conn, trade_date, source="eod", fetcher=None,
+               use_snapshot=False, valid_from=None) -> dict:
+    """① 명부 갱신 — 캐시 CSV + 열린 줄 + corp_code + 우선주 규칙 → SCD2 쓰기.
+
+    🔴 보통주 후보의 ksic_code 는 «열린 줄 값 승계»다(캐시엔 코드 열이 없다).
+       부트스트랩(use_snapshot=True)에서만 stock_industry 스냅샷으로 시드한다.
+    🔴 우선주 후보엔 열린 줄 값을 «승계하지 않는다» — 부모 규칙이 우선이라야
+       부모가 바뀔 때 자식도 같이 바뀐다(§3.1).
+    🔴 순회는 «캐시 CSV 행»이 아니라 «U_all» 이다. 캐시엔 없는데 U_all 엔 있는 종목이
+       실재한다(실측: 상장목록 KOSPI 945 vs 캐시 943 · KOSDAQ 1,827 vs 1,822).
+       CSV 행만 돌면 그 종목은 명부 행이 «영영» 안 생기고 stock_industry 스냅샷 KSIC 도
+       버려져 부트스트랩 커버리지가 100% 에 못 닿는다 — 무징후 절단이다.
+       캐시에 없으면 «아는 키만» 후보에 넣고 CSV 부수 열 키는 «생략»한다
+       (plan_map_changes 의 `if f in cand` 가 기존 값을 보존한다 — NULL 로 덮지 않는다).
+    """
+    open_rows = w.load_open_rows(conn)
+    universe = set(load_universe(conn))
+    existing = kdc.fold_market_counts(w.open_market_counts(conn))
+    desc = kdc.load_desc(trade_date, existing, fetcher=fetcher)
+    cmap = load_map(conn)
+    snap = w.load_stock_industry(conn) if use_snapshot else {}
+
+    by_code = dict((r["stock_code"], r) for r in desc["rows"])
+    cands = {}
+    matched = 0                      # CSV ∩ U_all — null_rate 의 «분모»
+    no_csv = []                      # U_all 에 있는데 CSV 에 없는 종목(건수로 남긴다)
+    for code in sorted(universe):
+        row = by_code.get(code)
+        if row is None:
+            no_csv.append(code)
+            cand = {"source_asof": desc["source_asof"]}
+        else:
+            matched += 1
+            cand = {"ksic3_name": row["ksic3_name"], "market": row["market"],
+                    "kosdaq_dept": row["kosdaq_dept"], "products": row["products"],
+                    "listing_date": row["listing_date"],
+                    "settle_month": row["settle_month"],
+                    "source_asof": desc["source_asof"]}
+        if w.parent_code(code) is None:
+            cur = open_rows.get(code) or {}
+            ks = cur.get("ksic_code")
+            src = cur.get("ksic_source")
+            if w.is_blank(ks) and code in snap:
+                ks, src = snap[code], "snapshot_20260807"
+            cand["ksic_code"] = ks
+            cand["ksic_source"] = src
+            cand["corp_code"] = cmap.get(code) or cur.get("corp_code")
+        if valid_from is not None:
+            cand["valid_from"] = valid_from
+        cands[code] = cand
+    if no_csv:
+        logger.warning("[sector] 캐시 CSV 에 없는 U_all 종목 %d개 - 아는 값만 넣고 "
+                       "부수 열은 «보존»한다(예: %s)", len(no_csv), no_csv[:5])
+
+    cands = w.apply_parent_rule(cands, universe)
+    # §4 summary — null_rate 의 분모는 «U_all 과 매칭된 캐시 행» 이다(no_csv 는 뺀다).
+    matched_codes = [c for c in cands if c in by_code]
+    null_code = sum(1 for c in matched_codes if w.is_blank(cands[c].get("ksic_code")))
+    null_name = sum(1 for c in matched_codes if w.is_blank(cands[c].get("ksic3_name")))
+
+    plan = w.plan_map_changes(open_rows, cands, trade_date)   # 급변 가드가 여기서 터진다
+    if plan["counts"]["skipped_past"]:
+        logger.warning("[sector] valid_from > %s 인 열린 줄 %d종목 건너뜀(과거 날짜 재실행)",
+                       trade_date, plan["counts"]["skipped_past"])
+    res = w.write_map(conn, plan, source)
+
+    stale_days = _stale_trading_days(conn, desc["source_asof"], trade_date)
+    stale = stale_days > 5
+    if stale:
+        logger.warning("[sector] 캐시 게시일 %s 가 %s 보다 %d 거래일 낡았다",
+                       desc["source_asof"], trade_date, stale_days)
+    out = {"source_asof": desc["source_asof"].isoformat(),
+           "open_rows": len(open_rows), "matched": matched,
+           "changed": plan["counts"]["changed"], "filled": plan["counts"]["filled"],
+           "new": plan["counts"]["new"], "skipped_past": plan["counts"]["skipped_past"],
+           "null_rate": {
+               "ksic_code": (float(null_code) / matched) if matched else None,
+               "ksic3_name": (float(null_name) / matched) if matched else None},
+           "guard": plan["guard"], "written": True,
+           "counts_by_market": desc["counts"], "dropped": desc["dropped"],
+           "archive": os.path.basename(desc["archive"]) if desc.get("archive") else None,
+           "no_csv": len(no_csv), "universe": len(universe),
+           "stale": stale, "stale_days": stale_days, "db": res}
+    logger.info("[sector] 명부 갱신 %s", out)
+    return out
+
+
+def collect_sector(trade_date: str = None) -> dict:
+    """EOD ①②③④. 🔴 한 단계가 터져도 나머지는 돌고 summary 는 «항상» 쓴다.
+
+    `_safe`(eod_collection) 는 최후 방어선일 뿐이다 — 거기까지 올라가면 summary 가
+    안 써져 §8-5·§8-9 가 그날을 못 본다.
+    """
+    d = date.fromisoformat(_to_iso(trade_date)) if trade_date else now_kst().date()
+    summary = {"trade_date": d.isoformat(), "map": {"written": False},
+               "corp_code_refreshed": False, "ksic_fill": {}, "stats": {}, "names": {}}
+    try:
+        # 🔴 키 읽기도 «안»에서 한다 — 밖에 두면 .env 디코딩 오류 하나로 예외가
+        #    _safe 까지 올라가 그날 summary 가 통째로 안 써진다(§8-9 가 못 본다).
+        key = _load_dart_key()
+        with KisDbConnection.get_connection() as conn:
+            w.ensure_tables(conn)
+            try:
+                summary["corp_code_refreshed"] = maybe_refresh_corp_code(conn, key)
+            except Exception as e:  # noqa: BLE001 — 매핑 갱신 실패가 나머지를 막지 않는다
+                logger.warning("[sector] corp_code 주간 갱신 실패(비차단): %s", e)
+            try:
+                summary["map"] = update_map(conn, d, source="eod")
+            except Exception as e:  # noqa: BLE001
+                logger.error("[sector] ① 명부 갱신 실패 - 어제 명부 유지: %s", e)
+                partial = dict(getattr(e, "partial", None) or {})
+                partial["written"] = False
+                partial["error"] = str(e)
+                summary["map"] = partial
+            fill_out = None
+            try:
+                fill_out = fill_ksic(conn, d, key=key)
+                summary["ksic_fill"] = fill_out
+                summary["ksic_fill"]["recopy"] = recopy_preferred(conn, d)["counts"]
+            except Exception as e:  # noqa: BLE001
+                logger.error("[sector] ② KSIC 채우기 실패: %s", e)
+                # 🔴 (c) 재복사가 터진 경우 fill 쪽 집계는 «이미 실측»이다(호출을 썼다).
+                #    e.partial 만 보면 그 날의 fill_calls·nodata·cap_hit 이 통째로
+                #    사라져 DART ≤300/일 회계와 §8 게이트가 그날을 못 본다.
+                #    recopy 는 plan_map_changes 급변 가드로 «실제로» 던질 수 있는 경로다.
+                partial = dict(fill_out or getattr(e, "partial", None) or {})
+                partial["error"] = str(e)
+                summary["ksic_fill"] = partial
+            try:
+                summary["stats"] = compute_stats(conn, d)
+            except Exception as e:  # noqa: BLE001
+                logger.error("[sector] ③ 성적표 실패: %s", e)
+                summary["stats"] = {"date": d.isoformat(), "rows": 0, "error": str(e)}
+            try:
+                summary["names"] = w.rebuild_ksic_names(conn)
+            except Exception as e:  # noqa: BLE001
+                logger.error("[sector] ④ 이름표 실패: %s", e)
+                summary["names"] = {"error": str(e)}
+    except Exception as e:  # noqa: BLE001 — DB 연결 자체가 실패해도 summary 는 남긴다
+        logger.error("[sector] 수집 실패(연결 계층): %s", e)
+        summary["error"] = str(e)
+    _write_summary(d, summary)
+    logger.info("[sector] %s", summary)
+    return summary

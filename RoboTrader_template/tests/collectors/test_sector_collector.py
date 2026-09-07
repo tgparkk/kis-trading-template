@@ -808,3 +808,101 @@ def test_compute_stats_deletes_nothing_when_no_row_is_computable(monkeypatch):
     assert res["rows"] == 0
     assert seen["delete"] == [], "계산 0행인데 유효 행을 지웠다"
     assert res["stale_deleted"] == {}, "«안 돌았다»와 «돌았는데 0»은 다르다"
+
+
+def _patch_collect(monkeypatch, calls, map_exc=None, fill_exc=None):
+    """collect_sector 가 DB·네트워크를 전혀 안 타게 기본값을 깐다."""
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: _DummyCM())
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda conn: None)
+    monkeypatch.setattr(sc, "_load_dart_key", lambda: "k")
+    monkeypatch.setattr(sc, "maybe_refresh_corp_code", lambda conn, key, **kw: False)
+    monkeypatch.setattr(sc, "_write_summary",
+                        lambda d, s: calls.append(("summary", dict(s))))
+
+    def _map(conn, d, **kw):
+        calls.append(("map", d))
+        if map_exc:
+            raise map_exc
+        return {"written": True, "source_asof": "2026-09-07", "matched": 2772}
+
+    def _fill(conn, d, **kw):
+        calls.append(("fill", d))
+        if fill_exc:
+            raise fill_exc
+        return {"fill_calls": 1, "recheck_calls": 2, "recheck_changed": 0}
+
+    monkeypatch.setattr(sc, "update_map", _map)
+    monkeypatch.setattr(sc, "fill_ksic", _fill)
+    monkeypatch.setattr(sc, "recopy_preferred",
+                        lambda conn, d, **kw: calls.append(("recopy", d)) or {"counts": {}})
+    monkeypatch.setattr(sc, "compute_stats",
+                        lambda conn, d: calls.append(("stats", d)) or {"rows": 547, "G": {}})
+    monkeypatch.setattr(sc.w, "rebuild_ksic_names",
+                        lambda conn: calls.append(("names", None)) or {"codes": 158,
+                                                                       "low_share": []})
+
+
+def test_map_failure_does_not_stop_other_stages(monkeypatch):
+    """🔴 ①이 터져도 ②③④ 는 돈다 — _safe 까지 올라가면 summary 가 안 써져
+    §8-5 가 그날을 못 본다."""
+    calls = []
+    _patch_collect(monkeypatch, calls, map_exc=RuntimeError("캐시 404"))
+    out = sc.collect_sector("2026-09-07")
+    names = [c[0] for c in calls]
+    assert names[:5] == ["map", "fill", "recopy", "stats", "names"]
+    assert out["map"]["written"] is False and "캐시 404" in out["map"]["error"]
+    assert out["stats"]["rows"] == 547
+
+
+def test_summary_is_always_written(monkeypatch):
+    """summary 는 «어떤 경우에도» 쓴다 — 게이트들이 파일을 읽기 때문이다."""
+    calls = []
+    _patch_collect(monkeypatch, calls, map_exc=RuntimeError("boom"),
+                   fill_exc=RuntimeError("dart down"))
+    sc.collect_sector("2026-09-07")
+    written = [c for c in calls if c[0] == "summary"]
+    assert len(written) == 1
+    s = written[0][1]
+    assert s["trade_date"] == "2026-09-07"
+    assert s["map"]["written"] is False
+    assert "dart down" in s["ksic_fill"]["error"]
+
+
+def test_dart_quota_does_not_stop_stats(monkeypatch):
+    """T8 — 020 으로 ②가 끊겨도 성적표는 진행한다."""
+    calls = []
+    _patch_collect(monkeypatch, calls,
+                   fill_exc=sc.SectorStageError("quota", partial={"quota_hit": True,
+                                                                  "recheck_calls": 0}))
+    out = sc.collect_sector("2026-09-07")
+    assert out["ksic_fill"]["quota_hit"] is True
+    assert out["ksic_fill"]["recheck_calls"] == 0, "부분 집계가 보존돼야 한다"
+    assert ("stats", date(2026, 9, 7)) in calls
+
+
+def test_summary_roundtrip(tmp_path, monkeypatch):
+    """summary 파일 저장·읽기 — 없으면 None(그 게이트가 WARN 으로 처리한다)."""
+    monkeypatch.setattr(sc, "SECTOR_DIR", str(tmp_path))
+    d = date(2026, 9, 7)
+    assert sc._read_summary(d) is None
+    sc._write_summary(d, {"trade_date": "2026-09-07", "map": {"written": True}})
+    assert os.path.basename(sc._summary_path(d)) == "sector_summary_2026-09-07.json"
+    assert sc._read_summary(d)["map"]["written"] is True
+
+
+def test_recopy_failure_keeps_the_fill_tally(monkeypatch):
+    """🔴 (c) 재복사가 급변 가드(plan_map_changes)로 터져도 ② 가 «이미 쓴 호출» 집계는
+    살아야 한다 — e.partial 만 보면 그날 fill_calls·nodata·cap_hit 이 사라져
+    DART ≤300/일 회계와 §8 게이트가 그날을 못 본다."""
+    calls = []
+    _patch_collect(monkeypatch, calls)
+
+    def _boom(conn, d, **kw):
+        raise RuntimeError("섹터 명부 소스 급변 - 한 행도 쓰지 않음")
+
+    monkeypatch.setattr(sc, "recopy_preferred", _boom)
+    out = sc.collect_sector("2026-09-07")
+    assert out["ksic_fill"]["fill_calls"] == 1, "재복사 실패가 ② 집계를 지웠다"
+    assert out["ksic_fill"]["recheck_calls"] == 2
+    assert "급변" in out["ksic_fill"]["error"]
+    assert out["stats"]["rows"] == 547, "③ 은 그래도 돌아야 한다"
