@@ -13,8 +13,8 @@ ev = pytest.importorskip("scripts.eval_sector_news_shadow")
 
 def test_sector_validity_quintiles_and_small_days():
     rows = []
-    for i in range(10):                         # 점수와 수익률이 같은 방향 → 양의 상관
-        rows.append({"trade_date": "2026-10-01", "score_signed": (i - 5) / 5, "ret_median": (i - 5) / 100})
+    for i in range(10):                         # 점수와 수익률이 같은 방향 → 양의 상관 (0 점은 없음)
+        rows.append({"trade_date": "2026-10-01", "score_signed": (i - 4.5) / 4.5, "ret_median": (i - 4.5) / 100})
     rows.append({"trade_date": "2026-10-01", "score_signed": 0.0, "ret_median": 9.9})   # 0 은 제외
     rows += [{"trade_date": "2026-10-02", "score_signed": 0.5, "ret_median": 0.01}] * 3   # 5행 미만
     out = ev.sector_validity(pd.DataFrame(rows)).set_index("trade_date")
