@@ -6,7 +6,7 @@
 """
 import json
 from pathlib import Path
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional, Callable, Tuple
 from dataclasses import dataclass
 
 from .models import TradingConfig
@@ -24,6 +24,7 @@ class CandidateStock:
     score: float      # 선정 점수
     reason: str       # 선정 이유
     prev_close: float = 0.0
+    sector_note: str = ""   # 스펙 B live 재정렬 표기 (예: " (↑2 261 +0.8)") — 텔레그램 후보 알림용
 
 
 class CandidateSelector:
@@ -1100,6 +1101,9 @@ class CandidateSelector:
             )
             return []
 
+        # 스펙 B: 섹터 뉴스 재정렬 — 안전필터(limit 절단) «앞». 아래 메서드는 예외를 내지 않는다(fail-open).
+        codes, sector_notes = self._apply_sector_news_rerank(strategy_name, codes, prev_day_str)
+
         # code 리스트 → CandidateStock 변환 (name/score는 미상).
         # ⚠️ 여기서 max_candidates 로 자르지 않는다. 자른 뒤 필터를 걸면
         #    앞머리에 제외 종목이 있을 때 슬롯이 그냥 사라진다(백필 없음).
@@ -1111,6 +1115,7 @@ class CandidateSelector:
                 score=50.0,
                 reason=f"screener_snapshot({strategy_name})",
                 prev_close=0.0,
+                sector_note=sector_notes.get(code, ""),
             )
             for code in codes
         ]
@@ -1135,3 +1140,144 @@ class CandidateSelector:
             f"(스냅샷 {len(codes)}건, 목표 {max_candidates}건, D-1={prev_day_str})"
         )
         return candidates
+
+    # =========================================================================
+    # 섹터 뉴스 재정렬 (스펙 B, 2026-09-06)
+    # =========================================================================
+
+    def _apply_sector_news_rerank(
+        self,
+        strategy_name: str,
+        codes: List[str],
+        prev_day_str: str,
+    ) -> Tuple[List[str], Dict[str, str]]:
+        """스냅샷 코드 순서에 섹터 뉴스 점수를 얹어 최대 K칸 순위 이동 (스펙 B §5).
+
+        🔑 **fail-open — 이 메서드는 예외를 «절대» 밖으로 내지 않는다.**
+           호출자 `_fetch_candidates_for_strategy` 의 이 호출 지점은 «양쪽» try 블록
+           바깥이다(첫 조회 실패용 fail-closed try 는 이미 끝났고, 안전필터용 try 는
+           아직 시작 전) — 여기서 예외가 새면 그 fail-closed `except` 가 잡아주지
+           «않는다». `bot/candidate_loader.py` 까지 그대로 올라가 3회 재시도 후
+           «전 전략» 「금일 매수 불가」로 이어진다(결정 8: 재정렬은 장식이어야 한다는
+           전제를 정면으로 깬다). 그래서 import 문·상수 읽기까지 포함해 메서드
+           «전체»를 outer try 안에 둔다 — `ImportError`(부분 배포·롤백 도중)나
+           `AttributeError`(상수 삭제) 도 예외가 아니라 fail-open 대상이다.
+           어떤 실패든 원래 순서를 돌려주고 WARNING 한 줄 + 기록 행(reason≠ok)만 남긴다.
+
+        모드(config.constants.SECTOR_NEWS_BOOST_MODE — 호출 시점에 읽는다):
+          off    → DB 접근 0, 로그 0
+          shadow → 계산·기록, «원래 순서» 반환 (기본값)
+          live   → 새 순서 + 텔레그램 표기 반환
+
+        Returns:
+            (반환할 코드 순서, {code: 표기 문자열}) — shadow/실패 는 (원래 순서, {}).
+        """
+        try:
+            from config import constants as C
+            from core.sector_news_rerank import rerank, RerankRow, classify_sector_news_exception
+
+            mode = getattr(C, "SECTOR_NEWS_BOOST_MODE", "off")
+            bad = getattr(C, "SECTOR_NEWS_BOOST_MODE_INVALID", None)
+            if bad:
+                self.logger.warning(
+                    f"[섹터뉴스] SECTOR_NEWS_BOOST_MODE={bad!r} 는 모르는 값 → off 로 동작 "
+                    f"(허용: {getattr(C, 'SECTOR_NEWS_BOOST_MODES', ('off', 'shadow', 'live'))})"
+                )
+            if mode == "off" or not codes:
+                return list(codes), {}
+
+            repo = getattr(self.db_manager, "sector_news_repo", None)
+            if repo is None:
+                self.logger.warning(f"[섹터뉴스] {strategy_name}: db_manager.sector_news_repo 없음 → 원래 순서")
+                return list(codes), {}
+
+            now = now_kst()
+            now_naive = now.replace(tzinfo=None)
+            trade_date = now.date()
+            reason = "ok"
+            scores: Dict[str, float] = {}
+            asof = None
+            code_to_sector: Dict[str, str] = {}
+            try:
+                if strategy_name in C.SECTOR_NEWS_EXCLUDE_STRATEGIES:
+                    reason = "excluded_strategy"
+                else:
+                    scores, asof = repo.get_scores(trade_date)
+                    if not scores:
+                        reason = "no_score_rows"
+                    else:
+                        asof_naive = asof.replace(tzinfo=None) if asof is not None else None
+                        age = (now_naive - asof_naive).total_seconds() if asof_naive is not None else None
+                        if age is None or age > C.SECTOR_NEWS_STALE_MINUTES * 60 or age < -300:
+                            reason = "stale"
+                        else:
+                            code_to_sector = repo.get_sector_map(prev_day_str, list(codes))
+            except Exception as e:
+                reason = classify_sector_news_exception(e)
+
+            if reason == "ok":
+                new_codes, rows = rerank(list(codes), code_to_sector, scores,
+                                         max_shift=C.SECTOR_NEWS_MAX_SHIFT, min_abs=C.SECTOR_NEWS_MIN_ABS)
+            else:
+                new_codes = list(codes)
+                rows = [RerankRow(stock_code=c, sector_key=None, sector_score=None, orig_rank=i + 1, new_rank=i + 1)
+                        for i, c in enumerate(codes)]
+            applied = (mode == "live" and reason == "ok")
+
+            try:
+                repo.save_rerank_log([
+                    {"trade_date": trade_date, "strategy": strategy_name, "stock_code": r.stock_code,
+                     "sector_key": r.sector_key, "sector_score": r.sector_score,
+                     "orig_rank": r.orig_rank, "new_rank": r.new_rank, "applied": applied,
+                     "mode": mode, "reason": reason, "score_asof": asof}
+                    for r in rows
+                ])
+            except Exception as e:
+                self.logger.warning(f"[섹터뉴스] {strategy_name}: 기록 저장 실패(무시): {e}")
+
+            result = new_codes if applied else list(codes)
+            notes: Dict[str, str] = {}
+            try:
+                moved = [r for r in rows if r.new_rank != r.orig_rank]
+                up = sum(1 for r in moved if r.new_rank < r.orig_rank)
+                mapped = sum(1 for r in rows if r.sector_key)
+                asof_txt = asof.strftime("%H:%M") if asof else "-"
+                line = (f"[섹터뉴스] {strategy_name} mode={mode} reason={reason} "
+                        f"이동 {len(moved)}종목(↑{up} ↓{len(moved) - up}) 점수 as-of {asof_txt} "
+                        f"섹터매핑 {mapped}/{len(codes)}")
+                if reason == "ok":
+                    self.logger.info(line)
+                else:
+                    self.logger.warning(line)
+
+                if applied:
+                    for r in moved:
+                        if r.sector_score is None:
+                            # 자기 자신은 섹터 미매핑인데 다른 종목의 이동 때문에 순위만 밀린 경우
+                            # (예: 유일하게 매핑된 종목이 3칸 올라오며 사이 종목들을 뒤로 미는 경우).
+                            # 표기할 섹터 점수가 없으므로 스킵 — 여기서 포맷하면 TypeError.
+                            continue
+                        arrow = "↑" if r.new_rank < r.orig_rank else "↓"
+                        notes[r.stock_code] = f" ({arrow}{abs(r.orig_rank - r.new_rank)} {r.sector_key} {r.sector_score:+.1f})"
+            except Exception as e:
+                self.logger.warning(f"[섹터뉴스] {strategy_name}: 관측 블록 실패(무시): {e}")
+                notes = {}
+            return result, notes
+
+        except Exception as e:
+            self.logger.warning(f"[섹터뉴스] {strategy_name}: 재정렬 실패(fail-open, 원래 순서): {type(e).__name__}: {e}")
+            try:
+                repo = getattr(self.db_manager, "sector_news_repo", None)
+                if repo is not None and codes:
+                    from config import constants as C2
+                    reason = f"error:{type(e).__name__}"
+                    repo.save_rerank_log([
+                        {"trade_date": now_kst().date(), "strategy": strategy_name, "stock_code": c,
+                         "sector_key": None, "sector_score": None, "orig_rank": i + 1, "new_rank": i + 1,
+                         "applied": False, "mode": getattr(C2, "SECTOR_NEWS_BOOST_MODE", "off"),
+                         "reason": reason, "score_asof": None}
+                        for i, c in enumerate(codes)
+                    ])
+            except Exception as e2:
+                self.logger.warning(f"[섹터뉴스] {strategy_name}: 실패 행 기록도 실패(무시): {e2}")
+            return list(codes), {}

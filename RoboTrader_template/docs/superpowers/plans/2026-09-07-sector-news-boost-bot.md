@@ -948,6 +948,10 @@ def test_exception_inside_rerank_never_escapes(selector, monkeypatch):
         raise RuntimeError("bug")
     monkeypatch.setattr("core.sector_news_rerank.rerank", _boom)
     assert _codes(_run(selector, repo, "live", monkeypatch)) == CODES
+    # 최종 리뷰 Minor #3: outer except 도 best-effort 로 error:<Name> 행을 남긴다.
+    assert len(repo.saved) == 6
+    assert all(r["reason"] == "error:RuntimeError" and r["applied"] is False
+               and r["new_rank"] == r["orig_rank"] for r in repo.saved)
 
 
 def test_apply_method_direct_contract(selector, monkeypatch):
@@ -958,6 +962,93 @@ def test_apply_method_direct_contract(selector, monkeypatch):
     monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "live")
     codes, notes = selector._apply_sector_news_rerank("s1", list(CODES), "2026-09-07")
     assert codes == ["A1", "A5", "A3", "A4", "A2", "A6"] and set(notes) == {"A5", "A2"}
+
+
+def test_import_failure_inside_method_is_fail_open(selector, monkeypatch):
+    # core.sector_news_rerank 를 「임포트 불가」 상태로 만든다(부분 배포·롤백 도중을 흉내).
+    # import 문이 outer try 안에 있어야만 여기서 ImportError 가 fail-open 으로 잡힌다 —
+    # 밖에 있으면 _fetch_candidates_for_strategy 의 fail-closed try 는 이미 끝난 뒤라
+    # bot/candidate_loader.py 까지 그대로 샌다.
+    # 최종 리뷰 Minor #3: outer except 도 best-effort 로 error:<Name> 행을 남긴다 —
+    # import 실패도 예외이므로 이제 repo.save_rerank_log 가 한 번 호출된다.
+    monkeypatch.setitem(sys.modules, "core.sector_news_rerank", None)
+    monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "live")
+    repo = FakeRepo(**GOOD)
+    selector.db_manager.sector_news_repo = repo
+    cands = selector._fetch_candidates_for_strategy("s1", 20)
+    assert _codes(cands) == CODES
+    assert repo.calls == ["save"]
+    assert len(repo.saved) == 6
+    assert all(r["reason"] == "error:ModuleNotFoundError" and r["applied"] is False
+               and r["new_rank"] == r["orig_rank"] for r in repo.saved)
+
+
+def test_missing_mode_constant_is_fail_open(selector, monkeypatch):
+    # 상수가 삭제된 상태(예: 부분 롤백)를 흉내 — getattr 기본값 "off" 로 떨어져야 하고,
+    # AttributeError 가 나면 안 된다(off 는 DB 접근 0 이 계약이므로 repo 는 건드리지 않는다).
+    monkeypatch.delattr(C, "SECTOR_NEWS_BOOST_MODE")
+    repo = FakeRepo(**GOOD)
+    selector.db_manager.sector_news_repo = repo
+    assert _codes(selector._fetch_candidates_for_strategy("s1", 20)) == CODES
+    assert repo.calls == []
+
+
+def test_aware_now_kst_is_normalized(selector, monkeypatch):
+    # now_kst() 가 tz-aware 를 돌려줘도(운영 환경의 실제 모습) stale 판정용 뺄셈 전에
+    # tzinfo 를 벗겨내는 경로가 정상 동작하는지 — GOOD 의 asof 는 naive 다.
+    import pytz
+    monkeypatch.setattr(cs, "now_kst", lambda: pytz.timezone("Asia/Seoul").localize(NOW))
+    monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "live")
+    repo = FakeRepo(**GOOD)
+    selector.db_manager.sector_news_repo = repo
+    assert _codes(selector._fetch_candidates_for_strategy("s1", 20)) == ["A1", "A5", "A3", "A4", "A2", "A6"]
+
+
+def test_invalid_mode_env_warns_and_is_off(selector, monkeypatch, caplog):
+    # 최종 리뷰 Important #1: SECTOR_NEWS_BOOST_MODE 가 모르는 값이면(config.constants
+    # 가 이미 off 로 낮춰 놓은 원문을 SECTOR_NEWS_BOOST_MODE_INVALID 에 보관) WARNING 한 줄을
+    # 남기고 off 로 동작해야 한다. caplog 는 참고용 — setup_logger 가 propagate 하지 않을 수
+    # 있어 selector.logger 를 MagicMock 으로 바꿔 직접 검증한다.
+    monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "off")
+    monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE_INVALID", "on")
+    repo = FakeRepo(**GOOD)
+    mock_logger = MagicMock()
+    monkeypatch.setattr(selector, "logger", mock_logger)
+    cands = _run(selector, repo, "off", monkeypatch)
+    assert _codes(cands) == CODES
+    assert repo.calls == []
+    assert any("모르는 값" in str(call.args[0]) for call in mock_logger.warning.call_args_list)
+
+
+def test_observability_failure_keeps_applied_order(selector, monkeypatch):
+    # 최종 리뷰 Important #2: 반환값(result/notes)은 관측 블록(로그 라인 조립·표기 생성) 전에
+    # 이미 확정돼 있어야 한다 — 로깅이 터져도 live 적용 순서가 살아남는지 확인.
+    # 직접 _apply_sector_news_rerank 를 호출한다(test_apply_method_direct_contract 와 동일
+    # 패턴) — _fetch_candidates_for_strategy 경유 시 그 안의 무관한 self.logger.info 호출도
+    # 같은 MagicMock 의 side_effect 를 맞아 테스트 의도와 무관하게 터진다.
+    monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "live")
+    repo = FakeRepo(**GOOD)
+    selector.db_manager.sector_news_repo = repo
+    mock_logger = MagicMock()
+    mock_logger.info.side_effect = RuntimeError("log down")
+    monkeypatch.setattr(selector, "logger", mock_logger)
+    codes, notes = selector._apply_sector_news_rerank("s1", list(CODES), "2026-09-07")
+    assert codes == ["A1", "A5", "A3", "A4", "A2", "A6"]
+    assert mock_logger.warning.called
+
+
+def test_future_asof_is_stale(selector, monkeypatch):
+    # 최종 리뷰 Minor #4: score_asof 가 미래(시계 오차)면 양방향 가드로 stale 처리한다.
+    repo = FakeRepo(scores={"261": 1.0}, asof=NOW + timedelta(hours=5), sector_map={"A5": "261"})
+    assert _codes(_run(selector, repo, "live", monkeypatch)) == CODES
+    assert len(repo.saved) == 6
+    assert all(r["reason"] == "stale" for r in repo.saved)
+
+
+def test_asof_slightly_ahead_is_fresh(selector, monkeypatch):
+    # 5분 미만의 미세한 시계 오차(미래 방향)는 여전히 fresh 로 취급한다.
+    repo = FakeRepo(scores={"261": 1.0}, asof=NOW + timedelta(minutes=2), sector_map={"A5": "261"})
+    assert _codes(_run(selector, repo, "live", monkeypatch)) == ["A1", "A5", "A2", "A3", "A4", "A6"]
 ```
 
 - [ ] **Step 2: 실패 확인**
@@ -998,6 +1089,8 @@ from typing import List, Dict, Optional, Callable, Tuple
 
 클래스 끝(`:1137` 의 `return candidates` 뒤)에 메서드 추가:
 
+(2026-09-07 구현 중 정정: import·상수 읽기를 outer try 안으로 — ImportError/AttributeError 도 fail-open; 섹터 미상 종목의 표기 f-string 이 None 에서 터지던 것을 건너뜀. 호출 지점은 `_fetch_candidates_for_strategy` 의 두 try 블록 «바깥»이라 새는 예외는 candidate_loader 까지 간다.)
+
 ```python
     # =========================================================================
     # 섹터 뉴스 재정렬 (스펙 B, 2026-09-06)
@@ -1012,8 +1105,14 @@ from typing import List, Dict, Optional, Callable, Tuple
         """스냅샷 코드 순서에 섹터 뉴스 점수를 얹어 최대 K칸 순위 이동 (스펙 B §5).
 
         🔑 **fail-open — 이 메서드는 예외를 «절대» 밖으로 내지 않는다.**
-           호출자 `_fetch_candidates_for_strategy` 의 fail-closed `except` 에 잡히면
-           「후보 조회 실패 → 금일 매수 중단」이 되어 결정 8(재정렬은 장식)을 깨뜨린다.
+           호출자 `_fetch_candidates_for_strategy` 의 이 호출 지점은 «양쪽» try 블록
+           바깥이다(첫 조회 실패용 fail-closed try 는 이미 끝났고, 안전필터용 try 는
+           아직 시작 전) — 여기서 예외가 새면 그 fail-closed `except` 가 잡아주지
+           «않는다». `bot/candidate_loader.py` 까지 그대로 올라가 3회 재시도 후
+           «전 전략» 「금일 매수 불가」로 이어진다(결정 8: 재정렬은 장식이어야 한다는
+           전제를 정면으로 깬다). 그래서 import 문·상수 읽기까지 포함해 메서드
+           «전체»를 outer try 안에 둔다 — `ImportError`(부분 배포·롤백 도중)나
+           `AttributeError`(상수 삭제) 도 예외가 아니라 fail-open 대상이다.
            어떤 실패든 원래 순서를 돌려주고 WARNING 한 줄 + 기록 행(reason≠ok)만 남긴다.
 
         모드(config.constants.SECTOR_NEWS_BOOST_MODE — 호출 시점에 읽는다):
@@ -1024,13 +1123,20 @@ from typing import List, Dict, Optional, Callable, Tuple
         Returns:
             (반환할 코드 순서, {code: 표기 문자열}) — shadow/실패 는 (원래 순서, {}).
         """
-        from config import constants as C
-        from core.sector_news_rerank import rerank, RerankRow, classify_sector_news_exception
-
-        mode = C.SECTOR_NEWS_BOOST_MODE
-        if mode == "off" or not codes:
-            return list(codes), {}
         try:
+            from config import constants as C
+            from core.sector_news_rerank import rerank, RerankRow, classify_sector_news_exception
+
+            mode = getattr(C, "SECTOR_NEWS_BOOST_MODE", "off")
+            bad = getattr(C, "SECTOR_NEWS_BOOST_MODE_INVALID", None)
+            if bad:
+                self.logger.warning(
+                    f"[섹터뉴스] SECTOR_NEWS_BOOST_MODE={bad!r} 는 모르는 값 → off 로 동작 "
+                    f"(허용: {getattr(C, 'SECTOR_NEWS_BOOST_MODES', ('off', 'shadow', 'live'))})"
+                )
+            if mode == "off" or not codes:
+                return list(codes), {}
+
             repo = getattr(self.db_manager, "sector_news_repo", None)
             if repo is None:
                 self.logger.warning(f"[섹터뉴스] {strategy_name}: db_manager.sector_news_repo 없음 → 원래 순서")
@@ -1052,7 +1158,8 @@ from typing import List, Dict, Optional, Callable, Tuple
                         reason = "no_score_rows"
                     else:
                         asof_naive = asof.replace(tzinfo=None) if asof is not None else None
-                        if asof_naive is None or (now_naive - asof_naive).total_seconds() > C.SECTOR_NEWS_STALE_MINUTES * 60:
+                        age = (now_naive - asof_naive).total_seconds() if asof_naive is not None else None
+                        if age is None or age > C.SECTOR_NEWS_STALE_MINUTES * 60 or age < -300:
                             reason = "stale"
                         else:
                             code_to_sector = repo.get_sector_map(prev_day_str, list(codes))
@@ -1079,27 +1186,51 @@ from typing import List, Dict, Optional, Callable, Tuple
             except Exception as e:
                 self.logger.warning(f"[섹터뉴스] {strategy_name}: 기록 저장 실패(무시): {e}")
 
-            moved = [r for r in rows if r.new_rank != r.orig_rank]
-            up = sum(1 for r in moved if r.new_rank < r.orig_rank)
-            mapped = sum(1 for r in rows if r.sector_key)
-            asof_txt = asof.strftime("%H:%M") if asof else "-"
-            line = (f"[섹터뉴스] {strategy_name} mode={mode} reason={reason} "
-                    f"이동 {len(moved)}종목(↑{up} ↓{len(moved) - up}) 점수 as-of {asof_txt} "
-                    f"섹터매핑 {mapped}/{len(codes)}")
-            if reason == "ok":
-                self.logger.info(line)
-            else:
-                self.logger.warning(line)
-
+            result = new_codes if applied else list(codes)
             notes: Dict[str, str] = {}
-            if applied:
-                for r in moved:
-                    arrow = "↑" if r.new_rank < r.orig_rank else "↓"
-                    notes[r.stock_code] = f" ({arrow}{abs(r.orig_rank - r.new_rank)} {r.sector_key} {r.sector_score:+.1f})"
-            return (new_codes if applied else list(codes)), notes
+            try:
+                moved = [r for r in rows if r.new_rank != r.orig_rank]
+                up = sum(1 for r in moved if r.new_rank < r.orig_rank)
+                mapped = sum(1 for r in rows if r.sector_key)
+                asof_txt = asof.strftime("%H:%M") if asof else "-"
+                line = (f"[섹터뉴스] {strategy_name} mode={mode} reason={reason} "
+                        f"이동 {len(moved)}종목(↑{up} ↓{len(moved) - up}) 점수 as-of {asof_txt} "
+                        f"섹터매핑 {mapped}/{len(codes)}")
+                if reason == "ok":
+                    self.logger.info(line)
+                else:
+                    self.logger.warning(line)
+
+                if applied:
+                    for r in moved:
+                        if r.sector_score is None:
+                            # 자기 자신은 섹터 미매핑인데 다른 종목의 이동 때문에 순위만 밀린 경우
+                            # (예: 유일하게 매핑된 종목이 3칸 올라오며 사이 종목들을 뒤로 미는 경우).
+                            # 표기할 섹터 점수가 없으므로 스킵 — 여기서 포맷하면 TypeError.
+                            continue
+                        arrow = "↑" if r.new_rank < r.orig_rank else "↓"
+                        notes[r.stock_code] = f" ({arrow}{abs(r.orig_rank - r.new_rank)} {r.sector_key} {r.sector_score:+.1f})"
+            except Exception as e:
+                self.logger.warning(f"[섹터뉴스] {strategy_name}: 관측 블록 실패(무시): {e}")
+                notes = {}
+            return result, notes
 
         except Exception as e:
             self.logger.warning(f"[섹터뉴스] {strategy_name}: 재정렬 실패(fail-open, 원래 순서): {type(e).__name__}: {e}")
+            try:
+                repo = getattr(self.db_manager, "sector_news_repo", None)
+                if repo is not None and codes:
+                    from config import constants as C2
+                    reason = f"error:{type(e).__name__}"
+                    repo.save_rerank_log([
+                        {"trade_date": now_kst().date(), "strategy": strategy_name, "stock_code": c,
+                         "sector_key": None, "sector_score": None, "orig_rank": i + 1, "new_rank": i + 1,
+                         "applied": False, "mode": getattr(C2, "SECTOR_NEWS_BOOST_MODE", "off"),
+                         "reason": reason, "score_asof": None}
+                        for i, c in enumerate(codes)
+                    ])
+            except Exception as e2:
+                self.logger.warning(f"[섹터뉴스] {strategy_name}: 실패 행 기록도 실패(무시): {e2}")
             return list(codes), {}
 ```
 
@@ -1109,7 +1240,7 @@ from typing import List, Dict, Optional, Callable, Tuple
 cd D:/tmp/kis-wt-sector-news/RoboTrader_template && PYTHONUTF8=1 "D:/GIT/kis-trading-template/RoboTrader_template/venv/Scripts/python.exe" -m pytest tests/test_candidate_sector_news_wiring.py tests/test_candidate_filter_unsafe.py -v
 ```
 
-Expected: 새 파일 `16 passed` · 기존 `test_candidate_filter_unsafe.py` 전과 동일(변경 전 결과를 먼저 적어 두고 비교).
+Expected: 새 파일 `23 passed`(원래 19개 + 최종 리뷰 수정 4건 신규 테스트, `test_exception_inside_rerank_never_escapes`·`test_import_failure_inside_method_is_fail_open` 2개는 새 outer-except 계약에 맞춰 기존 테스트 자체를 확장/갱신 — 신규 collected item 은 아님) · 기존 `test_candidate_filter_unsafe.py` 전과 동일(변경 전 결과를 먼저 적어 두고 비교).
 
 - [ ] **Step 5: 기존 후보 경로 회귀 확인**
 
@@ -1278,8 +1409,8 @@ ev = pytest.importorskip("scripts.eval_sector_news_shadow")
 
 def test_sector_validity_quintiles_and_small_days():
     rows = []
-    for i in range(10):                         # 점수와 수익률이 같은 방향 → 양의 상관
-        rows.append({"trade_date": "2026-10-01", "score_signed": (i - 5) / 5, "ret_median": (i - 5) / 100})
+    for i in range(10):                         # 점수와 수익률이 같은 방향 → 양의 상관 (0 점은 없음)
+        rows.append({"trade_date": "2026-10-01", "score_signed": (i - 4.5) / 4.5, "ret_median": (i - 4.5) / 100})
     rows.append({"trade_date": "2026-10-01", "score_signed": 0.0, "ret_median": 9.9})   # 0 은 제외
     rows += [{"trade_date": "2026-10-02", "score_signed": 0.5, "ret_median": 0.01}] * 3   # 5행 미만
     out = ev.sector_validity(pd.DataFrame(rows)).set_index("trade_date")
@@ -1344,6 +1475,10 @@ Expected: 4 SKIP(`importorskip` 실패) — 구현 뒤 FAIL/PASS 로 바뀌어�
 
 주의: 09:00 이전 값 = 그날 sector_news_score 행 자체(NewsQuant 가 09:05~15:30 동결하므로).
       daily_prices.date 는 text 'YYYY-MM-DD'. close 는 이미 분할조정 — adj_factor 를 곱하지 않는다.
+      ① 표는 살아남은 sector_news_score 행을 쓴다 — NewsQuant 는 09:05~15:30 사이 쓰기를 동결하지만,
+      09:00~09:05 사이의 실행이 봇이 읽은 행을 덮어썼을 수 있다. "봇이 실제로 본" 값은 그 시점에
+      기록된 sector_news_rerank_log.score_asof / sector_score 만이 권위 있는 값이며, ②·③ 표는
+      이 로그 값을 사용한다.
 """
 import argparse
 import sys
@@ -1614,3 +1749,4 @@ cd D:/GIT/kis-trading-template && git worktree remove D:/tmp/kis-wt-sector-news 
 - **타입 일관성**: `rerank(...) -> (List[str], List[RerankRow])` 를 T4 가 언팩 · `RerankRow` 필드 5개 T1=T4 · `save_rerank_log(rows: List[Dict])` 의 dict 키 11개 T3(SQL `%(key)s`)=T4(dict 조립)=T3 테스트 `_row` · `get_scores -> (Dict, Optional[datetime])` T3=T4 · `_apply_sector_news_rerank -> (List[str], Dict[str,str])` T4 = `_fetch_candidates_for_strategy` 언팩 · `CandidateStock.sector_note` T4=T5.
 - **플레이스홀더**: 없음.
 - **NewsQuant 계획과의 계약**: 표 `sector_news_score(trade_date, taxonomy='ksic3', sector_key, score_signed, computed_at)` 열 이름이 양쪽 SQL 에서 동일(NQ T6 DDL · 봇 T3 `get_scores`).
+- 구현 중 정정 3건(2026-09-07): T4 import/상수 try 안·None 가드 · T6 픽스처 off-by-one · T3 리뷰어의 db 마커 미등록 지적은 오인(루트 pyproject 에 등록됨). 최종 리뷰 수정 4건: 잘못된 모드 WARNING · 반환값 확정 후 관측 블록 분리 · outer except error 행 · stale 양방향.
