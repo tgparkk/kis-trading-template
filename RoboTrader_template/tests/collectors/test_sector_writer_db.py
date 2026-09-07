@@ -140,3 +140,22 @@ def test_no_duplicate_stock_rows_on_sample_dates(conn):
                         "GROUP BY 1 HAVING count(*) > 1", (d,))
             dup = cur.fetchall()
         assert dup == [], "%s 에 중복 유효기간이 있다: %s" % (d, dup[:5])
+
+
+def test_upsert_stats_is_idempotent(conn):
+    """T7-a — 같은 날 두 번 실행해도 행수·값이 그대로여야 한다."""
+    rows = [{"date": TEST_STATS_DATE, "taxonomy": "ksic3", "sector_key": "261",
+             "n_members": 3, "g_sectors": 2, "ret_median": 0.01, "ret_mean": 0.02,
+             "up_count": 1, "pos_ratio": 0.67, "rank_median": 0, "pct_median": 100.0,
+             "rank_up": 0, "pct_up": 100.0, "rank_pos": 0, "pct_pos": 100.0},
+            {"date": TEST_STATS_DATE, "taxonomy": "ksic2", "sector_key": "26",
+             "n_members": 3, "g_sectors": 1, "ret_median": 0.01, "ret_mean": 0.02,
+             "up_count": 1, "pos_ratio": 0.67, "rank_median": 0, "pct_median": None,
+             "rank_up": 0, "pct_up": None, "rank_pos": 0, "pct_pos": None}]
+    assert w.upsert_stats(conn, [dict(r) for r in rows]) == 2
+    w.upsert_stats(conn, [dict(r) for r in rows])
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*), sum(n_members) FROM sector_daily_stats WHERE date=%s",
+                    (TEST_STATS_DATE,))
+        assert cur.fetchone() == (2, 6), "재실행이 멱등하지 않다"
+    assert w.delete_stats(conn, TEST_STATS_DATE, TEST_STATS_DATE) == 2

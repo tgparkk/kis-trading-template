@@ -599,3 +599,98 @@ def test_recopy_preferred_uses_shared_parent_bundle():
     sets = [p for s, p in db.log if s.strip().upper().startswith("UPDATE")][0]
     assert sets["ksic_code"] == "264" and sets["ksic_source"] == "parent:001040"
     assert sets["ksic3_name"] == "가" and sets["corp_code"] == "00126380"
+
+
+def test_rank_pct_hand_computed_with_ties():
+    """T6 ① 동률: G=4 중앙값 [3,1,1,−2] → rank [0,2,2,3] · pct [100, 33.3, 33.3, 0].
+    «좋거나 같은»(≥) 다른 업종 수 = 태쏘 rank_pct(side='left') 와 동치."""
+    out = sc.rank_and_pct([3.0, 1.0, 1.0, -2.0])
+    assert [r for r, _ in out] == [0, 2, 2, 3]
+    assert [round(p, 1) for _, p in out] == [100.0, 33.3, 33.3, 0.0]
+
+
+def test_rank_pct_hand_computed_without_ties():
+    """T6 ② 동률 없음: [3,1,0,−2] → [0,1,2,3] · [100, 66.7, 33.3, 0]."""
+    out = sc.rank_and_pct([3.0, 1.0, 0.0, -2.0])
+    assert [r for r, _ in out] == [0, 1, 2, 3]
+    assert [round(p, 1) for _, p in out] == [100.0, 66.7, 33.3, 0.0]
+
+
+def test_rank_pct_single_sector_gives_null():
+    """T6 ③ G=1 → 백분위 NULL(0 이 아니다 — 0 은 «최하위»라는 뜻이 된다)."""
+    out = sc.rank_and_pct([0.5])
+    assert out == [(0, None)]
+
+
+def test_sector_label_truncation():
+    """T5 — 길이 3·4 코드는 ksic5 에서 미정(4자리 키는 CHECK 를 통과하지 못한다)."""
+    assert sc.sector_label("264", 2) == "26"
+    assert sc.sector_label("264", 3) == "264"
+    assert sc.sector_label("264", 5) is None
+    assert sc.sector_label("2611", 5) is None
+    assert sc.sector_label("26110", 5) == "26110"
+    assert sc.sector_label(None, 2) is None
+    assert sc.sector_label("A1234", 2) is None, "비숫자 접두는 미정(CHECK 위반 방지)"
+
+
+def test_no_prev_close_is_counted_not_dropped():
+    """T5 — 20일 창 안에 직전 봉이 없으면 r 미정. 조용히 빼지 말고 «세어» 남긴다."""
+    rows = [("AAAAA1", 110.0, 105.0, 100.0), ("BBBBB1", 50.0, 50.0, None)]
+    labels = {"AAAAA1": "264", "BBBBB1": "264"}
+    stat, und = sc.compute_day_stats(rows, labels)
+    assert und["no_prev"] == 1
+    k3 = [r for r in stat if r["taxonomy"] == "ksic3"]
+    assert len(k3) == 1 and k3[0]["n_members"] == 1
+
+
+def test_unlabeled_stock_is_counted_not_dropped():
+    """T5 — 라벨 없는 종목은 fail-closed(빼고 «센다»)."""
+    rows = [("AAAAA1", 110.0, 105.0, 100.0), ("BBBBB1", 50.0, 55.0, 50.0)]
+    labels = {"AAAAA1": "264"}
+    stat, und = sc.compute_day_stats(rows, labels)
+    assert und["no_label"] == 1
+    assert und["short_code"]["ksic5"] == 1, "264 는 ksic5 에서 미정이라 «센다»"
+
+
+def test_stats_window_sql_filters_inside_the_window():
+    """🔴 창 «안»에 close>0 과 술어를 건다 — 창 밖에서 걸면 0원 봉이 prev_close 후보로
+    남아 수익률이 무한대가 된다(태쏘 load_day 와 같은 순서)."""
+    head = sc._STATS_SQL.split(") SELECT")[0]
+    assert "close > 0" in head
+    assert "stock_code ~ " in head
+    assert "LAG(close)" in head
+
+
+def test_day_stats_hand_computed_sector():
+    """중앙값·급등·상승비율·G·순위를 한 번에 손계산으로 고정한다."""
+    rows = [
+        # (code, high, close, prev_close) — r = close/prev − 1
+        ("AAAAA1", 120.0, 103.0, 100.0),   # r=+3%   up: 120 >= 115 → True
+        ("AAAAA2", 101.0, 101.0, 100.0),   # r=+1%   up: 101 >= 115 → False
+        ("BBBBB1", 100.0,  98.0, 100.0),   # r=−2%   up False
+    ]
+    labels = {"AAAAA1": "26110", "AAAAA2": "26110", "BBBBB1": "27110"}
+    stat, und = sc.compute_day_stats(rows, labels)
+    by = dict(((r["taxonomy"], r["sector_key"]), r) for r in stat)
+    a = by[("ksic5", "26110")]
+    b = by[("ksic5", "27110")]
+    assert a["n_members"] == 2 and b["n_members"] == 1
+    assert a["g_sectors"] == 2 and b["g_sectors"] == 2
+    assert abs(a["ret_median"] - 0.02) < 1e-9      # (0.03 + 0.01)/2
+    assert a["up_count"] == 1 and b["up_count"] == 0
+    assert abs(a["pos_ratio"] - 1.0) < 1e-9 and abs(b["pos_ratio"] - 0.0) < 1e-9
+    assert a["rank_median"] == 0 and b["rank_median"] == 1
+    assert abs(a["pct_median"] - 100.0) < 1e-9 and abs(b["pct_median"] - 0.0) < 1e-9
+    # 같은 종목이 ksic2·ksic3 에도 들어간다
+    assert by[("ksic2", "26")]["n_members"] == 2
+    assert by[("ksic3", "261")]["n_members"] == 2
+    assert und["no_label"] == 0 and und["no_prev"] == 0
+
+
+def test_compute_day_stats_is_deterministic():
+    """T7-b — 같은 입력이면 «완전히 같은» 행이 나온다(UPSERT 멱등의 전제)."""
+    rows = [("AAAAA1", 120.0, 103.0, 100.0), ("BBBBB1", 100.0, 98.0, 100.0)]
+    labels = {"AAAAA1": "26110", "BBBBB1": "27110"}
+    one, u1 = sc.compute_day_stats(rows, labels)
+    two, u2 = sc.compute_day_stats(rows, labels)
+    assert one == two and u1 == u2

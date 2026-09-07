@@ -48,6 +48,18 @@ _MIN_DT = datetime(1970, 1, 1)      # ksic_checked_at NULLS FIRST 정렬용 하�
 
 _U_MARKET_SQL = "SELECT stock_code FROM stock_market WHERE " + SQL_STOCK_ONLY + " ORDER BY 1"
 
+STATS_WINDOW_DAYS = 20        # 달력일(태쏘 load_day 와 같은 창)
+UP_MULT = 1.15                # 태쏘 run_sector.py:123 «승계»(새 문턱 아님)
+TAXONOMIES = (("ksic2", 2), ("ksic3", 3), ("ksic5", 5))
+
+_STATS_SQL = (
+    "WITH w AS ("
+    "  SELECT stock_code, date, high, close,"
+    "         LAG(close) OVER (PARTITION BY stock_code ORDER BY date) AS prev_close"
+    "  FROM daily_prices"
+    "  WHERE date BETWEEN %s AND %s AND close > 0 AND " + SQL_STOCK_ONLY +
+    ") SELECT stock_code, high, close, prev_close FROM w WHERE date = %s ORDER BY stock_code")
+
 
 class SectorStageError(RuntimeError):
     """단계 실패 — 부분 집계(partial)를 들고 올라간다.
@@ -294,3 +306,139 @@ def recopy_preferred(conn, trade_date, source="eod") -> dict:
     res = w.write_map(conn, plan, source)
     res["counts"] = plan["counts"]
     return res
+
+
+def load_day_rows(conn, d) -> list:
+    """그날 대상 행 — 창 «안»에 close>0 과 술어를 걸고 LAG 로 prev_close 를 구한 뒤
+    date=d 만 남긴다(태쏘 load_day 와 «같은 순서»).
+
+    🔴 daily_prices.date 는 TEXT(YYYY-MM-DD)라 비교는 문자열이다.
+    🔴 태쏘의 market_cap > 0 조건은 «넣지 않는다» — 시총은 사실상 2024-03-13 부터라
+       그 전 구간이 통째로 비어 버린다(§3.2).
+    """
+    lo = (d - timedelta(days=STATS_WINDOW_DAYS)).isoformat()
+    hi = d.isoformat()
+    with conn.cursor() as cur:
+        cur.execute(_STATS_SQL, (lo, hi, hi))
+        return cur.fetchall()
+
+
+def sector_label(ksic_code, n):
+    """앞 n 자리. 길이 < n 이거나 접두가 숫자가 아니면 None(그 taxonomy 에서 미정).
+
+    🔑 3자리 코드의 left(,5) 는 «그 코드 자신»이라 ksic5 에선 미정이 맞다.
+       비숫자는 실측 0건이지만 CHECK 위반으로 ③이 죽지 않게 여기서 거른다.
+    """
+    s = (ksic_code or "").strip()
+    if len(s) < n:
+        return None
+    head = s[:n]
+    if not head.isdigit():
+        return None
+    return head
+
+
+def rank_and_pct(values):
+    """세 통계량 각각의 섹터간 순위·백분위.
+
+    rank = «자기 제외, 통계량이 좋거나 같은(≥) 다른 업종 수»(동률 포함) —
+    태쏘 rank_pct 의 side="left" 와 동치다. pct = 100·(G−1−rank)/(G−1) · G<2 면 None.
+    """
+    import bisect
+    srt = sorted(values)
+    g = len(values)
+    out = []
+    for v in values:
+        ge = g - bisect.bisect_left(srt, v)     # v 이상인 개수(자기 포함)
+        rank = ge - 1
+        pct = (100.0 * (g - 1 - rank) / (g - 1)) if g >= 2 else None
+        out.append((rank, pct))
+    return out
+
+
+def compute_day_stats(rows, labels):
+    """그날 행 + 라벨 → (성적표 행들, 미정 건수).
+
+    미정 3종(no_prev · no_label · short_code)은 «항상» 세어 summary 로 올린다 —
+    「0건」에 두 종류가 있다(안 돌았다 / 돌았는데 0).
+
+    ⚠️ 스펙 §6.2 는 「pandas 벡터」라고 적었지만 여기서는 **순수 파이썬**(statistics)을
+       쓴다. 하루 대상이 ~2,700행 · 그룹 ~550개라 벡터화 이득이 작고, 손계산 테스트(T6)와
+       오라클(T9)이 읽어야 하는 코드라 «읽히는 쪽»을 택했다. 병목은 집계가 아니라 일자별
+       20일 창 SQL 이다(1,392일 × ~55k행). **백필 예상 소요 = 수 분 ~ 15분**이며,
+       15분을 넘기면 그때 창 SQL 을 한 번에 읽는 방식으로 바꾼다(집계는 그대로 둔다).
+       ⚠️ 이 15분은 **측정치가 아니라 추정**이다(실측 근거 없음) — 백필 리포트의
+       `elapsed_sec` 가 첫 실측이며, 크게 벗어나면 스펙 §6.2 와 함께 갱신한다.
+    """
+    import statistics
+    undefined = {"no_prev": 0, "no_label": 0, "short_code": {}}
+    recs = []
+    for code, high, close, prev in rows:
+        if prev is None or float(prev) <= 0 or close is None:
+            undefined["no_prev"] += 1
+            continue
+        prev = float(prev)
+        r = float(close) / prev - 1.0
+        up = (high is not None) and (float(high) >= prev * UP_MULT)
+        ks = labels.get(code)
+        if w.is_blank(ks):
+            undefined["no_label"] += 1
+            continue
+        recs.append((code, ks, r, up))
+
+    out = []
+    for tax, n in TAXONOMIES:
+        buckets = {}
+        short = 0
+        for _code, ks, r, up in recs:
+            key = sector_label(ks, n)
+            if key is None:
+                short += 1
+                continue
+            buckets.setdefault(key, []).append((r, up))
+        undefined["short_code"][tax] = short
+        if not buckets:
+            continue
+        keys = sorted(buckets)
+        g = len(keys)
+        med = [statistics.median([x[0] for x in buckets[k]]) for k in keys]
+        mean = [statistics.mean([x[0] for x in buckets[k]]) for k in keys]
+        upc = [sum(1 for x in buckets[k] if x[1]) for k in keys]
+        pos = [float(sum(1 for x in buckets[k] if x[0] > 0)) / len(buckets[k]) for k in keys]
+        rp_med = rank_and_pct(med)
+        rp_up = rank_and_pct([float(u) for u in upc])
+        rp_pos = rank_and_pct(pos)
+        for i, k in enumerate(keys):
+            out.append({
+                "taxonomy": tax, "sector_key": k,
+                "n_members": len(buckets[k]), "g_sectors": g,
+                "ret_median": med[i], "ret_mean": mean[i],
+                "up_count": upc[i], "pos_ratio": pos[i],
+                "rank_median": rp_med[i][0], "pct_median": rp_med[i][1],
+                "rank_up": rp_up[i][0], "pct_up": rp_up[i][1],
+                "rank_pos": rp_pos[i][0], "pct_pos": rp_pos[i][1],
+            })
+    return out, undefined
+
+
+def compute_stats(conn, d) -> dict:
+    """③ 성적표. 그날 일봉 0행이면 스킵(휴장일 정상 · WARNING)."""
+    rows = load_day_rows(conn, d)
+    if not rows:
+        logger.warning("[sector] %s 일봉 0행 - 성적표 스킵(휴장일이면 정상)", d)
+        return {"date": d.isoformat(), "rows": 0, "skipped": "no_daily",
+                "G": {}, "undefined": {}}
+    labels = dict((r[0], r[1]) for r in w.map_as_of(conn, d))
+    if not labels:
+        logger.error("[sector] %s fn_sector_map_as_of 0행 - 성적표 스킵(부트스트랩 전인가)", d)
+        return {"date": d.isoformat(), "rows": 0, "skipped": "empty_map",
+                "G": {}, "undefined": {}}
+    stat_rows, undefined = compute_day_stats(rows, labels)
+    for r in stat_rows:
+        r["date"] = d
+    n = w.upsert_stats(conn, stat_rows)
+    g = {}
+    for tax, _ in TAXONOMIES:
+        g[tax] = len([r for r in stat_rows if r["taxonomy"] == tax])
+    logger.info("[sector] %s 성적표 %d행 G=%s 미정=%s", d, n, g, undefined)
+    return {"date": d.isoformat(), "rows": n, "G": g, "undefined": undefined}

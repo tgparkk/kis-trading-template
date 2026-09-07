@@ -509,3 +509,57 @@ def load_nodata(conn) -> dict:
     except Exception:
         conn.rollback()
         raise
+
+
+_UPSERT_STATS = """
+INSERT INTO sector_daily_stats
+  (date, taxonomy, sector_key, n_members, g_sectors, ret_median, ret_mean, up_count,
+   pos_ratio, rank_median, pct_median, rank_up, pct_up, rank_pos, pct_pos, computed_at)
+VALUES %s
+ON CONFLICT (date, taxonomy, sector_key) DO UPDATE SET
+    n_members=EXCLUDED.n_members, g_sectors=EXCLUDED.g_sectors,
+    ret_median=EXCLUDED.ret_median, ret_mean=EXCLUDED.ret_mean,
+    up_count=EXCLUDED.up_count, pos_ratio=EXCLUDED.pos_ratio,
+    rank_median=EXCLUDED.rank_median, pct_median=EXCLUDED.pct_median,
+    rank_up=EXCLUDED.rank_up, pct_up=EXCLUDED.pct_up,
+    rank_pos=EXCLUDED.rank_pos, pct_pos=EXCLUDED.pct_pos, computed_at=now()
+"""
+
+_STATS_TEMPLATE = ("(%(date)s, %(taxonomy)s, %(sector_key)s, %(n_members)s, %(g_sectors)s, "
+                   "%(ret_median)s, %(ret_mean)s, %(up_count)s, %(pos_ratio)s, "
+                   "%(rank_median)s, %(pct_median)s, %(rank_up)s, %(pct_up)s, "
+                   "%(rank_pos)s, %(pct_pos)s, now())")
+
+
+def upsert_stats(conn, rows) -> int:
+    """성적표 배치 UPSERT — 같은 날 두 번 돌려도 행수·값이 그대로다(멱등)."""
+    if not rows:
+        return 0
+    from psycopg2.extras import execute_values
+    try:
+        with conn.cursor() as cur:
+            execute_values(cur, _UPSERT_STATS, rows, template=_STATS_TEMPLATE, page_size=1000)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return len(rows)
+
+
+def delete_stats(conn, d_from, d_to, taxonomy=None) -> int:
+    """§6.2 데이터 롤백 — 삭제 «건수»를 돌려준다(무징후 삭제 금지)."""
+    sql = "DELETE FROM sector_daily_stats WHERE date BETWEEN %s AND %s"
+    params = [d_from, d_to]
+    if taxonomy:
+        sql += " AND taxonomy=%s"
+        params.append(taxonomy)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            n = cur.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    logger.warning("[sector] 성적표 삭제 %d행 (%s ~ %s · taxonomy=%s)", n, d_from, d_to, taxonomy)
+    return n
