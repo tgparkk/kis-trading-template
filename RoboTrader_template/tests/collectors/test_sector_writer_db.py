@@ -159,3 +159,48 @@ def test_upsert_stats_is_idempotent(conn):
                     (TEST_STATS_DATE,))
         assert cur.fetchone() == (2, 6), "재실행이 멱등하지 않다"
     assert w.delete_stats(conn, TEST_STATS_DATE, TEST_STATS_DATE) == 2
+
+
+def _stats_row(taxonomy, key, n_members):
+    return {"date": TEST_STATS_DATE, "taxonomy": taxonomy, "sector_key": key,
+            "n_members": n_members, "g_sectors": 2, "ret_median": 0.01, "ret_mean": 0.02,
+            "up_count": 1, "pos_ratio": 0.5, "rank_median": 0, "pct_median": 100.0,
+            "rank_up": 0, "pct_up": 100.0, "rank_pos": 0, "pct_pos": 100.0}
+
+
+def _read_stats(conn, taxonomy):
+    with conn.cursor() as cur:
+        cur.execute("SELECT sector_key, n_members FROM sector_daily_stats "
+                    "WHERE date=%s AND taxonomy=%s ORDER BY 1", (TEST_STATS_DATE, taxonomy))
+        return cur.fetchall()
+
+
+def test_upsert_overwrites_the_value_not_just_the_row(conn):
+    """🔴 T7-a ① — 충돌 시 DO **UPDATE** 여야 한다. 행수만 세면 DO NOTHING 과 구별되지 않아
+    「재계산했는데 옛 값이 남는」 사고를 못 잡는다."""
+    assert w.upsert_stats(conn, [_stats_row("ksic3", "261", 3)]) == 1
+    assert _read_stats(conn, "ksic3") == [("261", 3)]
+    w.upsert_stats(conn, [_stats_row("ksic3", "261", 9)])
+    assert _read_stats(conn, "ksic3") == [("261", 9)], "값이 안 바뀌었다(DO NOTHING 인가)"
+
+
+def test_delete_stale_stats_removes_ghost_rows_only(conn):
+    """🔴 T7-a ② — 두 번째 계산에서 사라진 섹터 키의 행은 없어져야 한다(유령 행 제거).
+    같은 날 «다른 taxonomy» 는 건드리지 않는다."""
+    w.upsert_stats(conn, [_stats_row("ksic3", "261", 3), _stats_row("ksic3", "262", 4),
+                          _stats_row("ksic2", "26", 7)])
+    # 2회차 계산: ksic3 키 집합이 {261} 로 줄었다
+    w.upsert_stats(conn, [_stats_row("ksic3", "261", 5)])
+    assert w.delete_stale_stats(conn, TEST_STATS_DATE, "ksic3", {"261"}) == 1
+    assert _read_stats(conn, "ksic3") == [("261", 5)], "유령 행이 남았거나 산 행을 지웠다"
+    assert _read_stats(conn, "ksic2") == [("26", 7)], "다른 taxonomy 를 건드렸다"
+    # 같은 키 집합으로 다시 부르면 0건(멱등)
+    assert w.delete_stale_stats(conn, TEST_STATS_DATE, "ksic3", {"261"}) == 0
+
+
+def test_delete_stale_stats_with_empty_keep_set_is_valid_sql(conn):
+    """🔴 빈 키 집합은 «그 taxonomy 전부 삭제»다 — 빈 배열이 SQL 문법 오류가 나지 않는지
+    실 DB 로 확인한다(호출자가 스킵 경로에서 부르면 안 되는 이유이기도 하다)."""
+    w.upsert_stats(conn, [_stats_row("ksic2", "26", 7)])
+    assert w.delete_stale_stats(conn, TEST_STATS_DATE, "ksic2", set()) == 1
+    assert _read_stats(conn, "ksic2") == []

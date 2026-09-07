@@ -694,3 +694,117 @@ def test_compute_day_stats_is_deterministic():
     one, u1 = sc.compute_day_stats(rows, labels)
     two, u2 = sc.compute_day_stats(rows, labels)
     assert one == two and u1 == u2
+
+
+class _LogSpy:
+    """logger 대역 — 어느 레벨로 «무엇이» 나갔는지 본다.
+    「무징후 절단 금지」는 summary 만으로는 못 지킨다 — 로그 레벨까지가 계약이다."""
+
+    def __init__(self):
+        self.warning_msgs = []
+        self.info_msgs = []
+        self.error_msgs = []
+
+    @staticmethod
+    def _fmt(msg, args):
+        return (msg % args) if args else msg
+
+    def warning(self, msg, *args):
+        self.warning_msgs.append(self._fmt(msg, args))
+
+    def info(self, msg, *args):
+        self.info_msgs.append(self._fmt(msg, args))
+
+    def error(self, msg, *args):
+        self.error_msgs.append(self._fmt(msg, args))
+
+
+def _patch_stats(monkeypatch, rows, labels, spy=None, stale_by_tax=None):
+    """compute_stats 의 DB 경계를 전부 가짜로 바꾼다. 반환 = 호출 기록."""
+    seen = {"upsert": [], "delete": []}
+    monkeypatch.setattr(sc, "load_day_rows", lambda conn, d: rows)
+    monkeypatch.setattr(w, "map_as_of", lambda conn, d: labels)
+
+    def _up(conn, r):
+        seen["upsert"].append(len(r))
+        return len(r)
+
+    def _del(conn, d, tax, keep):
+        seen["delete"].append((tax, sorted(keep)))
+        return (stale_by_tax or {}).get(tax, 0)
+
+    monkeypatch.setattr(w, "upsert_stats", _up)
+    monkeypatch.setattr(w, "delete_stale_stats", _del)
+    if spy is not None:
+        monkeypatch.setattr(sc, "logger", spy)
+    return seen
+
+
+def test_compute_stats_warns_on_undefined_and_reports_universe(monkeypatch):
+    """🔴 #1 — 미정 건수는 summary «와» WARNING 둘 다에 나와야 한다(무징후 절단 금지).
+    분모가 없으면 「short_code.ksic5 = 921」이 큰지 작은지 알 수 없다 → universe 를 돌려준다."""
+    rows = [("AAAAA1", 120.0, 103.0, 100.0), ("BBBBB1", 100.0, 98.0, 100.0),
+            ("CCCCC1", 50.0, 50.0, None)]                 # 직전 봉 없음 → no_prev
+    labels = [("AAAAA1", "26110"), ("BBBBB1", "27110"), ("CCCCC1", "264")]
+    spy = _LogSpy()
+    _patch_stats(monkeypatch, rows, labels, spy=spy)
+    res = sc.compute_stats(None, TD)
+    assert res["universe"] == 3, "분모(입력 행수)가 summary 에 없다"
+    assert res["undefined"]["no_prev"] == 1
+    hit = [m for m in spy.warning_msgs if "no_prev=1" in m]
+    assert hit, "미정이 있는데 WARNING 이 없다: %s" % spy.warning_msgs
+    assert "입력 3행" in hit[0], "WARNING 에 분모가 없다: %s" % hit[0]
+
+
+def test_compute_stats_does_not_warn_when_nothing_is_undefined(monkeypatch):
+    """#1 — 경고는 «조건부»다. 항상 울리면 경고가 소음이 되어 마비된다."""
+    rows = [("AAAAA1", 120.0, 103.0, 100.0), ("BBBBB1", 100.0, 98.0, 100.0)]
+    labels = [("AAAAA1", "26110"), ("BBBBB1", "27110")]
+    spy = _LogSpy()
+    _patch_stats(monkeypatch, rows, labels, spy=spy)
+    res = sc.compute_stats(None, TD)
+    assert res["undefined"]["no_prev"] == 0 and res["undefined"]["no_label"] == 0
+    assert [m for m in spy.warning_msgs if "미정" in m] == [], spy.warning_msgs
+
+
+def test_compute_stats_deletes_stale_sector_rows(monkeypatch):
+    """🔴 #2 — 재계산은 «교체»다. UPSERT 뒤에 이번 키 집합에 없는 옛 행을 지운다.
+    안 지우면 옛 G 기준의 g_sectors·rank_*·pct_* 를 가진 유령 행이 그날 표에 남아
+    그날 표가 «내부 불일치»가 된다."""
+    rows = [("AAAAA1", 120.0, 103.0, 100.0), ("BBBBB1", 100.0, 98.0, 100.0)]
+    labels = [("AAAAA1", "26110"), ("BBBBB1", "27110")]
+    spy = _LogSpy()
+    seen = _patch_stats(monkeypatch, rows, labels, spy=spy, stale_by_tax={"ksic3": 2})
+    res = sc.compute_stats(None, TD)
+    by_tax = dict(seen["delete"])
+    assert sorted(by_tax) == ["ksic2", "ksic3", "ksic5"], "taxonomy 3종 모두 교체돼야 한다"
+    assert by_tax["ksic5"] == ["26110", "27110"]
+    assert by_tax["ksic3"] == ["261", "271"]
+    assert by_tax["ksic2"] == ["26", "27"]
+    assert res["stale_deleted"] == {"ksic2": 0, "ksic3": 2, "ksic5": 0}
+    assert [m for m in spy.warning_msgs if "유령" in m], \
+        "삭제가 있었는데 WARNING 이 없다: %s" % spy.warning_msgs
+
+
+@pytest.mark.parametrize("rows,labels,expect", [
+    ([], [], "no_daily"),
+    ([("AAAAA1", 120.0, 103.0, 100.0)], [], "empty_map"),
+])
+def test_compute_stats_skip_paths_never_delete(monkeypatch, rows, labels, expect):
+    """🔴 #2 — 계산이 «비었을» 때 지우면 유효 행이 날아간다. 스킵 경로는 삭제 0회."""
+    seen = _patch_stats(monkeypatch, rows, labels)
+    res = sc.compute_stats(None, TD)
+    assert res["skipped"] == expect
+    assert seen["delete"] == [] and seen["upsert"] == []
+
+
+def test_compute_stats_deletes_nothing_when_no_row_is_computable(monkeypatch):
+    """🔴 #2 — 일봉·명부는 있는데 계산 결과가 0행인 날(전부 no_prev)도 «삭제 금지»다.
+    스킵 경로만 막으면 이 구멍으로 그날 표가 통째로 지워진다."""
+    rows = [("AAAAA1", 50.0, 50.0, None), ("BBBBB1", 50.0, 50.0, None)]
+    labels = [("AAAAA1", "26110"), ("BBBBB1", "27110")]
+    seen = _patch_stats(monkeypatch, rows, labels)
+    res = sc.compute_stats(None, TD)
+    assert res["rows"] == 0
+    assert seen["delete"] == [], "계산 0행인데 유효 행을 지웠다"
+    assert res["stale_deleted"] == {}, "«안 돌았다»와 «돌았는데 0»은 다르다"

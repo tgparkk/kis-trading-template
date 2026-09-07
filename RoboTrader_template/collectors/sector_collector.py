@@ -422,7 +422,12 @@ def compute_day_stats(rows, labels):
 
 
 def compute_stats(conn, d) -> dict:
-    """③ 성적표. 그날 일봉 0행이면 스킵(휴장일 정상 · WARNING)."""
+    """③ 성적표. 그날 일봉 0행이면 스킵(휴장일 정상 · WARNING).
+
+    재계산은 «교체»다(§5-4) — UPSERT 뒤에 이번 키 집합에 없는 옛 행을 지운다.
+    반환: date · rows · universe(입력 행수) · G · undefined · stale_deleted.
+    스킵 경로(일봉 0행 · 명부 0행)의 반환은 예전 형태 그대로다(universe·stale_deleted 없음).
+    """
     rows = load_day_rows(conn, d)
     if not rows:
         logger.warning("[sector] %s 일봉 0행 - 성적표 스킵(휴장일이면 정상)", d)
@@ -438,7 +443,35 @@ def compute_stats(conn, d) -> dict:
         r["date"] = d
     n = w.upsert_stats(conn, stat_rows)
     g = {}
+    keep = {}
     for tax, _ in TAXONOMIES:
-        g[tax] = len([r for r in stat_rows if r["taxonomy"] == tax])
-    logger.info("[sector] %s 성적표 %d행 G=%s 미정=%s", d, n, g, undefined)
-    return {"date": d.isoformat(), "rows": n, "G": g, "undefined": undefined}
+        rows_t = [r for r in stat_rows if r["taxonomy"] == tax]
+        g[tax] = len(rows_t)
+        keep[tax] = set(r["sector_key"] for r in rows_t)
+
+    # 🔴 재계산은 «교체»다(§5-4). UPSERT 만 하면 키 집합이 «줄어든» 재실행에서 옛 행이
+    #    유령으로 남고, 그 행의 g_sectors·rank_*·pct_* 는 옛 G 기준이라 그날 표가
+    #    내부 불일치가 된다. 단 «계산이 0행이면 아무것도 지우지 않는다» — 일봉 결손 등으로
+    #    계산이 빈 날 유효 행을 날리면 안 된다(빈 keep 은 「전부 삭제」를 뜻한다).
+    stale = {}
+    if stat_rows:
+        for tax, _ in TAXONOMIES:
+            stale[tax] = w.delete_stale_stats(conn, d, tax, keep[tax])
+    else:
+        logger.warning("[sector] %s 성적표 계산 0행 - 삭제를 «하지 않는다»(유효 행 보호) "
+                       "· 입력 %d행 · 미정=%s", d, len(rows), undefined)
+
+    # 🔴 미정은 «항상» 보이게 한다 — summary 에만 있으면 「유니버스 1/3 이 빠진 날」이
+    #    INFO 에 묻힌다. 분모(입력 행수)를 같이 찍어야 921 이 큰지 작은지 알 수 있다.
+    short = undefined.get("short_code") or {}
+    if undefined.get("no_prev") or undefined.get("no_label") or any(short.values()):
+        logger.warning("[sector] %s 미정 - no_prev=%d · no_label=%d · short_code=%s "
+                       "/ 입력 %d행", d, undefined.get("no_prev", 0),
+                       undefined.get("no_label", 0), dict(short), len(rows))
+    if any(stale.values()):
+        logger.warning("[sector] %s 유령 행 삭제 %s - 키 집합이 줄어든 재계산이다", d, stale)
+
+    logger.info("[sector] %s 성적표 %d행/%d G=%s 미정=%s 삭제=%s",
+                d, n, len(rows), g, undefined, stale)
+    return {"date": d.isoformat(), "rows": n, "universe": len(rows), "G": g,
+            "undefined": undefined, "stale_deleted": stale}

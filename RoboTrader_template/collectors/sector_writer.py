@@ -532,7 +532,12 @@ _STATS_TEMPLATE = ("(%(date)s, %(taxonomy)s, %(sector_key)s, %(n_members)s, %(g_
 
 
 def upsert_stats(conn, rows) -> int:
-    """성적표 배치 UPSERT — 같은 날 두 번 돌려도 행수·값이 그대로다(멱등)."""
+    """성적표 배치 UPSERT — 충돌하는 키는 값까지 덮어쓴다(DO UPDATE).
+
+    ⚠️ 「멱등」은 «키 집합이 같을 때»만 참이다. 키가 «줄어든» 재계산에서는 옛 행이 그대로
+       남고, 그 행의 g_sectors·rank_*·pct_* 는 옛 G 기준이라 그날 표가 내부 불일치가 된다.
+       유령 행 제거는 호출자가 delete_stale_stats 로 한다(sector_collector.compute_stats).
+    """
     if not rows:
         return 0
     from psycopg2.extras import execute_values
@@ -562,4 +567,28 @@ def delete_stats(conn, d_from, d_to, taxonomy=None) -> int:
         conn.rollback()
         raise
     logger.warning("[sector] 성적표 삭제 %d행 (%s ~ %s · taxonomy=%s)", n, d_from, d_to, taxonomy)
+    return n
+
+
+_DELETE_STALE_STATS = ("DELETE FROM sector_daily_stats "
+                       "WHERE date=%s AND taxonomy=%s AND NOT (sector_key = ANY(%s::text[]))")
+
+
+def delete_stale_stats(conn, d, taxonomy, keep_keys) -> int:
+    """재계산은 «교체»다 — 그날 그 taxonomy 에서 이번 키 집합에 «없는» 행을 지운다.
+
+    🔴 UPSERT 만으로는 키 집합이 줄어든 재실행에서 옛 행이 유령으로 남는다(upsert_stats
+       docstring 참조). 삭제 «건수»를 돌려준다 — 무징후 삭제 금지.
+    🔴 빈 keep_keys 는 「그 taxonomy 를 그날 전부 지운다」는 뜻이다. 그래서 호출자는
+       «계산 결과가 0행이면 이 함수를 부르지 않는다»를 지켜야 한다(compute_stats 참조).
+    """
+    keys = sorted(set(keep_keys or ()))
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_DELETE_STALE_STATS, (d, taxonomy, keys))
+            n = cur.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return n
