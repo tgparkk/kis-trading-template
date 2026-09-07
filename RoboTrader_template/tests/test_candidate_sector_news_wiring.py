@@ -174,3 +174,38 @@ def test_apply_method_direct_contract(selector, monkeypatch):
     monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "live")
     codes, notes = selector._apply_sector_news_rerank("s1", list(CODES), "2026-09-07")
     assert codes == ["A1", "A5", "A3", "A4", "A2", "A6"] and set(notes) == {"A5", "A2"}
+
+
+def test_import_failure_inside_method_is_fail_open(selector, monkeypatch):
+    # core.sector_news_rerank 를 「임포트 불가」 상태로 만든다(부분 배포·롤백 도중을 흉내).
+    # import 문이 outer try 안에 있어야만 여기서 ImportError 가 fail-open 으로 잡힌다 —
+    # 밖에 있으면 _fetch_candidates_for_strategy 의 fail-closed try 는 이미 끝난 뒤라
+    # bot/candidate_loader.py 까지 그대로 샌다.
+    monkeypatch.setitem(sys.modules, "core.sector_news_rerank", None)
+    monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "live")
+    repo = FakeRepo(**GOOD)
+    selector.db_manager.sector_news_repo = repo
+    cands = selector._fetch_candidates_for_strategy("s1", 20)
+    assert _codes(cands) == CODES
+    assert repo.calls == []
+
+
+def test_missing_mode_constant_is_fail_open(selector, monkeypatch):
+    # 상수가 삭제된 상태(예: 부분 롤백)를 흉내 — getattr 기본값 "off" 로 떨어져야 하고,
+    # AttributeError 가 나면 안 된다(off 는 DB 접근 0 이 계약이므로 repo 는 건드리지 않는다).
+    monkeypatch.delattr(C, "SECTOR_NEWS_BOOST_MODE")
+    repo = FakeRepo(**GOOD)
+    selector.db_manager.sector_news_repo = repo
+    assert _codes(selector._fetch_candidates_for_strategy("s1", 20)) == CODES
+    assert repo.calls == []
+
+
+def test_aware_now_kst_is_normalized(selector, monkeypatch):
+    # now_kst() 가 tz-aware 를 돌려줘도(운영 환경의 실제 모습) stale 판정용 뺄셈 전에
+    # tzinfo 를 벗겨내는 경로가 정상 동작하는지 — GOOD 의 asof 는 naive 다.
+    import pytz
+    monkeypatch.setattr(cs, "now_kst", lambda: pytz.timezone("Asia/Seoul").localize(NOW))
+    monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "live")
+    repo = FakeRepo(**GOOD)
+    selector.db_manager.sector_news_repo = repo
+    assert _codes(selector._fetch_candidates_for_strategy("s1", 20)) == ["A1", "A5", "A3", "A4", "A2", "A6"]

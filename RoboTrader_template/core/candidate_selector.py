@@ -1154,8 +1154,14 @@ class CandidateSelector:
         """스냅샷 코드 순서에 섹터 뉴스 점수를 얹어 최대 K칸 순위 이동 (스펙 B §5).
 
         🔑 **fail-open — 이 메서드는 예외를 «절대» 밖으로 내지 않는다.**
-           호출자 `_fetch_candidates_for_strategy` 의 fail-closed `except` 에 잡히면
-           「후보 조회 실패 → 금일 매수 중단」이 되어 결정 8(재정렬은 장식)을 깨뜨린다.
+           호출자 `_fetch_candidates_for_strategy` 의 이 호출 지점은 «양쪽» try 블록
+           바깥이다(첫 조회 실패용 fail-closed try 는 이미 끝났고, 안전필터용 try 는
+           아직 시작 전) — 여기서 예외가 새면 그 fail-closed `except` 가 잡아주지
+           «않는다». `bot/candidate_loader.py` 까지 그대로 올라가 3회 재시도 후
+           «전 전략» 「금일 매수 불가」로 이어진다(결정 8: 재정렬은 장식이어야 한다는
+           전제를 정면으로 깬다). 그래서 import 문·상수 읽기까지 포함해 메서드
+           «전체»를 outer try 안에 둔다 — `ImportError`(부분 배포·롤백 도중)나
+           `AttributeError`(상수 삭제) 도 예외가 아니라 fail-open 대상이다.
            어떤 실패든 원래 순서를 돌려주고 WARNING 한 줄 + 기록 행(reason≠ok)만 남긴다.
 
         모드(config.constants.SECTOR_NEWS_BOOST_MODE — 호출 시점에 읽는다):
@@ -1166,13 +1172,14 @@ class CandidateSelector:
         Returns:
             (반환할 코드 순서, {code: 표기 문자열}) — shadow/실패 는 (원래 순서, {}).
         """
-        from config import constants as C
-        from core.sector_news_rerank import rerank, RerankRow, classify_sector_news_exception
-
-        mode = C.SECTOR_NEWS_BOOST_MODE
-        if mode == "off" or not codes:
-            return list(codes), {}
         try:
+            from config import constants as C
+            from core.sector_news_rerank import rerank, RerankRow, classify_sector_news_exception
+
+            mode = getattr(C, "SECTOR_NEWS_BOOST_MODE", "off")
+            if mode == "off" or not codes:
+                return list(codes), {}
+
             repo = getattr(self.db_manager, "sector_news_repo", None)
             if repo is None:
                 self.logger.warning(f"[섹터뉴스] {strategy_name}: db_manager.sector_news_repo 없음 → 원래 순서")
