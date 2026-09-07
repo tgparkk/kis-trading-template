@@ -20,6 +20,7 @@ from db.repositories.candidate import CandidateRepository
 from db.repositories.price import PriceRepository, PriceRecord
 from db.repositories.trading import TradingRepository
 from db.repositories.quant import QuantRepository
+from db.repositories.sector_news import SectorNewsRepository
 
 
 @dataclass
@@ -69,6 +70,13 @@ class DatabaseManager:
         self.price_repo = PriceRepository()
         self.trading_repo = TradingRepository(real_table_name=REAL_TRADING_TABLE)
         self.quant_repo = QuantRepository()
+
+        # 스펙 B: 섹터 뉴스 재정렬 기록. 표 생성 실패는 기동을 막지 않는다(fail-open — 로드 시 다시 WARNING).
+        self.sector_news_repo = SectorNewsRepository()
+        try:
+            self.sector_news_repo.ensure_table()
+        except Exception as e:
+            self.logger.warning(f"[섹터뉴스] sector_news_rerank_log 표 확인 실패(무시): {e}")
 
     def _verify_tables(self):
         """테이블 및 hypertable 존재 확인"""
