@@ -22,6 +22,8 @@ pytestmark = [pytest.mark.db]
 
 TEST_CODES = ("TEST9A", "TEST9B", "TEST9C", "TEST90", "TEST9D", "TEST9F", "TEST9G")
 TEST_STATS_DATE = date(1999, 1, 4)
+# T13 recon 행(Task 9). 🔴 실 이력(2026-06~)과 겹칠 수 없는 1999 날짜 «한 줄»만 지운다.
+TEST_RECON_DATE = "1999-01-04"
 
 
 def _cleanup(c):
@@ -31,6 +33,8 @@ def _cleanup(c):
             cur.execute("DELETE FROM sector_daily_stats WHERE date=%s", (TEST_STATS_DATE,))
             # T12 합성 코드(Task 7). 실 데이터와 겹치지 않는 990/991/99 만 지운다.
             cur.execute("DELETE FROM ksic_code_name WHERE code IN ('990','991','99')")
+            cur.execute("DELETE FROM collection_reconciliation "
+                        "WHERE dataset='sector' AND trade_date=%s", (TEST_RECON_DATE,))
         c.commit()
     except Exception:
         c.rollback()
@@ -281,3 +285,34 @@ def test_coverage_numerator_is_limited_to_u_market(conn):
         num_after = cur.fetchone()
     assert num_after == num_before, "U_market 밖 종목이 커버리지 «분자»에 들어갔다"
     assert den_after == den_before, "U_market 밖 종목이 커버리지 «분모»를 움직였다"
+
+
+def test_upsert_reconciliation_updates_row_and_keeps_the_two_ratios_apart(conn):
+    """T13 recon 행 — 실 스키마 왕복. 🔴 합성 `_facts()` 로 도는 T13 은 이 SQL 을 안 탄다.
+
+    ① 두 번째 호출이 «갱신»이라야 한다(재실행이 행을 늘리면 PK 계약이 깨진 것).
+    ② `coverage` 와 `value_match_rate` 는 «서로 다른 값»으로 넣고 «열별로» 읽는다 —
+       `_UPSERT_RECON` 은 인자 순서와 컬럼 순서가 일부러 어긋나 있어(coverage 가 뒤)
+       한 자리만 밀려도 두 값이 조용히 뒤바뀐다.
+    """
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM collection_reconciliation "
+                    "WHERE dataset='sector' AND trade_date=%s", (TEST_RECON_DATE,))
+        assert cur.fetchone()[0] == 0, "픽스처 정리가 안 됐다"
+
+    w.upsert_reconciliation(conn, TEST_RECON_DATE, real_rows=547, new_rows=3, overlap=5,
+                            coverage=0.5001, value_match_rate=0.9002, verdict="WARN")
+    w.upsert_reconciliation(conn, TEST_RECON_DATE, real_rows=548, new_rows=4, overlap=6,
+                            coverage=0.5003, value_match_rate=0.9004, verdict="PASS")
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM collection_reconciliation "
+                    "WHERE dataset='sector' AND trade_date=%s", (TEST_RECON_DATE,))
+        assert cur.fetchone()[0] == 1, "두 번째 호출이 «새 행»을 만들었다(UPSERT 가 아니다)"
+        cur.execute("SELECT real_rows, new_rows, overlap, coverage, value_match_rate, verdict "
+                    "FROM collection_reconciliation WHERE dataset='sector' AND trade_date=%s",
+                    (TEST_RECON_DATE,))
+        rr, nr, ov, cov, vmr, verdict = cur.fetchone()
+    assert (rr, nr, ov, verdict) == (548, 4, 6, "PASS"), "두 번째 값으로 «갱신»이 안 됐다"
+    assert abs(cov - 0.5003) < 1e-9, "coverage 열에 다른 값이 들어갔다"
+    assert abs(vmr - 0.9004) < 1e-9, "value_match_rate 열에 다른 값이 들어갔다(coverage 와 swap)"

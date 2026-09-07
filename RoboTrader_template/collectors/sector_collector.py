@@ -708,8 +708,10 @@ def evaluate_gates(trade_date, today, prev_summaries, facts) -> dict:
     vmr = (float(facts.get("ksic3_name_nonnull", 0)) / umkt) if umkt else 0.0
 
     # 1. 커버리지 (U_market 소속 열린 줄만 — U_all 의 상폐 23 은 분자·분모 모두 제외)
+    # 🔴 분모 0 은 «결측 키»가 아니라 «퇴화한 DB 사실»(stock_market 이 빈 표)이다.
+    #    「모른다」를 「안전」으로 접으면 그 날 커버리지 게이트가 통째로 무음이 된다 — FAIL 이다.
     if not umkt:
-        notes.append("U_market 0 — 커버리지 판정 불가")
+        fails.append("gate1 U_market 0 — 커버리지 계산 불가(stock_market 이 비었다)")
     else:
         if cov < COVERAGE_MIN:
             fails.append("gate1 ksic_code 커버리지 %.4f < %.2f" % (cov, COVERAGE_MIN))

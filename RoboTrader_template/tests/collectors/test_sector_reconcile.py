@@ -53,6 +53,15 @@ def test_gate1_coverage_below_98_is_fail():
     assert out["verdict"] == "FAIL" and any("gate1" in f for f in out["fails"])
 
 
+def test_gate1_empty_u_market_is_fail_not_a_note():
+    """🔴 분모 0 은 «모르는 것»이 아니라 «퇴화한 DB 사실»(stock_market 빈 표)이다.
+    note 로 접으면 그 날은 PASS 로 나가고, 커버리지 게이트가 통째로 무음이 된다."""
+    out = sc.evaluate_gates(D, _summary(), [_summary()], _facts(u_market=0))
+    assert out["verdict"] == "FAIL"
+    assert any("U_market 0 — 커버리지 계산 불가" in f for f in out["fails"])
+    assert not any("U_market 0" in n for n in out["notes"]), "note 로 남으면 PASS 로 접힌다"
+
+
 def test_gate2_g_floor_is_fail_and_swing_is_warn():
     out = sc.evaluate_gates(D, _summary(), [], _facts(g={"ksic2": 61, "ksic3": 40, "ksic5": 324}))
     assert out["verdict"] == "FAIL" and any("gate2" in f for f in out["fails"])
@@ -124,6 +133,38 @@ def test_gate6_null_rate_spike_is_warn():
     assert out["verdict"] == "WARN" and any("null_rate" in x for x in out["warns"])
 
 
+def test_gate6_stale_not_measured_is_warn_not_a_pass():
+    """🔴 map.stale 은 3상태다(Task 8) — None 은 «미측정»이지 «신선함»이 아니다.
+    False 로 접으면 낡은 캐시가 무음으로 통과한다."""
+    today = _summary(map={"stale": None, "stale_error": "probe boom"})
+    out = sc.evaluate_gates(D, today, [_summary()], _facts())
+    assert out["verdict"] == "WARN", (out["fails"], out["warns"])
+    assert any("stale 미측정" in x for x in out["warns"])
+    assert any("probe boom" in x for x in out["warns"]), "실패 사유가 경보에 안 실렸다"
+
+
+def test_holiday_skips_the_scoreboard_gate_with_a_reason():
+    """휴장일엔 성적표가 없는 게 정상 — FAIL 이 아니라 «사유가 남는 PASS» 다."""
+    out = sc.evaluate_gates(D, _summary(), [_summary(), _summary()],
+                            _facts(is_trading_day=False, stats_rows=0, g={}))
+    assert out["verdict"] == "PASS", (out["fails"], out["warns"])
+    assert not out["fails"]
+    assert any("휴장일" in n for n in out["notes"])
+
+
+def test_missing_db_facts_are_noted_not_silently_passed():
+    """🔴 무징후 절단 금지 — 사실이 «없어서» 못 잰 게이트는 notes 에 사유가 남아야 한다.
+    조용히 넘어가면 그 게이트는 「한 번도 발동 안 함」이 되고 「이상 없음」과 구별이 안 된다."""
+    f = _facts()
+    del f["duplicates"]
+    del f["new_rows"]
+    out = sc.evaluate_gates(D, _summary(), [_summary()], f)
+    assert any("gate8" in n for n in out["notes"]), "명부 중복을 못 쟀는데 사유가 없다"
+    assert any("gate4" in n and "new_rows" in n for n in out["notes"]), \
+        "잔량 정체를 못 쟀는데 사유가 없다"
+    assert out["verdict"] == "PASS", (out["fails"], out["warns"])
+
+
 def test_gate7_publish_delay_three_days_is_warn():
     late = _summary(map={"source_asof": "2026-09-04"})
     out = sc.evaluate_gates(D, late, [late, late], _facts())
@@ -186,3 +227,7 @@ def test_verdict_vocabulary_and_iso_trade_date(monkeypatch):
     assert out["verdict"] in ("PASS", "WARN", "FAIL")
     assert written["td"] == "2026-09-07"
     assert written["rr"] == 547 and written["ov"] == 5
+    # 🔴 두 비율은 «서로 다른 값»이라야 swap 회귀를 잡는다(1.0 vs 2765/2772).
+    assert abs(written["cov"] - 1.0) < 1e-9, "coverage 자리에 다른 값이 갔다"
+    assert abs(written["vmr"] - 2765.0 / 2772.0) < 1e-9, \
+        "value_match_rate 자리에 다른 값이 갔다(coverage 와 뒤바뀌었나)"
