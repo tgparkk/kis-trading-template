@@ -1071,20 +1071,76 @@ def backfill(d_from, d_to, dry_run=False, force=False) -> dict:
 
 
 def regen_stats(d_from, d_to, taxonomy=None, dry_run=False, force=False) -> dict:
-    """§5-4 ③ — 성적표만 재계산(명부는 안 건드린다). taxonomy 지정 시 그것만 지우고 다시 쓴다."""
+    """§5-4 ③ — 성적표만 재계산(명부는 안 건드린다). taxonomy 지정 시 그것만 지우고 다시 쓴다.
+
+    🔴 리포트는 «어느 분기에서도» 쓴다. 실경로는 구간을 «먼저 통째로 지운 뒤» 하루씩
+       되살리므로, 중간에 죽으면 「무엇을 지웠고 어디까지 되살렸나」가 파일로 남지 않으면
+       복구 근거가 사라진다 — 덜 지우는 delete_stats_cli 조차 리포트를 남긴다.
+       그래서 실패 경로도 리포트를 «먼저» 쓰고 재전파한다(다른 op 와 같은 패턴).
+    """
     _guard_window(force)
+    t0 = now_kst()
+    deleted = 0
+    rows = 0
+    days_with_rows = 0
+    done = 0
     with KisDbConnection.get_connection() as conn:
         w.ensure_tables(conn)
         days = _trading_days_between(conn, d_from, d_to)
         if dry_run:
-            return {"from": str(d_from), "to": str(d_to), "days": len(days),
-                    "dry_run": True, "would_delete_taxonomy": taxonomy}
-        deleted = w.delete_stats(conn, d_from, d_to, taxonomy)
-        rows = 0
-        for iso in days:
-            rows += compute_stats(conn, date.fromisoformat(iso)).get("rows", 0)
-    return {"from": str(d_from), "to": str(d_to), "days": len(days),
-            "deleted": deleted, "rows": rows, "dry_run": False}
+            # 🔑 안 쟀으니 None 이다 — 「모른다」를 0 으로 접으면 「지울 게 없다」로 읽힌다.
+            out = {"from": str(d_from), "to": str(d_to), "days": len(days),
+                   "taxonomy": taxonomy, "dry_run": True,
+                   "would_delete_taxonomy": taxonomy,
+                   "deleted": None, "rows": None, "days_with_rows": None,
+                   "elapsed_sec": (now_kst() - t0).total_seconds()}
+            out["report"] = _report("regen_stats_report", [
+                "성적표 재계산 dry-run (쓰기 0 · 삭제 0)", str(out), "",
+                "구간: %s ~ %s · 거래일 %d일 · taxonomy=%s" % (d_from, d_to, len(days),
+                                                              taxonomy),
+                "deleted·rows·days_with_rows 는 dry-run 이라 «재지 않았다»(None).",
+            ])
+            return out
+        failed_on = None
+        try:
+            deleted = w.delete_stats(conn, d_from, d_to, taxonomy)
+            for iso in days:
+                failed_on = iso
+                n = compute_stats(conn, date.fromisoformat(iso)).get("rows", 0)
+                rows += n
+                if n:
+                    days_with_rows += 1
+                done += 1
+                failed_on = None
+        except Exception as e:  # noqa: BLE001 — 지운 뒤 죽으면 근거 없이 구멍만 남는다
+            path = _report("regen_stats_report", [
+                "🔴 성적표 재계산 «중간 실패» — 구간을 지운 «뒤» 되살리다 멈췄다",
+                "구간: %s ~ %s · taxonomy=%s" % (d_from, d_to, taxonomy),
+                "삭제한 행: %d" % deleted,
+                "되살린 날: %d/%d · rows=%d · days_with_rows=%d" % (done, len(days), rows,
+                                                                   days_with_rows),
+                "실패한 날: %s" % failed_on,
+                "오류: %s" % e,
+                "elapsed_sec: %.1f" % (now_kst() - t0).total_seconds(),
+                "",
+                "🔴 남은 %d일은 성적표가 «없는» 상태다 — 같은 구간으로 다시 돌릴 것."
+                % (len(days) - done),
+            ])
+            logger.error("[sector] 성적표 재계산 중간 실패 - %d/%d일 되살린 뒤 %s 에서 멈췄다"
+                         "(삭제 %d행) · 리포트 %s: %s",
+                         done, len(days), failed_on, deleted, path, e)
+            raise
+    out = {"from": str(d_from), "to": str(d_to), "days": len(days),
+           "taxonomy": taxonomy, "deleted": deleted, "rows": rows,
+           "days_with_rows": days_with_rows, "dry_run": False,
+           "elapsed_sec": (now_kst() - t0).total_seconds()}
+    out["report"] = _report("regen_stats_report", [
+        "성적표 재계산", str(out), "",
+        "삭제 %d행 → 재계산 %d행 (거래일 %d일 · days_with_rows %d일 · taxonomy=%s)"
+        % (deleted, rows, len(days), days_with_rows, taxonomy),
+        "🔴 성적표만 바꿨다 — 명부(stock_sector_map)는 손대지 않았다.",
+    ])
+    return out
 
 
 def delete_stats_cli(d_from, d_to, taxonomy=None, dry_run=False, force=False) -> dict:
@@ -1296,9 +1352,18 @@ def regen_map(d_from, dry_run=False, force=False) -> dict:
             reset = w.reset_map_from(conn, d_from)
             fetcher = _gz_fetcher()
             replayed = 0
+            wrote_new = []            # 원본이 못 쓴 날인데 재생이 «쓴» 날
             for iso in days:
                 day = date.fromisoformat(iso)
-                update_map(conn, day, source="eod", fetcher=fetcher)
+                res = update_map(conn, day, source="eod", fetcher=fetcher) or {}
+                # 🔴 재생은 «7일 후퇴 gz» 를 찾으므로 원본이 캐시 404 로 못 썼던 날도
+                #    쓴다 — 그 날 명부는 원본보다 «더 채워진» 상태가 된다(docstring ②).
+                #    집계해서 내지 않으면 소급 라벨이 «조용히» 늘어난다 — 무징후 절단이다.
+                #    🔑 summary 가 아예 없는 날(None)도 「원본이 썼다」로 접지 않는다.
+                if res.get("written"):
+                    prev = _read_summary(day) or {}
+                    if not (prev.get("map") or {}).get("written"):
+                        wrote_new.append(iso)
                 path = os.path.join(SECTOR_DIR, "dart_company_%s.jsonl" % iso)
                 if os.path.exists(path):
                     open_rows = w.load_open_rows(conn)
@@ -1327,16 +1392,59 @@ def regen_map(d_from, dry_run=False, force=False) -> dict:
             logger.error("[sector] 재생성 실패(%s) - 스냅샷 %d행으로 되돌렸다", e, restored)
             raise
         w.drop_map_snapshot(conn)
+    # 🔴 보관 jsonl 이 없어 KSIC 계열(ksic_code·source·checked_at)을 «보존»한 날.
+    #    문자열화된 dict 안에만 두면 「재생했다」와 구별되지 않는다.
+    preserved_ksic_days = len(days) - len(jsonl_days)
+    if wrote_new:
+        logger.warning("[sector] 재생이 «원본이 못 쓴» 날 %d일을 새로 썼다 - 그 날의 소급 "
+                       "라벨이 원본보다 늘어난다: %s", len(wrote_new), wrote_new[:10])
+    if preserved_ksic_days:
+        logger.warning("[sector] 보관 jsonl 이 없어 KSIC 계열을 «보존»한 날 %d일 - 그 구간의 "
+                       "ksic_code/source/checked_at 은 재생 전 값 그대로다", preserved_ksic_days)
     out = {"from": str(d_from), "days": len(days), "jsonl_days": len(jsonl_days),
            "deleted": reset["deleted"], "reopened": reset["reopened"],
-           "replayed_responses": replayed, "snapshot_rows": snap_rows, "dry_run": False}
+           "replayed_responses": replayed, "snapshot_rows": snap_rows, "dry_run": False,
+           "regen_wrote_where_original_didnt": len(wrote_new),
+           "regen_wrote_where_original_didnt_dates": wrote_new,
+           "preserved_ksic_days": preserved_ksic_days}
     out["report"] = _report("regen_map_report", [
         "명부 재생성", str(out), "",
         "삭제(valid_from >= %s): %d행" % (d_from, reset["deleted"]),
         "다시 연 줄(valid_to >= %s): %d행" % (d_from - timedelta(days=1), reset["reopened"]),
         "jsonl 재생 응답: %d건 (보관분 없는 날의 KSIC 계열은 «보존»)" % replayed,
+        "KSIC 계열을 «보존»한 날: %d일 (전체 %d일 − jsonl 보관 %d일)"
+        % (preserved_ksic_days, len(days), len(jsonl_days)),
+        "",
+        "🔴 원본이 못 쓴 날인데 재생이 쓴 날: %d일 — 그 날은 명부가 "
+        "원본보다 «더 채워졌다»(소급 라벨 증가)." % len(wrote_new),
+        "   날짜: %s" % wrote_new,
     ])
     return out
+
+
+_CLI_OPS = ("bootstrap", "backfill", "regen", "regen_map", "delete_stats")
+
+
+def _check_cli_flags(args, error):
+    """고른 작업 이름(없으면 None)을 돌려준다. 조용히 삼켜지는 조합은 error() 로 거부한다.
+
+    🔴 --dry-run/--force 를 작업 플래그 없이 주면 마지막 else 가지(collect_sector =
+       진짜 EOD 수집)로 떨어져 두 플래그가 «무시된 채» 실제 수집이 돌아간다 —
+       「안 쓴다」·「가드를 넘긴다」고 믿고 부른 명령이 SCD2 를 쓰는 형태다.
+    🔴 op 두 개를 같이 주면 elif 사슬이 앞의 하나만 돌고 나머지는 «조용히» 버려진다.
+    """
+    chosen = [n for n in _CLI_OPS if getattr(args, n, False)]
+    if len(chosen) > 1:
+        error("작업 플래그는 하나만 쓴다 — 동시에 주면 앞의 하나만 돌고 나머지는 "
+              "조용히 버려진다: %s"
+              % ", ".join("--" + n.replace("_", "-") for n in chosen))
+    if not chosen:
+        for flag in ("dry_run", "force"):
+            if getattr(args, flag, False):
+                error("--%s 플래그는 수동 작업(--bootstrap/--backfill/--regen/--regen-map/"
+                      "--delete-stats)에만 쓴다 — EOD 판(기본)과 --reconcile-only 는 "
+                      "그 플래그를 무시한다" % flag.replace("_", "-"))
+    return chosen[0] if chosen else None
 
 
 if __name__ == "__main__":
@@ -1354,15 +1462,7 @@ if __name__ == "__main__":
     ap.add_argument("--dry-run", dest="dry_run", action="store_true")
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
-
-    # 🔴 --dry-run 을 작업 플래그 없이 쓰면 마지막 else 가지(collect_sector = 진짜 EOD)로
-    #    떨어져 dry_run 이 «무시된 채» 실제 수집이 돌아간다 — 「안 쓴다」고 믿고
-    #    불렀는데 SCD2 가 써진다. 조용한 오해를 남기지 않고 즉시 거부한다.
-    if args.dry_run and not (args.bootstrap or args.backfill or args.regen
-                             or args.regen_map or args.delete_stats):
-        ap.error("--dry-run 은 수동 작업(--bootstrap/--backfill/--regen/--regen-map/"
-                 "--delete-stats)에만 쓴다 — EOD 판(기본)과 --reconcile-only 는 "
-                 "dry-run 이 없다")
+    _check_cli_flags(args, ap.error)
 
     def _need(v, name):
         if not v:

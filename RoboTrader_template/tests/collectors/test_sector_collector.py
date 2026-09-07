@@ -1139,7 +1139,8 @@ _WRITE_FNS = ("write_map", "apply_ksic_updates", "upsert_stats", "delete_stats",
               "delete_stale_stats", "upsert_nodata", "rebuild_ksic_names",
               "upsert_reconciliation", "reset_map_from", "snapshot_map",
               "restore_map", "drop_map_snapshot")
-_WRITE_ORCH = ("compute_stats", "update_map", "recopy_preferred", "fill_ksic")
+_WRITE_ORCH = ("compute_stats", "update_map", "recopy_preferred", "fill_ksic",
+               "maybe_refresh_corp_code")
 
 
 def _forbid_writes(monkeypatch):
@@ -1415,16 +1416,23 @@ def test_regen_map_drops_the_snapshot_only_on_success(monkeypatch):
 
 
 def test_regen_stats_dry_run_deletes_nothing(monkeypatch):
-    """--regen --dry-run 은 지우지도 다시 계산하지도 않는다."""
+    """--regen --dry-run 은 지우지도 다시 계산하지도 않고, 리포트만 남긴다."""
     _forbid_writes(monkeypatch)
+    reports = []
     monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: _DummyCM())
     monkeypatch.setattr(sc.w, "ensure_tables", lambda conn: None)
     monkeypatch.setattr(sc, "_trading_days_between",
                         lambda conn, a, b: ["2026-09-04", "2026-09-07"])
+    monkeypatch.setattr(sc, "_report",
+                        lambda name, lines: reports.append((name, list(lines))) or "(r)")
     out = sc.regen_stats(date(2026, 9, 4), date(2026, 9, 7), taxonomy="ksic3",
                          dry_run=True, force=True)
-    assert out == {"from": "2026-09-04", "to": "2026-09-07", "days": 2,
-                   "dry_run": True, "would_delete_taxonomy": "ksic3"}
+    assert [n for n, _ in reports] == ["regen_stats_report"]
+    assert out["from"] == "2026-09-04" and out["to"] == "2026-09-07"
+    assert out["days"] == 2 and out["dry_run"] is True
+    assert out["would_delete_taxonomy"] == "ksic3" and out["report"] == "(r)"
+    # 🔑 dry-run 은 재지 않았다 — 「모른다」를 0 으로 접지 않는다(집 규약).
+    assert out["deleted"] is None and out["rows"] is None and out["days_with_rows"] is None
 
 
 def test_delete_stats_dry_run_only_counts(monkeypatch):
@@ -1464,3 +1472,164 @@ def test_delete_stats_dry_run_only_counts(monkeypatch):
     assert out["would_delete"] == 12 and out["dry_run"] is True and out["report"] == "(r)"
     assert lines["sql"].strip().upper().startswith("SELECT"), "dry-run 이 DELETE 를 냈다"
     assert lines["params"][-1] == "ksic5", "taxonomy 가 셈에서 빠졌다"
+
+
+# ── T14 fix1 — 리포트 공백 2건(#1 regen_stats · #2 regen_map) + CLI 플래그 조합 ──
+def _patch_regen_stats(monkeypatch, reports, days=("2026-09-04", "2026-09-07"),
+                       rows_by_day=None, boom_on=None, deleted=5):
+    """regen_stats 실경로를 DB 없이 굴린다. reports 에 (이름, 줄들) 이 쌓인다."""
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: _DummyCM())
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda conn: None)
+    monkeypatch.setattr(sc, "_trading_days_between", lambda conn, a, b: list(days))
+    monkeypatch.setattr(sc.w, "delete_stats", lambda conn, a, b, tax=None: deleted)
+    by_day = dict(rows_by_day or {})
+
+    def _stats(conn, d):
+        if boom_on and d.isoformat() == boom_on:
+            raise RuntimeError("일봉 결손")
+        return {"rows": by_day.get(d.isoformat(), 100)}
+
+    monkeypatch.setattr(sc, "compute_stats", _stats)
+    monkeypatch.setattr(sc, "_report",
+                        lambda name, lines: reports.append((name, list(lines))) or "(r)")
+
+
+def test_regen_stats_success_writes_a_report(monkeypatch):
+    """🔴 #1 — 5 op 중 regen_stats 만 리포트가 없었다. 실경로도 근거를 남긴다."""
+    reports = []
+    _patch_regen_stats(monkeypatch, reports,
+                       rows_by_day={"2026-09-04": 550, "2026-09-07": 0})
+    out = sc.regen_stats(date(2026, 9, 4), date(2026, 9, 7), taxonomy="ksic3", force=True)
+    assert [n for n, _ in reports] == ["regen_stats_report"]
+    assert out["deleted"] == 5 and out["rows"] == 550 and out["days_with_rows"] == 1
+    assert out["days"] == 2 and out["taxonomy"] == "ksic3" and out["dry_run"] is False
+    assert isinstance(out["elapsed_sec"], float) and out["report"] == "(r)"
+    body = "\n".join(reports[0][1])
+    for token in ("5", "550", "ksic3", "days_with_rows"):
+        assert token in body, "리포트에 %s 가 없다: %s" % (token, body)
+
+
+def test_regen_stats_midway_failure_reports_before_reraising(monkeypatch):
+    """🔴 #1 — 임의 구간을 «먼저 지운 뒤» 하루씩 되살린다. 중간에 죽으면
+    「무엇을 지웠고 어디까지 되살렸나」가 파일로 남지 않으면 복구 근거가 사라진다."""
+    reports = []
+    _patch_regen_stats(monkeypatch, reports, boom_on="2026-09-07")
+    with pytest.raises(RuntimeError) as e:
+        sc.regen_stats(date(2026, 9, 4), date(2026, 9, 7), force=True)
+    assert "일봉 결손" in str(e.value), "원인 예외가 삼켜졌다"
+    assert [n for n, _ in reports] == ["regen_stats_report"], "터지기 «전»에 근거를 남겨야 한다"
+    body = "\n".join(reports[0][1])
+    assert "2026-09-07" in body, "실패한 «날짜»가 리포트에 없다"
+    assert "일봉 결손" in body, "오류 내용이 리포트에 없다"
+    assert "5" in body and "1/2" in body, "삭제 건수·진행된 날 수가 리포트에 없다: %s" % body
+
+
+def test_regen_map_reports_days_it_wrote_that_the_original_did_not(monkeypatch):
+    """🔴 #2 — docstring 은 「원본이 written=false 였던 날도 재생은 쓴다 · 리포트에
+    그 날짜 수를 남긴다」고 약속했는데 update_map 반환을 버리고 있었다.
+
+    소급 라벨이 «원본보다 늘어나는» 날이므로 무징후로 지나가면 안 된다.
+    보관 jsonl 이 없어 KSIC 계열을 «보존»한 날도 같은 이유로 센다.
+    """
+    spy = _LogSpy()
+    conn = _RegenConn()
+    reports = []
+    monkeypatch.setattr(sc, "logger", spy)
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: conn)
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda c: None)
+    monkeypatch.setattr(sc, "_trading_days_between",
+                        lambda c, a, b: ["2026-09-04", "2026-09-07", "2026-09-08",
+                                         "2026-09-09"])
+    monkeypatch.setattr(sc.w, "snapshot_map", lambda c: 7)
+    monkeypatch.setattr(sc.w, "reset_map_from", lambda c, d: {"deleted": 1, "reopened": 2})
+    monkeypatch.setattr(sc.w, "drop_map_snapshot", lambda c: None)
+    # 09-08 은 재생에서도 못 썼다 — 원본 기록과 무관하게 세면 안 된다.
+    monkeypatch.setattr(sc, "update_map",
+                        lambda c, day, **kw: {"written": day.isoformat() != "2026-09-08"})
+    monkeypatch.setattr(sc, "recopy_preferred", lambda c, day, **kw: {"counts": {}})
+    monkeypatch.setattr(sc.w, "rebuild_ksic_names", lambda c: {"codes": 1, "low_share": []})
+    prev = {"2026-09-04": {"map": {"written": True}},     # 원본도 썼다 → 세지 않는다
+            "2026-09-07": {"map": {"written": False}},    # 원본이 못 썼다 → 센다
+            "2026-09-08": {"map": {"written": False}}}    # 재생도 못 썼다 → 세지 않는다
+    monkeypatch.setattr(sc, "_read_summary", lambda d: prev.get(d.isoformat()))
+    monkeypatch.setattr(sc, "_report",
+                        lambda n, lines: reports.append((n, list(lines))) or "(r)")
+
+    out = sc.regen_map(date(2026, 9, 4), force=True)
+    # 09-09 는 summary 파일이 «아예 없다» — 「모른다」를 「썼다」로 접으면 안 된다.
+    assert out["regen_wrote_where_original_didnt"] == 2
+    assert out["regen_wrote_where_original_didnt_dates"] == ["2026-09-07", "2026-09-09"]
+    assert out["preserved_ksic_days"] == 4, "jsonl 이 하나도 없으니 4일 전부 «보존»이다"
+    body = "\n".join(reports[0][1])
+    assert "2026-09-07" in body and "2026-09-09" in body
+    assert [m for m in spy.warning_msgs if "원본이" in m and "2026-09-07" in m], spy.warning_msgs
+    assert [m for m in spy.warning_msgs if "보존" in m], spy.warning_msgs
+
+
+def test_regen_map_says_nothing_extra_when_the_replay_matches_the_original(tmp_path,
+                                                                           monkeypatch):
+    """대칭 — 원본이 전부 썼고 jsonl 도 전부 있으면 두 집계는 0 이고 WARNING 도 없다."""
+    spy = _LogSpy()
+    conn = _RegenConn()
+    monkeypatch.setattr(sc, "logger", spy)
+    monkeypatch.setattr(sc, "SECTOR_DIR", str(tmp_path))
+    open(os.path.join(str(tmp_path), "dart_company_2026-09-04.jsonl"),
+         "w", encoding="utf-8").close()          # 빈 보관분(응답 0건)
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: conn)
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda c: None)
+    monkeypatch.setattr(sc, "_trading_days_between", lambda c, a, b: ["2026-09-04"])
+    monkeypatch.setattr(sc.w, "snapshot_map", lambda c: 7)
+    monkeypatch.setattr(sc.w, "reset_map_from", lambda c, d: {"deleted": 1, "reopened": 2})
+    monkeypatch.setattr(sc.w, "drop_map_snapshot", lambda c: None)
+    monkeypatch.setattr(sc, "update_map", lambda c, day, **kw: {"written": True})
+    monkeypatch.setattr(sc, "recopy_preferred", lambda c, day, **kw: {"counts": {}})
+    monkeypatch.setattr(sc.w, "rebuild_ksic_names", lambda c: {"codes": 1, "low_share": []})
+    monkeypatch.setattr(sc.w, "load_open_rows", lambda c: {})
+    monkeypatch.setattr(sc, "_read_summary", lambda d: {"map": {"written": True}})
+    monkeypatch.setattr(sc, "_report", lambda n, lines: "(r)")
+    out = sc.regen_map(date(2026, 9, 4), force=True)
+    assert out["jsonl_days"] == 1
+    assert out["regen_wrote_where_original_didnt"] == 0
+    assert out["regen_wrote_where_original_didnt_dates"] == []
+    assert out["preserved_ksic_days"] == 0
+    assert not [m for m in spy.warning_msgs if "원본이" in m or "보존" in m], spy.warning_msgs
+
+
+def _args(**kw):
+    ns = sc.argparse.Namespace(bootstrap=False, backfill=False, regen=False,
+                               regen_map=False, delete_stats=False,
+                               reconcile_only=None, dry_run=False, force=False)
+    for k, v in kw.items():
+        setattr(ns, k, v)
+    return ns
+
+
+def test_cli_rejects_flag_combinations_that_are_silently_ignored():
+    """🔴 D1 + Minor2 — argparse 가 조용히 삼키는 조합을 «거부»한다.
+
+    ① --dry-run/--force 를 작업 플래그 없이 주면 마지막 else 가지(collect_sector =
+       진짜 EOD 수집)로 떨어져 두 플래그가 «무시된 채» 실제 수집이 돈다.
+    ② op 두 개를 같이 주면 elif 사슬이 앞의 하나만 돌고 나머지는 조용히 버려진다.
+    """
+    errs = []
+
+    def _error(msg):
+        errs.append(msg)
+        raise SystemExit(2)
+
+    for kw in ({"dry_run": True}, {"force": True},
+               {"dry_run": True, "reconcile_only": "2026-09-07"},
+               {"bootstrap": True, "backfill": True},
+               {"regen": True, "regen_map": True, "dry_run": True}):
+        del errs[:]
+        with pytest.raises(SystemExit):
+            sc._check_cli_flags(_args(**kw), _error)
+        assert errs, "거부해야 할 조합인데 통과했다: %s" % kw
+
+    # 대칭 — 정상 조합은 통과하고 «고른 op» 를 돌려준다.
+    del errs[:]
+    assert sc._check_cli_flags(_args(backfill=True, dry_run=True, force=True),
+                               _error) == "backfill"
+    assert sc._check_cli_flags(_args(), _error) is None              # EOD 판(기본)
+    assert sc._check_cli_flags(_args(reconcile_only="2026-09-07"), _error) is None
+    assert errs == [], errs
