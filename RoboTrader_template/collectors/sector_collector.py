@@ -453,10 +453,18 @@ def compute_stats(conn, d) -> dict:
     #    유령으로 남고, 그 행의 g_sectors·rank_*·pct_* 는 옛 G 기준이라 그날 표가
     #    내부 불일치가 된다. 단 «계산이 0행이면 아무것도 지우지 않는다» — 일봉 결손 등으로
     #    계산이 빈 날 유효 행을 날리면 안 된다(빈 keep 은 「전부 삭제」를 뜻한다).
+    #    🔴 그 원칙은 «taxonomy 수준»까지다 — 3자리 라벨만 있는 날처럼 한 taxonomy 만
+    #    0버킷이면 그 taxonomy 의 keep 이 비고, 빈 keep 은 「그날 그 taxonomy 행 전부
+    #    삭제」를 뜻한다. 계산하지 않은 것은 지우지 않는다 → 건너뛰고 None(미측정)+WARNING.
     stale = {}
     if stat_rows:
         for tax, _ in TAXONOMIES:
-            stale[tax] = w.delete_stale_stats(conn, d, tax, keep[tax])
+            if keep[tax]:
+                stale[tax] = w.delete_stale_stats(conn, d, tax, keep[tax])
+            else:
+                stale[tax] = None
+                logger.warning("[sector] %s %s taxonomy 계산 0행 - 삭제 건너뜀 · 기존 행 "
+                               "보존(계산하지 않은 것은 지우지 않는다)", d, tax)
     else:
         logger.warning("[sector] %s 성적표 계산 0행 - 삭제를 «하지 않는다»(유효 행 보호) "
                        "· 입력 %d행 · 미정=%s", d, len(rows), undefined)
@@ -771,12 +779,24 @@ def evaluate_gates(trade_date, today, prev_summaries, facts) -> dict:
     if today is not None and "recheck_calls" not in ((today.get("ksic_fill") or {})):
         notes.append("gate4 오늘 ksic_fill 에 recheck_calls/recheck_changed 가 없다"
                      "(② 단계 실패?) — 재확인 게이트는 0 으로 뒀다")
-    rc_hist = [((s or {}).get("ksic_fill") or {}).get("recheck_calls", 0)
-               for s in ([today] + list(prev_summaries))[:20]]
-    if len(rc_hist) >= 20 and all((c or 0) == 0 for c in rc_hist):
+    # 🔴 결측 summary 를 0 으로 «접지 않는다» — 접으면 rc_hist 길이가 항상 20 이라
+    #    「이력 부족」 note 가 도달 불가가 되고, 이력이 «없는» 날이 「재확인이 멈췄다」로
+    #    둔갑한다(「모른다」≠0). 관측 = non-None summary 의 실제 recheck_calls 값뿐이고,
+    #    관측이 20 미만이면 판정을 «보류»한다.
+    rc_hist = []
+    for s in [today] + list(prev_summaries):
+        if s is None:
+            continue
+        rc = (s.get("ksic_fill") or {}).get("recheck_calls")
+        if rc is None:
+            continue
+        rc_hist.append(rc)
+        if len(rc_hist) >= 20:
+            break
+    if len(rc_hist) >= 20 and all(c == 0 for c in rc_hist):
         warns.append("gate4 recheck_calls 가 20거래일 연속 0 — 재확인 순환 정지 의심")
     elif len(rc_hist) < 20:
-        notes.append("gate4 recheck 이력이 %d거래일뿐 — 20거래일 정지는 판정하지 않았다"
+        notes.append("gate4 재확인 이력 %d/20 — 판정 보류(20거래일 정지는 판정하지 않았다)"
                      % len(rc_hist))
     rchg = ((today or {}).get("ksic_fill") or {}).get("recheck_changed", 0) or 0
     if rchg > 10:
@@ -1238,21 +1258,56 @@ def bootstrap(trade_date, dry_run=False, force=False) -> dict:
             ])
             return out
 
-        # 1) corp_code
-        steps["corp_code"] = maybe_refresh_corp_code(conn, key, days=0)
-        # 2) 명부 (소급 · valid_from = 2021-01-04)
-        steps["map"] = update_map(conn, d, source="bootstrap_snapshot",
-                                  use_snapshot=True, valid_from=BOOTSTRAP_VALID_FROM)
-        steps["coverage_after_2"] = _coverage(conn, umkt)
-        # 3) DART 채우기 (예상 125 < 상한 300)
-        steps["ksic_fill"] = fill_ksic(conn, d, cap=DART_DAILY_CAP, recheck_max=0, key=key)
-        # 3b) 우선주 재복사 — 3 에서 부모(0220W0 등)가 채워진 자식을 받는다
-        steps["recopy"] = recopy_preferred(conn, d, source="bootstrap_snapshot")["counts"]
-        steps["coverage_after_3b"] = _coverage(conn, umkt)
-        # 4) 이름표
-        steps["names"] = w.rebuild_ksic_names(conn)
-        unlabeled = _unlabeled_list(conn, umkt)
-        after = _live_three_table_counts(conn)
+        # 🔴 단계 1~4 는 «단계마다 커밋»된다. 중간에 죽으면 ①corp_code·②명부는 이미
+        #    반영된 뒤이므로, 근거 없이 예외만 올리면 「어디까지 반영됐고 무엇이 남았나」를
+        #    잃는다 → regen_stats 와 같은 「리포트 뒤 raise」.
+        failed_on = None
+        try:
+            # 1) corp_code
+            failed_on = "1) corp_code(maybe_refresh_corp_code)"
+            steps["corp_code"] = maybe_refresh_corp_code(conn, key, days=0)
+            # 2) 명부 (소급 · valid_from = 2021-01-04)
+            failed_on = "2) 명부(update_map)"
+            steps["map"] = update_map(conn, d, source="bootstrap_snapshot",
+                                      use_snapshot=True, valid_from=BOOTSTRAP_VALID_FROM)
+            failed_on = "2) 커버리지 측정(_coverage · 2단계 후)"
+            steps["coverage_after_2"] = _coverage(conn, umkt)
+            # 3) DART 채우기 (예상 125 < 상한 300)
+            failed_on = "3) DART 채우기(fill_ksic)"
+            steps["ksic_fill"] = fill_ksic(conn, d, cap=DART_DAILY_CAP, recheck_max=0, key=key)
+            # 3b) 우선주 재복사 — 3 에서 부모(0220W0 등)가 채워진 자식을 받는다
+            failed_on = "3b) 우선주 재복사(recopy_preferred)"
+            steps["recopy"] = recopy_preferred(conn, d, source="bootstrap_snapshot")["counts"]
+            failed_on = "3b) 커버리지 측정(_coverage · 3b 후)"
+            steps["coverage_after_3b"] = _coverage(conn, umkt)
+            # 4) 이름표
+            failed_on = "4) 이름표(rebuild_ksic_names)"
+            steps["names"] = w.rebuild_ksic_names(conn)
+            failed_on = "4) 미라벨 목록(_unlabeled_list)"
+            unlabeled = _unlabeled_list(conn, umkt)
+            failed_on = "4) 라이브 3표 after(_live_three_table_counts)"
+            after = _live_three_table_counts(conn)
+            failed_on = None
+        except Exception as e:  # noqa: BLE001 — 앞 단계는 이미 커밋됐다. 근거를 «먼저» 남긴다
+            path = _report("bootstrap_report", [
+                "🔴 섹터 명부 부트스트랩 «중간 실패» — 앞 단계는 이미 커밋된 뒤다",
+                "기준일: %s" % d,
+                "U_market: %d" % len(umkt),
+                "완료한 단계: %s" % sorted(steps),
+                "2단계 후 커버리지: %s" % steps.get("coverage_after_2"),
+                "3b 후 커버리지: %s" % steps.get("coverage_after_3b"),
+                "DART 응답: %s" % (steps.get("ksic_fill") or {}).get("status_counts"),
+                "라이브 3표 전(before): %s" % before,
+                "  · 후(after)는 «재지 못했다»(None) — 실패 지점에서 멈췄다.",
+                "실패한 단계: %s" % failed_on,
+                "오류: %s" % e,
+                "",
+                "🔴 명부·DART 채우기는 «부분 반영»일 수 있다 — 같은 기준일로 다시 돌릴 것.",
+                "🔴 라이브 3표 after 를 못 쟀으므로 「불변」을 «주장하지 말 것» — 수동 대조 필요.",
+            ])
+            logger.error("[sector] 부트스트랩 중간 실패 - 단계 %s 에서 멈췄다(완료 %s) "
+                         "· 리포트 %s: %s", failed_on, sorted(steps), path, e)
+            raise
 
     cov = steps["coverage_after_3b"]
     out = {"dry_run": False, "steps": steps, "unlabeled": unlabeled,

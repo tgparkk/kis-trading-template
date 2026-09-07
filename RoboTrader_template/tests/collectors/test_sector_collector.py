@@ -810,6 +810,30 @@ def test_compute_stats_deletes_nothing_when_no_row_is_computable(monkeypatch):
     assert res["stale_deleted"] == {}, "«안 돌았다»와 «돌았는데 0»은 다르다"
 
 
+def test_compute_stats_skips_delete_for_a_taxonomy_with_no_computed_rows(monkeypatch):
+    """🔴 M-b — 「계산하지 않은 것은 지우지 않는다」는 «taxonomy 수준»까지다.
+
+    날짜 수준 가드(`if stat_rows:`)만 있으면 3자리 라벨만 있는 날처럼 «한 taxonomy 만»
+    0버킷인 경우 빈 keep 이 그 taxonomy 의 그날 행 «전부»를 지운다(빈 keep = 전부 삭제).
+    그 taxonomy 는 «측정하지 않았다» → 삭제 0회 · None(모른다) · WARNING.
+    """
+    rows = [("AAAAA1", 120.0, 103.0, 100.0), ("BBBBB1", 100.0, 98.0, 100.0)]
+    labels = [("AAAAA1", "264"), ("BBBBB1", "271")]   # 3자리뿐 → ksic5 버킷 0
+    spy = _LogSpy()
+    seen = _patch_stats(monkeypatch, rows, labels, spy=spy)
+    res = sc.compute_stats(None, TD)
+    by_tax = dict(seen["delete"])
+    assert "ksic5" not in by_tax, "빈 keep 으로 ksic5 를 통째로 지웠다: %s" % seen["delete"]
+    assert res["stale_deleted"]["ksic5"] is None, (
+        "«안 쟀다»는 None 이라야 한다(0 으로 접으면 「지울 게 없었다」로 읽힌다)")
+    assert [m for m in spy.warning_msgs if "ksic5" in m and "삭제 건너뜀" in m], (
+        "무징후 절단 — taxonomy 삭제를 건너뛰었는데 WARNING 이 없다: %s" % spy.warning_msgs)
+    # 나머지 taxonomy 는 «평소대로» 교체된다 — 가드가 전부를 멈추면 유령 행이 남는다.
+    assert sorted(by_tax) == ["ksic2", "ksic3"]
+    assert by_tax["ksic3"] == ["264", "271"] and by_tax["ksic2"] == ["26", "27"]
+    assert res["stale_deleted"]["ksic2"] == 0 and res["stale_deleted"]["ksic3"] == 0
+
+
 def _patch_collect(monkeypatch, calls, map_exc=None, fill_exc=None):
     """collect_sector 가 DB·네트워크를 전혀 안 타게 기본값을 깐다."""
     monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: _DummyCM())
@@ -1258,6 +1282,33 @@ def test_bootstrap_gate_stops_below_98_percent(monkeypatch):
     _patch_bootstrap(monkeypatch, {"ksic_code": 0.99, "ksic3_name": 0.99, "u_market": 2})
     out = sc.bootstrap(date(2026, 9, 7), force=True)
     assert out["dry_run"] is False and out["steps"]["coverage_after_3b"]["ksic3_name"] == 0.99
+
+
+def test_bootstrap_writes_a_partial_report_before_reraising(monkeypatch):
+    """🔴 I2 — 단계 1~4 중간에 죽으면 «리포트 뒤 raise» 다(regen_stats 와 같은 모양).
+
+    ①corp_code·②명부는 이미 «커밋된» 뒤다. 리포트 없이 예외만 올리면 「어디까지
+    반영됐고 무엇이 남았나」가 파일로 안 남아 복구 근거가 사라진다.
+    """
+    reports = []
+    _patch_bootstrap(monkeypatch, {"ksic_code": 1.0, "ksic3_name": 1.0, "u_market": 2})
+    monkeypatch.setattr(sc, "_report",
+                        lambda name, lines: reports.append((name, list(lines))) or "(r)")
+
+    def _boom(conn, d, **kw):
+        raise RuntimeError("DART 응답 없음")
+
+    monkeypatch.setattr(sc, "fill_ksic", _boom)
+    with pytest.raises(RuntimeError) as e:
+        sc.bootstrap(date(2026, 9, 7), force=True)
+    assert "DART 응답 없음" in str(e.value), "원인 예외가 다른 것으로 바뀌었다"
+    assert [n for n, _ in reports] == ["bootstrap_report"], (
+        "터지기 «전»에 근거를 남겨야 한다: %s" % reports)
+    body = "\n".join(reports[0][1])
+    assert "fill_ksic" in body, "실패한 «단계»가 리포트에 없다: %s" % body
+    assert "DART 응답 없음" in body, "오류 문구가 리포트에 없다: %s" % body
+    assert "라이브 3표" in body, "라이브 3표 before 가 리포트에 없다: %s" % body
+    assert "2단계 후 커버리지" in body, "측정된 coverage 가 리포트에 없다: %s" % body
 
 
 def test_bootstrap_dry_run_writes_nothing_and_predicts_coverage(monkeypatch):

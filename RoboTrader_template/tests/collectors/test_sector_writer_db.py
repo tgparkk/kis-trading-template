@@ -41,8 +41,14 @@ def _cleanup(c):
         raise
 
 
-@pytest.fixture
-def conn():
+def _conn_fixture():
+    """`conn` 픽스처의 본체 — 정리 계약을 «직접» 드라이브해서 재려고 이름을 준다.
+
+    🔴 뒤 정리는 `finally` 다. `yield` 뒤 본문에 두면 제너레이터가 «재개되지 않고»
+       닫히거나(throw/close) 하는 경로에서 정리가 통째로 건너뛰어져 실 kis_template 에
+       합성 행(TEST9A~G · ksic 990/991 · 1999-01-04)이 남는다. 그러면 다음 EOD 의
+       `rebuild_ksic_names` 가 코드 990 에 '합성A' 이름표를 «영구» 발급한다.
+    """
     try:
         cm = KisDbConnection.get_connection()
         c = cm.__enter__()
@@ -54,9 +60,15 @@ def conn():
         w.ensure_tables(c)
         _cleanup(c)
         yield c
-        _cleanup(c)
     finally:
+        try:
+            _cleanup(c)
+        except Exception as e:  # noqa: BLE001 — 정리 실패가 «테스트 실패»를 가리면 안 된다
+            print("[test] conn 픽스처 뒤 정리 실패(수동 확인 필요): %s" % e)
         cm.__exit__(None, None, None)
+
+
+conn = pytest.fixture(name="conn")(_conn_fixture)
 
 
 def test_ensure_tables_is_idempotent(conn):
@@ -316,3 +328,83 @@ def test_upsert_reconciliation_updates_row_and_keeps_the_two_ratios_apart(conn):
     assert (rr, nr, ov, verdict) == (548, 4, 6, "PASS"), "두 번째 값으로 «갱신»이 안 됐다"
     assert abs(cov - 0.5003) < 1e-9, "coverage 열에 다른 값이 들어갔다"
     assert abs(vmr - 0.9004) < 1e-9, "value_match_rate 열에 다른 값이 들어갔다(coverage 와 swap)"
+
+
+# ── I1 — 픽스처 정리 계약(실 DB 불필요 · 접속·정리를 가짜로 바꿔 «호출 여부»만 본다) ──
+class _FakeCursor:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, *a, **kw):
+        return None
+
+
+class _FakeConn:
+    def cursor(self):
+        return _FakeCursor()
+
+
+def test_conn_fixture_cleans_up_even_when_the_test_body_raises(monkeypatch):
+    """🔴 I1 — 본문이 raise 해서 제너레이터가 «재개되지 않고» 닫혀도 정리는 돈다.
+
+    `yield` 뒤 «본문»에 정리를 두면 이 경로에서 통째로 건너뛰어져 실 kis_template 에
+    합성 행이 남고, 다음 EOD 의 `rebuild_ksic_names` 가 그 코드에 이름표를 영구 발급한다.
+    정리는 `finally` 라야 한다.
+    """
+    calls = []
+    fake = _FakeConn()
+
+    class _FakeCM:
+        def __enter__(self):
+            return fake
+
+        def __exit__(self, *a):
+            calls.append("exit")
+            return False
+
+    monkeypatch.setattr(KisDbConnection, "get_connection", lambda: _FakeCM())
+    monkeypatch.setattr(w, "ensure_tables", lambda c: calls.append("ensure"))
+    monkeypatch.setitem(globals(), "_cleanup", lambda c: calls.append("cleanup"))
+
+    gen = _conn_fixture()
+    assert next(gen) is fake
+    assert calls == ["ensure", "cleanup"], "앞 정리가 안 돌았다: %s" % calls
+
+    with pytest.raises(RuntimeError):
+        gen.throw(RuntimeError("테스트 본문 실패"))
+    assert calls == ["ensure", "cleanup", "cleanup", "exit"], (
+        "본문이 raise 했을 때 뒤 정리가 건너뛰어졌다(실 DB 에 합성 행이 남는다): %s" % calls)
+
+
+def test_conn_fixture_cleanup_failure_does_not_mask_the_test_failure(monkeypatch):
+    """🔴 I1 — 정리가 터져도 «원래» 예외가 올라간다(정리 예외가 실패를 갈아치우면 안 된다).
+    연결 반납(`cm.__exit__`)도 그대로 돈다."""
+    calls = []
+    fake = _FakeConn()
+
+    class _FakeCM:
+        def __enter__(self):
+            return fake
+
+        def __exit__(self, *a):
+            calls.append("exit")
+            return False
+
+    def _boom(c):
+        calls.append("cleanup")
+        if len(calls) > 1:          # 앞 정리는 통과 · 뒤 정리만 터뜨린다
+            raise RuntimeError("정리 실패")
+
+    monkeypatch.setattr(KisDbConnection, "get_connection", lambda: _FakeCM())
+    monkeypatch.setattr(w, "ensure_tables", lambda c: None)
+    monkeypatch.setitem(globals(), "_cleanup", _boom)
+
+    gen = _conn_fixture()
+    next(gen)
+    with pytest.raises(RuntimeError) as e:
+        gen.throw(RuntimeError("테스트 본문 실패"))
+    assert "테스트 본문 실패" in str(e.value), "정리 예외가 본문 실패를 가렸다"
+    assert calls[-1] == "exit", "정리가 터지면 연결이 반납되지 않는다: %s" % calls

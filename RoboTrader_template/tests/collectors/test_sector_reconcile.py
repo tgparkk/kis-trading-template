@@ -110,6 +110,31 @@ def test_gate4_recheck_stopped_20_days_is_warn():
     assert out["verdict"] == "WARN" and any("recheck" in x for x in out["warns"])
 
 
+def test_gate4_recheck_history_shorter_than_20_is_a_note_not_a_warn():
+    """🔴 M-a — 「이력이 없다」를 「재확인이 멈췄다」로 오표기하면 안 된다.
+
+    결측 summary 를 0 으로 접으면 rc_hist 길이가 «항상» 20 이라 「이력 부족」 note 가
+    도달 불가가 되고, 관측이 5거래일뿐인데 전부 0 인 날이 정지 WARN 으로 둔갑한다.
+    관측(non-None summary)이 20 미만이면 판정을 «보류»한다.
+    """
+    prevs = [_summary(ksic_fill={"recheck_calls": 0}) for _ in range(4)]
+    today = _summary(ksic_fill={"recheck_calls": 0})          # 관측 5개 · 전부 0
+    out = sc.evaluate_gates(D, today, prevs, _facts())
+    assert not any("recheck_calls" in x for x in out["warns"]), (
+        "관측 5개로 20거래일 정지를 단정했다: %s" % out["warns"])
+    assert any("재확인 이력 5/20" in n and "판정 보류" in n for n in out["notes"]), (
+        "보류 사유가 없다(무징후 절단): %s" % out["notes"])
+
+
+def test_gate4_missing_summaries_do_not_count_as_zero_recheck():
+    """🔴 M-a — 결측 20일 + 오늘 0 은 「20거래일 연속 0」이 아니다(관측 1개).
+    대칭: 관측이 실제로 20개 모이면 WARN 이 난다(위 20일 테스트)."""
+    out = sc.evaluate_gates(D, _summary(ksic_fill={"recheck_calls": 0}),
+                            [None] * 20, _facts(prev_recon_dates=[]))
+    assert not any("recheck_calls" in x for x in out["warns"]), out["warns"]
+    assert any("재확인 이력 1/20" in n for n in out["notes"]), out["notes"]
+
+
 def test_gate5_written_false_two_days_is_fail():
     """🔴 얼어붙은 명부 — 2거래일 연속 미갱신은 FAIL."""
     today = _summary(map={"written": False})
