@@ -1,4 +1,4 @@
-# 섹터 뉴스 부스트 (스펙 B) — 뉴스 키워드·종목매핑 → KSIC3 섹터 점수 → 매수후보 재정렬 — 설계 v1.1 (2026-09-06 · 정정 2026-09-07)
+# 섹터 뉴스 부스트 (스펙 B) — 뉴스 키워드·종목매핑 → KSIC3 섹터 점수 → 매수후보 재정렬 — 설계 v1.2 (2026-09-06 · 정정 2026-09-07)
 
 > **이력** — v1(2026-09-06, 사장님 승인) → **v1.1**(2026-09-07, 구현 계획 작성 중 발견한 정정 7건 — §13. 결정 10개는 불변). 구현 계획: 봇 측 `docs/superpowers/plans/2026-09-07-sector-news-boost-bot.md` · NewsQuant 측 `D:\GIT\NewsQuant\docs\superpowers\plans\2026-09-07-sector-news-boost-newsquant.md`.
 
@@ -168,7 +168,7 @@ news(window, published_at 인덱스) ─┬─ 경로 A: 사전 매칭(제목 1.
 
 ### 4.1 창과 `trade_date`
 
-- `trade_date` = 평일이고 `now < 15:30` 이면 **오늘**, 아니면 **다음 평일**. 공휴일 달력은 NewsQuant 에 없으므로 무시한다(창이 넓어질 뿐이고 봇은 휴장일에 로드하지 않는다).
+- `trade_date` = 평일이고 `now < 15:30` 이면 **오늘**, 아니면 **다음 평일**. 공휴일 달력은 NewsQuant 에 없으므로 무시한다(봇은 휴장일에 로드하지 않는다). ⚠️ **정정(v1.2, §14-2)**: 이 근사는 창을 «넓히는» 게 아니라 공휴일 뒤에는 창을 «좁힌다» — 월요일이 휴장이면 화요일 창의 시작이 월요일 15:30 이 되어 월요일 낮 뉴스가 통째로 빠진다. v1 구현은 이 정의대로이고, 보정은 §14-2 후속.
 - `window_start` = **직전 평일 15:30**(월요일이면 금요일 15:30). `window_end` = now. D-1 장중 뉴스는 D-1 종가(=스크리너 스냅샷)에 이미 반영됐다고 보고 **뺀다**.
 - 시간 감쇠는 v1 에 없다(§10).
 
@@ -459,3 +459,18 @@ save_rerank_log 실패             → WARNING, 반환값에 영향 없음
 | 7 | §3.1 | — | `n_dir < MIN_N` 이어도 **행은 쓴다**(`score_signed=0`) · 귀속 0 인 섹터는 행 없음 | 「뉴스가 없었다」와 「계산이 안 돌았다」를 가른다(§3.1 에 이미 있던 문장을 규칙으로 승격) |
 
 부수: `sector_news_aggregator` 상수에 `DIR_EPS=0.1`(「방향 있는」 문턱) · `TOP_NEWS=5` · `DEFAULT_W_SRC=0.9` 이름을 준다. 봇 상수에 `SECTOR_NEWS_BOOST_MODES` · `resolve_sector_news_mode()` · `SECTOR_NEWS_BOOST_MODE_INVALID`(잘못된 env 값 원문 — 호출자가 WARNING)를 둔다.
+
+---
+
+## 14. v1.2 후속 (2026-09-07 · NewsQuant 측 구현 완료 후 최종 리뷰에서 발견 — 코드가 아니라 스펙·계획의 빈틈)
+
+NewsQuant 측 구현(브랜치 `feat/sector-news-score`, 12+4 커밋)은 §2.1·§3·§4·§7.1 을 그대로 구현했고 실 DB 1회 실행(2026-09-07 08:50 기준 창: 뉴스 605 → 섹터 47, 경로 B on·매핑 0 = 스펙 A 명부 0행)이 통과했다. 그 최종 리뷰가 아래를 «스펙 결함/계획 누락»으로 분류했다. 전부 **별건**이며 v1 동작을 바꾸지 않는다.
+
+| # | 절 | 문제 | 후속 |
+|---|---|---|---|
+| 1 | §4.2 | 「`ksic_code_name` 이 채워진 뒤 사전 키가 그 표에 없으면 WARNING」이 **어느 태스크에도 없다**(계획 누락). 지금은 표가 0행이라 구현하면 10분마다 49건 WARNING 이 난다 | 스펙 A 부트스트랩 뒤 `sector_news_job` 에 1회/기동 검사 추가(키 ∉ 표 → WARNING 1줄, 중단 아님) |
+| 2 | §4.1 | 공휴일 무시 근사가 창을 **좁힌다**(위 §4.1 정정). 연휴(추석·설) 뒤 첫 거래일은 연휴 뉴스가 전부 빠진 채 점수가 난다 | 달력 없이 하는 보정: `window_start = min(prev_weekday(trade_date), trade_date−1) 15:30` 또는 최대 lookback 클램프. §8 평가에서 연휴 다음날은 교란일로 표기 |
+| 3 | §13-1 | 동결은 09:05 부터인데 봇은 09:00 에 읽는다. 07:43 기동 → 09:03 실행이 봇이 읽은 행을 덮어쓸 수 있다 | §8 평가 스크립트는 「09:00 이전 마지막 계산본」을 `sector_news_rerank_log.score_asof`·`sector_score`(봇이 실제로 읽은 값)에서 취한다 — `sector_news_score` 행이 아니라. 동결 시작을 09:00 으로 당기는 것도 검토 |
+| 4 | §4.4 | `SOURCE_CREDIBILITY` 에 `krx_disclosure: 1.0` 은 있는데 DART 크롤러는 `source='dart'` 로 쓴다(7일 3,503행) → 최대 출처가 기본값 0.9 | `sentiment_analyzer.SOURCE_CREDIBILITY` 에 `'dart'` 키 추가(NewsQuant 감성분석 자체에도 영향 → 별도 검토) |
+| 5 | §4.2 | 한글 부분문자열 오탐(유가증권시장·조선일보·무기한·제약 조건 등)이 실측됐다 → 사전 v2026-09-07.1 에서 좁힘(구현 완료). 영어도 transformer/infrastructure/SOC/property/content/carrier 좁힘 | 사전은 `news_sector_hit` 로 계속 튜닝. `dict_version` 이 행마다 남는다 |
+| 6 | §3.1 | `computed_at DEFAULT now()` 는 DB 세션 시간대(현재 Asia/Seoul)로 기록된다. 봇의 60분 stale 판정은 KST 벽시계와 비교하므로 DB `TimeZone` 이 바뀌면 조용히 전부 stale 이 된다 | DDL 주석으로 명시(구현 완료). 장기적으로 `timezone('Asia/Seoul', now())` 로 고정 검토 |
