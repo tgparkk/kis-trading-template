@@ -649,3 +649,28 @@ def rebuild_ksic_names(conn) -> dict:
         logger.warning("[sector] 이름표 점유율 < 0.8 인 코드 %d개: %s", len(low), low[:10])
     logger.info("[sector] 이름표 재생성 %d코드 (점유율<0.8 %d개)", len(rows), len(low))
     return {"codes": len(rows), "low_share": low}
+
+
+_UPSERT_RECON = """
+INSERT INTO collection_reconciliation
+  (trade_date, dataset, real_rows, new_rows, overlap, value_match_rate, coverage, verdict)
+VALUES (%s, 'sector', %s, %s, %s, %s, %s, %s)
+ON CONFLICT (trade_date, dataset) DO UPDATE SET
+    real_rows=EXCLUDED.real_rows, new_rows=EXCLUDED.new_rows, overlap=EXCLUDED.overlap,
+    value_match_rate=EXCLUDED.value_match_rate, coverage=EXCLUDED.coverage,
+    verdict=EXCLUDED.verdict
+"""
+
+
+def upsert_reconciliation(conn, trade_date: str, real_rows: int, new_rows: int,
+                          overlap: int, coverage, value_match_rate, verdict: str) -> None:
+    """섹터 reconcile 행. 🔴 financial_writer 것을 못 쓴다 — 거긴 real_rows 인자가 없다.
+    trade_date 는 ISO 'YYYY-MM-DD'(재무와 같은 형식 · minute 의 'YYYYMMDD' 와 섞지 않는다)."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_UPSERT_RECON, (trade_date, real_rows, new_rows, overlap,
+                                        value_match_rate, coverage, verdict))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise

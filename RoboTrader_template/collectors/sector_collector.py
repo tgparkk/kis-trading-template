@@ -672,3 +672,284 @@ def collect_sector(trade_date: str = None) -> dict:
     _write_summary(d, summary)
     logger.info("[sector] %s", summary)
     return summary
+
+
+# ───────────────────────── ⑤ reconcile (§8 게이트 1~9) ─────────────────────────
+COVERAGE_MIN = 0.98
+G_FLOORS = {"ksic2": 40, "ksic3": 100, "ksic5": 200}
+NO_PREV_FLOOR = 20
+
+
+def _undef(summary, key, default=0):
+    if not summary:
+        return default
+    u = ((summary.get("stats") or {}).get("undefined") or {})
+    v = u.get(key)
+    return default if v is None else v
+
+
+def evaluate_gates(trade_date, today, prev_summaries, facts) -> dict:
+    """§8 게이트 1~9. 순수 함수 — DB 를 만지지 않는다(테스트가 가짜 사실로 굴린다).
+
+    prev_summaries: 직전 «거래일» summary 목록(최신순 · 없는 날은 None).
+
+    🔴 무징후 절단 금지 — 「못 잰」 게이트는 반드시 notes 에 사유를 남긴다.
+       키가 없다고 조용히 넘어가면 그 게이트는 「한 번도 발동 안 함」이 되고,
+       그건 로그에서 「이상 없음」과 구별되지 않는다.
+    """
+    import statistics
+    fails, warns, notes = [], [], []
+    prev1 = prev_summaries[0] if prev_summaries else None
+    if prev1 is None and prev_summaries:
+        notes.append("직전 거래일 summary 없음 — 전일 대비 게이트(2 G 변동 · 3 no_label · "
+                     "6 null_rate)는 판정하지 않았다")
+    umkt = facts.get("u_market") or 0
+    cov = (float(facts.get("ksic_code_nonnull", 0)) / umkt) if umkt else 0.0
+    vmr = (float(facts.get("ksic3_name_nonnull", 0)) / umkt) if umkt else 0.0
+
+    # 1. 커버리지 (U_market 소속 열린 줄만 — U_all 의 상폐 23 은 분자·분모 모두 제외)
+    if not umkt:
+        notes.append("U_market 0 — 커버리지 판정 불가")
+    else:
+        if cov < COVERAGE_MIN:
+            fails.append("gate1 ksic_code 커버리지 %.4f < %.2f" % (cov, COVERAGE_MIN))
+        if vmr < COVERAGE_MIN:
+            fails.append("gate1 ksic3_name 커버리지 %.4f < %.2f" % (vmr, COVERAGE_MIN))
+
+    # 2. 성적표 존재 · G 하한 · 전일 대비
+    g = facts.get("g") or {}
+    is_td = facts.get("is_trading_day")
+    if is_td:
+        if not facts.get("stats_rows"):
+            fails.append("gate2 거래일인데 성적표 0행")
+        for tax in sorted(G_FLOORS):
+            if g.get(tax, 0) < G_FLOORS[tax]:
+                fails.append("gate2 %s G=%d < %d (조인 붕괴 신호)"
+                             % (tax, g.get(tax, 0), G_FLOORS[tax]))
+        pg = ((prev1 or {}).get("stats") or {}).get("G") or {}
+        if prev1 is not None and not pg:
+            notes.append("gate2 전일 summary 에 stats.G 가 없다(③ 단계 실패?) — "
+                         "±20% 변동은 판정하지 않았다")
+        for tax in sorted(G_FLOORS):
+            if pg.get(tax):
+                if not (pg[tax] * 0.8 <= g.get(tax, 0) <= pg[tax] * 1.2):
+                    warns.append("gate2 %s G %d 가 전일 %d 대비 ±20%% 밖"
+                                 % (tax, g.get(tax, 0), pg[tax]))
+    elif is_td is None:
+        notes.append("gate2 is_trading_day 사실이 없다 — 성적표 게이트 판정 불가")
+    else:
+        notes.append("휴장일 — 성적표 게이트 생략")
+
+    # 3. 미정 급증
+    no_label = _undef(today, "no_label")
+    no_prev = _undef(today, "no_prev")
+    for tag, s in (("오늘", today), ("전일", prev1)):
+        if s is not None and not ((s.get("stats") or {}).get("undefined")):
+            notes.append("gate3 %s summary 에 stats.undefined 가 없다(③ 단계 실패?) — "
+                         "미정 건수를 0 으로 뒀다" % tag)
+    if prev1 is not None and no_label - _undef(prev1, "no_label") >= 50:
+        warns.append("gate3 no_label 이 전일 대비 +%d" % (no_label - _undef(prev1, "no_label")))
+    hist = [_undef(s, "no_prev") for s in prev_summaries if s]
+    med = statistics.median(hist) if hist else 0
+    thr = max(NO_PREV_FLOOR, 3 * med)
+    if no_prev > thr:
+        warns.append("gate3 no_prev %d > 문턱 %d (일봉 결손 신호 · 중앙값 %s)"
+                     % (no_prev, thr, med))
+
+    # 4. 정체 — 「3거래일 연속 동일」은 «오늘 포함» 3일이다(오늘 + 직전 2일).
+    new_rows = facts.get("new_rows", 0)
+    prev_nr = facts.get("prev_new_rows") or []
+    if "new_rows" not in facts:
+        notes.append("gate4 new_rows 사실이 없다 — 잔량 정체 판정 불가(0 으로 뒀다)")
+    if new_rows > 0 and len(prev_nr) >= 2 and all(p == new_rows for p in prev_nr[:2]):
+        warns.append("gate4 정체 — 잔량 %d 가 3거래일 연속 동일(오늘 포함)" % new_rows)
+    elif new_rows > 0 and len(prev_nr) < 2:
+        notes.append("gate4 직전 recon 행이 %d개뿐 — 3거래일 정체는 판정하지 않았다"
+                     % len(prev_nr))
+    if today is not None and "recheck_calls" not in ((today.get("ksic_fill") or {})):
+        notes.append("gate4 오늘 ksic_fill 에 recheck_calls/recheck_changed 가 없다"
+                     "(② 단계 실패?) — 재확인 게이트는 0 으로 뒀다")
+    rc_hist = [((s or {}).get("ksic_fill") or {}).get("recheck_calls", 0)
+               for s in ([today] + list(prev_summaries))[:20]]
+    if len(rc_hist) >= 20 and all((c or 0) == 0 for c in rc_hist):
+        warns.append("gate4 recheck_calls 가 20거래일 연속 0 — 재확인 순환 정지 의심")
+    elif len(rc_hist) < 20:
+        notes.append("gate4 recheck 이력이 %d거래일뿐 — 20거래일 정지는 판정하지 않았다"
+                     % len(rc_hist))
+    rchg = ((today or {}).get("ksic_fill") or {}).get("recheck_changed", 0) or 0
+    if rchg > 10:
+        warns.append("gate4 recheck_changed %d > 10 (레일 아래지만 이례적)" % rchg)
+
+    # 5. 얼어붙은 명부
+    def _written(s):
+        return bool(((s or {}).get("map") or {}).get("written"))
+
+    if today is not None and not _written(today):
+        if prev1 is not None:
+            if not _written(prev1):
+                fails.append("gate5 map.written=false 가 2거래일 연속")
+        else:
+            notes.append("gate5 오늘 map.written=false 인데 전일 summary 가 없다 — "
+                         "2거래일 연속은 판정하지 않았다")
+    mls = facts.get("max_last_seen")
+    dl = facts.get("last_seen_deadline")
+    if mls is None or dl is None:
+        notes.append("gate5 last_seen_at 최댓값(%s)·기준일(%s) 중 하나가 없다 — "
+                     "명부 정체 판정 불가" % (mls, dl))
+    else:
+        mls_d = mls.date() if hasattr(mls, "date") else mls
+        if mls_d < dl:
+            fails.append("gate5 last_seen_at 최댓값 %s 가 %s 보다 오래됐다" % (mls_d, dl))
+
+    # 6. 소스 이상
+    map_today = (today or {}).get("map") or {}
+    nr_today = map_today.get("null_rate") or {}
+    nr_prev = ((prev1 or {}).get("map") or {}).get("null_rate") or {}
+    for f in ("ksic_code", "ksic3_name"):
+        v = nr_today.get(f)
+        if v is None:
+            if today is not None:
+                notes.append("gate6 null_rate[%s] 가 없다(매칭 0 또는 ① 단계 실패) — "
+                             "판정 불가" % f)
+            continue
+        p = nr_prev.get(f)
+        if v > 0.10 or (p is not None and p > 0 and v > 2 * p):
+            warns.append("gate6 null_rate[%s] %.4f (전일 %s)" % (f, v, p))
+    # 🔴 map.stale 은 3상태다(Task 8) — True / False / None(«미측정»).
+    #    None 을 False 로 접으면 낡은 캐시가 무음으로 통과한다.
+    if "stale" not in map_today:
+        if today is not None:
+            notes.append("gate6 map.stale 키가 없다(① 단계 실패?) — 캐시 신선도 판정 불가")
+    elif map_today["stale"] is None:
+        warns.append("gate6 stale 미측정 — 신선도 프로브가 실패했다(%s)"
+                     % (map_today.get("stale_error") or "사유 미기록"))
+    elif map_today["stale"]:
+        warns.append("gate6 stale=true — 캐시 게시일이 5거래일 넘게 낡았다")
+
+    # 7. 게시 지연
+    iso = trade_date.isoformat()
+    delayed = []
+    missing_asof = 0
+    for s in [today] + list(prev_summaries)[:2]:
+        sa = ((s or {}).get("map") or {}).get("source_asof")
+        if not sa:
+            missing_asof += 1
+        delayed.append(bool(sa) and sa < iso)
+    if len(delayed) == 3 and all(delayed):
+        warns.append("gate7 게시 지연 — source_asof < trade_date 가 3거래일 연속")
+    elif len(delayed) < 3:
+        notes.append("gate7 최근 %d거래일치뿐 — 3거래일 연속 지연은 판정하지 않았다"
+                     % len(delayed))
+    elif missing_asof:
+        notes.append("gate7 source_asof 가 없는 날이 %d개 — 3거래일 연속 지연 판정 불가"
+                     % missing_asof)
+
+    # 8. 명부 중복
+    if "duplicates" not in facts:
+        notes.append("gate8 duplicates 사실이 없다 — 명부 중복 판정 불가")
+    elif facts["duplicates"]:
+        fails.append("gate8 명부 중복 %d종목 — 유효기간이 겹친다(n_members 이중 계산)"
+                     % facts["duplicates"])
+
+    # 9. summary 부재 / 이력 부족 vs 유실
+    if today is None:
+        if len(prev_summaries) >= 2 and all(s is None for s in prev_summaries[:2]):
+            fails.append("gate9 summary 가 3거래일 연속 없음")
+        else:
+            warns.append("gate9 오늘 summary 없음")
+    # 🔴 「이력 부족」은 «파일이 하나도 없을 때»다 — `not prev_summaries` 로 재면
+    #    [None]*20 이 참이 아니라서 사유가 영영 안 찍힌다.
+    if not [s for s in prev_summaries if s]:
+        notes.append("이력 부족 — 전일 대비 게이트는 판정하지 않았다(첫 EOD 면 정상)")
+    # 「유실」은 «그 날짜의» recon 행이 있는데 «그 날짜의» summary 파일이 없을 때만이다
+    # (아무 recon 행에나 발동하면 첫날부터 매일 WARN 이 뜬다).
+    prev_days = facts.get("prev_days") or []
+    recon_dates = set(facts.get("prev_recon_dates") or [])
+    lost = [prev_days[i] for i, s in enumerate(prev_summaries)
+            if s is None and i < len(prev_days) and prev_days[i] in recon_dates]
+    if lost:
+        warns.append("gate9 이력 유실 — recon 행은 있는데 summary 파일이 없는 날: %s" % lost[:3])
+
+    verdict = "FAIL" if fails else ("WARN" if warns else "PASS")
+    return {"verdict": verdict, "fails": fails, "warns": warns, "notes": notes,
+            "real_rows": facts.get("stats_rows", 0), "new_rows": new_rows,
+            "overlap": no_label, "coverage": cov, "value_match_rate": vmr}
+
+
+_FACTS_COVERAGE_SQL = (
+    "SELECT count(*) FILTER (WHERE ksic_code IS NOT NULL),"
+    "       count(*) FILTER (WHERE ksic3_name IS NOT NULL),"
+    "       count(*) FILTER (WHERE corp_code IS NOT NULL AND ksic_code IS NULL) "
+    "FROM stock_sector_map "
+    "WHERE valid_to IS NULL AND stock_code IN "
+    "      (SELECT stock_code FROM stock_market WHERE " + SQL_STOCK_ONLY + ")")
+
+
+def _prev_trading_days(conn, d, n) -> list:
+    """직전 거래일 n개(최신순 · ISO 문자열). 🔴 daily_prices.date 는 TEXT 라 문자열로 잰다."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT date FROM daily_prices WHERE date < %s "
+                    "ORDER BY date DESC LIMIT %s", (d.isoformat(), n))
+        return [r[0] for r in cur.fetchall()]
+
+
+def _db_facts(conn, d, prev_days) -> dict:
+    """게이트가 볼 DB 사실을 «한 번에» 모은다.
+
+    prev_days 는 호출측이 이미 구한 직전 거래일 20개(최신순 ISO)다 — 여기서 다시
+    조회하면 같은 쿼리를 두 번 돌린다(경미 13).
+    """
+    iso = d.isoformat()
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM stock_market WHERE " + SQL_STOCK_ONLY)
+        u_market = int(cur.fetchone()[0])
+        cur.execute(_FACTS_COVERAGE_SQL)
+        code_nn, name_nn, remaining = [int(x) for x in cur.fetchone()]
+        cur.execute("SELECT count(*) FROM sector_daily_stats WHERE date=%s", (d,))
+        stats_rows = int(cur.fetchone()[0])
+        cur.execute("SELECT taxonomy, count(*) FROM sector_daily_stats WHERE date=%s "
+                    "GROUP BY 1", (d,))
+        g = dict((r[0], int(r[1])) for r in cur.fetchall())
+        cur.execute("SELECT count(*) FROM (SELECT stock_code FROM fn_sector_map_as_of(%s) "
+                    "GROUP BY 1 HAVING count(*) > 1) t", (d,))
+        dups = int(cur.fetchone()[0])
+        cur.execute("SELECT max(last_seen_at) FROM stock_sector_map WHERE valid_to IS NULL")
+        max_ls = cur.fetchone()[0]
+        cur.execute("SELECT count(*) FROM daily_prices WHERE date=%s", (iso,))
+        is_td = int(cur.fetchone()[0]) > 0
+        cur.execute("SELECT trade_date, new_rows FROM collection_reconciliation "
+                    "WHERE dataset='sector' AND trade_date < %s "
+                    "ORDER BY trade_date DESC LIMIT 3", (iso,))
+        prev_recon = cur.fetchall()
+    return {"u_market": u_market, "ksic_code_nonnull": code_nn,
+            "ksic3_name_nonnull": name_nn, "new_rows": remaining,
+            "stats_rows": stats_rows, "g": g, "duplicates": dups,
+            "max_last_seen": max_ls, "is_trading_day": is_td,
+            "last_seen_deadline": (date.fromisoformat(prev_days[2])
+                                   if len(prev_days) >= 3 else None),
+            "prev_days": list(prev_days),
+            "prev_new_rows": [int(r[1] or 0) for r in prev_recon],
+            "prev_recon_dates": [r[0] for r in prev_recon]}
+
+
+def reconcile_sector(trade_date: str = None) -> dict:
+    """§8 건강 판정. 결과는 collection_reconciliation(dataset='sector')에 남긴다."""
+    d = date.fromisoformat(_to_iso(trade_date)) if trade_date else now_kst().date()
+    iso = d.isoformat()
+    with KisDbConnection.get_connection() as conn:
+        w.ensure_tables(conn)
+        prev_days = _prev_trading_days(conn, d, 20)      # 한 번만 조회한다
+        facts = _db_facts(conn, d, prev_days)
+    today = _read_summary(d)
+    prev_summaries = [_read_summary(date.fromisoformat(x)) for x in prev_days]
+    out = evaluate_gates(d, today, prev_summaries, facts)
+    with KisDbConnection.get_connection() as conn:
+        w.upsert_reconciliation(conn, iso, out["real_rows"], out["new_rows"],
+                                out["overlap"], out["coverage"], out["value_match_rate"],
+                                out["verdict"])
+    log = logger.error if out["verdict"] == "FAIL" else (
+        logger.warning if out["verdict"] == "WARN" else logger.info)
+    log("[sector] reconcile %s = %s · fails=%s · warns=%s · notes=%s",
+        iso, out["verdict"], out["fails"], out["warns"], out["notes"])
+    out["trade_date"] = iso
+    return out

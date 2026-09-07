@@ -252,3 +252,32 @@ def test_rebuild_ksic_names_picks_mode_and_warns_on_low_share(conn):
     with conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM ksic_code_name WHERE code='99'")
         assert cur.fetchone()[0] == 0, "길이 2 코드가 3자리 이름표에 들어왔다"
+
+
+def test_coverage_numerator_is_limited_to_u_market(conn):
+    """§8-1 — 커버리지 분자·분모는 «U_market 소속 열린 줄»만 센다.
+
+    🔴 U_all 에만 있는 상폐 23 종목이 분자에 섞이면 커버리지가 부풀어 98% 게이트를
+       «거짓으로» 통과한다. stock_market 에 없는 코드로 열린 줄을 하나 만들어 두고
+       분자·분모가 «둘 다» 안 움직이는지 본다.
+    """
+    from collectors import sector_collector as sc2
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM stock_market WHERE stock_code='TEST9C'")
+        assert cur.fetchone()[0] == 0, "합성 코드가 실제 상장목록에 있다 - 다른 코드를 쓸 것"
+        cur.execute("SELECT count(*) FROM stock_market WHERE " + sc2.SQL_STOCK_ONLY)
+        den_before = int(cur.fetchone()[0])
+        cur.execute(sc2._FACTS_COVERAGE_SQL)
+        num_before = cur.fetchone()
+
+    with conn.cursor() as cur:
+        _insert_named(cur, "TEST9C", "2611", "합성")
+    conn.commit()
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM stock_market WHERE " + sc2.SQL_STOCK_ONLY)
+        den_after = int(cur.fetchone()[0])
+        cur.execute(sc2._FACTS_COVERAGE_SQL)
+        num_after = cur.fetchone()
+    assert num_after == num_before, "U_market 밖 종목이 커버리지 «분자»에 들어갔다"
+    assert den_after == den_before, "U_market 밖 종목이 커버리지 «분모»를 움직였다"
