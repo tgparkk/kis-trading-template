@@ -232,6 +232,10 @@
    고치면 「죽은 창고에 쓰기」가 **「진짜 창고에 실수로 쓰기」**로 바뀌어 **위험이 반대로 커진다.**
    제 의견은 **차라리 쪽지가 없으면 아예 멈추게 만드는 것**이다
 
+**🆕 스펙 B(섹터 뉴스 부스트, 2026-09) 표 3개** — 설계 `docs/superpowers/specs/2026-09-06-sector-news-boost-design.md`
+- `sector_news_score` · `news_sector_hit` — **NewsQuant 가 쓴다**(postgres 로 붙어서 만든 뒤 OWNER 를 robotrader 로 넘긴다). 봇은 읽기만.
+- `sector_news_rerank_log` — **봇이 쓴다**(09:00 후보 로드 때 전략별 «움직였을» 순위). shadow 20거래일 뒤 live 판단의 원천.
+
 ---
 
 ## 10. 이번에 배운 것 (다음에 또 밟지 않으려고)
