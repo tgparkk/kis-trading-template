@@ -906,3 +906,170 @@ def test_recopy_failure_keeps_the_fill_tally(monkeypatch):
     assert out["ksic_fill"]["recheck_calls"] == 2
     assert "급변" in out["ksic_fill"]["error"]
     assert out["stats"]["rows"] == 547, "③ 은 그래도 돌아야 한다"
+
+
+def _csv_row(code, name="업종명", market="KOSPI", dept="", products="제품"):
+    """parse_desc_csv 가 내놓는 행 모양 그대로(부수 열 5종 + 이름)."""
+    return {"stock_code": code, "market": market, "ksic3_name": name,
+            "kosdaq_dept": dept, "products": products,
+            "listing_date": "2000-01-01", "settle_month": "12월"}
+
+
+def _patch_update_map(monkeypatch, open_rows, universe, csv_rows, cmap=None,
+                      snap=None, stale_days=0, stale_exc=None, spy=None):
+    """update_map 의 «경계»(DB·캐시)만 가짜로 바꾼다 — 후보 dict 를 만드는 본문과
+    parent_code·apply_parent_rule·is_blank 는 «진짜»가 돈다.
+
+    반환 seen["cands"] = 스텁된 plan_map_changes 가 받은 후보 dict(부모 규칙 «적용 후»).
+    """
+    seen = {}
+    monkeypatch.setattr(w, "load_open_rows", lambda conn: dict(open_rows))
+    monkeypatch.setattr(w, "open_market_counts", lambda conn: {"KOSPI": len(open_rows)})
+    monkeypatch.setattr(w, "load_stock_industry", lambda conn: dict(snap or {}))
+    monkeypatch.setattr(sc, "load_universe", lambda conn: list(universe))
+    monkeypatch.setattr(sc, "load_map", lambda conn: dict(cmap or {}))
+    monkeypatch.setattr(kdc, "load_desc", lambda d, existing, fetcher=None: {
+        "source_asof": date(2026, 9, 4), "rows": list(csv_rows),
+        "counts": {"KOSPI": len(csv_rows), "KOSDAQ": 0},
+        "dropped": {"konex": 0, "bad_code": 0}, "archive": None})
+
+    def _plan(open_rows_arg, cands, trade_date, **kw):
+        seen["cands"] = cands
+        seen["plan_kwargs"] = kw
+        return {"inplace": [], "close": [], "open_new": [], "changed_codes": [],
+                "skipped_past": [], "skipped_missing": [], "guard": {},
+                "counts": {"changed": 0, "filled": 0, "new": 0, "unchanged": 0,
+                           "skipped_past": 0, "skipped_missing": 0}}
+
+    def _stale(conn, source_asof, trade_date):
+        if stale_exc is not None:
+            raise stale_exc
+        return stale_days
+
+    monkeypatch.setattr(w, "plan_map_changes", _plan)
+    monkeypatch.setattr(w, "write_map",
+                        lambda conn, plan, source: {"closed": 0, "inserted": 1,
+                                                    "updated": 2})
+    monkeypatch.setattr(sc, "_stale_trading_days", _stale)
+    if spy is not None:
+        monkeypatch.setattr(sc, "logger", spy)
+    return seen
+
+
+# 픽스처 — 보통주 2(하나는 CSV 없음) · 우선주 1 · 스냅샷 시딩 대상 1
+_UM_UNIVERSE = ["000270", "000660", "005930", "005935"]
+_UM_CSV = [_csv_row("000270", "자동차 제조업"),
+           _csv_row("005930", "반도체 제조업"),
+           _csv_row("005935", "")]                    # 우선주 Industry 는 실측 전부 빈칸
+_UM_OPEN = {
+    "000270": _row(corp_code=None),                                    # KSIC 빈칸
+    "000660": _row(ksic_code="26120", ksic_source="dart", corp_code="00164742"),
+    "005930": _row(ksic_code="26110", ksic_source="dart", corp_code="00126380"),
+    "005935": _row(ksic_code="99999", ksic_source="dart", corp_code="00999999"),
+}
+_UM_SNAP = {"000270": "29291", "005930": "11111"}      # 005930 은 «빈칸이 아니라» 시딩 금지
+_UM_CMAP = {"000270": "00256598"}                      # 005930 은 없음 → 열린 줄 폴백
+
+
+def test_update_map_builds_candidates_by_the_four_rules(monkeypatch):
+    """🔴 #1 — update_map 을 «진짜로» 부른다(다른 T14 테스트는 통째로 스텁한다).
+    plan_map_changes 에 넘어간 후보 dict 로 §3.1 규칙 4개를 한꺼번에 못박는다."""
+    spy = _LogSpy()
+    seen = _patch_update_map(monkeypatch, _UM_OPEN, _UM_UNIVERSE, _UM_CSV,
+                             cmap=_UM_CMAP, snap=_UM_SNAP, spy=spy)
+    out = sc.update_map(object(), TD, use_snapshot=True)
+    cands = seen["cands"]
+    assert sorted(cands) == _UM_UNIVERSE, "순회는 CSV 행이 아니라 U_all 이다"
+
+    # (a) 보통주 + CSV 있음 → 부수 열이 CSV 값으로 «들어온다»
+    c = cands["005930"]
+    assert c["market"] == "KOSPI" and c["products"] == "제품"
+    assert c["ksic3_name"] == "반도체 제조업" and c["settle_month"] == "12월"
+    assert c["listing_date"] == "2000-01-01" and c["kosdaq_dept"] == ""
+    assert c["source_asof"] == date(2026, 9, 4)
+
+    # (b) CSV 에 없는 종목 → 부수 열 «키 자체가 없다»(None 이 아니다).
+    #     plan_map_changes 의 `if f in cand` 가 기존 DB 값을 보존한다 — 무징후 절단 금지.
+    nc = cands["000660"]
+    for f in ("market", "kosdaq_dept", "products", "listing_date",
+              "settle_month", "ksic3_name"):
+        assert f not in nc, "%s 키가 있으면 저장된 값이 NULL 로 덮인다" % f
+    assert nc["ksic_code"] == "26120" and nc["corp_code"] == "00164742"
+    assert [m for m in spy.warning_msgs if "캐시 CSV 에 없는 U_all 종목 1개" in m], \
+        "no_csv 는 건수로 경고돼야 한다: %s" % spy.warning_msgs
+
+    # (c) 우선주는 «열린 줄 KSIC(99999)를 승계하지 않는다» — 부모 값이 이긴다.
+    p = cands["005935"]
+    assert p["ksic_code"] == "26110", "우선주가 자기 열린 줄 KSIC 를 물고 왔다"
+    assert p["ksic_source"] == "parent:005930"
+    assert p["corp_code"] == "00126380", "corp_code 도 부모와 한 몸이다"
+    assert p["ksic3_name"] == "반도체 제조업", "우선주 빈 Industry 는 부모 이름을 받는다"
+
+    # (d) 스냅샷 시딩은 «열린 줄 KSIC 이 빈칸일 때만»
+    assert cands["000270"]["ksic_code"] == "29291"
+    assert cands["000270"]["ksic_source"] == "snapshot_20260807"
+    assert cands["005930"]["ksic_code"] == "26110", "빈칸이 아닌데 스냅샷이 덮었다"
+    assert cands["005930"]["ksic_source"] == "dart"
+
+    # corp_code 폴백 — dart_corp_code 우선, 없으면 열린 줄
+    assert cands["000270"]["corp_code"] == "00256598"
+    assert cands["005930"]["corp_code"] == "00126380"
+
+    # matched = «CSV 에 있는» 후보 수(null_rate 의 분모) · no_csv 는 뺀다
+    assert out["matched"] == 3 and out["no_csv"] == 1 and out["universe"] == 4
+    assert out["null_rate"]["ksic_code"] == 0.0
+    assert out["null_rate"]["ksic3_name"] == 0.0
+    assert out["written"] is True and out["db"] == {"closed": 0, "inserted": 1,
+                                                    "updated": 2}
+
+
+def test_update_map_does_not_seed_snapshot_without_the_flag(monkeypatch):
+    """use_snapshot=False(=EOD 판)면 스냅샷은 «읽지도» 않는다 — 부트스트랩 전용이다."""
+    seen = _patch_update_map(monkeypatch, _UM_OPEN, _UM_UNIVERSE, _UM_CSV,
+                             cmap=_UM_CMAP, snap=_UM_SNAP)
+    sc.update_map(object(), TD)
+    assert seen["cands"]["000270"]["ksic_code"] is None
+
+
+def test_update_map_flags_a_stale_cache(monkeypatch):
+    """게시일이 6 거래일 낡으면 stale=True + WARNING(문턱은 >5)."""
+    spy = _LogSpy()
+    _patch_update_map(monkeypatch, _UM_OPEN, _UM_UNIVERSE, _UM_CSV, stale_days=6,
+                      spy=spy)
+    out = sc.update_map(object(), TD)
+    assert out["stale"] is True and out["stale_days"] == 6
+    assert [m for m in spy.warning_msgs if "낡았다" in m], spy.warning_msgs
+
+    spy5 = _LogSpy()
+    _patch_update_map(monkeypatch, _UM_OPEN, _UM_UNIVERSE, _UM_CSV, stale_days=5,
+                      spy=spy5)
+    out5 = sc.update_map(object(), TD)
+    assert out5["stale"] is False, "경계 5 는 아직 낡지 않았다"
+    assert [m for m in spy5.warning_msgs if "낡았다" in m] == []
+
+
+def test_stale_probe_failure_does_not_report_an_unwritten_map(monkeypatch):
+    """🔴 #2 — write_map 은 «이미 커밋»된 뒤에 신선도 측정이 돈다. 거기서 터진 예외를
+    밖으로 내보내면 summary 가 map.written=False 로 «거짓 보고»를 해서 Task 9 게이트 5가
+    오발하고, partial 이 source_asof·null_rate·db 를 잃어 게이트 6·7 이 무음으로 건너뛴다.
+
+    🔑 stale 은 False 가 «아니라» None(미측정)이다 — 「모른다」를 「안전」으로 접지 않는다."""
+    spy = _LogSpy()
+    _patch_update_map(monkeypatch, _UM_OPEN, _UM_UNIVERSE, _UM_CSV,
+                      stale_exc=RuntimeError("current transaction is aborted"),
+                      spy=spy)
+    out = sc.update_map(object(), TD)
+    assert out["written"] is True, "썼는데 안 썼다고 보고했다"
+    assert out["stale"] is None, "「모른다」를 False 로 접었다"
+    assert out["stale_days"] is None
+    assert "current transaction is aborted" in out["stale_error"]
+    assert out["source_asof"] == "2026-09-04" and out["db"]["inserted"] == 1
+    assert out["null_rate"]["ksic_code"] is not None
+    assert [m for m in spy.warning_msgs if "stale 미측정" in m], spy.warning_msgs
+
+
+def test_stale_error_is_none_on_the_happy_path(monkeypatch):
+    """키 모양은 «항상 같다» — 성공한 날은 stale_error=None(키 부재가 아니다)."""
+    _patch_update_map(monkeypatch, _UM_OPEN, _UM_UNIVERSE, _UM_CSV, stale_days=1)
+    out = sc.update_map(object(), TD)
+    assert out["stale_error"] is None and out["stale"] is False

@@ -524,6 +524,9 @@ def update_map(conn, trade_date, source="eod", fetcher=None,
        버려져 부트스트랩 커버리지가 100% 에 못 닿는다 — 무징후 절단이다.
        캐시에 없으면 «아는 키만» 후보에 넣고 CSV 부수 열 키는 «생략»한다
        (plan_map_changes 의 `if f in cand` 가 기존 값을 보존한다 — NULL 로 덮지 않는다).
+    🔴 write_map «뒤»에 오는 신선도 측정은 자체 try 다. 거기서 터져도 written=True 는
+       그대로고 stale 만 None(미측정) + stale_error 로 남는다 — 쓴 것을 안 썼다고
+       보고하면 §8 게이트가 통째로 어긋난다.
     """
     open_rows = w.load_open_rows(conn)
     universe = set(load_universe(conn))
@@ -576,11 +579,25 @@ def update_map(conn, trade_date, source="eod", fetcher=None,
                        trade_date, plan["counts"]["skipped_past"])
     res = w.write_map(conn, plan, source)
 
-    stale_days = _stale_trading_days(conn, desc["source_asof"], trade_date)
-    stale = stale_days > 5
-    if stale:
-        logger.warning("[sector] 캐시 게시일 %s 가 %s 보다 %d 거래일 낡았다",
-                       desc["source_asof"], trade_date, stale_days)
+    # 🔴 여기는 w.write_map 이 «이미 커밋한 뒤»다. 신선도 측정이 터졌다고 예외를
+    #    밖으로 내보내면 summary 가 map.written=False 로 «거짓 보고»를 하고(§8-5
+    #    게이트가 「안 썼다」로 오발), partial 이 source_asof·null_rate·db 를 잃어
+    #    나머지 게이트가 «무음으로» 건너뛴다 — 무징후 절단이다.
+    # 🔑 실패는 stale=False 가 «아니라» None(미측정)이다. 「모른다」를 「안전」으로
+    #    접으면 낡은 캐시를 그대로 통과시킨다.
+    stale_error = None
+    try:
+        stale_days = _stale_trading_days(conn, desc["source_asof"], trade_date)
+    except Exception as e:  # noqa: BLE001
+        stale_days = None
+        stale = None
+        stale_error = str(e)
+        logger.warning("[sector] 캐시 신선도 측정 실패(비차단) - stale 미측정: %s", e)
+    else:
+        stale = stale_days > 5
+        if stale:
+            logger.warning("[sector] 캐시 게시일 %s 가 %s 보다 %d 거래일 낡았다",
+                           desc["source_asof"], trade_date, stale_days)
     out = {"source_asof": desc["source_asof"].isoformat(),
            "open_rows": len(open_rows), "matched": matched,
            "changed": plan["counts"]["changed"], "filled": plan["counts"]["filled"],
@@ -592,7 +609,8 @@ def update_map(conn, trade_date, source="eod", fetcher=None,
            "counts_by_market": desc["counts"], "dropped": desc["dropped"],
            "archive": os.path.basename(desc["archive"]) if desc.get("archive") else None,
            "no_csv": len(no_csv), "universe": len(universe),
-           "stale": stale, "stale_days": stale_days, "db": res}
+           "stale": stale, "stale_days": stale_days, "stale_error": stale_error,
+           "db": res}
     logger.info("[sector] 명부 갱신 %s", out)
     return out
 
