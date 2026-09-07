@@ -31,6 +31,9 @@ class CandidateLoader:
 
         # TODO: 텔레그램 /reload 명령어에서 이 메서드를 호출하도록 연결
         #        (core/telegram_integration.py 의 커맨드 핸들러 추가 필요)
+        #        ⚠️ 스펙 B: 재로드는 _apply_sector_news_rerank 를 다시 타서 sector_news_rerank_log 의
+        #        09:00 행을 (동결 후 stale 로) 덮어쓴다 — 연결 시 재진입에서는 재정렬을 건너뛰거나
+        #        로드 회차로 키를 나눌 것.
         """
         self.logger.info("후보 종목 재로드 요청")
         self._bot._candidates_loaded = False

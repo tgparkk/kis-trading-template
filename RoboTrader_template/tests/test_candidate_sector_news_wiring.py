@@ -164,6 +164,10 @@ def test_exception_inside_rerank_never_escapes(selector, monkeypatch):
         raise RuntimeError("bug")
     monkeypatch.setattr("core.sector_news_rerank.rerank", _boom)
     assert _codes(_run(selector, repo, "live", monkeypatch)) == CODES
+    # 최종 리뷰 Minor #3: outer except 도 best-effort 로 error:<Name> 행을 남긴다.
+    assert len(repo.saved) == 6
+    assert all(r["reason"] == "error:RuntimeError" and r["applied"] is False
+               and r["new_rank"] == r["orig_rank"] for r in repo.saved)
 
 
 def test_apply_method_direct_contract(selector, monkeypatch):
@@ -181,13 +185,18 @@ def test_import_failure_inside_method_is_fail_open(selector, monkeypatch):
     # import 문이 outer try 안에 있어야만 여기서 ImportError 가 fail-open 으로 잡힌다 —
     # 밖에 있으면 _fetch_candidates_for_strategy 의 fail-closed try 는 이미 끝난 뒤라
     # bot/candidate_loader.py 까지 그대로 샌다.
+    # 최종 리뷰 Minor #3: outer except 도 best-effort 로 error:<Name> 행을 남긴다 —
+    # import 실패도 예외이므로 이제 repo.save_rerank_log 가 한 번 호출된다.
     monkeypatch.setitem(sys.modules, "core.sector_news_rerank", None)
     monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "live")
     repo = FakeRepo(**GOOD)
     selector.db_manager.sector_news_repo = repo
     cands = selector._fetch_candidates_for_strategy("s1", 20)
     assert _codes(cands) == CODES
-    assert repo.calls == []
+    assert repo.calls == ["save"]
+    assert len(repo.saved) == 6
+    assert all(r["reason"] == "error:ModuleNotFoundError" and r["applied"] is False
+               and r["new_rank"] == r["orig_rank"] for r in repo.saved)
 
 
 def test_missing_mode_constant_is_fail_open(selector, monkeypatch):
@@ -209,3 +218,50 @@ def test_aware_now_kst_is_normalized(selector, monkeypatch):
     repo = FakeRepo(**GOOD)
     selector.db_manager.sector_news_repo = repo
     assert _codes(selector._fetch_candidates_for_strategy("s1", 20)) == ["A1", "A5", "A3", "A4", "A2", "A6"]
+
+
+def test_invalid_mode_env_warns_and_is_off(selector, monkeypatch, caplog):
+    # 최종 리뷰 Important #1: SECTOR_NEWS_BOOST_MODE 가 모르는 값이면(config.constants
+    # 가 이미 off 로 낮춰 놓은 원문을 SECTOR_NEWS_BOOST_MODE_INVALID 에 보관) WARNING 한 줄을
+    # 남기고 off 로 동작해야 한다. caplog 는 참고용 — setup_logger 가 propagate 하지 않을 수
+    # 있어 selector.logger 를 MagicMock 으로 바꿔 직접 검증한다.
+    monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "off")
+    monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE_INVALID", "on")
+    repo = FakeRepo(**GOOD)
+    mock_logger = MagicMock()
+    monkeypatch.setattr(selector, "logger", mock_logger)
+    cands = _run(selector, repo, "off", monkeypatch)
+    assert _codes(cands) == CODES
+    assert repo.calls == []
+    assert any("모르는 값" in str(call.args[0]) for call in mock_logger.warning.call_args_list)
+
+
+def test_observability_failure_keeps_applied_order(selector, monkeypatch):
+    # 최종 리뷰 Important #2: 반환값(result/notes)은 관측 블록(로그 라인 조립·표기 생성) 전에
+    # 이미 확정돼 있어야 한다 — 로깅이 터져도 live 적용 순서가 살아남는지 확인.
+    # 직접 _apply_sector_news_rerank 를 호출한다(test_apply_method_direct_contract 와 동일
+    # 패턴) — _fetch_candidates_for_strategy 경유 시 그 안의 무관한 self.logger.info 호출도
+    # 같은 MagicMock 의 side_effect 를 맞아 테스트 의도와 무관하게 터진다.
+    monkeypatch.setattr(C, "SECTOR_NEWS_BOOST_MODE", "live")
+    repo = FakeRepo(**GOOD)
+    selector.db_manager.sector_news_repo = repo
+    mock_logger = MagicMock()
+    mock_logger.info.side_effect = RuntimeError("log down")
+    monkeypatch.setattr(selector, "logger", mock_logger)
+    codes, notes = selector._apply_sector_news_rerank("s1", list(CODES), "2026-09-07")
+    assert codes == ["A1", "A5", "A3", "A4", "A2", "A6"]
+    assert mock_logger.warning.called
+
+
+def test_future_asof_is_stale(selector, monkeypatch):
+    # 최종 리뷰 Minor #4: score_asof 가 미래(시계 오차)면 양방향 가드로 stale 처리한다.
+    repo = FakeRepo(scores={"261": 1.0}, asof=NOW + timedelta(hours=5), sector_map={"A5": "261"})
+    assert _codes(_run(selector, repo, "live", monkeypatch)) == CODES
+    assert len(repo.saved) == 6
+    assert all(r["reason"] == "stale" for r in repo.saved)
+
+
+def test_asof_slightly_ahead_is_fresh(selector, monkeypatch):
+    # 5분 미만의 미세한 시계 오차(미래 방향)는 여전히 fresh 로 취급한다.
+    repo = FakeRepo(scores={"261": 1.0}, asof=NOW + timedelta(minutes=2), sector_map={"A5": "261"})
+    assert _codes(_run(selector, repo, "live", monkeypatch)) == ["A1", "A5", "A2", "A3", "A4", "A6"]

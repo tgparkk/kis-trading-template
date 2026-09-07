@@ -1177,6 +1177,12 @@ class CandidateSelector:
             from core.sector_news_rerank import rerank, RerankRow, classify_sector_news_exception
 
             mode = getattr(C, "SECTOR_NEWS_BOOST_MODE", "off")
+            bad = getattr(C, "SECTOR_NEWS_BOOST_MODE_INVALID", None)
+            if bad:
+                self.logger.warning(
+                    f"[섹터뉴스] SECTOR_NEWS_BOOST_MODE={bad!r} 는 모르는 값 → off 로 동작 "
+                    f"(허용: {getattr(C, 'SECTOR_NEWS_BOOST_MODES', ('off', 'shadow', 'live'))})"
+                )
             if mode == "off" or not codes:
                 return list(codes), {}
 
@@ -1201,7 +1207,8 @@ class CandidateSelector:
                         reason = "no_score_rows"
                     else:
                         asof_naive = asof.replace(tzinfo=None) if asof is not None else None
-                        if asof_naive is None or (now_naive - asof_naive).total_seconds() > C.SECTOR_NEWS_STALE_MINUTES * 60:
+                        age = (now_naive - asof_naive).total_seconds() if asof_naive is not None else None
+                        if age is None or age > C.SECTOR_NEWS_STALE_MINUTES * 60 or age < -300:
                             reason = "stale"
                         else:
                             code_to_sector = repo.get_sector_map(prev_day_str, list(codes))
@@ -1228,30 +1235,49 @@ class CandidateSelector:
             except Exception as e:
                 self.logger.warning(f"[섹터뉴스] {strategy_name}: 기록 저장 실패(무시): {e}")
 
-            moved = [r for r in rows if r.new_rank != r.orig_rank]
-            up = sum(1 for r in moved if r.new_rank < r.orig_rank)
-            mapped = sum(1 for r in rows if r.sector_key)
-            asof_txt = asof.strftime("%H:%M") if asof else "-"
-            line = (f"[섹터뉴스] {strategy_name} mode={mode} reason={reason} "
-                    f"이동 {len(moved)}종목(↑{up} ↓{len(moved) - up}) 점수 as-of {asof_txt} "
-                    f"섹터매핑 {mapped}/{len(codes)}")
-            if reason == "ok":
-                self.logger.info(line)
-            else:
-                self.logger.warning(line)
-
+            result = new_codes if applied else list(codes)
             notes: Dict[str, str] = {}
-            if applied:
-                for r in moved:
-                    if r.sector_score is None:
-                        # 자기 자신은 섹터 미매핑인데 다른 종목의 이동 때문에 순위만 밀린 경우
-                        # (예: 유일하게 매핑된 종목이 3칸 올라오며 사이 종목들을 뒤로 미는 경우).
-                        # 표기할 섹터 점수가 없으므로 스킵 — 여기서 포맷하면 TypeError.
-                        continue
-                    arrow = "↑" if r.new_rank < r.orig_rank else "↓"
-                    notes[r.stock_code] = f" ({arrow}{abs(r.orig_rank - r.new_rank)} {r.sector_key} {r.sector_score:+.1f})"
-            return (new_codes if applied else list(codes)), notes
+            try:
+                moved = [r for r in rows if r.new_rank != r.orig_rank]
+                up = sum(1 for r in moved if r.new_rank < r.orig_rank)
+                mapped = sum(1 for r in rows if r.sector_key)
+                asof_txt = asof.strftime("%H:%M") if asof else "-"
+                line = (f"[섹터뉴스] {strategy_name} mode={mode} reason={reason} "
+                        f"이동 {len(moved)}종목(↑{up} ↓{len(moved) - up}) 점수 as-of {asof_txt} "
+                        f"섹터매핑 {mapped}/{len(codes)}")
+                if reason == "ok":
+                    self.logger.info(line)
+                else:
+                    self.logger.warning(line)
+
+                if applied:
+                    for r in moved:
+                        if r.sector_score is None:
+                            # 자기 자신은 섹터 미매핑인데 다른 종목의 이동 때문에 순위만 밀린 경우
+                            # (예: 유일하게 매핑된 종목이 3칸 올라오며 사이 종목들을 뒤로 미는 경우).
+                            # 표기할 섹터 점수가 없으므로 스킵 — 여기서 포맷하면 TypeError.
+                            continue
+                        arrow = "↑" if r.new_rank < r.orig_rank else "↓"
+                        notes[r.stock_code] = f" ({arrow}{abs(r.orig_rank - r.new_rank)} {r.sector_key} {r.sector_score:+.1f})"
+            except Exception as e:
+                self.logger.warning(f"[섹터뉴스] {strategy_name}: 관측 블록 실패(무시): {e}")
+                notes = {}
+            return result, notes
 
         except Exception as e:
             self.logger.warning(f"[섹터뉴스] {strategy_name}: 재정렬 실패(fail-open, 원래 순서): {type(e).__name__}: {e}")
+            try:
+                repo = getattr(self.db_manager, "sector_news_repo", None)
+                if repo is not None and codes:
+                    from config import constants as C2
+                    reason = f"error:{type(e).__name__}"
+                    repo.save_rerank_log([
+                        {"trade_date": now_kst().date(), "strategy": strategy_name, "stock_code": c,
+                         "sector_key": None, "sector_score": None, "orig_rank": i + 1, "new_rank": i + 1,
+                         "applied": False, "mode": getattr(C2, "SECTOR_NEWS_BOOST_MODE", "off"),
+                         "reason": reason, "score_asof": None}
+                        for i, c in enumerate(codes)
+                    ])
+            except Exception as e2:
+                self.logger.warning(f"[섹터뉴스] {strategy_name}: 실패 행 기록도 실패(무시): {e2}")
             return list(codes), {}
