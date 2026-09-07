@@ -196,6 +196,34 @@ SCREENER_SNAPSHOT_ENABLED = _os.getenv("SCREENER_SNAPSHOT_ENABLED", "false").low
 del _os
 
 # =============================================================================
+# 섹터 뉴스 부스트 (스펙 B, 2026-09-06) — 09:00 후보 로드 시 순위 이동. 기본 shadow.
+#   spec: docs/superpowers/specs/2026-09-06-sector-news-boost-design.md §5.3
+#   off    : 조회 안 함(DB 접근 0)
+#   shadow : 계산·기록만, 원래 순서 반환  ← 기본값 (사장님 결정 2026-09-06)
+#   live   : 새 순서 반환 (.env: SECTOR_NEWS_BOOST_MODE=live · 롤백은 off/삭제)
+# =============================================================================
+SECTOR_NEWS_BOOST_MODES = ("off", "shadow", "live")
+
+
+def resolve_sector_news_mode(raw):
+    """env 문자열 → (mode, invalid_raw). 비어 있으면 shadow, 모르는 값이면 off + 원문(호출자가 WARNING)."""
+    if raw is None or not str(raw).strip():
+        return "shadow", None
+    v = str(raw).strip().lower()
+    if v in SECTOR_NEWS_BOOST_MODES:
+        return v, None
+    return "off", raw
+
+
+import os as _os
+SECTOR_NEWS_BOOST_MODE, SECTOR_NEWS_BOOST_MODE_INVALID = resolve_sector_news_mode(_os.getenv("SECTOR_NEWS_BOOST_MODE"))
+del _os
+SECTOR_NEWS_MAX_SHIFT = 3               # 최대 이동 칸
+SECTOR_NEWS_MIN_ABS = 0.2               # 이보다 약한 score_signed 는 0 취급
+SECTOR_NEWS_STALE_MINUTES = 60          # computed_at 이 이보다 오래되면 없는 것으로(reason='stale')
+SECTOR_NEWS_EXCLUDE_STRATEGIES = frozenset()   # 적용 제외 전략 (예: 평균회귀 deep_mr_dev20 — §8 결과 보고 결정)
+
+# =============================================================================
 # 데이터 읽기 소스 — kis_template **단일**. 롤백 스위치는 폐지됐다 (2026-08-17).
 #
 # 🔴 왜 없앴나 — 「롤백 스위치」가 아니라 「누르면 죽는 버튼」이 되기 때문이다:
