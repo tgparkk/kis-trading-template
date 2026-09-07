@@ -400,7 +400,7 @@ save_rerank_log 실패             → WARNING, 반환값에 영향 없음
 | 2 | **NewsQuant 측** 구현(워크트리 또는 브랜치) → 테스트 → 배포. 경로 A 는 A 없이도 동작 → `sector_news_score` 채워지기 시작 | `scheduler.py` 미커밋 diff 정리 먼저 |
 | 3 | **봇 측** 구현(`git worktree add -b feat/sector-news-boost D:/tmp/kis-wt-sector-news main`) → 테스트 → EOD 이후 main 머지. 기본값 `shadow` | A 배포 전엔 매일 `fn_missing` 기록만 |
 | 4 | shadow ≥ 20거래일 → §8 평가 → 사장님 결정 → `.env` 에 `SECTOR_NEWS_BOOST_MODE=live` | |
-| 롤백 | `SECTOR_NEWS_BOOST_MODE=off`(env 1줄, 재기동). 표는 남긴다. 코드 롤백은 `_fetch_candidates_for_strategy` 의 1줄 제거 | |
+| 롤백 | `SECTOR_NEWS_BOOST_MODE=off`(env 1줄, 재기동)가 **정식 롤백**. 표는 남긴다. 코드 롤백은 `_fetch_candidates_for_strategy` 의 **2줄** 제거(호출 1줄 + `sector_note=sector_notes.get(code, "")` 1줄 — v1.1-6 이후 호출이 튜플을 돌려주므로 1줄만 지우면 `NameError`) | |
 
 하우스 룰 승계: 워크트리 작업 · 라이브 트리에서 테스트 금지 · 연구 트리 import 0 · `utils.logger.setup_logger(__name__)` · `utils.korean_time.now_kst()` · 파싱 실패는 `None` · 무징후 절단 금지 · `adj_factor` 산술 0.
 
@@ -473,4 +473,7 @@ NewsQuant 측 구현(브랜치 `feat/sector-news-score`, 12+4 커밋)은 §2.1·
 | 3 | §13-1 | 동결은 09:05 부터인데 봇은 09:00 에 읽는다. 07:43 기동 → 09:03 실행이 봇이 읽은 행을 덮어쓸 수 있다 | §8 평가 스크립트는 「09:00 이전 마지막 계산본」을 `sector_news_rerank_log.score_asof`·`sector_score`(봇이 실제로 읽은 값)에서 취한다 — `sector_news_score` 행이 아니라. 동결 시작을 09:00 으로 당기는 것도 검토 |
 | 4 | §4.4 | `SOURCE_CREDIBILITY` 에 `krx_disclosure: 1.0` 은 있는데 DART 크롤러는 `source='dart'` 로 쓴다(7일 3,503행) → 최대 출처가 기본값 0.9 | `sentiment_analyzer.SOURCE_CREDIBILITY` 에 `'dart'` 키 추가(NewsQuant 감성분석 자체에도 영향 → 별도 검토) |
 | 5 | §4.2 | 한글 부분문자열 오탐(유가증권시장·조선일보·무기한·제약 조건 등)이 실측됐다 → 사전 v2026-09-07.1 에서 좁힘(구현 완료). 영어도 transformer/infrastructure/SOC/property/content/carrier 좁힘 | 사전은 `news_sector_hit` 로 계속 튜닝. `dict_version` 이 행마다 남는다 |
-| 6 | §3.1 | `computed_at DEFAULT now()` 는 DB 세션 시간대(현재 Asia/Seoul)로 기록된다. 봇의 60분 stale 판정은 KST 벽시계와 비교하므로 DB `TimeZone` 이 바뀌면 조용히 전부 stale 이 된다 | DDL 주석으로 명시(구현 완료). 장기적으로 `timezone('Asia/Seoul', now())` 로 고정 검토 |
+| 6 | §3.1 | `computed_at DEFAULT now()` 는 DB 세션 시간대(현재 Asia/Seoul)로 기록된다. 봇의 60분 stale 판정은 KST 벽시계와 비교하므로 DB `TimeZone` 이 바뀌면 조용히 전부 stale 이 된다 | DDL 주석으로 명시(구현 완료). 장기적으로 `timezone('Asia/Seoul', now())` 로 고정 검토. 봇 쪽 stale 판정은 **양방향**(미래 5분 초과도 stale)으로 구현됨 |
+| 7 | §3.3 | `reload_candidates`(장중 재로드, 현재 호출자 없음·TODO)가 연결되면 재정렬 경로를 다시 타서 `sector_news_rerank_log` 의 09:00 행을 (동결 후 `stale` 로) 덮어쓴다 — §8 원천 훼손 | `candidate_loader.reload_candidates` 의 TODO 옆에 경고 주석(구현 완료). 연결 시 재진입에서 재정렬 생략 또는 로드 회차 키 |
+| 8 | §5.1 | live 에서 순서가 바뀌면 `_filter_unsafe_stocks(limit)` 가 «어느» 종목을 조회하는지가 달라진다(호출 수는 같다 — 지연 필터가 limit 개 안전 종목에서 멈춘다) | KIS 호출 0 위반은 아님. §9 롤아웃 행에 기록(live 모드의 실제 동작 변화) |
+| 9 | §5.5 | `_apply_sector_news_rerank` 가 자체 예외로 빠질 때 (예: 스냅샷에 같은 코드가 두 번 — `params_hash` 가 둘인 날) `reason='error:<Name>'` 행을 남기지 않았다 → §8 표 ③ 에 그 전략·일이 «없는 날»로 보인다 | outer except 에서 best-effort 로 error 행 기록(구현 완료). `screener_snapshot_provider` 의 `params_hash=None` 합산 경로가 중복 코드를 만들 수 있음은 별건으로 기록 |
