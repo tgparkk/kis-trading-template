@@ -20,7 +20,7 @@ from collectors import sector_writer as w  # noqa: E402
 #    `-m "not db"` 로도 못 막는다. 픽스처 안에서만 붙고, 실패하면 skip 한다.
 pytestmark = [pytest.mark.db]
 
-TEST_CODES = ("TEST9A", "TEST9B", "TEST9C", "TEST90")
+TEST_CODES = ("TEST9A", "TEST9B", "TEST9C", "TEST90", "TEST9D", "TEST9F", "TEST9G")
 TEST_STATS_DATE = date(1999, 1, 4)
 
 
@@ -96,11 +96,11 @@ def _insert_row(cur, code, vf, vt, ksic, source="eod"):
         (code, vf, vt, ksic, source))
 
 
-def _insert_named(cur, code, ksic, name):
+def _insert_named(cur, code, ksic, name, ksic_source="dart"):
     cur.execute(
         "INSERT INTO stock_sector_map (stock_code, valid_from, valid_to, ksic_code, "
-        "ksic_source, ksic3_name, source) VALUES (%s, %s, NULL, %s, 'dart', %s, 'eod')",
-        (code, date(2021, 1, 4), ksic, name))
+        "ksic_source, ksic3_name, source) VALUES (%s, %s, NULL, %s, %s, %s, 'eod')",
+        (code, date(2021, 1, 4), ksic, ksic_source, name))
 
 
 def test_fn_sector_map_as_of_roundtrip_and_boundaries(conn):
@@ -214,8 +214,9 @@ def test_delete_stale_stats_with_empty_keep_set_is_valid_sql(conn):
 
 
 def test_rebuild_ksic_names_picks_mode_and_warns_on_low_share(conn):
-    """T12 — ksic_code NULL/길이<3 은 제외 · 최빈 이름 · 점유율 < 0.8 은 WARNING 목록 ·
-    부모복사 우선주도 «종목»으로 센다.
+    """T12 — ksic_code NULL/길이<3/ksic3_name NULL 은 «완전히» 제외(분자·분모 모두 안 셈) ·
+    최빈 이름 · 점유율 < 0.8 은 WARNING 목록 · 부모복사 우선주(ksic_source='parent:...')도
+    «종목»으로 센다(분자·분모 +1).
 
     ⚠️ 라이브 표를 쓰므로 합성 코드는 실 데이터와 겹치면 안 된다 — 겹치면 skip 한다
        (부트스트랩 후 재실행 대비)."""
@@ -226,20 +227,28 @@ def test_rebuild_ksic_names_picks_mode_and_warns_on_low_share(conn):
             pytest.skip("실 데이터에 990/991 코드가 있어 합성 테스트를 격리할 수 없다")
     with conn.cursor() as cur:
         cur.execute("DELETE FROM ksic_code_name WHERE code IN ('990','991','99')")
-        # 990: '합성A'(2) vs '합성B'(1) → 최빈 '합성A' · share 2/3 = 0.667 < 0.8 → 경고
+        # 990: '합성A'(2) vs '합성B'(1) → 최빈 '합성A'
         _insert_named(cur, "TEST9A", "9901", "합성A")
         _insert_named(cur, "TEST9B", "99011", "합성A")
         _insert_named(cur, "TEST9C", "9902", "합성B")
         # 길이 2 코드는 3자리 집계에서 빠진다
         _insert_named(cur, "TEST90", "99", "짧은코드")
+        # Fix#2 ① ksic_code NULL(이름은 있음) — 완전히 제외(어느 코드의 분자·분모에도 안 셈)
+        _insert_named(cur, "TEST9D", None, "합성A")
+        # Fix#2 ② ksic_code 는 990 대(9905) 지만 ksic3_name NULL — 990 «분모»에서도 빠져야 한다
+        _insert_named(cur, "TEST9F", "9905", None)
+        # Fix#2 ③ 부모복사 우선주(ksic_source='parent:...')도 «종목»으로 센다
+        #          → 합성A 분자 2→3, 990 분모 3→4 (share 2/3 → 3/4 = 0.75, 여전히 <0.8)
+        _insert_named(cur, "TEST9G", "9903", "합성A", ksic_source="parent:001040")
     conn.commit()
     out = w.rebuild_ksic_names(conn)
     with conn.cursor() as cur:
         cur.execute("SELECT name, n_stocks, share FROM ksic_code_name WHERE code='990'")
         name, n, share = cur.fetchone()
-    assert name == "합성A" and n == 2
-    assert abs(share - 2.0 / 3.0) < 1e-9
-    assert any(c == "990" for c, _n, _s in out["low_share"]), "점유율 0.667 이 경고 목록에 없다"
+    assert name == "합성A" and n == 3, "부모복사 행(TEST9G)이 종목수에 안 셌다"
+    assert abs(share - 3.0 / 4.0) < 1e-9, \
+        "분모가 0.75(=3/4) 가 아니다 — TEST9D/TEST9F 가 새어들었거나 부모복사가 안 셌다"
+    assert any(c == "990" for c, _n, _s in out["low_share"]), "점유율 0.75 가 경고 목록에 없다"
     with conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM ksic_code_name WHERE code='99'")
         assert cur.fetchone()[0] == 0, "길이 2 코드가 3자리 이름표에 들어왔다"

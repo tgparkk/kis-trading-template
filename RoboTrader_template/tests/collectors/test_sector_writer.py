@@ -269,6 +269,9 @@ class _FakeCur:
     def execute(self, sql, params=None):
         self.log.append((sql, params))
 
+    def fetchall(self):
+        return []
+
 
 class _FakeConn:
     def __init__(self):
@@ -377,3 +380,15 @@ def test_write_map_issues_close_and_insert_with_expected_bindings():
     assert insert_params["valid_from"] == D
     assert insert_params["ksic_code"] == "265"
     assert insert_params["ksic_source"] == "dart"
+
+
+def test_rebuild_ksic_names_preserves_table_when_select_returns_zero_rows():
+    """🔴 Fix#1 — 필터를 통과한 행이 0개면 DELETE·INSERT 모두 0회, 기존 이름표를 보존한다.
+    (SELECT 가 빈 목록을 돌려주는 상류 결함 상황을 `_FakeCur.fetchall` 로 재현 — 실 DB 로는
+    쓰기 없이 이 경로를 재현할 수 없다: 실 표를 비워야만 0행이 나오기 때문)."""
+    conn = _FakeConn()
+    out = w.rebuild_ksic_names(conn)
+    assert out == {"codes": 0, "low_share": [], "skipped": True}
+    writes = [s for s, _p in conn.log if s.strip().upper().startswith(("INSERT", "DELETE"))]
+    assert writes == [], "0행인데 DELETE/INSERT 가 발생했다: %s" % writes
+    assert conn.commits == 1 and conn.rollbacks == 0

@@ -623,23 +623,27 @@ def rebuild_ksic_names(conn) -> dict:
 
     ⚠️ PIT 가 아니다(매일 재생성 · 표시 전용). 과거 성적표에 조인해도 «오늘 이름»이 붙는다.
     🔑 부모복사 우선주도 «종목»으로 센다 — 화면 라벨의 대표성이 목적이기 때문이다.
+    🔴 필터를 통과한 행이 0개면(상류 결함 등) 기존 이름표를 지우지 않고 그대로 둔다 —
+       WARNING 후 `{"codes": 0, "low_share": [], "skipped": True}` 를 반환한다(정상 경로엔
+       `skipped` 키가 없다).
     """
     try:
         with conn.cursor() as cur:
             cur.execute(_NAMES_SRC)
             rows = cur.fetchall()
-            keep = set(r[0] for r in rows)
-            for code, name, n, share in rows:
-                cur.execute(_UPSERT_NAME, (code, name, int(n), float(share)))
-            if keep:
+            if rows:
+                keep = set(r[0] for r in rows)
+                for code, name, n, share in rows:
+                    cur.execute(_UPSERT_NAME, (code, name, int(n), float(share)))
                 cur.execute("DELETE FROM ksic_code_name WHERE level=3 AND NOT (code = ANY(%s))",
                             (sorted(keep),))
-            else:
-                cur.execute("DELETE FROM ksic_code_name WHERE level=3")
         conn.commit()
     except Exception:
         conn.rollback()
         raise
+    if not rows:
+        logger.warning("[sector] 이름표 재생성 입력 0행 — 기존 이름표 보존")
+        return {"codes": 0, "low_share": [], "skipped": True}
     low = [(r[0], r[1], float(r[3])) for r in rows if float(r[3]) < 0.8]
     if low:
         logger.warning("[sector] 이름표 점유율 < 0.8 인 코드 %d개: %s", len(low), low[:10])
