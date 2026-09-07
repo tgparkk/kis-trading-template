@@ -955,3 +955,434 @@ def reconcile_sector(trade_date: str = None) -> dict:
         iso, out["verdict"], out["fails"], out["warns"], out["notes"])
     out["trade_date"] = iso
     return out
+
+
+# ─────────────────── ⑥ 수동 CLI (§5-4 · §6.0 · §6.2 · T14) ───────────────────
+def _guard_window(force=False, now=None) -> None:
+    """§5-5 — 평일 15:30~17:00 은 EOD 와 겹치므로 수동 CLI 를 거부한다(--force 로만 통과).
+
+    🔑 재무 백필이 EOD 와 겹치면 같은 opendart 호스트를 두 프로세스가 두드린다.
+    """
+    if force:
+        return
+    t = now or now_kst()
+    if t.weekday() < 5 and (15, 30) <= (t.hour, t.minute) < (17, 0):
+        raise RuntimeError(
+            "평일 15:30~17:00 에는 실행할 수 없다(EOD 충돌). 야간/주말에 돌리거나 --force 를 쓸 것. "
+            "현재 %s" % t)
+
+
+def _trading_days_between(conn, d_from, d_to) -> list:
+    """구간의 거래일(daily_prices 고유 날짜) — ISO 문자열 오름차순."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT date FROM daily_prices WHERE date BETWEEN %s AND %s "
+                    "ORDER BY date", (d_from.isoformat(), d_to.isoformat()))
+        return [r[0] for r in cur.fetchall()]
+
+
+def _gz_fetcher():
+    """보관 gz(`scratchpad/sector/krx_desc_*.csv.gz`)를 캐시 CSV 응답처럼 돌려준다.
+
+    🔑 fetch_desc_csv 의 «7일 후퇴»가 그대로 동작하므로 그날 보관본이 없으면
+       가장 가까운 이전 보관본을 쓴다(원래 수집이 그랬던 것과 같은 규칙).
+    """
+    import gzip as _gzip
+
+    def _fn(url):
+        key = url.rsplit("/", 1)[-1].replace(".csv", "")
+        path = os.path.join(kdc.ARCHIVE_DIR, "krx_desc_%s.csv.gz" % key)
+        if os.path.exists(path):
+            with _gzip.open(path, "rb") as fh:
+                return 200, fh.read()
+        return 404, b""
+
+    return _fn
+
+
+def _report(name, lines) -> str:
+    """리포트 파일 — 실행 근거를 파일로 남긴다(스펙 §6.0-5 · §6.2)."""
+    os.makedirs(SECTOR_DIR, exist_ok=True)
+    stamp = now_kst().strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(SECTOR_DIR, "%s_%s.txt" % (name, stamp))
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(str(x) for x in lines) + "\n")
+    logger.info("[sector] 리포트: %s", path)
+    return path
+
+
+def _live_three_table_counts(conn) -> dict:
+    """라이브 3표 전후 대조 — 이 작업은 «읽기»만 한다는 증거."""
+    out = {}
+    with conn.cursor() as cur:
+        for t in ("daily_prices", "minute_candles", "virtual_trading_records"):
+            cur.execute("SELECT count(*) FROM " + t)
+            out[t] = int(cur.fetchone()[0])
+    return out
+
+
+def backfill(d_from, d_to, dry_run=False, force=False) -> dict:
+    """§6.2 — 거래일 순회 성적표 재계산. 라이브 3표는 «읽기»만 한다.
+
+    첫날(2021-01-04)은 20일 창 안에 직전 봉이 없어 성적표가 비므로 결과는 거래일 − 1 이다.
+    """
+    _guard_window(force)
+    t0 = now_kst()
+    rows = 0
+    days_with_rows = 0
+    g_hist = {}
+    undef_hist = []
+    with KisDbConnection.get_connection() as conn:
+        w.ensure_tables(conn)
+        before = _live_three_table_counts(conn)
+        days = _trading_days_between(conn, d_from, d_to)
+        logger.info("[sector] 백필 %s ~ %s · 거래일 %d일 (dry_run=%s)",
+                    d_from, d_to, len(days), dry_run)
+        if not dry_run:
+            for i, iso in enumerate(days, 1):
+                res = compute_stats(conn, date.fromisoformat(iso))
+                rows += res.get("rows", 0)
+                if res.get("rows"):
+                    days_with_rows += 1
+                for tax, n in (res.get("G") or {}).items():
+                    g_hist.setdefault(tax, []).append(n)
+                undef_hist.append(res.get("undefined") or {})
+                if i % 100 == 0:
+                    logger.info("[sector] 백필 %d/%d rows=%d", i, len(days), rows)
+        after = _live_three_table_counts(conn)
+    out = {"from": str(d_from), "to": str(d_to), "days": len(days), "rows": rows,
+           "days_with_rows": days_with_rows, "dry_run": dry_run,
+           "live_before": before, "live_after": after,
+           "elapsed_sec": (now_kst() - t0).total_seconds()}
+    out["report"] = _report("backfill_report", [
+        "섹터 성적표 백필 리포트", str(out), "",
+        "일자별 G 분포: " + str(dict((k, {"min": min(v), "max": max(v),
+                                          "median": sorted(v)[len(v) // 2]})
+                                     for k, v in g_hist.items())),
+        "미정 종목 수 분포(마지막 5일): " + str(undef_hist[-5:]),
+        "",
+        "🔴 2021-01-04 ~ 구축일 구간의 업종 라벨은 «현재 스냅샷의 소급»이다(§5-2).",
+        "🔴 2024-03-12 이전 성적표는 태쏘 SEC-M1 과 «대조되지 않았다» — 시총이 사실상",
+        "   2024-03-13 부터라 태쏘 유니버스가 거의 비기 때문이다(§3.2).",
+        "라이브 3표 전/후: %s / %s" % (before, after),
+    ])
+    if before != after:
+        raise RuntimeError("🔴 라이브 3표 행수가 바뀌었다 — 즉시 보고: %s → %s" % (before, after))
+    return out
+
+
+def regen_stats(d_from, d_to, taxonomy=None, dry_run=False, force=False) -> dict:
+    """§5-4 ③ — 성적표만 재계산(명부는 안 건드린다). taxonomy 지정 시 그것만 지우고 다시 쓴다."""
+    _guard_window(force)
+    with KisDbConnection.get_connection() as conn:
+        w.ensure_tables(conn)
+        days = _trading_days_between(conn, d_from, d_to)
+        if dry_run:
+            return {"from": str(d_from), "to": str(d_to), "days": len(days),
+                    "dry_run": True, "would_delete_taxonomy": taxonomy}
+        deleted = w.delete_stats(conn, d_from, d_to, taxonomy)
+        rows = 0
+        for iso in days:
+            rows += compute_stats(conn, date.fromisoformat(iso)).get("rows", 0)
+    return {"from": str(d_from), "to": str(d_to), "days": len(days),
+            "deleted": deleted, "rows": rows, "dry_run": False}
+
+
+def delete_stats_cli(d_from, d_to, taxonomy=None, dry_run=False, force=False) -> dict:
+    """§6.2 데이터 롤백 — 건수를 리포트에 남기고 실행(승인 필수)."""
+    _guard_window(force)
+    with KisDbConnection.get_connection() as conn:
+        w.ensure_tables(conn)
+        if dry_run:
+            with conn.cursor() as cur:
+                sql = "SELECT count(*) FROM sector_daily_stats WHERE date BETWEEN %s AND %s"
+                params = [d_from, d_to]
+                if taxonomy:
+                    sql += " AND taxonomy=%s"
+                    params.append(taxonomy)
+                cur.execute(sql, params)
+                n = int(cur.fetchone()[0])
+            out = {"would_delete": n, "dry_run": True}
+        else:
+            out = {"deleted": w.delete_stats(conn, d_from, d_to, taxonomy), "dry_run": False}
+    out["report"] = _report("delete_stats_report",
+                            ["성적표 삭제", str(d_from), str(d_to), str(taxonomy), str(out)])
+    return out
+
+
+def bootstrap(trade_date, dry_run=False, force=False) -> dict:
+    """§6.0 — 1회 · 머지 «전» 워크트리에서 · 야간/주말 · 사장님 승인 후.
+
+    순서: 1)corp_code 2)명부(valid_from=2021-01-04) 3)DART 채우기 3b)우선주 재복사
+          4)이름표 5)리포트 6)게이트(둘 다 ≥ 98%)
+    ⚠️ --dry-run 은 «DB 쓰기 0 · DART 호출 0 · gz 0» 이다 — 대상 건수와 함께
+       게이트가 볼 두 커버리지의 «예측치»(2단계 후 · 3b 후)를 인쇄한다.
+    """
+    _guard_window(force)
+    d = date.fromisoformat(_to_iso(trade_date)) if isinstance(trade_date, str) else trade_date
+    key = _load_dart_key()
+    steps = {}
+    with KisDbConnection.get_connection() as conn:
+        w.ensure_tables(conn)
+        before = _live_three_table_counts(conn)
+        umkt = set(load_u_market(conn))
+        if dry_run:
+            # 🔴 gz 도 쓰지 않는다(archive=False) — dry-run 이 파일을 남기면 「쓰기 0」이
+            #    거짓이 되고 §5-4 재생성 원료에 «실제로는 안 쓴 날»이 섞인다.
+            open_rows = w.load_open_rows(conn)
+            desc = kdc.load_desc(d, kdc.fold_market_counts(w.open_market_counts(conn)),
+                                 archive=False)
+            snap = w.load_stock_industry(conn)
+            cmap = load_map(conn)
+            universe = set(load_universe(conn))
+            by_code = dict((r["stock_code"], r) for r in desc["rows"])
+            matched = [c for c in universe if c in by_code]
+            would_dart = [c for c in sorted(universe)
+                          if w.parent_code(c) is None and c not in snap and c in cmap]
+            # 게이트가 볼 두 커버리지를 «예측»한다 — 안 내면 dry-run 이 98% 판정을 못 돕는다.
+            pred_code, pred_name = set(), set()
+            for c in universe:
+                if w.parent_code(c) is None:
+                    if c in snap or c in cmap:      # 스냅샷 시드 또는 DART 로 채워질 것
+                        pred_code.add(c)
+                    if by_code.get(c, {}).get("ksic3_name"):
+                        pred_name.add(c)
+            for c in universe:                       # 3b 우선주 재복사 예측
+                p = w.parent_code(c)
+                if p is None or p not in universe:
+                    continue
+                if p in pred_code:
+                    pred_code.add(c)
+                if p in pred_name:
+                    pred_name.add(c)
+            n = len(umkt) or 1
+            # 2단계 «후»(= DART 채우기 전) 예측에서는 would_dart 로 채워질 종목뿐 아니라
+            # 그 부모를 복사받는 «우선주 자식»도 빼야 한다(실제 사례 0220WL → 0220W0).
+            not_yet = set(would_dart)
+            for c in universe:
+                p = w.parent_code(c)
+                if p is not None and p in not_yet:
+                    not_yet.add(c)
+            steps = {"matched": len(matched),
+                     "snapshot_hits": len([c for c in matched if c in snap]),
+                     "would_dart_calls": len(would_dart), "open_rows": len(open_rows),
+                     "predicted_coverage_after_2": {
+                         "ksic_code": float(len((pred_code - not_yet) & umkt)) / n,
+                         "ksic3_name": float(len(pred_name & umkt)) / n},
+                     "predicted_coverage_after_3b": {
+                         "ksic_code": float(len(pred_code & umkt)) / n,
+                         "ksic3_name": float(len(pred_name & umkt)) / n},
+                     "u_market": len(umkt)}
+            after = _live_three_table_counts(conn)
+            out = {"dry_run": True, "steps": steps, "live_before": before, "live_after": after}
+            out["report"] = _report("bootstrap_report_dryrun", [
+                "부트스트랩 dry-run (쓰기 0 · DART 0 · gz 0)", str(out), "",
+                "⚠️ 예측치다 — DART 가 125건 전부 induty_code 를 준다는 가정에서 나온 값이고,",
+                "   그 가정은 08-07 실행(다른 집합)에서 왔다. 본 실행 리포트가 실측으로 대체한다.",
+                "⚠️ 예측은 «과대»일 수 있다 — 무자료(013) 응답·형식 이상 코드는 반영하지 않는다.",
+            ])
+            return out
+
+        # 1) corp_code
+        steps["corp_code"] = maybe_refresh_corp_code(conn, key, days=0)
+        # 2) 명부 (소급 · valid_from = 2021-01-04)
+        steps["map"] = update_map(conn, d, source="bootstrap_snapshot",
+                                  use_snapshot=True, valid_from=BOOTSTRAP_VALID_FROM)
+        steps["coverage_after_2"] = _coverage(conn, umkt)
+        # 3) DART 채우기 (예상 125 < 상한 300)
+        steps["ksic_fill"] = fill_ksic(conn, d, cap=DART_DAILY_CAP, recheck_max=0, key=key)
+        # 3b) 우선주 재복사 — 3 에서 부모(0220W0 등)가 채워진 자식을 받는다
+        steps["recopy"] = recopy_preferred(conn, d, source="bootstrap_snapshot")["counts"]
+        steps["coverage_after_3b"] = _coverage(conn, umkt)
+        # 4) 이름표
+        steps["names"] = w.rebuild_ksic_names(conn)
+        unlabeled = _unlabeled_list(conn, umkt)
+        after = _live_three_table_counts(conn)
+
+    cov = steps["coverage_after_3b"]
+    out = {"dry_run": False, "steps": steps, "unlabeled": unlabeled,
+           "live_before": before, "live_after": after}
+    out["report"] = _report("bootstrap_report", [
+        "섹터 명부 부트스트랩 리포트", "기준일: %s" % d, "",
+        "U_market: %d" % len(umkt),
+        "2단계 후 커버리지: %s" % steps["coverage_after_2"],
+        "3b 후 커버리지: %s" % cov,
+        "DART 응답: %s" % steps["ksic_fill"].get("status_counts"),
+        "  · nodata(업종 없음): %s" % steps["ksic_fill"].get("nodata"),
+        "  · 채운 종목: %s" % steps["ksic_fill"].get("filled"),
+        "이름표 코드 수: %s · 점유율<0.8: %s" % (steps["names"].get("codes"),
+                                                steps["names"].get("low_share")),
+        "미라벨 종목 목록(%d): %s" % (len(unlabeled), unlabeled),
+        "라이브 3표 전/후: %s / %s" % (before, after),
+        "",
+        "🔴 이 구간(2021-01-04 ~ 구축일)의 업종 라벨은 «현재 스냅샷의 소급»이다(§5-2).",
+    ])
+    if before != after:
+        raise RuntimeError("🔴 라이브 3표 행수가 바뀌었다 — 즉시 보고: %s → %s" % (before, after))
+    if cov["ksic_code"] < COVERAGE_MIN or cov["ksic3_name"] < COVERAGE_MIN:
+        raise RuntimeError(
+            "🔴 부트스트랩 게이트 미달 — 백필을 진행하지 말고 사장님께 보고할 것: %s" % cov)
+    return out
+
+
+def _coverage(conn, umkt) -> dict:
+    with conn.cursor() as cur:
+        cur.execute(_FACTS_COVERAGE_SQL)
+        code_nn, name_nn, _rem = [int(x) for x in cur.fetchone()]
+    n = len(umkt) or 1
+    return {"ksic_code": float(code_nn) / n, "ksic3_name": float(name_nn) / n,
+            "u_market": len(umkt)}
+
+
+def _unlabeled_list(conn, umkt) -> list:
+    """미라벨 = ①열린 줄은 있는데 코드/이름이 비었다 ②**열린 줄이 아예 없다**.
+
+    🔴 ②를 빼면 「명부에 안 들어온 종목」이 목록에도 커버리지에도 안 보인다 —
+       못 본 것을 없는 것으로 읽는 바로 그 형태다.
+    """
+    with conn.cursor() as cur:
+        cur.execute("SELECT stock_code FROM stock_sector_map WHERE valid_to IS NULL "
+                    "AND (ksic_code IS NULL OR ksic3_name IS NULL)")
+        partial = set(r[0] for r in cur.fetchall())
+        cur.execute("SELECT stock_code FROM stock_sector_map WHERE valid_to IS NULL")
+        have_row = set(r[0] for r in cur.fetchall())
+    missing_row = set(umkt) - have_row
+    if missing_row:
+        logger.warning("[sector] 명부에 열린 줄이 «아예 없는» U_market 종목 %d개: %s",
+                       len(missing_row), sorted(missing_row)[:10])
+    return sorted((partial & set(umkt)) | missing_row)
+
+
+def regen_map(d_from, dry_run=False, force=False) -> dict:
+    """§5-4 ② — 그 날짜 «이후»의 SCD2 를 보관 gz + dart_company_*.jsonl 로 재생성한다.
+
+    🔴 손 수정(SQL 직접 UPDATE/DELETE) 금지의 대체 경로다.
+    🔴 하한 = 첫 EOD 날짜. 부트스트랩 행(valid_from=2021-01-04)은 재생성 대상이 아니다.
+    🔴 캐시 CSV 엔 코드 열이 없으므로 ksic_code·ksic_source·ksic_checked_at 은 jsonl
+       보관분으로만 재생성하고, 보관분이 없는 구간은 «보존»한다.
+    🔴 DB 쓰기는 전부 sector_writer 를 거친다(reset_map_from·snapshot_map·restore_map).
+    🔴 일자별 재구축은 단계마다 커밋된다 — 중간에 터지면 명부가 «잘린 채» 남는다.
+       그래서 시작 전에 표 전체를 스냅샷 뜨고, 어디서든 터지면 통째로 되돌린다.
+
+    ⚠️ **재생은 원본 실행과 완전히 같지 않다 — 두 가지가 다르다.**
+    ① 원래 5% 급변 가드에 걸렸던 날을 재생하면 그 날 `update_map` 이 다시 RuntimeError 를
+       내고 **재생 전체가 롤백**된다. 이건 의도다 — 「그날 왜 걸렸나」를 먼저 조사해야지
+       재생이 조용히 통과시키면 안 된다. 조사 후 `--from` 을 그 다음 날로 올려 다시 돈다.
+    ② 원래 `written=false` 였던 날(캐시 404 등)도 재생에서는 «7일 후퇴 gz»를 찾아
+       **쓴다**. 즉 그날 명부가 원본보다 «더 채워진» 상태가 될 수 있다.
+       리포트에 그 날짜 수를 남기고, 소급 라벨이 늘어난다는 점을 판정문에 인쇄한다.
+    """
+    _guard_window(force)
+    with KisDbConnection.get_connection() as conn:
+        w.ensure_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT min(valid_from) FROM stock_sector_map WHERE source='eod'")
+            first_eod = cur.fetchone()[0]
+        if first_eod is None:
+            raise RuntimeError("EOD 로 생긴 줄이 없다 — 재생성할 구간이 없다")
+        if d_from < first_eod:
+            raise RuntimeError("--from 은 첫 EOD 날짜(%s) 이상이어야 한다(부트스트랩 행은 "
+                               "gz 가 아니라 stock_industry + 부트스트랩 날 gz 로 재현한다)"
+                               % first_eod)
+        days = [x for x in _trading_days_between(conn, d_from, now_kst().date())]
+        jsonl_days = [x for x in days
+                      if os.path.exists(os.path.join(SECTOR_DIR, "dart_company_%s.jsonl" % x))]
+        if dry_run:
+            return {"from": str(d_from), "days": len(days), "jsonl_days": len(jsonl_days),
+                    "dry_run": True}
+
+        snap_rows = w.snapshot_map(conn)
+        logger.warning("[sector] 명부 스냅샷 %d행 — 실패하면 이걸로 되돌린다", snap_rows)
+        try:
+            reset = w.reset_map_from(conn, d_from)
+            fetcher = _gz_fetcher()
+            replayed = 0
+            for iso in days:
+                day = date.fromisoformat(iso)
+                update_map(conn, day, source="eod", fetcher=fetcher)
+                path = os.path.join(SECTOR_DIR, "dart_company_%s.jsonl" % iso)
+                if os.path.exists(path):
+                    open_rows = w.load_open_rows(conn)
+                    resp = []
+                    with open(path, encoding="utf-8") as fh:
+                        for line in fh:
+                            rec = json.loads(line)
+                            payload = rec.get("payload") or {}
+                            induty = (payload.get("induty_code") or "").strip()
+                            # 🔴 열린 줄이 없는 종목은 «건너뛴다» — 재생시 새 행을 만들면
+                            #    부수 열이 전부 NULL 인 유령 행이 생긴다(M3).
+                            if rec["stock_code"] not in open_rows:
+                                continue
+                            resp.append({"stock_code": rec["stock_code"],
+                                         "ksic_code": induty or None, "recheck": False})
+                    if resp:
+                        w.apply_ksic_updates(conn, resp, day, create_missing=False)
+                        replayed += len(resp)
+                recopy_preferred(conn, day)
+            w.rebuild_ksic_names(conn)
+        except Exception as e:  # noqa: BLE001 — 중간 실패는 «잘린 명부»를 남긴다
+            # 🔴 rollback 을 «먼저» — 실패한 문장이 트랜잭션을 abort 상태로 두면
+            #    restore 의 DELETE 가 InFailedSqlTransaction 으로 즉시 죽는다.
+            conn.rollback()
+            restored = w.restore_map(conn)
+            logger.error("[sector] 재생성 실패(%s) - 스냅샷 %d행으로 되돌렸다", e, restored)
+            raise
+        w.drop_map_snapshot(conn)
+    out = {"from": str(d_from), "days": len(days), "jsonl_days": len(jsonl_days),
+           "deleted": reset["deleted"], "reopened": reset["reopened"],
+           "replayed_responses": replayed, "snapshot_rows": snap_rows, "dry_run": False}
+    out["report"] = _report("regen_map_report", [
+        "명부 재생성", str(out), "",
+        "삭제(valid_from >= %s): %d행" % (d_from, reset["deleted"]),
+        "다시 연 줄(valid_to >= %s): %d행" % (d_from - timedelta(days=1), reset["reopened"]),
+        "jsonl 재생 응답: %d건 (보관분 없는 날의 KSIC 계열은 «보존»)" % replayed,
+    ])
+    return out
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--date", default=None)
+    ap.add_argument("--from", dest="d_from", default=None)
+    ap.add_argument("--to", dest="d_to", default=None)
+    ap.add_argument("--taxonomy", default=None, choices=["ksic2", "ksic3", "ksic5"])
+    ap.add_argument("--bootstrap", action="store_true")
+    ap.add_argument("--backfill", action="store_true")
+    ap.add_argument("--regen", action="store_true")
+    ap.add_argument("--regen-map", dest="regen_map", action="store_true")
+    ap.add_argument("--delete-stats", dest="delete_stats", action="store_true")
+    ap.add_argument("--reconcile-only", dest="reconcile_only", default=None)
+    ap.add_argument("--dry-run", dest="dry_run", action="store_true")
+    ap.add_argument("--force", action="store_true")
+    args = ap.parse_args()
+
+    # 🔴 --dry-run 을 작업 플래그 없이 쓰면 마지막 else 가지(collect_sector = 진짜 EOD)로
+    #    떨어져 dry_run 이 «무시된 채» 실제 수집이 돌아간다 — 「안 쓴다」고 믿고
+    #    불렀는데 SCD2 가 써진다. 조용한 오해를 남기지 않고 즉시 거부한다.
+    if args.dry_run and not (args.bootstrap or args.backfill or args.regen
+                             or args.regen_map or args.delete_stats):
+        ap.error("--dry-run 은 수동 작업(--bootstrap/--backfill/--regen/--regen-map/"
+                 "--delete-stats)에만 쓴다 — EOD 판(기본)과 --reconcile-only 는 "
+                 "dry-run 이 없다")
+
+    def _need(v, name):
+        if not v:
+            ap.error("%s 가 필요하다" % name)
+        return date.fromisoformat(_to_iso(v))
+
+    if args.bootstrap:
+        print(bootstrap(_need(args.date, "--date"), args.dry_run, args.force))
+    elif args.backfill:
+        print(backfill(_need(args.d_from, "--from"), _need(args.d_to, "--to"),
+                       args.dry_run, args.force))
+    elif args.regen:
+        print(regen_stats(_need(args.d_from, "--from"), _need(args.d_to, "--to"),
+                          args.taxonomy, args.dry_run, args.force))
+    elif args.regen_map:
+        print(regen_map(_need(args.d_from, "--from"), args.dry_run, args.force))
+    elif args.delete_stats:
+        print(delete_stats_cli(_need(args.d_from, "--from"), _need(args.d_to, "--to"),
+                               args.taxonomy, args.dry_run, args.force))
+    elif args.reconcile_only:
+        print(reconcile_sector(args.reconcile_only))
+    else:
+        print(collect_sector(args.date))

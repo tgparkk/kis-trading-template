@@ -1073,3 +1073,394 @@ def test_stale_error_is_none_on_the_happy_path(monkeypatch):
     _patch_update_map(monkeypatch, _UM_OPEN, _UM_UNIVERSE, _UM_CSV, stale_days=1)
     out = sc.update_map(object(), TD)
     assert out["stale_error"] is None and out["stale"] is False
+
+
+# ───────────────────────── T14 — CLI(시간 가드·백필·gz 폴백) ─────────────────────────
+def test_weekday_eod_window_is_refused():
+    """§5-5 — 평일 15:30~17:00 은 EOD 와 겹친다. --force 없이는 거부."""
+    with pytest.raises(RuntimeError) as e:
+        sc._guard_window(force=False, now=datetime(2026, 9, 7, 16, 0))   # 월요일
+    assert "15:30" in str(e.value)
+    sc._guard_window(force=True, now=datetime(2026, 9, 7, 16, 0))        # --force 는 통과
+    sc._guard_window(force=False, now=datetime(2026, 9, 7, 15, 29))      # 창 전
+    sc._guard_window(force=False, now=datetime(2026, 9, 7, 17, 0))       # 창 끝(포함 안 함)
+    sc._guard_window(force=False, now=datetime(2026, 9, 5, 16, 0))       # 토요일
+
+
+def _patch_backfill(monkeypatch, calls, rows=550):
+    """backfill 이 DB·파일을 안 타게 한다(라이브 3표 대조·리포트도 스텁)."""
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: _DummyCM())
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda conn: None)
+    monkeypatch.setattr(sc, "_live_three_table_counts",
+                        lambda conn: {"daily_prices": 1, "minute_candles": 2,
+                                      "virtual_trading_records": 3})
+    monkeypatch.setattr(sc, "_report", lambda name, lines: "(report)")
+    monkeypatch.setattr(sc, "_trading_days_between",
+                        lambda conn, a, b: ["2026-09-04", "2026-09-07"])
+    monkeypatch.setattr(sc, "compute_stats",
+                        lambda conn, d: calls.append(d) or {"rows": rows,
+                                                            "G": {"ksic3": 159},
+                                                            "undefined": {}})
+
+
+def test_backfill_dry_run_writes_nothing(monkeypatch):
+    """--dry-run 은 쓰기 0 · 리포트만."""
+    calls = []
+    _patch_backfill(monkeypatch, calls)
+    out = sc.backfill(date(2026, 9, 4), date(2026, 9, 7), dry_run=True, force=True)
+    assert calls == [], "dry-run 인데 성적표를 계산·적재했다"
+    assert out["dry_run"] is True and out["days"] == 2
+
+
+def test_backfill_writes_each_trading_day(monkeypatch):
+    """거래일마다 한 번씩 돈다 · 라이브 3표 전후가 같아야 통과한다."""
+    calls = []
+    _patch_backfill(monkeypatch, calls)
+    out = sc.backfill(date(2026, 9, 4), date(2026, 9, 7), force=True)
+    assert calls == [date(2026, 9, 4), date(2026, 9, 7)]
+    assert out["rows"] == 1100 and out["days_with_rows"] == 2
+
+
+def test_gz_fetcher_reads_archive(tmp_path, monkeypatch):
+    """--regen-map 은 «보관 gz» 를 캐시 CSV 처럼 읽는다(네트워크 0)."""
+    import gzip
+    monkeypatch.setattr(kdc, "ARCHIVE_DIR", str(tmp_path))
+    raw = _csv([("005930", "삼성전자", "KOSPI", "", "반도체 제조업")])
+    with gzip.open(os.path.join(str(tmp_path), "krx_desc_2026-09-04.csv.gz"), "wb") as fh:
+        fh.write(raw)
+    fn = sc._gz_fetcher()
+    assert fn("x/2026-09-05.csv") == (404, b"")
+    status, body = fn("x/2026-09-04.csv")
+    assert status == 200 and body == raw
+
+
+# ── T14 보강 — 브리프에 테스트가 없는 «안전 장치» 경로(가드 전면 적용·라이브 3표·스냅샷 복구) ──
+_WRITE_FNS = ("write_map", "apply_ksic_updates", "upsert_stats", "delete_stats",
+              "delete_stale_stats", "upsert_nodata", "rebuild_ksic_names",
+              "upsert_reconciliation", "reset_map_from", "snapshot_map",
+              "restore_map", "drop_map_snapshot")
+_WRITE_ORCH = ("compute_stats", "update_map", "recopy_preferred", "fill_ksic")
+
+
+def _forbid_writes(monkeypatch):
+    """쓰기 함수를 «전부» 지뢰로 바꾼다 — dry-run 이 하나라도 부르면 즉시 터진다.
+
+    🔑 「쓰기 0」을 눈으로 확인하는 대신 «부르면 실패»로 못 박는다. 나중에 dry-run
+       분기에 쓰기가 새로 들어와도 이 테스트가 잡는다.
+    """
+    def _mine(name):
+        def _fn(*a, **kw):
+            raise AssertionError("dry-run 인데 쓰기 함수를 불렀다: %s" % name)
+        return _fn
+
+    for name in _WRITE_FNS:
+        monkeypatch.setattr(sc.w, name, _mine("w." + name))
+    for name in _WRITE_ORCH:
+        monkeypatch.setattr(sc, name, _mine("sc." + name))
+
+
+class _GuardConn:
+    """가드보다 «먼저» DB 를 열면 알 수 있게 하는 지뢰 연결."""
+
+    def __enter__(self):
+        raise AssertionError("시간 가드보다 «먼저» DB 를 열었다")
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_every_cli_op_checks_the_time_window(monkeypatch):
+    """🔴 가드가 «모든» CLI 진입점의 첫 문장이다 — 하나라도 빠지면 그 경로만 EOD 와 겹친다.
+
+    DB 연결을 지뢰로 깔았으므로, 가드가 없으면 RuntimeError 가 아니라 AssertionError 가 난다.
+    """
+    monkeypatch.setattr(sc, "now_kst", lambda: datetime(2026, 9, 7, 16, 0))   # 월 16:00
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: _GuardConn())
+    ops = {
+        "bootstrap": lambda: sc.bootstrap(date(2026, 9, 7)),
+        "backfill": lambda: sc.backfill(date(2026, 9, 4), date(2026, 9, 7)),
+        "regen_stats": lambda: sc.regen_stats(date(2026, 9, 4), date(2026, 9, 7)),
+        "regen_map": lambda: sc.regen_map(date(2026, 9, 4)),
+        "delete_stats_cli": lambda: sc.delete_stats_cli(date(2026, 9, 4), date(2026, 9, 7)),
+    }
+    for name, fn in ops.items():
+        with pytest.raises(RuntimeError) as e:
+            fn()
+        assert "15:30" in str(e.value), "%s 에 시간 가드가 없다: %s" % (name, e.value)
+
+
+class _CountFlip:
+    """라이브 3표 행수 — 두 번째 호출부터 «다른» 값을 준다(작업이 실제로 썼다는 뜻)."""
+
+    def __init__(self):
+        self.n = 0
+
+    def __call__(self, conn):
+        self.n += 1
+        return {"daily_prices": 1 if self.n == 1 else 2,
+                "minute_candles": 2, "virtual_trading_records": 3}
+
+
+def test_backfill_raises_when_live_three_tables_change(monkeypatch):
+    """🔴 라이브 3표가 «한 행이라도» 바뀌면 즉시 예외 — 리포트는 «먼저» 남긴다."""
+    calls = []
+    reports = []
+    _patch_backfill(monkeypatch, calls)
+    monkeypatch.setattr(sc, "_live_three_table_counts", _CountFlip())
+    monkeypatch.setattr(sc, "_report", lambda name, lines: reports.append(name) or "(r)")
+    with pytest.raises(RuntimeError) as e:
+        sc.backfill(date(2026, 9, 4), date(2026, 9, 7), force=True)
+    assert "라이브 3표" in str(e.value)
+    assert reports == ["backfill_report"], "터지기 «전»에 근거를 남겨야 한다"
+
+
+def _patch_bootstrap(monkeypatch, cov, counts=None, reports=None):
+    """bootstrap 비-dry 경로를 DB·DART 없이 굴린다."""
+    monkeypatch.setattr(sc, "_load_dart_key", lambda: "k")
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: _DummyCM())
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda conn: None)
+    monkeypatch.setattr(sc, "_live_three_table_counts",
+                        counts or (lambda conn: {"daily_prices": 1, "minute_candles": 2,
+                                                 "virtual_trading_records": 3}))
+    monkeypatch.setattr(sc, "load_u_market", lambda conn: ["005930", "005935"])
+    monkeypatch.setattr(sc, "maybe_refresh_corp_code", lambda conn, key, **kw: False)
+    monkeypatch.setattr(sc, "update_map", lambda conn, d, **kw: {"written": True})
+    monkeypatch.setattr(sc, "_coverage", lambda conn, umkt: dict(cov))
+    monkeypatch.setattr(sc, "fill_ksic", lambda conn, d, **kw: {"status_counts": {},
+                                                               "nodata": 0, "filled": 1})
+    monkeypatch.setattr(sc, "recopy_preferred", lambda conn, d, **kw: {"counts": {}})
+    monkeypatch.setattr(sc.w, "rebuild_ksic_names", lambda conn: {"codes": 1, "low_share": []})
+    monkeypatch.setattr(sc, "_unlabeled_list", lambda conn, umkt: [])
+    monkeypatch.setattr(sc, "_report",
+                        lambda name, lines: (reports if reports is not None else []).append(name)
+                        or "(r)")
+
+
+def test_bootstrap_raises_when_live_three_tables_change(monkeypatch):
+    """🔴 부트스트랩도 라이브 3표를 전후로 잰다 — 바뀌면 커버리지 게이트보다 «먼저» 터진다."""
+    reports = []
+    _patch_bootstrap(monkeypatch, {"ksic_code": 1.0, "ksic3_name": 1.0, "u_market": 2},
+                     counts=_CountFlip(), reports=reports)
+    with pytest.raises(RuntimeError) as e:
+        sc.bootstrap(date(2026, 9, 7), force=True)
+    assert "라이브 3표" in str(e.value)
+    assert reports == ["bootstrap_report"]
+
+
+def test_bootstrap_gate_stops_below_98_percent(monkeypatch):
+    """🔴 3b 후 커버리지가 하나라도 98% 미만이면 «백필로 넘어가지 않는다»."""
+    _patch_bootstrap(monkeypatch, {"ksic_code": 0.99, "ksic3_name": 0.97, "u_market": 2})
+    with pytest.raises(RuntimeError) as e:
+        sc.bootstrap(date(2026, 9, 7), force=True)
+    assert "게이트 미달" in str(e.value)
+    # 둘 다 넘으면 통과한다 — 문턱이 «항상 실패»가 아님을 대칭으로 못 박는다.
+    _patch_bootstrap(monkeypatch, {"ksic_code": 0.99, "ksic3_name": 0.99, "u_market": 2})
+    out = sc.bootstrap(date(2026, 9, 7), force=True)
+    assert out["dry_run"] is False and out["steps"]["coverage_after_3b"]["ksic3_name"] == 0.99
+
+
+def test_bootstrap_dry_run_writes_nothing_and_predicts_coverage(monkeypatch):
+    """--dry-run = DB 쓰기 0 · DART 0 · gz 0 · 두 커버리지 예측치를 인쇄한다."""
+    seen = {}
+    _forbid_writes(monkeypatch)
+    monkeypatch.setattr(sc, "_load_dart_key", lambda: "k")
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: _DummyCM())
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda conn: None)
+    monkeypatch.setattr(sc, "_live_three_table_counts",
+                        lambda conn: {"daily_prices": 1, "minute_candles": 2,
+                                      "virtual_trading_records": 3})
+    monkeypatch.setattr(sc, "load_u_market", lambda conn: ["005930", "005935"])
+    monkeypatch.setattr(sc.w, "load_open_rows", lambda conn: {"005930": _row()})
+    monkeypatch.setattr(sc.w, "open_market_counts", lambda conn: {})
+    monkeypatch.setattr(sc.w, "load_stock_industry", lambda conn: {"005930": "264"})
+    monkeypatch.setattr(sc, "load_map", lambda conn: {"005930": "C1"})
+    monkeypatch.setattr(sc, "load_universe", lambda conn: ["005930", "005935"])
+    monkeypatch.setattr(sc, "_report", lambda name, lines: "(r)")
+
+    def _desc(trade_date, existing=None, fetcher=None, archive=True):
+        seen["archive"] = archive
+        return {"rows": [{"stock_code": "005930", "ksic3_name": "반도체 제조업"}]}
+
+    monkeypatch.setattr(kdc, "load_desc", _desc)
+    out = sc.bootstrap(date(2026, 9, 7), dry_run=True, force=True)
+    assert seen["archive"] is False, "dry-run 이 gz 를 남기면 「쓰기 0」이 거짓이 된다"
+    assert out["dry_run"] is True
+    # 부모(005930)가 스냅샷 시드 → 우선주 자식(005935)까지 3b 에서 복사받는다.
+    assert out["steps"]["predicted_coverage_after_3b"] == {"ksic_code": 1.0, "ksic3_name": 1.0}
+    assert out["steps"]["would_dart_calls"] == 0 and out["steps"]["matched"] == 1
+
+
+class _RegenCursor:
+    def __init__(self, db):
+        self.db = db
+        self._rows = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        self.db.log.append(sql)
+        if "min(valid_from)" in sql:
+            self._rows = [(self.db.first_eod,)]
+        else:
+            self._rows = []
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return list(self._rows)
+
+
+class _RegenConn:
+    def __init__(self, first_eod=date(2026, 9, 1), order=None):
+        self.first_eod = first_eod
+        self.log = []
+        self.order = order if order is not None else []
+
+    def cursor(self):
+        return _RegenCursor(self)
+
+    def commit(self):
+        self.order.append("commit")
+
+    def rollback(self):
+        self.order.append("rollback")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_regen_map_dry_run_writes_nothing(monkeypatch):
+    """--regen-map --dry-run 은 스냅샷도 reset 도 «하지 않는다» — 건수만 센다."""
+    _forbid_writes(monkeypatch)
+    conn = _RegenConn()
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: conn)
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda c: None)
+    monkeypatch.setattr(sc, "_trading_days_between",
+                        lambda c, a, b: ["2026-09-04", "2026-09-07"])
+    out = sc.regen_map(date(2026, 9, 4), dry_run=True, force=True)
+    assert out == {"from": "2026-09-04", "days": 2, "jsonl_days": 0, "dry_run": True}
+
+
+def test_regen_map_refuses_before_the_first_eod_day(monkeypatch):
+    """🔴 하한 = 첫 EOD 날짜. 부트스트랩 행(2021-01-04)은 gz 로 재현할 수 없다."""
+    conn = _RegenConn(first_eod=date(2026, 9, 10))
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: conn)
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda c: None)
+    with pytest.raises(RuntimeError) as e:
+        sc.regen_map(date(2026, 9, 4), force=True)
+    assert "2026-09-10" in str(e.value)
+
+
+def test_regen_map_snapshots_first_and_restores_on_failure(monkeypatch):
+    """🔴 순서가 전부다 — ①스냅샷 ②reset ③(터짐) ④rollback ⑤restore.
+
+    일자별 재구축은 단계마다 커밋되므로, 스냅샷이 reset «뒤»에 찍히면 되돌릴 원본이
+    이미 잘린 뒤다. 실패했는데 drop_map_snapshot 이 돌면 유일한 원본이 사라진다.
+    """
+    order = []
+    conn = _RegenConn(order=order)
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: conn)
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda c: None)
+    monkeypatch.setattr(sc, "_trading_days_between", lambda c, a, b: ["2026-09-04"])
+    monkeypatch.setattr(sc.w, "snapshot_map", lambda c: order.append("snapshot") or 7)
+    monkeypatch.setattr(sc.w, "reset_map_from",
+                        lambda c, d: order.append("reset") or {"deleted": 1, "reopened": 2})
+    monkeypatch.setattr(sc.w, "restore_map", lambda c: order.append("restore") or 7)
+    monkeypatch.setattr(sc.w, "drop_map_snapshot", lambda c: order.append("drop"))
+
+    def _boom(conn_, day, **kw):
+        order.append("update_map")
+        raise RuntimeError("5% 급변 가드")
+
+    monkeypatch.setattr(sc, "update_map", _boom)
+    with pytest.raises(RuntimeError) as e:
+        sc.regen_map(date(2026, 9, 4), force=True)
+    assert "급변 가드" in str(e.value), "원인 예외가 삼켜졌다"
+    assert order == ["snapshot", "reset", "update_map", "rollback", "restore"], order
+    assert "drop" not in order, "실패했는데 유일한 복구 원본을 지웠다"
+
+
+def test_regen_map_drops_the_snapshot_only_on_success(monkeypatch):
+    """성공하면 스냅샷을 지운다 — 남아 있으면 다음 실행이 snapshot_map 에서 멈춘다."""
+    order = []
+    conn = _RegenConn(order=order)
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: conn)
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda c: None)
+    monkeypatch.setattr(sc, "_trading_days_between", lambda c, a, b: ["2026-09-04"])
+    monkeypatch.setattr(sc.w, "snapshot_map", lambda c: order.append("snapshot") or 7)
+    monkeypatch.setattr(sc.w, "reset_map_from",
+                        lambda c, d: order.append("reset") or {"deleted": 1, "reopened": 2})
+    monkeypatch.setattr(sc.w, "restore_map", lambda c: order.append("restore") or 7)
+    monkeypatch.setattr(sc.w, "drop_map_snapshot", lambda c: order.append("drop"))
+    monkeypatch.setattr(sc, "update_map",
+                        lambda c, day, **kw: order.append("update_map") or {})
+    monkeypatch.setattr(sc, "recopy_preferred",
+                        lambda c, day, **kw: order.append("recopy") or {"counts": {}})
+    monkeypatch.setattr(sc.w, "rebuild_ksic_names",
+                        lambda c: order.append("names") or {"codes": 1, "low_share": []})
+    monkeypatch.setattr(sc, "_report", lambda name, lines: "(r)")
+    out = sc.regen_map(date(2026, 9, 4), force=True)
+    assert order == ["snapshot", "reset", "update_map", "recopy", "names", "drop"], order
+    assert "restore" not in order
+    assert out["deleted"] == 1 and out["reopened"] == 2 and out["snapshot_rows"] == 7
+    assert out["replayed_responses"] == 0, "보관 jsonl 이 없는 날은 KSIC 계열을 «보존»한다"
+
+
+def test_regen_stats_dry_run_deletes_nothing(monkeypatch):
+    """--regen --dry-run 은 지우지도 다시 계산하지도 않는다."""
+    _forbid_writes(monkeypatch)
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: _DummyCM())
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda conn: None)
+    monkeypatch.setattr(sc, "_trading_days_between",
+                        lambda conn, a, b: ["2026-09-04", "2026-09-07"])
+    out = sc.regen_stats(date(2026, 9, 4), date(2026, 9, 7), taxonomy="ksic3",
+                         dry_run=True, force=True)
+    assert out == {"from": "2026-09-04", "to": "2026-09-07", "days": 2,
+                   "dry_run": True, "would_delete_taxonomy": "ksic3"}
+
+
+def test_delete_stats_dry_run_only_counts(monkeypatch):
+    """--delete-stats --dry-run 은 «셀 뿐»이고 리포트를 남긴다."""
+    _forbid_writes(monkeypatch)
+    lines = {}
+
+    class _Cur:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params=None):
+            lines["sql"] = sql
+            lines["params"] = list(params)
+
+        def fetchone(self):
+            return (12,)
+
+    class _Conn:
+        def cursor(self):
+            return _Cur()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(sc.KisDbConnection, "get_connection", lambda: _Conn())
+    monkeypatch.setattr(sc.w, "ensure_tables", lambda conn: None)
+    monkeypatch.setattr(sc, "_report", lambda name, l: "(r)")
+    out = sc.delete_stats_cli(date(2026, 9, 4), date(2026, 9, 7), taxonomy="ksic5",
+                              dry_run=True, force=True)
+    assert out["would_delete"] == 12 and out["dry_run"] is True and out["report"] == "(r)"
+    assert lines["sql"].strip().upper().startswith("SELECT"), "dry-run 이 DELETE 를 냈다"
+    assert lines["params"][-1] == "ksic5", "taxonomy 가 셈에서 빠졌다"

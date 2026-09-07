@@ -674,3 +674,92 @@ def upsert_reconciliation(conn, trade_date: str, real_rows: int, new_rows: int,
     except Exception:
         conn.rollback()
         raise
+
+
+# ───────────────── 재생성용 쓰기 (§5-4 `--regen-map` 전용 · B3) ─────────────────
+MAP_SNAPSHOT_TABLE = "stock_sector_map_regen_bak"
+
+
+def reset_map_from(conn, d_from) -> dict:
+    """§5-4 `--regen-map` 전용 — d_from «이후»의 SCD2 를 되돌린다.
+
+    ① `valid_from >= d_from` 인 줄 삭제 ② `valid_to >= d_from − 1일` 인 줄 다시 열기.
+    🔴 ② 뒤에 같은 종목의 열린 줄이 2개 이상이면 즉시 실패한다 — 겹치는 유효기간은
+       `fn_sector_map_as_of` 에서 종목당 2행이 되고 그건 n_members 이중 계산이다(§8-8).
+    🔴 이 함수가 stock_sector_map 에 DELETE/UPDATE 를 하는 «유일한» 자리다.
+    """
+    from datetime import timedelta
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM stock_sector_map WHERE valid_from >= %s", (d_from,))
+            deleted = cur.rowcount
+            cur.execute("UPDATE stock_sector_map SET valid_to=NULL WHERE valid_to >= %s",
+                        (d_from - timedelta(days=1),))
+            reopened = cur.rowcount
+            cur.execute("SELECT count(*) FROM (SELECT stock_code FROM stock_sector_map "
+                        "WHERE valid_to IS NULL GROUP BY 1 HAVING count(*) > 1) t")
+            dup = int(cur.fetchone()[0])
+            if dup:
+                raise RuntimeError(
+                    "reset 후 열린 줄이 2개 이상인 종목 %d개 — 재생성을 중단한다"
+                    "(겹치는 유효기간 = n_members 이중 계산)" % dup)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    logger.warning("[sector] 명부 되돌리기 — 삭제 %d행 · 다시 연 줄 %d행", deleted, reopened)
+    return {"deleted": deleted, "reopened": reopened}
+
+
+def snapshot_map(conn) -> int:
+    """재생성 전 표 «전체» 스냅샷. 일자별 재구축은 단계마다 커밋되므로 중간 실패가
+    명부를 잘린 채 남긴다 — 되돌릴 원본이 있어야 한다.
+
+    🔴 남아 있는 스냅샷을 «덮지 않는다». 스냅샷이 남아 있다는 건 직전 재생성이
+       복구까지 실패했다는 뜻이고, 그때 그 표가 **유일한 복구원**이다. 무조건 DROP 하면
+       그 원본을 다음 실행이 지운다 — 사람이 확인하고 손으로 지우게 한다.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass(%s)", ("public." + MAP_SNAPSHOT_TABLE,))
+            if cur.fetchone()[0] is not None:
+                raise RuntimeError(
+                    "직전 재생성의 스냅샷(%s)이 남아 있다 — 복구가 끝났는지 «확인한 뒤» "
+                    "수동으로 DROP 하고 다시 실행할 것. 복구가 필요하면: "
+                    "DELETE FROM stock_sector_map; "
+                    "INSERT INTO stock_sector_map SELECT * FROM %s;"
+                    % (MAP_SNAPSHOT_TABLE, MAP_SNAPSHOT_TABLE))
+            cur.execute("CREATE TABLE " + MAP_SNAPSHOT_TABLE
+                        + " AS SELECT * FROM stock_sector_map")
+            cur.execute("SELECT count(*) FROM " + MAP_SNAPSHOT_TABLE)
+            n = int(cur.fetchone()[0])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return n
+
+
+def restore_map(conn) -> int:
+    """스냅샷으로 통째 복구. 🔴 실패 경로에서만 부른다."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM stock_sector_map")
+            cur.execute("INSERT INTO stock_sector_map SELECT * FROM " + MAP_SNAPSHOT_TABLE)
+            n = cur.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    logger.error("[sector] 명부를 스냅샷 %d행으로 복구했다", n)
+    return n
+
+
+def drop_map_snapshot(conn) -> None:
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DROP TABLE IF EXISTS " + MAP_SNAPSHOT_TABLE)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
