@@ -25,7 +25,8 @@ def _stub_flow_stages(monkeypatch):
     """
     for nm in ("collect_investor_trend", "collect_program_trade", "collect_short_sale",
                "collect_credit_balance", "collect_overtime",
-               "collect_financials", "reconcile_financials"):
+               "collect_financials", "reconcile_financials",
+               "collect_sector", "reconcile_sector"):
         monkeypatch.setattr(eod, nm, lambda d=None: {"skipped": True})
 
 
@@ -211,3 +212,57 @@ def test_stock_market_failure_does_not_reset_cache(monkeypatch):
     monkeypatch.setattr(eod, "reset_market_cache", lambda: reset_calls.append(1))
     eod.run_data_collection("20260623")
     assert reset_calls == []
+
+
+def test_run_data_collection_actually_calls_sector(monkeypatch):
+    """🔑 소스 문자열 단언은 죽은 경로에서도 통과한 전례가 있다(9b82eec·8238f91).
+    배선은 «실제로 돌려서» 단언한다."""
+    from collectors import eod_collection as eod_mod
+    called = []
+    for name in ("collect_daily", "collect_minute", "collect_index",
+                 "collect_stock_market", "collect_foreign_flow", "collect_corp_events"):
+        monkeypatch.setattr(eod_mod, name, lambda *a, _n=name: called.append(_n) or {})
+    monkeypatch.setattr(eod_mod, "reset_market_cache", lambda: None)
+    monkeypatch.setattr(eod_mod, "collect_financials",
+                        lambda *a: called.append("collect_financials") or {})
+    monkeypatch.setattr(eod_mod, "reconcile_financials",
+                        lambda *a: called.append("reconcile_financials") or {})
+    monkeypatch.setattr(eod_mod, "collect_sector",
+                        lambda *a: called.append("collect_sector") or {"map": {"written": True}})
+    monkeypatch.setattr(eod_mod, "reconcile_sector",
+                        lambda *a: called.append("reconcile_sector") or {"verdict": "PASS"})
+
+    out = eod_mod.run_data_collection("2026-09-07")
+    assert "sector" in out and "sector_reconcile" in out
+    # 자리: financials_reconcile «바로 뒤» — 재무가 먼저 쓰게 한다(재무는 020 한 건에도 FAIL)
+    assert called.index("collect_sector") > called.index("reconcile_financials")
+    assert called.index("reconcile_sector") > called.index("collect_sector")
+    # 계약 불변
+    assert out["reconcile"] == {}
+
+
+def test_sector_stage_exception_is_isolated(monkeypatch):
+    """(단계격리) 섹터 수집 실패가 reconcile·다른 단계·EOD 흐름을 막지 않는다."""
+    monkeypatch.setattr(eod, "collect_daily", lambda d=None: {"rows": 1})
+    monkeypatch.setattr(eod, "collect_minute", lambda d=None: {"rows": 2})
+    monkeypatch.setattr(eod, "collect_index", lambda s=None: {"KOSPI": 1})
+    monkeypatch.setattr(eod, "collect_stock_market", lambda: {"KOSPI": 1, "KOSDAQ": 1})
+    monkeypatch.setattr(eod, "collect_foreign_flow", lambda d=None: {"rows": 3})
+    monkeypatch.setattr(eod, "collect_corp_events", lambda d=None: {"rows": 4})
+    monkeypatch.setattr(eod, "collect_sector",
+                        lambda *a: (_ for _ in ()).throw(RuntimeError("github down")))
+    recon = []
+    monkeypatch.setattr(eod, "reconcile_sector",
+                        lambda *a: recon.append(1) or {"verdict": "WARN"})
+    out = eod.run_data_collection("20260623")
+    assert "error" in out["sector"]
+    assert recon == [1], "섹터 수집이 실패해도 reconcile 은 계속 돌아야 한다"
+    assert out["daily"] == {"rows": 1}
+
+
+def test_sector_stage_count_is_exactly_two_lines():
+    """스펙 §10 — eod_collection.py 변경은 «2줄»(+import 1줄)이다.
+    롤백은 이 두 줄을 지우는 것으로 끝나야 한다."""
+    import inspect
+    src = inspect.getsource(eod.run_data_collection)
+    assert src.count("collect_sector") == 1 and src.count("reconcile_sector") == 1
