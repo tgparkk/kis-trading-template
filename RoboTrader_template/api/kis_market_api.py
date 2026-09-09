@@ -450,6 +450,51 @@ def get_index_data(index_code: str = "0001") -> Optional[Dict[str, Any]]:
         return None
 
 
+def get_index_daily_chart(index_code: str = "0001", start_yyyymmdd: Optional[str] = None,
+                         end_yyyymmdd: Optional[str] = None) -> Optional[pd.DataFrame]:
+    """국내업종 기간별시세(일봉) — index_daily / daily_prices 의사티커의 소스.
+
+    🔴 설계 초안의 URL `inquire-daily-indexchart` 는 이 서버에 «없다»(HTTP 404 · 본문
+       빈 문자열). 실측 확정 경로는 주식기간별시세와 «같은» URL 에 시장구분 `U` 다.
+       → scratchpad/index_kis_probe/RESULT.md §1·§5 (2026-09-10 프로브)
+
+    Args:
+        index_code: 업종코드 ("0001": 코스피, "1001": 코스닥)
+        start_yyyymmdd / end_yyyymmdd: 조회 창 'YYYYMMDD'. None 이면 최근 10일.
+
+    Returns:
+        output2(일봉 배열) DataFrame. 실패면 None.
+        🔑 «빈 output2» 는 «빈 DataFrame» 으로 돌려준다 — 0행은 장애가 아니라 판정
+           대상이고, None(=장애)과 섞으면 폴백이 상류 고장을 덮는다(설계 §3).
+    """
+    url = '/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice'
+    tr_id = "FHKUP03500100"  # 국내업종 기간별시세(일/주/월/년)
+
+    if start_yyyymmdd is None:
+        start_yyyymmdd = (now_kst() - timedelta(days=10)).strftime("%Y%m%d")
+    if end_yyyymmdd is None:
+        end_yyyymmdd = now_kst().strftime("%Y%m%d")
+
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "U",          # U: 업종 (J 는 주식/ETF/ETN)
+        "FID_INPUT_ISCD": index_code,           # 0001: 코스피, 1001: 코스닥
+        "FID_INPUT_DATE_1": start_yyyymmdd,
+        "FID_INPUT_DATE_2": end_yyyymmdd,
+        "FID_PERIOD_DIV_CODE": "D",             # D: 일봉
+        "FID_ORG_ADJ_PRC": "0",                 # 업종엔 무의미하나 인자 형식상 필수(200 실측)
+    }
+
+    # 🔑 `_url_fetch` 는 404 에 «예외 대신 None» 을 준다(DEBUG 로그만) — 여기서 None
+    #    으로 접어야 호출자가 그걸 장애로 보고 폴백한다.
+    res = kis._url_fetch(url, tr_id, "", params)
+    if res and res.isOK():
+        body = res.getBody()
+        return pd.DataFrame(getattr(body, 'output2', []))
+
+    logger.error(f"❌ 업종 일봉 조회 실패 ({index_code} {start_yyyymmdd}~{end_yyyymmdd})")
+    return None
+
+
 def get_investor_flow_data() -> Optional[Dict[str, Any]]:
     """
     외국인/기관 매매종목가집계 API (TR: FHPTJ04400000)
