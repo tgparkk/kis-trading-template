@@ -69,6 +69,11 @@ def kis_df_to_index_rows(index_code: str, df) -> list:
     - 거래량: KIS `acml_vol` 은 «천 주» 단위 ⇒ `int(acml_vol) * 1000`
       (반올림 오차 ≤ 999주 · 소비자 0이지만 단위가 바뀌면 조용한 불연속이 된다)
     - 응답은 최신순이지만 UPSERT 는 순서에 무관하므로 정렬하지 않는다.
+    - 🔴 `close <= 0` 인 봉은 «버린다». KIS 는 장 시작 «전»에도 T 라벨 봉을 준다(2026-09-10
+      리뷰 실측: 07:40:2x 에 T 로 찍힌 daily_prices 행이 매 거래일 31~36건). 미확정 칸은
+      빈 문자열로 오고 `_num` 이 0.0 으로 접으므로, 거르지 않으면 «종가 0» 인 T 행이 표에
+      남고 그 순간 max = T 가 되어 신선도 두 축이 «무조건 PASS» 가 된다 — 판정이 자기
+      데이터로 무력화된다. 지수 종가 0 은 유효값이 아니다.
     """
     if df is None or len(df) == 0:
         return []
@@ -77,12 +82,15 @@ def kis_df_to_index_rows(index_code: str, df) -> list:
         raw = str(r.get(_KIS_DATE, "") or "").strip()
         if not raw:
             continue
+        close = _num(r.get(_KIS_CLOSE))
+        if close <= 0:
+            continue
         d = "%s-%s-%s" % (raw[0:4], raw[4:6], raw[6:8]) if len(raw) == 8 else raw[:10]
         vol = int(_num(r.get(_KIS_VOLUME, 0))) * _KIS_VOLUME_UNIT
         rows.append({
             "index_code": index_code, "date": d,
             "open": _num(r.get(_KIS_OPEN)), "high": _num(r.get(_KIS_HIGH)),
-            "low": _num(r.get(_KIS_LOW)), "close": _num(r.get(_KIS_CLOSE)),
+            "low": _num(r.get(_KIS_LOW)), "close": close,
             "volume": float(vol),
         })
     return rows

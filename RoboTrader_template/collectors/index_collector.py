@@ -124,6 +124,8 @@ def collect_index(start: str = None) -> dict:
     Returns:
         {"KOSPI": n, "KOSDAQ": n, "src": "kis"|"fdr", "stale": [지수코드…]}
         🔴 기존 두 키는 «그대로» 둔다 — EOD 요약(bot/system_monitor.py)이 f-string 으로 흘린다.
+        🔑 `stale` 이 **None** 이면 「판정을 못 했다」다. `[]`(=판정했고 깨끗하다)와 «다르다» —
+           「모른다」를 「정상」으로 접으면 판정 장치가 조용히 사라진다.
     """
     now = now_kst()
     if start is None:
@@ -143,19 +145,27 @@ def collect_index(start: str = None) -> dict:
             real_rows += len(rows)
         new_rows = _count_new_rows(rows_by_name, prior_max)
 
-        # 신선도는 «표에 실제로 있는» 최신 봉으로 판정한다(우리가 보낸 행 수가 아니라).
-        # 🔴 이 판정은 소스 스위치 «밖»이다 — "fdr" 로 롤백해도 계속 돈다.
-        stale = check_index_freshness(_index_max_dates(conn),
-                                      _oracle_dates(conn, freshness_cutoff(now).strftime("%Y-%m-%d")),
-                                      now, "index_daily", src, logger)
-        stale_codes = sorted({r["index"] for r in stale})
-        coverage = (len(INDEX_TICKERS) - len(stale_codes)) / float(len(INDEX_TICKERS))
-        upsert_index_reconciliation(conn, now.date().strftime("%Y-%m-%d"), real_rows, new_rows,
-                                    real_rows - new_rows, coverage,
-                                    "FAIL" if stale_codes else "PASS")
+        # 🔴 판정·reconcile 실패가 «이미 커밋된 행 수»를 EOD 요약에서 지우면 안 된다.
+        #    감싸지 않으면 eod_collection._safe 가 dict 통째로 {"error": …} 로 바꾼다.
+        #    regime 경로(core/regime/index_refresh.py)와 «같은» 비대칭 없는 처리다.
+        stale_codes = None
+        try:
+            # 신선도는 «표에 실제로 있는» 최신 봉으로 판정한다(우리가 보낸 행 수가 아니라).
+            # 🔴 이 판정은 소스 스위치 «밖»이다 — "fdr" 로 롤백해도 계속 돈다.
+            stale = check_index_freshness(
+                _index_max_dates(conn),
+                _oracle_dates(conn, freshness_cutoff(now).strftime("%Y-%m-%d")),
+                now, "index_daily", src, logger)
+            stale_codes = sorted({r["index"] for r in stale})
+            coverage = (len(INDEX_TICKERS) - len(stale_codes)) / float(len(INDEX_TICKERS))
+            upsert_index_reconciliation(conn, now.date().strftime("%Y-%m-%d"), real_rows, new_rows,
+                                        real_rows - new_rows, coverage,
+                                        "FAIL" if stale_codes else "PASS")
+        except Exception as e:  # noqa: BLE001 — 판정 실패가 수집 결과를 되돌리면 안 된다
+            logger.warning("[index-freshness] index_daily 판정 생략: %s", e)
 
     result["src"] = src
-    result["stale"] = stale_codes
+    result["stale"] = stale_codes      # None = 판정 불가 · [] = 판정했고 깨끗하다
     return result
 
 

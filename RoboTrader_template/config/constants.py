@@ -52,7 +52,12 @@ INDEX_DAILY_SOURCE = "kis"
 # daily_prices PK 앞자리를 타는 대형주 3종목의 max(date) 가 곧 「마지막 거래일」이다.
 INDEX_FRESHNESS_ORACLE_CODES = ("005930", "000660", "035420")
 # 축 B(절대) — today − max(index date) 가 이 달력일수를 «넘으면» STALE. 주말·연휴 흡수.
-INDEX_FRESHNESS_MAX_CALENDAR_LAG = 5
+# 🔑 값의 근거는 «실측»이다(2026-09-10 리뷰, kis_template.daily_prices KOSPI 2021-01-01~):
+#    거래일 간격이 5일을 넘은 적 7회 — 6일 4회 · 7일 2회 · **8일 1회**(2025-10-10 추석·개천절).
+#    5 로 두면 연휴 다음 첫 거래일 07:40 에(지수 max = 연휴 «직전» 거래일) 정상 파이프라인이
+#    STALE 로 운다. 다가오는 추석 9/24~28 이 정확히 그 경우다.
+#    ⇒ 실측 최대 8 + 여유 1 = 9. 이번에 잡으려는 3일짜리 랙은 축 B 가 아니라 **축 A** 가 잡는다.
+INDEX_FRESHNESS_MAX_CALENDAR_LAG = 9
 # 오늘 봉을 「확정」으로 볼 KST 경계(시, 분). 이 시각 «전»의 오라클 max 는 T-1 로 자른다.
 # 🔴 장전 W1 훅이 T 당일 07:40:1x 에 T 행을 73~78종목 넣는다 — 자르지 않으면 정상인
 #    지수(T-1)가 매일 아침 STALE 로 오탐한다(설계 §4-1 실측).

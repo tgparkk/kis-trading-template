@@ -12,14 +12,48 @@ stock_code='KOSPI'/'KOSDAQ' 일봉을 읽는데, 이를 채우던 backfill_kospi
   3. 한 지수 FDR 실패가 다른 지수 적재를 막지 않음(격리).
 """
 import sys
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
 
 import pandas as pd
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+@pytest.fixture(autouse=True)
+def forbid_live_kis(monkeypatch):
+    """🔴 이 파일의 «어떤» 테스트도 라이브 KIS 에 닿으면 안 된다 (리뷰 rev1 🔴-1).
+
+    새 기본값 `INDEX_DAILY_SOURCE="kis"` 때문에 `kis=` 를 주입하지 않은 호출은
+    `api.kis_auth.auth()` 로 **실제 인증**을 시도하고, 성공하면 진짜
+    `get_index_daily_chart` 로 나간다. 이 워크트리에 `config/key.ini` 가 없어
+    지금 초록인 것은 «격리»가 아니라 **환경 의존**이다 — 키 있는 CI·라이브 트리에서는
+    네트워크를 타고 브로커 호출예산까지 먹는다.
+
+    닿으면 AssertionError 로 즉시 드러낸다. 그러면 index_refresh 의 폴백이 이를
+    「KIS 준비 실패」로 접어 **결정론적으로** FDR 경로로 떨어진다.
+    반환값(hits)은 「fixture 가 실제로 무언가를 막고 있다」를 «양쪽에서» 증명하는 데 쓴다.
+    """
+    import api.kis_auth as ka
+    import api.kis_market_api as kma
+
+    hits = {"auth": 0, "chart": 0}
+
+    def _auth(*a, **k):
+        hits["auth"] += 1
+        raise AssertionError("테스트가 라이브 KIS 인증에 닿았다")
+
+    def _chart(*a, **k):
+        hits["chart"] += 1
+        raise AssertionError("테스트가 라이브 KIS 업종 일봉에 닿았다")
+
+    monkeypatch.setattr(ka, "auth", _auth)
+    monkeypatch.setattr(kma, "get_index_daily_chart", _chart)
+    return hits
 
 
 def _fdr_df():
@@ -46,13 +80,14 @@ class _FakeFDR:
         return val
 
 
-def test_refresh_writes_both_indices_normalized():
-    from core.regime.index_refresh import refresh_regime_indices
+def test_refresh_writes_both_indices_normalized(monkeypatch):
+    import core.regime.index_refresh as ir
+    monkeypatch.setattr(ir, "INDEX_DAILY_SOURCE", "fdr")   # FDR 회귀는 FDR 경로로 «고정»
     repo = Mock()
     repo.save_daily_prices_batch = Mock(return_value=True)
     fdr = _FakeFDR({"KS11": _fdr_df(), "KQ11": _fdr_df()})
 
-    res = refresh_regime_indices(repo, start="2026-06-15", fdr=fdr)
+    res = ir.refresh_regime_indices(repo, start="2026-06-15", fdr=fdr)
 
     codes = [c.args[0] for c in repo.save_daily_prices_batch.call_args_list]
     assert "KOSPI" in codes and "KOSDAQ" in codes
@@ -66,6 +101,7 @@ def test_refresh_writes_both_indices_normalized():
 
 def test_one_index_failure_isolated(monkeypatch):
     import core.regime.index_refresh as ir
+    monkeypatch.setattr(ir, "INDEX_DAILY_SOURCE", "fdr")   # FDR 회귀는 FDR 경로로 «고정»
     monkeypatch.setattr(ir.time, "sleep", lambda *a, **k: None)  # 재시도 대기 제거(고속)
     repo = Mock()
     repo.save_daily_prices_batch = Mock(return_value=True)
@@ -110,6 +146,7 @@ class _EmptyThenFullFDR:
 def test_refresh_retries_on_transient_failure(monkeypatch):
     """FDR 1회 실패 후 성공이면 재시도해 행을 받아온다(EOD 15:48 일시실패 보정)."""
     import core.regime.index_refresh as ir
+    monkeypatch.setattr(ir, "INDEX_DAILY_SOURCE", "fdr")   # FDR 회귀는 FDR 경로로 «고정»
     monkeypatch.setattr(ir.time, "sleep", lambda *a, **k: None)
     repo = Mock()
     repo.save_daily_prices_batch = Mock(return_value=True)
@@ -124,6 +161,7 @@ def test_refresh_retries_on_transient_failure(monkeypatch):
 def test_refresh_retries_on_empty_df(monkeypatch):
     """빈 df 도 재시도 대상 — 1회차 빈 df, 2회차 정상 df 면 성공."""
     import core.regime.index_refresh as ir
+    monkeypatch.setattr(ir, "INDEX_DAILY_SOURCE", "fdr")   # FDR 회귀는 FDR 경로로 «고정»
     monkeypatch.setattr(ir.time, "sleep", lambda *a, **k: None)
     repo = Mock()
     repo.save_daily_prices_batch = Mock(return_value=True)
@@ -138,6 +176,7 @@ def test_refresh_retries_on_empty_df(monkeypatch):
 def test_refresh_gives_up_after_three_failures(monkeypatch):
     """3회 모두 실패하면 현행처럼 0(예외 격리)·저장 미호출."""
     import core.regime.index_refresh as ir
+    monkeypatch.setattr(ir, "INDEX_DAILY_SOURCE", "fdr")   # FDR 회귀는 FDR 경로로 «고정»
     monkeypatch.setattr(ir.time, "sleep", lambda *a, **k: None)
     repo = Mock()
     repo.save_daily_prices_batch = Mock(return_value=True)
@@ -156,9 +195,6 @@ def test_refresh_gives_up_after_three_failures(monkeypatch):
 # W-idx2(07:40 · 15:35)도 W-idx1 과 «같은» 상류(FDR)를 타서 같이 멈췄다.
 # 여기서 고정하는 계약: 소스 스위치 · 폴백 조건 · 반환 dict 형태 불변 · 신선도 로그.
 # ════════════════════════════════════════════════════════════════════════════
-from datetime import datetime
-
-
 class _FakeKIS:
     """api.kis_market_api 대역 — get_index_daily_chart 만 흉내낸다(네트워크 0)."""
 
@@ -213,9 +249,6 @@ def _at(monkeypatch, ir, now=datetime(2026, 9, 10, 15, 35)):
     monkeypatch.setattr(ir.time, "sleep", lambda *a, **k: None)
 
 
-import pytest
-
-
 @pytest.fixture
 def logcap():
     """모듈 logger 에 핸들러를 직접 붙여 메시지를 모은다.
@@ -263,6 +296,8 @@ def test_kis_source_is_used_and_fdr_is_not_called(monkeypatch):
     df0 = repo.saved[0][1]
     assert {"date", "open", "high", "low", "close", "volume"} <= set(df0.columns)
     assert "index_code" not in df0.columns
+    # ⚪-12 음성 대조: 동결된 의사티커 KS11/KQ11 에는 «쓰지 않는다»
+    assert {c for c, _df, _kw in repo.saved} == {"KOSPI", "KOSDAQ"}
 
 
 def test_return_dict_has_exactly_two_keys(monkeypatch):
@@ -396,3 +431,77 @@ def test_row_count_log_keeps_prefix_and_adds_src(monkeypatch, logcap):
     ir.refresh_regime_indices(_FakeRepo(_FRESH), start="2026-09-01", kis=kis)
 
     assert "[regime-index] KOSPI(KS11) 1행 갱신 src=kis" in msgs
+
+
+def test_default_kis_source_reaches_the_guard_and_falls_back(forbid_live_kis, monkeypatch):
+    """🔴-1 «양쪽» 증명 (2/2) — fixture 가 실제로 무언가를 막고 있다.
+
+    `kis=` 를 안 주면 기본값 "kis" 때문에 라이브 인증 이음매에 «닿는다». 즉 fixture 가
+    없으면 이 호출은 네트워크로 나간다 — 그 사실 자체를 여기서 단언한다(fixture 가
+    장식이 아니라 하중을 받고 있음을 고정). 막힌 뒤에는 결정론적으로 FDR 로 떨어진다.
+    """
+    import core.regime.index_refresh as ir
+    _at(monkeypatch, ir)
+    fdr = _FakeFDR({"KS11": _fdr_df(), "KQ11": _fdr_df()})
+
+    res = ir.refresh_regime_indices(_FakeRepo(_FRESH), start="2026-09-01", fdr=fdr)
+
+    assert forbid_live_kis["auth"] == 1     # 라이브 인증 이음매에 «닿았다»
+    assert forbid_live_kis["chart"] == 0    # 인증에서 막혀 차트까지 못 갔다
+    assert res == {"KOSPI": 2, "KOSDAQ": 2}
+
+
+def test_rollback_to_fdr_source_keeps_retry_loop_and_freshness(monkeypatch, logcap,
+                                                               forbid_live_kis):
+    """🟡-6 롤백 회귀 — "fdr" 한 줄로 옛 경로(3회 재시도)가 그대로 돌고, 판정은 계속 돈다."""
+    import core.regime.index_refresh as ir
+    _at(monkeypatch, ir)
+    monkeypatch.setattr(ir, "INDEX_DAILY_SOURCE", "fdr")
+    kis = _FakeKIS({"0001": _kis_df(["20260910"]), "1001": _kis_df(["20260910"])})
+    fdr = _FlakyFDR({"KS11": 1, "KQ11": 1})          # 1회 실패 후 성공
+    stale_repo = _FakeRepo({
+        "KOSPI": ["2026-09-07"], "KOSDAQ": ["2026-09-07"],
+        "005930": ["2026-09-09", "2026-09-10"], "000660": ["2026-09-09", "2026-09-10"],
+        "035420": ["2026-09-09", "2026-09-10"],
+    })
+
+    msgs = logcap(ir.logger)
+    res = ir.refresh_regime_indices(stale_repo, start="2026-09-01", fdr=fdr, kis=kis)
+
+    assert kis.calls == [] and forbid_live_kis["auth"] == 0   # KIS 이음매 미호출
+    assert fdr.calls["KS11"] == 2 and fdr.calls["KQ11"] == 2  # 재시도 루프 그대로
+    assert res == {"KOSPI": 2, "KOSDAQ": 2}
+    # 🔴 신선도 검사는 스위치 «밖» — 롤백이 감시장치를 같이 꺼버리면 안 된다(설계 §3)
+    assert any("[index-freshness] STALE" in m and "src=fdr" in m for m in msgs)
+
+
+def test_fdr_module_is_lazily_imported_when_not_injected(monkeypatch):
+    """⚪-9 — `fdr=` 를 «안» 주는 프로덕션 기본 분기를 실제로 밟는다(지금까지 미검증)."""
+    import core.regime.index_refresh as ir
+    _at(monkeypatch, ir)
+    monkeypatch.setattr(ir, "INDEX_DAILY_SOURCE", "fdr")
+    stub = _FakeFDR({"KS11": _fdr_df(), "KQ11": _fdr_df()})
+    monkeypatch.setitem(sys.modules, "FinanceDataReader", stub)
+
+    res = ir.refresh_regime_indices(_FakeRepo(_FRESH), start="2026-09-01")
+
+    assert res == {"KOSPI": 2, "KOSDAQ": 2}
+    assert sorted(t for t, _ in stub.calls) == ["KQ11", "KS11"]
+
+
+def test_empty_repo_result_is_unknown_not_stale(monkeypatch, logcap):
+    """🟡-2 — 빈 df 는 「행 없음」과 「DB 장애」가 구분 불가하다 ⇒ STALE 로 접지 않는다.
+
+    `db/repositories/price.py` 의 `get_daily_prices` 는 **예외를 삼키고 빈 DataFrame** 을
+    준다. 이를 「읽었고 행이 없다」로 단정하면 DB 장애가 곧 두 축 발화가 되어
+    **경보가 자기 고장으로 운다** — D5 가 막겠다고 쓴 바로 그 상황이다.
+    """
+    import core.regime.index_refresh as ir
+    _at(monkeypatch, ir)
+    kis = _FakeKIS({"0001": _kis_df(["20260910"]), "1001": _kis_df(["20260910"])})
+
+    msgs = logcap(ir.logger)
+    ir.refresh_regime_indices(_FakeRepo({}), start="2026-09-01", kis=kis)   # 모든 조회가 빈 df
+
+    assert not [m for m in msgs if "STALE" in m]
+    assert [m for m in msgs if "[index-freshness] unknown" in m]

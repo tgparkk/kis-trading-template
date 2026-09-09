@@ -130,3 +130,20 @@ def test_upsert_index_reconciliation_rolls_back_and_raises():
     else:  # pragma: no cover - 계약 위반
         raise AssertionError("예외가 삼켜졌다")
     assert conn.rollbacks == 1
+
+
+def test_kis_df_to_index_rows_drops_zero_close_bars():
+    """🔴 종가 0/빈 칸 봉은 버린다 (리뷰 rev1 🟡-5).
+
+    KIS 는 장 시작 «전»에도 T 라벨 봉을 준다(07:40:2x 에 T 로 찍힌 daily_prices 행이
+    매 거래일 31~36건 — 2026-09-10 리뷰 실측). 미확정 칸은 빈 문자열이라 `_num` 이 0.0 으로
+    접는데, 그대로 두면 표의 max 가 T 가 되어 신선도 두 축이 «무조건 PASS» 가 된다.
+    지수 종가 0 은 유효값이 아니다.
+    """
+    rows = kis_df_to_index_rows("KOSPI", _kis_df([
+        _kis_row(d="20260910", c=""),        # 07:40 미확정 봉
+        _kis_row(d="20260909", c="0"),       # 명시적 0
+        _kis_row(d="20260908", c="6954.52"),
+    ]))
+    assert [r["date"] for r in rows] == ["2026-09-08"]
+    assert rows[0]["close"] == 6954.52

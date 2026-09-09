@@ -156,6 +156,32 @@ def wired(monkeypatch):
     return _install
 
 
+@pytest.fixture(autouse=True)
+def forbid_live_kis(monkeypatch):
+    """🔴 이 파일의 «어떤» 테스트도 라이브 KIS 에 닿으면 안 된다 (리뷰 rev1 🔴-1 대칭 적용).
+
+    `collect_index` 는 기본값 `INDEX_DAILY_SOURCE="kis"` 로 `api.kis_auth.auth()` 를 부른다.
+    지금은 `wired` 가 이음매를 갈아끼우지만, 그 주입을 빠뜨린 테스트가 하나라도 생기면
+    조용히 브로커 API 로 나간다 — 「키가 없어서 안 나갔다」는 격리가 아니다.
+    """
+    import api.kis_auth as ka
+    import api.kis_market_api as kma
+
+    hits = {"auth": 0, "chart": 0}
+
+    def _auth(*a, **k):
+        hits["auth"] += 1
+        raise AssertionError("테스트가 라이브 KIS 인증에 닿았다")
+
+    def _chart(*a, **k):
+        hits["chart"] += 1
+        raise AssertionError("테스트가 라이브 KIS 업종 일봉에 닿았다")
+
+    monkeypatch.setattr(ka, "auth", _auth)
+    monkeypatch.setattr(kma, "get_index_daily_chart", _chart)
+    return hits
+
+
 @pytest.fixture
 def logcap():
     """모듈 logger 에 핸들러를 직접 붙여 메시지를 모은다.
@@ -313,3 +339,66 @@ def test_premarket_0740_does_not_false_alarm(wired, logcap):
 
     assert res["stale"] == []
     assert not [m for m in msgs if "[index-freshness]" in m]
+
+
+def test_rollback_to_fdr_source_still_checks_freshness(wired, monkeypatch, logcap):
+    """🟡-6 롤백 회귀 — `INDEX_DAILY_SOURCE="fdr"` 한 줄로 옛 경로가 «직접» 돌아온다.
+
+    그리고 🔴 신선도 검사는 스위치 «밖»이다 — 롤백이 감시장치를 같이 꺼버리면 안 된다(설계 §3).
+    """
+    conn = _FakeConn({"KOSPI": "2026-09-07", "KOSDAQ": "2026-09-07"}, "2026-09-10")
+    st = wired(conn, kis_by_code={"0001": _kis_df(["20260910"]), "1001": _kis_df(["20260910"])},
+               fdr_by_ticker={"KS11": _fdr_df(["2026-09-07"]), "KQ11": _fdr_df(["2026-09-07"])})
+    monkeypatch.setattr(ic, "INDEX_DAILY_SOURCE", "fdr")
+
+    msgs = logcap(ic.logger)
+    res = ic.collect_index()
+
+    assert res["src"] == "fdr"
+    assert st["kis_calls"] == []                    # KIS 이음매는 한 번도 안 불린다
+    assert sorted(c[0] for c in st["fdr_calls"]) == ["KQ11", "KS11"]
+    assert res["stale"] == ["KOSDAQ", "KOSPI"]      # 판정은 계속 돈다
+    assert any("[index-freshness] STALE" in m and "src=fdr" in m for m in msgs)
+
+
+def test_judgement_failure_does_not_erase_collected_rows(wired, monkeypatch, logcap):
+    """🟡-4 — 판정·reconcile 이 터져도 «이미 커밋된» 행 수·src 는 EOD 요약에 남는다.
+
+    감싸지 않으면 eod_collection._safe 가 dict 통째로 {"error": …} 로 바꿔 행 수가 사라진다.
+    🔑 그때 stale 은 `None`(=판정 불가)이다 — `[]`(=판정했고 깨끗하다)로 접으면 안 된다.
+    """
+    conn = _FakeConn({"KOSPI": "2026-09-09", "KOSDAQ": "2026-09-09"}, "2026-09-10")
+    wired(conn, kis_by_code={"0001": _kis_df(["20260910"]), "1001": _kis_df(["20260910"])})
+
+    def _boom(*a, **k):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(ic, "_oracle_dates", _boom)
+
+    msgs = logcap(ic.logger)
+    res = ic.collect_index()
+
+    assert res["KOSPI"] == 1 and res["KOSDAQ"] == 1     # 수집 결과는 살아 있다
+    assert res["src"] == "kis"
+    assert res["stale"] is None                        # 「모른다」를 「정상」으로 접지 않는다
+    assert any("판정 생략" in m for m in msgs)
+
+
+def test_live_kis_seam_is_blocked_when_injection_is_missing(forbid_live_kis, monkeypatch):
+    """🔴-1 «양쪽» 증명 (2/2) — 이음매 주입을 빠뜨리면 라이브 인증에 «닿는다».
+
+    `wired` 없이 부르면 기본값 "kis" 라 `_kis_auth()` → `api.kis_auth.auth()` 로 간다.
+    fixture 가 그걸 막고 있다는 사실(= fixture 가 하중을 받고 있음)을 여기서 고정한다.
+    막힌 뒤에는 FDR 폴백으로 떨어지므로 FDR 이음매도 함께 막아 네트워크 0 을 보장한다.
+    """
+    conn = _FakeConn({"KOSPI": "2026-09-10", "KOSDAQ": "2026-09-10"}, "2026-09-10")
+    monkeypatch.setattr(ic, "now_kst", lambda: datetime(2026, 9, 10, 15, 49))
+    monkeypatch.setattr(ic, "KisDbConnection",
+                        type("_DB", (), {"get_connection": staticmethod(lambda: conn)}))
+    monkeypatch.setattr(ic, "_fdr_index_df", lambda ticker, start: _fdr_df(["2026-09-10"]))
+
+    res = ic.collect_index()
+
+    assert forbid_live_kis["auth"] == 1      # 라이브 인증 이음매에 «닿았다»
+    assert forbid_live_kis["chart"] == 0     # 인증에서 막혀 차트까지 못 갔다
+    assert res["src"] == "fdr"               # 막힌 뒤 결정론적 폴백

@@ -79,9 +79,14 @@ def _kis_to_daily_df(kis, name: str, start: str, end: str):
 
 
 def _max_date_from_repo(price_repo, code: str, days: int, cutoff_iso: Optional[str] = None):
-    """(읽었나, 최신일 문자열|None). 「못 읽었다」와 「행이 없다」를 «구분»한다.
+    """(읽었나, 최신일 문자열|None). 이 이음매에서 «빈 결과»는 전부 「모른다」다.
 
-    구분하지 않으면 조회 실패가 곧 STALE 이 되어 경보가 자기 고장으로 울린다.
+    🔴 `db/repositories/price.py` 의 `get_daily_prices` 는 **예외를 삼키고 빈 DataFrame 을
+       반환**한다 ⇒ 「DB 장애」와 「행이 없다」가 원리적으로 구분 불가하다(둘 다 컬럼 없는
+       빈 df). 그래서 여기서는 둘 다 «못 읽음»으로 접는다 — 구분되지 않는 것을 「행이 없다」
+       로 단정하면 DB 장애가 곧 STALE 이 되어 **경보가 자기 고장으로 운다**.
+       「표가 진짜 비었다」 경보는 예외가 «올라오는» collect_index 의 SQL 경로가 맡는다.
+       (repo 는 라이브 공유 코드라 이 브랜치에서 손대지 않는다.)
 
     cutoff_iso 를 주면 그 «이하» 날짜만 본다 — 오라클 종목에 필요하다. 장전 W1 훅이
     T 당일 07:40 에 넣는 «오늘 행»의 max 만 넘기면 cutoff 필터에서 전부 걸러져
@@ -93,8 +98,8 @@ def _max_date_from_repo(price_repo, code: str, days: int, cutoff_iso: Optional[s
     empty = getattr(df, "empty", None)
     if not isinstance(empty, bool):
         return False, None          # DataFrame 이 아니다 → 모른다
-    if empty:
-        return True, None
+    if empty or "date" not in list(getattr(df, "columns", [])):
+        return False, None          # 「행 없음」과 「조회 실패」가 구분 불가 ⇒ 모른다
     try:
         vals = [str(v)[:10] for v in df["date"].tolist() if v is not None]
     except Exception:  # noqa: BLE001 — 스키마가 다르면 「모른다」
@@ -102,6 +107,14 @@ def _max_date_from_repo(price_repo, code: str, days: int, cutoff_iso: Optional[s
     if cutoff_iso is not None:
         vals = [v for v in vals if v <= cutoff_iso]
     return True, (max(vals) if vals else None)
+
+
+def _resolve_fdr(fdr_mod):
+    """FDR 모듈 지연 해석. KIS 가 전부 성공하면 «한 번도» import 하지 않는다."""
+    if fdr_mod is not None:
+        return fdr_mod
+    import FinanceDataReader as _fdr  # noqa: N813
+    return _fdr
 
 
 def _warn_if_stale(price_repo, src: str, now) -> None:
@@ -148,7 +161,9 @@ def refresh_regime_indices(price_repo, start: Optional[str] = None, fdr=None,
     end = now.date().strftime("%Y-%m-%d")
 
     src = INDEX_DAILY_SOURCE if INDEX_DAILY_SOURCE in INDEX_DAILY_SOURCES else "fdr"
-    kis_mod = kis
+    # 🔴 롤백이 «이긴다» — src="fdr" 이면 주입된 `kis` 이음매도 쓰지 않는다.
+    #    (안 그러면 롤백 스위치가 「주입된 호출자」에게만 조용히 무시된다.)
+    kis_mod = kis if src == "kis" else None
     if src == "kis" and kis_mod is None:
         try:
             import api.kis_market_api as _kis_api
@@ -160,6 +175,7 @@ def refresh_regime_indices(price_repo, start: Optional[str] = None, fdr=None,
             logger.warning("[regime-index] KIS 준비 실패 → FDR 폴백: %s", e)
             kis_mod = None
 
+    fdr_mod = fdr
     result: Dict[str, int] = {}
     used_src: Dict[str, str] = {}
     for name, ticker in INDEX_TICKERS.items():
@@ -174,11 +190,10 @@ def refresh_regime_indices(price_repo, start: Optional[str] = None, fdr=None,
                     logger.warning("[regime-index] %s KIS 실패 → FDR 폴백: %s", name, e)
                     daily = None
             if used == "fdr":
-                if fdr is None:
-                    import FinanceDataReader as fdr  # noqa: N813
+                fdr_mod = _resolve_fdr(fdr_mod)
                 for attempt in range(_MAX_FDR_RETRIES):
                     try:
-                        df = fdr.DataReader(ticker, start)
+                        df = fdr_mod.DataReader(ticker, start)
                         daily = _fdr_to_daily_df(df)
                         if daily is not None and not getattr(daily, "empty", True):
                             break  # 행>0 성공 → 즉시 종료

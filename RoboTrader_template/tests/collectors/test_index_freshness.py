@@ -85,22 +85,32 @@ def test_axis_a_skipped_when_reference_unknown():
 
 
 # ────────────────────────── 축 B (절대) ──────────────────────────
-def test_axis_b_boundary_five_days_is_fresh():
-    """달력 5일 = 한계치 «이하» ⇒ 신선(주말·연휴 흡수)."""
-    assert evaluate_freshness("KOSDAQ", "index_daily", date(2026, 9, 4), date(2026, 9, 4),
+def test_axis_b_boundary_nine_days_is_fresh():
+    """달력 9일 = 한계치 «이하» ⇒ 신선.
+
+    9 의 근거는 실측이다(2026-09-10 리뷰): KOSPI 2021~ 거래일 간격이 5일을 넘은 적 7회,
+    최대 **8일**(2025-10-10). 5 로 두면 연휴 다음 첫 거래일 07:40 에 정상 파이프라인이 운다.
+    """
+    assert evaluate_freshness("KOSDAQ", "index_daily", date(2026, 8, 31), date(2026, 8, 31),
                               date(2026, 9, 9), "kis") == []
 
 
-def test_axis_b_six_days_is_stale():
-    recs = evaluate_freshness("KOSDAQ", "index_daily", date(2026, 9, 3), date(2026, 9, 3),
+def test_axis_b_ten_days_is_stale():
+    recs = evaluate_freshness("KOSDAQ", "index_daily", date(2026, 8, 30), date(2026, 8, 30),
                               date(2026, 9, 9), "kis")
     assert _axes(recs) == ["B"]
-    assert recs[0]["lag_days"] == 6
+    assert recs[0]["lag_days"] == 10
+
+
+def test_axis_b_absorbs_chuseok_length_holiday():
+    """추석 9/24~28 다음 첫 거래일(9/29) 07:40 — 지수 max 는 연휴 «직전»(9/23)이 정상이다."""
+    assert evaluate_freshness("KOSPI", "index_daily", date(2026, 9, 23), date(2026, 9, 23),
+                              date(2026, 9, 29), "kis") == []
 
 
 def test_both_axes_reported_separately():
     """🔑 두 축이 동시에 참이면 «2개»가 나온다 — 한 줄로 뭉치지 않는다."""
-    recs = evaluate_freshness("KOSPI", "index_daily", date(2026, 9, 1), date(2026, 9, 9),
+    recs = evaluate_freshness("KOSPI", "index_daily", date(2026, 8, 20), date(2026, 9, 9),
                               date(2026, 9, 9), "kis")
     assert _axes(recs) == ["A", "B"]
 
