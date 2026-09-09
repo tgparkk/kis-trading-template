@@ -81,7 +81,11 @@ class _FakeCursor:
         if "FROM index_daily" in sql and "max(date)" in sql:
             self._all = [(k, v) for k, v in sorted(self.db.index_max.items()) if v]
         elif "FROM daily_prices" in sql and "max(date)" in sql:
-            self._one = (self.db.oracle_max,) if self.db.oracle_max else None
+            # 실제 SQL 은 `date <= cutoff` 로 자른다 — 대역도 그 계약을 지켜야
+            # 07:40 오탐 회귀가 «진짜» 회귀가 된다.
+            cutoff = params[1]
+            cand = [d for d in self.db.oracle_dates if d <= cutoff]
+            self._one = (max(cand),) if cand else None
         elif head.startswith("INSERT INTO index_daily"):
             self.db.upserted.append(params)
             code, d = params["index_code"], params["date"]
@@ -100,9 +104,9 @@ class _FakeCursor:
 class _FakeConn:
     """index_daily 최신일과 오라클 최신일만 흉내내는 DB 대역 (네트워크·DB 접속 0)."""
 
-    def __init__(self, index_max, oracle_max):
+    def __init__(self, index_max, oracle):
         self.index_max = dict(index_max)
-        self.oracle_max = oracle_max
+        self.oracle_dates = [oracle] if isinstance(oracle, str) else list(oracle)
         self.executed, self.upserted, self.recon = [], [], []
         self.commits = 0
 
@@ -150,6 +154,35 @@ def wired(monkeypatch):
         return state
 
     return _install
+
+
+@pytest.fixture
+def logcap():
+    """모듈 logger 에 핸들러를 직접 붙여 메시지를 모은다.
+
+    utils.logger.setup_logger 는 propagate=False 라 pytest 기본 로그 픽스처가
+    이 로거의 줄을 «못 본다» — 캡처 장치도 가드다(2026-08 재사용 규칙).
+    """
+    import logging
+
+    attached = []
+
+    def _attach(lg):
+        msgs = []
+
+        class _H(logging.Handler):
+            def emit(self, record):
+                msgs.append(record.getMessage())
+
+        h = _H()
+        h.setLevel(logging.DEBUG)
+        lg.addHandler(h)
+        attached.append((lg, h))
+        return msgs
+
+    yield _attach
+    for lg, h in attached:
+        lg.removeHandler(h)
 
 
 def test_collect_index_uses_kis_and_never_touches_fdr(wired, monkeypatch):
@@ -207,33 +240,33 @@ def test_collect_index_falls_back_when_auth_fails(wired):
     assert ic.collect_index()["src"] == "fdr"
 
 
-def test_collect_index_does_not_fall_back_on_empty_kis_result(wired, caplog):
+def test_collect_index_does_not_fall_back_on_empty_kis_result(wired, logcap):
     """🔴 «빈 결과»는 폴백 사유가 «아니다» — 폴백하면 죽은 FDR 의 옛 봉이 결함을 덮는다."""
     conn = _FakeConn({"KOSPI": "2026-09-05", "KOSDAQ": "2026-09-05"}, "2026-09-10")
     st = wired(conn, kis_by_code={"0001": pd.DataFrame(), "1001": pd.DataFrame()},
                fdr_by_ticker={"KS11": _fdr_df(["2026-09-10"]), "KQ11": _fdr_df(["2026-09-10"])})
 
-    with caplog.at_level("WARNING"):
-        res = ic.collect_index()
+    msgs = logcap(ic.logger)
+    res = ic.collect_index()
 
     assert res["src"] == "kis"
     assert st["fdr_calls"] == []                      # 폴백 금지
     assert res["KOSPI"] == 0 and res["KOSDAQ"] == 0
     assert res["stale"] == ["KOSDAQ", "KOSPI"]        # 0행은 판정 대상이다
-    assert "[index-freshness] STALE axis=A" in caplog.text
+    assert any(m.startswith("[index-freshness] STALE axis=A") for m in msgs)
 
 
-def test_collect_index_stale_axis_a_when_index_lags_oracle(wired, caplog):
+def test_collect_index_stale_axis_a_when_index_lags_oracle(wired, logcap):
     """이번 결함 그대로: 소스가 «옛 6봉»을 주면 STALE 이어야 한다."""
     old = ["20260901", "20260902", "20260903", "20260904", "20260907"]
     conn = _FakeConn({"KOSPI": "2026-09-07", "KOSDAQ": "2026-09-07"}, "2026-09-10")
     wired(conn, kis_by_code={"0001": _kis_df(old), "1001": _kis_df(old)})
 
-    with caplog.at_level("WARNING"):
-        res = ic.collect_index()
+    msgs = logcap(ic.logger)
+    res = ic.collect_index()
 
     assert res["stale"] == ["KOSDAQ", "KOSPI"]
-    assert "max=2026-09-07 ref=2026-09-10 lag=3 src=kis" in caplog.text
+    assert any("max=2026-09-07 ref=2026-09-10 lag=3 src=kis" in m for m in msgs)
 
 
 def test_new_rows_counts_dates_not_returned_rows(wired):
@@ -267,14 +300,16 @@ def test_reconcile_row_contract(wired):
     assert vmr is None and coverage == 1.0 and verdict == "PASS"
 
 
-def test_premarket_0740_does_not_false_alarm(wired, caplog):
+def test_premarket_0740_does_not_false_alarm(wired, logcap):
     """🔴 07:40 오탐 회귀 — 오라클엔 오늘 행이 있고 지수는 T−1 뿐이어도 정상이다."""
-    conn = _FakeConn({"KOSPI": "2026-09-09", "KOSDAQ": "2026-09-09"}, "2026-09-10")
+    # 오라클엔 어제 행과 «오늘 행»(장전 W1 훅이 07:40:1x 에 넣은 것)이 둘 다 있다.
+    conn = _FakeConn({"KOSPI": "2026-09-09", "KOSDAQ": "2026-09-09"},
+                     ["2026-09-09", "2026-09-10"])
     wired(conn, kis_by_code={"0001": _kis_df(["20260909"]), "1001": _kis_df(["20260909"])},
           now=datetime(2026, 9, 10, 7, 40))
 
-    with caplog.at_level("WARNING"):
-        res = ic.collect_index()
+    msgs = logcap(ic.logger)
+    res = ic.collect_index()
 
     assert res["stale"] == []
-    assert "[index-freshness]" not in caplog.text
+    assert not [m for m in msgs if "[index-freshness]" in m]
