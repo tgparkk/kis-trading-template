@@ -164,6 +164,14 @@ SELECT stock_code, max(date) FROM daily_prices
 - [ ] P6: `[벤치마크]` 한 줄의 지수 레벨·당일 % 형식·값이 종전과 동일
 - [ ] EOD 요약 `지수 {...}` 에 `'src': 'kis'` 와 `'stale': []` 가 보인다
 - [ ] F2 관측: 15:35 에 기록된 T 종가 vs 16:18 벤치마크 값 대조 결과를 EOD 리포트에 **숫자로** 적는다(가드는 안 단다)
+- [ ] 🔴 **F2′ 관측 — 첫 라이브일 07:40 «직후»(≤ 08:30) 1회, 읽기 전용**. KIS 는 장 시작 «전»에도 T 라벨 봉을 준다(2026-09-10 리뷰 실측). 아래를 그날 «안에» 찍어 둔다 — **07:40 원본은 EOD UPSERT 로 덮여 사후 복원이 불가능하다**(`updated_at = created_at` 인 행 0건).
+  ```sql
+  SELECT index_code, max(date), count(*) FROM index_daily GROUP BY 1;
+  SELECT stock_code, date, open, high, low, close, volume, created_at
+    FROM daily_prices WHERE stock_code IN ('KOSPI','KOSDAQ')
+     AND date = to_char(now() AT TIME ZONE 'Asia/Seoul','YYYY-MM-DD') ORDER BY 1;
+  ```
+  판정: ①T 행이 **없으면** 설계 §6 전제(07:40 은 T−1 까지)가 맞다 ②T 행이 **있으면** 그 값이 가마감인지(종가 ≠ 0 · 전일과 다름) 기록하고, `[index-freshness]` 가 그날 07:40 에 **무음**이었는지 함께 적는다(무음이면 축 A·B 가 당일 봉으로 무력화된 것) ③`close = 0` 행은 코드가 이미 버리므로 **0건이어야 한다**
 - [ ] ERROR **집합** 차분 0 (총건수와 차분은 따로 적는다)
 
 ### D. 라이브 무해 증명
