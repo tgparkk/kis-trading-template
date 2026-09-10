@@ -416,3 +416,97 @@ RS_LEADER_CORP_ACTION_MODE = ...   # env RS_LEADER_CORP_ACTION_MODE, 기본 "sha
    import 엣지를 없앤다. 이번 변경과 **같은 커밋에 섞지 않는다**(한 번에 한 축).
 6. **미확인** — 이 설계는 «미조정이 남아 있는 동안 안 산다»일 뿐 **데이터를 고치지 않는다**. 근본 트랙(불가능봉·
    보정 도구 `--apply` 막힘 · 일봉 결손 49,252행)은 그대로 남는다.
+
+---
+
+## 8. errata rev2 (2026-09-10 · 코드리뷰 rev1 반영 · 구현이 정본)
+
+> 이 절은 **설계 판정을 뒤집지 않는다**. 위 §0~§7 중 구현과 어긋나거나 내부적으로
+> 모순인 문장을 «구현 쪽으로» 맞춘 기록이다. 판정(§2 Q1~Q7)은 그대로 유효하다.
+> 🔑 사전등록(§6)을 읽을 때는 이 절을 «먼저» 반영해서 읽을 것 — P4 의 `codes` 집합과
+> 실패 조건이 여기 걸린다.
+
+### E1. §3-1 — 배제는 `scan()` «안»에서만 돈다 (리뷰 🟡-1, HIGH)
+
+§3-1 다이어그램은 「`RSLeaderScreenerAdapter.match` 안」이라고만 적었다. 그런데 `match()` 는
+`scan()` 전용이 아니다 — **백테스트 러너 2본이 어댑터를 만들어 `match()` 를 직접 루프한다**:
+
+- `backtest/live_universe_revalidation/run.py:52-53,190,214`
+- `backtest/universe_lookahead_ladder/run.py:48,203`
+
+거기까지 배제가 발효하면 두 러너의 rs_leader 결과가 조용히 바뀐다 —
+**§3-5 5항(`evaluate_entry` 불변 = 연구 재현 오염 금지)이 막으려던 것과 «같은 종류»의 결함**이다.
+기본 `shadow` 에서도 문제였다: ①`detect` 가 룰보다 비싸 감속 ②러너 프레임엔 `attrs["stock_code"]`
+가 없어 `[rs_leader] ?: …` 로그 폭주 ③`_ca_flagged` 가 `finalize_scan` 에서만 리셋되는데
+러너는 `scan()` 을 안 부르므로 무한 증가.
+
+**정본**: `scan()` override 가 `_ca_active` 를 세우고 `match()` 첫 줄이
+`mode == "off" or not _ca_active` 면 이전 경로로 돌아간다. 즉 **§3-5 5항의 「배제는 `_check_buy`
+에만」은 「배제는 `scan()`·`_check_buy` 두 «경로»에만」으로 읽어야 한다.**
+⚠️ `attrs` 유무로 가르는 대안은 **금지** — 러너가 언젠가 attrs 를 붙이면 조용히 배제가 켜진다
+(폴백이 고장을 감추는 형태). 계약은 T13 이 못박는다.
+
+### E2. §3-1 — `flagged` 계수 시점 = 「룰을 통과했을」 종목만
+
+§3-1 은 배제를 룰 «앞»에 두라 하고, §3-3 예시·§6 P4 는 `flagged=9`·`kept=131`
+(= 140 = **룰 통과분** 기준)을 쓴다. 룰 앞에서 곧바로 `return None` 하면 `flagged` 는
+**27**(`base_filter` 통과 760 중 런타임 표시 전체)이 되어 P4 의 `codes` 집합과 어긋난다.
+
+**정본**: 판정(`scan_series`)은 룰 «앞»에 두되, **계수·종목당 로그는 룰을 통과했을 종목만** 센다.
+반환 결과(후보 집합·순서)는 어느 순서로 읽어도 동일하다. ⇒ **§6 P4 의 「flagged = 9」는 그대로 유효**.
+
+### E3. §3-3 — 계기 줄에 `matched=` 추가, `kept` = 실제 반환 수 (리뷰 🟡-3)
+
+rev1 은 shadow 에서 flagged 가 `kept` 에도 들어가 **발효일에 `kept` 의 «정의»가 바뀌었다**
+(같은 34종목: shadow `kept=34` → live `kept=25`). §3-2 는 shadow 로그를 「발효 «전» 기준선」으로
+쓰라고 했는데, 정의가 모드에 걸리면 그 비교가 가짜 계단을 만든다.
+
+**정본 — 세 칸 다 모드에 안 걸린다**:
+
+```
+[rs-corp-action] mode=shadow scan_date=2026-09-09 universe=760 evaluated=725 matched=140 flagged=9 kept=140 codes=…
+[rs-corp-action] mode=live   scan_date=2026-09-09 universe=760 evaluated=725 matched=140 flagged=9 kept=131 codes=…
+```
+
+- `matched` = 룰 통과 «총수» (모드 무관 — 발효 전후 비교의 축)
+- `flagged` = 표시된 수 (= 룰을 통과했을 종목 중, E2)
+- `kept` = **실제로 후보가 된 수** (shadow 는 안 뺀다)
+
+### E4. §3-3 — 기동 로그 1줄 추가 (리뷰 🟢-7)
+
+스캔당 줄은 `SCREENER_SNAPSHOT_ENABLED`(`config/constants.py` 기본 `false`)가 꺼지면 통째로
+사라져 **§6 실패 조건 「`[rs-corp-action]` 줄이 하루라도 없음」이 «무관한 이유»로 발화**한다.
+그래서 전략 초기화(`RSLeaderStrategy.on_init` — `main.py:220` 이 프로세스당 1회 호출) 시점에
+`[rs-corp-action] mode=… (startup)` 1줄을 남긴다. ⇒ **§6 실패 조건은 「기동 줄이 있는데 스캔 줄이
+없는 날」로 읽을 것** (그래야 「스위치 값」과 「스크리너가 돌았나」를 따로 판정한다).
+
+### E5. §3-3 — `split` 방향은 「미조정 «분할» 의심」
+
+§3-3 예시는 merge 사례라 문구가 「병합」으로 고정돼 있다. `direction='split'` 종목까지 「병합」이라
+찍으면 운영 로그에 사실과 다른 말이 남으므로 방향에 따라 한 단어를 바꾼다.
+태그(`[rs_leader]`·`[rs-corp-action]`·`[신호없음]`)와 접미(`— 후보 제외 (mode=…)`)는 **그대로**라
+EOD grep 계약은 안 깨진다.
+🔑 참고 — split 쪽 **순증 커버리지는 종가비 [0.65, 0.69) 띠뿐**이다. 더 깊은 하락은
+`_prepare_frame` 의 기존 불가능봉 가드(−35%)가 **먼저** 자른다.
+
+### E6. §4 T4 — 유니버스 25 → 34
+
+「25종목 중 9 flagged → `scan()` 이 20건」은 25−9=16 < 20 이라 **원리적으로 성립 불가**다.
+백필을 시험하려면 clean 이 20 이상이어야 한다. 주장은 그대로(후보 수가 줄지 않는다).
+
+### E7. §4 — 테스트 3건 추가 (T13~T15)
+
+| # | 계약 | 근거 |
+|---|---|---|
+| T13 | `mode=live` + `scan()` «밖» `match()` → 원래 튜플 + `scan_series` 0회 + 카운터 무오염 (그리고 «같은» 프레임이 `scan()` 안에서는 배제된다 — 대칭 단언) | E1 |
+| T14 | `scan()` 중간 예외 뒤 재스캔 → 계기 줄 이중계수 없음 | 리뷰 🟡-2 |
+| T15 | `matched` 는 모드 불변 · `kept` 는 실제 반환 수 | E3 |
+
+또 §4 T8 은 rev1 에서 ma20·ma5·daytrading 이 `None == None` 이라 **공허하게** 통과했다 —
+어댑터마다 「룰이 실제로 통과하는」 프레임을 쓰고 `assert base is not None` 을 먼저 단언한다.
+
+### E8. §5 — 변경 파일 3 → 4 (`corp_action_guard.py` 신설)
+
+판정 로직을 스크리너와 전략이 **둘 다** 써야 한다. 전략이 스크리너를 import 하면
+`core.candidate_selector` 까지 라이브 전략 import 경로에 끌려오므로 rs_leader 패키지 «안»에
+가드 모듈을 따로 둔다. (§7-5 의 `utils/corp_action_sanity.py` 이동은 여전히 별건이다.)

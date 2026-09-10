@@ -30,12 +30,22 @@ RS 점수의 **입력값이 오염된 종목**을 랭킹에 넣지 않는다. �
 - **판정**: 큐 파일(`logs/corp_action_refetch_queue.jsonl`)을 읽지 «않는다». 큐를 생산하는 로직
   `collectors.corp_action_watch.scan_series` 를 **스크리너가 이미 로드한 130봉 프레임에 그대로** 적용한다
   (추가 DB 접근 0 · 새 문턱 상수 0개 · 데이터가 고쳐지면 **자동 해제**).
-- **배선**: ① `screener.py::match()` 룰 평가 앞 — 정렬·topK «앞»이라 후보 수가 줄지 않는다(백필)
+- **배선**: ① `screener.py::scan()` 안의 `match()` 룰 평가 앞 — 정렬·topK «앞»이라 후보 수가 줄지 않는다(백필)
   ② `strategy.py::_check_buy()` 맨 앞 — 스크리너를 안 거친 종목이 on_tick 으로 들어오는 구멍을 막는다.
 - **청산은 불변**: 배제는 매수만 막는다. `_check_sell` · `evaluate_sell_conditions` ·
-  `core/trading/position_monitor.py` · 백테스트가 부르는 `evaluate_entry` 는 한 줄도 안 바뀐다.
+  `core/trading/position_monitor.py` 는 한 줄도 안 바뀐다.
+- **연구 재현 불변**: 백테스트가 부르는 순수 함수 `evaluate_entry` 는 그대로고, **`match()` 는
+  `scan()` 경로에서만 배제한다**. 🔑 「백테스트 불변」을 `evaluate_entry` 만 근거로 말하면 틀린다 —
+  `backtest/live_universe_revalidation/run.py:214` · `backtest/universe_lookahead_ladder/run.py:203`
+  이 `match()` 를 **직접** 루프하기 때문이다. 그 경로는 mode 와 무관하게 이전 동작이다
+  (`_ca_active` 플래그 · 계약은 `tests/…/test_corp_action_exclusion.py::test_t13_*`).
 - **스위치**: `config.constants.RS_LEADER_CORP_ACTION_MODE` = `off` / `shadow`(기본) / `live`
-  (env `RS_LEADER_CORP_ACTION_MODE`). 🔴 롤백은 `off` «하나»뿐이고, 이미 체결된 매매를 되돌리지 않는다.
+  (env `RS_LEADER_CORP_ACTION_MODE` — env→mode 변환은 **import 시 1회**라 `.env` 롤백은 «재기동»이
+  있어야 성립한다). 🔴 롤백은 `off` «하나»뿐이고, 이미 체결된 매매를 되돌리지 않는다.
+- **로그**: 기동 1줄 `[rs-corp-action] mode=… (startup)` + 스캔당 1줄
+  `[rs-corp-action] mode=… scan_date=… universe=… evaluated=… matched=… flagged=… kept=… codes=…`
+  (`matched`=룰 통과 총수 · `flagged`=표시 수 · `kept`=**실제 후보가 된 수** — 세 칸 다 모드에 안 걸린다)
+  + 종목당 WARNING 1줄. 스캔 줄은 `SCREENER_SNAPSHOT_ENABLED=false` 면 사라지므로 기동 줄과 «따로» 판정할 것.
 - 🔴 **한계**: on_tick 프레임은 **82봉**이라 그 창 밖 사건은 원리적으로 못 잡는다(실측 003350 유형).
   「on_tick 도 막았다」를 「전부 막았다」로 읽지 말 것 — 스크리너(130봉)가 1차, on_tick 이 2차다.
 - 설계 → [`docs/superpowers/specs/2026-09-10-rsleader-corp-action-exclusion-design.md`](../../docs/superpowers/specs/2026-09-10-rsleader-corp-action-exclusion-design.md)
