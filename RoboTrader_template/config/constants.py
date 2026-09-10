@@ -254,6 +254,41 @@ SECTOR_NEWS_STALE_MINUTES = 60          # computed_at 이 이보다 오래되면
 SECTOR_NEWS_EXCLUDE_STRATEGIES = frozenset()   # 적용 제외 전략 (예: 평균회귀 deep_mr_dev20 — §8 결과 보고 결정)
 
 # =============================================================================
+# rs_leader — 미조정 기업행위(합병) 의심 종목 매수 배제 (2026-09-10 사장님 결정 (b))
+#   spec: docs/superpowers/specs/2026-09-10-rsleader-corp-action-exclusion-design.md
+#   off    : 판정 자체를 안 한다 (코드 진입 0, 로그 0)        ← 롤백 위치
+#   shadow : 판정·기록만, 후보는 «원래대로» 반환               ← 기본값
+#   live   : 배제 발효
+#
+# 이건 «데이터 위생 가드»이지 알파 주장이 아니다 — 근거는 「이렇게 하면 성과가 좋아진다」가
+# 아니라 「RS 점수의 입력값이 오염된 종목을 랭킹에 넣지 않는다」다.
+# 🔴 롤백은 이 값을 "off" 로 되돌리는 것 «하나»뿐이다. 롤백은 이미 체결된 매매를 되돌리지 않는다.
+#    `shadow` 로만 내리면 판정·로그는 계속 돈다 — 관측을 잃지 않고 룰만 끄는 중간 단계다.
+# 범위는 rs_leader «하나»다. 다른 7전략은 이 값을 보지 않는다.
+# =============================================================================
+RS_LEADER_CORP_ACTION_MODES = ("off", "shadow", "live")
+
+
+def resolve_rs_leader_corp_action_mode(raw):
+    """env 문자열 → (mode, invalid_raw). 비어 있으면 shadow, 모르는 값이면 off + 원문(호출자가 WARNING).
+
+    `resolve_sector_news_mode` 와 «같은 규약» — 모르는 값을 임의 해석하지 않고 가장 안전한
+    쪽(off)으로 낮추되, 원문을 돌려줘 「조용히 무시」가 되지 않게 한다.
+    """
+    if raw is None or not str(raw).strip():
+        return "shadow", None
+    v = str(raw).strip().lower()
+    if v in RS_LEADER_CORP_ACTION_MODES:
+        return v, None
+    return "off", raw
+
+
+import os as _os
+RS_LEADER_CORP_ACTION_MODE, RS_LEADER_CORP_ACTION_MODE_INVALID = (
+    resolve_rs_leader_corp_action_mode(_os.getenv("RS_LEADER_CORP_ACTION_MODE")))
+del _os
+
+# =============================================================================
 # 데이터 읽기 소스 — kis_template **단일**. 롤백 스위치는 폐지됐다 (2026-08-17).
 #
 # 🔴 왜 없앴나 — 「롤백 스위치」가 아니라 「누르면 죽는 버튼」이 되기 때문이다:

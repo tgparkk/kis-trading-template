@@ -16,6 +16,7 @@ from config.market_hours import MarketHours
 from utils.korean_time import now_kst
 from utils.korean_holidays import count_trading_days_between
 from ..base import BaseStrategy, OrderInfo, Signal, SignalType
+from strategies.rs_leader import corp_action_guard as corp_action
 from strategies.rs_leader.rule import RSLeaderRule
 
 
@@ -73,6 +74,15 @@ class RSLeaderStrategy(BaseStrategy):
         )
         if self._paper_trading:
             self.logger.info("⚠️ Paper Trading 모드 활성화")
+        # 미조정 기업행위 배제 스위치의 «기동 계기» 1줄 (main.py:220 이 프로세스당 1회 호출).
+        # 🔑 스캔당 줄(`[rs-corp-action] … scan_date=…`)만으로는 부족하다 —
+        #    그 줄은 SCREENER_SNAPSHOT_ENABLED=false 면 통째로 사라져 §6 실패 조건
+        #    「줄이 하루라도 없음」이 «무관한 이유»로 발화한다. 기동 줄이 있으면
+        #    「스위치가 어느 값이었나」와 「스크리너가 돌았나」를 따로 판정할 수 있다.
+        _ca_mode, _ca_invalid = corp_action.resolve_mode()
+        if _ca_invalid is not None:
+            self.logger.warning(corp_action.invalid_mode_message(_ca_invalid))
+        self.logger.info(f"[rs-corp-action] mode={_ca_mode} (startup)")
         return True
 
     def on_market_open(self) -> None:
@@ -155,6 +165,32 @@ class RSLeaderStrategy(BaseStrategy):
 
     # --- 내부 헬퍼 ---
     def _check_buy(self, stock_code: str, data: pd.DataFrame) -> Optional[Signal]:
+        # ★ 미조정 기업행위(합병) 의심 배제 — 2차 방어 (2026-09-10 사장님 결정 (b)).
+        #   spec: docs/superpowers/specs/2026-09-10-rsleader-corp-action-exclusion-design.md §2 Q3
+        #   여기가 필요한 이유: on_tick 매수 루프가 도는 `ctx.get_selected_stocks()` 는
+        #   「내 전략 소유」 + 「소유자 미지정」을 돌려주므로 **스크리너를 안 거친 종목이
+        #   들어올 수 있다**. 실측 전례 — 09-09·09-10 이틀 연속, 스크리너가 제외한 003350 에
+        #   자기 on_tick 이 매수 시그널을 냈다. ⇒ 스크리너만 막으면 구멍이 남는다.
+        #
+        #   🔴 정직하게 적어 둘 한계 — 여기 오는 프레임은 **82봉**이라 배제 판정도 82봉 안의
+        #      사건만 본다. 003350 유형(재개일 97거래일 전)은 **이 가드로도 안 잡힌다**.
+        #      「on_tick 도 막았다」를 「전부 막았다」로 읽지 말 것 — 스크리너(130봉)가 1차다.
+        #
+        #   ⚠️ 매수 전용이다. `_check_sell`(보유 종목 청산)은 다른 함수이고 한 줄도 안 바뀐다.
+        #      백테스트가 부르는 순수 함수 `evaluate_entry` 도 마찬가지다(연구 재현 불변).
+        mode, invalid = corp_action.resolve_mode()
+        if invalid is not None and self._should_log_ontick(stock_code, "corp_action_mode"):
+            self.logger.warning(corp_action.invalid_mode_message(invalid))
+        if mode != "off":
+            hit = corp_action.detect(stock_code, data)
+            if hit is not None:
+                tail = ("— 진입 제외 (mode=live)" if mode == "live"
+                        else f"— 진입 제외 «안 함»(mode={mode})")
+                if self._should_log_ontick(stock_code, "corp_action"):
+                    self.logger.warning(
+                        f"[신호없음] {stock_code}: {corp_action.describe(hit)} {tail}")
+                if mode == "live":
+                    return None
         if not MarketHours.is_market_open("KRX"):
             return None
         triggered, reasons = self.evaluate_entry(
