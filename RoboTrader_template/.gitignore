@@ -1,6 +1,8 @@
 # 민감한 설정 파일
 config/key.ini
-token_info.json
+# 실제 생성되는 토큰 캐시 파일명은 `token_info_config.json` 이다 — `token_info.json`
+# 하나만 있으면 `git add .` 한 번에 실계좌 토큰이 레포에 들어간다(2026-09-10 리뷰).
+token_info*.json
 holiday_kis_cache.json
 
 # AI/IDE tool configs
