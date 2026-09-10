@@ -22,6 +22,24 @@ derived 전략 (Book20 아님) — 상대강도(RS) / 추세.
   `config.yaml` `risk_management`(`stop_loss_pct` / `take_profit_pct`) 값을 **라이브 현재가**로 판정한다
   (2026-08-25 `1810cd2`, D-1 종가 익절 환영 결함 → `docs/prereg_2026-08-25_d1close_tp_phantom.md`).
 
+## 매수 배제 가드 — 미조정 기업행위(합병) 의심 (2026-09-10, 기본 `shadow`)
+
+RS 점수의 **입력값이 오염된 종목**을 랭킹에 넣지 않는다. 알파 주장이 아니라 **데이터 위생 가드**다
+(`utils/data_sanity.py` 불가능봉 가드와 같은 계열 — 그쪽은 «하락» 절벽, 이쪽은 정지런 뒤의 «상승» 불연속).
+
+- **판정**: 큐 파일(`logs/corp_action_refetch_queue.jsonl`)을 읽지 «않는다». 큐를 생산하는 로직
+  `collectors.corp_action_watch.scan_series` 를 **스크리너가 이미 로드한 130봉 프레임에 그대로** 적용한다
+  (추가 DB 접근 0 · 새 문턱 상수 0개 · 데이터가 고쳐지면 **자동 해제**).
+- **배선**: ① `screener.py::match()` 룰 평가 앞 — 정렬·topK «앞»이라 후보 수가 줄지 않는다(백필)
+  ② `strategy.py::_check_buy()` 맨 앞 — 스크리너를 안 거친 종목이 on_tick 으로 들어오는 구멍을 막는다.
+- **청산은 불변**: 배제는 매수만 막는다. `_check_sell` · `evaluate_sell_conditions` ·
+  `core/trading/position_monitor.py` · 백테스트가 부르는 `evaluate_entry` 는 한 줄도 안 바뀐다.
+- **스위치**: `config.constants.RS_LEADER_CORP_ACTION_MODE` = `off` / `shadow`(기본) / `live`
+  (env `RS_LEADER_CORP_ACTION_MODE`). 🔴 롤백은 `off` «하나»뿐이고, 이미 체결된 매매를 되돌리지 않는다.
+- 🔴 **한계**: on_tick 프레임은 **82봉**이라 그 창 밖 사건은 원리적으로 못 잡는다(실측 003350 유형).
+  「on_tick 도 막았다」를 「전부 막았다」로 읽지 말 것 — 스크리너(130봉)가 1차, on_tick 이 2차다.
+- 설계 → [`docs/superpowers/specs/2026-09-10-rsleader-corp-action-exclusion-design.md`](../../docs/superpowers/specs/2026-09-10-rsleader-corp-action-exclusion-design.md)
+
 ## 유니버스 / regime / 사이징
 - 유니버스: 거래대금 ≥ 10억 · 시총 컷 없음 (절대상승추세 통과 → 120일수익률 RS topK)
 - regime: index **KOSPI** / gate **exclude_bear** (깊은약세 미입증이라 약세장 매수 차단)
@@ -36,4 +54,5 @@ derived 전략 (Book20 아님) — 상대강도(RS) / 추세.
 
 ## 코드
 - 전략: `strategy.py` · 설정: `config.yaml` · EOD 스크리너: `screener.py`
+- 매수 배제 가드: `corp_action_guard.py` (판정 로직은 `collectors/corp_action_watch.py` 재사용)
 - 진입 룰(SSOT): `strategies/rs_leader/rule.py::RSLeaderRule` (2026-07-02 `scripts/rs_leader/` 에서 승격 — 라이브 엣지 -2)

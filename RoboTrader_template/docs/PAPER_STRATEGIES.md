@@ -143,7 +143,7 @@ _load_top_volume_universe(top_n=50)   # 기간 «전체» SUM(close*volume) 상�
 | 4 | [`minervini_volume_dryup`](../strategies/minervini_volume_dryup/README.md) | Minervini VCP (Var B) | 최근10봉 평균거래량 ≤ 직전30봉의 70% (dry-up) | -8% / +12% / 없음 / 20일 | KOSPI / none | 3 | 333만 | 시총≥3천억·거래대금≥30억 |
 | 5 | [`book_pullback_ma20`](../strategies/book_pullback_ma20/README.md) | 강창권 단기트레이딩 A-07 | 30일내 +25% 급등 + 20일선 눌림 지지 양봉 | -8% / +10% / MA20 trail / 50일 | KOSPI / exclude_bear | 5 | 200만 | 중소형(시총≤3조)·KOSPI+KOSDAQ |
 | 6 | [`book_pullback_ma5`](../strategies/book_pullback_ma5/README.md) | 트레이딩의 전설 (Book15) | 20일내 +20% 급등 + 5일선 눌림 지지 양봉 | **-3%** / +15% / MA5 trail / 30일 | KOSPI / exclude_bear | 5 | 200만 | 중소형(시총≤3조)·KOSPI+KOSDAQ |
-| 7 | [`rs_leader`](../strategies/rs_leader/README.md) | 횡보장 RS 리더 (derived) | 절대상승추세 + 횡단면 RS 랭킹(스크리너) | -8% / +15%(거의무효) / **MA20 trail(무조건)** / 30일 | KOSPI / exclude_bear | 10 | 100만 | 절대상승추세 통과 → 120일수익률 RS topK |
+| 7 | [`rs_leader`](../strategies/rs_leader/README.md) | 횡보장 RS 리더 (derived, ⚠️미조정 병합 의심 종목 매수 배제 가드 — `RS_LEADER_CORP_ACTION_MODE` 기본 `shadow`) | 절대상승추세 + 횡단면 RS 랭킹(스크리너) | -8% / +15%(거의무효) / **MA20 trail(무조건)** / 30일 | KOSPI / exclude_bear | 10 | 100만 | 절대상승추세 통과 → 120일수익률 RS topK |
 | 8 | [`deep_mr_dev20`](../strategies/deep_mr_dev20/README.md) | 발굴 파이프라인 배치3 | MA20 대비 -20% 폭락 + RSI(14)<30 | -7% / +12% / MA20×0.9 회복 / 7일 | KOSPI / none | 5 | 200만 | 거래대금≥100억 (top300 근사)·폭락깊이순 |
 
 > 스크리너는 8전략 공통으로 `max_candidates=10`을 score 내림차순 정렬해 topK 후보를 만든다. `target_stocks: []`(전부 비움)이면 EOD 스크리너 후보를 사용한다.
