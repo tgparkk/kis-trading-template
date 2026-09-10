@@ -44,10 +44,14 @@ logger = setup_logger(__name__)
 
 
 def resolve_mode() -> Tuple[str, Optional[str]]:
-    """(mode, invalid_raw) — **호출 시점**에 읽는다.
+    """(mode, invalid_raw) — **`config.constants` 모듈 속성**을 호출 시점에 읽는다.
 
-    import 시점에 값을 박아 두면 테스트·운영 양쪽에서 「바꿨는데 안 바뀐다」가 된다
-    (선례: `core/candidate_selector.py:1179` 도 호출 시점에 읽는다).
+    ⚠️ 「env 를 매번 읽는다」가 아니다. env → mode 변환은 `config/constants.py` 가
+    **import 시 1회**만 한다. 즉 `.env` 를 고쳐도 **재기동 전에는 안 바뀐다**
+    (롤백 절차 「`.env` 수정 + 재기동」은 성립 — `main.py:26` 이 bootstrap 을 먼저 탄다).
+    여기서 매 호출 읽는 것은 «모듈 속성»이라, 모듈 값을 바꾸는 경로(테스트 monkeypatch ·
+    런타임 재설정)가 즉시 반영된다는 뜻이다.
+    (선례: `core/candidate_selector.py:1179` 도 같은 방식으로 읽는다.)
     """
     import config.constants as C
     mode = getattr(C, "RS_LEADER_CORP_ACTION_MODE", "off")
@@ -89,22 +93,18 @@ def detect(stock_code: Any, df: Optional[pd.DataFrame]) -> Optional[Dict[str, An
     try:
         if "close" not in df.columns or "volume" not in df.columns:
             return None
-        close = pd.to_numeric(df["close"], errors="coerce")
-        volume = pd.to_numeric(df["volume"], errors="coerce")
+        # 🔑 벡터화 — 행별 `.iat`/`strftime` 은 이 판정을 룰 평가보다 5배 비싸게 만든다.
+        #    라이브 스크리너가 종목당 1회 부르므로 유니버스 수만큼 곱해진다.
+        #    NaN volume → 정지런을 «끊는» 값(-1.0). 「모른다」를 「정지다」로 접으면
+        #    없는 사건이 보인다. NaN close → 0.0 (scan_series 가 `close > 0` 로 판정 제외).
+        close = pd.to_numeric(df["close"], errors="coerce").fillna(0.0)
+        volume = pd.to_numeric(df["volume"], errors="coerce").fillna(-1.0)
         if "date" in df.columns:
             dates = pd.to_datetime(df["date"], errors="coerce")
-            iso = ["" if pd.isna(d) else d.strftime("%Y-%m-%d") for d in dates]
+            iso = dates.dt.strftime("%Y-%m-%d").fillna("").tolist()
         else:
             iso = [""] * len(df)
-        bars = []
-        for i in range(len(df)):
-            c = close.iat[i]
-            v = volume.iat[i]
-            # NaN volume → 정지런을 «끊는» 값(-1.0)으로 둔다. 「모른다」를 「정지다」로
-            # 접으면 없는 사건이 보인다. NaN close → 0.0 (scan_series 가 판정 제외).
-            bars.append((iso[i],
-                         0.0 if pd.isna(c) else float(c),
-                         -1.0 if pd.isna(v) else float(v)))
+        bars = list(zip(iso, close.astype(float).tolist(), volume.astype(float).tolist()))
         hits = scan_series(str(stock_code or ""), bars)
     except Exception as e:  # 판정이 라이브 경로를 죽이지 않는다 — 단, 조용히 넘기지도 않는다
         logger.warning("[rs-corp-action] %s: 판정 실패 → 통과 처리 (%s: %s)",

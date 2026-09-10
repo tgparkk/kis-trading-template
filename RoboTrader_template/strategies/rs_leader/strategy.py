@@ -74,6 +74,15 @@ class RSLeaderStrategy(BaseStrategy):
         )
         if self._paper_trading:
             self.logger.info("⚠️ Paper Trading 모드 활성화")
+        # 미조정 기업행위 배제 스위치의 «기동 계기» 1줄 (main.py:220 이 프로세스당 1회 호출).
+        # 🔑 스캔당 줄(`[rs-corp-action] … scan_date=…`)만으로는 부족하다 —
+        #    그 줄은 SCREENER_SNAPSHOT_ENABLED=false 면 통째로 사라져 §6 실패 조건
+        #    「줄이 하루라도 없음」이 «무관한 이유»로 발화한다. 기동 줄이 있으면
+        #    「스위치가 어느 값이었나」와 「스크리너가 돌았나」를 따로 판정할 수 있다.
+        _ca_mode, _ca_invalid = corp_action.resolve_mode()
+        if _ca_invalid is not None:
+            self.logger.warning(corp_action.invalid_mode_message(_ca_invalid))
+        self.logger.info(f"[rs-corp-action] mode={_ca_mode} (startup)")
         return True
 
     def on_market_open(self) -> None:

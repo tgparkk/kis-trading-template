@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from core.candidate_selector import CandidateStock
 from strategies._rule_screener_base import RuleScreenerBase
 from strategies.rs_leader import corp_action_guard as corp_action
 from strategies.rs_leader.rule import RSLeaderRule
@@ -59,7 +60,32 @@ class RSLeaderScreenerAdapter(RuleScreenerBase):
 
     def _ca_reset(self) -> None:
         self._ca_flagged: List[str] = []
+        self._ca_matched: int = 0
         self._ca_kept: int = 0
+
+    def scan(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
+        """🔑 배제는 «이 경로 안에서만» 돈다.
+
+        `match()` 는 `scan()` 전용이 아니다 — 백테스트 러너 2본
+        (`backtest/live_universe_revalidation/run.py:214` ·
+         `backtest/universe_lookahead_ladder/run.py:203`)이 어댑터를 만들어
+        `match()` 를 직접 루프한다. 거기까지 배제가 발효하면 **연구 재현이 조용히 바뀐다** —
+        스펙 §3-5 5항이 `evaluate_entry` 에 금지한 것과 «같은 종류»의 결함이다.
+        (shadow 에서도 문제다: `detect` 는 룰보다 비싸고, 러너 프레임엔 `attrs` 가 없어
+         `[rs_leader] ?:` 로그가 폭주하며, 계기 카운터가 무한 증가한다.)
+
+        ⚠️ `attrs["stock_code"]` 유무로 가르지 «않는다» — 그건 폴백이 고장을 감추는 형태다
+           (러너가 언젠가 attrs 를 붙이면 조용히 배제가 켜진다). 명시적 플래그로 가른다.
+
+        finally 로 리셋하는 이유: 스캔 중간에 예외가 나면 `finalize_scan` 을 못 거쳐
+        잔재가 다음 스캔의 계기 줄에 얹힌다(§6 P4 가 읽는 바로 그 줄).
+        """
+        self._ca_active = True
+        try:
+            return super().scan(scan_date, params)
+        finally:
+            self._ca_active = False
+            self._ca_reset()
 
     def _prepare_frame(self, code: str, scan_date: date,
                        stats: Dict[str, int]) -> Optional[pd.DataFrame]:
@@ -103,12 +129,15 @@ class RSLeaderScreenerAdapter(RuleScreenerBase):
 
     def match(self, df: pd.DataFrame, params: Dict[str, Any]) -> Optional[Tuple[float, str]]:
         mode, _invalid = corp_action.resolve_mode()
-        if mode == "off":
-            # 🔑 코드 진입 0 — 롤백이 「끄는 시늉」이 아니라 «실제로» 이전 경로다.
+        if mode == "off" or not getattr(self, "_ca_active", False):
+            # 🔑 코드 진입 0 — 롤백(off)이 「끄는 시늉」이 아니라 «실제로» 이전 경로다.
+            #    그리고 `scan()` 밖(백테스트 러너)에서는 모드와 무관하게 이전 경로다.
             return self._rule_verdict(df, params)
 
         hit = corp_action.detect(df.attrs.get("stock_code"), df)
         verdict = self._rule_verdict(df, params)
+        if verdict is not None:
+            self._ca_matched += 1      # 룰 통과 «총수» — 모드와 무관(발효 전후 비교의 축)
         if hit is None or verdict is None:
             # ⚠️ 룰에서 이미 떨어진 종목은 계기에 안 찍는다. `flagged` 는 「배제가 후보를
             #    실제로 몇 개 뺐나」여야 EOD 집합 차분이 성립한다(어차피 후보가 아닌
@@ -125,26 +154,31 @@ class RSLeaderScreenerAdapter(RuleScreenerBase):
                        self.strategy_name, code, corp_action.describe(hit), tail)
         if mode == "live":
             return None
-        self._ca_kept += 1
+        self._ca_kept += 1             # kept = «실제로» 후보가 된 수 (shadow 는 안 뺀다)
         return verdict
 
     def finalize_scan(self, diag: Dict[str, Any]) -> None:
         """스캔당 1줄 — 이 줄의 유무·mode 값이 «발효일 계기»다.
 
-        🔑 `flagged` 와 `kept` 를 한 줄에 둘 다 찍는다. 건수만 찍으면 「배제가 0건」과
-           「스캔이 안 돌았다」가 구별되지 않는다(한 규칙의 두 축은 따로 판정한다).
+        🔑 `matched`·`flagged`·`kept` 를 한 줄에 «전부» 찍는다. 건수만 찍으면 「배제가
+           0건」과 「스캔이 안 돌았다」가 구별되지 않는다(한 규칙의 두 축은 따로 판정한다).
+        🔑 세 칸의 «정의»는 모드에 안 걸린다 — `matched` = 룰 통과 총수(모드 무관),
+           `flagged` = 표시된 수, `kept` = 실제로 후보가 된 수. 이래야 shadow 로그를
+           발효 «전» 기준선으로 쓸 수 있다(정의가 바뀌면 발효일에 가짜 계단이 생긴다).
+             shadow → matched=140 flagged=9 kept=140
+             live   → matched=140 flagged=9 kept=131
         🔑 `codes=` 를 찍는 이유: EOD 점검이 «건수가 아니라 집합 차분»으로 돌기 때문이다.
         """
+        super().finalize_scan(diag)
         mode, invalid = corp_action.resolve_mode()
-        try:
-            if invalid is not None:
-                logger.warning("%s", corp_action.invalid_mode_message(invalid))
-            if mode != "off":
-                logger.info(
-                    "[rs-corp-action] mode=%s scan_date=%s universe=%s evaluated=%s "
-                    "flagged=%s kept=%s codes=%s",
-                    mode, diag.get("scan_date"), diag.get("n_universe"),
-                    diag.get("n_evaluated"), len(self._ca_flagged), self._ca_kept,
-                    ",".join(self._ca_flagged))
-        finally:
-            self._ca_reset()
+        if invalid is not None:
+            logger.warning("%s", corp_action.invalid_mode_message(invalid))
+        if mode != "off":
+            logger.info(
+                "[rs-corp-action] mode=%s scan_date=%s universe=%s evaluated=%s "
+                "matched=%s flagged=%s kept=%s codes=%s",
+                mode, diag.get("scan_date"), diag.get("n_universe"),
+                diag.get("n_evaluated"), self._ca_matched, len(self._ca_flagged),
+                self._ca_kept, ",".join(self._ca_flagged))
+        # 리셋은 `scan()` 의 finally 가 «반드시» 한다 — 여기서만 하면 스캔 중간 예외가
+        # 이 훅을 건너뛰어 잔재가 다음 스캔 줄에 얹힌다(🟡-2).
