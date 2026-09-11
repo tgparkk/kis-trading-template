@@ -19,7 +19,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db.kis_db_connection import KisDbConnection  # noqa: E402
 from collectors.foreign_flow_writer import naver_df_to_rows, upsert_foreign_rows  # noqa: E402
 from collectors.daily_collector import load_universe  # noqa: E402
-from collectors.foreign_flow_fetcher import fetch_foreign_naver  # noqa: E402
+from collectors.foreign_flow_fetcher import (  # noqa: E402
+    fetch_foreign_naver,
+    get_first_fail_reason,
+    reset_fail_suppression,
+)
 from utils.logger import setup_logger  # noqa: E402
 
 logger = setup_logger(__name__)
@@ -29,9 +33,10 @@ def collect_foreign_flow(target_date: str = None, limit: int = None) -> dict:
     """daily_prices 유니버스 종목별 네이버 외국인 순매매량 fetch → 새 DB UPSERT.
 
     target_date 는 EOD 오케스트레이션 시그니처 정합용(증분 fetch 가 최근 ~40일을
-    포괄하므로 별도 분기 불필요). 반환 {"codes": n, "rows": total}.
+    포괄하므로 별도 분기 불필요). 반환 {"codes": n, "rows": total} (+실패 시 "first_fail_reason").
     """
     total = 0
+    reset_fail_suppression()  # 이 수집 1회분의 실패 사유만 본다
     with KisDbConnection.get_connection() as conn:
         codes = load_universe(conn)
         if limit:
@@ -42,7 +47,13 @@ def collect_foreign_flow(target_date: str = None, limit: int = None) -> dict:
             rows = naver_df_to_rows(code, df)
             if rows:
                 total += upsert_foreign_rows(conn, rows)
-    return {"codes": len(codes), "rows": total}
+    out = {"codes": len(codes), "rows": total}
+    # 첫 실패 사유를 요약 dict 에 실어야 EOD 경보가 「왜」를 말할 수 있다.
+    # (`bot/system_monitor.py` 의 0행 ERROR 가 `{foreign}` 을 그대로 찍는다.)
+    reason = get_first_fail_reason()
+    if reason:
+        out["first_fail_reason"] = reason
+    return out
 
 
 if __name__ == "__main__":

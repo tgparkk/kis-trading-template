@@ -677,7 +677,7 @@ class SystemMonitor:
                     f"— 재시도 필요 {_v.get('failed_codes')}"
                 )
         # 🔴 외국인 수급도 같은 대열이다 — 여태 이 승격에서만 빠져 있었다.
-        #    `collectors/foreign_flow_fetcher.py:51-53` 은 네이버가 차단해도(HTTP != 200)
+        #    `collectors/foreign_flow_fetcher.py` 는 응답이 HTTP != 200 이어도
         #    warning 한 줄 찍고 **빈 DataFrame** 을 돌려주므로 예외가 안 나고,
         #    `collect_foreign_flow` 는 {"codes": 2788, "rows": 0} 을 반환한다 ⇒ `error` 키가
         #    없어 `_safe` 도 안 걸리고 요약 INFO 한 줄로 끝난다. 조용한 결손이다.
@@ -696,7 +696,9 @@ class SystemMonitor:
                     )
                 elif foreign.get("rows", 0) == 0:
                     self.logger.error(
-                        f"EOD 외국인수급 0행 — 네이버 차단 의심(정상 ≈24,000행): {foreign}"
+                        f"EOD 외국인수급 0행 — 응답에서 표를 못 찾음"
+                        f"(리다이렉트/페이지 변경/차단 중 하나 · 정상 ≈24,000행 · "
+                        f"fetcher 첫 실패 사유는 WARNING 참조): {foreign}"
                     )
         # 시장 매핑 실패는 요약 INFO 에 묻히면 안 된다. eod_collection._safe 가
         # 예외를 삼켜 {"error": ...} 로만 남기므로(:24-29), 여기서 ERROR 로
