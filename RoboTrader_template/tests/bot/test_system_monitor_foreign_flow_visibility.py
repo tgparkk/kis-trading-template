@@ -160,3 +160,30 @@ def test_existing_promotions_unchanged(monkeypatch):
     )
     assert any("FDR down" in m for m in rec.error)
     assert any("program_trade" in m and "7" in m for m in rec.error)
+
+
+# ── 문구 정직화 (2026-09-11) ─────────────────────────────────────────────
+
+def test_zero_rows_message_does_not_assert_a_cause(monkeypatch):
+    """0행 경보는 «원인을 단정하지 않는다».
+
+    「네이버 차단 의심」은 관측이 아니라 추측이었다. 실제 0행의 원인은
+    리다이렉트·페이지 구조 변경·차단 중 무엇이든 될 수 있고, 경보 문구가
+    하나를 못박으면 조사가 그 방향으로만 간다(09-09 FDR 상류 정지를
+    「봇 코드」로 오귀속할 뻔한 것과 같은 실패 모양이다).
+    ⇒ 사유 후보를 나열하고, 실제 사유는 fetcher WARNING 을 가리킨다.
+    """
+    rec = _run(_base(foreign_flow={"codes": 2788, "rows": 0}), monkeypatch)
+    joined = " ".join(rec.error)
+
+    assert "차단 의심" not in joined, f"원인 추정이 남아 있다: {joined}"
+    assert "표를 못 찾음" in joined
+    assert "리다이렉트" in joined and "페이지 변경" in joined and "차단" in joined
+    assert "24,000행" in joined, "정상 규모 기준선은 유지한다"
+    assert "WARNING" in joined, "첫 실패 사유를 어디서 보는지 가리켜야 한다"
+
+
+def test_zero_rows_stays_error_level(monkeypatch):
+    """문구만 바꾼다 — 레벨·승격 조건은 그대로 ERROR 다."""
+    rec = _run(_base(foreign_flow={"codes": 2788, "rows": 0}), monkeypatch)
+    assert rec.error and not any("0행" in m for m in rec.warning)
