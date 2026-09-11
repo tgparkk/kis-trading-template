@@ -48,7 +48,7 @@
       "name": "daytrading_3methods_breakout",
       "enabled": true,
       "max_capital_pct": 0.16,
-      "regime_index": "KOSDAQ",
+      "regime_index": "auto",
       "regime_gate": "none"
     },
     {
