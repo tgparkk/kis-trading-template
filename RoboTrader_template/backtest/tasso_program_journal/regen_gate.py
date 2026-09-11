@@ -321,6 +321,9 @@ MANUAL_DOCS = [
     #    원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니고, `MANUAL_DOCS` 는
     #    「사람이 쓴 «문서»」 목록이다(스크립트를 넣으면 그 목록의 뜻이 흐려진다).
     #    회귀는 `test_post6_ledger.py`·`tests/test_s5_fixes.py` 가 맡는다.
+    # 🔴 2026-09-11 — 사람이 쓴 사전등록 2종. `PREREG_ANCHOR_REDESIGN.md` 는 §11 이 등재 의무를
+    #    «신고»만 하고 미뤄 둔 빚이다(그 사이 G-1 에 «안 보였다») ⇒ 이 커밋에서 같이 갚는다.
+    "PREREG_GRADE_TIERS.md", "PREREG_ANCHOR_REDESIGN.md",
 ]
 
 
