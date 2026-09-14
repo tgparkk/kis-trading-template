@@ -51,7 +51,8 @@ echo 로그: %LOGFILE%
 echo 종료하려면 Ctrl+C
 echo.
 set PYTHONIOENCODING=utf-8
-set SCREENER_SNAPSHOT_ENABLED=true
+REM 실전 인스턴스는 스크리너 스냅샷 «소비 전용» 이다 — 생성은 페이퍼 봇 한 대가 맡는다(같은 날짜 스냅샷을 둘이 덮어쓰면 후보가 갈린다).
+set SCREENER_SNAPSHOT_ENABLED=false
 python -X utf8 main.py %2 %3 %4 %5 1>> "%LOGFILE%" 2>&1
 
 echo.
