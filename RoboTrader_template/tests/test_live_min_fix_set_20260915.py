@@ -117,3 +117,119 @@ class TestA2AuthFailureTelegramConfigPath:
         seen = self._send()
         assert seen, "key.ini 존재 검사가 한 번도 일어나지 않았다"
         assert seen[-1] == Path(settings.CONFIG_FILE)
+
+
+# =============================================================================
+# A3 — bot/candidate_loader.py: 단일 전략 모드 owner 표기를 «폴더키» 로
+# =============================================================================
+class _FakeTradingManager:
+    """add_selected_stock 이 실제로 받은 owner 를 기록하는 최소 대역.
+
+    registry 키가 (code, owner) 라 「owner 표기가 갈리면 조회가 빈다」는 실제
+    결함 구조를 그대로 재현한다(get_trading_stock 은 owner 완전일치만 반환).
+    """
+
+    def __init__(self):
+        self.calls = []
+        self._registry = {}
+
+    async def add_selected_stock(self, stock_code, stock_name, selection_reason="",
+                                 prev_close=0.0, owner_strategy=""):
+        self.calls.append({"stock_code": stock_code, "owner_strategy": owner_strategy})
+        ts = MagicMock()
+        ts.stock_code = stock_code
+        ts.strategy_name = None
+        self._registry[(stock_code, owner_strategy)] = ts
+        return True
+
+    def get_trading_stock(self, stock_code, strategy=None):
+        return self._registry.get((stock_code, strategy or ""))
+
+    def get_stocks_by_state(self, state):
+        return list(self._registry.values())
+
+
+def _single_strategy_bot(folder_key, class_name):
+    """단일 전략 봇 대역 — `strategies` dict 키는 폴더명, 인스턴스 `.name` 은 클래스명."""
+    from core.candidate_selector import CandidateStock
+
+    strategy_instance = MagicMock()
+    strategy_instance.name = class_name
+
+    bot = MagicMock()
+    bot._candidates_loaded = False
+    bot._candidate_load_retries = 0
+    bot.liquidation_handler = None
+    bot.config.strategy = None
+    bot.strategy = strategy_instance
+    bot.strategies = {folder_key: strategy_instance}
+    bot.candidate_selector.load_from_screener.return_value = [
+        CandidateStock(code="005930", name="삼성전자", market="KRX",
+                       score=50.0, reason="테스트", prev_close=70000.0)
+    ]
+    bot.db_manager = None
+    bot.trading_manager = _FakeTradingManager()
+    return bot
+
+
+class TestA3SingleStrategyOwnerKey:
+    """P1-2: 단일 전략 모드가 owner 를 «클래스명» 으로 달아, 폴더키로 조회하는
+    TradingContext 가 자기 후보를 못 찾아 무거래가 됐다."""
+
+    @pytest.mark.asyncio
+    async def test_owner_is_folder_key_not_class_name(self):
+        from bot.candidate_loader import CandidateLoader
+
+        bot = _single_strategy_bot("book_pullback_ma20", "BookPullbackMA20Strategy")
+        await CandidateLoader(bot)._load_screener_candidates()
+
+        assert bot.trading_manager.calls, "add_selected_stock 이 호출되지 않았다"
+        owners = {c["owner_strategy"] for c in bot.trading_manager.calls}
+        assert owners == {"book_pullback_ma20"}, (
+            f"owner 가 폴더키가 아니다: {owners}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_context_with_folder_key_sees_the_candidate(self):
+        """end-to-end 1건: 폴더키로 만든 TradingContext 가 그 종목을 돌려준다."""
+        from bot.candidate_loader import CandidateLoader
+        from core.trading_context import TradingContext
+
+        bot = _single_strategy_bot("book_pullback_ma20", "BookPullbackMA20Strategy")
+        await CandidateLoader(bot)._load_screener_candidates()
+
+        ctx = TradingContext.__new__(TradingContext)
+        ctx.logger = MagicMock()
+        ctx._strategy_key = "book_pullback_ma20"
+        ctx._trading_manager = bot.trading_manager
+
+        codes = [s.stock_code for s in ctx.get_selected_stocks()]
+        assert codes == ["005930"], f"폴더키 컨텍스트가 후보를 못 봤다: {codes}"
+
+    @pytest.mark.asyncio
+    async def test_no_strategies_dict_keeps_legacy_fallback(self):
+        """`strategies` 가 비면 기존 폴백(클래스명 / "unknown") 유지 — 동작 변화 0."""
+        from bot.candidate_loader import CandidateLoader
+
+        bot = _single_strategy_bot("ignored", "BookPullbackMA20Strategy")
+        bot.strategies = {}
+        await CandidateLoader(bot)._load_screener_candidates()
+
+        owners = {c["owner_strategy"] for c in bot.trading_manager.calls}
+        assert owners == {"BookPullbackMA20Strategy"}
+
+    @pytest.mark.asyncio
+    async def test_multi_strategy_path_untouched(self):
+        """전략 2개 이상이면 기존 다중 전략 경로로 그대로 빠진다(이번 수정 무관)."""
+        from bot.candidate_loader import CandidateLoader
+
+        bot = _single_strategy_bot("a", "A")
+        bot.strategies = {"a": MagicMock(), "b": MagicMock()}
+        loader = CandidateLoader(bot)
+        with patch.object(loader, "_load_candidates_multi_strategy") as multi:
+            async def _noop(*a, **k):
+                return None
+            multi.side_effect = _noop
+            await loader._load_screener_candidates()
+        assert multi.called, "다중 전략 경로가 안 탔다"
+        assert not bot.trading_manager.calls

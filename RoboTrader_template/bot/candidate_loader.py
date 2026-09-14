@@ -100,7 +100,17 @@ class CandidateLoader:
 
             # TradingStockManager에 등록
             registered = 0
-            strategy_name = self._bot.strategy.name if self._bot.strategy else "unknown"
+            # 🔴 owner 표기는 «폴더키» 다(P1-2). 종전엔 클래스명(`strategy.name`)을
+            #    달았는데, TradingContext 는 폴더키(`_strategy_key`)로 후보를 조회한다
+            #    → 단일 전략 봇에서 자기 후보가 통째로 안 보여 무거래가 됐다.
+            #    StrategyLoader 가 만든 `strategies` dict 의 «키»가 폴더명이므로
+            #    그것을 쓴다(여기는 단일 전략 분기라 dict 는 0개 또는 1개다).
+            #    dict 가 비어 있으면(레거시/전략 미로딩) 기존 폴백을 그대로 둔다.
+            strategies = getattr(self._bot, 'strategies', None) or {}
+            if len(strategies) == 1:
+                strategy_name = next(iter(strategies))
+            else:
+                strategy_name = self._bot.strategy.name if self._bot.strategy else "unknown"
             for c in candidates:
                 success = await self._bot.trading_manager.add_selected_stock(
                     stock_code=c.code,
