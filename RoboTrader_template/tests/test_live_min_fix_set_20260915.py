@@ -233,3 +233,93 @@ class TestA3SingleStrategyOwnerKey:
             await loader._load_screener_candidates()
         assert multi.called, "다중 전략 경로가 안 탔다"
         assert not bot.trading_manager.calls
+
+
+# =============================================================================
+# A4 — api/kis_market_api.py: total_value 덮어쓰기 제거 (현금이 사라지던 결함)
+# =============================================================================
+def _kis_balance_response():
+    """실브로커 응답 형태 그대로 — 키 이름은 `get_stock_balance()` 가 실제로 만드는 것.
+
+    총평가 1,000만 · 주식 평가합 400만(= 현금성 600만). 종전 코드는 `total_value`
+    를 주식 평가합으로 «덮어써» 600만을 지웠다.
+    """
+    import pandas as pd
+
+    rows = [
+        {"pdno": "005930", "prdt_name": "삼성전자", "hldg_qty": "10",
+         "pchs_avg_pric": "70000", "prpr": "250000", "evlu_amt": "2500000",
+         "evlu_pfls_amt": "1800000", "evlu_pfls_rt": "257.14"},
+        {"pdno": "000660", "prdt_name": "SK하이닉스", "hldg_qty": "5",
+         "pchs_avg_pric": "200000", "prpr": "300000", "evlu_amt": "1500000",
+         "evlu_pfls_amt": "500000", "evlu_pfls_rt": "50.0"},
+    ]
+    summary = {
+        "dnca_tot_amt": 6_000_000,
+        "nxdy_excc_amt": 6_000_000,
+        "prvs_rcdl_excc_amt": 6_000_000,
+        "tot_evlu_amt": 10_000_000,
+        "evlu_pfls_smtl_amt": 2_300_000,
+        "pchs_amt_smtl_amt": 1_700_000,
+        "evlu_amt_smtl_amt": 4_000_000,
+        "raw_summary": {},
+    }
+    return pd.DataFrame(rows), summary
+
+
+class TestA4AccountTotalValue:
+    """P1-3: `total_value` 가 Σevlu_amt 로 덮여, 실전 총자금 산정이 현금을 통째로
+    빠뜨렸다(= 총자금이 주식 평가액으로 축소 → 매수 여력 과소)."""
+
+    def test_total_value_keeps_tot_evlu_amt_and_stock_sum_gets_new_key(self):
+        import api.kis_market_api as market_api
+
+        with patch.object(market_api, "get_stock_balance", return_value=_kis_balance_response()):
+            result = market_api.get_account_balance()
+
+        assert result is not None
+        assert result["total_value"] == 10_000_000, (
+            f"total_value 가 총평가액(tot_evlu_amt)이 아니다: {result['total_value']}"
+        )
+        assert result["stock_eval_value"] == 4_000_000
+        assert result["total_stocks"] == 2
+        assert result["total_profit_loss"] == 2_300_000
+
+    def test_profit_loss_rate_denominator_is_stock_eval_sum(self):
+        """손익률 분모는 «주식 평가합» 이라야 한다 — 총평가로 나누면 현금이 희석한다."""
+        import api.kis_market_api as market_api
+
+        with patch.object(market_api, "get_stock_balance", return_value=_kis_balance_response()):
+            result = market_api.get_account_balance()
+
+        assert result["total_profit_loss_rate"] == pytest.approx(2_300_000 / 4_000_000 * 100)
+
+    def test_empty_holdings_unchanged(self):
+        """보유 0 이면 기존과 동일 — total_value 는 그대로 총평가액."""
+        import pandas as pd
+        import api.kis_market_api as market_api
+
+        _, summary = _kis_balance_response()
+        with patch.object(market_api, "get_stock_balance",
+                          return_value=(pd.DataFrame(), summary)):
+            result = market_api.get_account_balance()
+
+        assert result["total_value"] == 10_000_000
+        assert result["total_stocks"] == 0
+        assert result["stocks"] == []
+        assert result["stock_eval_value"] == 0
+
+    def test_broker_total_balance_is_total_assets(self):
+        """소비자 경로 1건 — `bot/initializer.py` 가 실전 총자금 상한 비교에 쓰는 값."""
+        import api.kis_market_api as market_api
+        from framework.broker import KISBroker
+
+        broker = KISBroker.__new__(KISBroker)
+        broker.logger = MagicMock()
+        broker._connected = True
+        broker._kis_market_api = market_api
+
+        with patch.object(market_api, "get_stock_balance", return_value=_kis_balance_response()):
+            balance = broker.get_account_balance()
+
+        assert balance["total_balance"] == 10_000_000

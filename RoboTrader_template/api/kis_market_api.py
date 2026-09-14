@@ -891,7 +891,11 @@ def get_account_balance() -> Optional[Dict]:
         # 🎯 매수가능금액을 포함한 기본 정보
         base_info = {
             'total_stocks': 0,
-            'total_value': account_summary.get('tot_evlu_amt', 0),
+            'total_value': account_summary.get('tot_evlu_amt', 0),   # 총평가액(현금성 포함)
+            # 주식 평가금액 합계(Σevlu_amt). 보유가 있으면 아래 update 가 채운다.
+            # 🔴 종전엔 이 값을 'total_value' 에 «덮어써» 현금성 자산이 통째로 사라졌고,
+            #    실전 총자금(min(상한, 총평가))이 주식 평가액으로 축소됐다(P1-3).
+            'stock_eval_value': 0,
             'total_profit_loss': account_summary.get('evlu_pfls_smtl_amt', 0),
             'available_amount': account_summary.get('prvs_rcdl_excc_amt', 0),  # 🎯 가수도정산금액 (실제 매수가능금액!)
             'cash_balance': account_summary.get('nxdy_excc_amt', 0),          # 🎯 익일정산금액 (D+1 예수금)
@@ -907,7 +911,7 @@ def get_account_balance() -> Optional[Dict]:
 
         # 보유 종목 요약 생성
         stocks = []
-        total_value = 0
+        stock_eval_value = 0   # Σevlu_amt — 「총평가액」이 아니다(현금 미포함)
         total_profit_loss = 0
 
         def safe_int_balance(value: Any, default: int = 0) -> int:
@@ -950,20 +954,23 @@ def get_account_balance() -> Optional[Dict]:
                     'profit_loss_rate': profit_loss_rate
                 }
                 stocks.append(stock_info)
-                total_value += eval_amt
+                stock_eval_value += eval_amt
                 total_profit_loss += profit_loss
 
         # 🎯 base_info 업데이트
         base_info.update({
             'total_stocks': len(stocks),
-            'total_value': total_value,
+            # ⚠️ 'total_value'(총평가액)는 여기서 «건드리지 않는다» — base_info 의
+            #    tot_evlu_amt 가 그대로 남는다. 주식 평가합은 새 키로 싣는다.
+            'stock_eval_value': stock_eval_value,
             'total_profit_loss': total_profit_loss,
-            'total_profit_loss_rate': (total_profit_loss / total_value * 100) if total_value > 0 else 0.0,
+            # 손익률 분모는 주식 평가합이라야 한다(총평가로 나누면 현금이 희석한다).
+            'total_profit_loss_rate': (total_profit_loss / stock_eval_value * 100) if stock_eval_value > 0 else 0.0,
             'stocks': stocks,
             'inquiry_time': now_kst().strftime('%Y-%m-%d %H:%M:%S')
         })
 
-        logger.debug(f"💰 계좌요약: {len(stocks)}개 종목, 총 {total_value:,}원, "
+        logger.debug(f"💰 계좌요약: {len(stocks)}개 종목, 주식평가합 {stock_eval_value:,}원, "
                    f"손익 {total_profit_loss:+,}원 ({base_info['total_profit_loss_rate']:+.2f}%), "
                    f"💰매수가능={base_info['available_amount']:,}원")
 
