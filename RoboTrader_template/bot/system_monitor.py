@@ -272,6 +272,24 @@ class SystemMonitor:
                     )
                     return
 
+                # 🔴 실전 인스턴스 게이트(P1-9) — 아래 EOD 후속작업은 전부 「하루치
+                #    산출물을 «만드는»」 일이다: 매매 리포트·자금 정합성·게이트지수 집계·
+                #    스크리너 검증·equity 스냅샷·regime 갱신·데이터 수집·벤치마크.
+                #    이것들은 계좌 단위가 아니라 «날짜 단위» 산출물이라 봇 한 대만
+                #    돌려야 한다. 인스턴스가 같이 돌면 같은 행을 두 번 UPSERT 하고(equity),
+                #    같은 분봉을 DELETE 후 재적재하며(수집), 리포트가 두 벌 찍힌다.
+                #    생성은 페이퍼 봇(default) 몫, 인스턴스는 «소비 전용» 이다.
+                #    ⚠️ 래치를 맨 앞에 세팅한다 — 5초 루프가 15:35~15:59 를 ~300회
+                #       재진입하므로, 래치 없이는 같은 INFO 를 300번 찍는다(휴장일 게이트와 동일).
+                from config import settings as _settings
+                if _settings.INSTANCE_ID != "default":
+                    self._last_daily_report_date = current_time.date()
+                    self.logger.info(
+                        f"실전 인스턴스({_settings.INSTANCE_ID}) — EOD 후속 작업 전체 스킵 "
+                        f"(리포트·equity·데이터수집·regime·벤치마크는 페이퍼 봇이 생성한다)"
+                    )
+                    return
+
                 self.logger.info(f"15:35+ 장 마감 후 일일 매매 리포트 생성 ({current_time.strftime('%H:%M:%S')})")
                 try:
                     print_today_trading_summary(self._build_current_price_lookup())

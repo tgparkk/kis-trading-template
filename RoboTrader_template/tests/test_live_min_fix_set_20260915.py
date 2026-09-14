@@ -365,3 +365,71 @@ class TestA5CircuitBreakerSellBypass:
         for tr_id in ("TTTC0013U", "TTTC8036R"):
             blocked, reached_auth = self._fetch(tr_id)
             assert not blocked and reached_auth, tr_id
+
+
+# =============================================================================
+# A6 — bot/system_monitor.py `_handle_postmarket_tasks`: 인스턴스는 EOD 후속작업 금지
+# =============================================================================
+def _postmarket_monitor(monkeypatch, instance_id):
+    """EOD 블록의 모든 후속 작업을 대역으로 바꾼 SystemMonitor 를 만든다."""
+    from unittest.mock import AsyncMock
+    import bot.system_monitor as sm_mod
+    import config.settings as settings
+
+    monkeypatch.setattr(settings, "INSTANCE_ID", instance_id, raising=False)
+    monkeypatch.setattr(sm_mod, "is_holiday", lambda *_a, **_k: False)
+    summary = MagicMock()
+    monkeypatch.setattr(sm_mod, "print_today_trading_summary", summary)
+
+    mon = sm_mod.SystemMonitor.__new__(sm_mod.SystemMonitor)
+    mon.bot = MagicMock()
+    mon.logger = MagicMock()
+    mon._last_daily_report_date = None
+    mon._last_regime_index_summary_date = None
+    mon._last_equity_n_strategies = None
+    mon._dashboard = None
+    for name in ("_build_current_price_lookup", "_verify_eod_fund_integrity",
+                 "_log_regime_index_resolution", "_verify_screener_snapshot",
+                 "_run_equity_snapshot", "_run_regime_index_refresh",
+                 "_log_eod_benchmark"):
+        setattr(mon, name, MagicMock())
+    mon._run_data_collection = AsyncMock()
+    return mon, summary
+
+
+class TestA6PostmarketInstanceGate:
+    """P1-9: 실전 인스턴스가 EOD 리포트·equity 스냅샷·데이터 수집을 «또» 돌려
+    페이퍼 봇의 산출물과 경합(중복 UPSERT·중복 수집)한다. 생성은 페이퍼 봇 몫이다."""
+
+    @pytest.mark.asyncio
+    async def test_instance_skips_all_eod_tasks(self, monkeypatch):
+        mon, summary = _postmarket_monitor(monkeypatch, "rs_leader")
+        await mon._handle_postmarket_tasks(datetime(2026, 9, 15, 15, 36))
+
+        assert not summary.called, "인스턴스가 일일 매매 리포트를 생성했다"
+        assert not mon._run_equity_snapshot.called, "인스턴스가 equity 스냅샷을 적재했다"
+        assert not mon._run_data_collection.called, "인스턴스가 EOD 데이터 수집을 돌렸다"
+        assert not mon._log_eod_benchmark.called
+        assert not mon._run_regime_index_refresh.called
+        assert not mon._verify_eod_fund_integrity.called
+
+    @pytest.mark.asyncio
+    async def test_default_instance_runs_eod_tasks_as_before(self, monkeypatch):
+        """대칭: 페이퍼(default)는 종전대로 전부 돈다."""
+        mon, summary = _postmarket_monitor(monkeypatch, "default")
+        await mon._handle_postmarket_tasks(datetime(2026, 9, 15, 15, 36))
+
+        assert summary.called
+        assert mon._run_equity_snapshot.call_count == 2   # 1차 + 재스냅샷
+        assert mon._run_data_collection.called
+        assert mon._log_eod_benchmark.called
+
+    @pytest.mark.asyncio
+    async def test_instance_gate_latches_so_it_logs_once(self, monkeypatch):
+        """5초 루프가 15:35~15:59 를 ~300회 재진입하므로 래치가 필요하다."""
+        mon, _ = _postmarket_monitor(monkeypatch, "rs_leader")
+        t = datetime(2026, 9, 15, 15, 36)
+        await mon._handle_postmarket_tasks(t)
+        await mon._handle_postmarket_tasks(t)
+        assert mon._last_daily_report_date == t.date()
+        assert mon.logger.info.call_count == 1
