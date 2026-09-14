@@ -80,6 +80,21 @@ class CandidateLoader:
 
             # 2순위: 스크리너 없으면 거래량 순위 API 자동 수집
             if not candidates:
+                # 🔴 실전 인스턴스에선 이게 «조용한 사고» 다(리뷰 I3). B2 로 인스턴스는
+                #    스냅샷을 «소비만» 하므로(생성은 페이퍼 봇), 페이퍼가 못 만들었거나
+                #    늦으면 여기로 빠진다. 거래량 순위 폴백이 고르는 종목은 «그 전략의
+                #    진입 룰을 한 번도 거치지 않았다» — 페이퍼에서 감내하던 것이
+                #    실계좌에서는 감내 대상이 아니다. 다중 전략 경로는 같은 상황을
+                #    이미 ERROR 로 올린다([E6], 아래 _load_candidates_multi_strategy).
+                #    ⚠️ 폴백 «동작» 자체는 바꾸지 않는다(막을지 여부는 결재 사항) —
+                #       무음만 없앤다.
+                from config import settings as _settings
+                if _settings.INSTANCE_ID != "default":
+                    self.logger.error(
+                        "[E6-실전] 🔴 스크리너 스냅샷 없음 → 거래량 순위 폴백 — "
+                        "«전략 진입 룰을 거치지 않은» 후보를 실탄으로 매수할 위험. "
+                        "페이퍼 봇의 당일 스냅샷 생성 여부를 먼저 확인할 것."
+                    )
                 self.logger.info("스크리너 파일 없음 → 거래량 순위 기반 자동 수집 시작")
                 candidates = await self._bot.candidate_selector.select_daily_candidates(
                     max_candidates=max_candidates
@@ -111,6 +126,16 @@ class CandidateLoader:
                 strategy_name = next(iter(strategies))
             else:
                 strategy_name = self._bot.strategy.name if self._bot.strategy else "unknown"
+                # 🔴 여기는 「일어나면 안 되는」 경로다(리뷰 I4). 이 표기는 TradingContext
+                #    의 폴더키와 안 맞아 «유령 슬롯» 이 된다 — 등록은 되는데 어느 전략도
+                #    자기 것으로 못 본다. 조용히 넘어가면 실계좌 봇이 종일 무거래여도
+                #    아무도 이유를 모른다(bot/system_monitor.py `_resolve_strategy_key` 가
+                #    같은 규약을 같은 이유로 WARNING 으로 남긴다).
+                self.logger.warning(
+                    f"[소유자미해결] strategies dict 가 {len(strategies)}개 — "
+                    f"owner={strategy_name!r}(클래스명/unknown)로 등록된다. "
+                    f"TradingContext 폴더키와 안 맞으면 후보가 전략에 «안 보인다»."
+                )
             for c in candidates:
                 success = await self._bot.trading_manager.add_selected_stock(
                     stock_code=c.code,

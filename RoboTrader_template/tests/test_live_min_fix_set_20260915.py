@@ -519,3 +519,93 @@ class TestB4Chuseok2026Substitute:
     def test_2025_substitute_still_present(self, fallback_calendar):
         """일요일과 겹친 2025 추석 대체공휴일(10/8)은 «진짜» 라 그대로 남는다."""
         assert fallback_calendar.is_lunar_holiday(datetime(2025, 10, 8)) is True
+
+# =============================================================================
+# I3 / I4 — bot/candidate_loader.py: 실전 인스턴스가 조용히 위험한 길로 가지 않게
+# =============================================================================
+def _loader_with_spied_logger(bot):
+    from bot.candidate_loader import CandidateLoader
+    loader = CandidateLoader(bot)
+    loader.logger = MagicMock()
+    return loader
+
+
+def _msgs(mock_method):
+    """logger.xxx(...) 로 넘어간 첫 인자 문자열 목록."""
+    return [c.args[0] if c.args else "" for c in mock_method.call_args_list]
+
+
+def _volume_fallback_bot(folder_key="rs_leader", class_name="RSLeaderStrategy"):
+    """스크리너 스냅샷이 «없어» 거래량 순위 폴백으로 빠지는 단일 전략 봇."""
+    from unittest.mock import AsyncMock
+    from core.candidate_selector import CandidateStock
+
+    bot = _single_strategy_bot(folder_key, class_name)
+    bot.candidate_selector.load_from_screener.return_value = []   # 스냅샷 없음
+    bot.candidate_selector.select_daily_candidates = AsyncMock(return_value=[
+        CandidateStock(code="005930", name="삼성전자", market="KRX",
+                       score=50.0, reason="거래량순위", prev_close=70000.0)
+    ])
+    return bot
+
+
+class TestI3RealMoneyVolumeFallbackIsLoud:
+    """I3: B2 로 인스턴스가 스냅샷을 «소비만» 하게 된 뒤, 페이퍼 봇이 스냅샷을
+    못 만들면 단일 전략 경로는 거래량 순위 폴백으로 빠진다 — «전략 진입 룰을 거치지
+    않은» 종목을 실탄으로 산다. 다중 전략 경로는 같은 상황을 ERROR 로 올리는데
+    (`[E6]`) 단일 경로에는 그 경고가 없었다. 폴백 «동작» 은 결재 대상이라 그대로 두고,
+    무음만 없앤다."""
+
+    @pytest.mark.asyncio
+    async def test_instance_logs_error_on_volume_fallback(self, monkeypatch):
+        import config.settings as settings
+        monkeypatch.setattr(settings, "INSTANCE_ID", "rs_leader", raising=False)
+
+        bot = _volume_fallback_bot()
+        loader = _loader_with_spied_logger(bot)
+        await loader._load_screener_candidates()
+
+        errors = [m for m in _msgs(loader.logger.error) if "[E6-실전]" in m]
+        assert len(errors) == 1, f"실전 폴백 ERROR 가 1건이 아니다: {_msgs(loader.logger.error)}"
+        # 폴백 «동작» 은 그대로 — 후보는 여전히 등록된다(결재 전까지 막지 않는다).
+        assert bot.trading_manager.calls, "폴백 동작까지 바뀌었다 — 경고만 추가해야 한다"
+
+    @pytest.mark.asyncio
+    async def test_default_keeps_info_only(self, monkeypatch):
+        """대칭: 페이퍼(default)는 종전 INFO 한 줄 그대로, ERROR 0건."""
+        import config.settings as settings
+        monkeypatch.setattr(settings, "INSTANCE_ID", "default", raising=False)
+
+        bot = _volume_fallback_bot()
+        loader = _loader_with_spied_logger(bot)
+        await loader._load_screener_candidates()
+
+        assert not [m for m in _msgs(loader.logger.error) if "[E6-실전]" in m]
+        assert any("거래량 순위" in m for m in _msgs(loader.logger.info)), _msgs(loader.logger.info)
+
+
+class TestI4OwnerKeyFallbackIsLoud:
+    """I4: A3 의 `else`(폴더키 해석 실패)가 조용히 클래스명/"unknown" 으로 갔다.
+    그 표기는 TradingContext 의 폴더키와 안 맞아 «유령 슬롯» 이 된다 —
+    실계좌 봇이 거기 빠져도 로그가 없으면 아무도 모른다."""
+
+    @pytest.mark.asyncio
+    async def test_empty_strategies_dict_warns(self):
+        bot = _single_strategy_bot("ignored", "BookPullbackMA20Strategy")
+        bot.strategies = {}
+        loader = _loader_with_spied_logger(bot)
+        await loader._load_screener_candidates()
+
+        warns = [m for m in _msgs(loader.logger.warning) if "소유자미해결" in m]
+        assert len(warns) == 1, f"폴백 WARNING 이 1건이 아니다: {_msgs(loader.logger.warning)}"
+        # 폴백 «표기» 자체는 종전대로(동작 변화 0)
+        assert {c["owner_strategy"] for c in bot.trading_manager.calls} == {"BookPullbackMA20Strategy"}
+
+    @pytest.mark.asyncio
+    async def test_resolved_folder_key_does_not_warn(self):
+        """대칭: 폴더키가 풀리는 정상 경로는 조용하다."""
+        bot = _single_strategy_bot("book_pullback_ma20", "BookPullbackMA20Strategy")
+        loader = _loader_with_spied_logger(bot)
+        await loader._load_screener_candidates()
+
+        assert not [m for m in _msgs(loader.logger.warning) if "소유자미해결" in m]
