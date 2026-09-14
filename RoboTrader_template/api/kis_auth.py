@@ -596,8 +596,11 @@ def _send_failure_telegram(message: str):
     try:
         import configparser
         from pathlib import Path
-        
-        config_file = Path("config/key.ini")
+        from config import settings as _settings
+
+        # 🔴 A1 과 동일 사유(P1-1): 인스턴스 모드에서 장애 알림이 페이퍼 봇의
+        # key.ini 를 읽어 다른 계좌의 채팅방으로 갔다. 상대경로 cwd 의존도 제거.
+        config_file = Path(_settings.CONFIG_FILE)
         if not config_file.exists():
             return
         
