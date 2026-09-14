@@ -280,3 +280,18 @@ scratchpad/
 #    보관 위치는 D:\archive\tasso-program-journal-20260814\ (README.md 에 명시).
 #    ⚠️ 그래서 verify_ledger.py 는 clean checkout 에서 게이트를 재현할 수 없다.
 backtest/tasso_program_journal/raw/
+
+# ─── instances/ (실전 인스턴스 · 2026-09-15 신설) ────────────────────────────
+# 🔴 실계좌 앱키·계좌번호·토큰·로그가 들어가는 디렉토리다. 기본은 «전부 무시»,
+#    README 와 *.example 만 되살린다.
+# 🔑 `instances/*` 한 줄로는 안 된다 — git 은 «제외된 디렉토리 안으로 내려가지
+#    않아» `!instances/*/*.example` 가 죽는다(실측: 새 인스턴스 폴더의 example 이
+#    `git add` 에서 "paths are ignored"). 그래서 하위 디렉토리를 먼저 되살린 뒤
+#    (`!instances/*/`) 그 «안의 파일»을 다시 제외한다(`instances/*/*`).
+#    이 파일 209행이 경고하는 「디렉토리를 새로 만들 때마다 규약을 이어 붙일 것」의
+#    같은 유형 재발 방지다.
+instances/*
+!instances/README.md
+!instances/*/
+instances/*/*
+!instances/*/*.example
