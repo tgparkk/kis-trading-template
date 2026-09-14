@@ -333,13 +333,31 @@ class TestA5CircuitBreakerSellBypass:
     매수는 계속 막아야 한다(막힌 채로 두는 것이 안전한 방향)."""
 
     def _fetch(self, tr_id):
-        """CB OPEN 상태에서 `_url_fetch` 를 호출하고 (차단여부, 인증시도여부) 반환.
+        """CB OPEN 상태에서 `_url_fetch` 를 호출하고 (차단, 인증도달, consult여부) 반환.
 
         두 경로 모두 최종 반환값은 None 이라(토큰 없음) 반환값으로는 구분되지 않는다.
         ⇒ CB 의 `record_blocked` 호출 여부와 `auth()` 도달 여부로 대칭 판정한다.
+
+        🔴 패치 대상 모듈은 «sys.modules 에서» 집어야 한다. 전체 스위트에서는
+           `tests/dryrun/test_abnormal_scenarios.py:47` 이 수집 시점에
+           `sys.modules['api.circuit_breaker']` 를 새 모듈 객체로 «영구 교체» 한다.
+           - `import api.circuit_breaker as cb_mod` 는 IMPORT_FROM 의미론상 패키지
+             속성(= 원본 모듈)에 바인딩되는 반면, `kis_auth._url_fetch` 안의
+             `from api.circuit_breaker import get_circuit_breaker` 는 sys.modules 의
+             교체본을 읽는다 → 서로 «다른 모듈» 을 보게 되어 패치가 빗나간다.
+           - 문자열 타깃 `patch("api.circuit_breaker.get_circuit_breaker")` 도 안 된다:
+             mock 의 `_dot_lookup` 은 «부모 패키지 속성» 을 getattr 하는데, 위 누수는
+             sys.modules 만 갈아끼우고 `api.circuit_breaker` 속성은 세우지 않아
+             `AttributeError: module 'api' has no attribute 'circuit_breaker'` 로 죽는다
+             (실측 — 누수 순서 실행에서 A5 3건 전부 에러).
+           ⇒ 소비자가 실제로 읽는 바로 그 객체(sys.modules 엔트리)를 패치한다.
         """
-        import api.circuit_breaker as cb_mod
+        import sys
         import api.kis_auth as kis_auth
+
+        cb_mod = sys.modules.get("api.circuit_breaker")
+        if cb_mod is None:                      # 누수가 없는 단독 실행 경로
+            import api.circuit_breaker as cb_mod
 
         cb = MagicMock()
         cb.can_execute.return_value = False   # OPEN
@@ -348,22 +366,28 @@ class TestA5CircuitBreakerSellBypass:
              patch.object(kis_auth, "_TRENV", None), \
              patch.object(kis_auth, "auth", return_value=False) as auth_fn:
             kis_auth._url_fetch("/dummy", tr_id, "", {})
-        return cb.record_blocked.called, auth_fn.called
+        # consulted = 「패치된 CB 가 실제로 조회됐다」 — 공허 통과 방지축.
+        # 패치가 빗나가면 진짜 싱글턴(CLOSED)이 consult 되고 우리 mock 은 손도 안 탄 채
+        # 매도 테스트가 그냥 통과해버린다.
+        return cb.record_blocked.called, auth_fn.called, cb.can_execute.called
 
     def test_cash_sell_tr_passes_circuit_breaker(self):
-        blocked, reached_auth = self._fetch("TTTC0011U")
+        blocked, reached_auth, consulted = self._fetch("TTTC0011U")
+        assert consulted, "패치된 Circuit Breaker 가 조회되지 않았다 — 패치가 빗나갔다"
         assert not blocked, "현금 매도(TTTC0011U)가 Circuit Breaker 에 막혔다"
         assert reached_auth, "CB 를 통과했는데 그 다음 단계(인증)로 가지 않았다"
 
     def test_cash_buy_tr_still_blocked(self):
-        blocked, reached_auth = self._fetch("TTTC0012U")
+        blocked, reached_auth, consulted = self._fetch("TTTC0012U")
+        assert consulted, "패치된 Circuit Breaker 가 조회되지 않았다 — 패치가 빗나갔다"
         assert blocked, "현금 매수(TTTC0012U)가 Circuit Breaker 를 통과했다 — 금지"
         assert not reached_auth
 
     def test_existing_bypass_tr_ids_unchanged(self):
         """기존 우회 대상(정정취소)은 그대로 통과 — 회귀 가드."""
         for tr_id in ("TTTC0013U", "TTTC8036R"):
-            blocked, reached_auth = self._fetch(tr_id)
+            blocked, reached_auth, consulted = self._fetch(tr_id)
+            assert consulted, tr_id
             assert not blocked and reached_auth, tr_id
 
 
