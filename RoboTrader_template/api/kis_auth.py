@@ -323,7 +323,13 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
     
     # Circuit Breaker 체크
     # H8 fix: 주문 취소/정정취소 관련 TR은 CB 상태와 무관하게 허용
-    _CB_BYPASS_TR_IDS = {"TTTC0013U", "TTTC8036R"}  # 정정취소, 정정취소가능조회
+    # 2026-09-15(P1-8 입구): 현금 «매도»(TTTC0011U)도 우회 대상에 넣는다. CB 가 OPEN
+    #   이면 손절·장마감 청산까지 막혀 보유분을 못 던지는데, 그 상태에서 시장이
+    #   빠지면 손실이 무한정 열린다 — 「아무것도 못 한다」가 「팔지도 못한다」가 되면
+    #   보호장치가 아니라 위험원이다.
+    #   ⚠️ 매수(TTTC0012U)는 «절대» 추가하지 않는다. 막힌 채로 두는 쪽이 안전한 방향이고,
+    #      CB OPEN 은 API 가 불안정하다는 뜻이라 신규 진입은 미루면 그만이다.
+    _CB_BYPASS_TR_IDS = {"TTTC0013U", "TTTC8036R", "TTTC0011U"}  # 정정취소, 정정취소가능조회, 현금매도
     from api.circuit_breaker import get_circuit_breaker
     cb = get_circuit_breaker()
     if not cb.can_execute() and ptr_id not in _CB_BYPASS_TR_IDS:

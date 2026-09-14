@@ -323,3 +323,45 @@ class TestA4AccountTotalValue:
             balance = broker.get_account_balance()
 
         assert balance["total_balance"] == 10_000_000
+
+
+# =============================================================================
+# A5 — api/kis_auth.py `_CB_BYPASS_TR_IDS`: 현금 매도(TTTC0011U) 통과
+# =============================================================================
+class TestA5CircuitBreakerSellBypass:
+    """P1-8 입구: Circuit Breaker 가 OPEN 이면 «매도»까지 막혀 보유분을 못 던진다.
+    매수는 계속 막아야 한다(막힌 채로 두는 것이 안전한 방향)."""
+
+    def _fetch(self, tr_id):
+        """CB OPEN 상태에서 `_url_fetch` 를 호출하고 (차단여부, 인증시도여부) 반환.
+
+        두 경로 모두 최종 반환값은 None 이라(토큰 없음) 반환값으로는 구분되지 않는다.
+        ⇒ CB 의 `record_blocked` 호출 여부와 `auth()` 도달 여부로 대칭 판정한다.
+        """
+        import api.circuit_breaker as cb_mod
+        import api.kis_auth as kis_auth
+
+        cb = MagicMock()
+        cb.can_execute.return_value = False   # OPEN
+
+        with patch.object(cb_mod, "get_circuit_breaker", return_value=cb), \
+             patch.object(kis_auth, "_TRENV", None), \
+             patch.object(kis_auth, "auth", return_value=False) as auth_fn:
+            kis_auth._url_fetch("/dummy", tr_id, "", {})
+        return cb.record_blocked.called, auth_fn.called
+
+    def test_cash_sell_tr_passes_circuit_breaker(self):
+        blocked, reached_auth = self._fetch("TTTC0011U")
+        assert not blocked, "현금 매도(TTTC0011U)가 Circuit Breaker 에 막혔다"
+        assert reached_auth, "CB 를 통과했는데 그 다음 단계(인증)로 가지 않았다"
+
+    def test_cash_buy_tr_still_blocked(self):
+        blocked, reached_auth = self._fetch("TTTC0012U")
+        assert blocked, "현금 매수(TTTC0012U)가 Circuit Breaker 를 통과했다 — 금지"
+        assert not reached_auth
+
+    def test_existing_bypass_tr_ids_unchanged(self):
+        """기존 우회 대상(정정취소)은 그대로 통과 — 회귀 가드."""
+        for tr_id in ("TTTC0013U", "TTTC8036R"):
+            blocked, reached_auth = self._fetch(tr_id)
+            assert not blocked and reached_auth, tr_id
