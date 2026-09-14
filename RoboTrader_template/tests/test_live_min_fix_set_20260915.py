@@ -433,3 +433,39 @@ class TestA6PostmarketInstanceGate:
         await mon._handle_postmarket_tasks(t)
         assert mon._last_daily_report_date == t.date()
         assert mon.logger.info.call_count == 1
+
+
+# =============================================================================
+# B4 — utils/korean_holidays.py: 2026-09-28 은 «거래일» 이다 (오등재 정정)
+# =============================================================================
+class TestB4Chuseok2026Substitute:
+    """설·추석 연휴는 «토요일과 겹칠 때» 대체공휴일이 없다(일요일·어린이날만 대상).
+    2026 추석(9/24~26)은 목·금·토라 대체공휴일이 생기지 않는다 — 9/28(월)은 거래일.
+    KIS chk-holiday 캐시와 holidays 0.83 모두 거래일로 본다.
+
+    실무 영향: 폴백 캘린더가 9/28 을 휴장으로 보면 그날 EOD 후속작업(데이터 수집·
+    equity 스냅샷)이 통째로 스킵된다 — 「없는 휴일」이 하루치 원장을 지운다.
+    """
+
+    @pytest.fixture
+    def fallback_calendar(self, monkeypatch):
+        """holidays 라이브러리 부재 상황(수동 폴백 경로)을 재현."""
+        import utils.korean_holidays as kh
+        monkeypatch.setattr(kh, "_HOLIDAYS_AVAILABLE", False)
+        return kh
+
+    def test_0928_is_not_a_lunar_holiday(self, fallback_calendar):
+        assert fallback_calendar.is_lunar_holiday(datetime(2026, 9, 28)) is False
+
+    def test_chuseok_days_themselves_unchanged(self, fallback_calendar):
+        for day in (24, 25, 26):
+            assert fallback_calendar.is_lunar_holiday(datetime(2026, 9, day)) is True, day
+
+    def test_other_2026_entries_untouched(self, fallback_calendar):
+        """같은 dict 의 다른 2026 항목(설 연휴)은 건드리지 않았다."""
+        for day in (16, 17, 18):
+            assert fallback_calendar.is_lunar_holiday(datetime(2026, 2, day)) is True, day
+
+    def test_2025_substitute_still_present(self, fallback_calendar):
+        """일요일과 겹친 2025 추석 대체공휴일(10/8)은 «진짜» 라 그대로 남는다."""
+        assert fallback_calendar.is_lunar_holiday(datetime(2025, 10, 8)) is True
