@@ -272,6 +272,43 @@ class SystemMonitor:
                     )
                     return
 
+                # EOD 자금 정합성 검증 — 인스턴스 게이트 «앞» 이다(리뷰 I1).
+                #   이 검사는 산출물을 «만들지» 않는다: `fund_manager.verify_fund_integrity()`
+                #   로 이 프로세스 «자기 자신의» 내부 등식(total == available + reserved +
+                #   invested)을 확인하고 어긋나면 CRITICAL 한 줄을 남길 뿐이다 — DB UPSERT 0 ·
+                #   파일 쓰기 0 ⇒ 두 봇이 같이 돌아도 경합이 없다. «계좌 단위» 점검이라
+                #   실계좌 인스턴스야말로 해야 한다(끄면 실전의 유일한 EOD CRITICAL 이 사라진다).
+                # ⚠️ 인스턴스는 바로 아래에서 return 하므로 래치를 이 검사 «전» 에 세팅한다 —
+                #    안 그러면 5초 루프가 15:35~15:59 를 ~300회 재진입해 같은 검사를 300번 돌린다.
+                from config import settings as _settings
+                _is_instance = _settings.INSTANCE_ID != "default"
+                if _is_instance:
+                    self._last_daily_report_date = current_time.date()
+
+                try:
+                    self._verify_eod_fund_integrity()
+                except Exception as verify_err:
+                    self.logger.error(f"EOD 자금 정합성 검증 오류: {verify_err}")
+
+                # 🔴 실전 인스턴스 게이트(P1-9) — 아래 EOD 후속작업은 전부 「하루치
+                #    산출물을 «만드는»」 일이다: 매매 리포트·게이트지수 집계·스크리너 검증·
+                #    equity 스냅샷·EOD regime 갱신·데이터 수집·벤치마크.
+                #    이것들은 계좌 단위가 아니라 «날짜 단위» 산출물이라 봇 한 대만
+                #    돌려야 한다. 인스턴스가 같이 돌면 같은 행을 두 번 UPSERT 하고(equity),
+                #    같은 분봉을 DELETE 후 재적재하며(수집), 리포트가 두 벌 찍힌다.
+                #    생성은 페이퍼 봇(default) 몫, 인스턴스는 «소비 전용» 이다.
+                #    ⚠️ «장전» regime 갱신(`_handle_premarket_tasks`)은 이 게이트에 넣지
+                #       않았다 — 멱등 UPSERT 라 이중 실행이 데이터를 깨지 않고, 인스턴스가
+                #       장 시작 전에 지수 신선도를 자기 힘으로 보장해야 하기 때문이다.
+                #       의도적 공유다(리뷰 I2). 저녁 갱신만 페이퍼 봇에 위임한다.
+                if _is_instance:
+                    self.logger.info(
+                        f"실전 인스턴스({_settings.INSTANCE_ID}) — EOD «생성» 작업 전체 스킵 "
+                        f"(리포트·equity·데이터수집·EOD regime·벤치마크는 페이퍼 봇이 생성한다). "
+                        f"자금 정합성 검증은 «했다»."
+                    )
+                    return
+
                 self.logger.info(f"15:35+ 장 마감 후 일일 매매 리포트 생성 ({current_time.strftime('%H:%M:%S')})")
                 try:
                     print_today_trading_summary(self._build_current_price_lookup())
@@ -279,12 +316,6 @@ class SystemMonitor:
                     self.logger.info("일일 매매 리포트 생성 완료")
                 except Exception as report_err:
                     self.logger.error(f"일일 매매 리포트 생성 오류: {report_err}")
-
-                # EOD 자금 정합성 검증 (장마감 청산 후)
-                try:
-                    self._verify_eod_fund_integrity()
-                except Exception as verify_err:
-                    self.logger.error(f"EOD 자금 정합성 검증 오류: {verify_err}")
 
                 # EOD 급락게이트 지수 해석 집계 (auto 활성화 판정용 양성 증거).
                 # 배치 근거:

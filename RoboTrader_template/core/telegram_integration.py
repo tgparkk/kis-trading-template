@@ -53,9 +53,14 @@ class TelegramIntegration:
         }
         
         try:
-            config_file = Path("config/key.ini")
+            # 🔴 하드코딩 `Path("config/key.ini")` 금지 — 실전 인스턴스 모드
+            # (`KIS_INSTANCE_DIR=instances/<id>`)에서도 «페이퍼 봇의» key.ini 를 읽어
+            # 인스턴스 경보가 엉뚱한 채팅방으로 갔다(P1-1). 게다가 상대경로라 cwd 에
+            # 따라 조용히 빗나갔다. 경로 계산은 settings 한 곳에만 둔다.
+            from config import settings as _settings
+            config_file = Path(_settings.CONFIG_FILE)
             if not config_file.exists():
-                self.logger.warning("key.ini 파일을 찾을 수 없습니다")
+                self.logger.warning(f"key.ini 파일을 찾을 수 없습니다: {config_file}")
                 return config
             
             parser = configparser.ConfigParser()
