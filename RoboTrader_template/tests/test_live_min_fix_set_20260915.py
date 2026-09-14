@@ -423,10 +423,14 @@ def _postmarket_monitor(monkeypatch, instance_id):
 
 class TestA6PostmarketInstanceGate:
     """P1-9: 실전 인스턴스가 EOD 리포트·equity 스냅샷·데이터 수집을 «또» 돌려
-    페이퍼 봇의 산출물과 경합(중복 UPSERT·중복 수집)한다. 생성은 페이퍼 봇 몫이다."""
+    페이퍼 봇의 산출물과 경합(중복 UPSERT·중복 수집)한다. 생성은 페이퍼 봇 몫이다.
+
+    ⚠️ 게이트는 「«만드는» 일」만 끈다. 자금 정합성 검증은 DB 쓰기 0 · 프로세스 내부
+       등식 단언뿐인 «계좌 단위» 자기점검이라 인스턴스도 반드시 해야 한다(리뷰 I1).
+    """
 
     @pytest.mark.asyncio
-    async def test_instance_skips_all_eod_tasks(self, monkeypatch):
+    async def test_instance_skips_eod_production_tasks(self, monkeypatch):
         mon, summary = _postmarket_monitor(monkeypatch, "rs_leader")
         await mon._handle_postmarket_tasks(datetime(2026, 9, 15, 15, 36))
 
@@ -435,7 +439,18 @@ class TestA6PostmarketInstanceGate:
         assert not mon._run_data_collection.called, "인스턴스가 EOD 데이터 수집을 돌렸다"
         assert not mon._log_eod_benchmark.called
         assert not mon._run_regime_index_refresh.called
-        assert not mon._verify_eod_fund_integrity.called
+        assert not mon._log_regime_index_resolution.called
+        assert not mon._verify_screener_snapshot.called
+
+    @pytest.mark.asyncio
+    async def test_instance_still_verifies_fund_integrity(self, monkeypatch):
+        """I1: 계좌 단위 자기점검은 «끄면 안 된다» — 실계좌의 유일한 EOD CRITICAL 이다."""
+        mon, _ = _postmarket_monitor(monkeypatch, "rs_leader")
+        await mon._handle_postmarket_tasks(datetime(2026, 9, 15, 15, 36))
+
+        assert mon._verify_eod_fund_integrity.called, (
+            "인스턴스가 EOD 자금 정합성 검증을 건너뛰었다 — 실계좌가 무음이 된다"
+        )
 
     @pytest.mark.asyncio
     async def test_default_instance_runs_eod_tasks_as_before(self, monkeypatch):
@@ -447,16 +462,27 @@ class TestA6PostmarketInstanceGate:
         assert mon._run_equity_snapshot.call_count == 2   # 1차 + 재스냅샷
         assert mon._run_data_collection.called
         assert mon._log_eod_benchmark.called
+        # M6: 인스턴스 쪽 0회 단언과 짝이 맞게 default 호출도 고정한다 —
+        #     안 그러면 나중에 이 셋이 게이트 뒤로 옮겨져도 테스트가 못 잡는다.
+        assert mon._verify_eod_fund_integrity.called
+        assert mon._log_regime_index_resolution.called
+        assert mon._verify_screener_snapshot.called
+        assert mon._run_regime_index_refresh.called
 
     @pytest.mark.asyncio
-    async def test_instance_gate_latches_so_it_logs_once(self, monkeypatch):
-        """5초 루프가 15:35~15:59 를 ~300회 재진입하므로 래치가 필요하다."""
+    async def test_instance_gate_latches_so_it_runs_once(self, monkeypatch):
+        """5초 루프가 15:35~15:59 를 ~300회 재진입하므로 래치가 필요하다.
+
+        정합성 검증을 게이트 «앞» 으로 올렸으므로 그것도 하루 1회여야 한다 —
+        래치를 검증 «전» 에 세팅하지 않으면 CRITICAL 이 300번 찍힌다.
+        """
         mon, _ = _postmarket_monitor(monkeypatch, "rs_leader")
         t = datetime(2026, 9, 15, 15, 36)
         await mon._handle_postmarket_tasks(t)
         await mon._handle_postmarket_tasks(t)
         assert mon._last_daily_report_date == t.date()
         assert mon.logger.info.call_count == 1
+        assert mon._verify_eod_fund_integrity.call_count == 1
 
 
 # =============================================================================
