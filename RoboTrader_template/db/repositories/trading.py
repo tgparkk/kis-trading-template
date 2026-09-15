@@ -380,7 +380,13 @@ class TradingRepository(BaseRepository):
                     conn.rollback()
                     self.logger.warning(f"{stock_code} Race condition 차단")
                     return False
-                self.logger.info(f"가상 매도: {stock_code} 손익 {profit_loss:+,.0f}원 ({profit_rate:+.2f}%)")
+                # profit_rate 는 «분수»(-0.0335 = -3.35%). 표기만 ×100 —
+                # 이 줄이 −3.35% 를 −0.03% 로 보여줘 두 자릿수 손실이
+                # 노이즈로 읽혔다(2026-09-15 §F-5 ③). 컬럼 값은 불변.
+                self.logger.info(
+                    f"가상 매도: {stock_code} 손익 {profit_loss:+,.0f}원 "
+                    f"({profit_rate * 100:+.2f}%)"
+                )
                 return True
 
         except Exception as e:
