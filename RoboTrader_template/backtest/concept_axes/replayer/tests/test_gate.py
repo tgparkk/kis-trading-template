@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+import pandas as pd
 import pytest
 
 from backtest.concept_axes.replayer import gate
@@ -138,6 +139,53 @@ def test_classify_c6_unknown_when_no_signature_matches():
         score_match=False, created_late=False, hash_changed=False,
         impossible_in_window=False, at_params_boundary=False, set_swept=False)
     assert lab == "C6"
+
+
+def test_classify_c7_exclusion_promotion_split_from_c6():
+    """배제로 빈 슬롯만큼 밀려 올라온 건은 C6(미상)이 아니라 C7 다."""
+    lab = gate.classify_mismatch(
+        code="Z", side="replay_only", live_rank=None, replay_rank=3,
+        score_match=False, created_late=False, hash_changed=False,
+        impossible_in_window=False, at_params_boundary=False, set_swept=False,
+        exclusion_promoted=True)
+    assert lab == "C7"
+
+
+def test_c7_does_not_swallow_earlier_signatures():
+    """C7 은 **C6 에서만** 분리한다 — C1·C3 서명을 가리면 안 된다."""
+    lab = gate.classify_mismatch(
+        code="Z", side="replay_only", live_rank=None, replay_rank=3,
+        score_match=False, created_late=True, hash_changed=False,
+        impossible_in_window=False, at_params_boundary=False, set_swept=False,
+        exclusion_promoted=True)
+    assert lab == "C1"
+
+
+# ── §4-5 C1 서명 ② — «거래일» 기준(리뷰 H-2) ─────────────────
+
+CAL = [pd.Timestamp(x) for x in
+       ["2026-09-10", "2026-09-11", "2026-09-14", "2026-09-15"]]   # 09-12·13 = 주말
+
+
+def test_next_trading_day_skips_weekend():
+    assert gate.next_trading_day(CAL, "2026-09-11") == pd.Timestamp("2026-09-14")
+    assert gate.next_trading_day(CAL, "2026-09-15") is None
+
+
+def test_created_late_friday_is_not_late_by_trading_day_rule():
+    """🔴 구 서명(달력 +3일)은 금요일을 전부 지연으로 읽었다 — 월요일 재수집은 정상이다."""
+    ca = pd.Timestamp("2026-09-14 08:30")        # 금요일(09-11) 스캣의 월요일 재기록
+    assert ca > pd.Timestamp("2026-09-11") + pd.Timedelta(days=3)   # 구 서명: 지연
+    assert gate.created_late(ca, "2026-09-11", CAL) is False        # 신 서명: 정상
+
+
+def test_created_late_true_when_past_next_trading_day_noon():
+    assert gate.created_late(pd.Timestamp("2026-09-14 13:00"), "2026-09-11", CAL) is True
+
+
+def test_created_late_none_or_window_end_is_not_c1():
+    assert gate.created_late(None, "2026-09-11", CAL) is False
+    assert gate.created_late(pd.Timestamp("2026-12-31"), "2026-09-15", CAL) is False
 
 
 # ── §7 V5-a 실행 시간창 ───────────────────────────────────────────────────

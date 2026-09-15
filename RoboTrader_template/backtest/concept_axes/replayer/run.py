@@ -164,16 +164,51 @@ def build_day_pairs(live: pd.DataFrame, led: pd.DataFrame) -> List[gt.DayPair]:
     return days
 
 
+def _naive(ts):
+    """tz 유무에 관계없이 naive `Timestamp` 로."""
+    if ts is None or ts != ts:
+        return None
+    t = pd.Timestamp(ts)
+    return t.tz_localize(None) if t.tzinfo is not None else t
+
+
+def created_at_by_date(live: pd.DataFrame) -> Dict[Any, Any]:
+    out = {}
+    for d, g in live.groupby("scan_date"):
+        out[pd.Timestamp(d)] = _naive(pd.to_datetime(g["created_at"]).max())
+    return out
+
+
+def c1_signature_table(live: pd.DataFrame, cal: List[pd.Timestamp]) -> pd.DataFrame:
+    """§4-5 C1 서명 ② — **구(달력 3일) 대 신(다음 거래일 + 12h)** 을 둘 다 인쇄하기 위한 표.
+
+    🔴 구판은 사실상 **금요일 탐지기**였다 — 그걸 여기서 숫자로 보인다.
+    """
+    rows = []
+    for d, ca in sorted(created_at_by_date(live).items()):
+        old_sig = bool(ca is not None and ca > d + pd.Timedelta(days=3))
+        rows.append({
+            "scan_date": d,
+            "weekday": d.day_name(),
+            "created_at": ca,
+            "next_trading_day": gt.next_trading_day(cal, d),
+            "old_calendar_3d": old_sig,
+            "new_trading_day_12h": gt.created_late(ca, d, cal),
+        })
+    return pd.DataFrame(rows, columns=["scan_date", "weekday", "created_at",
+                                       "next_trading_day", "old_calendar_3d",
+                                       "new_trading_day_12h"])
+
+
 def classify_days(days: List[gt.DayPair], live: pd.DataFrame,
                   impossible: Dict[Any, set],
                   uni_info: Dict[Any, Dict[str, Any]],
                   boundary_dates: set,
-                  excluded: Optional[set] = None) -> pd.DataFrame:
+                  excluded: Optional[set] = None,
+                  cal: Optional[List[pd.Timestamp]] = None) -> pd.DataFrame:
     """불일치를 **양방향**으로 펼치고 §4-5 라벨을 붙인다."""
-    created = {}
-    for d, g in live.groupby("scan_date"):
-        ca = pd.to_datetime(g["created_at"]).max()
-        created[pd.Timestamp(d)] = ca
+    created = created_at_by_date(live)
+    excl = excluded or set()
     rows = []
     for dp in days:
         d = pd.Timestamp(dp.scan_date)
@@ -183,8 +218,12 @@ def classify_days(days: List[gt.DayPair], live: pd.DataFrame,
             sL and sR and len(only_live) >= 0.5 * len(sL)
             and len(only_replay) >= 0.5 * len(sR))
         ca = created.get(d)
-        created_late = bool(ca is not None
-                            and pd.Timestamp(ca).tz_localize(None) > d + pd.Timedelta(days=3))
+        # 🔴 H-2 — 달력 3일이 아니라 **다음 거래일 + 12h**(`gate.created_late`).
+        created_late = gt.created_late(ca, d, cal or [])
+        # C7 «배제 승격» — 같은 날 §1-2-b 배제 종목의 live_only 수와 replay_only 수가 같으면
+        # 재현 상위 20 은 «그만큼 밀려 올라온» 상황이다 — C6(미상)과 같은 칸에 넣지 않는다.
+        n_excl_live_only = sum(1 for c in only_live if c in excl)
+        promoted_day = bool(n_excl_live_only and n_excl_live_only == len(only_replay))
         imp = impossible.get(d, set())
         for code in sorted(only_live) + sorted(only_replay):
             side = "live_only" if code in only_live else "replay_only"
@@ -194,11 +233,12 @@ def classify_days(days: List[gt.DayPair], live: pd.DataFrame,
                 code=code, side=side, live_rank=lr, replay_rank=rr,
                 score_match=True, created_late=created_late, hash_changed=False,
                 impossible_in_window=(code in imp), at_params_boundary=(d in boundary_dates),
-                set_swept=swept)
+                set_swept=swept,
+                exclusion_promoted=(promoted_day and side == "replay_only"))
             rows.append({"scan_date": dp.scan_date, "stock_code": code, "side": side,
                          "live_rank": lr, "replay_rank": rr, "label": lab,
                          # 🔴 §1-2-b 배제는 «사전등록된 의도적 차이»다 — C6(미상)이 아니다.
-                         "excl_1_2_b": bool(excluded and code in excluded)})
+                         "excl_1_2_b": bool(code in excl)})
     return pd.DataFrame(rows, columns=["scan_date", "stock_code", "side",
                                        "live_rank", "replay_rank", "label", "excl_1_2_b"])
 
@@ -491,7 +531,29 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
                     bset.add(pd.Timestamp(s2["seg"]["dates"][0]))
                     bset.add(pd.Timestamp(s2["seg"]["dates"][-1]))
             cdf = classify_days(days, seg["live"], seg["impossible"],
-                                seg["uni_info"], bset, excluded)
+                                seg["uni_info"], bset, excluded, cal=cal)
+            sig = c1_signature_table(seg["live"], cal)
+            n_old = int(sig["old_calendar_3d"].sum())
+            n_new = int(sig["new_trading_day_12h"].sum())
+            fri_old = int((sig["old_calendar_3d"] & (sig["weekday"] == "Friday")).sum())
+            fri_new = int((sig["new_trading_day_12h"] & (sig["weekday"] == "Friday")).sum())
+            a("**§4-5 C1 서명 ② — 구/신 대조**(리뷰 H-2)")
+            a("")
+            a("| 서명 | 발화일 | 그중 금요일 |")
+            a("|---|---:|---:|")
+            a("| 구: `created_at > scan_date + 3일(달력)` | {} | **{}** |".format(n_old, fri_old))
+            a("| 신: `created_at > 다음 «거래일» + 12h` | {} | {} |".format(n_new, fri_new))
+            a("")
+            a("🔴 구 서명은 **금요일 탐지기**였다 — 발화 {}일 중 **{}일이 금요일**"
+              "(금요일은 다음 거래일이 3날 뒤이라 일상적인 재수집도 «지연» 으로 읽힌다). "
+              "이 리포트의 C1 라벨은 **신 서명**으로 붙였다.".format(n_old, fri_old))
+            a("")
+            if n_old or n_new:
+                a("```")
+                a(sig[sig["old_calendar_3d"] | sig["new_trading_day_12h"]]
+                  .to_string(index=False))
+                a("```")
+                a("")
             a("**§4-5 불일치 원인 분류** (양방향 집합 차분 · 「몇 %」가 아니다)")
             a("")
             if len(cdf):

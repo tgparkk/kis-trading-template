@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -26,6 +27,10 @@ THRESHOLDS: Dict[str, float] = {
 
 TOP_K = 5                          # §4-3 M3 — 판정이 실제로 서는 자리
 M4_REL_TOL = 1e-6
+
+# §4-5 C1 서명 ② — 회수는 **거래일** 기준이다(리뷰 H-2).
+# 달력 3일 판은 금요일 scan_date 를 전부 «지연» 으로 읽었다(주말이 사이에 끼어서).
+C1_LATE_GRACE = dt.timedelta(hours=12)
 
 # §4-4-c — 구간 분할 경계.
 PROTECTED_FROM = "2026-09-03"      # 커밋 7abdc30 (W1_PAST_ROWS_INSERT_ONLY)
@@ -80,6 +85,30 @@ def require_time_window(now: Optional[dt.datetime] = None) -> None:
 # ────────────────────────────────────────────────────────────────────────────
 # §4-3 — M1~M4
 # ────────────────────────────────────────────────────────────────────────────
+def next_trading_day(cal: Sequence[Any], d: Any):
+    """오름차순 거래일 목록 `cal` 에서 `d` «다음» 거래일. 없으면 `None`."""
+    ks = list(cal or [])
+    i = bisect_right(ks, pd.Timestamp(d))
+    return ks[i] if i < len(ks) else None
+
+
+def created_late(created_at: Any, scan_date: Any, cal: Sequence[Any]) -> bool:
+    """§4-5 C1 서명 ② — `created_at > 다음 «거래일» + 12h`.
+
+    🔴 구판 `created_at > scan_date + 3일(달력)` 은 **요일 탐지기**였다 —
+    금요일은 다음 거래일이 3날 뒤(월)라 일상적인 재수집도 전부 «지연» 으로
+    읽혔고, 실측 발화일 15일 중 14일이 금요일이었다(판별력 ≈ 0).
+    그래서 **거래일 달력**로 재단다 — 09:00 장전 스캔 기준으로
+    «다음 거래일 정오» 를 넘기면 그건 다음 세션의 재기록이다.
+    """
+    if created_at is None or created_at != created_at:
+        return False
+    nxt = next_trading_day(cal, scan_date)
+    if nxt is None:
+        return False          # 창 끝 — 다음 거래일을 모르면 C1 을 단정하지 않는다
+    return pd.Timestamp(created_at) > pd.Timestamp(nxt) + C1_LATE_GRACE
+
+
 def _spearman(a: Sequence[float], b: Sequence[float]) -> float:
     ra = pd.Series(a).rank().to_numpy()
     rb = pd.Series(b).rank().to_numpy()
@@ -185,8 +214,15 @@ def classify_mismatch(*, code: str, side: str,
                       live_rank: Optional[int], replay_rank: Optional[int],
                       score_match: bool, created_late: bool, hash_changed: bool,
                       impossible_in_window: bool, at_params_boundary: bool,
-                      set_swept: bool) -> str:
-    """서명 우선순위대로 라벨 하나를 돌려준다. 어디에도 안 걸리면 **C6 미상**."""
+                      set_swept: bool,
+                      exclusion_promoted: bool = False) -> str:
+    """서명 우선순위대로 라벨 하나를 돌려준다. 어디에도 안 걸리면 **C6 미상**.
+
+    `exclusion_promoted` 는 **C7 «배제 승격»** — 같은 날 §1-2-b 배제 종목이
+    라이브에만 있고(`live_only`) 그 수만큼 재현에만 있는 종목(`replay_only`)이 있을 때,
+    그건 «모르는 불일치»가 아니라 **배제로 슬롯이 비어 20위 밖이 밀려 올라온** 것이다.
+    🔴 C6(미상)과 같은 칸에 넣으면 «설명되지 않은 못» 을 과대계상한다.
+    """
     if set_swept:
         return "C2"          # 유니버스 일자 폴백 — 집합이 통째로 어긋난다
     if impossible_in_window:
@@ -198,10 +234,12 @@ def classify_mismatch(*, code: str, side: str,
         return "C5"          # 동점 경계 (rank 19~20 · score 동일)
     # C1 데이터 갱신 — 🔴 `updated_at` 은 판별에 쓰지 않는다(전 행 단일 일자 = 판별력 0).
     # 🔑 M4 불일치는 «동반» 서명이지 «단독» 서명이 아니다 — 그것만으로는 C1 이 아니다.
-    #    단독 판별 서명은 ②`created_at > scan_date+3일` ③스냅샷 대 현행 행 해시 차분이고,
+    #    단독 판별 서명은 ②`created_at > 다음 «거래일» + 12h` ③스냅샷 대 현행 행 해시 차분이고,
     #    ④노출/보호 구간 대조는 집계 수준에서 따로 인쇄한다(§4-5 C1).
     if created_late or hash_changed:
         return "C1"
+    if exclusion_promoted:
+        return "C7"          # 배제 승격 — 빈 슬롯만큼 밀려 올라왔다(C6 에서 분리)
     return "C6"
 
 
