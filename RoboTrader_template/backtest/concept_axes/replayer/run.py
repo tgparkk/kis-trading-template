@@ -545,7 +545,7 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
             a("| 신: `created_at > 다음 «거래일» + 12h` | {} | {} |".format(n_new, fri_new))
             a("")
             a("🔴 구 서명은 **금요일 탐지기**였다 — 발화 {}일 중 **{}일이 금요일**"
-              "(금요일은 다음 거래일이 3날 뒤이라 일상적인 재수집도 «지연» 으로 읽힌다). "
+              "(금요일은 다음 거래일이 사흘 뒤라 일상적인 재수집도 «지연» 으로 읽힌다). "
               "이 리포트의 C1 라벨은 **신 서명**으로 붙였다.".format(n_old, fri_old))
             a("")
             if n_old or n_new:
@@ -596,26 +596,39 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
             # 🔑 이 역산은 `score = mean(volume[-20:])` 인 ma20 에서만 성립한다.
             #    daytrading 의 score 는 비(比)라 같은 역산이 안 된다.
             if k == "ma20":
-                dg = gt.m4_last_bar_diagnosis(days, seg["vol_lookup"])
+                dg = gt.m4_lag_profile(days, seg["vol_lookup"])
                 if dg.get("n"):
-                    a("**M4 불일치의 C1 서명** — 「마지막 봉(D) 거래량만 바뀌었다면?」의 함의값 "
-                      "`implied_D / stored_D`:")
+                    a("**M4 불일치의 lag 프로파일** — 「D−k 봉«만» 바뀌었다」고 "
+                      "**가정**했을 때의 함의값 비 `implied / stored` ({:,}행 · 교집합 행 한정):".format(
+                          dg["n"]))
                     a("")
-                    a("| n | 중앙값 | p05 | p95 | `< 1` 비율 |")
-                    a("|---:|---:|---:|---:|---:|")
-                    a("| {:,} | {:.6f} | {:.6f} | {:.6f} | {:.3f} |".format(
-                        dg["n"], dg["median"], dg["p05"], dg["p95"],
-                        dg["frac_below_1"]))
+                    a("| k (D−k) | n | 중앙값 | p05 | p95 | `< 1` 비율 |")
+                    a("|---:|---:|---:|---:|---:|---:|")
+                    for row in dg["lags"]:
+                        a("| {} | {:,} | {:.6f} | {:.6f} | {:.6f} | {:.3f} |".format(
+                            row["k"], row["n"], row["median"], row["p05"],
+                            row["p95"], row["frac_below_1"]))
                     a("")
-                    a("🔑 값이 **한 방향으로 1 보다 작으면** 원인은 룰이 아니라 "
-                      "**D 행의 거래량이 스냅샷 «이후»에 커진 것**이다(= C1 데이터 갱신). "
-                      "🔴 이건 원인 인쇄이지 **문턱 완화가 아니다** — M4 문턱 99% 는 그대로다.")
+                    ww = dg.get("whole_window") or {}
+                    a("🔴 **채널 미결** — 「마지막 봉만 바뀌었다」고 **가정**하면 "
+                      "k=0 의 {:,}건이 전부 `< 1` 이다. 하지만 그건 «가정 위의 수치»이지 "
+                      "측정된 채널이 아니다 — 「창 전체가 미세하게 커졌다」는 설명과 "
+                      "**관측상 구분되지 않는다**(위 표가 k 에 걸쳐 평탄하면 한 봉 채널이 아니다). "
+                      "같은 불일치를 「창 20봉이 균일하게 바뀌었다」로 읽으면 "
+                      "라이브 전량 함의비 = **{} ~ {}**(중앙값 {})다.".format(
+                          (dg["lags"][0]["n"] if dg["lags"] else 0),
+                          ("{:+.2f}%".format(ww["min_pct"]) if ww else "n/a"),
+                          ("{:+.2f}%".format(ww["max_pct"]) if ww else "n/a"),
+                          ("{:+.2f}%".format(ww["median_pct"]) if ww else "n/a")))
+                    a("")
+                    a("🔴 이건 원인 **가설별 인쇄**이지 문턱 완화가 아니다 — M4 문턱 99% 는 그대로다. "
+                      "그리고 이 표는 **교집합 행에서만** 재어진다(한쪽에만 있는 종목은 M4 대조 자체가 안 된다).")
             a("")
             # 리뷰 M-1 — §4-6 조건 ④ `M1_exposed_floor` 충족/미달을 «명시» 인쇄한다.
             exposed = [d for d in days if d.scan_date < gt.PROTECTED_FROM]
             if exposed:
                 m_exp = gt.compute_metrics(exposed)["M1"]
-                floor = THRESH_FLOOR = gt.THRESHOLDS["M1_exposed_floor"]
+                floor = gt.THRESHOLDS["M1_exposed_floor"]
                 a("- 노출 구간 M1 = **{:.4f}** vs `M1_exposed_floor` {:.2f} ⇒ {}".format(
                     m_exp, floor,
                     "충족" if (m_exp == m_exp and m_exp >= floor)

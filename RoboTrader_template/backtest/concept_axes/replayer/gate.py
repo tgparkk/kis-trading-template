@@ -97,9 +97,9 @@ def created_late(created_at: Any, scan_date: Any, cal: Sequence[Any]) -> bool:
     """§4-5 C1 서명 ② — `created_at > 다음 «거래일» + 12h`.
 
     🔴 구판 `created_at > scan_date + 3일(달력)` 은 **요일 탐지기**였다 —
-    금요일은 다음 거래일이 3날 뒤(월)라 일상적인 재수집도 전부 «지연» 으로
+    금요일은 다음 거래일이 사흘 뒤(월)라 일상적인 재수집도 전부 «지연» 으로
     읽혔고, 실측 발화일 15일 중 14일이 금요일이었다(판별력 ≈ 0).
-    그래서 **거래일 달력**로 재단다 — 09:00 장전 스캔 기준으로
+    그래서 **거래일 달력**으로 재는다 — 09:00 장전 스캔 기준으로
     «다음 거래일 정오» 를 넘기면 그건 다음 세션의 재기록이다.
     """
     if created_at is None or created_at != created_at:
@@ -227,7 +227,7 @@ def classify_mismatch(*, code: str, side: str,
     `exclusion_promoted` 는 **C7 «배제 승격»** — 같은 날 §1-2-b 배제 종목이
     라이브에만 있고(`live_only`) 그 수만큼 재현에만 있는 종목(`replay_only`)이 있을 때,
     그건 «모르는 불일치»가 아니라 **배제로 슬롯이 비어 20위 밖이 밀려 올라온** 것이다.
-    🔴 C6(미상)과 같은 칸에 넣으면 «설명되지 않은 못» 을 과대계상한다.
+    🔴 C6(미상)과 같은 칸에 넣으면 «설명되지 않은 몫» 을 과대계상한다.
     """
     if set_swept:
         return "C2"          # 유니버스 일자 폴백 — 집합이 통째로 어긋난다
@@ -249,42 +249,71 @@ def classify_mismatch(*, code: str, side: str,
     return "C6"
 
 
-def m4_last_bar_diagnosis(days: Sequence[DayPair],
-                          vol_lookup) -> Dict[str, Any]:
-    """M4 불일치의 **C1 서명**을 잰다 — 「마지막 봉 거래량만 바뀌었다면?」의 함의값.
+MA20_WINDOW = 20
 
-    🔑 `score_ma20 = mean(volume[-20:])` 이므로, 라이브 score 로부터 **그날(D) 거래량의
-    함의값**을 역산할 수 있다: `implied_D = live_score × 20 − Σ volume[-20:-1]`.
-    이 값이 현행 저장값보다 **한 방향으로 작다**면 원인은 룰이 아니라 **D 행의 거래량이
-    스냅샷 «이후»에 커졌다**는 것이다(= C1 데이터 갱신).
-    🔴 이건 **원인 인쇄**이지 문턱 완화가 아니다 — M4 문턱 99% 는 그대로다.
 
-    `vol_lookup(code, scan_date) -> np.ndarray | None` 로 D 이하 거래량 배열을 받는다.
+def m4_lag_profile(days: Sequence[DayPair], vol_lookup,
+                   max_lag: int = MA20_WINDOW) -> Dict[str, Any]:
+    """M4 불일치의 **채널 프로파일** — k = 0..max_lag-1 각각에 대해
+    「D−k 봉«만» 바뀌었다」고 «가정»했을 때의 함의값 비 `implied / stored` 분포.
+
+    🔑 `score_ma20 = mean(volume[-20:])` 이므로 라이브 score 에서 한 봉의 함의값을
+    역산할 수 있다: `implied_k = live_score × 20 − (Σ window − stored_k)`.
+    🔴 **어느 봉이 바뀌는지는 데이터가 말해 주지 않는다** — 이 표는 가정별 함의값이지
+    채널 판정이 아니다. 한 봉 채널이면 치우침이 k=0 에 몰리고, 창 전체가 미세하게
+    커진 경우면 k 에 걸쳐 **평탄**하다 — 둘을 가르는 것은 이 모양뿐이다.
+
+    `whole_window` 는 「창 20봉이 «균일하게» 바뀌었다」 가정의 함의 변화율
+    `live/replay − 1`(%) 분포다 — 같은 M4 불일치를 «다른 채널» 로 읽은 값이다.
+    🔴 이건 원인 인쇄이지 문턱 완화가 아니다 — M4 문턱 99% 는 그대로다.
     """
-    ratios: List[float] = []
-    n_cmp = 0
+    per_lag: Dict[int, List[float]] = {k: [] for k in range(max_lag)}
+    whole: List[float] = []
+    n_rows = 0
     for dp in days:
         for c in dp.replay:
             if c not in dp.live_scores or c not in dp.replay_scores:
                 continue
-            lv = dp.live_scores[c]
-            if not lv or abs(dp.replay_scores[c] / lv - 1.0) <= M4_REL_TOL:
+            lv, rv = dp.live_scores[c], dp.replay_scores[c]
+            if not lv or abs(rv / lv - 1.0) <= M4_REL_TOL:
                 continue
             v = vol_lookup(c, dp.scan_date)
-            if v is None or len(v) < 20 or v[-1] <= 0:
+            if v is None or len(v) < MA20_WINDOW:
                 continue
-            implied = lv * 20.0 - float(v[-20:-1].sum())
-            n_cmp += 1
-            ratios.append(implied / float(v[-1]))
-    if not ratios:
-        return {"n": 0}
-    arr = np.asarray(ratios, dtype=float)
+            win = v[-MA20_WINDOW:]
+            tot = float(win.sum())
+            n_rows += 1
+            if rv:
+                whole.append((lv / rv - 1.0) * 100.0)
+            for k in range(min(max_lag, MA20_WINDOW)):
+                stored = float(win[-1 - k])
+                if stored <= 0:
+                    continue
+                implied = lv * MA20_WINDOW - (tot - stored)
+                per_lag[k].append(implied / stored)
+    rows = []
+    for k in range(max_lag):
+        arr = np.asarray(per_lag[k], dtype=float)
+        if not len(arr):
+            continue
+        rows.append({
+            "k": k,
+            "n": int(len(arr)),
+            "median": float(np.median(arr)),
+            "p05": float(np.percentile(arr, 5)),
+            "p95": float(np.percentile(arr, 95)),
+            "frac_below_1": float((arr < 1.0).mean()),
+        })
+    w = np.asarray(whole, dtype=float)
     return {
-        "n": n_cmp,
-        "median": float(np.median(arr)),
-        "p05": float(np.percentile(arr, 5)),
-        "p95": float(np.percentile(arr, 95)),
-        "frac_below_1": float((arr < 1.0).mean()),
+        "n": n_rows,
+        "lags": rows,
+        "whole_window": ({} if not len(w) else {
+            "n": int(len(w)),
+            "min_pct": float(w.min()),
+            "max_pct": float(w.max()),
+            "median_pct": float(np.median(w)),
+        }),
     }
 
 

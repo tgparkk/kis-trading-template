@@ -174,7 +174,7 @@ def test_next_trading_day_skips_weekend():
 
 def test_created_late_friday_is_not_late_by_trading_day_rule():
     """🔴 구 서명(달력 +3일)은 금요일을 전부 지연으로 읽었다 — 월요일 재수집은 정상이다."""
-    ca = pd.Timestamp("2026-09-14 08:30")        # 금요일(09-11) 스캣의 월요일 재기록
+    ca = pd.Timestamp("2026-09-14 08:30")        # 금요일(09-11) 스냅샷의 월요일 재기록
     assert ca > pd.Timestamp("2026-09-11") + pd.Timedelta(days=3)   # 구 서명: 지연
     assert gate.created_late(ca, "2026-09-11", CAL) is False        # 신 서명: 정상
 
