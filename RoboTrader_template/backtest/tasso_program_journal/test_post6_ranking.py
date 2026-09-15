@@ -8,8 +8,8 @@
 실행: `python test_post6_ranking.py`  (시스템 python · DB 접속 0건 · 라이브 트리 import 0건)
 
   P1  훈련 모드가 post6 행을 «제외»한다            (원장 62 → 50 · post6 0건 · `exact` 18)
-  N1  (음성 대조) 동결 시점 상수를 미래로 밀면 «오염»된다 (62행 · `exact` 28) ⇒ 가드가 살아 있다
-  P2  post6 모드는 전 행을 읽는다                  (62행 · post6 12건 = `exact` 10 + `none` 2)
+  N1  (음성 대조) 동결 시점을 post6 발행일로 밀면 «오염»된다 (62행 · `exact` 28) ⇒ 가드가 살아 있다
+  P2  post6 모드는 전 행을 읽는다                  (post6 까지 62행 · post6 12건 = `exact` 10 + `none` 2)
   P3  동결 선택 라벨이 `FREEZE_RANKING_2026-08-31.md` 와 일치한다
   P4  `POST6_CODES` 가 `INTAKE_2026-09-04_post6.md` §1 표와 축자 일치 · 계열 코드와 충돌 0
   P5  원장 prefix 51줄 md5 = 동결본이 적은 값      (기존 행 byte 불변)
@@ -49,24 +49,33 @@ def main():
           "훈련 모드 = %d행 · `exact` %d · post6 %d건 (기대 50 · 18 · 0)" % (n, ex, p6))
 
     # ── N1 음성 대조 — 필터를 무력화하면 «오염»되는가 ────────────────────────
+    # 🔴 2026-09-15 — 원장은 append-only 라 post7 13행이 더 붙었다. 「2099-12-31」(= 안 거른다)로
+    #    밀면 기대값이 글이 올 때마다 갈려야 해서 가드가 죽는다. 그래서 **동결 시점을 post6 발행일로**
+    #    민다 — 「TRAIN_FREEZE_DATE 가 post6 을 막고 있다」는 증명은 그대로이고 기대값 62·28·12 는
+    #    «뒤에 온 글에 불변»이다(test_s5_fixes.py §5-5-4 가 쓴 것과 같은 수법).
     keep = R.TRAIN_FREEZE_DATE
     try:
-        R.TRAIN_FREEZE_DATE = "2099-12-31"          # 「거르지 않는다」와 같은 효과
+        R.TRAIN_FREEZE_DATE = R.POST6_POST_DATE     # post6 까지 들여보낸다 = 훈련 표본 오염
         n2, ex2, p62 = counts(R.load_ledger("train"))
     finally:
         R.TRAIN_FREEZE_DATE = keep
     check("N1", (n2, ex2, p62) == (62, 28, 12) and (n2, ex2, p62) != (n, ex, p6),
-          "필터 무력화 시 %d행 · `exact` %d · post6 %d건 ⇒ 가드가 «실제로» 막고 있다"
+          "동결 시점을 post6 발행일로 밀면 %d행 · `exact` %d · post6 %d건 ⇒ 가드가 «실제로» 막고 있다"
           % (n2, ex2, p62))
 
     # ── P2 post6 모드 ───────────────────────────────────────────────────────
     rows = R.load_ledger("post6")
     n3, ex3, p63 = counts(rows)
+    # post6 모드는 «거르지 않는다» ⇒ 뒤에 온 글도 들어온다. 동결 기대값은 post6 «까지»로 잰다.
+    upto6 = [r for r in rows if r["post_date"] <= R.POST6_POST_DATE]
+    n3u, ex3u, _ = counts(upto6)
     p6rows = [r for r in rows if r["post_log_no"] == R.POST6_LOG_NO]
     prec = {k: sum(1 for r in p6rows if r["reg_date_precision"] == k)
             for k in ("exact", "approx", "after", "none")}
-    check("P2", (n3, p63) == (62, 12) and prec == dict(exact=10, approx=0, after=0, none=2),
-          "post6 모드 = %d행 · post6 %d건 %s (기대 62 · 12 · exact10/none2)" % (n3, p63, prec))
+    check("P2", (n3u, p63) == (62, 12) and n3 >= n3u
+          and prec == dict(exact=10, approx=0, after=0, none=2),
+          "post6 모드 = %d행(거르지 않는다 · post6 까지 %d행) · post6 %d건 %s (기대 62 · 12 · exact10/none2)"
+          % (n3, n3u, p63, prec))
 
     # ── P3 동결 선택 라벨 ───────────────────────────────────────────────────
     fz = (BASE / "FREEZE_RANKING_2026-08-31.md").read_text(encoding="utf-8")

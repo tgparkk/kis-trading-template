@@ -188,6 +188,38 @@ PAIRS = {
     "RESULTS_LADDER_TRANCHE_POST6_NUMBERS.md": "run_ladder_tranche_post6.py",
     "RESULTS_RECONSTRUCT_POST6_NUMBERS.md": "run_reconstruct_post6.py",
     "RESULTS_WRC_POST6_NUMBERS.md": "run_wrc_post6.py",
+    # 🔴 2026-09-15 7번째 글(`224409404744`) 산출물 — §5-3 이 잡은 결함(「post5 산출물이 어디에도
+    #    등재돼 있지 않다」)을 이번 글에서도 되풀이하지 않는다. 각 축은 post6 판을 승계한
+    #    «별도 파일»이다(`run_*_post6.py` → `run_*_post7.py`).
+    #    ⚠️ 아래 11건은 **아직 «없는» 파일**이라 전부 `PENDING` 에 같이 올려 둔다 — 등재만 하고
+    #      `PENDING` 을 비우면 check() 가 상시 FAIL 해서 진짜 가드가 죽는다(그 자리 주석 참조).
+    #      파일이 «생기면» `PENDING` 에서 빼야 한다(check() 가 「생겼는데 PENDING 이다」로 FAIL 한다).
+    "RESULTS_SELECTION_POST7_NUMBERS.md": "run_selection_post7.py",
+    "RESULTS_REGDAY_POST7_NUMBERS.md": "run_regday_post7.py",
+    "RESULTS_EXIT_V2_POST7_NUMBERS.md": "run_exit_v2_post7.py",
+    "RESULTS_RECONSTRUCT_POST7_NUMBERS.md": "run_reconstruct_post7.py",
+    "RESULTS_LADDER_TRANCHE_POST7_NUMBERS.md": "run_ladder_tranche_post7.py",
+    "RESULTS_D1_OOS_POST7_NUMBERS.md": "run_d1_oos_post7.py",
+    "RESULTS_WRC_POST7_NUMBERS.md": "run_wrc_post7.py",
+    # 🔴 C-23 승계 — **인자를 반드시 적는다.** 인자를 비우면 `rerun()` 이 기본 모드로 돌아
+    #    동결본(`RESULTS_RANKING_TRAIN_NUMBERS.md` · `RESULTS_SECTOR_DRYRUN_NUMBERS.md` +
+    #    `sector_dryrun/` 23파일)을 덮어쓴다. post6 모드 등재와 «같은 형식»이다.
+    "RESULTS_RANKING_POST7_NUMBERS.md": "run_ranking.py --stage post7",
+    "RESULTS_SECTOR_POST7_NUMBERS.md": "run_sector.py --mode post7",
+    # 🔴 `ANC-` 앵커 재설계 축 (`PREREG_ANCHOR_REDESIGN.md` §11 이 «문언으로» 요구한 등재:
+    #    *「`ANC-` 측정 스크립트(`run_anchor_redesign.py`)가 생기면 그때 `PAIRS` 에 등재한다 ·
+    #      C-23 승계: `PAIRS` 값에 **인자를 포함**해 적는다("run_anchor_redesign.py --mode post7")」*).
+    #    🔑 **한 스크립트가 두 산출물을 쓴다**(산문 + 기계 생성) — 둘을 «따로» 등재해야 게이트에
+    #      둘 다 보인다. 같은 argv 가 두 번 돌지만 두 산출물 다 동결본이 아니라 C-23 의 위험
+    #      (곁다리 실행이 «동결»본을 덮어씀)이 성립하지 않는다.
+    "RESULTS_ANCHOR_POST7.md": "run_anchor_redesign.py --mode post7",
+    "RESULTS_ANCHOR_POST7_NUMBERS.md": "run_anchor_redesign.py --mode post7",
+    # 🔴 `S5` 재무·뉴스 OOS (`PREREG_S5_FUND_NEWS_OOS.md` §4 실행 기록). PD-15 로 **판정 선언은
+    #    없고 값만 인쇄**하지만, 기계 생성 산출물인 이상 게이트 대상이다.
+    #    🔴 `run_s5_sidebyside.py`(동결 산출물 `RESULTS_S5_SIDEBYSIDE.md`)와 **다른 파일**이다.
+    #    ⚠️ 산문 `RESULTS_S5_POST7.md` 는 **사람이 쓴다** ⇒ `MANUAL_DOCS` 자리다(`RESULTS_WRC_POST6.md`
+    #      ↔ `RESULTS_WRC_POST6_NUMBERS.md` 분리 전례 그대로). 스크립트가 산문까지 쓰면 그 구분이 무너진다.
+    "RESULTS_S5_POST7_NUMBERS.md": "run_s5_post7.py",
 }
 
 # 🔴 C-23 — 산출물이 «파일 하나»가 아닌 것들. `--rerun` 이 이 디렉토리까지 스냅샷·대조하고,
@@ -198,6 +230,10 @@ ART_DIRS = {
     "RESULTS_SECTOR_POST6_NUMBERS.md": ("sector_post6",),
     "RESULTS_WRC_EXPLORE.md": ("wrc_explore",),
     "RESULTS_WRC_POST6_NUMBERS.md": ("wrc_post6",),
+    # 🔴 2026-09-15 post7 — post6 의 두 디렉토리 산출물에 대응하는 자리. 등재하지 않으면
+    #    루프 «전체» tripwire 가 이 디렉토리를 «안 본다»(C-23 4번).
+    "RESULTS_SECTOR_POST7_NUMBERS.md": ("sector_post7",),
+    "RESULTS_WRC_POST7_NUMBERS.md": ("wrc_post7",),
 }
 
 
@@ -221,6 +257,14 @@ def script_argv(spec: str) -> list[str]:
 #      `RESULTS_RANKING_POST6_NUMBERS.md`·`RESULTS_SECTOR_POST6_NUMBERS.md` 가 «생겼으므로»
 #      위 ⚠️ 규칙대로 PENDING 에서 뺐다(남겨 두면 check() 가 「생겼는데 PENDING 이다」로 FAIL 한다).
 #      🔑 비어 있다고 이 자리를 지우지 말 것 — 7번째 글의 산출물이 다시 여기로 들어온다.
+#    🔴 2026-09-15 — **다시 찼다.** 7번째 글(`224409404744`)의 산출물 13종이 `PAIRS` 에 등재됐으나
+#      파일은 아직 «없다»(판정 실행 전). 위 ⚠️ 규칙대로 파일이 생기면 여기서 뺀다.
+#    🟢 2026-09-15 20:2x — **다시 비었다.** 7번째 글의 판정 산출물 12종이 «전부 생겼다»
+#      (`run_*_post7.py` · `run_anchor_redesign.py --mode post7` · `run_ranking.py --stage post7`
+#       · `run_sector.py --mode post7` 실행 완료 · DB `max(date)` 2026-09-15 · 09-15 행 2,765).
+#      위 ⚠️ 규칙대로 PENDING 에서 뺐다 — 남겨 두면 check() 가
+#      「생겼는데 PENDING 이다」로 FAIL 하고 그때부터 진짜 가드가 죽는다.
+#      🔑 비어 있다고 이 자리를 지우지 말 것 — 8번째 글의 산출물이 다시 여기로 들어온다.
 PENDING: dict[str, str] = {}
 
 # 🔴 `MANUAL_DOCS` 쪽의 같은 것 — 등재는 §5-7 이 요구하는데 파일은 그 글이 와야 생긴다.
@@ -228,6 +272,15 @@ PENDING: dict[str, str] = {}
 #      없으면 진짜 FAIL 이어야 한다(이름 오타를 잡는 것이 G-1 의 목적이다).
 #    🟢 2026-09-05 — **비었다.** 두 산문(`RESULTS_RANKING_POST6.md`·`RESULTS_SECTOR_POST6.md`)이
 #      생겼다 ⇒ `MANUAL_DOCS` 의 존재 검사(G-1)가 그 두 이름에 «진짜로» 도는 자리로 돌아왔다.
+#    🔴 2026-09-15 — **다시 찼다.** 7번째 글의 «산문» **10종**은 판정이 끝난 뒤 사람이 쓴다.
+#      🔴 **정정**: 초판 주석은 「9종」이라 적고 *「`RESULTS_ANCHOR_POST7.md`·`RESULTS_S5_POST7.md` 는
+#      스크립트가 쓰므로 `PAIRS` 쪽」*이라 했는데, **`RESULTS_S5_POST7.md` 는 사람이 쓴다**
+#      (`run_s5_post7.py` 는 `_NUMBERS` 만 쓴다 — 그 스크립트가 끝에 그렇게 인쇄한다).
+#      ⇒ **`PAIRS` 쪽인 것은 `RESULTS_ANCHOR_POST7.md` 하나뿐**이고, 여기 목록은 **10종**이었다.
+#    🟢 2026-09-15 22:xx — **다시 비었다.** verifier 정정 뒤 산문 10종이 «전부 생겼다»
+#      ⇒ 위 ⚠️ 규칙대로 뺐다. 남겨 두면 check() 가 「생겼는데 `PENDING_DOCS` 에 남아 있다」로
+#      FAIL 하고 그때부터 G-1 의 존재 검사가 그 10개 이름에 «진짜로» 돌지 않는다.
+#      🔑 비어 있다고 이 자리를 지우지 말 것 — 8번째 글의 산문이 다시 여기로 들어온다.
 PENDING_DOCS: dict[str, str] = {}
 
 # 🔴 §5(C-17·C-20) 정정으로 «스크립트는 바뀌었으나 산출물은 재생성하지 않은» 것들.
@@ -266,14 +319,31 @@ FROZEN_STALE = {
         "구멍 81행 · 09-02 W1 이 03473K 82행을 INSERT · 07-28 «그날 전 종목/close>0» "
         "2,572→2,574(유니버스 2,570 불변) · 08-05 코호트 191→189. "
         "+ run_ranking.py 에 post6 모드를 더했다(코드 변경은 훈련 수치에 0줄 영향 — 실증 완료). "
+        "🆕 2026-09-15: **post7 모드(`--stage post7`)를 더했다** — 순수 «덧붙임»이고 "
+        "`load_ledger`·`build_codes`·`exact_items`·`approx_items`·`post6_main` 함수 본문 md5 가 "
+        "**전건 불변**임을 실증했다(제거 줄 0 · `--stage` 기본값 `train` 불변) ⇒ 훈련 수치 0줄 영향. "
         "🔴 재측정 금지 · 선택 규칙 RNK-A1 은 이 동결본에서 왔다(홀드아웃의 근거)",
     "RESULTS_WRC_EXPLORE.md":
         "동결(FREEZE_WRC_2026-09-02) — run_wrc_explore.py 에 post6 제외 필터 +11줄 · 입력 DB 이동. "
         "원장 유래 값은 전건 동일함을 실증했다. 🔴 재측정 금지(탐색값이 post6 판정 문턱의 근거)",
+    # 🆕 2026-09-15 — post7 모드 추가로 **생성 스크립트의 sha 가 움직였다.** 두 산출물은 post6
+    #    «판정»본이라 재측정하지 않는다(`PREREG_POST6.md` §5-1-5 *「과거 산출물을 다시 재지 않는다」* ·
+    #    §5-4-2 *「과거 발표값을 조용히 갱신하지 않는다」*). ⇒ 사유를 박아 check() 가 매번 인쇄하게 한다
+    #    (조용한 통과 금지). 🔑 ***사유를 안 적으면 다음 사람이 「낡았으니 다시 돌리자」로 읽는다.***
+    "RESULTS_RANKING_POST6_NUMBERS.md":
+        "post6 판정 동결 — run_ranking.py 에 post7 모드(`--stage post7`)를 더해 sha 가 움직였으나 "
+        "post6 경로 함수 본문 md5 는 전건 불변(제거 줄 0)이다. 🔴 재측정 금지(post6 판정 불변 의무)",
+    "RESULTS_SECTOR_POST6_NUMBERS.md":
+        "post6 판정 동결 — run_sector.py 에 post7 모드(`--mode post7`)를 더해 sha 가 움직였으나 "
+        "`main_post6`·`db_context` 함수 본문 md5 는 불변이고 `both` 에 post7 을 넣지 않았다. "
+        "🔴 재측정 금지 · **--rerun 금지**(sector_post6/ 디렉토리 동반 산출물)",
     "RESULTS_SECTOR_DRYRUN_NUMBERS.md":
         "동결(FREEZE_SECTOR_2026-09-03) — run_sector.py 에 모드 분기가 들어갔고 DB 가 이동했으나 "
         "이동분은 조인 «전» 부기 열에만 닿아 측정값 0줄 불변임을 실증했다. "
-        "🔴 **--rerun 금지** — 기본 모드(both)면 sector_dryrun/ 23파일까지 덮어쓴다(C-23)",
+        "🔴 **--rerun 금지** — 기본 모드(both)면 sector_dryrun/ 23파일까지 덮어쓴다(C-23). "
+        "🆕 2026-09-15: **post7 모드(`--mode post7`)를 더했다** — `main`·`main_post6`·`db_context` "
+        "함수 본문 md5 **전건 불변**(공유 헬퍼에 인자를 달지 않고 `post7_context()` 를 따로 뒀다) · "
+        "🔴 **`both` 에는 post7 을 넣지 «않았다»** — `both` 의 뜻을 바꾸면 `--rerun` 계약이 조용히 달라진다",
 }
 
 # 스크립트가 만들지 않는 문서 — 사람이 쓴 것. 게이트 대상 아님을 명시해 둔다.
@@ -327,6 +397,24 @@ MANUAL_DOCS = [
     # 🔴 2026-09-14 — 사장님 결정 C-8(패널 8건). 재무·뉴스는 «현재 원장으론» 못 묻는다(27.0% 를 이미 봤다)
     #    ⇒ post7 이후 «새» 건에 대한 OOS 예측 한 줄만 등록했다. 사람이 쓴 문서라 `MANUAL_DOCS` 자리다.
     "PREREG_S5_FUND_NEWS_OOS.md",
+    # 🔴 2026-09-15 — 2026-09-12 발행 7번째 글(`224409404744`) 계열.
+    #    인테이크 3문서는 **이미 있다**(동결 커밋 `caf6f4a`) ⇒ G-1 존재 검사가 «진짜로» 돈다.
+    #    🔴 `PREREG_GRADE_TIERS.md` §0-3 3번 순서(`PREDECISION` → `INTAKE` → `LABELS` → 측정 스크립트)가
+    #      이 회차에 처음 구속력을 갖는다(PD-0).
+    "INTAKE_2026-09-15_post7.md", "PREDECISION_2026-09-15_post7.md", "LABELS_2026-09-15_post7.md",
+    #    산문 **10종**은 판정 «뒤»에 생긴다 ⇒ 생기기 «전»에는 `PENDING_DOCS` 에 같이 올려 둔다
+    #    (이름만 먼저 박으면 G-1 이 「없는 파일」로 상시 FAIL 해서 진짜 가드가 죽는다 — `FREEZE_SECTOR` 전례).
+    #    🟢 2026-09-15 22:xx — 10종이 전부 생겨 `PENDING_DOCS` 에서 뺐다 ⇒ G-1 존재 검사가 여기에 «진짜로» 돈다.
+    "RESULTS_SELECTION_POST7.md", "RESULTS_REGDAY_POST7.md", "RESULTS_EXIT_V2_POST7.md",
+    "RESULTS_RECONSTRUCT_POST7.md", "RESULTS_LADDER_TRANCHE_POST7.md", "RESULTS_D1_OOS_POST7.md",
+    "RESULTS_WRC_POST7.md", "RESULTS_RANKING_POST7.md", "RESULTS_SECTOR_POST7.md",
+    "RESULTS_S5_POST7.md",
+    #    🆕 `RESULTS_ANCHOR_POST7.md` 는 **스크립트가 쓴다**(`run_anchor_redesign.py` 가 두 산출물을
+    #      같이 쓴다) ⇒ 여기가 아니라 `PAIRS` 자리다. 산문/기계 생성 구분을 파일별로 실측해 갈랐다.
+    #    ⚠️ **`RESULTS_S5_POST7.md` 는 «사람이» 쓴다** — `run_s5_post7.py` 는 `_NUMBERS` 만 쓰고
+    #      끝에 그렇게 인쇄한다. ⇒ 이 목록(위 10종)에 들어가는 것이 맞다.
+    # 🔴 `verify_ledger_post7.py` 는 post5·post6 판 전례대로 **일부러 등재하지 않는다**
+    #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]
 
 

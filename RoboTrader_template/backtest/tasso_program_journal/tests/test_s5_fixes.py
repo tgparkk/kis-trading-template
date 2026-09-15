@@ -303,11 +303,16 @@ def test_c21_backfill_rule_is_mechanical():
 #    (새 글이 올 때마다 숫자를 갈아 끼우는 테스트는 아무것도 못 잡는다). 대신 **post6 행을 걸러
 #    내고** ==50 과 동결 Counter 를 «그대로» 유지한다. 다음 글도 이 목록에 log_no 를 더하면 된다.
 POST6_LOG_NO = "224401108114"
+# 🔴 2026-09-15 — 7번째 글(`224409404744`)의 13행이 붙어 `ledger_trades.csv` 는 75행이 됐다.
+#    위 지시(*「다음 글도 이 목록에 log_no 를 더하면 된다」*) 그대로 **상수 50 과 동결 Counter 는
+#    한 글자도 안 고치고** 목록에만 더한다. 🔑 *「post6 «말고» 전부」를 「post6 «이전»」으로 읽으면
+#    다음 글이 온 날 스냅샷이 깨진다* — `run_sector.py`:71-74 의 같은 교훈.
+POSTS_AFTER_SNAPSHOT = ("224401108114", "224409404744")
 
 
 def _pre_post6(trades):
     """§5-5-4 스냅샷의 정의역 — post6 «전»에 원장에 있던 행만."""
-    return [t for t in trades if t["post_log_no"] != POST6_LOG_NO]
+    return [t for t in trades if t["post_log_no"] not in POSTS_AFTER_SNAPSHOT]
 
 
 def test_c21_ledger_matches_the_prereg_simulation_table():
