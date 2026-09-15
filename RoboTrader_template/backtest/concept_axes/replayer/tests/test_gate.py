@@ -52,10 +52,15 @@ def test_m3_top5_micro_average():
     assert gate.compute_metrics(days)["M3"] == pytest.approx(4 / 5)
 
 
-def test_m3_denominator_is_min_of_five_and_live_size():
+def test_m3_denominator_is_frozen_five_not_live_size():
+    """🔒 동결 정의 = `/5`. 라이브가 2개뿐이고 둘 다 맞추어도 M3 = 2/5 다.
+
+    🔴 이전 판은 `min(TOP_K, len(L))` 를 써서 1.0 을 돌려줬다 — «구현을 따라 쓴 테스트»라
+    정의 위반을 잡을 수 없었다(리뷰 H-1).
+    """
     days = [gate.DayPair("d1", live=["A", "B"], replay=["A", "B"],
                          live_scores={}, replay_scores={})]
-    assert gate.compute_metrics(days)["M3"] == pytest.approx(1.0)
+    assert gate.compute_metrics(days)["M3"] == pytest.approx(2 / 5)
 
 
 # ── M4 score 수치 일치 ─────────────────────────────────────────────────────

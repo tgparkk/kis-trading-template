@@ -110,7 +110,10 @@ def compute_metrics(days: Sequence[DayPair],
         union_sum += len(sL | sR)
 
         tL, tR = set(L[:TOP_K]), set(R[:TOP_K])
-        den = min(TOP_K, len(L)) if L else 0
+        # 🔒 〖정의 동결〗 — 분모는 항상 `TOP_K`(=5) 이다. `min(TOP_K, len(L))` 은
+        # 라이브가 5개 미만인 날 분모를 줄여 M3 를 «올려준다» — 구현을 따라 정의를
+        # 바꾸지 않는다(리뷰 H-1). 라이브가 비었으면 그날은 분모에서 빠진다.
+        den = TOP_K if L else 0
         if den:
             top_inter += len(tL & tR)
             top_den += den
