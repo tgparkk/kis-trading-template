@@ -382,6 +382,10 @@ class BaseStrategy(ABC):
         # on_tick 스킵 로그 쓰로틀: key=(stock_code, reason), value=마지막 로그 시각
         self._ontick_skip_log: Dict[tuple, datetime] = {}
 
+        # 캡/한도 스킵 계기 억제: 거래일당 (stock_code, reason) 1회 (_log_cap_skip)
+        self._cap_skip_logged: set = set()
+        self._cap_skip_log_date = None
+
         # Logger (will be set up if framework utils available)
         self.logger = None
         try:
@@ -555,6 +559,50 @@ class BaseStrategy(ABC):
             self._ontick_skip_log[key] = now
             return True
         return False
+
+    def _strategy_folder_key(self) -> str:
+        """전략 폴더키(= ``strategies/<키>/strategy.py`` 의 ``<키>``).
+
+        ``self.name`` 은 «클래스명»이라 폴더키와 다르다 — 폴더키는 SELECTED
+        소유자·전략별 자금 원장이 쓰는 키다(bot/system_monitor.py:124
+        ``_resolve_strategy_key`` 참조). 인스턴스는 자기 등록 키를 모르므로
+        모듈 경로에서 읽는다(표기용이라 dict 역조회 배선을 새로 깔지 않는다).
+        """
+        parts = type(self).__module__.split(".")
+        if len(parts) >= 2 and parts[-1] == "strategy":
+            return parts[-2]
+        return self.name
+
+    def _log_cap_skip(self, stock_code: str, reason: str) -> None:
+        """캡/한도로 ``generate_signal`` 이 None 을 돌려줄 때 «사유»를 남긴다.
+
+        결함(2026-09-15 결정 패널 §D-3): None 경로가 ①timeframe ②daily_trades
+        ③max_positions 로 셋인데 로그가 전부 같아, 캡 포화로 첫 틱부터 매수가
+        불가능했던 날(09-14 ma20 5/5·minervini 3/3)이 「룰 미충족」으로 위장됐다.
+
+        🔑 **로그 전용이다** — 반환값·순서·판단에 일절 개입하지 않는다.
+        같은 (전략, 종목, 사유) 는 **거래일당 1회**만 찍는다(호출은 종목당
+        하루 수백 회라 억제 없이는 로그가 폭주한다).
+        """
+        try:
+            key = (stock_code, reason)
+            today = datetime.now().date()
+            if self._cap_skip_log_date != today:
+                self._cap_skip_log_date = today
+                self._cap_skip_logged.clear()
+            if key in self._cap_skip_logged:
+                return
+            self._cap_skip_logged.add(key)
+            self.logger.info(
+                f"[캡] {self._strategy_folder_key()} {stock_code} 평가 스킵 "
+                f"사유={reason} "
+                f"보유={len(getattr(self, 'positions', {}) or {})}/"
+                f"{getattr(self, '_max_positions', 0)} "
+                f"일일매수={getattr(self, 'daily_trades', 0)}/"
+                f"{getattr(self, '_max_daily_trades', 0)}"
+            )
+        except Exception:  # noqa: BLE001 — 계기가 매매 판단을 죽이면 안 된다
+            pass
 
     def _entry_band(self, ref_price, down_pct=None, up_pct=None):
         """진입 지정가 밴드 (entry_min_price, entry_max_price)를 산출한다.

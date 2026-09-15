@@ -155,7 +155,7 @@ def get_stock_market(stock_code: str) -> Optional[str]:
 
 
 def resolve_regime_index(configured: str, stock_code: str, market_lookup=None,
-                         strategy_name: str = None) -> str:
+                         strategy_name: str = None, count: bool = True) -> str:
     """급락게이트에 넘길 지수 문자열을 정한다.
 
     configured != "auto"  → 그대로 통과 (기존 동작 100% 보존, 매핑 미조회)
@@ -168,6 +168,12 @@ def resolve_regime_index(configured: str, stock_code: str, market_lookup=None,
         strategy_name: 집계 귀속용 전략 폴더키. **선택**(기본 None) — 기존
             호출부·테스트가 안 깨진다. 못 넘겨도 (configured, resolved) 축만으로
             핵심 질문(auto 가 실제로 시장별로 갈리는가)은 답해진다.
+        count: 🔴 이 해석을 집계에 «셀지». 기본 True = 라이브 경로 동작 불변.
+            **False 는 관측 전용 호출(EOD 프로브 등) 전용**이다 — 이 함수는
+            순수 함수가 아니라 아래 `_resolution_counts` 를 변경하고 EOD 요약이
+            바로 그 카운터를 읽으므로, 후보 전건을 훑는 프로브가 그대로 부르면
+            **라이브 해석 집계에 합성 건수가 주입돼 P1 의 분모가 오염된다**
+            (2026-09-15 결정 패널 §D-1). 반환값은 count 와 무관하게 동일하다.
 
     반환값·의미는 집계 도입 전과 동일하다. 집계는 어떤 경우에도 반환에
     개입하지 않는다(`_count_resolution` 이 예외를 밖으로 내지 않는다).
@@ -183,7 +189,8 @@ def resolve_regime_index(configured: str, stock_code: str, market_lookup=None,
             market = None
         resolved = market if market in VALID_MARKETS else "both"
 
-    _count_resolution(strategy_name, cfg, resolved)
+    if count:
+        _count_resolution(strategy_name, cfg, resolved)
     return resolved
 
 

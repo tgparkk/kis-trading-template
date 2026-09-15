@@ -25,6 +25,11 @@ _REGIME_REFRESH_MAX_ATTEMPTS_PER_DAY = 12
 # DB 멱등 스킵 판정 대상 지수 코드(daily_prices stock_code).
 INDEX_CODES_FOR_SKIP = ("KOSPI", "KOSDAQ")
 
+# P1 프로브(2026-09-15 §F-1): daytrading 급락축 auto 의 관측 «분모»를 남기는 줄.
+RESOLUTION_PROBE_LOG_TAG = "[게이트지수해석-프로브]"
+# 후보 소유자 표기는 폴더키다(core/trading_context.py:285-297 가 폴더키로 비교).
+_DAYTRADING_KEY = "daytrading_3methods_breakout"
+
 
 class SystemMonitor:
     """시스템 모니터링 클래스"""
@@ -490,6 +495,91 @@ class SystemMonitor:
 
         from core.regime.market_classifier import log_resolution_summary
         log_resolution_summary(self.logger)
+        self._log_regime_index_probe()
+
+    def _log_regime_index_probe(self) -> None:
+        """daytrading 후보의 «시장 분포»를 거래일당 한 줄로 박제한다.
+
+        닫으려는 결함(2026-09-15 결정 패널 §F-1): 09-14·09-15 EOD 에서
+        daytrading 급락축 auto 의 P1·P2 가 **판정 불가**였다. 그날 후보가 전부
+        KOSDAQ 이었는지, KOSPI 후보가 있었는데 매수신호가 0 이었는지를 로그만으로
+        가릴 수 없었기 때문이다. 이 줄이 그 «분모»를 남긴다.
+
+        🔴 **§D-1 — 집계 오염 금지.** `resolve_regime_index` 는 순수 함수가
+           아니다(모듈 전역 `_resolution_counts` 를 변경하고, 바로 위
+           `log_resolution_summary` 가 그 카운터를 읽는다). 후보 전건을 여기서
+           그대로 훑으면 라이브 해석 집계에 **합성 건수가 주입**돼 P1 의 분모가
+           오염된다. 그래서 반드시 `count=False` 로 부른다.
+
+        호출 인자는 라이브 경로(`core/trading_decision_engine.py:353`)와 같은
+        형태다 — `(configured, 종목코드, strategy_name=폴더키)` + 우회 플래그.
+
+        ⚠️ **읽는 법**: 이 줄은 «15:35 시점의 SELECTED 스냅샷»이다. 당일 매수된
+           후보는 SELECTED→BUY_PENDING→POSITIONED 로 빠져나갔으므로 여기 안
+           잡힌다. 즉 「그날 평가된 후보 전체」가 아니라 「끝까지 안 산 후보」의
+           시장 분포다. P1 의 분모로 쓸 때 이 정의를 함께 적을 것 — 그래서
+           줄 끝에 `기준=` 꼬리표를 **줄 자신이 들고 다니게** 했다.
+           🔴 게다가 **실패·타임아웃 매수는 SELECTED 로 되돌아온다**
+           (`core/trading/stock_state_manager.py:16` BUY_PENDING→SELECTED ·
+           `core/trading/order_execution.py:256,272`). 그러니 이 모집단은
+           「안 산 후보」가 아니라 **「15:35 시점에 안 사고 있는 후보」**다 —
+           사려다 실패한 종목이 섞여 있고, 그 수는 이 줄만으로는 안 갈린다.
+
+        관측 전용이라 어떤 실패도 EOD 를 끊지 않는다.
+        """
+        try:
+            from bot.initializer import effective_regime_index
+            from core.models import StockState
+            from core.regime.market_classifier import (
+                get_stock_market,
+                resolve_regime_index,
+            )
+
+            tm = getattr(self.bot, 'trading_manager', None)
+            if tm is None:
+                return
+            selected = tm.get_stocks_by_state(StockState.SELECTED) or []
+            codes = [
+                getattr(s, 'stock_code', None) for s in selected
+                if getattr(s, 'strategy_name', None) == _DAYTRADING_KEY
+            ]
+            codes = [c for c in codes if c]
+
+            # 🟡 설정값은 «읽는다» — 리터럴 "auto" 를 박으면 설정이 KOSDAQ 인
+            #    날에도 auto 인 척하는 줄이 남아, 계기가 거짓말을 한다.
+            #    라이브 경로(`core/trading_context.py:346`)와 같은 실효값
+            #    규약을 쓰려고 `effective_regime_index` 를 **재사용**한다
+            #    (그 docstring 이 「함수 하나만 둔다」고 못 박은 바로 그 식).
+            strategies = getattr(self.bot, 'strategies', None) or {}
+            configured = effective_regime_index(strategies.get(_DAYTRADING_KEY))
+
+            n_kospi = sum(1 for c in codes if get_stock_market(c) == "KOSPI")
+            n_kosdaq = sum(1 for c in codes if get_stock_market(c) == "KOSDAQ")
+
+            resolved = [
+                resolve_regime_index(
+                    configured, c, strategy_name=_DAYTRADING_KEY, count=False
+                )
+                for c in codes
+            ]
+            # `auto→` 라벨은 configured == "auto" 일 때만 의미가 있다. 다른
+            # 설정에서 resolved 를 그대로 세면 「해석이 갈렸다」는 거짓 증거가
+            # 된다(non-auto 는 설정값을 그대로 돌려줄 뿐이다).
+            if configured == "auto":
+                a = resolved.count("KOSPI")
+                b = resolved.count("KOSDAQ")
+                c_both = resolved.count("both")
+            else:
+                a = b = c_both = 0
+
+            self.logger.info(
+                f"{RESOLUTION_PROBE_LOG_TAG} daytrading 설정={configured} "
+                f"KOSPI후보={n_kospi} KOSDAQ후보={n_kosdaq} "
+                f"auto→KOSPI={a} auto→KOSDAQ={b} both={c_both} "
+                f"기준=미매수SELECTED@15:35(매수체결분 제외)"
+            )
+        except Exception as e:  # noqa: BLE001 — 관측 전용, EOD 를 끊지 않는다
+            self.logger.warning(f"{RESOLUTION_PROBE_LOG_TAG} 산출 실패: {e}")
 
     def _run_equity_snapshot(self) -> None:
         """EOD 전략별 일별 equity 를 paper_strategy_equity 에 적재 (하루 1회).

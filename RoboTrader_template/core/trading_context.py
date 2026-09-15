@@ -352,7 +352,14 @@ class TradingContext:
                 regime_index=resolved_index
             )
             if is_crashing:
-                self.logger.info(f"매수 판단 스킵: 시장급락 ({crash_reason})")
+                # 맥락 3필드(2026-09-15 §F-5 ②): 어느 종목을 어느 전략이 «어느
+                # 해석지수»로 막았는지가 줄에 없어, 09-14 「daytrading 이 KOSPI
+                # 종목을 KOSDAQ 임계로 통과」 판정에 하루가 걸렸다. 표기 전용.
+                self.logger.info(
+                    f"매수 판단 스킵: 시장급락 ({crash_reason})"
+                    f" 종목={stock_code} 전략={self._strategy_key}"
+                    f" 해석지수={resolved_index}"
+                )
                 return None
 
             # PIT 일봉 국면 게이트: 허용집합 밖 국면이면 매수 차단
