@@ -88,15 +88,23 @@ def _spearman(a: Sequence[float], b: Sequence[float]) -> float:
     return float(np.corrcoef(ra, rb)[0, 1])
 
 
-def compute_metrics(days: Sequence[DayPair]) -> Dict[str, Any]:
-    """M1(집합 Jaccard 마이크로) · M2(순위 Spearman 중앙값) · M3(top5) · M4(score)."""
+def compute_metrics(days: Sequence[DayPair],
+                    drop_codes: Optional[set] = None) -> Dict[str, Any]:
+    """M1(집합 Jaccard 마이크로) · M2(순위 Spearman 중앙값) · M3(top5) · M4(score).
+
+    `drop_codes` 는 **보조 인쇄 전용**이다 — §1-2-b 배제처럼 «사전등록된 의도적 차이»가
+    지표를 얼마나 먹고 있는지 원인 귀속을 위해 쓴다.
+    🔴 **판정은 언제나 `drop_codes=None` 값으로 한다.** 이 인자로 문턱을 우회하지 않는다.
+    """
+    drop = drop_codes or set()
     inter_sum = union_sum = 0
     top_inter = top_den = 0
     m4_ok = m4_n = 0
     rhos: List[float] = []
     skipped = 0
     for d in days:
-        L, R = list(d.live), list(d.replay)
+        L = [c for c in d.live if c not in drop]
+        R = [c for c in d.replay if c not in drop]
         sL, sR = set(L), set(R)
         inter_sum += len(sL & sR)
         union_sum += len(sL | sR)

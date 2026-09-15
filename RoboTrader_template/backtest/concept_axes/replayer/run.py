@@ -465,6 +465,15 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
                 if sub:
                     r.extend(fmt_metrics(label, gt.compute_metrics(sub)))
             a("")
+            # 🔴 «보조» 인쇄 — 판정은 위 표(동결 정의)로 한다. 이 줄로 문턱을 우회하지 않는다.
+            if excluded:
+                aux = gt.compute_metrics(days, drop_codes=excluded)
+                a("> **보조(판정 아님)** — §1-2-b 배제 종목(우선주·리츠·외국주·ETF)을 "
+                  "라이브 집합에서도 뺐을 때: M1 = {:.4f} · M3 = {:.4f}. "
+                  "🔴 **판정은 위 표의 값이다** — 라이브 `STOCK_ONLY` 는 이들을 거르지 않으므로 "
+                  "그 차이는 «사전등록된 의도적 차이»이고, 이 줄은 그 크기를 재는 원인 귀속일 뿐 "
+                  "문턱 우회가 아니다.".format(aux["M1"], aux["M3"]))
+                a("")
             a("- 라이브 {:,}종목-일 · 재현 {:,}종목-일 · 교집합 {:,} · 합집합 {:,}".format(
                 total["n_live"], total["n_replay"], total["n_inter"], total["n_union"]))
             a("- M2 분모 제외일(교집합 원소 < 2) = **{}일**".format(total["M2_skipped_days"]))
@@ -486,15 +495,32 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
             a("**§4-5 불일치 원인 분류** (양방향 집합 차분 · 「몇 %」가 아니다)")
             a("")
             if len(cdf):
-                cnt = cdf.groupby(["label", "side"]).size().unstack(fill_value=0)
+                a("전체:")
+                a("")
                 a("```")
-                a(cnt.to_string())
+                a(cdf.groupby(["label", "side"]).size().unstack(fill_value=0).to_string())
+                a("```")
+                a("")
+                a("§1-2-b 배제분을 뺀 **잔여**(= 설명되지 않은 몫):")
+                a("")
+                a("```")
+                res = cdf[~cdf["excl_1_2_b"]]
+                a(res.groupby(["label", "side"]).size().unstack(fill_value=0).to_string()
+                  if len(res) else "(없음)")
                 a("```")
                 a("")
                 a("표본 (최대 10건):")
                 a("")
                 a("```")
                 a(cdf.head(10).to_string(index=False))
+                a("```")
+                # §4-5 C6 — 「노출 구간 미상 건은 «전수 목록» 인쇄」(PASS 를 막지는 않는다)
+                c6 = cdf[(cdf["label"] == "C6") & (~cdf["excl_1_2_b"])]
+                a("")
+                a("**C6 미상 잔여 전수** ({}건):".format(len(c6)))
+                a("")
+                a("```")
+                a(c6.to_string(index=False) if len(c6) else "(없음)")
                 a("```")
             else:
                 a("- 불일치 **0건**")
@@ -529,10 +555,29 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
                 "충족" if len(prot) >= gt.THRESHOLDS["protected_min_days"]
                 else "🔴 **미달 — 조건부 통과 조항 사용 불가**"))
             a("")
-    a("## 4. 판정")
+    a("## 4. 판정 요약")
+    a("")
+    a("| 전략 | params_hash | 구간 | 거래일 | M1 | M3 | M4 | 판정 |")
+    a("|---|---|---|---:|---:|---:|---:|---|")
+    for k in keys:
+        for seg in results[k]:
+            s2 = seg["seg"]
+            days = build_day_pairs(seg["live"], seg["ledger"])
+            for label, sub in [("**전체**", days)] + list(gt.split_windows(days).items()):
+                if not sub:
+                    continue
+                if label not in ("**전체**", "노출(≤2026-09-02)", "보호(≥2026-09-03)"):
+                    continue
+                mm = gt.compute_metrics(sub)
+                a("| `{}` | `{}` | {} | {} | {:.4f} | {:.4f} | {:.4f} | {} |".format(
+                    STRATEGIES[k]["name"], s2["params_hash"][:8], label, mm["n_days"],
+                    mm["M1"], mm["M3"], mm["M4"], gt.verdict(mm)))
     a("")
     a("🔴 문턱 미달이면 **고치지 않고** 위 분류표와 함께 보고한다 — "
       "문턱·정렬·룰을 결과를 보고 바꾸는 것은 금지다(REGISTRY 규칙 3).")
+    a("🔴 **조건부 통과 제안 불가** — 설계서 §4-6 3 조건 ⑤(보호 구간 ≥ 15거래일)를 "
+      "실측 보호 구간 **7거래일**이 못 채운다. 채우려면 대조 창을 **2026-09-30** 까지 "
+      "연장한 뒤 재판정해야 한다(연장은 게이트 대조 창만이고 **판정 창 537일은 건드리지 않는다**).")
     a("")
     return r
 
