@@ -58,6 +58,20 @@ STRATEGIES: Dict[str, Dict[str, Any]] = {
 }
 
 
+def require_parquet(args, written: Dict[str, str]) -> None:
+    """리뷰 L-5 — parquet 실패를 «조용히» 넘기지 않는다.
+
+    기본은 경고 + 리포트 머리 표 인쇄, `--require-parquet` 면 즉시 중단.
+    """
+    pq = str(written.get("parquet", ""))
+    if not pq.startswith("("):
+        return
+    msg = "parquet 미생성 — {}".format(pq)
+    if getattr(args, "require_parquet", False):
+        raise RuntimeError(msg + " (`--require-parquet`)")
+    log("      🟡 " + msg + " · csv 는 생성됨")
+
+
 def log(msg: str = "") -> None:
     print(msg, file=sys.stderr, flush=True)
 
@@ -78,13 +92,14 @@ def params_hash(p: Dict[str, Any]) -> str:
 # 라이브 스냅샷 (게이트 대조용) — SELECT 전용
 # ────────────────────────────────────────────────────────────────────────────
 def load_live_snapshots(conn, strategy: str, start: str, end: str) -> pd.DataFrame:
+    # 리뷰 L-6 — 파라미터 바인딩.
     df = pd.read_sql("""
         SELECT scan_date, stock_code, rank_in_snapshot, score, params_hash,
                params_json, created_at
         FROM screener_snapshots
-        WHERE strategy = '{s}' AND scan_date BETWEEN '{a}' AND '{b}'
+        WHERE strategy = %s AND scan_date BETWEEN %s AND %s
         ORDER BY scan_date, rank_in_snapshot
-    """.format(s=strategy, a=start, b=end), conn)
+    """, conn, params=(strategy, start, end))
     df["scan_date"] = pd.to_datetime(df["scan_date"])
     return df
 
@@ -270,6 +285,8 @@ def main(argv=None) -> int:
     ap.add_argument("--gate", action="store_true",
                     help="라이브 `screener_snapshots` 와 일치율 게이트(§4)")
     ap.add_argument("--max-candidates", type=int, default=scn.MAX_CANDIDATES_PER_STRATEGY)
+    ap.add_argument("--require-parquet", action="store_true",
+                    help="parquet 생성 실패를 **오류로** 취급한다(리뷰 L-5 · 기본은 경고·인쇄)")
     args = ap.parse_args(argv)
 
     # V5-a — 실행 시간창
@@ -356,6 +373,8 @@ def main(argv=None) -> int:
                     w = ldg.write_outputs(
                         r["ledger"], r["diag"],
                         out_dir / key / s["params_hash"][:8], meta=r["meta"])
+                    r["written"] = w
+                    require_parquet(args, w)
                     log("       " + " · ".join("{}={}".format(a_, b_)
                                                for a_, b_ in w.items()))
                     seg_out.append(r)
@@ -370,6 +389,8 @@ def main(argv=None) -> int:
                     sname, len(r["ledger"]), len(cal), r["secs"]))
                 w = ldg.write_outputs(r["ledger"], r["diag"], out_dir / key,
                                       meta=r["meta"])
+                r["written"] = w
+                require_parquet(args, w)
                 log("      " + " · ".join("{}={}".format(k, v) for k, v in w.items()))
                 results[key] = [r]
 
@@ -426,6 +447,16 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
     a("| 지문 대상 | {:,}행 / {:,}종목 |".format(fp1["n_rows"], fp1["n_stocks"]))
     a("| 로드 일봉 | {:,}행 / {:,}종목 (`{}`~`{}`) |".format(
         len(px), px["stock_code"].nunique(), args.hist_start, args.end))
+    pq_bad = []
+    for _k in keys:
+        for _seg in results[_k]:
+            _w = _seg.get("written") or {}
+            if str(_w.get("parquet", "")).startswith("("):
+                pq_bad.append("{}: {}".format(_k, _w.get("parquet")))
+    a("| parquet 산출(리뷰 L-5) | {} |".format(
+        "✅ 전부 생성" if not pq_bad
+        else "🔴 **미생성** — " + " · ".join(pq_bad)
+        + " (원장은 csv 로만 남는다 · `--require-parquet` 면 중단)"))
     nc = px.attrs.get("normalize_counts") or {}
     a("| 로더 위생 처리(리뷰 L-1 · **라이브에 없는 처리** · 설계서 근거 없음) | "
       "`date` 손상 제거 {:,}행 · `n_dropped_close` {:,}행 · `n_patched_ohl` {:,}행 |".format(

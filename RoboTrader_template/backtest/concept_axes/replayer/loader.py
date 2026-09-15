@@ -159,14 +159,15 @@ def normalize_prices(raw: pd.DataFrame) -> pd.DataFrame:
 
 def load_prices(conn, start: str, end: str) -> pd.DataFrame:
     """`start`~`end` 일봉(의사티커 제외). `volume` 은 **이미 adj 적용된** 값이다."""
+    # 리뷰 L-6 — 날짜는 **파라미터 바인딩**(`STOCK_ONLY` 만 상수 조각이다).
     df = pd.read_sql("""
         SELECT stock_code, date, open, high, low, close,
                (volume * COALESCE(adj_factor, 1))::double precision AS volume,
                adj_factor, market_cap, volatility_20d
         FROM daily_prices
-        WHERE {stock_only} AND date BETWEEN '{start}' AND '{end}'
+        WHERE {stock_only} AND date BETWEEN %s AND %s
         ORDER BY stock_code, date
-    """.format(stock_only=STOCK_ONLY, start=start, end=end), conn)
+    """.format(stock_only=STOCK_ONLY), conn, params=(start, end))
     return normalize_prices(df)
 
 
@@ -174,9 +175,9 @@ def load_trading_calendar(conn, start: str, end: str) -> List[pd.Timestamp]:
     """거래일 달력 SSOT = `stock_code='KOSPI'` 행(§1-3-b). 종목행을 쓰지 않는다."""
     df = pd.read_sql("""
         SELECT DISTINCT date FROM daily_prices
-        WHERE stock_code = '{t}' AND date BETWEEN '{start}' AND '{end}'
+        WHERE stock_code = %s AND date BETWEEN %s AND %s
         ORDER BY date
-    """.format(t=CALENDAR_TICKER, start=start, end=end), conn)
+    """, conn, params=(CALENDAR_TICKER, start, end))
     d = pd.to_datetime(df["date"], format="mixed", errors="coerce").dropna()
     return sorted(pd.Series(d).unique().tolist())
 
@@ -275,7 +276,7 @@ FROM (
            coalesce(adj_factor::text,    E'\\N')
          ) AS row_md5
   FROM daily_prices
-  WHERE {stock_only} AND date BETWEEN '{start}' AND '{end}'
+  WHERE {stock_only} AND date BETWEEN %s AND %s
 ) t
 GROUP BY stock_code
 ORDER BY stock_code
@@ -291,8 +292,8 @@ def db_fingerprint(conn, start: str, end: str) -> Dict[str, Any]:
     🔴 `returns_*`·`volatility_20d` 는 파생이라 제외 — 별도 일관성 검사로 뺀다.
     🔴 **스냅샷 동결 «이전»에 일어난 값 변경은 어떤 컬럼으로도 판별할 수 없다.**
     """
-    q = _HASH_SQL.format(stock_only=STOCK_ONLY, start=start, end=end)
-    df = pd.read_sql(q, conn)
+    q = _HASH_SQL.format(stock_only=STOCK_ONLY)
+    df = pd.read_sql(q, conn, params=(start, end))
     per_stock = {str(c): str(h) for c, h in zip(df["stock_code"], df["stock_md5"])}
     blob = "".join("{}:{};".format(c, per_stock[c]) for c in sorted(per_stock))
     return {
