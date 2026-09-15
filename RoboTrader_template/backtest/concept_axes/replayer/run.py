@@ -128,6 +128,9 @@ def replay(px: pd.DataFrame, bar_flags: pd.DataFrame, key: str, *,
         uni_info=uni_info, names=names, markets=markets, corp_events=corp_events,
         max_candidates=max_candidates)
     diag_df = ldg.build_diag(diag, uni_info, ties, led)
+    # 리뷰 L-1 — 로더가 «임의로» 건드린 행 수를 진단 CSV 에도 올린다(라이브에 없는 처리).
+    for _k, _v in (px.attrs.get("normalize_counts") or {}).items():
+        diag_df[_k] = _v
     by_code = {c: g for c, g in px.groupby("stock_code", sort=False)}
 
     def vol_lookup(code, scan_date):
@@ -423,6 +426,11 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
     a("| 지문 대상 | {:,}행 / {:,}종목 |".format(fp1["n_rows"], fp1["n_stocks"]))
     a("| 로드 일봉 | {:,}행 / {:,}종목 (`{}`~`{}`) |".format(
         len(px), px["stock_code"].nunique(), args.hist_start, args.end))
+    nc = px.attrs.get("normalize_counts") or {}
+    a("| 로더 위생 처리(리뷰 L-1 · **라이브에 없는 처리** · 설계서 근거 없음) | "
+      "`date` 손상 제거 {:,}행 · `n_dropped_close` {:,}행 · `n_patched_ohl` {:,}행 |".format(
+          nc.get("n_dropped_bad_date", 0), nc.get("n_dropped_close", 0),
+          nc.get("n_patched_ohl", 0)))
     a("| 거래일 달력 | **{}일** (SSOT = `stock_code='KOSPI'` 행 · `{}`~`{}`) |".format(
         len(cal), args.start, args.end))
     a("")

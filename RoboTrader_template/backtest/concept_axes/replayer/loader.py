@@ -116,7 +116,15 @@ def exclusion_counts(cls: Dict[str, Dict[str, bool]]) -> Dict[str, int]:
 # 가격 로드 · 정규화
 # ────────────────────────────────────────────────────────────────────────────
 def normalize_prices(raw: pd.DataFrame) -> pd.DataFrame:
-    """`date` text 손상값 coerce·dropna + 비양수 종가 제거 + OHL 보정(§0.2 · §1-1)."""
+    """`date` text 손상값 coerce·dropna + 비양수 종가 제거 + OHL 보정.
+
+    ⚠️ 리뷰 L-1 — **이 위생 처리는 라이브 읽기 계층에 «없다» · 설계서 근거도 없다.**
+       (예전 도킹스트링의 `§0.2` 인용은 **설계서에 없는 절**이었다 — 삭제했다.)
+       재현기가 임의로 넣은 방어이므로 «몇 행을 건드렸는지» 를 세서
+       `df.attrs["normalize_counts"]` 에 남기고 `ledger_diag.csv` · 리포트에 인쇄한다.
+       🔴 라이브가 안 하는 보정이므로 그 건수가 0 이 아니면 그만큼이 «재현기 고유의 차» 이다.
+    """
+    n_raw = len(raw)
     df = raw.copy()
     df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
     df = df.dropna(subset=["date"])
@@ -126,15 +134,27 @@ def normalize_prices(raw: pd.DataFrame) -> pd.DataFrame:
     for c in ("adj_factor", "market_cap", "volatility_20d"):
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
-    df = df[~(df["close"].isna() | (df["close"] <= 0))].copy()
+    n_after_date = len(df)
+    bad_close = df["close"].isna() | (df["close"] <= 0)
+    n_dropped_close = int(bad_close.sum())
+    df = df[~bad_close].copy()
+    n_patched_ohl = 0
     for c in ("open", "high", "low"):
         if c in df.columns:
             m = df[c].isna() | (df[c] <= 0)
+            n_patched_ohl += int(m.sum())
             df.loc[m, c] = df.loc[m, "close"]
     if "volume" in df.columns:
         df["volume"] = df["volume"].fillna(0).clip(lower=0)
-    return (df.sort_values(["stock_code", "date"], kind="mergesort")
-              .reset_index(drop=True))
+    out = (df.sort_values(["stock_code", "date"], kind="mergesort")
+             .reset_index(drop=True))
+    out.attrs["normalize_counts"] = {
+        "n_rows_raw": int(n_raw),
+        "n_dropped_bad_date": int(n_raw - n_after_date),
+        "n_dropped_close": n_dropped_close,
+        "n_patched_ohl": n_patched_ohl,
+    }
+    return out
 
 
 def load_prices(conn, start: str, end: str) -> pd.DataFrame:

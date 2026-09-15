@@ -183,4 +183,10 @@ def scan_strategy(px: pd.DataFrame,
                 "score": float(score), "reason": reason,
                 "n_bars": int(len(win)), "row_idx": int(g.index[i]),
             })
+    # 리뷰 L-2 — 「적격인데 그날 봉이 없어 평가도 못 한」 종목 수를 인쇄한다.
+    #   «평가했는데 안 맞았다» 와 «아예 못 봤다» 를 같은 칸에 넣지 않는다.
+    for dg in diag.values():
+        dg["n_no_bar_at_d"] = max(
+            0, dg.get("n_eligible", 0) - dg.get("n_impossible", 0)
+            - dg.get("n_evaluated", 0))
     return matched, diag, impossible_codes
