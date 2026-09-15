@@ -171,6 +171,37 @@ def load_prices(conn, start: str, end: str) -> pd.DataFrame:
     return normalize_prices(df)
 
 
+# 🖨️ 빈티지 보정(인쇄 전용) — `overtime_daily` 수집 시작일.
+#    이 날 «이전» 구간은 시간외 거래량 원본이 없어 **원리적으로 보정 불가**다
+#    (30일 롤링이라 소급 수집도 불가 · `collectors/market_flow_collector.py:188`).
+OVERTIME_MIN_DATE = "2026-07-03"
+
+
+def load_overtime_volume(conn, start: str, end: str) -> Dict[Tuple[str, pd.Timestamp], float]:
+    """`overtime_daily.ovtm_vol`(시간외 단일가 · TR `FHPST02320000`) — **인쇄 전용**.
+
+    🖨️ 용도는 하나뿐이다: 「라이브가 D+1 09:00 에 읽은 D 봉」을 근사 복원해
+    M4 를 «같은 빈티지»로 한 번 더 인쇄하는 것(`TRACE_M4_channel_2026-09-15.md` §8).
+    🔴 **판정에 쓰지 않는다** — 문턱·정렬·룰·주 게이트 표는 이 값을 보지 않는다.
+    🔑 `volume` 이 `× COALESCE(adj_factor,1)` 된 공간에 있으므로 **같은 계수를 곱해**
+       돌려준다(이중조정도, 미조정도 아니다). `daily_prices` PK 가 `(stock_code, date)`
+       라 LEFT JOIN 이 행을 늘리지 않는다. ⚠️ `daily_prices.date` 는 **text** 컬럼이라
+       `o.date::text` 로 캐스팅한다(실측 ISO `YYYY-MM-DD` 131,505/131,505).
+    """
+    df = pd.read_sql("""
+        SELECT o.stock_code, o.date,
+               (o.ovtm_vol * COALESCE(p.adj_factor, 1))::double precision AS ovtm_vol
+        FROM overtime_daily o
+        LEFT JOIN daily_prices p
+               ON p.stock_code = o.stock_code AND p.date = o.date::text
+        WHERE o.date BETWEEN %s AND %s AND o.ovtm_vol IS NOT NULL
+    """, conn, params=(start, end))
+    d = pd.to_datetime(df["date"], errors="coerce")
+    return {(str(c), pd.Timestamp(t)): float(v)
+            for c, t, v in zip(df["stock_code"], d, df["ovtm_vol"])
+            if pd.notna(t) and v == v}
+
+
 def load_trading_calendar(conn, start: str, end: str) -> List[pd.Timestamp]:
     """거래일 달력 SSOT = `stock_code='KOSPI'` 행(§1-3-b). 종목행을 쓰지 않는다."""
     df = pd.read_sql("""

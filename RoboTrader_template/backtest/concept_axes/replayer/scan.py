@@ -124,6 +124,21 @@ def rank_and_truncate(scored: Sequence[Tuple[str, float]],
 # ────────────────────────────────────────────────────────────────────────────
 # 스캔 루프
 # ────────────────────────────────────────────────────────────────────────────
+def vintage_adjust_window(win: pd.DataFrame, sub: float) -> pd.DataFrame:
+    """🖨️ **인쇄 전용** — 창의 **마지막 봉(D) 하나만** 거래량을 `sub` 만큼 줄인 사본.
+
+    🔑 왜 마지막 봉만인가: 라이브는 D+1 09:00 에 창을 읽는데, 그 시점에
+    `D−1` 이하 봉은 D 15:3x 의 7봉 UPSERT 로 **이미 시간외분이 합산돼 있고**
+    `D` 봉만 정규장 값이다(`TRACE_M4_channel_2026-09-15.md` §3·§4 —
+    delta 가 `overtime_daily.ovtm_vol` 하루치와 단위 주까지 일치한다).
+    🔴 판정이 아니다 — 문턱·정렬·룰은 이 함수를 보지 않는다.
+    """
+    out = win.copy()
+    j = out.columns.get_loc("volume")
+    out.iloc[-1, j] = max(0.0, float(out.iloc[-1, j]) - float(sub))
+    return out
+
+
 def scan_strategy(px: pd.DataFrame,
                   elig: Dict[Any, Set[str]],
                   adapter,
@@ -131,11 +146,16 @@ def scan_strategy(px: pd.DataFrame,
                   lookback: int,
                   scan_dates: Optional[Iterable[Any]] = None,
                   max_candidates: int = MAX_CANDIDATES_PER_STRATEGY,
-                  progress_every: int = 300):
+                  progress_every: int = 300,
+                  vintage_vol: Optional[Dict[Tuple[str, Any], float]] = None,
+                  vintage_stats: Optional[Dict[str, int]] = None):
     """`(rows, diag, impossible_codes)` — `rows` 는 발화 종목-일 전부(절단 «전»).
 
     🔑 **DB 왕복 0회** — 벌크 로드된 `px` 만 본다(종목×날짜 왕복 금지).
     🔴 절단은 여기서 하지 않는다 — `ledger.build_ledger` 가 날짜별로 정렬·절단한다.
+    🖨️ `vintage_vol` 이 주어지면 **창의 마지막 봉만** 그만큼 줄여 「라이브 09:00 빈티지」를
+       근사 복원한다 — **인쇄 전용 보조 판**이고 기본은 `None`(주 게이트 경로 불변).
+       `vintage_stats` 를 주면 「보정 적용 / 대응 행 없음」 종목-일 수를 거기에 채운다.
     """
     want = None if scan_dates is None else {pd.Timestamp(d) for d in scan_dates}
     matched: List[Dict[str, Any]] = []
@@ -151,6 +171,7 @@ def scan_strategy(px: pd.DataFrame,
     t0 = time.perf_counter()
     total = px["stock_code"].nunique()
     done = 0
+    n_vintage_applied = n_vintage_missing = 0
     for code, g in px.groupby("stock_code", sort=False):
         done += 1
         if progress_every and done % progress_every == 0:
@@ -168,6 +189,15 @@ def scan_strategy(px: pd.DataFrame,
             dg = diag.setdefault(d, {"n_universe": 0, "n_eligible": 0, "n_no_data": 0,
                                      "n_impossible": 0, "n_evaluated": 0, "n_matched": 0})
             win = window_slice(g, i, lookback)
+            if vintage_vol is not None:
+                _sub = vintage_vol.get((code, d))
+                if _sub:
+                    win = vintage_adjust_window(win, _sub)
+                    n_vintage_applied += 1
+                elif (code, d) in vintage_vol:
+                    n_vintage_applied += 1          # ovtm_vol = 0 (보정 가능·증분 0)
+                else:
+                    n_vintage_missing += 1
             if is_impossible(win):
                 dg["n_impossible"] += 1
                 impossible_codes.setdefault(d, set()).add(code)
@@ -192,4 +222,8 @@ def scan_strategy(px: pd.DataFrame,
         dg["n_no_bar_at_d"] = max(
             0, dg.get("n_eligible", 0) - dg.get("n_impossible", 0)
             - dg.get("n_evaluated", 0))
+    if vintage_stats is not None:
+        # 🖨️ 「보정 가능 / 보정 불가」 — 평가한 종목-일 기준. 인쇄만 한다.
+        vintage_stats["n_applied"] = n_vintage_applied
+        vintage_stats["n_missing"] = n_vintage_missing
     return matched, diag, impossible_codes

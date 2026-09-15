@@ -124,3 +124,19 @@ def test_rank_and_truncate_is_deterministic_under_input_permutation():
     a = scan.rank_and_truncate(scored, max_candidates=20)
     b = scan.rank_and_truncate(list(reversed(scored)), max_candidates=20)
     assert a == b
+
+
+# ── 🖨️ 빈티지 보정(인쇄 전용) — 창의 «마지막 봉만» 줄인다 ────────────────────
+
+def test_vintage_adjust_touches_only_the_last_bar():
+    """라이브가 D+1 09:00 에 읽은 창은 `D` 봉만 정규장 값이다 — 나머지는 이미 자가치유됐다."""
+    win = pd.DataFrame({"close": [10.0] * 3, "volume": [100.0, 200.0, 300.0]})
+    out = scan.vintage_adjust_window(win, 50.0)
+    assert list(out["volume"]) == [100.0, 200.0, 250.0]
+    # 원본은 건드리지 않는다(사본).
+    assert list(win["volume"]) == [100.0, 200.0, 300.0]
+
+
+def test_vintage_adjust_clips_at_zero():
+    win = pd.DataFrame({"close": [10.0], "volume": [30.0]})
+    assert list(scan.vintage_adjust_window(win, 99.0)["volume"]) == [0.0]

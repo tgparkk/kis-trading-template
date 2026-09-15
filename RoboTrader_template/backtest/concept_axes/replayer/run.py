@@ -127,15 +127,19 @@ def replay(px: pd.DataFrame, bar_flags: pd.DataFrame, key: str, *,
            scan_dates: List[pd.Timestamp], params: Optional[Dict[str, Any]],
            excluded: set, names: Dict[str, str], markets: Dict[str, str],
            corp_events: Dict[Any, str], meta: Dict[str, str],
-           max_candidates: int):
+           max_candidates: int,
+           vintage_vol: Optional[Dict[Any, float]] = None):
     adapter = make_adapter(key)
     merged = {**adapter.default_params(), **(params or {})}
     uni = ldr.build_universe(px)
     elig, uni_info = scn.eligible_for_dates(uni, adapter, scan_dates, exclude=excluded)
     t0 = time.perf_counter()
+    vstats: Dict[str, int] = {}
     matched, diag, impossible = scn.scan_strategy(
         px, elig, adapter, merged, adapter.lookback_days,
-        scan_dates=scan_dates, max_candidates=max_candidates)
+        scan_dates=scan_dates, max_candidates=max_candidates,
+        vintage_vol=vintage_vol,
+        vintage_stats=(vstats if vintage_vol is not None else None))
     secs = time.perf_counter() - t0
     run_meta = dict(meta, replayer_params_hash=params_hash(merged))
     led, ties = ldg.build_ledger(
@@ -157,7 +161,8 @@ def replay(px: pd.DataFrame, bar_flags: pd.DataFrame, key: str, *,
 
     return {"ledger": led, "diag": diag_df, "uni_info": uni_info, "ties": ties,
             "impossible": impossible, "params": merged, "secs": secs,
-            "n_matched": len(matched), "vol_lookup": vol_lookup, "meta": run_meta}
+            "n_matched": len(matched), "vol_lookup": vol_lookup, "meta": run_meta,
+            "vintage_stats": vstats}
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -287,6 +292,11 @@ def main(argv=None) -> int:
     ap.add_argument("--max-candidates", type=int, default=scn.MAX_CANDIDATES_PER_STRATEGY)
     ap.add_argument("--require-parquet", action="store_true",
                     help="parquet 생성 실패를 **오류로** 취급한다(리뷰 L-5 · 기본은 경고·인쇄)")
+    ap.add_argument("--vintage-adjust", action="store_true",
+                    help=("🖨️ **인쇄 전용 보조 판** — D 봉 거래량에서 `overtime_daily.ovtm_vol` "
+                          "(시간외 단일가)을 빼 「라이브 09:00 빈티지」를 근사 복원한 창으로 "
+                          "M1~M4 를 «한 번 더» 인쇄한다(2026-07-03~ 만 대상 · 기본 off). "
+                          "🔴 판정 아님 — 문턱·주 게이트 표는 불변이다."))
     args = ap.parse_args(argv)
 
     # V5-a — 실행 시간창
@@ -312,6 +322,12 @@ def main(argv=None) -> int:
         px = ldr.load_prices(conn, args.hist_start, args.end)
         log("      {:,}행 / {:,}종목 · {:.0f}s".format(
             len(px), px["stock_code"].nunique(), time.perf_counter() - t0))
+
+        ot_vol = None
+        if args.gate and args.vintage_adjust:
+            ot_vol = ldr.load_overtime_volume(conn, ldr.OVERTIME_MIN_DATE, args.end)
+            log("      🖨️ 빈티지 보정용 `overtime_daily` {:,}행 ({}~{}) — **인쇄 전용**".format(
+                len(ot_vol), ldr.OVERTIME_MIN_DATE, args.end))
 
         cal = ldr.load_trading_calendar(conn, args.start, args.end)
         names = ldr.load_stock_names(conn)
@@ -370,6 +386,25 @@ def main(argv=None) -> int:
                             "max_candidates", args.max_candidates)))["ledger"]
                     r["seg"] = s
                     r["live"] = live[live["scan_date"].isin(s["dates"])]
+                    # 🖨️ 인쇄 전용 보조 판 — 판정에 쓰지 않는다(문턱·주 표 불변).
+                    if ot_vol is not None:
+                        vmin = pd.Timestamp(ldr.OVERTIME_MIN_DATE)
+                        vdates = [d for d in s["dates"] if pd.Timestamp(d) >= vmin]
+                        r["vintage"] = None
+                        if vdates:
+                            rv = replay(px, bar_flags, key, scan_dates=vdates,
+                                        params=s["params"], excluded=excluded,
+                                        names=names, markets=markets, corp_events=corp,
+                                        meta=meta, vintage_vol=ot_vol,
+                                        max_candidates=int(s["params"].get(
+                                            "max_candidates", args.max_candidates)))
+                            r["vintage"] = {"ledger": rv["ledger"], "dates": vdates,
+                                            "stats": rv["vintage_stats"],
+                                            "secs": rv["secs"]}
+                            log("       🖨️ 빈티지 보정 판 {}일 · 보정 {:,} / 보정불가 {:,}"
+                                " · {:.0f}s (인쇄 전용)".format(
+                                    len(vdates), rv["vintage_stats"].get("n_applied", 0),
+                                    rv["vintage_stats"].get("n_missing", 0), rv["secs"]))
                     w = ldg.write_outputs(
                         r["ledger"], r["diag"],
                         out_dir / key / s["params_hash"][:8], meta=r["meta"])
@@ -412,6 +447,69 @@ def main(argv=None) -> int:
     log("리포트 → {}".format(path))
     print(path)
     return 0
+
+
+def _vintage_block(seg: Dict[str, Any]) -> List[str]:
+    """🖨️ **인쇄 전용 보조 표** — 「빈티지 보정 판」.
+
+    🔴 **판정 언어를 쓰지 않는다** — PASS/FAIL·충족/미달·개선 같은 말을 붙이지 않고,
+    문턱은 건드리지 않으며, 주 게이트 표(위)는 이 표와 무관하게 그대로다.
+    🔑 무엇을 재나: 「라이브가 D+1 09:00 에 읽은 D 봉」을 `volume − ovtm_vol` 로
+    근사 복원한 창으로 «한 번 더» 재현해, 같은 날짜 집합에서 M1~M4 를 나란히 인쇄한다.
+    잔차는 시간외 «종가»(15:40~16:00) 추정분으로 남는다
+    (`TRACE_M4_channel_2026-09-15.md` §8 · 저장 소스 없음).
+    """
+    out: List[str] = []
+    v = seg.get("vintage", "absent")
+    if v == "absent":
+        return out
+    a = out.append
+    vmin = ldr.OVERTIME_MIN_DATE
+    all_dates = [pd.Timestamp(d) for d in seg["seg"]["dates"]]
+    n_pre = sum(1 for d in all_dates if d < pd.Timestamp(vmin))
+    a("**🖨️ 빈티지 보정 판 · 인쇄 전용 · {}~{}**".format(vmin, GEN_END))
+    a("")
+    if not v:
+        a("- 이 `params_hash` 구간은 **전부 `{}` 이전**이라 `overtime_daily` 대응 행이 "
+          "없다 ⇒ **보정 불가 {}거래일**(30일 롤링이라 소급 수집도 불가).".format(vmin, n_pre))
+        a("")
+        return out
+    vdays_all = [pd.Timestamp(d) for d in v["dates"]]
+    base_days = [dp for dp in build_day_pairs(seg["live"], seg["ledger"])
+                 if pd.Timestamp(dp.scan_date) in set(vdays_all)]
+    vin_days = [dp for dp in build_day_pairs(seg["live"], v["ledger"])
+                if pd.Timestamp(dp.scan_date) in set(vdays_all)]
+    mb, mv = gt.compute_metrics(base_days), gt.compute_metrics(vin_days)
+    eb, ev = gt.m4_rel_error_stats(base_days), gt.m4_rel_error_stats(vin_days)
+
+    def f(x):
+        return "n/a" if (x is None or x != x) else "{:.4f}".format(x)
+
+    def e(d_, k):
+        return "n/a" if not d_.get("n") else "{:.2e}".format(d_[k])
+
+    a("| 판 | 거래일 | M1 | M2 | M3 | M4 | M4 상대오차 중앙값 | p95 |")
+    a("|---|---:|---:|---:|---:|---:|---:|---:|")
+    for nm, m, ee in (("보정 «전»(주 게이트와 같은 창)", mb, eb),
+                      ("보정 «후»(`volume − ovtm_vol`)", mv, ev)):
+        a("| {} | {} | {} | {} | {} | {} | {} | {} |".format(
+            nm, m["n_days"], f(m["M1"]), f(m["M2"]), f(m["M3"]), f(m["M4"]),
+            e(ee, "median"), e(ee, "p95")))
+    a("")
+    st = v.get("stats") or {}
+    a("- 보정 **가능** 종목-일(평가 기준 · `overtime_daily` 대응 행 있음) = **{:,}**"
+      " · 보정 **불가**(대응 행 없음) = **{:,}**".format(
+          st.get("n_applied", 0), st.get("n_missing", 0)))
+    a("- 게이트 창 중 `< {}` 구간 **{}거래일**은 `overtime_daily` 자체가 없어 "
+      "**원리적으로 보정 불가**다(30일 롤링 · 소급 수집 불가) ⇒ 이 표의 대상에서 빠져 있다."
+      .format(vmin, n_pre))
+    a("- M4 대조 가능 행 = 보정 전 **{:,}** · 보정 후 **{:,}**".format(mb["M4_n"], mv["M4_n"]))
+    a("")
+    a("🔴 **이 표는 판정이 아니다** — 문턱(`M4_pass` 0.99 등)은 불변이고, 위 «주 게이트 표»가 "
+      "판정의 자리다. 여기서 남는 잔차는 시간외 **종가**(15:40~16:00) 추정분이며 저장 소스가 "
+      "없어 지금은 확증도 반증도 못 한다(TRACE §10).")
+    a("")
+    return out
 
 
 def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
@@ -650,7 +748,7 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
             if k == "ma20":
                 dg = gt.m4_lag_profile(days, seg["vol_lookup"])
                 if dg.get("n"):
-                    a("**M4 불일치의 lag 프로파일** — 「D−k 봉«만» 바뀌었다」고 "
+                    a("**M4 불일치의 lag 표(기록용 · 판별 장치 아님)** — 「D−k 봉«만» 바뀌었다」고 "
                       "**가정**했을 때의 함의값 비 `implied / stored` ({:,}행 · 교집합 행 한정):".format(
                           dg["n"]))
                     a("")
@@ -662,13 +760,25 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
                             row["p95"], row["frac_below_1"]))
                     a("")
                     ww = dg.get("whole_window") or {}
-                    a("🔴 **채널 미결** — 「마지막 봉만 바뀌었다」고 **가정**하면 "
-                      "k=0 의 {:,}건이 전부 `< 1` 이다. 하지만 그건 «가정 위의 수치»이지 "
-                      "측정된 채널이 아니다 — 「창 전체가 미세하게 커졌다」는 설명과 "
-                      "**관측상 구분되지 않는다**(위 표가 k 에 걸쳐 평탄하면 한 봉 채널이 아니다). "
-                      "같은 불일치를 「창 20봉이 균일하게 바뀌었다」로 읽으면 "
-                      "라이브 전량 함의비 = **{} ~ {}**(중앙값 {})다.".format(
-                          (dg["lags"][0]["n"] if dg["lags"] else 0),
+                    a("🟢 **채널은 확정됐다 — 추적으로** (`TRACE_M4_channel_2026-09-15.md`): "
+                      "D 15:3x 정규장 INSERT → D+1 09:00 라이브 판독 → D+1 15:3x 의 7봉 UPSERT 가 "
+                      "**시간외 단일가를 사후 합산**한다. 증분이 독립 테이블 "
+                      "`overtime_daily.ovtm_vol` 과 **855/893(95.7%)** 에서 일치하고 **166행은 "
+                      "단위 주까지 정확**하며, 아직 재기록되지 않은 하루(2026-09-14)에서는 "
+                      "**20/20 이 `ratio = 1.00000000`** 이다.")
+                    a("")
+                    a("🔴🔴 **위 표는 판별 장치가 «아니다» — 어느 `k` 가 바뀌었는지 가를 수 없다.** "
+                      "`implied_k = 20·live − (Σwin − stored_k) = stored_k − Δ` 이고 "
+                      "`Δ = Σwin − 20·live = 20·(replay − live)` 는 **`k` 에 무관한 상수**다 ⇒ "
+                      "`ratio_k = 1 − Δ/stored_k`. 즉 `k` 에 따라 달라지는 것은 분모 "
+                      "`stored_k`(그 봉 거래량)의 **크기 차이 하나뿐**이고, 같은 종목의 20봉 거래량은 "
+                      "자릿수가 비슷하므로 **어떤 채널이 참이든 표는 평탄하게 나온다**. "
+                      "⇒ ***평탄함은 「한 봉 채널」의 반증이 아니며, `k=0` 이 전부 `< 1` 인 것도 "
+                      "증거가 아니다***(`Δ > 0` 이면 정의상 모든 `k` 에서 비가 `< 1` 이다). "
+                      "이 표는 **기록용**이고 채널 근거로 인용하면 안 된다.")
+                    a("")
+                    a("참고 — 같은 불일치를 「창 20봉이 균일하게 바뀌었다」로 읽으면 "
+                      "라이브 전량 함의비 = **{} ~ {}**(중앙값 {})다(이 역시 «가정 위의 수치»다).".format(
                           ("{:+.2f}%".format(ww["min_pct"]) if ww else "n/a"),
                           ("{:+.2f}%".format(ww["max_pct"]) if ww else "n/a"),
                           ("{:+.2f}%".format(ww["median_pct"]) if ww else "n/a")))
@@ -676,6 +786,8 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
                     a("🔴 이건 원인 **가설별 인쇄**이지 문턱 완화가 아니다 — M4 문턱 99% 는 그대로다. "
                       "그리고 이 표는 **교집합 행에서만** 재어진다(한쪽에만 있는 종목은 M4 대조 자체가 안 된다).")
             a("")
+            # 🖨️ 빈티지 보정 보조 표 — **인쇄 전용**. 판정·문턱은 위 표 그대로다.
+            r.extend(_vintage_block(seg))
             # 리뷰 M-1 — §4-6 조건 ④ `M1_exposed_floor` 충족/미달을 «명시» 인쇄한다.
             exposed = [d for d in days if d.scan_date < gt.PROTECTED_FROM]
             if exposed:

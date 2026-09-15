@@ -232,3 +232,51 @@ def test_verdict_m2_nan_is_not_a_failure_reason():
     """교집합 원소 < 2 가 전일이면 M2 는 «문턱 미달»이 아니라 «재지 불가»다."""
     assert gate.verdict({"M1": 0.99, "M2": float("nan"), "M3": 0.99,
                          "M4": 1.0}) == "PASS"
+
+
+# ── m4_lag_profile 은 «기록용» 이다 — 어느 k 가 바뀌었는지 가를 수 없다 ────────
+
+def _one_day_profile(win, live_score):
+    """창 `win`(20봉 거래량)과 라이브 score 하나로 lag 표를 낸다."""
+    import numpy as np
+    days = [gate.DayPair("2026-07-10", live=["A"], replay=["A"],
+                         live_scores={"A": live_score},
+                         replay_scores={"A": float(np.mean(win))})]
+    return gate.m4_lag_profile(days, lambda c, d: np.asarray(win, dtype=float))
+
+
+def test_lag_profile_ratio_is_one_minus_delta_over_stored_k():
+    """🔑 `implied_k = stored_k − Δ` 이고 `Δ = 20·(replay − live)` 는 **k 에 무관**이다.
+
+    ⇒ `ratio_k = 1 − Δ/stored_k` — k 에 따라 달라지는 것은 «분모의 크기» 하나뿐이다.
+    이 항등식이 성립하면 표는 **어느 봉이 바뀌었는지 가를 수 없다**.
+    """
+    import numpy as np
+    win = [1000.0 + 37.0 * i for i in range(20)]
+    replay = float(np.mean(win))
+    live = replay - 5.0                      # Δ = 20 × 5 = 100
+    prof = _one_day_profile(win, live)
+    delta = 20.0 * (replay - live)
+    assert delta == pytest.approx(100.0)
+    for row in prof["lags"]:
+        stored_k = win[-1 - row["k"]]
+        assert row["median"] == pytest.approx(1.0 - delta / stored_k)
+
+
+def test_lag_profile_frac_below_one_is_all_k_when_delta_positive():
+    """🔴 「k=0 이 전부 < 1」 은 한 봉 채널의 «증거가 아니다» — Δ>0 이면 모든 k 가 그렇다."""
+    import numpy as np
+    win = [1000.0 + 37.0 * i for i in range(20)]
+    replay = float(np.mean(win))
+    prof = _one_day_profile(win, replay - 5.0)
+    assert len(prof["lags"]) == 20
+    assert all(row["frac_below_1"] == pytest.approx(1.0) for row in prof["lags"])
+
+
+def test_m4_rel_error_stats_is_print_only_median():
+    days = [gate.DayPair("d1", live=["A", "B"], replay=["A", "B"],
+                         live_scores={"A": 100.0, "B": 200.0},
+                         replay_scores={"A": 101.0, "B": 200.0})]
+    st = gate.m4_rel_error_stats(days)
+    assert st["n"] == 2
+    assert st["median"] == pytest.approx(0.005)

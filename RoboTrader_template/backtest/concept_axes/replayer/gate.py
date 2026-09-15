@@ -179,6 +179,27 @@ def compute_metrics(days: Sequence[DayPair]) -> Dict[str, Any]:
     }
 
 
+def m4_rel_error_stats(days: Sequence[DayPair]) -> Dict[str, Any]:
+    """교집합 행의 `abs(score_R/score_L − 1)` 분포 — 🖨️ **인쇄 전용 보조**.
+
+    🔴 판정은 `compute_metrics()["M4"]`(≤ `M4_REL_TOL` 인 행 비율)로 한다.
+    이 함수는 「빈티지를 맞추면 오차가 어느 자릿수로 내려가나」를 «보이기» 위한 것이고
+    문턱을 만들지도, 바꾸지도 않는다.
+    """
+    errs: List[float] = []
+    for d in days:
+        for c in d.replay:
+            if c in d.live_scores and c in d.replay_scores:
+                lv = d.live_scores[c]
+                if lv:
+                    errs.append(abs(d.replay_scores[c] / lv - 1.0))
+    if not errs:
+        return {"n": 0}
+    a = np.asarray(errs, dtype=float)
+    return {"n": int(len(a)), "median": float(np.median(a)),
+            "p95": float(np.percentile(a, 95)), "max": float(a.max())}
+
+
 def verdict(m: Dict[str, float]) -> str:
     """§4-3 문턱 적용. 🔴 **문턱을 내려서 통과시키지 않는다.**
 
@@ -249,14 +270,29 @@ MA20_WINDOW = 20
 
 def m4_lag_profile(days: Sequence[DayPair], vol_lookup,
                    max_lag: int = MA20_WINDOW) -> Dict[str, Any]:
-    """M4 불일치의 **채널 프로파일** — k = 0..max_lag-1 각각에 대해
+    """M4 불일치의 **기록용 lag 표** — k = 0..max_lag-1 각각에 대해
     「D−k 봉«만» 바뀌었다」고 «가정»했을 때의 함의값 비 `implied / stored` 분포.
 
     🔑 `score_ma20 = mean(volume[-20:])` 이므로 라이브 score 에서 한 봉의 함의값을
     역산할 수 있다: `implied_k = live_score × 20 − (Σ window − stored_k)`.
-    🔴 **어느 봉이 바뀌는지는 데이터가 말해 주지 않는다** — 이 표는 가정별 함의값이지
-    채널 판정이 아니다. 한 봉 채널이면 치우침이 k=0 에 몰리고, 창 전체가 미세하게
-    커진 경우면 k 에 걸쳐 **평탄**하다 — 둘을 가르는 것은 이 모양뿐이다.
+
+    🔴🔴 **이 표는 판별 장치가 «아니다» — 어느 k 가 바뀌었는지 가를 수 없다.** 수학:
+
+        implied_k = 20·live − (Σwin − stored_k) = stored_k − Δ,
+        Δ ≡ Σwin − 20·live = 20·(replay − live)            ← **k 에 무관한 상수**
+        ⇒ ratio_k = implied_k / stored_k = 1 − Δ / stored_k
+
+    즉 k 를 바꿔도 분자의 «변화량» 은 언제나 같은 Δ 이고, 비가 k 에 따라 달라지는 것은
+    **분모 `stored_k`(그 봉 거래량)의 크기 차이 하나뿐**이다. 같은 종목의 20봉 거래량은
+    자릿수가 비슷하므로 표는 **어떤 채널이 참이든 평탄하게 나온다** ⇒
+    ***평탄함은 「한 봉 채널」의 반증이 아니고, k=0 이 전부 <1 인 것도 증거가 아니다***
+    (Δ > 0 이면 정의상 모든 k 에서 비가 < 1 이다).
+
+    🟢 **채널은 이 표가 아니라 추적으로 확정됐다** —
+    `TRACE_M4_channel_2026-09-15.md`: D 15:3x 정규장 INSERT → D+1 09:00 라이브 판독 →
+    D+1 15:3x 의 7봉 UPSERT 가 **시간외 단일가를 사후 합산**한다(증분이 독립 테이블
+    `overtime_daily.ovtm_vol` 과 855/893 에서 일치 · 166행은 단위 주까지 정확).
+    ⇒ 이 함수의 출력은 **기록용**이고, 채널 근거로 인용하면 안 된다.
 
     `whole_window` 는 「창 20봉이 «균일하게» 바뀌었다」 가정의 함의 변화율
     `live/replay − 1`(%) 분포다 — 같은 M4 불일치를 «다른 채널» 로 읽은 값이다.
