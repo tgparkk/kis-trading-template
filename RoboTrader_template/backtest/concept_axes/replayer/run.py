@@ -611,6 +611,17 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
                       "**D 행의 거래량이 스냅샷 «이후»에 커진 것**이다(= C1 데이터 갱신). "
                       "🔴 이건 원인 인쇄이지 **문턱 완화가 아니다** — M4 문턱 99% 는 그대로다.")
             a("")
+            # 리뷰 M-1 — §4-6 조건 ④ `M1_exposed_floor` 충족/미달을 «명시» 인쇄한다.
+            exposed = [d for d in days if d.scan_date < gt.PROTECTED_FROM]
+            if exposed:
+                m_exp = gt.compute_metrics(exposed)["M1"]
+                floor = THRESH_FLOOR = gt.THRESHOLDS["M1_exposed_floor"]
+                a("- 노출 구간 M1 = **{:.4f}** vs `M1_exposed_floor` {:.2f} ⇒ {}".format(
+                    m_exp, floor,
+                    "충족" if (m_exp == m_exp and m_exp >= floor)
+                    else "🔴 **미달**"))
+            else:
+                a("- 노출 구간 거래일 0 ⇒ `M1_exposed_floor` 재지 불가")
             prot = [d for d in days if d.scan_date >= gt.PROTECTED_FROM]
             a("- 보호 구간 거래일 = **{}일** (조건부 통과 최소 {}일) ⇒ {}".format(
                 len(prot), int(gt.THRESHOLDS["protected_min_days"]),

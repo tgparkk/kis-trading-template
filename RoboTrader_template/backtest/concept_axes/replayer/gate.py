@@ -19,6 +19,7 @@ import pandas as pd
 THRESHOLDS: Dict[str, float] = {
     "M1_pass": 0.98,
     "M1_conditional": 0.95,
+    "M2_pass": 0.98,               # 리뷰 M-1 — 인쇄만 하고 판정에 안 쓰던 지표를 문턱에 연결
     "M3_pass": 0.95,
     "M4_pass": 0.99,
     "M1_exposed_floor": 0.90,      # v0.3 조건 ④
@@ -181,13 +182,18 @@ def compute_metrics(days: Sequence[DayPair],
 
 
 def verdict(m: Dict[str, float]) -> str:
-    """§4-3 문턱 적용. 🔴 **문턱을 내려서 통과시키지 않는다.**"""
-    m1, m3, m4 = m.get("M1"), m.get("M3"), m.get("M4")
+    """§4-3 문턱 적용. 🔴 **문턱을 내려서 통과시키지 않는다.**
+
+    리뷰 M-1 — M2 도 문턱(`M2_pass`)에 연결한다. 재지 불가(nan = 교집합 원소 < 2 가
+    전일)는 M4 와 같은 취급으로 **불통과 사유로 쓰지 않고**, 대신 분모 제외일 수를 인쇄한다.
+    """
+    m1, m2, m3, m4 = m.get("M1"), m.get("M2"), m.get("M3"), m.get("M4")
     if m1 is None or m1 != m1 or m1 < THRESHOLDS["M1_conditional"]:
         return "FAIL"
+    ok2 = (m2 is None) or (m2 != m2) or m2 >= THRESHOLDS["M2_pass"]
     ok3 = (m3 == m3) and m3 >= THRESHOLDS["M3_pass"]
     ok4 = (m4 != m4) or m4 >= THRESHOLDS["M4_pass"]
-    if m1 >= THRESHOLDS["M1_pass"] and ok3 and ok4:
+    if m1 >= THRESHOLDS["M1_pass"] and ok2 and ok3 and ok4:
         return "PASS"
     return "조건부"
 

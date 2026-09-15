@@ -209,7 +209,7 @@ def test_v5a_allows_other_hours_and_weekends():
 
 def test_thresholds_are_frozen_constants():
     assert gate.THRESHOLDS == {"M1_pass": 0.98, "M1_conditional": 0.95,
-                               "M3_pass": 0.95, "M4_pass": 0.99,
+                               "M2_pass": 0.98, "M3_pass": 0.95, "M4_pass": 0.99,
                                "M1_exposed_floor": 0.90, "protected_min_days": 15}
 
 
@@ -218,6 +218,17 @@ def test_verdict_fail_below_m1_095():
     assert v == "FAIL"
 
 
-def test_verdict_pass_requires_m1_m3_m4():
+def test_verdict_pass_requires_m1_m2_m3_m4():
     assert gate.verdict({"M1": 0.99, "M2": 1.0, "M3": 0.99, "M4": 1.0}) == "PASS"
     assert gate.verdict({"M1": 0.99, "M2": 1.0, "M3": 0.80, "M4": 1.0}) == "조건부"
+
+
+def test_verdict_m2_below_threshold_blocks_pass():
+    """리뷰 M-1 — M2 를 인쇄만 하고 판정에 안 쓰면 «순위가 깨졌는데 PASS» 가 난다."""
+    assert gate.verdict({"M1": 0.99, "M2": 0.90, "M3": 0.99, "M4": 1.0}) == "조건부"
+
+
+def test_verdict_m2_nan_is_not_a_failure_reason():
+    """교집합 원소 < 2 가 전일이면 M2 는 «문턱 미달»이 아니라 «재지 불가»다."""
+    assert gate.verdict({"M1": 0.99, "M2": float("nan"), "M3": 0.99,
+                         "M4": 1.0}) == "PASS"
