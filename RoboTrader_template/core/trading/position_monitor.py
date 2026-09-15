@@ -418,7 +418,10 @@ class PositionMonitor:
         # Circuit Breaker 체크 (활성 상태이면 매도 시도 자체를 차단)
         if self._is_circuit_breaker_active(stock_code):
             remaining = self._sell_fail_times[stock_code] + timedelta(minutes=CB_COOLDOWN_MINUTES) - now_kst()
-            self.logger.debug(
+            # 보유 종목의 «매도 시도 자체»가 통째로 막힌 사건이다. DEBUG 면
+            # 운영 로그(INFO 이상)에서 사라져 정상과 구분되지 않는다
+            # (2026-09-15 §F-5 ④). RateLimitedLogger 가 분당 5회로 묶는다.
+            self.logger.warning(
                 f"{stock_code} Circuit Breaker 활성 중 - 매도 스킵 "
                 f"(남은 시간: {remaining.total_seconds() / 60:.1f}분)"
             )
