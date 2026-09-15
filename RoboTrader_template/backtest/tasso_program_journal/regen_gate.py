@@ -324,6 +324,9 @@ MANUAL_DOCS = [
     # 🔴 2026-09-11 — 사람이 쓴 사전등록 2종. `PREREG_ANCHOR_REDESIGN.md` 는 §11 이 등재 의무를
     #    «신고»만 하고 미뤄 둔 빚이다(그 사이 G-1 에 «안 보였다») ⇒ 이 커밋에서 같이 갚는다.
     "PREREG_GRADE_TIERS.md", "PREREG_ANCHOR_REDESIGN.md",
+    # 🔴 2026-09-14 — 사장님 결정 C-8(패널 8건). 재무·뉴스는 «현재 원장으론» 못 묻는다(27.0% 를 이미 봤다)
+    #    ⇒ post7 이후 «새» 건에 대한 OOS 예측 한 줄만 등록했다. 사람이 쓴 문서라 `MANUAL_DOCS` 자리다.
+    "PREREG_S5_FUND_NEWS_OOS.md",
 ]
 
 
