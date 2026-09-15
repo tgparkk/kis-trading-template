@@ -31,6 +31,15 @@ def test_tie_at_boundary_20_is_counted():
     assert n_tie == 3
 
 
+def test_tie_inside_topk_but_not_at_boundary_is_zero():
+    """리뷰 L-3 — 동점이 상위 «안» 에만 있으면 경계는 흔리지 않는다."""
+    scored = [("000001", 100.0), ("000002", 100.0)]          # 상위 안 동점
+    scored += [(f"{i:06d}", float(50 - i)) for i in range(3, 25)]
+    _, n_tie = scan.rank_and_truncate(scored, max_candidates=20,
+                                      count_boundary_tie=True)
+    assert n_tie == 0
+
+
 def test_no_tie_at_boundary_reports_zero():
     scored = [(f"{i:06d}", float(100 - i)) for i in range(25)]
     _, n_tie = scan.rank_and_truncate(scored, max_candidates=20, count_boundary_tie=True)

@@ -112,9 +112,12 @@ def rank_and_truncate(scored: Sequence[Tuple[str, float]],
     n_tie = 0
     if len(ordered) > max_candidates and top:
         edge = top[-1][1]
-        n_tie = sum(1 for _, s in ordered if s == edge)
-        if n_tie < 2:
+        # 리뷰 L-3 — **경계 밖 첫 종목이 경계값과 동점일 때만** «경계 동점» 이다.
+        #   예전엔 상위 안에서만 동점이어도 세서 «자르기가 흔들렸다» 고 잎혀졌다.
+        if ordered[max_candidates][1] != edge:
             n_tie = 0
+        else:
+            n_tie = sum(1 for _, s in ordered if s == edge)
     return top, n_tie
 
 

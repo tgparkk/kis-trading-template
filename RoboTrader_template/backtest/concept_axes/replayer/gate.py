@@ -200,9 +200,6 @@ def verdict(m: Dict[str, float]) -> str:
 # §4-4-c — 구간 분할 (한 값으로 내지 않는다)
 # ────────────────────────────────────────────────────────────────────────────
 def split_windows(days: Sequence[DayPair]) -> Dict[str, List[DayPair]]:
-    def le(d, b):
-        return d.scan_date <= b
-
     return {
         "노출(≤2026-09-02)": [d for d in days if d.scan_date < PROTECTED_FROM],
         "보호(≥2026-09-03)": [d for d in days if d.scan_date >= PROTECTED_FROM],
