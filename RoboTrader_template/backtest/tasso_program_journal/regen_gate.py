@@ -272,21 +272,16 @@ PENDING: dict[str, str] = {}
 #      없으면 진짜 FAIL 이어야 한다(이름 오타를 잡는 것이 G-1 의 목적이다).
 #    🟢 2026-09-05 — **비었다.** 두 산문(`RESULTS_RANKING_POST6.md`·`RESULTS_SECTOR_POST6.md`)이
 #      생겼다 ⇒ `MANUAL_DOCS` 의 존재 검사(G-1)가 그 두 이름에 «진짜로» 도는 자리로 돌아왔다.
-#    🔴 2026-09-15 — **다시 찼다.** 7번째 글의 «산문» 9종은 판정이 끝난 뒤 사람이 쓴다.
-#      (`RESULTS_ANCHOR_POST7.md`·`RESULTS_S5_POST7.md` 는 스크립트가 쓰므로 `PAIRS` 쪽에 있다.)
-_P7D = "7번째 글(`224409404744`) 산문 — 판정이 끝난 «뒤» 사람이 쓴다. 생기면 `PENDING_DOCS` 에서 뺄 것."
-PENDING_DOCS: dict[str, str] = {
-    "RESULTS_SELECTION_POST7.md": _P7D,
-    "RESULTS_REGDAY_POST7.md": _P7D,
-    "RESULTS_EXIT_V2_POST7.md": _P7D,
-    "RESULTS_RECONSTRUCT_POST7.md": _P7D,
-    "RESULTS_LADDER_TRANCHE_POST7.md": _P7D,
-    "RESULTS_D1_OOS_POST7.md": _P7D,
-    "RESULTS_WRC_POST7.md": _P7D,
-    "RESULTS_RANKING_POST7.md": _P7D,
-    "RESULTS_SECTOR_POST7.md": _P7D,
-    "RESULTS_S5_POST7.md": _P7D + " 🔴 PD-15 — 판정 선언 없이 값만 적는다(`[탐색]` 꼬리표).",
-}
+#    🔴 2026-09-15 — **다시 찼다.** 7번째 글의 «산문» **10종**은 판정이 끝난 뒤 사람이 쓴다.
+#      🔴 **정정**: 초판 주석은 「9종」이라 적고 *「`RESULTS_ANCHOR_POST7.md`·`RESULTS_S5_POST7.md` 는
+#      스크립트가 쓰므로 `PAIRS` 쪽」*이라 했는데, **`RESULTS_S5_POST7.md` 는 사람이 쓴다**
+#      (`run_s5_post7.py` 는 `_NUMBERS` 만 쓴다 — 그 스크립트가 끝에 그렇게 인쇄한다).
+#      ⇒ **`PAIRS` 쪽인 것은 `RESULTS_ANCHOR_POST7.md` 하나뿐**이고, 여기 목록은 **10종**이었다.
+#    🟢 2026-09-15 22:xx — **다시 비었다.** verifier 정정 뒤 산문 10종이 «전부 생겼다»
+#      ⇒ 위 ⚠️ 규칙대로 뺐다. 남겨 두면 check() 가 「생겼는데 `PENDING_DOCS` 에 남아 있다」로
+#      FAIL 하고 그때부터 G-1 의 존재 검사가 그 10개 이름에 «진짜로» 돌지 않는다.
+#      🔑 비어 있다고 이 자리를 지우지 말 것 — 8번째 글의 산문이 다시 여기로 들어온다.
+PENDING_DOCS: dict[str, str] = {}
 
 # 🔴 §5(C-17·C-20) 정정으로 «스크립트는 바뀌었으나 산출물은 재생성하지 않은» 것들.
 #    `PREREG_POST6.md` §5-1-5(*「과거 산출물을 다시 재지 않는다」*) · §5-4-2(*「과거 발표값을
@@ -407,14 +402,17 @@ MANUAL_DOCS = [
     #    🔴 `PREREG_GRADE_TIERS.md` §0-3 3번 순서(`PREDECISION` → `INTAKE` → `LABELS` → 측정 스크립트)가
     #      이 회차에 처음 구속력을 갖는다(PD-0).
     "INTAKE_2026-09-15_post7.md", "PREDECISION_2026-09-15_post7.md", "LABELS_2026-09-15_post7.md",
-    #    산문 9종은 판정 «뒤»에 생긴다 ⇒ `PENDING_DOCS` 에 같이 올려 둔다(이름만 먼저 박으면
-    #    G-1 이 「없는 파일」로 상시 FAIL 해서 진짜 가드가 죽는다 — `FREEZE_SECTOR` 전례).
+    #    산문 **10종**은 판정 «뒤»에 생긴다 ⇒ 생기기 «전»에는 `PENDING_DOCS` 에 같이 올려 둔다
+    #    (이름만 먼저 박으면 G-1 이 「없는 파일」로 상시 FAIL 해서 진짜 가드가 죽는다 — `FREEZE_SECTOR` 전례).
+    #    🟢 2026-09-15 22:xx — 10종이 전부 생겨 `PENDING_DOCS` 에서 뺐다 ⇒ G-1 존재 검사가 여기에 «진짜로» 돈다.
     "RESULTS_SELECTION_POST7.md", "RESULTS_REGDAY_POST7.md", "RESULTS_EXIT_V2_POST7.md",
     "RESULTS_RECONSTRUCT_POST7.md", "RESULTS_LADDER_TRANCHE_POST7.md", "RESULTS_D1_OOS_POST7.md",
     "RESULTS_WRC_POST7.md", "RESULTS_RANKING_POST7.md", "RESULTS_SECTOR_POST7.md",
     "RESULTS_S5_POST7.md",
     #    🆕 `RESULTS_ANCHOR_POST7.md` 는 **스크립트가 쓴다**(`run_anchor_redesign.py` 가 두 산출물을
     #      같이 쓴다) ⇒ 여기가 아니라 `PAIRS` 자리다. 산문/기계 생성 구분을 파일별로 실측해 갈랐다.
+    #    ⚠️ **`RESULTS_S5_POST7.md` 는 «사람이» 쓴다** — `run_s5_post7.py` 는 `_NUMBERS` 만 쓰고
+    #      끝에 그렇게 인쇄한다. ⇒ 이 목록(위 10종)에 들어가는 것이 맞다.
     # 🔴 `verify_ledger_post7.py` 는 post5·post6 판 전례대로 **일부러 등재하지 않는다**
     #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]

@@ -300,9 +300,31 @@ def pit_row(cur, code):
         "WHERE stock_code = %s AND status = %s AND rcept_dt IS NOT NULL AND rcept_dt <= %s "
         "ORDER BY bsns_year DESC LIMIT 1", (code, PIT_STATUS, PIT_CUTOFF))
     r = cur.fetchone()
-    if r is None or r[2] is None:
+    if r is None:
+        return None
+    if r[2] is None:
         return None
     return (r[0], r[1], int(r[2]))
+
+
+def pit_miss_kind(cur, code):
+    """🔴 「측정 불가」의 **두 종류**를 가른다 — `pit_row` 가 `None` 을 돌려준 «이유».
+
+    🔑 ***「PIT 조건을 만족하는 행이 0개」와 「행은 있는데 `operating_income` 이 NULL」은
+    다른 고장이다*** — 앞은 **수집이 안 닿은 것**이고, 뒤는 **수집은 닿았는데 값이 빈 것**이다.
+    한 낱말(「측정 불가」)로 묶으면 다음 사람이 엉뚱한 곳을 고친다.
+    반환: `"no_row"` · `"null_value"` · `None`(측정 가능).
+    """
+    cur.execute(
+        "SELECT bsns_year, rcept_dt, operating_income FROM dart_financials_asfiled "
+        "WHERE stock_code = %s AND status = %s AND rcept_dt IS NOT NULL AND rcept_dt <= %s "
+        "ORDER BY bsns_year DESC LIMIT 1", (code, PIT_STATUS, PIT_CUTOFF))
+    r = cur.fetchone()
+    if r is None:
+        return "no_row"
+    if r[2] is None:
+        return "null_value"
+    return None
 
 
 def control_top1(cur, d):
@@ -336,17 +358,23 @@ def news_hits(cur, code, d):
 
 
 def loss_rate(cur, codes):
-    """(적자 건, 측정 가능 건, 측정 불가 코드) — 🔴 「모른다」를 「적자 아님」으로 접지 않는다."""
+    """(적자 건, 측정 가능 건, 측정 불가 코드) — 🔴 「모른다」를 「적자 아님」으로 접지 않는다.
+
+    🔴 측정 불가를 **종류별로** 돌려준다(`kinds` = {코드: "no_row"|"null_value"}) —
+    두 고장은 고치는 곳이 다르다(`pit_miss_kind` 주석).
+    """
     loss, ok, unknown = 0, 0, []
+    kinds = {}
     for c in sorted(set(codes)):
         r = pit_row(cur, c)
         if r is None:
             unknown.append(c)
+            kinds[c] = pit_miss_kind(cur, c)
             continue
         ok += 1
         if r[2] < 0:
             loss += 1
-    return loss, ok, unknown
+    return loss, ok, unknown, kinds
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -403,15 +431,32 @@ def main() -> int:
     say("| 등록일 | 그날 유니버스 | 상위 1% 종목 수 | 측정 가능 | 영업적자 | 적자 비율 |")
     say("|---|---|---|---|---|---|")
     pool_loss, pool_ok = 0, 0
+    # 🔴 대조군 「측정 불가」의 **종류별** 종목 집합(개선 1) — 종목-일이 아니라 «종목» 단위로 모은다.
+    MISS_KIND = {"no_row": set(), "null_value": set(), "unknown": set()}
     for _nm, _code, d in EXACT6:
         top, n_univ = control_top1(cur, d)
-        lo, ok, _unk = loss_rate(cur, top)
+        lo, ok, unk, kinds = loss_rate(cur, top)
+        for _c in unk:
+            MISS_KIND[kinds.get(_c) or "unknown"].add(_c)
         pool_loss += lo
         pool_ok += ok
         say(f"| {d} | {n_univ:,} | {len(top)} | {ok} | {lo} | {pct(lo, ok)} |")
     say("")
     say(f"- **대조군 적자 비율(pooled · 종목-일) = {pool_loss}/{pool_ok} = "
         f"{pct(pool_loss, pool_ok)}** `[탐색]`")
+    _nr, _nv = sorted(MISS_KIND["no_row"]), sorted(MISS_KIND["null_value"])
+    say(f"- 🔴🔴 **대조군의 「측정 불가」는 «두 종류»다**(개선 1 — 한 낱말로 묶지 않는다) — "
+        f"① **PIT 조건을 만족하는 행이 0개** {len(_nr)}종목"
+        + (f"(`{'`·`'.join(_nr)}`)" if _nr else "") + " · "
+        f"② **행은 있는데 `operating_income` 이 «값 NULL»** {len(_nv)}종목"
+        + (f"(`{'`·`'.join(_nv)}`)" if _nv else "") + ".")
+    if "041190" in _nv:
+        say("  ⚠️ 예: **`041190`(우리기술투자)** — `bsns_year = 2025` · "
+            "`rcept_dt = 2026-03-18` 행이 **있는데** `operating_income` «만» 비어 있다.")
+    say("  🔑 ***① 은 「수집이 안 닿았다」이고 ② 은 「닿았는데 값이 비었다」다*** — "
+        "고치는 곳이 다르고(수집 범위 ↔ 파싱·원천 공시), "
+        "② 은 **`rcept_dt` 가 있어서 「PIT 를 지켰다」로 보이지만 값이 없다**. "
+        "🔴 둘 다 **분자에도 분모에도 넣지 않는다**(선정 건과 같은 잣대).")
     say("- 🔴 **구현 결정(인쇄 의무)**: §1 은 *「그날 … 대조군의 적자 비율」* 이라고만 적고 "
         "**여러 날을 어떻게 합칠지는 말하지 않는다.** ⇒ 주 수치는 **종목-일 pooled**(위 합계)로 두고 "
         "**날짜별 값을 같은 표에 병기**한다. 두 셈법 중 어느 쪽도 «고르지» 않았다 — 둘 다 인쇄한다.")
@@ -431,7 +476,7 @@ def main() -> int:
         rates = []
         for d in days:
             top, _n = control_top1(cur, d)
-            lo, ok, _u = loss_rate(cur, top)
+            lo, ok, _u, _k = loss_rate(cur, top)
             if ok:
                 rates.append(100.0 * lo / ok)
         rng = f"{min(rates):.1f}~{max(rates):.1f}%" if rates else "—"

@@ -52,6 +52,10 @@ from run_exit_v2_post6 import (  # noqa: F401
 BASE = Path(__file__).resolve().parent
 OUT: list = []
 
+# 🔴 최소 n — `PREREG_POST6.md` §4 #15 «차용»이며 이 파일이 만든 문턱이 «아니다».
+#    n < 3 인 갈래에 ✅·❌ 를 찍으면 그것이 「통과/불통과」로 인용된다 ⇒ ⛔ 로 찍는다.
+X2_MIN_N = 3
+
 # 🔴 창 종료 규약 — 이 레인은 DB 를 읽지 않으므로 «표기 의무»로만 쓴다(PD-1 5번 · §7-B #13).
 DB_UPTO = "2026-09-11"
 PUB_DATE = "2026-09-12"          # 발행 2026-09-12(토) = 휴장 ⇒ B-1 로 창은 직전 거래일에서 끝난다
@@ -524,10 +528,13 @@ def main():  # noqa: C901
         % (len(st), st_ok, ratio(st_ok, len(st)), "✅" if st_ok / len(st) >= E2_MIN else "❌"))
     sa = [t for t in x2t if t[BE]]
     sa_ok = sum(1 for t in sa if abs(x2_leg(t[LEGS], t[LOSSM])[0]) < BE_MAX)
+    # 🔴 최소 n = **3**(`PREREG_POST6.md` §4 #15 — 이 문서 §3 `EXIT-E2` 절이 쓰는 것과 같은 문턱).
+    #    n < 3 인 갈래에 ✅·❌ 를 찍으면 **통과/불통과로 «인용»된다** ⇒ ⛔ 로 찍는다.
+    sa_mark = ("⛔ (최소 n 3 · %d < 3 — 통과로 인용 금지)" % len(sa)) if len(sa) < X2_MIN_N \
+        else ("✅" if sa and sa_ok / len(sa) >= E2_MIN else "❌")
     say("| (a) 좁은 분모 = 신규 완결 `TP` ∧ `be_note` | %d | %d | %.1f%% | %s | "
         "🔴 `EXIT-X2` 에 **유리한** 방향(해치텍 %s 1건) |"
-        % (len(sa), sa_ok, ratio(sa_ok, len(sa)),
-           "✅" if sa and sa_ok / len(sa) >= E2_MIN else "❌",
+        % (len(sa), sa_ok, ratio(sa_ok, len(sa)), sa_mark,
            num(x2_leg(sa[0][LEGS], sa[0][LOSSM])[0]) if sa else "—"))
     sb = x2t + foll
     sb_ok = sum(1 for t in sb if abs(x2_leg(t[LEGS], t[LOSSM])[0]) < BE_MAX)
@@ -539,13 +546,36 @@ def main():  # noqa: C901
         "**`EXIT-X2` 에 «유리한» 방향**이다. **동결(넓은) 분모 %d 를 주 판정으로 쓰는 이 결정은 "
         "`EXIT-X2` 에 «불리한» 방향**이다. 좁은 분모는 민감도로 의무 인쇄했다."
         % (num(x2_leg(sa[0][LEGS], sa[0][LOSSM])[0]) if sa else "—", x2_n))
-    br = {r22 >= E2_MIN, st_ok / len(st) >= E2_MIN, sb_ok / len(sb) >= E2_MIN}
-    if sa:
-        br.add(sa_ok / len(sa) >= E2_MIN)
-    say("- 네 갈래의 판정이 **%s** ⇒ %s."
-        % ("모두 같다" if len(br) == 1 else "갈린다",
-           "분모 선택이 `EXIT-X2` 결론을 만들지 않았다" if len(br) == 1
-           else "🔴 **분모 의존 — 지지 선언 금지**(PD-2 3번 · PD-7 2번)"))
+    # 🔴🔴 **「분모 의존」은 이 문서가 «처음 쓰는» 표현이고 동결본 어디에도 없다.**
+    #    그래서 근거로 `PD-2 3번`·`PD-7 2번` 을 달지 않는다 — 그 두 조항은 «다른 것»을 말한다.
+    #    그리고 값을 보면 «갈림»의 실체가 다르다: **최소 n(3)을 채운 세 갈래는 전부 ❌ 로 일치**하고,
+    #    갈리는 것은 **n = 1 갈래 하나뿐**이다 — 그 갈래는 위 표에서 ⛔ 로 찍었다.
+    br_named = [("주 판정", x2_n, r22 >= E2_MIN),
+                ("민감도 `TP` 갈래", len(st), st_ok / len(st) >= E2_MIN),
+                ("(a) 좁은 분모", len(sa), (sa_ok / len(sa) >= E2_MIN) if sa else None),
+                ("(b) 후속 포함", len(sb), sb_ok / len(sb) >= E2_MIN)]
+    enough = [(nm, n, v) for nm, n, v in br_named if n >= X2_MIN_N and v is not None]
+    short = [(nm, n, v) for nm, n, v in br_named if n < X2_MIN_N]
+    kinds = {v for _nm, _n, v in enough}
+    say("- 🔒 **최소 n(%d)을 채운 갈래는 %d개**(%s)이고 **판정이 %s** — %s."
+        % (X2_MIN_N, len(enough), ", ".join(nm for nm, _n, _v in enough),
+           "전부 일치한다" if len(kinds) == 1 else "갈린다",
+           ("전부 **%s**" % ("✅ 지지" if next(iter(kinds)) else "❌ 불성립"))
+           if len(kinds) == 1 else "아래 갈래별 기호 참조"))
+    if short:
+        say("- 🔴 **갈리는 것은 최소 n 미달 갈래뿐이다** — %s. "
+            "⛔ 그 갈래는 **통과로도 불통과로도 인용하지 않는다**(최소 n %d 미달 · "
+            "`PREREG_POST6.md` §4 #15 «차용»)."
+            % (", ".join("%s(n = %d)" % (nm, n) for nm, n, _v in short), X2_MIN_N))
+    say("- 🔴🔴 **자기신고 — 「분모 의존」은 «이 문서가 처음 쓰는» 표현이다.** "
+        "동결본(`PREREG_EXIT_V2.md`·`PREREG_POST6.md`·`PREDECISION_2026-09-15_post7.md`) "
+        "어디에도 이 라벨은 **없다**. 초판이 근거로 단 `PD-2 3번`·`PD-7 2번` 은 "
+        "**다른 것을 말하는 조항**이어서 인용을 **삭제했다**. "
+        "🔑 ***없는 라벨을 만들어 붙이면 다음 사람이 그것을 동결 조항으로 읽는다.***")
+    if len(kinds) == 1:
+        say("- 🟢 그러므로 이 회차에 쓸 수 있는 문장은 ***「최소 n 을 채운 갈래는 전부 "
+            "같은 답을 냈고, 다른 답은 n = 1 갈래에서만 나왔다」*** 하나다 — "
+            "**「분모를 바꾸면 결론이 바뀐다」가 아니다.**")
     say("")
     say("#### `EXIT-X2` 에서 «빠진» 건과 그 이유 (계산 «전» 동결분)")
     say("")
@@ -828,8 +858,10 @@ def main():  # noqa: C901
     say("")
     say("- 🔴 **#1 은 분모를 가른다** — 그래서 §3 에 갈래별 분모를 **전부** 인쇄하고 "
         "**동결 문언이 지시한 `unknown` 을 주 판정으로** 두었다(넓히는 결정은 관리자·사장님 몫).")
-    say("- 나머지는 판정을 가르지 않는다. 가르는 항목이 더 나오면 같은 틀로 "
-        "「표기 의존」·「분모 의존」·「누적 정의 의존」으로 적고 **지지 선언을 하지 않는다**.")
+    say("- 나머지는 판정을 가르지 않는다. 가르는 항목이 더 나오면 **그 사실과 갈래별 값을 적고** "
+        "**지지 선언을 하지 않는다**. 🔴 **이때 «…의존» 같은 이름표를 새로 만들어 붙이지 않는다** "
+        "— 동결본에 없는 라벨은 다음 사람이 **동결 조항으로 읽는다**(§5-3 자기신고 참조). "
+        "⚠️ 그리고 **최소 n 을 못 채운 갈래는 «갈렸다»의 근거로 세지 않는다.**")
 
     # ── 한계 ────────────────────────────────────────────────────────────
     say("")

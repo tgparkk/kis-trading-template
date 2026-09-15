@@ -436,7 +436,7 @@ def main() -> int:  # noqa: C901
         f"({', '.join(empty) if empty else '없음'})")
     say("- 잣대 정합 계열(**전부 정확법**): post4 **1/6 = 16.7%**"
         "(`RESULTS_RECONSTRUCT_POST4_EXACT_NUMBERS.md` §2 · C-22 재계산) → post5 **4/6 = 66.7%** → "
-        "post6 **6/10 = 60.0%** → "
+        "post6 **5/10 = 50.0%**(← 동결 `RESULTS_RECONSTRUCT_POST6_NUMBERS.md` §5) → "
         f"post7 **{len(empty)}/{len(R)} = {100*frac:.1f}%**")
     say("- 🔴 **분모의 «정의»가 이번 글에서 바뀌었다** — post6 까지는 「신규 전건」이었고 "
         "post7 은 「신규 ∧ `exact`」다(PD-4 가 계산 «전»에 못박았다). "

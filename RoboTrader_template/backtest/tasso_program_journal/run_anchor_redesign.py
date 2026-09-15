@@ -98,6 +98,13 @@ END = "2026-09-11"          # ANC-A-1 · PD-1 (발행 09-12 토 = 휴장 ⇒ B-1
 PUB7 = "2026-09-12"         # 7번째 글 발행일 (토요일 · 휴장)
 POST7_LOG_NO = "224409404744"
 RETRO_LAST_POST_DATE = "2026-09-04"     # 소급 = post1~6 (§8)
+# 🔴 소급 건의 창 종료는 **글마다 다르다** — 동결 §4 표(`PREREG_ANCHOR_REDESIGN.md:122`)가
+#    `END` = 「그 글의 **발행 당일 봉 «포함»**」이라 못박고, §13(`:467`)도 *「`END` 가 글 발행일이라
+#    후보마다 창 길이가 다르다」*고 적었다. 발행일이 휴장(토)이면 그 글의 마지막 봉 = 직전 거래일이다
+#    (post4 `2026-08-22`토 → `08-21` · post5 `2026-08-29`토 → `08-28` · post6 `09-04`금 → `09-04`).
+#    🔴🔴 소급 건에 post7 의 `END`(2026-09-11)를 쓰면 저자가 글을 쓸 때 «볼 수 없던» 봉이
+#    창에 들어간다 — 그건 소급 «탐색»조차 아니고 **다른 축의 측정**이다.
+_END_CACHE: dict = {}
 
 S_ANCHOR = 100              # §7-3 무작위 앵커 대조군 시드 수 (시드 = NULL_SEED + j, j = 0…99)
 M_TESTS = 3                 # §7-1 주 검정 수 (ANC-P1 · P2 · P3)
@@ -161,9 +168,16 @@ LIMITS = [
     "`REC-Y3` 중단 때문에 못 쓴다 — **이 대체가 이 축의 가장 큰 약점**이다(§13).",
     "🔴 **`A2` 의 창5 는 `LAD-` 축에서 «위반 4쪽»이라는 걸 알고 고른 창이다**"
     "(`PREREG_LADDER_TRANCHE.md` §4-2 자기신고 승계). 앵커로 옮겨 써도 그 편향은 사라지지 않는다(§13).",
-    "🔴 **`END` 가 글 발행일이라 후보마다 창 길이가 다르다** — 등록이 발행 직전이면 창이 3~4봉뿐이고, "
-    "그때 **`A1` 과 `A2` 는 같은 값이 된다**(`A1` 의 창은 절단 개념 자체가 없다). "
+    "🔴 **`END` 가 «글마다» 그 글의 발행일이다**(§4 표 · §13) — 소급 post1~6 도 "
+    "post7 의 `END` 가 아니라 **그 글의 발행 당일 봉 «포함»**(휴장이면 직전 거래일)으로 잰다: "
+    "post1 `2026-07-31` · post2 `08-07` · post3 `08-14` · post4 `08-22`(토) → **`08-21`** · "
+    "post5 `08-29`(토) → **`08-28`** · post6 `09-04` · post7 `09-12`(토) → **`09-11`**. "
+    "⇒ **후보마다 창 길이가 다르다** — 등록이 발행 직전이면 창이 3~4봉뿐이고, 그때 "
+    "**`A1` 과 `A2` 는 같은 값이 된다**(`A1` 의 창은 절단 개념 자체가 없다). "
     "***`ANC-N1` 이 그걸 잡는다***(§13).",
+    "🔴 **소급 열의 창은 글마다 «짧다»** — post1 건의 창은 7월 말에서 끝난다. "
+    "그래서 소급 값은 post7 값과 **같은 잣대로 잰 값이 아니고**, 나란히 놓아도 "
+    "***「시간이 지나서 올랐나」를 «가르지 못한다»***. 소급이 탐색인 이유가 하나 더 있는 셈이다(§5-4).",
 ]
 
 OUT: list[str] = []          # `_NUMBERS.md` 버퍼 (기계 생성)
@@ -456,18 +470,38 @@ def post7_items():
     return out
 
 
+def end_for(cur, post_date):
+    """그 글의 창 종료 `END` = **발행 당일 봉 «포함»**(동결 §4 표 `:122` · §13 `:467`).
+
+    발행일이 휴장이면 그 글이 볼 수 있었던 마지막 봉 = **직전 거래일**이다.
+    🔴 값을 «고르지» 않는다 — DB 의 `max(date) ≤ 발행일` 을 그대로 쓴다.
+    """
+    if not post_date:
+        return END
+    if post_date not in _END_CACHE:
+        cur.execute("SELECT max(date) FROM daily_prices WHERE date <= %s", (post_date,))
+        r = cur.fetchone()
+        _END_CACHE[post_date] = str(r[0]) if r and r[0] else post_date
+    return _END_CACHE[post_date]
+
+
 def measure(cur, items):
-    """건별 앵커 측정. 측정 불가(코드 없음·봉 없음)는 `ok=False` 로 남긴다."""
+    """건별 앵커 측정. 측정 불가(코드 없음·봉 없음)는 `ok=False` 로 남긴다.
+
+    🔴 창 종료는 **건별 `end_for(post_date)`** 다(글별 발행일 포함) — post7 건은 `PUB7` 이
+    토요일이라 `end_for` 가 `END`(2026-09-11)를 그대로 돌려준다(동결 `ANC-A-1` 과 일치).
+    """
     for it in items:
+        it["end"] = end_for(cur, it.get("post_date"))
         if not it.get("code"):
             it["ok"] = False
             it["why"] = "종목코드 미해결(사유 ① · DB 명부 부재)"
             continue
-        v = anchors_for(cur, it["code"], it["reg"], END)
+        v = anchors_for(cur, it["code"], it["reg"], it["end"])
         it["v"] = v
         it["ok"] = v["bars"] > 0 and v.get("H0") is not None
         if not it["ok"]:
-            it["why"] = "창 `[D, END]` 봉 0 또는 등록일 봉 부재"
+            it["why"] = f"창 `[D, {it['end']}]` 봉 0 또는 등록일 봉 부재"
         it["highs"] = []
     return items
 
@@ -712,17 +746,30 @@ def main(argv=None) -> int:      # noqa: C901
                 continue
             v = it["v"]
             rows.append(dict(name=it["name"], post=it.get("post", 7), N=n, v=v,
-                             highs=[b[2] for b in window_bars(cur, it["code"], it["reg"], END)],
+                             highs=[b[2] for b in window_bars(
+                                 cur, it["code"], it["reg"], it.get("end") or END)],
                              tag=tag))
         return rows
 
     pool_retro = pool(retro, "소급")
     pool_p7 = pool(p7, "post7")
 
+    _r_nofill = [it["name"] for it in retro
+                 if it.get("ok") and not str(it.get("fill_n") or "").strip().isdigit()]
+    _r_notok = [it["name"] for it in retro if not it.get("ok")]
     both(f"- 소급 풀 **{len(pool_retro)}건**(차수 `fill_n` 이 있는 `exact` 건) · "
          f"post7 풀 **{len(pool_p7)}건** · **누적 풀 {len(pool_retro) + len(pool_p7)}건**")
-    both("- 🔴 차수(`fill_n`)가 비어 있는 `exact` 건은 `ANC-P3` 에서 **빠진다**"
-         "(post2 의 `fill_level = unknown/full` 2건 — 「없다」가 아니라 「원장에 안 적혀 있다」).")
+    both(f"  - 🔑 **산술 출처**: 소급 `exact` **{len(retro)}건** "
+         f"− 측정 불가 **{len(_r_notok)}건**"
+         + (f"({', '.join(_r_notok)})" if _r_notok else "")
+         + f" − 차수(`fill_n`) 빈칸 **{len(_r_nofill)}건**"
+         + (f"({', '.join(_r_nofill)})" if _r_nofill else "")
+         + f" = **{len(pool_retro)}건**. "
+           "🔴 두 사유는 **다른 고장**이라 한 수로 묶지 않는다 — 앞은 «DB 에 봉이 없다», "
+           "뒤는 «원장에 차수가 안 적혀 있다»다.")
+    both("- 🔴 차수(`fill_n`)가 비어 있는 `exact` 건은 `ANC-P3` 에서 **빠진다** "
+         "— 「차수가 없다」가 아니라 **「원장에 안 적혀 있다」**다"
+         "(post2 의 `fill_level = unknown/full` 계열).")
     both("")
 
     def p3_block(title, rows, tag, allow_strat_note=True):
@@ -777,6 +824,32 @@ def main(argv=None) -> int:      # noqa: C901
         return res
 
     p3_post7 = p3_block("5-1. **post7 단독 (검정)**", pool_p7, "post7")
+    # 🔴 게이트 40 이 이 표본에서 «값 때문에» 닫힌 것이 아니라 **구조적으로** 닫힌다는 증명.
+    #    쌍의 상한은 C(n,2) 이고, 비교가능 쌍은 그 중 **`N` 이 서로 다른** 쌍뿐이다.
+    if pool_p7:
+        _ns = sorted(r["N"] for r in pool_p7)
+        _n = len(_ns)
+        _tot = _n * (_n - 1) // 2
+        _cnt = {}
+        for _v in _ns:
+            _cnt[_v] = _cnt.get(_v, 0) + 1
+        _same = sum(c * (c - 1) // 2 for c in _cnt.values())
+        _diff = _tot - _same
+        both(f"🔴🔴 **게이트 {PAIR_GATE} 은 이 표본에서 «값 때문에» 닫힌 것이 아니라 "
+             "«구성»으로 닫힌다 — 산술로 증명한다.**")
+        both("")
+        both(f"- post7 풀 **{_n}건** ⇒ 만들 수 있는 쌍의 **상한** = "
+             f"`C({_n},2)` = **{_tot}** — 이미 **{_tot} < {PAIR_GATE}** 다.")
+        both(f"- 게다가 비교가능 쌍은 *「`N` 이 서로 «다른» 쌍」*뿐이다. 이 표본의 차수는 "
+             f"`{_ns}` 이고 같은 `N` 끼리 묶인 쌍이 **{_same}** 이라 "
+             f"**`N` 이 다른 쌍은 최대 {_diff}** 개다(δ 대역 제외 «전»의 상한).")
+        both(f"- ⇒ ***어떤 앵커 후보를 넣어도 post7 «단독» 열의 비교가능 쌍은 {_diff} 을 "
+             f"넘을 수 없다*** ⇒ 게이트 {PAIR_GATE} 은 **이 글에서 열릴 수 없었다.** "
+             "🔑 ***그러므로 「미달」을 「예측이 틀렸다」로 읽으면 안 된다*** — "
+             "«잴 수 없었던 것»이다.")
+        both(f"- 🔴 **그리고 이것이 문턱을 낮출 이유가 «되지 않는다»** — {PAIR_GATE} 은 "
+             "동결값이고(§10), 열리는 길은 **표본이 누적되는 것** 하나뿐이다.")
+        both("")
     p3_cum = p3_block("5-2. 누적(소급 + post7) — 탐색", pool_retro + pool_p7, "소급",
                       allow_strat_note=False)
 
@@ -817,7 +890,14 @@ def main(argv=None) -> int:      # noqa: C901
         both(f"- `V(R_j)` 실현 **{len(v_R)}개** · 최소 {min(v_R) if v_R else '—'} · "
              f"중앙 {fmt(med(v_R), 1)} · 최대 {max(v_R) if v_R else '—'}")
         both("")
-        both("| 후보 | `V(X)` | `V(R_j) ≤ V(X)` 인 `R` 수 | §5-1 조건 ③ (0개여야 함) |")
+        both("🔒 **이 표는 «독법 A» — 동결 §5-1 3번 축자**: *「무작위 앵커 대조군 `R`"
+             "(§7-3 · 시드 100개) 중 `V(R_j) ≤ V(X)` 인 것이 **0개**"
+             " ⇒ 순열 `p = 1/101 = .0099 <` Holm 1단계 **.0167**」*"
+             "(`PREREG_ANCHOR_REDESIGN.md:244-245`). "
+             "🔴 **이 문언에는 «비교가능 쌍 게이트»가 없다.** "
+             "게이트를 얹는 «독법 B»(§10)는 §7 에 따로 인쇄한다 — 두 독법이 상반된다(§1-8 충돌 신고).")
+        both("")
+        both("| 후보 | `V(X)` | `V(R_j) ≤ V(X)` 인 `R` 수 | §5-1 조건 ③ (0개여야 함) · **독법 A** |")
         both("|---|---|---|---|")
         for c in CANDIDATES:
             r3 = (p3_post7 or {}).get(c)
@@ -912,64 +992,169 @@ def main(argv=None) -> int:      # noqa: C901
          + (f"🔴🔴 **둘 다 {ax1_incl} 을 가리킨다** — 발행일 {PUB7} 가 **휴장(토)** 이기 때문"
             if ax1_ident else f"당일포함 {ax1_incl} ↔ 직전 {ax1_prev}")
          + " | " + ("🔴 **구분 불가(항등)**" if ax1_ident else "계산 후 판정") + " |")
-    # ② 재진입 포함 ↔ 제외
-    p7_norein = [it for it in p7 if not it["reentry"]]
-    z_in = {c: p1_post7.get(c) for c in CANDIDATES}
-    z_ex = {}
-    for c in CANDIDATES:
-        if (c, "ANC-P1") in IDENTITY_SLOTS:
-            z_ex[c] = None
-            continue
-        us = [it for it in p7_norein if it.get("ok")]
-        hits = sum(1 for it in us if z3(it["v"], c))
-        z_ex[c] = (hits, len(us))
-    split2 = []
-    for c in CANDIDATES:
-        a, b = z_in.get(c), z_ex.get(c)
-        if a and b and a[1] and b[1] and ((a[0] / a[1] >= 0.5) != (b[0] / b[1] >= 0.5)):
-            split2.append(c)
-    both("| **②** 재진입 포함 ↔ 제외 | 포함 "
-         + " · ".join(f"{c} {frac(*z_in[c])}" for c in CANDIDATES if z_in.get(c))
-         + " ↔ 제외 "
-         + " · ".join(f"{c} {frac(*z_ex[c])}" for c in CANDIDATES if z_ex.get(c))
-         + f" | `exact` 안 재진입 **1건**(빛과전자 · `PRIOR_CYCLE_IN_WINDOW` = 0) | "
-         + (f"🔴 **갈린다**({', '.join(split2)})" if split2 else "🟢 안 갈린다") + " |")
-    # ③ 창5 절단 포함 ↔ 제외
-    p7_notrunc = [it for it in p7 if it["name"] not in WIN5_TRUNC]
-    pool_nt = pool(p7_notrunc, "post7")
-    split3 = []
-    if p3_post7 and len(pool_nt) >= 2:
-        nsx = [r["N"] for r in pool_nt]
-        gsx = [r["post"] for r in pool_nt]
+    # 🔴🔴 **`ANC-N4` 는 「세 판정 × 전 갈래」 전수 검사다.**
+    #    동결 §6 `ANC-N4` 행(`PREREG_ANCHOR_REDESIGN.md:282`): *「① `END` = 발행일 «직전» 봉
+    #    ② 재진입 포함↔제외 ③ 창5 절단 포함↔제외 — **세 축 전부 인쇄** |
+    #    **판정이 갈리는 축이 하나라도 있으면 🔴 선언 금지**」*.
+    #    여기서 「판정」은 §5-1 의 **세** 최소 조건(`ANC-P1`·`P2`·`P3`) 전부다 —
+    #    축마다 «한» 검정만 보면 다른 검정에서 갈리는 것을 놓친다(이 스크립트의 옛 결함).
+    def _n4_p1(items):
+        usable = [it for it in items if it.get("ok")]
+        out = {}
         for c in CANDIDATES:
-            r3 = p3_post7.get(c)
-            if not r3:
+            if (c, "ANC-P1") in IDENTITY_SLOTS:
+                out[c] = (None, None)
                 continue
-            xs = [dd_anchor(r["v"], c) for r in pool_nt]
+            n = len([it for it in usable if z3(it["v"], c) is not None])
+            hits = sum(1 for it in usable if z3(it["v"], c))
+            out[c] = ((hits, n), None if n < MIN_N else bool(hits / n < 0.5))
+        return out
+
+    def _n4_p2(items):
+        usable = [it for it in items if it.get("ok")]
+        out = {}
+        for c in CANDIDATES:
+            if (c, "ANC-P2") in IDENTITY_SLOTS:
+                out[c] = (None, None)
+                continue
+            vals = [x for x in (h_obs(it["v"], c) for it in usable) if x is not None]
+            hit = sum(1 for x in vals if x <= 1.0)
+            out[c] = ((hit, len(vals)),
+                      None if len(vals) < MIN_N else bool(hit / len(vals) >= 2.0 / 3.0))
+        return out
+
+    def _n4_p3(items):
+        """`ANC-P3`(§5-1 3번) = 무작위 앵커 `R` 중 `V(R_j) ≤ V(X)` 가 **0개**.
+
+        게이트(비교가능 쌍 `PAIR_GATE`)가 닫히면 «미판정»(None) — §7 의 산술을 그대로 쓴다.
+        """
+        rows = pool(items, "post7")
+        out = {c: (None, None) for c in CANDIDATES}
+        if len(rows) < 2:
+            return out
+        ns = [r["N"] for r in rows]
+        gs = [r["post"] for r in rows]
+        st = {}
+        for c in CANDIDATES:
+            xs = [dd_anchor(r["v"], c) for r in rows]
+            keep = [i for i, x in enumerate(xs) if x is not None]
+            st[c] = (axis_stats([ns[i] for i in keep], [xs[i] for i in keep],
+                                [gs[i] for i in keep], stratified=True)
+                     if len(keep) >= 2 else None)
+        gate = any(v and v["comp"] >= PAIR_GATE for v in st.values())
+        vR = []
+        for j in range(S_ANCHOR):
+            hs = random_anchor_highs(rows, j)
+            xs = []
+            for r, h in zip(rows, hs):
+                L5 = r["v"].get("L5")
+                xs.append(None if (h is None or L5 is None or h <= 0)
+                          else 100.0 * (1.0 - float(L5) / float(h)))
             keep = [i for i, x in enumerate(xs) if x is not None]
             if len(keep) < 2:
                 continue
-            st = axis_stats([nsx[i] for i in keep], [xs[i] for i in keep],
-                            [gsx[i] for i in keep], stratified=True)
-            if (r3["strat"]["p"] < ALPHA) != (st["p"] < ALPHA):
-                split3.append(c)
+            ps, _dr = pairset([xs[i] for i in keep], DELTA)
+            v_obs, _c = statV([ns[i] for i in keep], ps)
+            vR.append(v_obs)
+        for c in CANDIDATES:
+            v = st.get(c)
+            if not v or not vR:
+                continue
+            beat = sum(1 for x in vR if x <= v["V"])
+            out[c] = ((beat, len(vR)), None if not gate else bool(beat == 0))
+        return out
+
+    def _n4_branch(items):
+        """한 갈래에서 후보별 세 판정 — `{후보: {검정: (원값, True/False/None)}}`."""
+        a, b, c3 = _n4_p1(items), _n4_p2(items), _n4_p3(items)
+        return {c: {"ANC-P1": a[c], "ANC-P2": b[c], "ANC-P3": c3[c]} for c in CANDIDATES}
+
+    N4_BASE = _n4_branch(p7)
+
+    def _n4_diff(alt_items):
+        """주 갈래 ↔ 대안 갈래의 **세 판정 전수** 차분.
+
+        🔴 `True ↔ False` 만 「갈린다」로 센다 — «미판정»은 값이 없는 것이라 갈릴 수 없다.
+        ⚠️ 다만 「판정 ↔ 미판정」으로 상태가 바뀐 자리는 따로 세어 인쇄한다(숨기지 않는다).
+        """
+        alt = _n4_branch(alt_items)
+        flips, mutes = [], []
+        for c in CANDIDATES:
+            for k in ("ANC-P1", "ANC-P2", "ANC-P3"):
+                x, y = N4_BASE[c][k][1], alt[c][k][1]
+                if x is None and y is None:
+                    continue
+                if x is None or y is None:
+                    mutes.append(c + "×`" + k + "`")
+                elif x != y:
+                    flips.append(c + "×`" + k + "`("
+                                 + ("△" if y else "▽") + ")")
+        return alt, flips, mutes
+
+    # ② 재진입 포함 ↔ 제외
+    p7_norein = [it for it in p7 if not it["reentry"]]
+    alt2, split2, mute2 = _n4_diff(p7_norein)
+    def _n4_cells(alt, key):
+        """세 판정 중 한 검정의 「주 ↔ 대안」 «값»을 후보별로 한 칸에."""
+        out = []
+        for c in CANDIDATES:
+            a, b = N4_BASE[c][key][0], alt[c][key][0]
+            if a is None and b is None:
+                out.append(c + " 항등")
+                continue
+            out.append(c + " " + (frac(*a) if a else "—")
+                       + "↔" + (frac(*b) if b else "—"))
+        return " · ".join(out)
+
+    n_rein = sum(1 for it in p7 if it["reentry"])
+    both("| **②** 재진입 포함 ↔ 제외 | 포함 "
+         f"{len(p7)}건 ↔ 제외 {len(p7_norein)}건 | "
+         f"`ANC-P1` {_n4_cells(alt2, 'ANC-P1')} │ `ANC-P2` {_n4_cells(alt2, 'ANC-P2')} "
+         f"│ `ANC-P3`(`V(R)≤V(X)` 수) {_n4_cells(alt2, 'ANC-P3')} "
+         f"— `exact` 안 재진입 **{n_rein}건** | "
+         + (f"🔴 **갈린다**({', '.join(split2)})" if split2 else "🟢 안 갈린다")
+         + (f" · ⚠️ 판정↔미판정 {len(mute2)}자리" if mute2 else "") + " |")
+    # ③ 창5 절단 포함 ↔ 제외
+    p7_notrunc = [it for it in p7 if it["name"] not in WIN5_TRUNC]
+    alt3, split3, mute3 = _n4_diff(p7_notrunc)
     both(f"| **③** 창5 절단 포함 ↔ 제외 | 포함 {len(p7)}건 ↔ 제외 {len(p7_notrunc)}건 | "
-         f"절단 **{len(WIN5_TRUNC)}건**("
+         f"`ANC-P1` {_n4_cells(alt3, 'ANC-P1')} │ `ANC-P2` {_n4_cells(alt3, 'ANC-P2')} "
+         f"│ `ANC-P3`(`V(R)≤V(X)` 수) {_n4_cells(alt3, 'ANC-P3')} — 절단 "
+         f"**{len(WIN5_TRUNC)}건**("
          + " · ".join(f"{k} {v}봉" for k, v in WIN5_TRUNC.items()) + ") | "
-         + (f"🔴 **갈린다**({', '.join(split3)})" if split3 else "🟢 안 갈린다") + " |")
+         + (f"🔴 **갈린다**({', '.join(split3)})" if split3 else "🟢 안 갈린다")
+         + (f" · ⚠️ 판정↔미판정 {len(mute3)}자리" if mute3 else "") + " |")
     both("")
     both(f"🔴🔴 **① 축이 이번 회차에 «항등»이다** — 발행일({PUB7})이 **휴장**이라 「발행 당일 봉 «포함»」과 "
          f"「발행일 «직전» 봉」이 **같은 봉({END})** 을 가리킨다. ⇒ ① 은 §5-3 문형대로 "
          "**「구분 불가(항등)」로 명시 인쇄**하고 **②·③ 두 축으로만 `ANC-N4` 를 판정**한다. "
          "🔴 ***①을 다른 정의로 «대체하지 않는다»*** — 대체하면 그게 새 자유도다(PD-14 1번).")
     n4_fire = bool(split2 or split3)
-    both(f"⇒ **`ANC-N4` {'🔴 발동 — 선언 금지' if n4_fire else '🟢 미발동'}**"
-         "(②·③ 기준 · ① 은 항등이라 판정에 쓰지 않는다).")
+    both(f"⇒ **`ANC-N4` {'🔴 발동 — 선언 금지' if n4_fire else '🟢 미발동'}** "
+         "— ②·③ 각 축에서 **세 판정(`ANC-P1`·`P2`·`P3`) 전수**를 대조한 결과다"
+         "(① 은 이번 회차에 항등이라 갈릴 수 없다). "
+         + (f"갈린 자리: **{' · '.join(split2 + split3)}** "
+            "(△ = 대안 갈래에서 충족 · ▽ = 대안 갈래에서 미충족)."
+            if n4_fire else "세 판정 × 두 축 어디에서도 `True ↔ False` 뒤집힘이 없다.")
+         + (f" ⚠️ 판정↔미판정으로 «상태»만 바뀐 자리 {len(mute2) + len(mute3)}개는 "
+            "갈림으로 세지 않았다(값이 없는 것은 갈릴 수 없다) — 그래도 위 표에 인쇄했다."
+            if (mute2 or mute3) else ""))
+    if n4_fire:
+        both("")
+        both("🔴🔴 **동결 §6 `ANC-N4` 행이 *「판정이 갈리는 축이 하나라도 있으면 "
+             "🔴 선언 금지」*라고 적었다**(`PREREG_ANCHOR_REDESIGN.md:282`) ⇒ "
+             "***이번 글에서는 어느 채택도 선언하지 않는다.*** "
+             "🔑 ***갈리지 않는 축만 골라 읽으면 그게 사후적합이다.***")
     both("")
 
     # ═══ §7 채택 판정 ══════════════════════════════════════════════════════
     both("## §7. 채택 판정 — §5-1 최소 조건(전부 AND) · §5-2 세 갈래\n")
-    both("| 후보 | ① `Z3 < 1/2` | ② `h_obs ≤ 1` ≥ 2/3 | ③ `V(R_j) ≤ V(X)` = 0 | 충족 개수 | 비고 |")
+    both("🔒 **이 표의 ③ 열은 «독법 B»** — §10 의 *「비교가능 쌍 40」* 게이트를 "
+         "§5-1 3번 «위에» 얹은 읽기다. **§5-3 표(«독법 A» · 게이트 없는 축자)와 기호가 "
+         "상반될 수 있고, 이번이 그렇다.** 🔴 **두 표의 기호를 억지로 통일하지 않았다** "
+         "— 아래 «충돌 신고» 참조.")
+    both("")
+    both("| 후보 | ① `Z3 < 1/2` | ② `h_obs ≤ 1` ≥ 2/3 | ③ `V(R_j) ≤ V(X)` = 0 (**독법 B**) | 충족 개수 | 비고 |")
     both("|---|---|---|---|---|---|")
     p3_gate_ok = bool(p3_post7) and any(
         r and r["strat"]["comp"] >= PAIR_GATE for r in p3_post7.values())
@@ -1003,6 +1188,57 @@ def main(argv=None) -> int:      # noqa: C901
          "다시 후보에 넣으면 「기각을 무르는」 동작) |")
     both("")
 
+    def _p3_conflict_report():
+        """🔴 §5-3(독법 A) ↔ §7 표(독법 B)가 조건 ③ 에 «상반된 기호»를 낸다.
+
+        🔒 어느 쪽으로도 고치지 않고 **둘 다 인쇄**하고, 어느 독법이 맞는지는
+        🔒 **사장님 결정**으로 넘긴다(§1-8 충돌 신고 형식).
+        🔴 이 신고는 `ANC-N4`·`N1`·`N5` 가 먼저 발동해도 **반드시 인쇄한다** —
+        다른 발동 때문에 가려지면 다음 사람이 §5-3 의 🟢 만 보고 「충족했다」고 읽는다.
+        """
+        # 🔴 §5-3(독법 A)과 §7(독법 B)이 조건 ③ 에 대해 **상반된 기호**를 낸다.
+        #    어느 쪽으로도 «고치지 않고» 둘 다 인쇄하고, 판정은 🔒 사장님 결정으로 넘긴다.
+        both("")
+        both("### 🔴 충돌 신고 (§1-8 형식) — `ANC-P3`(조건 ③)의 두 독법\n")
+        both("| 독법 | 동결 문언 | 이 표본에서의 기호 | 어디에 인쇄됐나 |")
+        both("|---|---|---|---|")
+        a_cells = " · ".join(
+            f"{c} " + ("🟢 충족(0개)" if r_beats.get(c) == 0
+                       else ("⛔ 미판정" if r_beats.get(c) is None else f"🔴 {r_beats[c]}개"))
+            for c in CANDIDATES)
+        both("| **A**(축자) | §5-1 3번 *「무작위 앵커 대조군 `R`(§7-3 · 시드 100개) 중 "
+             "`V(R_j) ≤ V(X)` 인 것이 **0개** ⇒ 순열 `p = 1/101 = .0099 <` Holm **.0167**」* "
+             f"(`PREREG_ANCHOR_REDESIGN.md:244-245`) — **쌍 게이트 문언이 없다** | {a_cells} | "
+             "§5-3 표 |")
+        both(f"| **B**(게이트) | §10 *「`ANC-P3` 의 열림 조건 = 비교가능 쌍 **{PAIR_GATE}**」* "
+             f"+ §5-4 *「채택은 post7 열로만」* | ⛔ **전 후보 미판정** — post7 단독 풀의 "
+             f"비교가능 쌍이 {PAIR_GATE} 미만 | 아래 §7 표 |")
+        both("")
+        both(f"🔴 **두 독법이 상반되는 이유** — §10 이 근거로 든 *「post6 은 **161쌍**으로 "
+             "열려 있었다」* 의 161쌍은 **누적 표본**에서 나온 수다(§7-2 의 층화가 «글 사이»를 전제하는 "
+             "것도 같은 방향이다). 그런데 §5-4 는 *「채택은 post7 열로만」*이라 못박는다. "
+             "⇒ **post7 «단독» 열만으로는 게이트가 구조적으로 닫히고**, 그러면 §5-1 의 축자 독법 A 와 "
+             "§10 의 게이트 독법 B 가 **같은 조건 ③ 에 대해 다른 기호**를 낸다.")
+        both(f"🔴 **어느 쪽으로도 고치지 않았다** — §5-3 은 A 의 기호를, §7 표는 B 의 기호를 "
+             "그대로 인쇄한다. 기호를 억지로 통일하면 그게 «문언 개정»이고, 개정은 "
+             "**새 사전등록**으로만 한다. 🔴 **문턱을 낮춰 열지도 않는다**"
+             f"(§10 마지막 줄 · 게이트 보고 파라미터 하향 금지).")
+        both("")
+        both("🔒🔒 **사장님 결정 항목** — 조건 ③ 를 «A(축자)»로 읽을지 «B(게이트)»로 "
+             "읽을지는 **문언 해석**이지 값이 정할 수 있는 것이 아니다. "
+             "그 결정 «전»에는 §5-2 의 세 갈래 중 **어디로도 가지 않는다**:")
+        both("")
+        both("- 🔴 **「충족 후보 0 ⇒ 앵커 기반 축 전면 폐기 상신」으로 읽지 «않는다»** — "
+             "독법 A 에서는 조건 ③ 를 충족하는 후보가 "
+             f"**{sum(1 for c in ADOPTABLE if r_beats.get(c) == 0)}개** 있다.")
+        both("- 🔴 **「보류」라고도 «선언하지 않는다»** — 「보류」는 독법 B 를 «고른» 뒤에야 "
+             "할 수 있는 말이고, 고르는 것 자체가 이 신고의 대상이다.")
+        both("- 🔑 ***값을 보고 독법을 고르면 그게 사후적합이다.***")
+        both("")
+
+    if not p3_gate_ok:
+        _p3_conflict_report()
+
     if n1_fire or n4_fire or n5_fail or ident_fail:
         reasons = []
         if ident_fail:
@@ -1014,20 +1250,14 @@ def main(argv=None) -> int:      # noqa: C901
         if n5_fail:
             reasons.append("`ANC-N5` 실패(대조군 상수 · 절차 무효)")
         both(f"⇒ 🔴🔴 **어느 채택도 선언하지 않는다** — {' · '.join(reasons)}(§6).")
+        if not p3_gate_ok:
+            both("🔴 **그리고 조건 ③ 는 위 «충돌 신고»대로 두 독법이 상반돼 있다** — "
+                 "🔒 사장님 결정 전에는 §5-2 의 세 갈래 중 어디로도 가지 않는다. "
+                 "특히 **「충족 후보 0 ⇒ 전면 폐기 상신」으로도, 「보류」로도 읽지 않는다.**")
     elif not p3_gate_ok:
-        both(f"⇒ ⛔ **채택 판정 «보류»** — `ANC-P3` 의 비교가능 쌍이 게이트 **{PAIR_GATE}** 에 미달해 "
-             "§5-1 의 AND 가 **완성되지 않는다**.")
-        both("")
-        both("🔴 **충돌 신고(§1-8 형식)** — §5-4 는 *「채택은 post7 열로만」*이라 하고, §10 은 "
-             f"`ANC-P3` 의 열림 조건을 *「비교가능 쌍 {PAIR_GATE}」* 로 두면서 *「post6 은 **161쌍**으로 "
-             "열려 있었다」*고 적었다. 그 161쌍은 **누적 표본**에서 나온 수다(§7-2 의 층화가 «글 사이»를 "
-             "전제하는 것도 같은 방향이다). ⇒ **post7 «단독» 열만으로는 게이트가 구조적으로 닫힌다.** "
-             "두 독법을 **둘 다 인쇄**했고(§5-1 post7 단독 · §5-2 누적), **어느 쪽으로도 «고치지 않았다».**")
-        both(f"🔴 **문턱을 낮춰 열지 않는다**(§10 마지막 줄 · 게이트 보고 파라미터 하향 금지 조항). "
-             f"쌍이 {PAIR_GATE} 에 닿을 때까지 **미룬다** — 누적으로 넘긴다(§10 「열리는 조건」).")
-        both("🔴 그러므로 **§5-2 의 세 갈래(정확히 1 / 2 이상 / 0) 중 어디로도 «선언하지 않는다».** "
-             "특히 **「충족 후보 0 ⇒ 앵커 기반 축 전면 폐기 상신」으로 읽지 않는다** — "
-             "***0 은 「예측이 틀렸다」가 아니라 「③을 «잴 수 없었다»」다.***")
+        both("⇒ 🔴🔴 **조건 ③ 는 «두 독법»이 상반된다"
+             " — «어느 쪽도 선언하지 않는다».** 위 «충돌 신고» 참조 "
+             "(🔒 사장님 결정 항목).")
     elif len(adopted) == 1:
         both(f"⇒ 🟢 **채택: `{adopted[0]}`** (§5-2 — 충족 후보가 **정확히 1**).")
         both("🔴 **`BUY-L5` 재개 조항은 🔒 결정 ④로 «소멸»**했다(PD-13 1번) — "

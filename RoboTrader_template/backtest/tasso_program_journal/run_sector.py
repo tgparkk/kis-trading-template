@@ -401,6 +401,53 @@ def binom_ge_half(k, q):
     return float(sum(comb(k, i) * q ** i * (1 - q) ** (k - i) for i in range(need, k + 1)))
 
 
+def v1_axis_verdicts(EV, G1, MAIN, g1_main, NS, MEAS, MAIN_N, MAIN_M,
+                     items, ap_items, b2r, full_eval):
+    """§4-6 `SEC-V1` **4축** 판정 사전을 «인쇄와 분리»해서 계산한다.
+
+    🔴 이 함수가 있는 이유 = **§3 의 `SEC-P1` 판정이 `SEC-V1` 을 참조해야 하기 때문**이다.
+    `PREREG_SECTOR_COMOVE.md` §3 1행의 ⛔ 열이 `SEC-V1` 을 «판정 불가 조건»으로 열거하고
+    (`:600`), §6 는 *「`SEC-V1` — 4축 중 하나가 갈림 ⇒ 갈리지 않는 글이 온다
+    (잣대를 넓혀 열지 않는다)」*라고 못박는다(`:896`). 그런데 §7 은 §3 «뒤»에 인쇄되므로
+    계산만 앞으로 끌어낸다. **값·문턱·갈래는 §7 과 완전히 같다**(같은 `verdict_of`).
+
+    🔒 `SEC-V1` 의 적용 범위(`:819`)는 「같은 판정을 «다른 잣대»로 다시 계산했을 때 갈리는가」
+    뿐이다 ⇒ **주 갈래의 3중 AND 가 거짓인 사건에는 관여하지 않는다**(그건 §3 이 판정).
+    그래서 호출부는 `and_ok ∧ split` 일 때만 ⛔ 로 간다.
+    """
+    def verdict_of(E, g1r):
+        if not E["vals"] or E["N1"] is None or E["B1"] is None or E["B2"]["rate"] is None:
+            return None
+        if g1r is not None and g1r >= G1_THR:
+            return None
+        return bool(E["N1"]["p_main"] < P_THR and E["B1"]["p_main"] < P_THR
+                    and E["B2"]["rate"] > B2_THR)
+
+    VD = {}
+    for n in NS:                                            # 축 ① 섹터 깊이
+        VD[(1, f"N={n}")] = verdict_of(EV[(n, MAIN_M)], G1[(n, MAIN_M)])
+    for mk in MEAS:                                         # 축 ② 측정자
+        VD[(2, mk)] = verdict_of(EV[(MAIN_N, mk)], G1[(MAIN_N, mk)])
+    v_main = verdict_of(MAIN, g1_main)
+    VD[(3, "글 단위 중앙")] = v_main                          # 축 ③ 집계
+    p_pool_n1 = MAIN["N1"]["p_pool"] if MAIN["N1"] else None
+    p_pool_b1 = MAIN["B1"]["p_pool"] if MAIN["B1"] else None
+    v_pool = None
+    if p_pool_n1 is not None and p_pool_b1 is not None and b2r is not None and g1_main < G1_THR:
+        v_pool = bool(p_pool_n1 < P_THR and p_pool_b1 < P_THR and b2r > B2_THR)
+    VD[(3, "건 pooled 중앙")] = v_pool
+    VD[(4, "`exact` 만")] = v_main                           # 축 ④ 등록일 정밀도
+    if ap_items:
+        ap_all_items = items + ap_items
+        E_ap = full_eval(ap_all_items, MAIN_N, MAIN_M)
+        g1_ap = sum(1 for b in E_ap["bs"] if not b["ok"]) / len(ap_all_items)
+        VD[(4, "`approx` 포함")] = verdict_of(E_ap, g1_ap)
+    else:
+        VD[(4, "`approx` 포함")] = v_main
+    kinds = {str(v): v for v in VD.values()}
+    return {"VD": VD, "kinds": kinds, "split": len(kinds) > 1}
+
+
 def load_day(cur, d, SEC, final_pseudo):
     """등록일 `d` 한 날치 — 🔴 **두 모드가 «같은 함수»를 쓴다**(정의가 갈리지 않게).
 
@@ -1648,13 +1695,23 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
                                  null_med=float(np.median(gm)))
         pb, _ = pools_for("B1", n, mk, bs, its, DAY)
         wins, nb2 = 0, 0
-        for pool_v, v in zip(pb, vals):
+        # 🔴 **`SEC-B2` 의 비교점은 «그날 `n_up` 풀의 중앙값»이지 «50»이 아니다**(§3 5행).
+        #    백분위 축이라 50 이 비교점처럼 보이지만, 문턱 50% 는 «승률»에 걸린 것이다.
+        #    ⇒ 건별 (저자 값, 그날 풀 중앙값)을 인쇄용으로 남긴다.
+        b2_detail = []
+        _mnames = [it["name"] for it, b in zip(its, bs) if b["ok"]]
+        for idx, (pool_v, v) in enumerate(zip(pb, vals)):
             if pool_v.size == 0:
                 continue
             nb2 += 1
-            if v > med(list(pool_v)):     # 🔴 동률은 «못 넘은 것»(§4-2 · 보수적)
+            pm = med(list(pool_v))
+            if v > pm:     # 🔴 동률은 «못 넘은 것»(§4-2 · 보수적)
                 wins += 1
-        out["B2"] = dict(wins=wins, n=nb2, rate=(wins / nb2 if nb2 else None))
+            b2_detail.append(dict(name=(_mnames[idx] if idx < len(_mnames) else "?"),
+                                  value=float(v), pool_med=float(pm),
+                                  pool_n=int(pool_v.size), win=bool(v > pm)))
+        out["B2"] = dict(wins=wins, n=nb2, rate=(wins / nb2 if nb2 else None),
+                         detail=b2_detail)
         return out
 
     EV = {(n, mk): full_eval(items, n, mk) for n in NS for mk in MEAS}
@@ -1818,11 +1875,17 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
     say("🔴 **`1%` 는 «표시» 문턱이지 «판정» 게이트가 아니다.** "
         "🔑 ***0 이라서 안 재는 게 아니라, 0 임을 매회 «보여서» 이 조항이 살아 있음을 증명한다.***")
     say()
+    # 🔴 「한 날에 여러 건」 예시는 **이번 분모에서 실측**한다(직전 글의 등록일을 옮겨 적지 않는다).
+    _dupd = sorted(d for d in dates if sum(1 for it in items if it["reg"] == d) >= 2)
     say("⚠️ 🔴 **「5열」이라 적지 않는다 — 이 표는 4열이다.** `PREREG_POST6.md` §5-2 의 5번째 열은 "
         "`prev_bar_date` 인데, **이 축의 §2 표는 «등록일» 행**이고 `prev_close` 는 **종목별 `LAG`** 라 "
-        "`prev_bar_date` 가 **행마다 유일하지 않다**(이번 분모에서 `2026-08-28`·`2026-09-01` 은 "
-        "한 날에 2건씩이다) ⇒ **4열만 인쇄한다.** 🔑 ***열을 못 채우면 「채운 척」하지 말고 "
-        "「왜 못 채우는지」를 적는다.***")
+        "`prev_bar_date` 가 **행마다 유일하지 않다**"
+        + (f"(이번 분모 등록일 {' · '.join('`%s`' % d for d in dates)} 중 한 날에 2건 이상인 날 = "
+           + (" · ".join("`%s`(%d건)" % (d, sum(1 for it in items if it["reg"] == d))
+                              for d in _dupd) if _dupd else "**없음** — 그래도 `prev_bar_date` 는 "
+              "«종목별» 값이라 등록일 행과 1:1 이 아니다") + ")")
+        + " ⇒ **4열만 인쇄한다.** 🔑 ***열을 못 채우면 「채운 척」하지 말고 "
+          "「왜 못 채우는지」를 적는다.***")
     say()
     say("| 등록일 | 그날 `market_cap>0` | 검정 유니버스 | 탈락 | 탈락률 | 🔴 섹터 조인 «후» 탈락 | "
         "섹터 조인 | 커버리지 | `n_up` ∩ 조인 | S-1 동결함수 일치 |")
@@ -1954,6 +2017,26 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
         "저자 종목은 정의상 급등주이고, 급등주가 섹터 동반성이 높다면 `SEC-N1` 은 그 사실만 되비춘다"
         "(= `REG-M4` 재진술). **정보는 `SEC-B1`·`SEC-B2` 에 있다.**")
     say("🔴 **`SEC-B2` 동률 처리** — 저자 값이 그날 풀 중앙값과 «같으면» **못 넘은 것**으로 센다(보수적).")
+    say("")
+    say("#### 🔴🔴 `SEC-B2` 의 «비교점» — **50 이 아니라 «그날 `n_up` 풀의 중앙값»이다**")
+    say("")
+    say("⚠️ 저자 값이 **백분위**라 「50 을 넘었나」로 읽기 쉽지만, `SEC-B2` 가 재는 것은 "
+        "***「저자 값 > **그날** 급등주 풀의 중앙값」***이다(§3 5행 정의 축자). "
+        "🔑 ***두 비교점은 같은 날에도 크게 다르다*** — 아래 표가 그 차이다.")
+    say("")
+    say("| 종목 | 등록일 | 저자 값(백분위) | **그날 `n_up` 풀 중앙값** | 풀 크기 | 넘었나 | "
+        "(참고) 50 을 넘나 |")
+    say("|---|---|---|---|---|---|---|")
+    for _d, _it in zip(MAIN["B2"].get("detail", []),
+                       [x for x, b in zip(items, MAIN["bs"]) if b["ok"]]):
+        say(f"| {_d['name']} | {_it['reg']} | **{_d['value']:.1f}** | "
+            f"**{_d['pool_med']:.1f}** | {_d['pool_n']} | "
+            + ("🟢 예" if _d["win"] else "🔴 아니오") + " | "
+            + ("예" if _d["value"] > 50.0 else "아니오") + " |")
+    say("")
+    say("🔴 **그러므로 «50 을 넘었다»를 `SEC-B2` 의 근거로 적지 않는다** — "
+        "두 잣대가 같은 답을 내는 날도 있고 아닌 날도 있다. "
+        "🔒 판정에 쓰는 것은 **그날 풀 중앙값** 쪽 하나뿐이다.")
     say()
     say("### 4-2. 🔴🔴 `SEC-B1` **발화 가능성** — `q_top` 실측 (§4-2 (가) · §7-B #20)")
     say()
@@ -2105,11 +2188,45 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
         f"**{binom_ge_half(kmain, qmax) if kmain else float('nan'):.4f}** | "
         + ("🟢 열림" if b1fire else "🔴 ⛔ 발화 불가") + " |")
     gates_ok = (len(items) >= MIN_EXACT) and (g1_main < G1_THR) and b1fire
-    p1_ok = bool(gates_ok and c_n1 and c_b1 and c_b2)
+    and_ok = bool(gates_ok and c_n1 and c_b1 and c_b2)
+    # 🔴 §3 1행의 ⛔ 열이 `SEC-V1` 을 «판정 불가 조건»으로 열거한다
+    #    (`PREREG_SECTOR_COMOVE.md:600`). §7 은 §3 «뒤»에 인쇄되므로 갈림 여부만 앞에서 계산한다.
+    #    🔒 적용 범위(`:819`) = 「같은 판정을 «다른 잣대»로 다시 계산했을 때 갈리는가」뿐이므로
+    #    주 갈래의 AND 가 «거짓»인 사건에는 관여하지 않는다 ⇒ `and_ok` 일 때만 ⛔ 로 간다.
+    V1PRE = v1_axis_verdicts(EV, G1, MAIN, g1_main, NS, MEAS, MAIN_N, MAIN_M,
+                             items, ap_items, b2r, full_eval)
+    v1_split_pre = bool(V1PRE["split"])
+    p1_blocked = bool(and_ok and v1_split_pre)
+    p1_ok = bool(and_ok and not v1_split_pre)
+    p1_label = "⛔ 판정 불가" if p1_blocked else ("✅ 성립" if p1_ok else "🔴 불성립")
+    p1_word = "판정 불가" if p1_blocked else ("성립" if p1_ok else "불성립")
     say()
-    say("### 🔒 판정 — `SEC-P1` : **" + ("✅ 성립" if p1_ok else "🔴 불성립(지지 아님)") + "**")
+    say("### 🔒 판정 — `SEC-P1` : **"
+        + ("⛔ 판정 불가(`SEC-V1` 발동)" if p1_blocked
+           else ("✅ 성립" if p1_ok else "🔴 불성립(지지 아님)")) + "**")
     say()
-    if p1_ok:
+    if p1_blocked:
+        say("🔴 **3중 AND 는 주 갈래(`N = 3` · `SEC-M1` · 글 단위 중앙 · `exact` 만)에서 «통과»했다** — "
+            f"`SEC-N1` **{fmt(n1p, 5)}** · `SEC-B1` **{fmt(b1p, 5)}** · "
+            f"`SEC-B2` **{fmt(b2r * 100 if b2r is not None else None)}%** "
+            f"({MAIN['B2']['wins']}/{MAIN['B2']['n']}). "
+            "🔴 **그러나 이것은 «기록»이지 «선언»이 아니다.**")
+        say()
+        say("🔒 `PREREG_SECTOR_COMOVE.md` §3 1행의 ⛔ 열이 `SEC-V1` 을 **판정 불가 조건**으로 "
+            "열거하고(`:600`), §6 가 *「`SEC-V1` — **4축**(§4-6) 중 하나가 갈림 ⇒ "
+            "**갈리지 않는 글이 온다**(잣대를 넓혀 열지 않는다)」*라고 못박는다(`:896`). "
+            "그리고 §4-6 적용 범위(`:819`)는 「같은 판정을 «다른 잣대»로 다시 계산했을 때 갈리는가」이고 "
+            "이번 갈림은 **바로 그 경우**다 — 주 갈래 AND 는 참인데 다른 잣대에서 판정이 다르다(§7 표). "
+            "⇒ ***이번 글에서는 어느 쪽도 선언하지 않는다.***")
+        say()
+        say("🔴🔴 **「계열 최초 성립」이라고 쓰지 않는다** — 성립을 «선언»한 적이 없다. "
+            "쓸 수 있는 문장은 ***「3중 AND 는 통과했으나 `SEC-V1` 때문에 선언 불가 — "
+            "갈리지 않는 글이 오면 판정한다」*** 하나뿐이다. "
+            "🔒 문턱을 낮추거나 갈래를 새로 만들어 여는 것은 §6 가 금지한다.")
+        say()
+        say("🔴 **판정 불가의 뜻도 「테마가 아니다」가 «아니다»**"
+            "(§0-2 2번 · 거짓 음성이 구조적이다).")
+    elif p1_ok:
         say("🔴 **성립의 뜻은 「섹터 동반성이 존재한다」까지다** — *「테마로 고른다」*의 **확증이 아니다**"
             "(§0-2 천장 · 에코프로 4종목이 KSIC 에서 «세 칸»으로 흩어진다). "
             "그리고 승/패 대조가 미실시이므로 **이 축의 최대치는 「기술」**이다(§0-2 ③).")
@@ -2130,8 +2247,8 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
     say()
     say("| 글 | 판정 | 누계 |")
     say("|---|---|---|")
-    say(f"| post6 (`{POST6_LOG_NO}`) | **{'성립' if p1_ok else '불성립'}** | 성립 "
-        f"{1 if p1_ok else 0} / 판정 1 |")
+    say(f"| post6 (`{POST6_LOG_NO}`) | **{p1_word}** | 성립 "
+        f"{1 if p1_ok else 0} / 판정 {0 if p1_blocked else 1} |")
     say()
     say("🔴 **누계를 검정 통계량으로 쓰지 않는다**(`RESULTS_D1_OOS_POST5.md` §8 승계) — "
         "**매 글 독립 판정 + 부호 누계**만 적고 **글별 `p` 를 곱하거나 더하지 않는다**(§2-6).")
@@ -2302,6 +2419,8 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
     vals_v = list(VD.values())
     kinds = {str(v): v for v in vals_v}
     split = len(kinds) > 1
+    # 🔒 §3 이 «앞에서» 쓴 값과 같아야 한다 — 같은 `verdict_of` · 같은 4축(§4-6).
+    assert split == v1_split_pre, ("SEC-V1 배선 불일치", split, v1_split_pre)
     say()
     say("### 🔒 `SEC-V1` : **" + ("🔴 갈린다" if split else "🟢 갈리지 않는다") + "** "
         + f"({len(kinds)}종 판정 — "
@@ -2310,9 +2429,12 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
     say()
     if split:
         say("🔴 **갈렸다 ⇒ §4-6 대로 «어느 쪽도 선언하지 않는다».** "
-            "🔴 **단 §3 우선순위표가 우선한다** — 주 갈래의 3중 AND 결과는 §3 이 판정하고(§5), "
-            "§4-6 은 *「다른 잣대로 다시 계산하면 갈린다」*는 **사실만** 인쇄한다. "
-            "***잣대를 넓혀 열지 않는다.***")
+            "🔒 §3 1행의 ⛔ 열이 `SEC-V1` 을 **판정 불가 조건**으로 열거하므로"
+            "(`PREREG_SECTOR_COMOVE.md:600`) 이 갈림은 §3 의 `SEC-P1` 을 ⛔ 로 만든다 — "
+            "**위 §3 에 그렇게 인쇄돼 있다.** "
+            "🔴 **단 적용 범위(`:819`)는 「같은 판정을 «다른 잣대»로 다시 계산했을 때 "
+            "갈리는가」뿐이다** — 주 갈래의 3중 AND 가 «거짓»인 사건은 §3 이 판정하고 이 조항은 "
+            "관여하지 않는다. ***어느 쪽이든 잣대를 넓혀 열지 않는다.***")
     else:
         say("🟢 **4축 어디서도 판정이 갈리지 않는다** ⇒ `SEC-V1` 은 발동하지 않는다. "
             "🔴 **그래도 이것을 「결론이 튼튼하다」로 읽지 않는다** — 갈릴 수 «없는» 축이 둘(③·④) 있다(위).")
@@ -2353,9 +2475,10 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
             "(두 축을 «동시에» 흔든 대각선 조합이다). 🔒 **§4-5 문언 그대로 판정은 «동결된 하나»로만 "
             "한다** ⇒ ***이 통과를 `SEC-P1` 의 지지로 인용하는 것은 금지된다.*** "
             "🔑 ***값을 보고 갈래를 고르면 그게 사후적합이다.***")
-        say("- 🟢 **그리고 두 읽기 «어느 쪽으로도» 결론이 같다** — 읽기 A 는 2종(불성립·판정 불가), "
-            f"읽기 B 는 {len(ext_kinds)}종 ⇒ **둘 다 「갈린다」**이고, §4-6 의 「어느 쪽도 선언하지 "
-            "않는다」가 막는 대상(= «성립» 선언)은 애초에 없다. 주 갈래 판정은 §3 이 한다(§5).")
+        say(f"- 🟢 **그리고 두 읽기 «어느 쪽으로도» 결론이 같다** — 읽기 A 는 {len(kinds)}종, "
+            f"읽기 B 는 {len(ext_kinds)}종 ⇒ **둘 다 「갈린다」**이고, 그래서 §4-6 의 "
+            "「어느 쪽도 선언하지 않는다」가 **읽기를 고르는 것과 무관하게** 발동한다. "
+            "주 갈래의 3중 AND 자체는 §3 이 «기록»으로 남긴다(§5).")
         say("- 🔴 **그래도 이 사실을 숨기지 않는다** — 이 축에서 「통과하는 잣대가 «존재»한다」는 것은 "
             "***다음 글에서 `SEC-D1`·`SEC-D2` 를 바꾸고 싶어지는 압력***이고, 그 압력이 곧 "
             "이 프로그램이 금지한 동작이다. **바꾸려면 새 사전등록이 필요하다.**")
@@ -2447,14 +2570,25 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
         ("`SEC-B2`", FROZEN_TRAIN["B2"], tr_b2),
         ("`SEC-G1`", FROZEN_TRAIN["G1"], g1_tr))
         if a is not None and b is not None and abs(a - b) > 1e-9]
-    si_absent = [c for c in ("02826K", "03473K") if c not in SEC]
+    # 🔴 「이 기간에 자란 종목」을 **하드코딩하지 않고 실측한다** — 동결 훈련 DB 스냅샷
+    #    «뒤»에 첫 봉이 생긴 종목이 곧 「두 창 사이 신규」다(코드 상수 인용 금지).
+    cur.execute("SELECT stock_code, min(date) FROM daily_prices GROUP BY 1 "
+                "HAVING min(date) > %s ORDER BY 2, 1", (FROZEN_TRAIN["db_snapshot"],))
+    grew = [(c, str(d)) for c, d in cur.fetchall()]
+    si_absent = [c for c, _ in grew if c not in SEC]
+    grew_txt = " · ".join("`%s`(첫 봉 %s)" % (c, d) for c, d in grew) if grew else "없음"
     say(f"- 🔴 **훈련 괴리(동결 ↔ 재계산) = {len(drift)}항목**"
         + (f": {' · '.join(drift)}" if drift else " — 🟢 **전부 일치**")
-        + ". 🔴 **「DB 가 자라서」 가설은 «실측으로 기각»한다** — 이 기간에 자란 종목"
-          f"(`02826K`·`03473K`)은 **`stock_industry` 에 없어**(실측: 표에 없는 것 {len(si_absent)}/2 = "
-          f"{'·'.join('`%s`' % c for c in si_absent) if si_absent else '없음'}) "
-          "***조인 유니버스에 애초에 진입하지 못한다*** ⇒ `SEC-` 측정값을 움직일 «경로가 없다». "
-          "🟢 **남는 설명은 하나뿐 — 동결본에 적힌 값이 «반올림 표기»라서다**(바로 아래 줄이 그 대조다).")
+        + f". 🔴 **「DB 가 자라서」 가설은 «실측으로 기각»한다** — 동결 훈련 스냅샷"
+          f"(`{FROZEN_TRAIN['db_snapshot']}`) «뒤»에 첫 봉이 생긴 종목은 **{len(grew)}종목**"
+          f"({grew_txt})이고, 그 중 **`stock_industry` 에 없는 것 {len(si_absent)}/{len(grew)}** = "
+          f"{'·'.join('`%s`' % c for c in si_absent) if si_absent else '없음'} ⇒ "
+        + ("***조인 유니버스에 애초에 진입하지 못한다*** ⇒ `SEC-` 측정값을 움직일 «경로가 없다». "
+           "🟢 **남는 설명은 하나뿐 — 동결본에 적힌 값이 «반올림 표기»라서다**"
+           "(바로 아래 줄이 그 대조다)."
+           if len(si_absent) == len(grew) else
+           "🔴🔴 **일부는 조인 유니버스에 «들어온다» ⇒ 이 가설을 기각할 수 없다** — "
+           "아래 반올림 대조와 «함께» 읽어야 한다."))
     # 🔴 위 «괴리» 판정은 «전정밀도 float ↔ 동결본의 «인쇄된» 반올림 값»을 비교한다.
     #    같은 대조를 **동결본이 인쇄한 정밀도로** 한 번 더 인쇄한다(양쪽 인쇄 · 규칙 변경 아님).
     same_print = [nm for nm, a, b, nd in (
@@ -2489,11 +2623,14 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
     say()
     say("| 항목 | 상태 |")
     say("|---|---|")
-    say("| `SEC-P1` | **" + ("✅ 성립" if p1_ok else "🔴 불성립")
-        + "** — 천장은 §0-2(성립 = 「섹터 동반성 존재」까지 · 불성립 = 「KSIC 섹터 동반상승으로는 "
-          "안 잡힌다」까지) |")
-    say(f"| `SEC-P2` | 🔒 **기록만** — 판정 1회 · 성립 {1 if p1_ok else 0}. "
-        "누계를 검정 통계량으로 쓰지 않는다 |")
+    say("| `SEC-P1` | **" + p1_label + "**"
+        + (" — 🔴 3중 AND 는 통과했으나 `SEC-V1`(4축 갈림)이 ⛔ 다(§3 1행 ⛔ 열 · §6). "
+           "***「계열 최초 성립」이 아니다*** — 갈리지 않는 글이 오면 판정한다" if p1_blocked else
+           " — 천장은 §0-2(성립 = 「섹터 동반성 존재」까지 · 불성립 = 「KSIC 섹터 동반상승으로는 "
+           "안 잡힌다」까지)") + " |")
+    say(f"| `SEC-P2` | 🔒 **기록만** — **이 글에서** 판정 {0 if p1_blocked else 1}회"
+        + ("(⛔ 판정 불가라 누계 «분모»에 안 들어간다)" if p1_blocked else "")
+        + f" · 성립 {1 if p1_ok else 0}회. 누계를 검정 통계량으로 쓰지 않는다 |")
     say("| `SEC-B1` 발화 | " + ("🟢 가능" if b1fire else "🔴 ⛔ 발화 불가")
         + f" (`q_top` 최대 {qmax:.3f} · 문턱 {QTOP_THR}) |")
     say("| `SEC-X1` | " + ("🟢 보정됨" if x1_ok else "🔴 ⛔ 절차 무효") + " · 고장 실증 "
@@ -2602,7 +2739,11 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
         "SEC-P1": {"components": {"SEC-N1": n1p, "SEC-B1": b1p, "SEC-B2": b2r},
                    "thresholds": {"SEC-N1": P_THR, "SEC-B1": P_THR, "SEC-B2": B2_THR},
                    "passed": {"SEC-N1": bool(c_n1), "SEC-B1": bool(c_b1), "SEC-B2": bool(c_b2)},
-                   "verdict": p1_ok},
+                   "and_passed": and_ok,
+                   "SEC-V1_split": v1_split_pre,
+                   "blocked_by_SEC-V1": p1_blocked,
+                   "verdict": (None if p1_blocked else p1_ok),
+                   "verdict_label": p1_word},
         "SEC-P2": {"note": "기록만 — 검정 통계량 아님", "n_judgements": 1,
                    "n_support": 1 if p1_ok else 0},
         "SEC-V1": {"split": bool(split),
@@ -2658,7 +2799,7 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
 
     print(f"[시간] 총 {time.time() - t_start:.1f}초 · SEC-X1 {t_x1:.1f}초")
     print("[written] RESULTS_SECTOR_POST6_NUMBERS.md + sector_post6/*.json|tsv")
-    print(f"[판정] SEC-P1 = {'성립' if p1_ok else '불성립'} · N1={fmt(n1p, 4)} B1={fmt(b1p, 4)} "
+    print(f"[판정] SEC-P1 = {p1_word} · N1={fmt(n1p, 4)} B1={fmt(b1p, 4)} "
           f"B2={fmt(b2r * 100 if b2r is not None else None)}% · G1={g1_main * 100:.1f}% · "
           f"q_top_max={qmax:.3f} · X1(N1)={x1sum['N1']['lt05'] * 100:.1f}% · "
           f"V1={'갈림' if split else '불갈림'}")
@@ -2756,13 +2897,23 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
                                  null_med=float(np.median(gm)))
         pb, _ = pools_for("B1", n, mk, bs, its, DAY)
         wins, nb2 = 0, 0
-        for pool_v, v in zip(pb, vals):
+        # 🔴 **`SEC-B2` 의 비교점은 «그날 `n_up` 풀의 중앙값»이지 «50»이 아니다**(§3 5행).
+        #    백분위 축이라 50 이 비교점처럼 보이지만, 문턱 50% 는 «승률»에 걸린 것이다.
+        #    ⇒ 건별 (저자 값, 그날 풀 중앙값)을 인쇄용으로 남긴다.
+        b2_detail = []
+        _mnames = [it["name"] for it, b in zip(its, bs) if b["ok"]]
+        for idx, (pool_v, v) in enumerate(zip(pb, vals)):
             if pool_v.size == 0:
                 continue
             nb2 += 1
-            if v > med(list(pool_v)):     # 🔴 동률은 «못 넘은 것»(§4-2 · 보수적)
+            pm = med(list(pool_v))
+            if v > pm:     # 🔴 동률은 «못 넘은 것»(§4-2 · 보수적)
                 wins += 1
-        out["B2"] = dict(wins=wins, n=nb2, rate=(wins / nb2 if nb2 else None))
+            b2_detail.append(dict(name=(_mnames[idx] if idx < len(_mnames) else "?"),
+                                  value=float(v), pool_med=float(pm),
+                                  pool_n=int(pool_v.size), win=bool(v > pm)))
+        out["B2"] = dict(wins=wins, n=nb2, rate=(wins / nb2 if nb2 else None),
+                         detail=b2_detail)
         return out
 
     EV = {(n, mk): full_eval(items, n, mk) for n in NS for mk in MEAS}
@@ -2950,11 +3101,17 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
     say("🔴 **`1%` 는 «표시» 문턱이지 «판정» 게이트가 아니다.** "
         "🔑 ***0 이라서 안 재는 게 아니라, 0 임을 매회 «보여서» 이 조항이 살아 있음을 증명한다.***")
     say()
+    # 🔴 「한 날에 여러 건」 예시는 **이번 분모에서 실측**한다(직전 글의 등록일을 옮겨 적지 않는다).
+    _dupd = sorted(d for d in dates if sum(1 for it in items if it["reg"] == d) >= 2)
     say("⚠️ 🔴 **「5열」이라 적지 않는다 — 이 표는 4열이다.** `PREREG_POST6.md` §5-2 의 5번째 열은 "
         "`prev_bar_date` 인데, **이 축의 §2 표는 «등록일» 행**이고 `prev_close` 는 **종목별 `LAG`** 라 "
-        "`prev_bar_date` 가 **행마다 유일하지 않다**(이번 분모에서 `2026-08-28`·`2026-09-01` 은 "
-        "한 날에 2건씩이다) ⇒ **4열만 인쇄한다.** 🔑 ***열을 못 채우면 「채운 척」하지 말고 "
-        "「왜 못 채우는지」를 적는다.***")
+        "`prev_bar_date` 가 **행마다 유일하지 않다**"
+        + (f"(이번 분모 등록일 {' · '.join('`%s`' % d for d in dates)} 중 한 날에 2건 이상인 날 = "
+           + (" · ".join("`%s`(%d건)" % (d, sum(1 for it in items if it["reg"] == d))
+                              for d in _dupd) if _dupd else "**없음** — 그래도 `prev_bar_date` 는 "
+              "«종목별» 값이라 등록일 행과 1:1 이 아니다") + ")")
+        + " ⇒ **4열만 인쇄한다.** 🔑 ***열을 못 채우면 「채운 척」하지 말고 "
+          "「왜 못 채우는지」를 적는다.***")
     say()
     say("| 등록일 | 그날 `market_cap>0` | 검정 유니버스 | 탈락 | 탈락률 | 🔴 섹터 조인 «후» 탈락 | "
         "섹터 조인 | 커버리지 | `n_up` ∩ 조인 | S-1 동결함수 일치 |")
@@ -3086,6 +3243,26 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
         "저자 종목은 정의상 급등주이고, 급등주가 섹터 동반성이 높다면 `SEC-N1` 은 그 사실만 되비춘다"
         "(= `REG-M4` 재진술). **정보는 `SEC-B1`·`SEC-B2` 에 있다.**")
     say("🔴 **`SEC-B2` 동률 처리** — 저자 값이 그날 풀 중앙값과 «같으면» **못 넘은 것**으로 센다(보수적).")
+    say("")
+    say("#### 🔴🔴 `SEC-B2` 의 «비교점» — **50 이 아니라 «그날 `n_up` 풀의 중앙값»이다**")
+    say("")
+    say("⚠️ 저자 값이 **백분위**라 「50 을 넘었나」로 읽기 쉽지만, `SEC-B2` 가 재는 것은 "
+        "***「저자 값 > **그날** 급등주 풀의 중앙값」***이다(§3 5행 정의 축자). "
+        "🔑 ***두 비교점은 같은 날에도 크게 다르다*** — 아래 표가 그 차이다.")
+    say("")
+    say("| 종목 | 등록일 | 저자 값(백분위) | **그날 `n_up` 풀 중앙값** | 풀 크기 | 넘었나 | "
+        "(참고) 50 을 넘나 |")
+    say("|---|---|---|---|---|---|---|")
+    for _d, _it in zip(MAIN["B2"].get("detail", []),
+                       [x for x, b in zip(items, MAIN["bs"]) if b["ok"]]):
+        say(f"| {_d['name']} | {_it['reg']} | **{_d['value']:.1f}** | "
+            f"**{_d['pool_med']:.1f}** | {_d['pool_n']} | "
+            + ("🟢 예" if _d["win"] else "🔴 아니오") + " | "
+            + ("예" if _d["value"] > 50.0 else "아니오") + " |")
+    say("")
+    say("🔴 **그러므로 «50 을 넘었다»를 `SEC-B2` 의 근거로 적지 않는다** — "
+        "두 잣대가 같은 답을 내는 날도 있고 아닌 날도 있다. "
+        "🔒 판정에 쓰는 것은 **그날 풀 중앙값** 쪽 하나뿐이다.")
     say()
     say("### 4-2. 🔴🔴 `SEC-B1` **발화 가능성** — `q_top` 실측 (§4-2 (가) · §7-B #20)")
     say()
@@ -3237,11 +3414,45 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
         f"**{binom_ge_half(kmain, qmax) if kmain else float('nan'):.4f}** | "
         + ("🟢 열림" if b1fire else "🔴 ⛔ 발화 불가") + " |")
     gates_ok = (len(items) >= MIN_EXACT) and (g1_main < G1_THR) and b1fire
-    p1_ok = bool(gates_ok and c_n1 and c_b1 and c_b2)
+    and_ok = bool(gates_ok and c_n1 and c_b1 and c_b2)
+    # 🔴 §3 1행의 ⛔ 열이 `SEC-V1` 을 «판정 불가 조건»으로 열거한다
+    #    (`PREREG_SECTOR_COMOVE.md:600`). §7 은 §3 «뒤»에 인쇄되므로 갈림 여부만 앞에서 계산한다.
+    #    🔒 적용 범위(`:819`) = 「같은 판정을 «다른 잣대»로 다시 계산했을 때 갈리는가」뿐이므로
+    #    주 갈래의 AND 가 «거짓»인 사건에는 관여하지 않는다 ⇒ `and_ok` 일 때만 ⛔ 로 간다.
+    V1PRE = v1_axis_verdicts(EV, G1, MAIN, g1_main, NS, MEAS, MAIN_N, MAIN_M,
+                             items, ap_items, b2r, full_eval)
+    v1_split_pre = bool(V1PRE["split"])
+    p1_blocked = bool(and_ok and v1_split_pre)
+    p1_ok = bool(and_ok and not v1_split_pre)
+    p1_label = "⛔ 판정 불가" if p1_blocked else ("✅ 성립" if p1_ok else "🔴 불성립")
+    p1_word = "판정 불가" if p1_blocked else ("성립" if p1_ok else "불성립")
     say()
-    say("### 🔒 판정 — `SEC-P1` : **" + ("✅ 성립" if p1_ok else "🔴 불성립(지지 아님)") + "**")
+    say("### 🔒 판정 — `SEC-P1` : **"
+        + ("⛔ 판정 불가(`SEC-V1` 발동)" if p1_blocked
+           else ("✅ 성립" if p1_ok else "🔴 불성립(지지 아님)")) + "**")
     say()
-    if p1_ok:
+    if p1_blocked:
+        say("🔴 **3중 AND 는 주 갈래(`N = 3` · `SEC-M1` · 글 단위 중앙 · `exact` 만)에서 «통과»했다** — "
+            f"`SEC-N1` **{fmt(n1p, 5)}** · `SEC-B1` **{fmt(b1p, 5)}** · "
+            f"`SEC-B2` **{fmt(b2r * 100 if b2r is not None else None)}%** "
+            f"({MAIN['B2']['wins']}/{MAIN['B2']['n']}). "
+            "🔴 **그러나 이것은 «기록»이지 «선언»이 아니다.**")
+        say()
+        say("🔒 `PREREG_SECTOR_COMOVE.md` §3 1행의 ⛔ 열이 `SEC-V1` 을 **판정 불가 조건**으로 "
+            "열거하고(`:600`), §6 가 *「`SEC-V1` — **4축**(§4-6) 중 하나가 갈림 ⇒ "
+            "**갈리지 않는 글이 온다**(잣대를 넓혀 열지 않는다)」*라고 못박는다(`:896`). "
+            "그리고 §4-6 적용 범위(`:819`)는 「같은 판정을 «다른 잣대»로 다시 계산했을 때 갈리는가」이고 "
+            "이번 갈림은 **바로 그 경우**다 — 주 갈래 AND 는 참인데 다른 잣대에서 판정이 다르다(§7 표). "
+            "⇒ ***이번 글에서는 어느 쪽도 선언하지 않는다.***")
+        say()
+        say("🔴🔴 **「계열 최초 성립」이라고 쓰지 않는다** — 성립을 «선언»한 적이 없다. "
+            "쓸 수 있는 문장은 ***「3중 AND 는 통과했으나 `SEC-V1` 때문에 선언 불가 — "
+            "갈리지 않는 글이 오면 판정한다」*** 하나뿐이다. "
+            "🔒 문턱을 낮추거나 갈래를 새로 만들어 여는 것은 §6 가 금지한다.")
+        say()
+        say("🔴 **판정 불가의 뜻도 「테마가 아니다」가 «아니다»**"
+            "(§0-2 2번 · 거짓 음성이 구조적이다).")
+    elif p1_ok:
         say("🔴 **성립의 뜻은 「섹터 동반성이 존재한다」까지다** — *「테마로 고른다」*의 **확증이 아니다**"
             "(§0-2 천장 · 에코프로 4종목이 KSIC 에서 «세 칸»으로 흩어진다). "
             "그리고 승/패 대조가 미실시이므로 **이 축의 최대치는 「기술」**이다(§0-2 ③).")
@@ -3264,9 +3475,16 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
     say("|---|---|---|")
     say(f"| post6 (직전 · 옮겨 적은 값 · 재계산 아님) | **{'성립' if SEC_P2_PRIOR['n_support'] else '불성립'}** | "
         f"성립 {SEC_P2_PRIOR['n_support']} / 판정 {SEC_P2_PRIOR['n_judgements']} |")
-    say(f"| **post7 (`{POST7_LOG_NO}`)** | **{'성립' if p1_ok else '불성립'}** | 성립 "
+    n_judg_p7 = SEC_P2_PRIOR["n_judgements"] + (0 if p1_blocked else 1)
+    say(f"| **post7 (`{POST7_LOG_NO}`)** | **{p1_word}**"
+        + ("(`SEC-V1` 발동 · §3 1행 ⛔ 열)" if p1_blocked else "") + " | 성립 "
         f"**{SEC_P2_PRIOR['n_support'] + (1 if p1_ok else 0)}** / 판정 "
-        f"**{SEC_P2_PRIOR['n_judgements'] + 1}** |")
+        f"**{n_judg_p7}** |")
+    if p1_blocked:
+        say()
+        say("🔴 **post7 은 «판정»이 아니라 «판정 불가»이므로 누계 분모(판정 수)에 넣지 않는다** — "
+            "3중 AND 통과는 위 §3 에 **기록**으로 남기되 `SEC-P2` 의 부호 누계에는 **성립으로도 "
+            "불성립으로도 세지 않는다**(§6 *「갈리지 않는 글이 온다」*).")
     say()
     say("🆕 **누계를 «이어간다»**(🔒 결정 ⑥ · 보고서 §6 #6) — post6 값은 "
         "`RESULTS_SECTOR_POST6_NUMBERS.md` 에서 **옮겨 적은 상수**이고 **재계산이 아니다**"
@@ -3449,6 +3667,8 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
     vals_v = list(VD.values())
     kinds = {str(v): v for v in vals_v}
     split = len(kinds) > 1
+    # 🔒 §3 이 «앞에서» 쓴 값과 같아야 한다 — 같은 `verdict_of` · 같은 4축(§4-6).
+    assert split == v1_split_pre, ("SEC-V1 배선 불일치", split, v1_split_pre)
     say()
     say("### 🔒 `SEC-V1` : **" + ("🔴 갈린다" if split else "🟢 갈리지 않는다") + "** "
         + f"({len(kinds)}종 판정 — "
@@ -3457,9 +3677,12 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
     say()
     if split:
         say("🔴 **갈렸다 ⇒ §4-6 대로 «어느 쪽도 선언하지 않는다».** "
-            "🔴 **단 §3 우선순위표가 우선한다** — 주 갈래의 3중 AND 결과는 §3 이 판정하고(§5), "
-            "§4-6 은 *「다른 잣대로 다시 계산하면 갈린다」*는 **사실만** 인쇄한다. "
-            "***잣대를 넓혀 열지 않는다.***")
+            "🔒 §3 1행의 ⛔ 열이 `SEC-V1` 을 **판정 불가 조건**으로 열거하므로"
+            "(`PREREG_SECTOR_COMOVE.md:600`) 이 갈림은 §3 의 `SEC-P1` 을 ⛔ 로 만든다 — "
+            "**위 §3 에 그렇게 인쇄돼 있다.** "
+            "🔴 **단 적용 범위(`:819`)는 「같은 판정을 «다른 잣대»로 다시 계산했을 때 "
+            "갈리는가」뿐이다** — 주 갈래의 3중 AND 가 «거짓»인 사건은 §3 이 판정하고 이 조항은 "
+            "관여하지 않는다. ***어느 쪽이든 잣대를 넓혀 열지 않는다.***")
     else:
         say("🟢 **4축 어디서도 판정이 갈리지 않는다** ⇒ `SEC-V1` 은 발동하지 않는다. "
             "🔴 **그래도 이것을 「결론이 튼튼하다」로 읽지 않는다** — 갈릴 수 «없는» 축이 둘(③·④) 있다(위).")
@@ -3500,9 +3723,10 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
             "(두 축을 «동시에» 흔든 대각선 조합이다). 🔒 **§4-5 문언 그대로 판정은 «동결된 하나»로만 "
             "한다** ⇒ ***이 통과를 `SEC-P1` 의 지지로 인용하는 것은 금지된다.*** "
             "🔑 ***값을 보고 갈래를 고르면 그게 사후적합이다.***")
-        say("- 🟢 **그리고 두 읽기 «어느 쪽으로도» 결론이 같다** — 읽기 A 는 2종(불성립·판정 불가), "
-            f"읽기 B 는 {len(ext_kinds)}종 ⇒ **둘 다 「갈린다」**이고, §4-6 의 「어느 쪽도 선언하지 "
-            "않는다」가 막는 대상(= «성립» 선언)은 애초에 없다. 주 갈래 판정은 §3 이 한다(§5).")
+        say(f"- 🟢 **그리고 두 읽기 «어느 쪽으로도» 결론이 같다** — 읽기 A 는 {len(kinds)}종, "
+            f"읽기 B 는 {len(ext_kinds)}종 ⇒ **둘 다 「갈린다」**이고, 그래서 §4-6 의 "
+            "「어느 쪽도 선언하지 않는다」가 **읽기를 고르는 것과 무관하게** 발동한다. "
+            "주 갈래의 3중 AND 자체는 §3 이 «기록»으로 남긴다(§5).")
         say("- 🔴 **그래도 이 사실을 숨기지 않는다** — 이 축에서 「통과하는 잣대가 «존재»한다」는 것은 "
             "***다음 글에서 `SEC-D1`·`SEC-D2` 를 바꾸고 싶어지는 압력***이고, 그 압력이 곧 "
             "이 프로그램이 금지한 동작이다. **바꾸려면 새 사전등록이 필요하다.**")
@@ -3600,14 +3824,25 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
         ("`SEC-B2`", FROZEN_TRAIN["B2"], tr_b2),
         ("`SEC-G1`", FROZEN_TRAIN["G1"], g1_tr))
         if a is not None and b is not None and abs(a - b) > 1e-9]
-    si_absent = [c for c in ("02826K", "03473K") if c not in SEC]
+    # 🔴 「이 기간에 자란 종목」을 **하드코딩하지 않고 실측한다** — 동결 훈련 DB 스냅샷
+    #    «뒤»에 첫 봉이 생긴 종목이 곧 「두 창 사이 신규」다(코드 상수 인용 금지).
+    cur.execute("SELECT stock_code, min(date) FROM daily_prices GROUP BY 1 "
+                "HAVING min(date) > %s ORDER BY 2, 1", (FROZEN_TRAIN["db_snapshot"],))
+    grew = [(c, str(d)) for c, d in cur.fetchall()]
+    si_absent = [c for c, _ in grew if c not in SEC]
+    grew_txt = " · ".join("`%s`(첫 봉 %s)" % (c, d) for c, d in grew) if grew else "없음"
     say(f"- 🔴 **훈련 괴리(동결 ↔ 재계산) = {len(drift)}항목**"
         + (f": {' · '.join(drift)}" if drift else " — 🟢 **전부 일치**")
-        + ". 🔴 **「DB 가 자라서」 가설은 «실측으로 기각»한다** — 이 기간에 자란 종목"
-          f"(`02826K`·`03473K`)은 **`stock_industry` 에 없어**(실측: 표에 없는 것 {len(si_absent)}/2 = "
-          f"{'·'.join('`%s`' % c for c in si_absent) if si_absent else '없음'}) "
-          "***조인 유니버스에 애초에 진입하지 못한다*** ⇒ `SEC-` 측정값을 움직일 «경로가 없다». "
-          "🟢 **남는 설명은 하나뿐 — 동결본에 적힌 값이 «반올림 표기»라서다**(바로 아래 줄이 그 대조다).")
+        + f". 🔴 **「DB 가 자라서」 가설은 «실측으로 기각»한다** — 동결 훈련 스냅샷"
+          f"(`{FROZEN_TRAIN['db_snapshot']}`) «뒤»에 첫 봉이 생긴 종목은 **{len(grew)}종목**"
+          f"({grew_txt})이고, 그 중 **`stock_industry` 에 없는 것 {len(si_absent)}/{len(grew)}** = "
+          f"{'·'.join('`%s`' % c for c in si_absent) if si_absent else '없음'} ⇒ "
+        + ("***조인 유니버스에 애초에 진입하지 못한다*** ⇒ `SEC-` 측정값을 움직일 «경로가 없다». "
+           "🟢 **남는 설명은 하나뿐 — 동결본에 적힌 값이 «반올림 표기»라서다**"
+           "(바로 아래 줄이 그 대조다)."
+           if len(si_absent) == len(grew) else
+           "🔴🔴 **일부는 조인 유니버스에 «들어온다» ⇒ 이 가설을 기각할 수 없다** — "
+           "아래 반올림 대조와 «함께» 읽어야 한다."))
     # 🔴 위 «괴리» 판정은 «전정밀도 float ↔ 동결본의 «인쇄된» 반올림 값»을 비교한다.
     #    같은 대조를 **동결본이 인쇄한 정밀도로** 한 번 더 인쇄한다(양쪽 인쇄 · 규칙 변경 아님).
     same_print = [nm for nm, a, b, nd in (
@@ -3643,11 +3878,14 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
     say()
     say("| 항목 | 상태 |")
     say("|---|---|")
-    say("| `SEC-P1` | **" + ("✅ 성립" if p1_ok else "🔴 불성립")
-        + "** — 천장은 §0-2(성립 = 「섹터 동반성 존재」까지 · 불성립 = 「KSIC 섹터 동반상승으로는 "
-          "안 잡힌다」까지) |")
-    say(f"| `SEC-P2` | 🔒 **기록만** — 판정 1회 · 성립 {1 if p1_ok else 0}. "
-        "누계를 검정 통계량으로 쓰지 않는다 |")
+    say("| `SEC-P1` | **" + p1_label + "**"
+        + (" — 🔴 3중 AND 는 통과했으나 `SEC-V1`(4축 갈림)이 ⛔ 다(§3 1행 ⛔ 열 · §6). "
+           "***「계열 최초 성립」이 아니다*** — 갈리지 않는 글이 오면 판정한다" if p1_blocked else
+           " — 천장은 §0-2(성립 = 「섹터 동반성 존재」까지 · 불성립 = 「KSIC 섹터 동반상승으로는 "
+           "안 잡힌다」까지)") + " |")
+    say(f"| `SEC-P2` | 🔒 **기록만** — **이 글에서** 판정 {0 if p1_blocked else 1}회"
+        + ("(⛔ 판정 불가라 누계 «분모»에 안 들어간다)" if p1_blocked else "")
+        + f" · 성립 {1 if p1_ok else 0}회. 누계를 검정 통계량으로 쓰지 않는다 |")
     say("| `SEC-B1` 발화 | " + ("🟢 가능" if b1fire else "🔴 ⛔ 발화 불가")
         + f" (`q_top` 최대 {qmax:.3f} · 문턱 {QTOP_THR}) |")
     say("| `SEC-X1` | " + ("🟢 보정됨" if x1_ok else "🔴 ⛔ 절차 무효") + " · 고장 실증 "
@@ -3774,10 +4012,14 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
         "SEC-P1": {"components": {"SEC-N1": n1p, "SEC-B1": b1p, "SEC-B2": b2r},
                    "thresholds": {"SEC-N1": P_THR, "SEC-B1": P_THR, "SEC-B2": B2_THR},
                    "passed": {"SEC-N1": bool(c_n1), "SEC-B1": bool(c_b1), "SEC-B2": bool(c_b2)},
-                   "verdict": p1_ok},
+                   "and_passed": and_ok,
+                   "SEC-V1_split": v1_split_pre,
+                   "blocked_by_SEC-V1": p1_blocked,
+                   "verdict": (None if p1_blocked else p1_ok),
+                   "verdict_label": p1_word},
         "SEC-P2": {"note": "기록만 — 검정 통계량 아님 · 누계 이어가기(결정 ⑥)",
                    "prior": SEC_P2_PRIOR,
-                   "n_judgements": SEC_P2_PRIOR["n_judgements"] + 1,
+                   "n_judgements": SEC_P2_PRIOR["n_judgements"] + (0 if p1_blocked else 1),
                    "n_support": SEC_P2_PRIOR["n_support"] + (1 if p1_ok else 0)},
         "SEC-V1": {"split": bool(split),
                    "by_branch": {f"{a}|{b}": v for (a, b), v in VD.items()}},
@@ -3797,7 +4039,12 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
     (ART / "controls_summary.json").write_text(json.dumps({
         "seed": SEED, "nrep": NREP, "note_nrep": "run_selection.py:22 는 NREP=2000",
         "streams": _STREAM_NAMES, "x1_realizations": X1_REP,
-        "db_snapshot_max_date": END,
+        # 🔴 두 값은 «다른 것»이다 — 섞어 쓰면 재현자가 창을 잘못 잡는다(PD-1 5번).
+        #    `window_end`       = 판정 창 종료(= 발행일 09-12 토 휴장 ⇒ 09-11) — **판정에 쓴다**
+        #    `db_snapshot_max_date` = 실행 시 `daily_prices` 의 실제 `max(date)` — **기록만** 한다
+        "window_end": END,
+        "db_snapshot_max_date": SNAP_MAX,
+        "db_snapshot_rows_on_max_date": SNAP_ROWS,
         "thresholds": {"p": P_THR, "B2": B2_THR, "G1": G1_THR, "q_top": QTOP_THR,
                        "n_up_multiplier": UP_MULT, "drop_mark": DROP_MARK,
                        "min_exact": MIN_EXACT},
@@ -3835,7 +4082,7 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
 
     print(f"[시간] 총 {time.time() - t_start:.1f}초 · SEC-X1 {t_x1:.1f}초")
     print("[written] RESULTS_SECTOR_POST7_NUMBERS.md + sector_post7/*.json|tsv")
-    print(f"[판정] SEC-P1 = {'성립' if p1_ok else '불성립'} · N1={fmt(n1p, 4)} B1={fmt(b1p, 4)} "
+    print(f"[판정] SEC-P1 = {p1_word} · N1={fmt(n1p, 4)} B1={fmt(b1p, 4)} "
           f"B2={fmt(b2r * 100 if b2r is not None else None)}% · G1={g1_main * 100:.1f}% · "
           f"q_top_max={qmax:.3f} · X1(N1)={x1sum['N1']['lt05'] * 100:.1f}% · "
           f"V1={'갈림' if split else '불갈림'}")

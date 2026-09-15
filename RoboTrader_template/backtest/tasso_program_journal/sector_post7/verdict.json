@@ -59,7 +59,11 @@
    "SEC-B1": true,
    "SEC-B2": true
   },
-  "verdict": true
+  "and_passed": true,
+  "SEC-V1_split": true,
+  "blocked_by_SEC-V1": true,
+  "verdict": null,
+  "verdict_label": "판정 불가"
  },
  "SEC-P2": {
   "note": "기록만 — 검정 통계량 아님 · 누계 이어가기(결정 ⑥)",
@@ -67,8 +71,8 @@
    "n_judgements": 1,
    "n_support": 0
   },
-  "n_judgements": 2,
-  "n_support": 1
+  "n_judgements": 1,
+  "n_support": 0
  },
  "SEC-V1": {
   "split": true,

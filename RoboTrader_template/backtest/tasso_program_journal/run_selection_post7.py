@@ -48,12 +48,18 @@ from run_selection import FEATS, PSEUDO, build_features
 # 🔴 새 코드 0줄 — post6 판의 통계량·표 포맷을 **그대로** 재사용한다(원본 불변).
 #    출처: run_selection_post6.py:180(stat_tdays) :188(stat_cal) :196(med) :204(s1_row)
 #          :215(feat_table) :231(aggs) :240(fmt)
+import run_selection_post6 as P6
 from run_selection_post6 import (aggs, feat_table, fmt, med, s1_row, stat_cal,
                                  stat_tdays)
 from run_tests import DSN
 
 BASE = Path(__file__).resolve().parent
 OUT: list[str] = []
+
+# 🔴 `feat_table` 등 post6 함수는 «자기 모듈의» `say` → `run_selection_post6.OUT` 에 쓴다.
+#    버퍼를 잇지 않으면 §4 의 표 6개가 **stdout 에만 나오고 산출물에는 안 들어간다**
+#    (초판이 그랬다). `run_regday_post7.py:154` 의 `R6.OUT = OUT` 관용구 그대로 — 원본 파일 불변.
+P6.OUT = OUT
 
 DB_UPTO = "2026-09-11"          # PD-1: 발행일 09-12(토) 휴장 ⇒ 마지막 거래일. 창 종료 = 09-11.
 PUB_DATE = "2026-09-12"         # 7번째 글 발행일(토요일 = 휴장)
@@ -319,12 +325,15 @@ def main():  # noqa: C901
     # ── §1. 표본 ────────────────────────────────────────────────────────────
     say(f"## §1. 표본 — 7번째 글 **신규 {len(NEW7)}건** 중 **판정 분모 `exact` {len(EXACT7)}건** "
         "(후속 3건은 등록일 축 분모 «밖» · PD-2 2번)\n")
-    say("| # | 종목 | 코드 | 등록일 | **정밀도** | `[D-19, D]` 봉수(등록일 «포함») | "
-        "창 `[D-4, D]` 봉수 | 재진입 | DB 행수 | DB 최초일 |")
+    # 🔴 행수는 **창 안(`date <= DB_UPTO`)**으로 센다 — 창 밖 봉까지 세면
+    #    「이 판정이 본 자료의 양」이 아니라 「오늘 DB 에 있는 양」을 인쇄하게 된다(PD-1).
+    say(f"| # | 종목 | 코드 | 등록일 | **정밀도** | `[D-19, D]` 봉수(등록일 «포함») | "
+        f"창 `[D-4, D]` 봉수 | 재진입 | **창 안 DB 행수**(`date <= {DB_UPTO}`) | DB 최초일 |")
     say("|---|---|---|---|---|---|---|---|---|---|")
     win20 = {}
     for i, (nm, code, reg, prec, tag) in enumerate(NEW7, 1):
-        cur.execute("SELECT count(*), min(date) FROM daily_prices WHERE stock_code=%s", (code,))
+        cur.execute("SELECT count(*) FILTER (WHERE date <= %s), min(date) "
+                    "FROM daily_prices WHERE stock_code=%s", (DB_UPTO, code))
         n_all, mn = cur.fetchone()
         if reg:
             nb20, wlen = win20_bars(cur, mdays, code, reg)

@@ -104,16 +104,16 @@
       "script": "run_anchor_redesign.py --mode post7",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "c4465c71b810f4b2888f3983df93e2716ac0f0a06ce26b19bb5481ef314cd662",
+        "run_anchor_redesign.py": "52ac702b382042d3437eb95d8f5c256196e88738482b048d0b17909b67c1e430",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
-        "run_ranking.py": "84a45c1f5dccdebd6d034b9ad0f3acaf118bb214cacfb81c5f0931ee6650d671",
+        "run_ranking.py": "d9561bcc1a3f46270fd58a1129d89b46e18efa902942fd0c4ceba9c3788e4253",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_reconstruct_post6.py": "a339a4c99b0d12889bbffe69e39aded54a4b93a0f4aeaff20dc9a106480b4fc9",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "271b8e1534a0789ad37254a94be7a195ebc4d077af11eb81558dce67c97a90bf",
+      "results_sha256": "b8e13d9be4001ac6384579518bd7ff63a365e483a56c29177c7dad9a98a9f8ad",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -124,16 +124,16 @@
       "script": "run_anchor_redesign.py --mode post7",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "c4465c71b810f4b2888f3983df93e2716ac0f0a06ce26b19bb5481ef314cd662",
+        "run_anchor_redesign.py": "52ac702b382042d3437eb95d8f5c256196e88738482b048d0b17909b67c1e430",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
-        "run_ranking.py": "84a45c1f5dccdebd6d034b9ad0f3acaf118bb214cacfb81c5f0931ee6650d671",
+        "run_ranking.py": "d9561bcc1a3f46270fd58a1129d89b46e18efa902942fd0c4ceba9c3788e4253",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_reconstruct_post6.py": "a339a4c99b0d12889bbffe69e39aded54a4b93a0f4aeaff20dc9a106480b4fc9",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "7efdb9265b7dc82d22e4e688b2d74a015f35142a9eb1eb644f9667b1d5f9d7c8",
+      "results_sha256": "a82863240ac83496761579f3d861ad07dfdd6d561a43ca903dd70078e4cf7cfd",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -273,9 +273,9 @@
       "script": "run_exit_v2_post7.py",
       "deps": {
         "run_exit_v2_post6.py": "69a33c44ee135cd2eded93dcf3651dff68fa26377accaff4894f89cdf539dffb",
-        "run_exit_v2_post7.py": "7f18bfd93e1b6fa1c30b82fcbb1e12cc58dff0ce7553357883c5764e37f6cff0"
+        "run_exit_v2_post7.py": "fd938a7528c32b783b65b504e67e39dd3eb04a2f7dfea38b73ef4968dfec9c4e"
       },
-      "results_sha256": "4d3c98c08fcdafb10c268bb3344c710837f200067064fd4a8e14deb2a5a9500c",
+      "results_sha256": "a1dc7b3829b2c3aac8323403cbf1adf6e29a29ae032afebef02b8fca66cd6e26",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -379,10 +379,10 @@
       "deps": {
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
         "run_ladder_tranche_post6.py": "118d47cb87b165bef6abbcfce5c589e70d6def35a54e1dc704a64de58cab225d",
-        "run_ladder_tranche_post7.py": "e9f8d9ae89cf1d8403357f139cb884ef9b0a004517e641e7b2f17595d9640464",
+        "run_ladder_tranche_post7.py": "77a265985c502053da9b2d3aae967397be7eac3c35f7b3365408707a3099d138",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "5f4196e07f6eccaf92489eb24515c512b200d91afe5970d55e4bc521cdfb11ac",
+      "results_sha256": "f52a6d27451d66150a5ed052740e41aef805be1a33c221c4be27dcb34284f8c4",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -459,7 +459,7 @@
     "RESULTS_RANKING_POST6_NUMBERS.md": {
       "script": "run_ranking.py --stage post6",
       "deps": {
-        "run_ranking.py": "84a45c1f5dccdebd6d034b9ad0f3acaf118bb214cacfb81c5f0931ee6650d671",
+        "run_ranking.py": "d9561bcc1a3f46270fd58a1129d89b46e18efa902942fd0c4ceba9c3788e4253",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
@@ -478,12 +478,12 @@
     "RESULTS_RANKING_POST7_NUMBERS.md": {
       "script": "run_ranking.py --stage post7",
       "deps": {
-        "run_ranking.py": "84a45c1f5dccdebd6d034b9ad0f3acaf118bb214cacfb81c5f0931ee6650d671",
+        "run_ranking.py": "d9561bcc1a3f46270fd58a1129d89b46e18efa902942fd0c4ceba9c3788e4253",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "4efcfdc77164cce9f4599a3b5c7007fd089da8282c9ac3b1b5b73a637954c25c",
+      "results_sha256": "5d671b2179c10fe16b4b35b7f7ea219c5c1864ff28fcf016e107ffba4b114d3d",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -493,7 +493,7 @@
     "RESULTS_RANKING_TRAIN_NUMBERS.md": {
       "script": "run_ranking.py --stage train",
       "deps": {
-        "run_ranking.py": "84a45c1f5dccdebd6d034b9ad0f3acaf118bb214cacfb81c5f0931ee6650d671",
+        "run_ranking.py": "d9561bcc1a3f46270fd58a1129d89b46e18efa902942fd0c4ceba9c3788e4253",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
@@ -584,10 +584,10 @@
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_reconstruct_post6.py": "a339a4c99b0d12889bbffe69e39aded54a4b93a0f4aeaff20dc9a106480b4fc9",
-        "run_reconstruct_post7.py": "cbda9ece0c78d03b87b4fc79494619d8b55729bd6d92795ba266a9b5a70b529f",
+        "run_reconstruct_post7.py": "e8e6c6b22ae2ae041503dde8ac75e4aa5bffaa8c517813acba6a37442e7a17a7",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "21785450298890f63c10ba1df0d3f63fcdf73e579e791866c7732110c4f722b5",
+      "results_sha256": "4c957f56574f3ae0463d8172b003b637a1ba0c059bce571280d1636f94baf358",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -619,10 +619,10 @@
       "script": "run_regday_post7.py",
       "deps": {
         "run_regday_post6.py": "04fea8f9c0a1ee818883a2b70b90208d8713115e891047f12e85ed7a5c88228a",
-        "run_regday_post7.py": "e71e5bad70c974af3841ded38644401c678c44574dc1866563fcb5e47b9116cf",
+        "run_regday_post7.py": "b82c43941b4e89812ffe37f81172e978c0bcc611a87b6aac35882690ae0b0d0d",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "3ce2cb26b7c5dce3ecc3f069482107baa9411680031660670fc0ce86206020c7",
+      "results_sha256": "4232982eba3195b043ce72bf130396ba29a67f0bceea6471f7b5766e5ffeb91b",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -632,11 +632,11 @@
     "RESULTS_S5_POST7_NUMBERS.md": {
       "script": "run_s5_post7.py",
       "deps": {
-        "run_s5_post7.py": "5d16c8ae2da7d1422e005a7e6420cd1527ae569793b172eb14f2332ba10479a7",
+        "run_s5_post7.py": "a83fd1b0d92bb9584cfc77a359769182808b84c433e45449c4bc603902c66a24",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "712988526d38b9cafbc3ff9ad27674a45749ec81661569e0047bc14009f5d24d",
+      "results_sha256": "228f3dce85254144aa847275ea72ec6f79d3d67edb0a925aac717c6c0dbc58d9",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -666,10 +666,10 @@
     "RESULTS_SECTOR_DRYRUN_NUMBERS.md": {
       "script": "run_sector.py --mode dryrun",
       "deps": {
-        "run_ranking.py": "84a45c1f5dccdebd6d034b9ad0f3acaf118bb214cacfb81c5f0931ee6650d671",
+        "run_ranking.py": "d9561bcc1a3f46270fd58a1129d89b46e18efa902942fd0c4ceba9c3788e4253",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
         "run_regday_post6.py": "04fea8f9c0a1ee818883a2b70b90208d8713115e891047f12e85ed7a5c88228a",
-        "run_sector.py": "aafb205ed1b29ff2c2cdc9bf8f7a34ac6e18a38c66e15a57290ecc01473a50ba",
+        "run_sector.py": "678baf5ce487a78ca84a7806bff66b3082445c6c7c80abf5b5b2c5e30bf100ea",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
@@ -684,10 +684,10 @@
     "RESULTS_SECTOR_POST6_NUMBERS.md": {
       "script": "run_sector.py --mode post6",
       "deps": {
-        "run_ranking.py": "84a45c1f5dccdebd6d034b9ad0f3acaf118bb214cacfb81c5f0931ee6650d671",
+        "run_ranking.py": "d9561bcc1a3f46270fd58a1129d89b46e18efa902942fd0c4ceba9c3788e4253",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
         "run_regday_post6.py": "04fea8f9c0a1ee818883a2b70b90208d8713115e891047f12e85ed7a5c88228a",
-        "run_sector.py": "aafb205ed1b29ff2c2cdc9bf8f7a34ac6e18a38c66e15a57290ecc01473a50ba",
+        "run_sector.py": "678baf5ce487a78ca84a7806bff66b3082445c6c7c80abf5b5b2c5e30bf100ea",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
@@ -706,14 +706,14 @@
     "RESULTS_SECTOR_POST7_NUMBERS.md": {
       "script": "run_sector.py --mode post7",
       "deps": {
-        "run_ranking.py": "84a45c1f5dccdebd6d034b9ad0f3acaf118bb214cacfb81c5f0931ee6650d671",
+        "run_ranking.py": "d9561bcc1a3f46270fd58a1129d89b46e18efa902942fd0c4ceba9c3788e4253",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
         "run_regday_post6.py": "04fea8f9c0a1ee818883a2b70b90208d8713115e891047f12e85ed7a5c88228a",
-        "run_sector.py": "aafb205ed1b29ff2c2cdc9bf8f7a34ac6e18a38c66e15a57290ecc01473a50ba",
+        "run_sector.py": "678baf5ce487a78ca84a7806bff66b3082445c6c7c80abf5b5b2c5e30bf100ea",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "7224acb2734e5acb077d117a6ffafba2cead2748c01bb7160016d943de7bfe84",
+      "results_sha256": "fc5cd2a829d67fb4b1280bee5fb11462cad9e4acda269245c9524a115b90f0a9",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -798,10 +798,10 @@
       "deps": {
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_selection_post6.py": "16845c22c943bce3b5a968604703081c6ca5894d50d5d9f77f9a4661bce5005e",
-        "run_selection_post7.py": "804a71cf69010771233105d6c68b84ae3893f5884d24488b82560085b58356bf",
+        "run_selection_post7.py": "88e1fde0279c326972b44c45b467d470de49891a27bef1e12bf36415048e18c6",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "0bf98901e8df5874a9d9920b568aa4594644167710d65fa16ab8b5b20d42ac00",
+      "results_sha256": "a38f6aec95b37890a9f11cb53326f46290552c4dfaca34c02bee46f7046b1e74",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -883,9 +883,9 @@
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2",
         "run_wrc_explore.py": "2462ded3772ad5770136f5651c2c6ea66945c9d5288d6e0a60f47e0aa99998cc",
-        "run_wrc_post7.py": "07a554800c3007936d9b524e858f9055b8211923cdeb1395f10268f182c161b2"
+        "run_wrc_post7.py": "07a382d8476667189425ec59da21aad017e972f906bde2f4eacee1a9eb234200"
       },
-      "results_sha256": "f7a84ec946a8ae31cc4c6397974b1c972a728f690dd88766a63c4b277a988cb8",
+      "results_sha256": "86a2ca20c6fc9b3460a9e7c40c3596e3c0083f6f2cd09cbf3948f7c3b44c7650",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],

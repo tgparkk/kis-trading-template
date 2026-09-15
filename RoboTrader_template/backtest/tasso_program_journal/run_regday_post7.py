@@ -430,6 +430,19 @@ def main():  # noqa: C901
         f"**p={p_move:.5f}** | {'✅ 충족' if p_move < ALPHA else '❌ 미달'} |")
     say(f"| 귀무(고정창 · 민감도) | 두 갈래가 갈리면 ⛔ · `PREREG_POST6.md` §3-1 | — | "
         f"**p={p_fixed:.5f}** | {'🔴 갈림' if split_null else '🟢 같음'} |")
+    # 🔴 §2-5 의 «선언»은 두 의존(재진입 · 등록일 정밀도)을 «둘 다» 보고 내려야 한다.
+    #    정밀도 민감도의 «인쇄»는 §4-4 지만 계산은 부수효과가 없으므로 여기서 미리 한다 —
+    #    같은 `measure`·같은 갈래를 쓰고, §4-4 가 다시 계산한 값과 **일치를 단언**한다.
+    _pre_meas = {nm: measure(df, [(nm, code, d) for d in days])
+                 for nm, code, _lab, _lo, _hi, days in APPROX_BRANCHES}
+    _pre_combos = list(itertools.product(*[[r for r in _pre_meas[nm] if r["ok"]]
+                                           for nm, *_x in APPROX_BRANCHES]))
+    _pre_m1 = [sum(1 for r in list(ok7) + list(c) if r["hit"]) / (len(ok7) + len(c))
+               for c in _pre_combos]
+    prec_dep = bool(_pre_m1) and (
+        len({v >= M1_RATIO for v in _pre_m1}) > 1
+        or ((obs7 >= M1_RATIO) not in {v >= M1_RATIO for v in _pre_m1}))
+
     blocked = []
     if len(ok7) < MIN_N:
         blocked.append("① 판정 건 < 3")
@@ -442,11 +455,26 @@ def main():  # noqa: C901
     if blocked:
         say(f"\n⇒ ⛔ **판정 불가** — 발동한 조건: {' · '.join(blocked)}")
     else:
-        say(f"\n⇒ 결정규칙 «비율 ≥ 0.8333 **∧** 귀무 백분위 < 5%» ⇒ **{v_main}**")
+        say(f"\n⇒ 🔒 **결정규칙 «비율 ≥ 0.8333 ∧ 귀무 백분위 < 5%» 자체는 충족됐다 "
+            f"— {v_main}**(🔴 **«기록»이고 «선언»이 아니다** — 아래 의존 단서를 «먼저» 읽는다).")
         say("⇒ ⛔ 판정 불가 조건 ①~④ **전부 미발동**"
             f"(① {len(ok7)} ≥ {MIN_N} · ② 절단 {len(trunc)}건 · ③ 뒤집힘 없음 · ④ 두 갈래 동일)")
+    _deps = []
     if split_reentry:
-        say("⇒ 🔴 **재진입 의존** — §1-5 2 대로 어느 쪽도 지지로 선언하지 않는다.")
+        _deps.append("**재진입 의존**(§1-5 2 · 이 절의 민감도 표)")
+    if prec_dep:
+        _deps.append("**등록일 정밀도 의존**(§4-4 `approx` 갈래에서 판정이 갈린다)")
+    if _deps:
+        say("")
+        say("⇒ 🔴🔴 **`P6-M1′` 판정 = 「선언 없음」** — "
+            + " ∧ ".join(_deps)
+            + ". 동결 `PREREG_POST6.md` §1-5 2(`:283-284`)가 *「두 값이 **판정을 가르면** ⇒ "
+              "🔴 「재진입 의존」으로 적고 **어느 쪽도 지지로 선언하지 않는다**」*고 못박는다. "
+              "🔑 ***그러므로 이 항목의 «선두 기호»는 ✅ 가 아니다*** — "
+              "결정규칙 충족은 위 줄에 «기록»으로만 남는다.")
+        say("🔴 **인용 금지 문장**: *「`P6-M1′` 이 지지됐다」* · *「등록일 고가 = 20일 최고가가 "
+            "확인됐다」*. ⚠️ 여기에 `REG-M4` 발동(§6)이 **하나 더** 겹친다 — 세 단서를 "
+            "**같이** 달지 않으면 인용하지 않는다.")
     say("")
     say("### 2-6. 🔴 인용 시 반드시 붙일 단서 (§3-1 · 필수)\n")
     say("> ***「등록일 고가 = 최근 20거래일 최고 고가」와 「등록일이 급등일」은 같은 진술이 아니다***"
@@ -691,6 +719,8 @@ def main():  # noqa: C901
         ((obs7 >= R2_RATIO) not in set(v >= R2_RATIO for v in r2_vals))
     m1_flip = len(set(v >= M1_RATIO for v in m1_vals)) > 1 or \
         ((obs7 >= M1_RATIO) not in set(v >= M1_RATIO for v in m1_vals))
+    # 🔒 §2-5 가 «앞에서» 쓴 값과 같아야 한다 — 다르면 배선 결함이다.
+    assert bool(m1_flip) == bool(prec_dep), ("등록일 정밀도 의존 배선 불일치", m1_flip, prec_dep)
     say(f"| `Q1-R2` | ≥ 50% | {obs7*100:.1f}% | {min(r2_vals)*100:.1f}% | {max(r2_vals)*100:.1f}% | "
         f"{'🔴 **갈린다**' if r2_flip else '🟢 같다'} |")
     say(f"| `P6-M1′` 비율 | ≥ 83.33% | {obs7*100:.1f}% | {min(m1_vals)*100:.1f}% | "
