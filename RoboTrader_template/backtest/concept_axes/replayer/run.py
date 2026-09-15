@@ -122,11 +122,11 @@ def replay(px: pd.DataFrame, bar_flags: pd.DataFrame, key: str, *,
         px, elig, adapter, merged, adapter.lookback_days,
         scan_dates=scan_dates, max_candidates=max_candidates)
     secs = time.perf_counter() - t0
+    run_meta = dict(meta, replayer_params_hash=params_hash(merged))
     led, ties = ldg.build_ledger(
         matched, px, bar_flags, strategy=STRATEGIES[key]["name"],
         uni_info=uni_info, names=names, markets=markets, corp_events=corp_events,
-        max_candidates=max_candidates,
-        meta={**meta, "replayer_params_hash": params_hash(merged)})
+        max_candidates=max_candidates)
     diag_df = ldg.build_diag(diag, uni_info, ties, led)
     by_code = {c: g for c, g in px.groupby("stock_code", sort=False)}
 
@@ -139,7 +139,7 @@ def replay(px: pd.DataFrame, bar_flags: pd.DataFrame, key: str, *,
 
     return {"ledger": led, "diag": diag_df, "uni_info": uni_info, "ties": ties,
             "impossible": impossible, "params": merged, "secs": secs,
-            "n_matched": len(matched), "vol_lookup": vol_lookup}
+            "n_matched": len(matched), "vol_lookup": vol_lookup, "meta": run_meta}
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -352,7 +352,7 @@ def main(argv=None) -> int:
                     r["live"] = live[live["scan_date"].isin(s["dates"])]
                     w = ldg.write_outputs(
                         r["ledger"], r["diag"],
-                        out_dir / key / s["params_hash"][:8])
+                        out_dir / key / s["params_hash"][:8], meta=r["meta"])
                     log("       " + " · ".join("{}={}".format(a_, b_)
                                                for a_, b_ in w.items()))
                     seg_out.append(r)
@@ -365,7 +365,8 @@ def main(argv=None) -> int:
                            max_candidates=args.max_candidates)
                 log("   {} — 후보 {:,}행 / {}일 · {:.0f}s".format(
                     sname, len(r["ledger"]), len(cal), r["secs"]))
-                w = ldg.write_outputs(r["ledger"], r["diag"], out_dir / key)
+                w = ldg.write_outputs(r["ledger"], r["diag"], out_dir / key,
+                                      meta=r["meta"])
                 log("      " + " · ".join("{}={}".format(k, v) for k, v in w.items()))
                 results[key] = [r]
 

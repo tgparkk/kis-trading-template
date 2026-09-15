@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -25,8 +26,12 @@ LEDGER_COLUMNS = [
     "flag_merge_suspect", "cliff_unknown_nprior", "cliff_unknown_adjstep",
     "ret_5d", "trading_value", "market_cap", "close", "open", "high", "low",
     "volume_adj", "n_bars", "universe_eff_date", "universe_fallback",
-    "run_id", "git_sha", "db_fingerprint_hash", "replayer_params_hash",
 ]
+
+# 🔴 리뷰 M-5 — `run_id`·`git_sha`·`db_fingerprint_hash`·`replayer_params_hash` 는
+#   **원장 밖 사이드카**(`ledger_meta.json`)로 뻐다. 원장 안에 두면 같은 입력·같은
+#   코드로 돌려도 바이트가 달라져 **결정성을 원장으로 증명할 수 없다**.
+META_COLUMNS = ["run_id", "git_sha", "db_fingerprint_hash", "replayer_params_hash"]
 
 
 def git_sha(root: Path) -> str:
@@ -47,8 +52,7 @@ def build_ledger(matched: Sequence[Dict[str, Any]],
                  names: Dict[str, str],
                  markets: Dict[str, str],
                  corp_events: Dict[Any, str],
-                 max_candidates: int,
-                 meta: Dict[str, str]):
+                 max_candidates: int):
     """`(ledger_df, tie_counts)` — 날짜별 정렬·절단 후 §3 스키마로 조립."""
     by_date: Dict[Any, List] = {}
     for r in matched:
@@ -99,7 +103,6 @@ def build_ledger(matched: Sequence[Dict[str, Any]],
                 "universe_eff_date": uni_info.get(pd.Timestamp(d), {}).get("eff_date"),
                 "universe_fallback": uni_info.get(pd.Timestamp(d), {}).get(
                     "universe_fallback", False),
-                **meta,
             })
     df = pd.DataFrame(rows, columns=LEDGER_COLUMNS)
     if len(df):
@@ -134,8 +137,14 @@ def build_diag(diag: Dict[Any, Dict[str, int]],
 
 
 def write_outputs(ledger: pd.DataFrame, diag: pd.DataFrame, out_dir: Path,
-                  stem: str = "ledger_candidates") -> Dict[str, str]:
-    """parquet + csv. 🔒 Q7 — 원장 자체는 `scratchpad/` 에 두고 커밋하지 않는다."""
+                  stem: str = "ledger_candidates",
+                  meta: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    """parquet + csv + **`ledger_meta.json` 사이드카**.
+
+    🔒 Q7 — 원장 자체는 `scratchpad/` 에 두고 커밋하지 않는다.
+    🔴 리뷰 M-5 — 실행마다 바뀌는 메타(`run_id` 등)는 원장에 넣지 않는다.
+       그래야 같은 날을 두 번 돌렸을 때 **원장 바이트가 같아질 수** 있다.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     written: Dict[str, str] = {}
     csv_p = out_dir / (stem + ".csv")
@@ -150,4 +159,12 @@ def write_outputs(ledger: pd.DataFrame, diag: pd.DataFrame, out_dir: Path,
     diag_p = out_dir / "ledger_diag.csv"
     diag.to_csv(diag_p, index=False, encoding="utf-8")
     written["diag"] = str(diag_p)
+    meta_p = out_dir / "ledger_meta.json"
+    payload = dict(meta or {})
+    payload.update({"stem": stem, "n_rows": int(len(ledger)),
+                    "n_days": int(ledger["scan_date"].nunique()) if len(ledger) else 0,
+                    "ledger_columns": list(LEDGER_COLUMNS)})
+    meta_p.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str),
+                      encoding="utf-8")
+    written["meta"] = str(meta_p)
     return written

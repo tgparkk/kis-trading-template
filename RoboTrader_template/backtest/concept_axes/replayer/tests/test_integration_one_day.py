@@ -69,3 +69,39 @@ def test_replay_one_live_day_prints_m1_to_m4(db_conn, key, capsys):
     # 🔑 지표가 «산출»됐다는 것만 확인한다 — 문턱 판정은 여기서 하지 않는다.
     assert 0.0 <= m["M1"] <= 1.0
     assert 0.0 <= m["M3"] <= 1.0
+
+
+@pytest.mark.db
+def test_ledger_is_byte_identical_when_replayed_twice(db_conn, capsys):
+    """리뷰 M-5 — 같은 날을 두 번 돌리면 원장이 **완전히 같아야** 한다.
+
+    🔴 메타 4컬럼(`run_id`·`git_sha`·`db_fingerprint_hash`·`replayer_params_hash`)을
+    원장 안에 두면 `run_id` 때문에 항상 달라져 «결정성» 을 원장으로 증명할 수 없다
+    ⇒ `ledger_meta.json` 사이드카로 분리했고, 이 테스트가 그 분리를 동결한다.
+    """
+    key = "ma20"
+    px = ldr.load_prices(db_conn, HIST, D)
+    names = ldr.load_stock_names(db_conn)
+    markets = ldr.load_market_labels(db_conn)
+    corp = ldr.load_corp_events(db_conn)
+    bar_flags = flg.compute_bar_flags(px)
+    cls = ldr.classify_exclusions(sorted(px["stock_code"].astype(str).unique()), names)
+    excluded = {c for c, v in cls.items() if v["excluded"]}
+
+    def once(run_id):
+        return rn.replay(px, bar_flags, key, scan_dates=[pd.Timestamp(D)], params=None,
+                         excluded=excluded, names=names, markets=markets,
+                         corp_events=corp,
+                         meta={"run_id": run_id, "git_sha": "test",
+                               "db_fingerprint_hash": "test"},
+                         max_candidates=20)
+
+    a, b = once("run-A"), once("run-B")
+    assert list(a["ledger"].columns) == ldg.LEDGER_COLUMNS
+    for c in ldg.META_COLUMNS:
+        assert c not in a["ledger"].columns          # 메타는 원장 밖 사이드카다
+    pd.testing.assert_frame_equal(a["ledger"], b["ledger"])
+    assert a["meta"]["run_id"] != b["meta"]["run_id"]
+    with capsys.disabled():
+        print("\n[결정성] {} 원장 {}행 × 2회 → assert_frame_equal 통과".format(
+            D, len(a["ledger"])))
