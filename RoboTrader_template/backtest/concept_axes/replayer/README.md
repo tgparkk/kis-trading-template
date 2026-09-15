@@ -68,7 +68,7 @@ python backtest/concept_axes/replayer/run.py \
 | `scan.py` | 날짜별 스캔 루프 · 창 자르기 · 위생 가드 · 정렬/절단/동점 |
 | `flags.py` | `flag_locked_limit`·`flag_padding`·`flag_cliff`·후방 수익률·연도별 드리프트 집계 |
 | `ledger.py` | §3 출력 스키마 조립 · `ledger_candidates.{csv,parquet}` · `ledger_diag.csv` |
-| `gate.py` | M1~M4 · 노출/보호 구간 분할 · C1~C6 분류 · V5-a · V6-3/V6-5 |
+| `gate.py` | M1~M4 · 노출/보호 구간 분할 · C1~**C7** 분류 · V5-a · V6-3/V6-5 |
 | `run.py` | CLI · 지문 2회 · 리포트 md |
 
 🟢 **판정 경계는 라이브 코드를 import 해서 «그대로» 부른다** — `base_filter()` · `default_params()` ·
@@ -113,10 +113,16 @@ python backtest/concept_axes/replayer/run.py \
 | `trading_value` · `market_cap` · `close`/`open`/`high`/`low`/`volume_adj` | D 행 값 |
 | `n_bars` | 룰에 넘긴 창의 실제 봉 수 |
 | `universe_eff_date` · `universe_fallback` | 라이브 폴백 재현 — D 당일 퀀트 적재가 안 끝났으면 직전 완전 퀀트일을 쓴다 |
-| `run_id` · `git_sha` · `db_fingerprint_hash` · `replayer_params_hash` | 재현성 메타 |
+
+🔴 **재현성 메타 4컬럼**(`run_id`·`git_sha`·`db_fingerprint_hash`·`replayer_params_hash`)은
+**원장 밖 사이드카 `ledger_meta.json`** 에 있다(리뷰 M-5). 원장 안에 두면 `run_id` 때문에
+같은 입력·같은 코드로 돌려도 바이트가 달라져 **결정성을 원장으로 증명할 수 없다**.
 
 **부속** `ledger_diag.csv`: 날짜별 `n_universe`·`n_universe_raw`·`n_eligible`·`n_impossible`·
-`n_evaluated`·`n_matched`·`n_selected`·`n_tie_at_20`·`universe_fallback`.
+`n_evaluated`·`n_matched`·`n_selected`·`n_tie_at_20`·`universe_fallback`·
+**`n_no_bar_at_d`**(적격인데 그날 봉이 없어 평가도 못 한 수 · 리뷰 L-2) ·
+로더 위생 처리 건수(`n_dropped_bad_date`·`n_dropped_close`·`n_patched_ohl` · 리뷰 L-1 —
+🔴 **라이브 읽기 계층에 없는 처리**라 0 이 아니면 그만큼이 «재현기 고유의 차» 이다).
 
 🔴 **`fund_join_key` 는 따로 두지 않는다** — `(stock_code, scan_date)` 두 컬럼이 그 키다.
 **재현기는 재무를 조인하지 않는다.** 소비 문서가 `dart_financials_asfiled` 를 `rcept_dt < scan_date`
@@ -131,8 +137,8 @@ python backtest/concept_axes/replayer/run.py \
 | 지표 | 정의 | 🔒 문턱 |
 |---|---|---|
 | **M1** | 일별 집합 Jaccard, **마이크로 평균** = Σ교집합 / Σ합집합 | ≥ **0.98** PASS · 0.95~0.98 조건부 · **< 0.95 FAIL** |
-| **M2** | 교집합 원소의 `rank` Spearman ρ, 날짜별 **중앙값** | ≥ 0.98 (원소 2 미만인 날은 분모에서 빼고 그 날짜 수를 인쇄) |
-| **M3** | `top5(L) ∩ top5(R) / 5` 마이크로 평균 | ≥ **0.95** — 🔑 판정이 실제로 서는 자리가 K=5 다 |
+| **M2** | 교집합 원소의 `rank` Spearman ρ, 날짜별 **중앙값** | ≥ **0.98** — 판정에 **들어간다**(`M2_pass` · 리뷰 M-1). 원소 2 미만인 날은 분모에서 빼고 그 날짜 수를 인쇄(재지 불가는 불통과 사유가 아니다) |
+| **M3** | `top5(L) ∩ top5(R) / 5` 마이크로 평균 · 🔒 **분모는 항상 5**(라이브가 5개 미만인 날도 · 리뷰 H-1) | ≥ **0.95** — 🔑 판정이 실제로 서는 자리가 K=5 다 |
 | **M4** | 교집합 원소의 `\|score_R/score_L − 1\| ≤ 1e-6` 인 행 비율 | ≥ **99%** |
 
 🔑 **M4 는 «원인 분리 장치»다** — ***M4 가 깨지면 원인은 데이터 갱신, M1 만 깨지면 원인은 룰·경계.***
@@ -152,12 +158,13 @@ python backtest/concept_axes/replayer/run.py \
 
 | 라벨 | 뜻 |
 |---|---|
-| **C1** 데이터 갱신 | `created_at > scan_date + 3일` 또는 행 해시 차분. 🔴 **`updated_at` 은 쓰지 않는다**(전 행 단일 일자 = 판별력 0). M4 불일치는 **«동반» 서명**이지 단독 서명이 아니다 |
+| **C1** 데이터 갱신 | `created_at > 다음 «거래일» + 12h` 또는 행 해시 차분(리뷰 H-2 — 구판 「달력 +3일」은 실측 발화 15일 중 14일이 금요일인 **요일 탐지기**였다). 🔴 **`updated_at` 은 쓰지 않는다**(전 행 단일 일자 = 판별력 0). M4 불일치는 **«동반» 서명**이지 단독 서명이 아니다 |
 | **C2** 유니버스 일자 폴백 | 집합이 통째로 어긋남 · `universe_fallback` |
 | **C3** 불가능봉 가드 차 | 그 종목이 재현기 가드에 걸려 제외됐다 |
 | **C4** 룰 드리프트 | `params_hash` 구간 경계에 몰림 |
 | **C5** 동점 경계 | rank 19~20 · score 동일 |
 | **C6** 미상 | 위 어디에도 안 걸림 |
+| **C7** 배제 승격 | 같은 날 §1-2-b 배제 종목의 `live_only` 수 = `replay_only` 수 — 배제로 비운 슬롯만큼 20위 밖이 밀려 올라온 것(리뷰 M-3 · C6 에서 분리) |
 
 🔴 **`excl_1_2_b` 칸은 C 라벨이 아니다** — §1-2-b(우선주·리츠·외국주·ETF) 배제는
 **사전등록된 «의도적» 차이**다. 라이브 `STOCK_ONLY` 정규식은 이들을 거르지 않으므로
@@ -165,7 +172,7 @@ python backtest/concept_axes/replayer/run.py \
 
 ### 4-4. PASS·조건부·FAIL
 
-- **PASS** = M1 ≥ 0.98 ∧ M3 ≥ 0.95 ∧ M4 ≥ 99%.
+- **PASS** = M1 ≥ 0.98 ∧ **M2 ≥ 0.98** ∧ M3 ≥ 0.95 ∧ M4 ≥ 99%.
 - **조건부 통과**는 설계서 §4-6 3 의 **조건 ①~⑧ 을 «전부» 인쇄**했을 때만 «제안»할 수 있다.
   특히 ④ **노출 구간 M1 ≥ 0.90** · ⑤ **보호 구간 ≥ 15거래일** · ⑥ **1회 한정** ·
   ⑦ **건별 🔒 사장님 승인**. 🔴 **M4 ≥ 99% 인데 M1 이 깨지면 조건부 통과 제안 «불가»**
@@ -194,6 +201,10 @@ python -m pytest backtest/concept_axes/replayer/tests -q -m "not db"  # DB 없�
 ```
 
 - `test_flag_cliff_sql_parity.py` 가 **정본 SQL 과 pandas 구현을 실 DB 에서 양방향 차분 0** 으로 고정한다.
+  표본은 **조건 (1) `ret_1d ≤ −0.15` 행을 가진 종목 전수**(리뷰 M-6 · 실측 1,784종목 · 양성 165건)이고,
+  `assert len(sql_set) >= 100` 으로 «절벽이 없는 표본에서 0 = 0» 통과를 막는다.
+  정본 파일은 **sha256 바이트 assert**로 묶여 있다(리뷰 M-4).
+- 결정성: 같은 날을 두 번 재현해 `assert_frame_equal` 로 고정한다(리뷰 M-5 · `@pytest.mark.db`).
 - `test_integration_one_day.py` 는 라이브 하루를 재현해 M1~M4 를 **인쇄**만 한다(판정 언어 없음).
 - 🔴 이 테스트들은 `backtest/concept_axes/replayer/tests/` 에 **격리**돼 있어
   `pyproject.toml` 의 `testpaths = RoboTrader_template/tests` 기준선 실패 집합을 흔들지 않는다.
