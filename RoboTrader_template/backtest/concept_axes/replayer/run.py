@@ -340,6 +340,14 @@ def main(argv=None) -> int:
                                markets=markets, corp_events=corp, meta=meta,
                                max_candidates=int(s["params"].get(
                                    "max_candidates", args.max_candidates)))
+                    # 리뷰 M-3 — 보조 지표는 「랭킹 «전» 배제 없이 재현한 상위 20」 으로 낸다.
+                    #    라이브 집합에서 배제를 «사후» 빼는 것은 밀려 올라온 슬롯을 되돌리지 못한다.
+                    r["ledger_noexcl"] = replay(
+                        px, bar_flags, key, scan_dates=s["dates"],
+                        params=s["params"], excluded=set(), names=names,
+                        markets=markets, corp_events=corp, meta=meta,
+                        max_candidates=int(s["params"].get(
+                            "max_candidates", args.max_candidates)))["ledger"]
                     r["seg"] = s
                     r["live"] = live[live["scan_date"].isin(s["dates"])]
                     w = ldg.write_outputs(
@@ -506,13 +514,17 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
                     r.extend(fmt_metrics(label, gt.compute_metrics(sub)))
             a("")
             # 🔴 «보조» 인쇄 — 판정은 위 표(동결 정의)로 한다. 이 줄로 문턱을 우회하지 않는다.
-            if excluded:
-                aux = gt.compute_metrics(days, drop_codes=excluded)
-                a("> **보조(판정 아님)** — §1-2-b 배제 종목(우선주·리츠·외국주·ETF)을 "
-                  "라이브 집합에서도 뺐을 때: M1 = {:.4f} · M3 = {:.4f}. "
-                  "🔴 **판정은 위 표의 값이다** — 라이브 `STOCK_ONLY` 는 이들을 거르지 않으므로 "
-                  "그 차이는 «사전등록된 의도적 차이»이고, 이 줄은 그 크기를 재는 원인 귀속일 뿐 "
-                  "문턱 우회가 아니다.".format(aux["M1"], aux["M3"]))
+            if excluded and "ledger_noexcl" in seg:
+                aux = gt.compute_metrics(build_day_pairs(seg["live"],
+                                                         seg["ledger_noexcl"]))
+                a("> **보조(판정 아님)** — 「랭킹 «전» §1-2-b 배제 없이 "
+                  "다시 재현한 상위 20」 vs 라이브: M1 = {:.4f} · M3 = {:.4f} "
+                  "(거래일 {}일). 🔴 **판정은 위 표의 값이다** — 이 줄은 "
+                  "«사전등록된 의도적 차이»의 크기를 재는 원인 귀속일 뿐 문턱 우회가 아니다. "
+                  "🔑 예전처럼 «라이브 집합에서 배제 종목을 사후에 빼는» 방식은 "
+                  "배제로 비운 슬롯에 20위 밖이 밀려 올라온 효과를 되돌리지 못해 "
+                  "지표를 «한쪽으로» 움직였다(리뷰 M-3).".format(
+                      aux["M1"], aux["M3"], aux["n_days"]))
                 a("")
             a("- 라이브 {:,}종목-일 · 재현 {:,}종목-일 · 교집합 {:,} · 합집합 {:,}".format(
                 total["n_live"], total["n_replay"], total["n_inter"], total["n_union"]))
