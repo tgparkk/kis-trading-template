@@ -517,11 +517,18 @@ class SystemMonitor:
         ⚠️ **읽는 법**: 이 줄은 «15:35 시점의 SELECTED 스냅샷»이다. 당일 매수된
            후보는 SELECTED→BUY_PENDING→POSITIONED 로 빠져나갔으므로 여기 안
            잡힌다. 즉 「그날 평가된 후보 전체」가 아니라 「끝까지 안 산 후보」의
-           시장 분포다. P1 의 분모로 쓸 때 이 정의를 함께 적을 것.
+           시장 분포다. P1 의 분모로 쓸 때 이 정의를 함께 적을 것 — 그래서
+           줄 끝에 `기준=` 꼬리표를 **줄 자신이 들고 다니게** 했다.
+           🔴 게다가 **실패·타임아웃 매수는 SELECTED 로 되돌아온다**
+           (`core/trading/stock_state_manager.py:16` BUY_PENDING→SELECTED ·
+           `core/trading/order_execution.py:256,272`). 그러니 이 모집단은
+           「안 산 후보」가 아니라 **「15:35 시점에 안 사고 있는 후보」**다 —
+           사려다 실패한 종목이 섞여 있고, 그 수는 이 줄만으로는 안 갈린다.
 
         관측 전용이라 어떤 실패도 EOD 를 끊지 않는다.
         """
         try:
+            from bot.initializer import effective_regime_index
             from core.models import StockState
             from core.regime.market_classifier import (
                 get_stock_market,
@@ -538,23 +545,38 @@ class SystemMonitor:
             ]
             codes = [c for c in codes if c]
 
+            # 🟡 설정값은 «읽는다» — 리터럴 "auto" 를 박으면 설정이 KOSDAQ 인
+            #    날에도 auto 인 척하는 줄이 남아, 계기가 거짓말을 한다.
+            #    라이브 경로(`core/trading_context.py:346`)와 같은 실효값
+            #    규약을 쓰려고 `effective_regime_index` 를 **재사용**한다
+            #    (그 docstring 이 「함수 하나만 둔다」고 못 박은 바로 그 식).
+            strategies = getattr(self.bot, 'strategies', None) or {}
+            configured = effective_regime_index(strategies.get(_DAYTRADING_KEY))
+
             n_kospi = sum(1 for c in codes if get_stock_market(c) == "KOSPI")
             n_kosdaq = sum(1 for c in codes if get_stock_market(c) == "KOSDAQ")
 
             resolved = [
                 resolve_regime_index(
-                    "auto", c, strategy_name=_DAYTRADING_KEY, count=False
+                    configured, c, strategy_name=_DAYTRADING_KEY, count=False
                 )
                 for c in codes
             ]
-            a = resolved.count("KOSPI")
-            b = resolved.count("KOSDAQ")
-            c_both = resolved.count("both")
+            # `auto→` 라벨은 configured == "auto" 일 때만 의미가 있다. 다른
+            # 설정에서 resolved 를 그대로 세면 「해석이 갈렸다」는 거짓 증거가
+            # 된다(non-auto 는 설정값을 그대로 돌려줄 뿐이다).
+            if configured == "auto":
+                a = resolved.count("KOSPI")
+                b = resolved.count("KOSDAQ")
+                c_both = resolved.count("both")
+            else:
+                a = b = c_both = 0
 
             self.logger.info(
-                f"{RESOLUTION_PROBE_LOG_TAG} daytrading "
+                f"{RESOLUTION_PROBE_LOG_TAG} daytrading 설정={configured} "
                 f"KOSPI후보={n_kospi} KOSDAQ후보={n_kosdaq} "
-                f"auto→KOSPI={a} auto→KOSDAQ={b} both={c_both}"
+                f"auto→KOSPI={a} auto→KOSDAQ={b} both={c_both} "
+                f"기준=미매수SELECTED@15:35(매수체결분 제외)"
             )
         except Exception as e:  # noqa: BLE001 — 관측 전용, EOD 를 끊지 않는다
             self.logger.warning(f"{RESOLUTION_PROBE_LOG_TAG} 산출 실패: {e}")

@@ -420,10 +420,15 @@ class PositionMonitor:
             remaining = self._sell_fail_times[stock_code] + timedelta(minutes=CB_COOLDOWN_MINUTES) - now_kst()
             # 보유 종목의 «매도 시도 자체»가 통째로 막힌 사건이다. DEBUG 면
             # 운영 로그(INFO 이상)에서 사라져 정상과 구분되지 않는다
-            # (2026-09-15 §F-5 ④). RateLimitedLogger 가 분당 5회로 묶는다.
+            # (2026-09-15 §F-5 ④).
+            # 🟡 남은 시간은 «분 단위»(`:.0f`)로만 찍는다 — RateLimitedLogger 의
+            #    중복 판별 키는 `message[:100]`(`utils/rate_limited_logger.py`)
+            #    이라, `:.1f` 면 6초짜리 틱마다 키가 달라져 분당 5회 상한이
+            #    **한 번도 안 걸린다**(30분 쿨다운 × 3초 틱 = 종목당 ~600줄).
+            #    분 단위면 키가 분당 1회만 바뀌어 상한이 실제로 묶는다.
             self.logger.warning(
                 f"{stock_code} Circuit Breaker 활성 중 - 매도 스킵 "
-                f"(남은 시간: {remaining.total_seconds() / 60:.1f}분)"
+                f"(남은 시간: {remaining.total_seconds() / 60:.0f}분)"
             )
             return
 

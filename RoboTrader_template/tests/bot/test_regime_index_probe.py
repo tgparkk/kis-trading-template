@@ -17,6 +17,9 @@ KOSPI 후보가 있었는데 신호가 0이었는지를 로그만으로 가릴 �
   ② 프로브 호출 후 카운터가 **호출 전과 완전히 동일**하다
   ③ 프로브 줄의 5개 수치가 후보 분포와 일치한다
   ④ 프로브가 터져도 EOD 요약·나머지 단계가 안 죽는다
+  ⑤ 🟡 `설정=` 은 전략에 **실제로 심긴** regime_index 다 — 리터럴 "auto" 를
+     박으면 설정이 KOSDAQ 인 날에도 auto 인 척하는 줄이 남는다
+  ⑥ 🟡 `기준=` 모집단 꼬리표가 붙는다 — 이 줄을 P1 분모로 오용하지 못하게
 """
 import asyncio
 import types
@@ -118,7 +121,7 @@ def _selected(code, owner=DAYTRADING_KEY):
     return s
 
 
-def _make_monitor(monkeypatch, selected=(), order=None):
+def _make_monitor(monkeypatch, selected=(), order=None, configured="auto"):
     monkeypatch.setattr(sm, "is_holiday", lambda t: False, raising=False)
     monkeypatch.setattr(sm, "get_holiday_name", lambda t: "테스트휴장", raising=False)
     monkeypatch.setattr(sm, "print_today_trading_summary", lambda *a, **k: None,
@@ -135,7 +138,11 @@ def _make_monitor(monkeypatch, selected=(), order=None):
     tm.get_stocks_by_state.side_effect = (
         lambda state: list(selected) if state == StockState.SELECTED else []
     )
-    mon.bot = types.SimpleNamespace(trading_manager=tm)
+    strat = Mock()
+    strat.regime_index = configured
+    mon.bot = types.SimpleNamespace(
+        trading_manager=tm, strategies={DAYTRADING_KEY: strat},
+    )
 
     def _mark(name):
         def _fn(*a, **k):
@@ -176,6 +183,7 @@ def test_probe_line_counts_match_candidate_markets(monkeypatch):
     assert len(lines) == 1, rec.info
     line = lines[0]
     assert "daytrading" in line
+    assert "설정=auto" in line, line
     assert "KOSPI후보=2" in line, line
     assert "KOSDAQ후보=3" in line, line
     assert "auto→KOSPI=2" in line, line
@@ -222,3 +230,51 @@ def test_probe_emits_zero_line_when_no_candidates(monkeypatch):
     lines = [m for m in rec.info if PROBE_TAG in m]
     assert len(lines) == 1
     assert "KOSPI후보=0" in lines[0]
+
+
+# =========================================================================
+# ⑤⑥ 리뷰 후속 — 설정값 실측 · 모집단 꼬리표
+# =========================================================================
+
+def test_configured_value_is_read_not_assumed(monkeypatch):
+    """설정이 KOSDAQ 이면 `설정=KOSDAQ` 이고 auto→ 수치를 **지어내지 않는다**."""
+    selected = [
+        _selected("005930"), _selected("000660"),   # KOSPI 2
+        _selected("035720"),                         # KOSDAQ 1
+        _selected("999999"),                         # 미매핑
+    ]
+    mon, rec = _make_monitor(monkeypatch, selected=selected, configured="KOSDAQ")
+
+    _run_eod(mon)
+
+    line = [m for m in rec.info if PROBE_TAG in m][0]
+    assert "설정=KOSDAQ" in line, line
+    assert "설정=auto" not in line, line
+    # 소속 시장 집계는 설정과 무관하게 유효하다
+    assert "KOSPI후보=2" in line, line
+    assert "KOSDAQ후보=1" in line, line
+    # auto 해석이 «일어나지 않은» 날이므로 전부 0 이어야 한다
+    assert "auto→KOSPI=0" in line, line
+    assert "auto→KOSDAQ=0" in line, line
+    assert "both=0" in line, line
+    assert rec.error == []
+
+
+def test_probe_line_carries_population_qualifier(monkeypatch):
+    """모집단 꼬리표 — P1 분모로 오용되지 않게 줄 스스로 정의를 들고 다닌다."""
+    mon, rec = _make_monitor(monkeypatch, selected=[_selected("005930")])
+    _run_eod(mon)
+    line = [m for m in rec.info if PROBE_TAG in m][0]
+    assert "기준=미매수SELECTED@15:35(매수체결분 제외)" in line, line
+
+
+def test_missing_strategy_instance_falls_back_to_class_default(monkeypatch):
+    """전략 인스턴스가 없어도(형상 이상) 줄은 남고 EOD 는 안 죽는다."""
+    mon, rec = _make_monitor(monkeypatch, selected=[_selected("005930")])
+    mon.bot.strategies = {}
+
+    _run_eod(mon)
+
+    line = [m for m in rec.info if PROBE_TAG in m][0]
+    assert "설정=both" in line, line
+    assert rec.error == []

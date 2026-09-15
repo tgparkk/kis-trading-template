@@ -9,11 +9,15 @@ INFO 이상만 파일에 남으므로 **보유 종목의 손절이 막힌 사건
   ① CB 활성 중 매도 스킵이 WARNING 으로 나온다
   ② 반환 동작은 그대로(스킵 후 즉시 return — 매도 시도 0회)
   ③ CB 가 없으면 이 경고가 «안» 뜬다
+  ④ 🟡 메시지가 «분 단위»로만 바뀐다 — RateLimitedLogger 의 키는 앞 100자라,
+     남은 시간을 소수 첫째 자리까지 찍으면 틱마다 키가 달라져 5회/분 상한이
+     **하나도 안 걸린다**(30분 쿨다운 × 3초 틱 = 종목당 최대 ~600줄).
 
 ⚠️ `utils/logger.py:106` 이 `propagate = False` 라 caplog 가 루트로는 못 잡는다.
    caplog 핸들러를 모듈 로거에 직접 붙여 레벨을 실측한다.
 """
 import logging
+from datetime import timedelta
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -83,6 +87,33 @@ async def test_circuit_breaker_skip_still_returns_immediately(capture):
 
     assert result is None
     m._get_sell_price.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_message_is_stable_within_the_same_minute(capture):
+    """6초 간격 두 호출이 «같은 문자열» — 그래야 분당 5회 상한이 실제로 묶는다.
+
+    RateLimitedLogger 는 `message[:100]` 을 중복 판별 키로 쓴다
+    (`utils/rate_limited_logger.py:_make_key`). 남은 시간이 `:.1f` 면 6초마다
+    키가 바뀌어 억제가 **한 번도** 발동하지 않는다.
+    """
+    m = _monitor()
+    m._get_sell_price = AsyncMock()
+
+    m._sell_fail_times["005930"] = now_kst()
+    await m._execute_sell(_stock(), 10000.0, "손절")
+
+    # 같은 분 안에서 6초 흐른 상황 = 발동 시각을 6초 앞으로 민다
+    m._sell_fail_times["005930"] = now_kst() - timedelta(seconds=6)
+    await m._execute_sell(_stock(), 10000.0, "손절")
+
+    msgs = [
+        r.getMessage() for r in capture.records
+        if "Circuit Breaker" in r.getMessage() and "매도 스킵" in r.getMessage()
+    ]
+    assert len(msgs) == 2, msgs
+    assert msgs[0] == msgs[1], msgs
+    assert msgs[0][:100] == msgs[1][:100]  # RateLimitedLogger 의 실제 키
 
 
 @pytest.mark.asyncio
