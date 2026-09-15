@@ -514,6 +514,11 @@ class SystemMonitor:
         호출 인자는 라이브 경로(`core/trading_decision_engine.py:353`)와 같은
         형태다 — `(configured, 종목코드, strategy_name=폴더키)` + 우회 플래그.
 
+        ⚠️ **읽는 법**: 이 줄은 «15:35 시점의 SELECTED 스냅샷»이다. 당일 매수된
+           후보는 SELECTED→BUY_PENDING→POSITIONED 로 빠져나갔으므로 여기 안
+           잡힌다. 즉 「그날 평가된 후보 전체」가 아니라 「끝까지 안 산 후보」의
+           시장 분포다. P1 의 분모로 쓸 때 이 정의를 함께 적을 것.
+
         관측 전용이라 어떤 실패도 EOD 를 끊지 않는다.
         """
         try:
