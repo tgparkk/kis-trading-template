@@ -130,12 +130,15 @@ class DayTrading3MethodsBreakoutStrategy(BaseStrategy):
             return self._check_sell(stock_code, data)
 
         if self.daily_trades >= self._max_daily_trades:
+            self._log_cap_skip(stock_code, "daily_trades")
             return None
         if len(self.positions) >= self._max_positions:
+            self._log_cap_skip(stock_code, "max_positions")
             return None
 
         # 진입은 확정 일봉 기준 (백테스트와 동일). 매도 경로(intraday)에서는 신규 진입 안 함.
         if timeframe != "daily":
+            self._log_cap_skip(stock_code, "timeframe")
             return None
 
         return self._check_buy(stock_code, data)

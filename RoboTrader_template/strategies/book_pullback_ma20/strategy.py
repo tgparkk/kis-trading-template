@@ -131,6 +131,7 @@ class BookPullbackMa20Strategy(BaseStrategy):
         # 평가하면 매수 직후 whipsaw 청산이 발생하므로 분봉 경로를 여기서 차단한다.
         # 일봉(base.on_tick, exit_timeframe='daily') 매도는 그대로 동작한다.
         if timeframe != "daily":
+            self._log_cap_skip(stock_code, "timeframe")
             return None
 
         # 보유 종목 → 매도(청산) 판단 우선
@@ -138,8 +139,10 @@ class BookPullbackMa20Strategy(BaseStrategy):
             return self._check_sell(stock_code, data)
 
         if self.daily_trades >= self._max_daily_trades:
+            self._log_cap_skip(stock_code, "daily_trades")
             return None
         if len(self.positions) >= self._max_positions:
+            self._log_cap_skip(stock_code, "max_positions")
             return None
 
         return self._check_buy(stock_code, data)
