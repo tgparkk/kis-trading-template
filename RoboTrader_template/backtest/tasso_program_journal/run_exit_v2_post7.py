@@ -52,8 +52,11 @@ from run_exit_v2_post6 import (  # noqa: F401
 BASE = Path(__file__).resolve().parent
 OUT: list = []
 
-# 🔴 최소 n — `PREREG_POST6.md` §4 #15 «차용»이며 이 파일이 만든 문턱이 «아니다».
-#    n < 3 인 갈래에 ✅·❌ 를 찍으면 그것이 「통과/불통과」로 인용된다 ⇒ ⛔ 로 찍는다.
+# 🔴 `EXIT-X2` 의 최소 n — `PREREG_POST6.md` §4 표 **#16** 의 **고유 조항**이다:
+#    *「최소 n = **완결 `TP` 3** · ⛔ 조건 = 완결 `TP` < 3」*(`PREREG_POST6.md:807`).
+#    ⚠️ **#15 는 `EXIT-E2` 의 최소 n 3 이고 «다른 행»이다** — 두 행을 섞어 인용하지 않는다.
+#    이 파일이 만든 문턱이 «아니고», n < 3 인 갈래에 ✅·❌ 를 찍으면 그것이
+#    「통과/불통과」로 인용된다 ⇒ ⛔ 로 찍는다.
 X2_MIN_N = 3
 
 # 🔴 창 종료 규약 — 이 레인은 DB 를 읽지 않으므로 «표기 의무»로만 쓴다(PD-1 5번 · §7-B #13).
@@ -528,7 +531,8 @@ def main():  # noqa: C901
         % (len(st), st_ok, ratio(st_ok, len(st)), "✅" if st_ok / len(st) >= E2_MIN else "❌"))
     sa = [t for t in x2t if t[BE]]
     sa_ok = sum(1 for t in sa if abs(x2_leg(t[LEGS], t[LOSSM])[0]) < BE_MAX)
-    # 🔴 최소 n = **3**(`PREREG_POST6.md` §4 #15 — 이 문서 §3 `EXIT-E2` 절이 쓰는 것과 같은 문턱).
+    # 🔴 최소 n = **완결 `TP` 3**(`PREREG_POST6.md` §4 **#16** 고유 조항 · `:807`).
+    #    ⚠️ #15(`EXIT-E2`)와 «다른 행»이다 — 수만 같고 근거 조항이 다르다.
     #    n < 3 인 갈래에 ✅·❌ 를 찍으면 **통과/불통과로 «인용»된다** ⇒ ⛔ 로 찍는다.
     sa_mark = ("⛔ (최소 n 3 · %d < 3 — 통과로 인용 금지)" % len(sa)) if len(sa) < X2_MIN_N \
         else ("✅" if sa and sa_ok / len(sa) >= E2_MIN else "❌")
@@ -565,7 +569,8 @@ def main():  # noqa: C901
     if short:
         say("- 🔴 **갈리는 것은 최소 n 미달 갈래뿐이다** — %s. "
             "⛔ 그 갈래는 **통과로도 불통과로도 인용하지 않는다**(최소 n %d 미달 · "
-            "`PREREG_POST6.md` §4 #15 «차용»)."
+            "`PREREG_POST6.md` §4 **#16** 고유 조항 — *「최소 n = 완결 `TP` 3」* · "
+            "⚠️ #15(`EXIT-E2`)와 수만 같고 «다른 행»이다)."
             % (", ".join("%s(n = %d)" % (nm, n) for nm, n, _v in short), X2_MIN_N))
     say("- 🔴🔴 **자기신고 — 「분모 의존」은 «이 문서가 처음 쓰는» 표현이다.** "
         "동결본(`PREREG_EXIT_V2.md`·`PREREG_POST6.md`·`PREDECISION_2026-09-15_post7.md`) "

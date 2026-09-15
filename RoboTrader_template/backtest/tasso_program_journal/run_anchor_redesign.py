@@ -918,80 +918,6 @@ def main(argv=None) -> int:      # noqa: C901
         both("- ⛔ post7 풀이 2건 미만이라 `R` 대조를 돌리지 않았다.")
     both("")
 
-    # ═══ §6 대칭 단언 ══════════════════════════════════════════════════════
-    both("## §6. 대칭 단언 `ANC-N1`~`N5` — **하나라도 빠지면 산출물 무효**(§6)\n")
-
-    # N1 — 판별력
-    sides = {}
-    for c in CANDIDATES:
-        r = p1_post7.get(c)
-        sides[c] = None if not r or not r[1] else (r[0] / r[1] >= 0.5)
-    measurable = {c: s for c, s in sides.items() if s is not None}
-    n1_fire = len(set(measurable.values())) <= 1 and len(measurable) >= 2
-    both("| 이름 | 무엇을 묻나 | 실측 | 발동 | 처리 |")
-    both("|---|---|---|---|---|")
-    both(f"| **`ANC-N1`** 판별력 | 후보들이 서로 «다른 답»을 주는가 | "
-         + (" · ".join(f"{c} {'≥1/2' if s else '<1/2'}" for c, s in measurable.items()) or "—")
-         + f" | {'🔴 **발동**' if n1_fire else '🟢 미발동'} | "
-         + ("🔴 「앵커가 원인이 아니다」 ⇒ **어느 채택도 선언 금지**" if n1_fire
-            else "후보 간 답이 갈린다 ⇒ 판정 계속") + " |")
-    both("| **`ANC-N2`** 항등 고지 | 정의상 참을 증거로 세지 않았나 | "
-         "`A1` 의 `ANC-P1`(0/n)·`ANC-P2`(1) | 🔴 **상시** | "
-         "**「항등 — 표 없음」 인쇄 · §5-1 충족 개수 산입 «금지»** ⇒ "
-         "**`A1` 은 `ANC-P3` 하나로만 결정된다**(이 비대칭을 매회 명시) |")
-
-    # N3 — 사후 정보
-    both("| **`ANC-N3`** 사후 정보 | `H_X` 가 확정되는 날이 언제인가 | 아래 §6-1 표 | "
-         "🔴 **병기 의무**(탈락 사유 아님) | 중앙 > 0 이면 *「이 앵커는 사후 정보를 쓴다」* 상시 병기 |")
-
-    # N4 — 창·표본 민감도 (① 항등 · ②③ 만으로 판정)
-    both("| **`ANC-N4`** 창·표본 민감도 | 갈래를 바꾸면 답이 갈리나 | 아래 §6-2 세 축 | "
-         "계산 후 판정 | 갈리는 축이 하나라도 있으면 🔴 **선언 금지** |")
-    both(f"| **`ANC-N5`** 대조군 상수 검사 | `R` 이 상수가 아닌가 | 서로 다른 `H_R` 개수 "
-         f"{'≥ 2 전건' if not n5_fail else f'1가지 {len(n5_fail)}건'} | "
-         f"{'🟢 미발동' if not n5_fail else '🔴 **발동**'} | 1 이면 **절차 무효** |")
-    both("")
-
-    # §6-1 ANC-N3
-    both("### 6-1. `ANC-N3` — 사후 정보(look-ahead) · 건별 `D` → `d*` 거래일 수\n")
-    both("| 종목 | `A0` | `A1` | `A2` | `A3` |")
-    both("|---|---|---|---|---|")
-    lags = {c: [] for c in CANDIDATES}
-    for it in p7:
-        if not it.get("ok"):
-            continue
-        v, cells = it["v"], []
-        for c in CANDIDATES:
-            d = v["dstar"].get(c)
-            k = None if d is None else trading_days_between(cal, v["d0"], d)
-            if k is not None:
-                lags[c].append(k)
-            cells.append("—" if k is None else str(k))
-        both(f"| {it['name']} | " + " | ".join(cells) + " |")
-    both("")
-    both("| 후보 | 중앙 거래일 수 | 사후 정보? |")
-    both("|---|---|---|")
-    for c in CANDIDATES:
-        m = med(lags[c])
-        post_info = (m is not None and m > 0)
-        both(f"| {c} | {fmt(m, 1)} | "
-             + ("🔴 **예 — 「이 앵커는 사후 정보를 쓴다」 상시 병기**" if post_info
-                else "아니오(등록일 종가 시점에 확정)") + " |")
-    both("")
-    both("🔴 **`ANC-N3` 는 「탈락 사유」가 아니라 「병기 의무」다**(§6). 사후 정보를 쓰는 앵커도 채택될 수 "
-         "있지만, 그때 그 산출물은 *「저자가 알 수 없었던 값으로 저자의 행동을 설명했다」*는 한계를 매번 "
-         "달고 다닌다. 🔑 ***이 한계를 안 적으면 다음 사람이 그 앵커를 라이브 규칙으로 옮긴다.***")
-    both("")
-
-    # §6-2 ANC-N4
-    both("### 6-2. `ANC-N4` — 창·표본 민감도 세 축\n")
-    both("| 축 | 갈래 | 실측 | 판정이 갈리나 |")
-    both("|---|---|---|---|")
-    ax1_ident, ax1_incl, ax1_prev = publish_bar_identity(cal)
-    both("| **①** `END` = 발행일 «직전» 봉 | 「발행 당일 봉 포함」 ↔ 「발행일 직전 봉」 | "
-         + (f"🔴🔴 **둘 다 {ax1_incl} 을 가리킨다** — 발행일 {PUB7} 가 **휴장(토)** 이기 때문"
-            if ax1_ident else f"당일포함 {ax1_incl} ↔ 직전 {ax1_prev}")
-         + " | " + ("🔴 **구분 불가(항등)**" if ax1_ident else "계산 후 판정") + " |")
     # 🔴🔴 **`ANC-N4` 는 「세 판정 × 전 갈래」 전수 검사다.**
     #    동결 §6 `ANC-N4` 행(`PREREG_ANCHOR_REDESIGN.md:282`): *「① `END` = 발행일 «직전» 봉
     #    ② 재진입 포함↔제외 ③ 창5 절단 포함↔제외 — **세 축 전부 인쇄** |
@@ -1094,6 +1020,90 @@ def main(argv=None) -> int:      # noqa: C901
     # ② 재진입 포함 ↔ 제외
     p7_norein = [it for it in p7 if not it["reentry"]]
     alt2, split2, mute2 = _n4_diff(p7_norein)
+    # 🔴 ③ 갈래도 여기서 계산한다 — §6 요약표가 «결과»를 적으려면 둘 다 필요하다.
+    p7_notrunc_pre = [it for it in p7 if it["name"] not in WIN5_TRUNC]
+    alt3, split3, mute3 = _n4_diff(p7_notrunc_pre)
+    n4_fire = bool(split2 or split3)
+
+    # ═══ (↑ §6-2 의 계산을 §6 요약표 «앞»으로 끌어올렸다 — 인쇄는 §6-2 그대로)
+
+    # ═══ §6 대칭 단언 ══════════════════════════════════════════════════════
+    both("## §6. 대칭 단언 `ANC-N1`~`N5` — **하나라도 빠지면 산출물 무효**(§6)\n")
+
+    # N1 — 판별력
+    sides = {}
+    for c in CANDIDATES:
+        r = p1_post7.get(c)
+        sides[c] = None if not r or not r[1] else (r[0] / r[1] >= 0.5)
+    measurable = {c: s for c, s in sides.items() if s is not None}
+    n1_fire = len(set(measurable.values())) <= 1 and len(measurable) >= 2
+    both("| 이름 | 무엇을 묻나 | 실측 | 발동 | 처리 |")
+    both("|---|---|---|---|---|")
+    both(f"| **`ANC-N1`** 판별력 | 후보들이 서로 «다른 답»을 주는가 | "
+         + (" · ".join(f"{c} {'≥1/2' if s else '<1/2'}" for c, s in measurable.items()) or "—")
+         + f" | {'🔴 **발동**' if n1_fire else '🟢 미발동'} | "
+         + ("🔴 「앵커가 원인이 아니다」 ⇒ **어느 채택도 선언 금지**" if n1_fire
+            else "후보 간 답이 갈린다 ⇒ 판정 계속") + " |")
+    both("| **`ANC-N2`** 항등 고지 | 정의상 참을 증거로 세지 않았나 | "
+         "`A1` 의 `ANC-P1`(0/n)·`ANC-P2`(1) | 🔴 **상시** | "
+         "**「항등 — 표 없음」 인쇄 · §5-1 충족 개수 산입 «금지»** ⇒ "
+         "**`A1` 은 `ANC-P3` 하나로만 결정된다**(이 비대칭을 매회 명시) |")
+
+    # N3 — 사후 정보
+    both("| **`ANC-N3`** 사후 정보 | `H_X` 가 확정되는 날이 언제인가 | 아래 §6-1 표 | "
+         "🔴 **병기 의무**(탈락 사유 아님) | 중앙 > 0 이면 *「이 앵커는 사후 정보를 쓴다」* 상시 병기 |")
+
+    # N4 — 창·표본 민감도 (① 항등 · ②③ 만으로 판정)
+    both("| **`ANC-N4`** 창·표본 민감도 | 갈래를 바꾸면 답이 갈리나 | "
+         + ("아래 §6-2 세 축 — 갈린 자리 **%s**" % (" · ".join(split2 + split3))
+            if n4_fire else "아래 §6-2 세 축 — 갈린 자리 **없음**")
+         + " | " + ("🔴 **발동**" if n4_fire else "🟢 미발동")
+         + " | 갈리는 축이 하나라도 있으면 🔴 **선언 금지** |")
+    both(f"| **`ANC-N5`** 대조군 상수 검사 | `R` 이 상수가 아닌가 | 서로 다른 `H_R` 개수 "
+         f"{'≥ 2 전건' if not n5_fail else f'1가지 {len(n5_fail)}건'} | "
+         f"{'🟢 미발동' if not n5_fail else '🔴 **발동**'} | 1 이면 **절차 무효** |")
+    both("")
+
+    # §6-1 ANC-N3
+    both("### 6-1. `ANC-N3` — 사후 정보(look-ahead) · 건별 `D` → `d*` 거래일 수\n")
+    both("| 종목 | `A0` | `A1` | `A2` | `A3` |")
+    both("|---|---|---|---|---|")
+    lags = {c: [] for c in CANDIDATES}
+    for it in p7:
+        if not it.get("ok"):
+            continue
+        v, cells = it["v"], []
+        for c in CANDIDATES:
+            d = v["dstar"].get(c)
+            k = None if d is None else trading_days_between(cal, v["d0"], d)
+            if k is not None:
+                lags[c].append(k)
+            cells.append("—" if k is None else str(k))
+        both(f"| {it['name']} | " + " | ".join(cells) + " |")
+    both("")
+    both("| 후보 | 중앙 거래일 수 | 사후 정보? |")
+    both("|---|---|---|")
+    for c in CANDIDATES:
+        m = med(lags[c])
+        post_info = (m is not None and m > 0)
+        both(f"| {c} | {fmt(m, 1)} | "
+             + ("🔴 **예 — 「이 앵커는 사후 정보를 쓴다」 상시 병기**" if post_info
+                else "아니오(등록일 종가 시점에 확정)") + " |")
+    both("")
+    both("🔴 **`ANC-N3` 는 「탈락 사유」가 아니라 「병기 의무」다**(§6). 사후 정보를 쓰는 앵커도 채택될 수 "
+         "있지만, 그때 그 산출물은 *「저자가 알 수 없었던 값으로 저자의 행동을 설명했다」*는 한계를 매번 "
+         "달고 다닌다. 🔑 ***이 한계를 안 적으면 다음 사람이 그 앵커를 라이브 규칙으로 옮긴다.***")
+    both("")
+
+    # §6-2 ANC-N4
+    both("### 6-2. `ANC-N4` — 창·표본 민감도 세 축\n")
+    both("| 축 | 갈래 | 실측 | 판정이 갈리나 |")
+    both("|---|---|---|---|")
+    ax1_ident, ax1_incl, ax1_prev = publish_bar_identity(cal)
+    both("| **①** `END` = 발행일 «직전» 봉 | 「발행 당일 봉 포함」 ↔ 「발행일 직전 봉」 | "
+         + (f"🔴🔴 **둘 다 {ax1_incl} 을 가리킨다** — 발행일 {PUB7} 가 **휴장(토)** 이기 때문"
+            if ax1_ident else f"당일포함 {ax1_incl} ↔ 직전 {ax1_prev}")
+         + " | " + ("🔴 **구분 불가(항등)**" if ax1_ident else "계산 후 판정") + " |")
     def _n4_cells(alt, key):
         """세 판정 중 한 검정의 「주 ↔ 대안」 «값»을 후보별로 한 칸에."""
         out = []
@@ -1114,9 +1124,8 @@ def main(argv=None) -> int:      # noqa: C901
          f"— `exact` 안 재진입 **{n_rein}건** | "
          + (f"🔴 **갈린다**({', '.join(split2)})" if split2 else "🟢 안 갈린다")
          + (f" · ⚠️ 판정↔미판정 {len(mute2)}자리" if mute2 else "") + " |")
-    # ③ 창5 절단 포함 ↔ 제외
-    p7_notrunc = [it for it in p7 if it["name"] not in WIN5_TRUNC]
-    alt3, split3, mute3 = _n4_diff(p7_notrunc)
+    # ③ 창5 절단 포함 ↔ 제외 (〃)
+    p7_notrunc = p7_notrunc_pre
     both(f"| **③** 창5 절단 포함 ↔ 제외 | 포함 {len(p7)}건 ↔ 제외 {len(p7_notrunc)}건 | "
          f"`ANC-P1` {_n4_cells(alt3, 'ANC-P1')} │ `ANC-P2` {_n4_cells(alt3, 'ANC-P2')} "
          f"│ `ANC-P3`(`V(R)≤V(X)` 수) {_n4_cells(alt3, 'ANC-P3')} — 절단 "
@@ -1129,7 +1138,6 @@ def main(argv=None) -> int:      # noqa: C901
          f"「발행일 «직전» 봉」이 **같은 봉({END})** 을 가리킨다. ⇒ ① 은 §5-3 문형대로 "
          "**「구분 불가(항등)」로 명시 인쇄**하고 **②·③ 두 축으로만 `ANC-N4` 를 판정**한다. "
          "🔴 ***①을 다른 정의로 «대체하지 않는다»*** — 대체하면 그게 새 자유도다(PD-14 1번).")
-    n4_fire = bool(split2 or split3)
     both(f"⇒ **`ANC-N4` {'🔴 발동 — 선언 금지' if n4_fire else '🟢 미발동'}** "
          "— ②·③ 각 축에서 **세 판정(`ANC-P1`·`P2`·`P3`) 전수**를 대조한 결과다"
          "(① 은 이번 회차에 항등이라 갈릴 수 없다). "
@@ -1234,6 +1242,21 @@ def main(argv=None) -> int:      # noqa: C901
         both("- 🔴 **「보류」라고도 «선언하지 않는다»** — 「보류」는 독법 B 를 «고른» 뒤에야 "
              "할 수 있는 말이고, 고르는 것 자체가 이 신고의 대상이다.")
         both("- 🔑 ***값을 보고 독법을 고르면 그게 사후적합이다.***")
+        both("")
+        both("🔴🔴 **파급 2 — 독법을 고르면 `ANC-N4` 의 «갈림 목록»도 달라진다.** "
+             "지금 §6-2 가 센 갈림은 독법 B(게이트) 아래의 것이라 `ANC-P3` 가 전 갈래 «미판정»이고, "
+             "그래서 `ANC-P3` 자리는 갈림으로 세지 않았다.")
+        both("")
+        both("- 🔴 **독법 A 를 고르면** `ANC-P3` 가 판정 가능해지고, "
+             "③ 축(창5 절단 포함↔제외)에서 **A3 × `ANC-P3` 가 «추가로» 갈린다** — "
+             f"실측 `V(R) ≤ V(X)` 수가 **0/100 ↔ 3/100** 이라 "
+             "*「0개여야 함」* 조건이 포함↔제외로 **뒤집힌다**(§5-3 표 · §6-2 ③ 행).")
+        both("- 🟢 **어느 독법으로도 `ANC-N4` 는 발동한다** — 독법 B 에서는 "
+             "`ANC-P2` 두 자리로, 독법 A 에서는 거기에 `ANC-P3` 한 자리가 «더» 붙는다. "
+             "⇒ ***독법 선택이 「선언 금지」라는 결론을 가르지는 않는다.***")
+        both("- 🔴 **그래도 이 파급을 적어 둔다** — "
+             "***독법을 고르는 순간 「무엇이 갈렸는지」의 목록이 달라지고, "
+             "다음 글에서 「어느 축이 안정적이었나」를 세는 분모가 달라진다.***")
         both("")
 
     if not p3_gate_ok:

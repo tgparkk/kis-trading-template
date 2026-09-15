@@ -2167,10 +2167,16 @@ def main_post6(cur, ctx):                                     # noqa: PLR0912, P
     c_b2 = (b2r is not None) and (b2r > B2_THR)
     say("| 성분 | 문턱 (출처 파일) | 관측 | 통과 | ⛔ 경로 |")
     say("|---|---|---|---|---|")
-    say(f"| `SEC-N1` | `p < 5%` · `PREREG_REGDAY_MEASURE.md` §4-1 | **{fmt(n1p, 4)}** | "
+    # 🔴 소수 넷째 자리로 반올림하면 `SEC-N1` 과 `SEC-B1` 이 «같아 보인다» —
+    #    실제로는 다른 값이다. ⇒ **재추출 «횟수» 정수를 같이 인쇄**해 착시를 막는다.
+    _n1_hits = None if n1p is None else int(round(n1p * NREP))
+    _b1_hits = None if b1p is None else int(round(b1p * NREP))
+    say(f"| `SEC-N1` | `p < 5%` · `PREREG_REGDAY_MEASURE.md` §4-1 | "
+        f"**{fmt(n1p, 5)}** (= **{_n1_hits}**/{NREP:,}) | "
         + ("🟢 통과" if c_n1 else "🔴 미달")
         + " | ≥ 5% ⇒ 불성립 · 해석/재추출 갈림 ⇒ `SEC-V1` |")
-    say(f"| `SEC-B1` | `p < 5%` · 〃 | **{fmt(b1p, 4)}** | " + ("🟢 통과" if c_b1 else "🔴 미달")
+    say(f"| `SEC-B1` | `p < 5%` · 〃 | **{fmt(b1p, 5)}** (= **{_b1_hits}**/{NREP:,}) | "
+        + ("🟢 통과" if c_b1 else "🔴 미달")
         + " | ≥ 5% ⇒ 🔴 **「급등주 일반 성질과 구분 불가」로 강등** · `q_top ≥ 0.135` ⇒ 발화 불가"
         + f"(이번: {'발화 가능' if b1fire else '🔴 발화 불가'}) |")
     say(f"| `SEC-B2` | **> 50%** · `RESULTS_D1_OOS_POST5.md` §9 W7 «차용» | "
@@ -3393,10 +3399,16 @@ def main_post7(cur, ctx):                                     # noqa: PLR0912, P
     c_b2 = (b2r is not None) and (b2r > B2_THR)
     say("| 성분 | 문턱 (출처 파일) | 관측 | 통과 | ⛔ 경로 |")
     say("|---|---|---|---|---|")
-    say(f"| `SEC-N1` | `p < 5%` · `PREREG_REGDAY_MEASURE.md` §4-1 | **{fmt(n1p, 4)}** | "
+    # 🔴 소수 넷째 자리로 반올림하면 `SEC-N1` 과 `SEC-B1` 이 «같아 보인다» —
+    #    실제로는 다른 값이다. ⇒ **재추출 «횟수» 정수를 같이 인쇄**해 착시를 막는다.
+    _n1_hits = None if n1p is None else int(round(n1p * NREP))
+    _b1_hits = None if b1p is None else int(round(b1p * NREP))
+    say(f"| `SEC-N1` | `p < 5%` · `PREREG_REGDAY_MEASURE.md` §4-1 | "
+        f"**{fmt(n1p, 5)}** (= **{_n1_hits}**/{NREP:,}) | "
         + ("🟢 통과" if c_n1 else "🔴 미달")
         + " | ≥ 5% ⇒ 불성립 · 해석/재추출 갈림 ⇒ `SEC-V1` |")
-    say(f"| `SEC-B1` | `p < 5%` · 〃 | **{fmt(b1p, 4)}** | " + ("🟢 통과" if c_b1 else "🔴 미달")
+    say(f"| `SEC-B1` | `p < 5%` · 〃 | **{fmt(b1p, 5)}** (= **{_b1_hits}**/{NREP:,}) | "
+        + ("🟢 통과" if c_b1 else "🔴 미달")
         + " | ≥ 5% ⇒ 🔴 **「급등주 일반 성질과 구분 불가」로 강등** · `q_top ≥ 0.135` ⇒ 발화 불가"
         + f"(이번: {'발화 가능' if b1fire else '🔴 발화 불가'}) |")
     say(f"| `SEC-B2` | **> 50%** · `RESULTS_D1_OOS_POST5.md` §9 W7 «차용» | "
