@@ -470,9 +470,26 @@ def render_md(ledger: List[Dict[str, str]], fid: Dict[str, Any], meta: Dict[str,
     diffs = [abs(float(r["entry_diff_pct"])) for r in frows if r["entry_diff_pct"]]
     diffs_first = [abs(float(r["entry_diff_pct"])) for r in frows
                    if r["entry_diff_pct"] and "첫 틱 이후" not in r["note"]]
+    # 부호 포함(+ = 가상 진입가가 실제 체결가보다 비쌈) — 진입차% = (가상 ÷ 실제 − 1)×100
+    signed = [(r, float(r["entry_diff_pct"])) for r in frows if r["entry_diff_pct"]]
+    signed_first = [(r, x) for r, x in signed if "첫 틱 이후" not in r["note"]]
+
+    def _signed_cell(xs: Sequence[Tuple[Dict[str, str], float]]) -> str:
+        if not xs:
+            return "-"
+        return f"{sum(x for _, x in xs) / len(xs):+.2f}% · 양수 {sum(1 for _, x in xs if x > 0)}/{len(xs)}"
+
     closed = [r for r in frows if r["actual_exit_reason"] not in ("", "open")]
     ex_y = sum(1 for r in closed if r["exit_match"] == "Y")
     ex_reason = sum(1 for r in closed if r["exit_match"] in ("Y", "reason_only"))
+    # 청산 일치 분모에서 빠진 건 = 실제 보유 중(양쪽 보유 · 가상만 종료 · 그 밖)
+    act_open = [r for r in frows if r["actual_exit_reason"] in ("", "open")]
+    one_side = [r for r in act_open if r["exit_match"].startswith("N(")]
+    both_open = [r for r in act_open if r["exit_match"] == "both_open"]
+    other_open = [r for r in act_open if not r["exit_match"].startswith("N(") and r["exit_match"] != "both_open"]
+
+    def _codes(rs: Sequence[Dict[str, str]]) -> str:
+        return "·".join(f"{r['code']}({r['date'][5:]})" for r in rs) or "없음"
     sl = fid["siglog"]
     days = fid["days"]
     n_actual_total = sum(len(x["actual"]) for x in days)
@@ -583,8 +600,24 @@ def render_md(ledger: List[Dict[str, str]], fid: Dict[str, Any], meta: Dict[str,
         ["예측 매수 집합 = 실제(날짜 합)", f"교집합 {n_both_total} · 실제 {n_actual_total} · 예측 {n_pred_total}"],
         ["가상 진입가(D 시가) vs 실제 체결가 |차| 평균·최대 — 전체", (f"{sum(diffs)/len(diffs):.2f}% · {max(diffs):.2f}% (n={len(diffs)})" if diffs else "-")],
         ["같은 값 — 첫 틱(≤09:05) 체결 건만", (f"{sum(diffs_first)/len(diffs_first):.2f}% · {max(diffs_first):.2f}% (n={len(diffs_first)})" if diffs_first else "-")],
+        ["가상 진입가 − 실제 체결가 «부호 포함» 평균 · 양수(가상이 비쌈) 건수 — 전체", _signed_cell(signed)],
+        ["같은 값 — 첫 틱(≤09:05) 체결 건만", _signed_cell(signed_first)],
+        ["반대 사례(가상 ≤ 실제)", " · ".join(f"{r['code']}({r['date'][5:]}) {r['entry_diff_pct']}" for r, x in signed if x <= 0) or "없음"],
         ["실제 종료 건 중 가상 청산 사유·날짜 일치", f"{ex_y}/{len(closed)} (사유만 {ex_reason}/{len(closed)})"],
     ]))
+    L_.append("")
+    if signed:
+        mean_signed = sum(x for _, x in signed) / len(signed)
+        lean = ("가상 진입이 실제보다 «비싸게» 잡히는 쪽으로 치우친다" if mean_signed > 0 else
+                "가상 진입이 실제보다 «싸게» 잡히는 쪽으로 치우친다" if mean_signed < 0 else "치우침이 없다")
+        L_.append(f"- 진입차% = (가상 진입가 ÷ 실제 체결가 − 1)×100 · + 면 가상 진입이 비싸다. 이 창에선 {lean}"
+                  "(가상 = D 시가 · 라이브 = 첫 틱 이후 실시간가) — 가상 손절·익절 경계도 진입가를 따라 함께 옮겨진다. "
+                  "반대 사례도 있으니 건별은 §2-3.")
+    L_.append(f"- 청산 일치 분모 = «실제 청산된» 건 {len(closed)} = 실제 매수 {n_buy} − 실제 보유 중 {len(act_open)}"
+              f"(양쪽 보유 {_codes(both_open)} · 실제 보유 중·가상만 종료 {_codes(one_side)}"
+              + (f" · 그 밖 {_codes(other_open)}" if other_open else "") + ")"
+              f" — 가상만 종료된 건은 분모에서 뺐다. 넣어서 불일치로 세면 {ex_y}/{len(closed) + len(one_side)}"
+              f"(사유 {ex_reason}/{len(closed) + len(one_side)}). «사유만» = 날짜 무관 사유 일치(Y 포함).")
     L_.append("")
     L_.append("### 2-2. 날짜별 예측 매수 vs 실제")
     L_.append("")
@@ -627,6 +660,11 @@ LIMITS = [
     "거래량 비율이 라이브와 달라질 수 있다(경계 0.68~0.72 는 `near_threshold`).",
     "후보 목록 = `screener_snapshots`(scan_date=직전 거래일) 순위순 − 로그의 안전필터 제외 → 로그 `목표 N건`. "
     "섹터뉴스 재정렬은 기본 shadow(순서 불변) 가정.",
+    "원장 범위 = E6 목록 한정. 라이브 minervini `on_tick` 은 `get_selected_stocks()`(core/trading_context.py:273-298)가 돌려주는 "
+    "«소유자 미지정» SELECTED 종목도 평가한다([캡] 고유 종목 2026-09-16 51 · 09-17 53 vs E6 목록 9 · 10). 목록 밖 재현 `_check_buy` Y 는 "
+    "09-16 7 · 09-17 6 이고 09:02 기준 대부분 타전략 보유(매수 무시 대상)지만 09-16 413630 은 보유자가 없어 자리가 있었다면 살 수 있던 Y 다"
+    "(minervini 첫 [캡] 10:44:41 엔 book_pullback_ma20 이 10:39:59~10:58:49 보유). 이 기간 결론은 안 뒤집힌다 — [캡] 첫 줄 순서상 "
+    "목록 종목이 목록 밖보다 먼저 평가되고, 매일 목록 안 Y 가 빈자리보다 많다. [캡] 로그 이전(~09-15)은 목록 밖 종목을 셀 수 없다.",
     "자리 = `virtual_trading_records` 체결 시각으로 그린 보유 수 시간선(K 이력표) + 체결 수 한도(max_daily_trades). "
     "`[캡]` 로그는 2026-09-16 부터만 있어 교차 증거로만 쓴다.",
     "샀을 신호 = 라이브 `_check_buy`(MarketHours 만 True 로 고정). 시장급락 게이트·국면 게이트·VI·상한가 접근·쿨다운·"
@@ -636,7 +674,7 @@ LIMITS = [
     "2026-08 초(충실도 창 앞부분)는 전략 `positions` 가 비어 K 캡이 매수를 막지 않은 날이 있다(보유 종목에도 매수 시그널). "
     "그날들은 «자리» 모델(체결 원장 시간선)이 라이브와 다르므로 §2-2 `캡 미작동 증거` 로 따로 센다.",
     "가상 진입 = D 일봉 시가(밴드 안) · 시가가 밴드 밖이고 장중 복귀면 밴드 경계값(시각 불명) · 장중 내내 밖이면 체결 불가. "
-    "라이브는 첫 틱(≈09:02) 실시간가로 체결한다.",
+    "라이브는 첫 틱(≈09:02) 이후 실시간가로 체결한다 — 가상 진입가 − 실제 체결가의 «방향»(부호 포함 평균·반대 사례)은 §2-1.",
     "가상 청산 = 일봉 고저 «터치». 라이브 position_monitor 는 주기 폴링이라 짧은 꼬리(예: 241710 2026-09-10 10:15 1분봉 저가)를 "
     "못 볼 수 있다 → 가상 손절이 실제보다 많을 수 있다. 같은 봉 손절·익절 동시 터치는 손절 우선. 체결가는 경계값(갭은 시가) — "
     "라이브는 넘어선 실시간가로 체결한다(예: 익절 +14.15%).",
