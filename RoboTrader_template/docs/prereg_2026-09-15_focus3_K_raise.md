@@ -370,7 +370,10 @@ GROUP BY strategy ORDER BY strategy;
 **관측 SSOT = `screener_snapshots.rank_in_snapshot`**(DB · `scan_date` × `strategy` × `stock_code` · 1..20).
 🔴 09-16 계기(`_log_cap_skip`)는 **순위를 찍지 않는다** — 사유 3종(`timeframe`·`daily_trades`·`max_positions`)과 `보유=n/K · 일일매수=…` 뿐이다. 그래서 P2 는 **로그가 아니라 이 표**로 잰다.
 
+> 🔴 **원문(결함) — 아래 SQL 은 판정에 쓰지 않는다.** 결함 줄 = `AND s.scan_date  = v.timestamp::date`(매수일 «당일» scan_date 를 붙인다). 판정은 바로 아래 「🔧 2026-09-17 개정」 보정 SQL 로 한다(개정 이력 참조).
+
 ```sql
+-- 🔴 원문(결함) · 2026-09-17 개정으로 대체 · 판정에 쓰지 않는다
 -- 발효 후 신규 매수의 「스냅샷 순위」 분포
 SELECT v.strategy,
        s.rank_in_snapshot AS rk,
@@ -380,6 +383,40 @@ JOIN screener_snapshots s
   ON s.strategy   = v.strategy
  AND s.stock_code = v.stock_code
  AND s.scan_date  = v.timestamp::date
+WHERE v.is_test = true
+  AND v.action  = 'BUY'
+  AND v.timestamp::date BETWEEN '2026-09-18' AND '2026-10-05'
+  AND v.strategy IN ('book_pullback_ma20',
+                     'minervini_volume_dryup',
+                     'daytrading_3methods_breakout')
+GROUP BY 1,2 ORDER BY 1,2;
+```
+
+#### 🔧 2026-09-17 개정 — 보정 SQL (P2 판정은 이 SQL 로 한다)
+
+- **결함**: 매수일 D 에 실제로 쓰인 스냅샷은 **scan_date = D-1(직전 거래일)** 이다 — 09-17 로그(`logs/robotrader_template_20260917_074007.log`) 575행 `[E6] … D-1=2026-09-16` · 09-17 09:00 `screener_snapshots 저장 … date=2026-09-16`(같은 로그 495·508행 · DB 도 같다: `scan_date=2026-09-16` 행의 `created_at` = 2026-09-17 09:00). 원문 조인은 매수일 «당일» scan_date(= D+1 09:00 저장분)를 붙인다.
+- **보정**: 거래일 달력 = `daily_prices` 의사티커 `'KOSPI'` 의 날짜 · `LAG` 로 직전 거래일을 구해 `s.scan_date = 직전 거래일` 로 조인한다(주말은 기준선에서 실측 확인 — 09-14(월) 매수 → 09-11(금) 스냅샷). **바뀐 것은 조인 1곳(+ 달력 CTE)뿐**이고 창·전략·집계는 원문과 같다.
+
+```sql
+-- 🔧 2026-09-17 개정 — 발효 후 신규 매수의 「스냅샷 순위」 분포
+--    매수일 D ⇒ scan_date = D 의 직전 거래일(거래일 달력 = daily_prices 'KOSPI')
+WITH td AS (
+    SELECT date::date                           AS d,
+           LAG(date::date) OVER (ORDER BY date) AS prev_d
+    FROM daily_prices
+    WHERE stock_code = 'KOSPI'
+      AND date BETWEEN '2026-09-01' AND '2026-10-05'
+)
+SELECT v.strategy,
+       s.rank_in_snapshot AS rk,
+       COUNT(*)           AS n_buy
+FROM virtual_trading_records v
+JOIN td
+  ON td.d = v.timestamp::date
+JOIN screener_snapshots s
+  ON s.strategy   = v.strategy
+ AND s.stock_code = v.stock_code
+ AND s.scan_date  = td.prev_d          -- 원문(결함): s.scan_date = v.timestamp::date
 WHERE v.is_test = true
   AND v.action  = 'BUY'
   AND v.timestamp::date BETWEEN '2026-09-18' AND '2026-10-05'
@@ -400,6 +437,20 @@ GROUP BY 1,2 ORDER BY 1,2;
 > 🔴 **minervini 에는 「6~10위」가 원리적으로 존재하지 않는다** — 후보가 하루 평균 5.1개(최대 8)뿐이다.
 > ⇒ 「6~10위 매수 > 0」을 그대로 걸면 minervini 는 **자동으로 반증**되고, §⑤-1 에 따라 「K 상향이 표본을 늘리는 경로가 아니다 ⇒ 원복 검토」라는 **거짓 음성**이 나온다.
 > ⇒ 그래서 **minervini 만 「4~6위」**(= K 3→6 으로 새로 닿는 구간)로 잰다.
+
+#### 📌 기준선 참고 (2026-09-17 개정 시 병기)
+
+발효 전 **10거래일**(09-04·07·08·09·10·11·14·15·16·17 = `daily_prices` `'KOSPI'` 날짜) · 같은 3전략 · 원문/보정 SQL 의 창만 `'2026-09-04' AND '2026-09-17'` 로 바꿔 2026-09-17 밤 재현:
+
+| 조인 | 3전략 매수 | 순위가 붙은 매수 | 순위 분포 | 밴드 매수 |
+|---|---:|---:|---|---:|
+| 원문(결함) `s.scan_date = v.timestamp::date` | 23 (ma20 8 · minervini 3 · daytrading 12) | **3** | ma20 r2·r5 · minervini r3 | 0 |
+| 🔧 보정 `s.scan_date = 직전 거래일` | 23 | **23 / 23** | ma20 r1×3·r4×4·**r7×1** · minervini r2×2·**r4×1** · daytrading r1×5·r2×6·r3×1 | **2** |
+
+> 🔴 **밴드 매수가 구 K 아래서 이미 났다** — ma20 **r7 1건**(232140 · 09-11) · minervini **r4 1건**(241710 · 09-09) · daytrading 6~10위 **0건**.
+> ⇒ **순위 ≠ 슬롯**이다(보유 종목이 상위 순위를 차지하고 있으면 K=5 에서도 7위를 산다). 그래서 **ma20·minervini 의 P2(밴드 매수 ≥1)는 K 효과 없이도 성립할 수 있다.** daytrading 만 기준선 0건이라 판별력이 남는다.
+> ⇒ **10-05 판독 때 이 기준선(10거래일 밴드 매수 ma20 1 · minervini 1 · daytrading 0)을 반드시 함께 적는다.**
+> 🔒 **예측 문턱(≥1건)·밴드(6~10위 / 4~6위)·판정 시점(10-05 EOD)·다른 P 는 바꾸지 않는다.** 이 개정은 조인 1곳과 이 기준선 병기뿐이다.
 
 ### 🔴 §④-P7 주 — 왜 예측에서 뺐나
 
@@ -553,6 +604,12 @@ K 를 10 → 5 로 되돌리는 시점에 보유가 8종목이면 **한도를 3�
 | 그래서 어떻게 하나? | **9/22 판정문에 「09-18 부터 K=3→6 · 사이징 3,000,000 → 1,668,591원 변경」을 명기**하고, **09-18 이전·이후를 분리해 보고**한다. 계획서 §7 결정 2(2026-09-05)가 이미 「**20거래일 충족 · `P` 종료 n=◯ 로 검정력 없음**」 독법을 채택했으므로, **검정력 없음 판정은 이 변경과 무관하게 유지**된다. |
 
 > 🔒 **이 항목은 판단이 갈릴 수 있는 지점이다.** 관리자 판단은 「TT 판정은 원래 검정력이 없다고 이미 결정됐으므로 추가 오염의 실질 영향이 작다」이지만, **최종 판단은 사장님께 있다.** 9/22 전에 확인을 받는다.
+
+---
+
+## 개정 이력
+
+- **2026-09-17 개정** — 시점 = **09-18 07:40 동결 전 · 발효 전 · 관측 0일**(09-16·09-17 은 기준선 구간) · 사유 = 09-17 EOD 레인 C §4-i 실측: §④-P2 주 관측 SQL 의 원문 조인 `s.scan_date = v.timestamp::date` 가 매수일 D 에 쓰인 스냅샷(scan_date = D-1)이 아니라 **다른 날의 스냅샷**을 붙여, 기준선 10거래일(09-04~09-17) 3전략 매수 **23건 중 3행만** 조인됨 ⇒ 10-05 판정에서 「밴드 매수 = 0」이 SQL 때문에 나오는 **거짓 음성**(§⑤-1 「원복 검토」 오발동) 위험 · 결정 = **사장님 2026-09-17 밤 (가) 「동결 전 개정」** · 변경 범위 = **§④-P2 주 SQL 조인 1곳**(직전 거래일 스냅샷 · 원문 SQL 은 「원문(결함)」 표시로 보존) **+ 기준선 참고 병기만** — 🔒 **예측 불변**(P1~P6 · P2 문턱·밴드·판정 시점 전부 그대로) · 근거 파일 = `scratchpad/eod_20260917/LANE_C_gate_guards.md` §4-i · 수치 재현 = 2026-09-17 밤 원문/보정 SQL 을 09-04~09-17 창에 각각 실행(원문 3행 · 보정 23/23 · 밴드 매수 ma20 1 · minervini 1 · daytrading 0 — §4-i 와 일치).
 
 ---
 
