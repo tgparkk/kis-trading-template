@@ -1,3 +1,7 @@
+> **DEPRECATED 2026-09-17 — 보관용.** 이유: 2026-02-08(커밋 `87125fd`) 「2A단계」 KISBroker 도입 작업의 일회성 보고서. 줄번호(31-32·87-92·236)는 당시 `main.py` 기준이고, 전환은 같은 날 「3단계」 `601d4f1`(core/bot 모듈 KISBroker 전환 · `main.py` 엔 아직 `KISAPIManager` import/인스턴스 잔존) → 「4단계」 `30e14f8`(`main.py` quant 전용 코드 제거 + `KISAPIManager` 제거) → dev-A/B 담당 파일 broker 전환(`5aeab51`·`4fac462`) → `4b12b20`(최종 broker 전환 + 검증 통과 77/77 모듈)로 마무리됐다 — 현재 `main.py` 는 `KISAPIManager` 를 import 하지 않고 `from framework import KISBroker` → `self.broker = KISBroker()` 를 core 모듈들에 직접 넘긴다. 레포 안 인바운드 링크 0.
+> 대체 문서: `docs/ARCHITECTURE.md`(framework/ 추상화 레이어) · `docs/code/MODULES.md` · `git log --follow main.py`.
+> 원문은 아래 그대로.
+
 # 2A단계 리팩토링 보고서 (개발자 C)
 
 ## 변경 요약
