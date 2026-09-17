@@ -1,6 +1,6 @@
 # minervini_volume_dryup — Minervini VCP (Variant B)
 
-> 활성 페이퍼 전략. 운영 허브 → [docs/PAPER_STRATEGIES.md](../../docs/PAPER_STRATEGIES.md) · 추가 가이드 → [docs/STRATEGY_GUIDE.md](../../docs/STRATEGY_GUIDE.md)
+> 활성 페이퍼 전략 · 🎯 **집중 3전략**(2026-09-05~ · `docs/plan_2026-09-05_focus3_roadmap.md`). 운영 허브 → [docs/PAPER_STRATEGIES.md](../../docs/PAPER_STRATEGIES.md) · 추가 가이드 → [docs/STRATEGY_GUIDE.md](../../docs/STRATEGY_GUIDE.md)
 > 임계값의 SSOT는 `config.yaml` + 진입/청산 룰 코드입니다. 이 문서는 *해설*이며, 숫자가 어긋나면 코드가 정본.
 
 ## 한 줄
@@ -8,9 +8,9 @@
 
 🔴 **2026-08-18 정정** — 이 자리에 있던 *「Minervini의 알파 원천이 VCP가 아닌 dryup임이 확인됨」* 은
 사전등록 판정(`backtest/concept_axes/minervini/`, `b6d3d89`)에 **뒤집혔다**. 거래당 평균이
-`T`(TT 단독) **+2.38%** > `DT` +1.54% > `D`(dryup 단독 = 현행) **+0.00%** 이고, `D` 는 무작위
+`T`(TT 단독) **+2.38%** > `DT` +1.54% > `D`(dryup 단독 = 08-25 이전 라이브 · 현행은 `DT`) **+0.00%** 이고, `D` 는 무작위
 10종목 뽑기를 넘지 못했다(p=1.0000). ⇒ ***dryup 은 알파 원천이 아니라 「빼는 것이 나은 축」으로 나왔다.***
-아래 [Trend Template(TT) 배선](#-trend-templatett-배선--2026-08-18-현재-shadow) 절이 정본이다.
+아래 [Trend Template(TT) 배선](#-trend-templatett-배선--2026-08-18-shadow--2026-08-25-on) 절이 정본이다.
 
 ⚠️ **병기 의무**(REGISTRY 규칙 5) — 위 판정은 **N1 + ε 라벨 규칙**으로 내린 것이고,
 Holm 가족 보정 후엔 **어느 검정도 「유의」로 선언되지 않았다**(§5-2 p=0.0476 > 문턱 0.0250).
@@ -23,8 +23,10 @@ Holm 가족 보정 후엔 **어느 검정도 「유의」로 선언되지 않았
 ## 출처 / 분류
 Minervini VCP (Variant B) — 추세/매집.
 
-## 진입 (`rule_volume_dryup`)
+## 진입 (`rule_volume_dryup` ∧ `rule_trend_template` — 2026-08-25 부터)
 최근10봉 평균거래량 ≤ 직전30봉 평균의 **70%** (거래량 dry-up). confidence = 58.
+
+**EOD 후보 = dry-up ∧ Trend Template(TT) 통과**(`screener.py::TT_FILTER_MODE = "on"`, 2026-08-25 `86ff02d`). ⚠️ on_tick 재검사 `strategy.py::evaluate_entry()` 는 `rule_volume_dryup` 만 다시 돌린다 — TT 는 스크리너에서만 걸리고, 스크리너를 안 거친 종목의 유입은 `accepts_volume_fallback = False` 로 막는다.
 
 ## 청산
 sl **-8%** / tp **+12%** / max_hold **20거래일**. **trail 없음, trend_flip 없음** (Variant A와 차이).
@@ -32,7 +34,8 @@ sl **-8%** / tp **+12%** / max_hold **20거래일**. **trail 없음, trend_flip 
 ## 유니버스 / regime / 사이징
 - 유니버스: 시총 ≥ 3천억 · 거래대금 ≥ 30억
 - regime: index **KOSPI** / gate **none** (게이트 역효과)
-- K = **3** / 종목당 **333만**
+- K = **3** / 종목당 **333만**(초기값 — 실제는 재기동마다 복리 재산정 + `max_per_stock_amount` 300만 캡, 허브 §0.4)
+  - ⏰ **K 3→6 상향 예정 — 2026-09-18 07:40 재기동 발효**(`docs/prereg_2026-09-15_focus3_K_raise.md`). 오늘(09-17) `config.yaml` 은 3 그대로.
 
 ## 평판 (백테스트 / OOS)
 
@@ -42,11 +45,13 @@ sl **-8%** / tp **+12%** / max_hold **20거래일**. **trail 없음, trend_flip 
 
 ## 코드
 - 전략: `strategy.py` · 설정: `config.yaml` · EOD 스크리너: `screener.py`
-- 진입 룰(SSOT): `strategies/books/minervini_vcp/rules.py::rule_volume_dryup`
+- 진입 룰(SSOT): `strategies/books/minervini_vcp/rules.py::rule_volume_dryup` · TT: 같은 파일 `rule_trend_template`(스크리너 전용)
 
 ---
 
-## 🎯 Trend Template(TT) 배선 — 2026-08-18, 현재 `shadow`
+## 🎯 Trend Template(TT) 배선 — 2026-08-18 shadow → 2026-08-25 `on`
+
+> ✅ **2026-08-25 `86ff02d` 로 `on` 승격 완료** — 아래 「왜 바로 on 이 아닌가」·「승격 체크리스트」는 08-18~08-24 shadow 관측기의 기록이다.
 
 `backtest/concept_axes/minervini/`(사전등록 판정 `b6d3d89`) 결과:
 
@@ -56,7 +61,7 @@ sl **-8%** / tp **+12%** / max_hold **20거래일**. **trail 없음, trend_flip 
 | `DT` | dryup ∧ TT | **+1.54%** | ✅ 넘음 (p=0.0476) |
 | `T` | TT 만 (dryup 제거) | **+2.38%** | ✅ 넘음 (p=0.0476) |
 
-🔴 ***현행 `D` 는 「그날 적격 집합에서 무작위로 10종목 고르기」와 구별되지 않는다.*** 이 전략
+🔴 ***종전 라이브(`D` · 08-25 이전)는 「그날 적격 집합에서 무작위로 10종목 고르기」와 구별되지 않았다.*** 이 전략
 이름에 든 `volume_dryup` 이 곧 **빼는 것이 나은 축**으로 나왔다(`T` > `DT` > `D`).
 
 **사장님 승인(2026-08-18)은 「1단계 = TT 더하기」까지다.** `T`(dryup 제거)는 매매 빈도가
@@ -66,17 +71,17 @@ sl **-8%** / tp **+12%** / max_hold **20거래일**. **trail 없음, trend_flip 
 | 모드 | 동작 |
 |---|---|
 | `off` | TT 미평가 (2026-08-18 이전 동작) |
-| **`shadow`** (현재) | TT 를 평가해 **기록만** — 후보 선정은 `off` 와 **100% 동일**. `reason` 에 `tt=0/1` 이 찍힌다 |
-| `on` | TT 통과 종목만 후보 (= 백테스트 `DT`) |
+| `shadow` (08-18~08-24) | TT 를 평가해 **기록만** — 후보 선정은 `off` 와 **100% 동일**. `reason` 에 `tt=0/1` 이 찍힌다 |
+| **`on`** (현재 · 08-25 `86ff02d`) | TT 통과 종목만 후보 (= 백테스트 `DT`) |
 
-### 🔴 왜 바로 `on` 이 아닌가
+### 🔴 왜 바로 `on` 이 아니었나 (08-18 시점)
 `rule_trend_template` 은 **220봉**과 **`ctx['rs_value']`** 가 둘 다 있어야 한다. 하나라도 없으면
-**로그 없이 `False`** 를 반환한다(`rules.py:52`, `:66`). 즉 배관이 틀리면 **후보 0건**이 되는데
+**로그 없이 `False`** 를 반환한다(`rules.py:55-56`, `:69-70`). 즉 배관이 틀리면 **후보 0건**이 되는데
 아무 경보도 안 뜬다. 그래서 shadow 로 며칠 돌려 배관을 확인한 «뒤에» 올린다.
 그 사각지대를 메우려고 `finalize_scan()` 이 스캔마다 `220봉충족 / rs_value 확보 / dryup / TT통과`
 를 인쇄하고, 0 이면 **ERROR** 를 낸다.
 
-### TT 승격 체크리스트 (`shadow` → `on`)
+### TT 승격 체크리스트 (`shadow` → `on`) — ✅ 08-25 승격 완료, 기록용
 전부 충족해야 올린다. 하나라도 미달이면 **원인 규명이 먼저다.**
 
 🔑🔑 **「5거래일」은 «날짜»가 아니라 [SHADOW_LOG.md](../../backtest/concept_axes/minervini/SHADOW_LOG.md)

@@ -41,11 +41,13 @@
 ## 파일 구조
 
 ```
-strategies/bb_reversion/
-├── config.yaml    # 전략 파라미터 + 스크리닝 설정
-├── strategy.py    # 전략 로직 구현
-├── screener.py    # 섹터 종목 스크리닝
-└── README.md      # 이 파일
+strategies/bb_reversion_or/
+├── __init__.py
+├── config.yaml           # 전략 파라미터 + 스크리닝 설정
+├── multiverse_grid.yaml  # 멀티버스(파라미터 그리드) 정의
+├── strategy.py           # 전략 로직 구현
+├── screener.py           # 섹터 종목 스크리닝
+└── README.md             # 이 파일
 ```
 
 ## 설정 (config.yaml)

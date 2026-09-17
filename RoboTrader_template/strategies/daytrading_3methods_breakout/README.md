@@ -1,6 +1,6 @@
 # daytrading_3methods_breakout — 유지윤 데이트레이딩 3대 타법 (Variant B)
 
-> 활성 페이퍼 전략. 운영 허브 → [docs/PAPER_STRATEGIES.md](../../docs/PAPER_STRATEGIES.md) · 추가 가이드 → [docs/STRATEGY_GUIDE.md](../../docs/STRATEGY_GUIDE.md)
+> 활성 페이퍼 전략 · 🎯 **집중 3전략**(2026-09-05~ · `docs/plan_2026-09-05_focus3_roadmap.md`). 운영 허브 → [docs/PAPER_STRATEGIES.md](../../docs/PAPER_STRATEGIES.md) · 추가 가이드 → [docs/STRATEGY_GUIDE.md](../../docs/STRATEGY_GUIDE.md)
 > 임계값의 SSOT는 `config.yaml` + 진입/청산 룰 코드입니다. 이 문서는 *해설*이며, 숫자가 어긋나면 코드가 정본.
 
 ## 한 줄
@@ -20,8 +20,10 @@ sl **-10%** / tp **+10%** / max_hold **10거래일** / trailing 없음 (돌파 �
 
 ## 유니버스 / regime / 사이징
 - 유니버스: 중소형 (시총 < 5천억) · 거래량 배수순
-- regime: index **KOSDAQ** / gate **none** (일봉 게이트는 분봉 성격이라 부적합)
-- K = **5** / 종목당 **200만**
+- regime: index **`auto`**(2026-09-11 `9ab3c37`, `config/trading_config.json` — 종전 KOSDAQ) / gate **none** (일봉 게이트는 분봉 성격이라 부적합)
+  - `auto` 해석 규칙(`core/regime/market_classifier.py::resolve_regime_index`): 급락게이트 지수를 **매수 대상 종목의 소속 시장**(KOSPI 또는 KOSDAQ)으로 정한다. 소속을 못 찾거나 조회가 실패하면 `both`(KOSPI·KOSDAQ 둘 다 검사) — 결측은 보호 과잉 쪽으로만 실패한다.
+- K = **5** / 종목당 **200만**(초기값 — 실제는 재기동마다 복리 재산정 + `max_per_stock_amount` 300만 캡, 허브 §0.4)
+  - ⏰ **K 5→10 상향 예정 — 2026-09-18 07:40 재기동 발효**(`docs/prereg_2026-09-15_focus3_K_raise.md`). 오늘(09-17) `config.yaml` 은 5 그대로.
 
 ## 평판 (백테스트)
 
