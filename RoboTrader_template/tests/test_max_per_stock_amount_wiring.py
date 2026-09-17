@@ -17,9 +17,15 @@
 범위 가드:
 - per_stock 의 산식(10,000,000/K, 복리 재산정)은 **건드리지 않는다**.
 - 실전 경로(fund_manager.get_max_buy_amount)는 **건드리지 않는다**.
-- 라이브 8전략 중 실제로 값이 바뀌는 건 minervini_volume_dryup 하나뿐
-  (K=3 → per_stock 3,333,333 > cap 3,000,000). 나머지 7전략은 cap >= per_stock.
-  TestLiveConfigs 가 그 예상 효과를 고정한다.
+- (2026-08-27 결선 시점) 라이브 8전략 중 실제로 값이 바뀌는 건 minervini_volume_dryup
+  하나뿐이었다(K=3 → per_stock 3,333,333 > cap 3,000,000). 나머지 7전략은 cap >= per_stock.
+
+2026-09-17 갱신 — 기준 커밋 c565256 (집중 3전략 K 상향 · 사전등록
+docs/prereg_2026-09-15_focus3_K_raise.md · 발효 2026-09-18 07:40):
+    minervini K 3→6 으로 per_stock = 10,000,000/6 ≈ 1,666,667 < cap 3,000,000.
+    ⇒ **초기자본 기준으로 상한이 물리는 라이브 전략은 0개**다(ΣK 71).
+    TestLiveConfigs 는 (a) 이 라이브 설정 스냅샷을 고정하고, (b) 상한 배선이
+    실제로 수량을 자르는지는 라이브 K 와 무관하게 합성 설정(K 작게)으로 계속 검증한다.
 """
 import logging
 from pathlib import Path
@@ -229,7 +235,25 @@ class TestInitializerWiring:
 
 
 # ---------------------------------------------------------------------------
-# 6) 라이브 8전략 예상 효과 고정 — 바뀌는 건 minervini 하나뿐
+# 6) 라이브 8전략 — (a) 설정 스냅샷 고정 · (b) 라이브 상한값으로 배선 검증
+#
+# 기준 커밋 c565256 (2026-09-17 main · 집중 3전략 K 상향 ma20 5→10 ·
+# minervini 3→6 · daytrading 5→10 · 발효 2026-09-18 07:40 ·
+# 사전등록 docs/prereg_2026-09-15_focus3_K_raise.md).
+# 라이브 K = elder 20 · rs_leader 10 · minervini 6 · envelope 5 · daytrading 10 ·
+#            ma20 10 · ma5 5 · deep_mr 5 → ΣK 71.
+#
+# 원래(2026-08-27) 두 테스트는 두 의도를 한데 담고 있었다.
+#   (a) 스냅샷 — 라이브 config 에서 초기자본 기준 상한이 물리는 전략 집합.
+#       c565256 이전 = ["minervini_volume_dryup"] (K=3) → 이후 = [] (K=6).
+#       config 를 바꾸면 여기서 깨지는 것이 정상이다(의도된 알림).
+#   (b) 배선 — 라이브 yaml risk_management 를 그대로 initializer 에 넣었을 때
+#       max_per_stock_amount 가 같은 원장 키로 VTM 에 도달하고, 상한이 물리는
+#       K 에서는 실제로 수량을 자른다.
+# K 상향으로 라이브 K 가 더는 상한에 닿지 않으므로 (b) 는 K 만 작게 덮어쓴
+# 합성 설정으로 옮겨 유지한다(K=3 = c565256 이전 값이자 사전등록 §⑥ 6-2 P3
+# 롤백 값 — 롤백되면 라이브에서 다시 상한이 물린다). 완전 합성 설정의 배선
+# 검증은 위 TestCapBinds · TestInitializerWiring 에도 있다.
 # ---------------------------------------------------------------------------
 
 LIVE_STRATEGIES = [
@@ -249,26 +273,87 @@ def _live_risk(name):
         return (yaml.safe_load(f) or {}).get("risk_management", {}) or {}
 
 
+def _wire_live(names, *, k_override=None):
+    """라이브 yaml risk_management 를 initializer 로 VTM 에 결선.
+
+    k_override = {전략명: K} 이면 그 전략의 max_positions 만 덮어쓴다(합성 설정).
+    """
+    vtm = _make_vtm()
+    strategies = {}
+    for name in names:
+        risk = dict(_live_risk(name))
+        if k_override and name in k_override:
+            risk["max_positions"] = k_override[name]
+        strategies[name] = SimpleNamespace(config={"risk_management": risk})
+    _run_initializer(strategies, vtm=vtm)
+    return vtm
+
+
+MINERVINI = "minervini_volume_dryup"
+PRICE = 12_345.0
+
+
 class TestLiveConfigs:
-    def test_only_minervini_is_capped(self):
-        """cap < 10,000,000/K 인 전략 = minervini_volume_dryup 하나뿐."""
+    # --- (a) 라이브 설정 스냅샷 (c565256) ----------------------------------
+
+    def test_no_live_strategy_is_capped_at_initial_capital(self):
+        """초기자본 기준 cap < 종목당 예산 인 라이브 전략 = 없음 (c565256 이후).
+
+        종목당 예산은 initializer 결선 결과로 본다(= 10,000,000/K, yaml
+        paper_investment_per_stock 이 있으면 그 값). deep_mr_dev20 은
+        paper_investment_per_stock 2,000,000 = cap 2,000,000 (같음 → 안 물림).
+        c565256 이전(minervini K=3 → 3,333,333 > 3,000,000)에는 minervini 하나였다.
+        """
+        vtm = _wire_live(LIVE_STRATEGIES)
         bound = []
         for name in LIVE_STRATEGIES:
             risk = _live_risk(name)
-            cap = risk.get("max_per_stock_amount")
             k = int(risk.get("max_positions") or 0)
-            assert cap and k > 0, f"{name}: cap/K 미선언 ({cap!r}/{k!r})"
-            if float(cap) < INITIAL / k:
+            assert risk.get("max_per_stock_amount") and k > 0, (
+                f"{name}: cap/K 미선언 "
+                f"({risk.get('max_per_stock_amount')!r}/{k!r})")
+            # 상한 자체는 여전히 원장에 결선된다(안 물릴 뿐).
+            cap = vtm._strategy_max_per_stock.get(name)
+            assert cap == float(risk["max_per_stock_amount"]), (name, cap)
+            per_stock = vtm._strategy_investment_amounts[name]
+            if cap < per_stock:
                 bound.append(name)
-        assert bound == ["minervini_volume_dryup"], bound
+            else:
+                # 안 물리면 수량은 종목당 예산 기준 그대로.
+                assert vtm.get_max_quantity(PRICE, name) == int(per_stock / PRICE), name
+        assert bound == [], bound
 
-    def test_minervini_qty_uses_cap(self):
-        """라이브 config 그대로 결선했을 때 minervini 수량 = int(cap/price)."""
-        risk = _live_risk("minervini_volume_dryup")
-        vtm = _make_vtm()
-        _run_initializer(
-            {"minervini_volume_dryup": SimpleNamespace(
-                config={"risk_management": risk})}, vtm=vtm)
-        price = 12_345.0
+    def test_live_minervini_qty_uses_per_stock_not_cap(self):
+        """라이브 config(K=6) 그대로: 상한은 결선되지만 수량은 10,000,000/6 기준.
+
+        12,345원 기준 c565256 이전 int(3,000,000/12,345)=243주
+        → 이후 int(1,666,667/12,345)=135주.
+        """
+        risk = _live_risk(MINERVINI)
+        vtm = _wire_live([MINERVINI])
         cap = float(risk["max_per_stock_amount"])
-        assert vtm.get_max_quantity(price, "minervini_volume_dryup") == int(cap / price)
+        per_stock = INITIAL / int(risk["max_positions"])
+        assert vtm._strategy_max_per_stock[MINERVINI] == cap
+        assert vtm._strategy_investment_amounts[MINERVINI] == pytest.approx(per_stock)
+        assert per_stock < cap, "스냅샷 전제 변경 — 라이브 minervini 에 상한이 다시 물린다"
+        assert vtm.get_max_quantity(PRICE, MINERVINI) == int(per_stock / PRICE)
+
+    # --- (b) 배선 검증 — 라이브 상한값 + 합성 K --------------------------------
+
+    def test_live_minervini_cap_binds_with_small_k(self):
+        """라이브 yaml(상한 3,000,000) + 합성 K=3: 상한이 실제로 수량을 자른다.
+
+        per_stock 3,333,333 > cap 3,000,000 → 수량 = int(cap/price) = 243주
+        (per_stock 기준이면 270주). 라이브 K 가 바뀌어도 이 검증은 남는다.
+        """
+        k_small = 3
+        vtm = _wire_live([MINERVINI], k_override={MINERVINI: k_small})
+        cap = float(_live_risk(MINERVINI)["max_per_stock_amount"])
+        per_stock = vtm._strategy_investment_amounts[MINERVINI]
+        assert per_stock == pytest.approx(INITIAL / k_small)
+        assert vtm._strategy_max_per_stock[MINERVINI] == cap
+        assert cap < per_stock, (
+            "합성 설정 전제 붕괴 — 상한이 물리지 않는 K 로는 배선을 검증할 수 없다")
+        qty = vtm.get_max_quantity(PRICE, MINERVINI)
+        assert qty == int(cap / PRICE)
+        assert qty < int(per_stock / PRICE)  # 상한이 min() 을 이겼다
