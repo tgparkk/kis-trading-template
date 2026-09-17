@@ -62,14 +62,18 @@ def _log_text(logger_mock, level):
                      for c in getattr(logger_mock, level).call_args_list)
 
 
-# 라이브 8전략의 실제 K (strategies/*/config.yaml)
+# 라이브 8전략의 실제 K (strategies/*/config.yaml · risk_management.max_positions)
+# 기준 = main c565256 (2026-09-17 · 발효 2026-09-18 07:40) — 집중 3전략 K 상향
+#   ma20 5→10 · minervini 3→6 · daytrading 5→10 ⇒ ΣK 58 → 71
+#   사전등록 docs/prereg_2026-09-15_focus3_K_raise.md
+# ⚠️ 아래 dict 는 yaml 을 읽지 않는 «사본»이다 — config.yaml 의 K 가 바뀌면 같이 고칠 것.
 LIVE_K = {
     "elder_ema_pullback": 20,
     "rs_leader": 10,
-    "minervini_volume_dryup": 3,
+    "minervini_volume_dryup": 6,
     "book_envelope_200d": 5,
-    "daytrading_3methods_breakout": 5,
-    "book_pullback_ma20": 5,
+    "daytrading_3methods_breakout": 10,
+    "book_pullback_ma20": 10,
     "book_pullback_ma5": 5,
     "deep_mr_dev20": 5,
 }
@@ -80,27 +84,27 @@ LIVE_K = {
 # ---------------------------------------------------------------------------
 
 class TestTotalKSum:
-    def test_eight_live_strategies_sum_to_58(self):
-        """라이브 8전략(20/10/3/5×5) → max_position_count == 58."""
+    def test_eight_live_strategies_sum_to_71(self):
+        """라이브 8전략(20 + 10×3 + 6 + 5×3) → max_position_count == 71."""
         bot = _make_bot({name: _strat(k) for name, k in LIVE_K.items()})
         _run(bot)
-        assert bot.fund_manager.max_position_count == 58
+        assert bot.fund_manager.max_position_count == 71
 
     def test_sum_follows_added_strategy(self):
-        """전략 추가 시 합계가 따라온다(58 하드코딩이 아님을 증명)."""
+        """전략 추가 시 합계가 따라온다(71 하드코딩이 아님을 증명)."""
         strategies = {name: _strat(k) for name, k in LIVE_K.items()}
         strategies["new_strategy_k7"] = _strat(7)
         bot = _make_bot(strategies)
         _run(bot)
-        assert bot.fund_manager.max_position_count == 65
+        assert bot.fund_manager.max_position_count == 78
 
     def test_sum_follows_removed_strategy(self):
         """전략 삭제 시에도 합계가 따라온다(단, 바닥 20 밑으로는 안 내려감)."""
         strategies = {name: _strat(k) for name, k in LIVE_K.items()
-                      if name != "elder_ema_pullback"}  # ΣK = 38
+                      if name != "elder_ema_pullback"}  # ΣK = 51
         bot = _make_bot(strategies)
         _run(bot)
-        assert bot.fund_manager.max_position_count == 38
+        assert bot.fund_manager.max_position_count == 51
 
     def test_k_from_max_positions_attribute_fallback(self):
         """yaml 에 없으면 _max_positions 속성을 쓴다(기존 K 읽기 규약 재사용)."""
@@ -204,13 +208,13 @@ class TestModeIndependence:
         bot = _make_bot({name: _strat(k) for name, k in LIVE_K.items()},
                         is_virtual=False, vtm=None)
         _run(bot)
-        assert bot.fund_manager.max_position_count == 58
+        assert bot.fund_manager.max_position_count == 71
 
     def test_applied_when_vtm_absent_in_virtual_mode(self):
         bot = _make_bot({name: _strat(k) for name, k in LIVE_K.items()},
                         is_virtual=True, vtm=None)
         _run(bot)
-        assert bot.fund_manager.max_position_count == 58
+        assert bot.fund_manager.max_position_count == 71
 
     def test_info_log_reports_breakdown_and_transition(self):
         bot = _make_bot({"elder_ema_pullback": _strat(20), "rs_leader": _strat(10),

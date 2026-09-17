@@ -1102,15 +1102,35 @@ class VirtualTradingManager:
         return result
 
     def log_cumulative_profit(self) -> None:
-        """누적 실현손익을 INFO 로그에 한 줄 출력 (EOD 또는 필요 시점에 호출)."""
+        """누적 실현손익을 INFO 로그에 한 줄 출력 (EOD 또는 필요 시점에 호출).
+
+        % 분모 = **페이퍼 초기 자본** = Σ ``_strategy_initial``(전략별 초기 할당 · 할당 SSOT).
+        EOD ``[벤치마크]`` 줄 「기준 …원」과 같은 원천이다
+        (``bot/eod_benchmark.py`` ``fetch_strategy_initial_capitals``).
+
+        2026-09-17 정정(표시만 — 매매 판단·반환값·DB 쓰기 무변경): 종전 분모는
+        ``info['initial_balance']`` = 세션 시작 «현금»(전일 EOD 현금 이월)이었다.
+        분자는 페이퍼 «전체 누적» 실현손익인데 분모는 매수할수록 줄어드는 현금이라
+        손익이 나아져도 %가 나빠 보였다(09-17: −14,156,857 ÷ 18,310,508 = −77.32%
+        → 초기 자본 80,000,000 기준 −17.70%). 분모를 줄에 함께 찍는다.
+        전략 원장 비활성(``_strategy_initial`` 비어 있음 — 레거시·단일전략)이면
+        종전 분모를 쓰되 라벨로 구분한다.
+        """
         info = self.get_cumulative_profit_info()
         net = info['cumulative_net_pnl']
         gross = info['cumulative_gross_pnl']
         count = info['trade_count']
-        base = info['initial_balance']
+        paper_initial = sum(float(v) for v in self._strategy_initial.values())
+        if paper_initial > 0:
+            base = paper_initial
+            base_label = f"{len(self._strategy_initial)}전략 초기자본 합"
+        else:
+            base = info['initial_balance']
+            base_label = "세션 시작 잔고 · 전략 원장 미활성"
         net_rate = (net / base * 100) if base > 0 else 0.0
         self.logger.info(
-            f"[누적손익] {count}건 실현 | 순손익(추정) {net:+,.0f}원 ({net_rate:+.2f}%, 페이퍼 전체누적) "
+            f"[누적손익] {count}건 실현 | 순손익(추정) {net:+,.0f}원 "
+            f"({net_rate:+.2f}% · 기준 {base:,.0f}원 = {base_label}, 페이퍼 전체누적) "
             f"| 총손익(수수료전) {gross:+,.0f}원 | 현재잔고 {self.virtual_balance:,.0f}원"
         )
 

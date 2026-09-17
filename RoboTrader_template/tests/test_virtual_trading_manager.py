@@ -339,3 +339,81 @@ class TestGetCumulativeProfitInfo:
             vtm.log_cumulative_profit()
         except Exception as exc:
             pytest.fail(f"log_cumulative_profit raised unexpectedly: {exc}")
+
+
+class TestLogCumulativeProfitRateBase:
+    """[누적손익] 순손익 % 의 분모 = 페이퍼 초기 자본(Σ 전략 초기 할당) — 2026-09-17 표시 정정.
+
+    종전 분모는 세션 시작 «현금»(전일 EOD 현금 이월)이라, 분자(페이퍼 전체 누적 실현손익)와
+    기준이 어긋나 손익이 나아져도 %가 나빠 보였다. 분모는 EOD [벤치마크] 「기준 …원」과
+    같은 원천(VirtualTradingManager._strategy_initial)이어야 한다.
+    """
+
+    # 2026-09-17 실측 — logs/robotrader_template_20260917_074007.log 4654행
+    #   [누적손익] 854건 실현 | 순손익(추정) -14,156,857원 (-77.32%, 페이퍼 전체누적)
+    #   | 총손익(수수료전) -11,816,992원 | 현재잔고 15,562,828원
+    #   옛 분모 18,310,508 = 07:40 「가상 잔고 이월 (paper_trading_state)」 값
+    #   같은 날 [벤치마크] 「누적 -17.70%(기준 80,000,000원)」(7229행)
+    NET = -14_156_857.0
+    GROSS = -11_816_992.0
+    COUNT = 854
+    SESSION_CASH = 18_310_508.0
+    CURRENT_CASH = 15_562_828.0
+
+    LIVE_STRATEGIES = (
+        "elder_ema_pullback", "rs_leader", "minervini_volume_dryup",
+        "book_envelope_200d", "daytrading_3methods_breakout",
+        "book_pullback_ma20", "book_pullback_ma5", "deep_mr_dev20",
+    )
+
+    def _vtm(self, strategies):
+        from config.constants import VIRTUAL_CAPITAL_PER_STRATEGY
+        vtm = _make_vtm()
+        for key in strategies:
+            vtm.allocate_strategy_capital(key, VIRTUAL_CAPITAL_PER_STRATEGY, max_positions=5)
+        vtm.initial_balance = self.SESSION_CASH
+        vtm.virtual_balance = self.CURRENT_CASH
+        vtm.get_cumulative_profit_info = Mock(return_value={
+            'cumulative_gross_pnl': self.GROSS,
+            'cumulative_net_pnl': self.NET,
+            'trade_count': self.COUNT,
+            'current_balance': self.CURRENT_CASH,
+            'initial_balance': self.SESSION_CASH,
+        })
+        vtm.logger = Mock()
+        return vtm
+
+    @staticmethod
+    def _line(vtm):
+        vtm.log_cumulative_profit()
+        assert vtm.logger.info.call_count == 1
+        return str(vtm.logger.info.call_args.args[0])
+
+    def test_rate_uses_paper_initial_capital_0917(self):
+        """09-17 수치 재현: -14,156,857 ÷ 80,000,000 = -17.70% (옛 ÷18,310,508 = -77.32% 아님)."""
+        vtm = self._vtm(self.LIVE_STRATEGIES)
+        line = self._line(vtm)
+        assert line.startswith("[누적손익] 854건 실현 | 순손익(추정) -14,156,857원 ")
+        assert "(-17.70% · 기준 80,000,000원 = 8전략 초기자본 합, 페이퍼 전체누적)" in line, line
+        assert "-77.32%" not in line
+        assert "| 총손익(수수료전) -11,816,992원 | 현재잔고 15,562,828원" in line
+
+    def test_rate_base_follows_allocation_not_hardcoded(self):
+        """분모는 80,000,000 리터럴이 아니라 실제 배정 합 — 7전략이면 70,000,000."""
+        vtm = self._vtm(self.LIVE_STRATEGIES[:7])
+        line = self._line(vtm)
+        assert "(-20.22% · 기준 70,000,000원 = 7전략 초기자본 합, 페이퍼 전체누적)" in line, line
+
+    def test_fallback_to_session_balance_when_ledger_inactive(self):
+        """전략 원장 비활성(할당 0)이면 종전 분모(세션 시작 잔고)를 쓰되 라벨로 구분한다."""
+        vtm = self._vtm(())
+        line = self._line(vtm)
+        assert "(-77.32% · 기준 18,310,508원 = 세션 시작 잔고 · 전략 원장 미활성, 페이퍼 전체누적)" in line, line
+
+    def test_return_value_of_info_unchanged(self):
+        """표시만 바꾼다 — get_cumulative_profit_info 의 initial_balance 는 여전히 세션 시작 잔고."""
+        vtm = _make_vtm()
+        vtm.allocate_strategy_capital("elder_ema_pullback", 10_000_000, max_positions=20)
+        vtm.initial_balance = self.SESSION_CASH
+        info = vtm.get_cumulative_profit_info()
+        assert info['initial_balance'] == self.SESSION_CASH
