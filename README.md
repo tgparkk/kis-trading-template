@@ -1,44 +1,20 @@
-# 🤖 KIS Trading Template
+# kis-trading-template
 
-> 한국투자증권 API 기반 자동매매 프레임워크 템플릿
->
-> 전략만 갈아끼우면 새로운 자동매매 봇이 탄생합니다.
+한국투자증권(KIS) Open API 기반 국내 주식 자동매매 봇. 현재 8전략 **페이퍼(가상) 매매**로 매 거래일 운영 중이며, 실전 전환은 보류 상태다.
 
-## 구조
+**코드는 전부 `RoboTrader_template/` 아래에 있다** (디렉토리명은 프레임워크 템플릿 시절의 레거시명).
 
-```
-kis-trading-template/
-├── RoboTrader_template/    ← 프레임워크 본체
-│   ├── framework/          ← 추상화 레이어 (Broker, Data, Executor)
-│   ├── api/                ← KIS API 래퍼
-│   ├── strategies/         ← 전략 모듈 (BaseStrategy + 예제)
-│   ├── core/               ← 공통 핵심 (주문, 자금, 알림)
-│   ├── config/             ← 설정
-│   ├── db/                 ← 데이터베이스
-│   ├── utils/              ← 유틸리티
-│   └── tests/              ← 테스트
-└── agents/                 ← AI 개발 에이전트
-```
+- 시작점: [RoboTrader_template/README.md](RoboTrader_template/README.md) · 개발 라우터: [RoboTrader_template/CLAUDE.md](RoboTrader_template/CLAUDE.md)
+- `pytest` 설정은 이 루트의 `pyproject.toml` 이 가진다(`testpaths = ["RoboTrader_template/tests"]`).
 
-## 사용법
-
-자세한 내용은 **[RoboTrader_template/README.md](RoboTrader_template/README.md)** 를 참고하세요.
-
-```bash
+```bat
 cd RoboTrader_template
-pip install -r requirements.txt
-cp .env.example .env    # API 키 설정
-python main.py
+copy config\key.ini.example config\key.ini
+run_robotrader.bat
 ```
 
-## 관련 프로젝트
-
-| 프로젝트 | 전략 | 상태 |
-|----------|------|------|
-| [RoboTrader](https://github.com/tgparkk/RoboTrader) | Price Position 단타 | 운영 중 |
-| RoboTrader_orb | ORB 돌파 단타 | 백테스팅 |
-| RoboTrader_quant | 퀀트 팩터 포트폴리오 | 백테스팅 |
+`config/key.ini` 의 `[KIS]` 절에 API 키·계좌를 넣는다(`.env` 가 아니다). `run_robotrader.bat` 가 venv 생성 → 의존성 설치 → 기동까지 한 번에 한다.
+DB 는 PostgreSQL 16 + TimescaleDB, 포트 **5433**, DB `kis_template` 이 코드 기본값이라 `.env` 없이도 붙는다 → [docs/DATABASE.md](RoboTrader_template/docs/DATABASE.md).
 
 ---
-
 ⚠️ 교육 및 연구 목적입니다. 실제 투자 손실은 사용자 책임입니다.

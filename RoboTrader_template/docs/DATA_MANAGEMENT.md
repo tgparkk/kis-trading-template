@@ -1,426 +1,74 @@
-# 📦 데이터 관리 가이드
+# 데이터 관리 — 언제 무엇이 DB 에 들어오고, 재기동 때 무엇을 읽는가
 
-> kis-template 시스템의 데이터 저장, 복원, 활용 방법을 설명합니다.
-
----
-
-## 📋 목차
-
-1. [DB 저장 동작](#1-db-저장-동작)
-2. [프로그램 재시작 시 포지션 복원](#2-프로그램-재시작-시-포지션-복원)
-3. [OHLCV 및 재무데이터 활용](#3-ohlcv-및-재무데이터-활용)
+> 기준일 **2026-09-17** · 코드 `main`@`16a8106`. 이전 판(2026-03-22)은 SQLite 구문·`core/ml_data_collector.py`·08:30 재무 수집·1분 모니터링 등 **존재하지 않는 경로**를 설명하고 있어 전면 교체했다.
+> 표·컬럼·접속은 [DATABASE.md](DATABASE.md) · 매매 흐름 전체는 [TRADING_FLOW.md](TRADING_FLOW.md).
 
 ---
 
-## 1. DB 저장 동작
-
-### 1.1 일봉 가격 데이터 (daily_prices)
-
-#### 📊 daily_prices 테이블
-
-**저장 시각**: 08:30 (ML 데이터 수집 시 - 전일 데이터)
-
-**저장 대상**:
-- 퀀트 포트폴리오 상위 30개 종목 (퀀트 전략 사용 시)
-- 현재 보유 중인 종목 (포트폴리오 외 종목도 포함)
-
-**저장 내용**:
-```sql
-daily_prices 테이블:
-- stock_code: 종목코드
-- date: 날짜 (YYYY-MM-DD)
-- open, high, low, close: OHLC 가격
-- volume: 거래량
-- trading_value: 거래대금
-- market_cap: 시가총액 (현재 시총 기준 역산)
-- returns_1d: 1일 수익률 (%)
-- returns_5d: 5일 수익률 (%)
-- returns_20d: 20일 수익률 (%)
-- volatility_20d: 20일 변동성 (%)
-```
-
-**데이터 수집 범위**:
-- 기본적으로 **전 영업일까지**만 수집 (`core/ml_data_collector.py`)
-- 이유: 리밸런싱(09:05)은 전날 확정 데이터로 판단
-- 당일 데이터는 다음날 아침에 "전 영업일"로 수집됨
-
-**예시**:
-```
-12/26(목) 08:30 실행 → 12/25(수) 데이터까지 수집
-12/27(금) 08:30 실행 → 12/26(목) 데이터 수집 (어제 종가)
-12/30(월) 08:30 실행 → 12/27(금) 데이터 수집 (주말 건너뛰기)
-```
-
-**코드 위치**: `core/data_collector.py`
-
----
-
-### 1.2 재무제표 데이터 (financial_statements)
-
-#### 💼 financial_statements 테이블
-
-**저장 시각**: 08:30 (ML 데이터 수집 시 - 전일 데이터)
-
-**저장 대상**: 일봉 수집 대상과 동일 (퀀트 포트폴리오 + 보유 종목)
-
-**저장 내용**:
-```sql
-financial_statements 테이블:
-- stock_code: 종목코드
-- report_date: 재무제표 기준일 (YYYY-MM-DD)
-
-[밸류에이션 지표]
-- per: PER (주가수익비율)
-- pbr: PBR (주가순자산비율)
-- psr: PSR (주가매출액비율)
-- dividend_yield: 배당수익률 (%)
-
-[수익성 지표]
-- roe: ROE (자기자본이익률, %)
-- operating_margin: 영업이익률 (%)
-- net_margin: 순이익률 (%)
-
-[재무건전성 지표]
-- debt_ratio: 부채비율 (%)
-- current_assets: 유동자산
-- current_liabilities: 유동부채
-- total_equity: 자기자본
-
-[손익 지표]
-- revenue: 매출액
-- operating_profit: 영업이익
-- net_income: 순이익
-- total_assets: 총자산
-```
-
-**API 호출**:
-1. `get_financial_ratio()`: 재무비율 (PER, PBR, ROE, 부채비율 등)
-2. `get_income_statement()`: 손익계산서 (매출, 영업이익, 순이익 등)
-3. `get_balance_sheet()`: 대차대조표 (자산, 부채, 자본 등)
-
-**PER/PBR 계산 로직** (`core/data_collector.py`):
-```python
-# API에서 직접 제공하지 않는 경우 자체 계산
-if not per and ratio.eps > 0:
-    current_price = get_stock_market_cap(stock_code)['current_price']
-    per = current_price / ratio.eps  # PER = 주가 / EPS
-
-if not pbr and ratio.bps > 0:
-    current_price = get_stock_market_cap(stock_code)['current_price']
-    pbr = current_price / ratio.bps  # PBR = 주가 / BPS
-```
-
-**저장 전략** (원자성 보장):
-```python
-# 1) 레코드 생성 (없을 경우만)
-INSERT OR IGNORE INTO financial_statements (stock_code, report_date, ...)
-
-# 2) NULL이 아닌 값만 업데이트 (기존 데이터 보존)
-UPDATE financial_statements
-SET per = ?, pbr = ?, roe = ?, ...
-WHERE stock_code = ? AND report_date = ?
-```
-
-**코드 위치**: `core/data_collector.py`
-
----
-
-### 1.3 매매 기록 (virtual_trading_records / real_trading_records)
-
-#### 📝 매매 기록 테이블
-
-**저장 시각**: 매수/매도 주문 체결 시 즉시
-
-**저장 내용**:
-```sql
-virtual_trading_records / real_trading_records 테이블:
-- action: 'BUY' 또는 'SELL'
-- stock_code, stock_name: 종목 정보
-- quantity: 수량
-- price: 체결가
-- timestamp: 체결 시각
-
-[매수 시 추가 정보]
-- target_profit_rate: 목표 익절률 (0.15 = 15%)
-- stop_loss_rate: 목표 손절률 (0.10 = 10%)
-- strategy: 전략명
-- reason: 선정 이유
-
-[매도 시 추가 정보]
-- buy_record_id: 매수 기록 ID (참조)
-- profit_loss: 손익금 (원)
-- profit_rate: 수익률 (%)
-```
-
-**저장 예시**:
-```python
-# 매수 시 (09:05 리밸런싱)
-db_manager.save_virtual_buy(
-    stock_code="005930",
-    stock_name="삼성전자",
-    quantity=100,
-    price=70000,
-    target_profit_rate=0.20,  # S등급 20%
-    stop_loss_rate=0.08,      # S등급 8%
-    strategy="Quant Rebalancing",
-    reason="S등급 (복합점수 75점)"
-)
-
-# 매도 시 (익절 도달)
-db_manager.save_virtual_sell(
-    buy_record_id=1234,
-    stock_code="005930",
-    stock_name="삼성전자",
-    quantity=100,
-    price=84000,
-    profit_loss=1400000,  # +140만원
-    profit_rate=0.20,     # +20%
-    strategy="Stop Profit",
-    reason="목표 익절 도달 (20%)"
-)
-```
-
-**코드 위치**: `db/database_manager.py`
-
----
-
-### 1.4 퀀트 포트폴리오 및 팩터 점수
-
-> ⚠️ 이 섹션은 **퀀트 전략 구현 시 참고 문서**입니다. 기본 템플릿에는 퀀트 모듈이 포함되어 있지 않습니다.
-
-> 퀀트 전략 사용 시 적용됩니다.
-
-#### 🎯 quant_portfolio / quant_factor_scores 테이블
-
-**저장 시각**: 08:55 (퀀트 스크리닝 시)
-
-**저장 테이블**:
-1. `quant_portfolio`: 포트폴리오 구성
-2. `quant_factor_scores`: 팩터 점수 상세
-
-```sql
-quant_portfolio 테이블:
-- calc_date: 계산일 (YYYYMMDD)
-- stock_code, stock_name: 종목 정보
-- rank: 순위 (1~30)
-- total_score: 종합 점수 (0~100)
-- selection_reason: 선정 이유
-
-quant_factor_scores 테이블:
-- calc_date: 계산일
-- stock_code: 종목코드
-- value_score: Value 팩터 점수 (0~100)
-- momentum_score: Momentum 팩터 점수 (0~100)
-- quality_score: Quality 팩터 점수 (0~100)
-- growth_score: Growth 팩터 점수 (0~100)
-- total_score: 종합 점수 (0~100)
-- factor_rank: 팩터 순위
-```
-
-**코드 위치**: 퀀트 전략 구현 시 별도 모듈 작성 필요
-
----
-
-## 2. 프로그램 재시작 시 포지션 복원
-
-프로그램이 재시작되면 DB에서 자동으로 보유 종목과 익절/손절률을 복원하여 모니터링을 재개합니다.
-
-### 🔄 복원 프로세스
-
-**실행 시각**: 프로그램 시작 시 (`main.py`)
-
-**복원 단계**:
-
-```
-프로그램 시작
-    ↓
-┌──────────────────────────────────────┐
-│ 1. 오늘 후보 종목 복원                │
-│  - candidate_stocks 테이블 조회       │
-│  - 오늘 날짜(DATE) 기준               │
-│  - TradingStockManager에 추가         │
-└──────────────────────────────────────┘
-    ↓
-┌──────────────────────────────────────┐
-│ 2. 보유 포지션 복원 ⭐                │
-│  - virtual_trading_records 조회      │
-│  - 미체결 포지션만 (BUY만 있고 SELL 없음)│
-└──────────────────────────────────────┘
-    ↓
-┌──────────────────────────────────────┐
-│ 3. 포지션 정보 메모리 복원            │
-│  - 수량, 매수가 설정                  │
-│  - 목표 익절률, 손절률 설정           │
-│  - 상태를 POSITIONED로 변경           │
-└──────────────────────────────────────┘
-    ↓
-매도 모니터링 시작 (1분마다 체크)
-```
-
-### 📊 복원 쿼리
-
-**미체결 포지션 조회** (`db/database_manager.py`):
-
-```sql
-SELECT
-    b.id,
-    b.stock_code,
-    b.stock_name,
-    b.quantity,
-    b.price as buy_price,
-    b.timestamp as buy_time,
-    b.strategy,
-    b.reason as buy_reason,
-    b.target_profit_rate,  -- ⭐ 복원 핵심
-    b.stop_loss_rate       -- ⭐ 복원 핵심
-FROM virtual_trading_records b
-WHERE b.action = 'BUY'
-    AND b.is_test = 1
-    AND NOT EXISTS (
-        SELECT 1 FROM virtual_trading_records s
-        WHERE s.buy_record_id = b.id AND s.action = 'SELL'
-    )
-ORDER BY b.timestamp DESC
-```
-
-### 🔧 복원 코드
-
-**복원 로직** (`core/helpers/state_restoration_helper.py`):
-
-```python
-for _, holding in holdings.iterrows():
-    stock_code = holding['stock_code']
-    quantity = int(holding['quantity'])
-    buy_price = float(holding['buy_price'])
-
-    # ⭐ DB에서 익절/손절률 복원
-    target_profit_rate = holding.get('target_profit_rate', 0.15)
-    stop_loss_rate = holding.get('stop_loss_rate', 0.10)
-
-    # TradingStock 추가
-    trading_stock = await trading_manager.add_selected_stock(...)
-
-    # ⭐ 포지션 정보 메모리 복원
-    trading_stock.set_position(quantity, buy_price)
-    trading_stock.target_profit_rate = target_profit_rate
-    trading_stock.stop_loss_rate = stop_loss_rate
-
-    # ⭐ 상태 변경: POSITIONED → 매도 모니터링 활성화
-    trading_manager._change_stock_state(
-        stock_code,
-        StockState.POSITIONED,
-        f"DB 복원: {quantity}주 @{buy_price:,.0f}원 "
-        f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%)"
-    )
-```
-
-**복원 결과 예시**:
-```
-✅ 보유 종목 3/3개 복원 완료
-📊 005930 포지션 복원: 100주 @70,000원, 익절가 84,000원, 손절가 64,400원
-📊 035720 포지션 복원: 80주 @50,000원, 익절가 59,000원, 손절가 45,500원
-📊 035420 포지션 복원: 120주 @200,000원, 익절가 236,000원, 손절가 182,000원
-```
-
-**핵심**: 프로그램이 종료되어도 아침에 설정한 동적 목표값이 DB에 저장되어 있어, 재시작 시에도 동일한 익절/손절률로 모니터링 재개 가능!
-
----
-
-## 3. OHLCV 및 재무데이터 활용
-
-### 📈 OHLCV 데이터 활용
-
-**수집 데이터**:
-- **O** (Open): 시가
-- **H** (High): 고가
-- **L** (Low): 저가
-- **C** (Close): 종가
-- **V** (Volume): 거래량
-- **추가**: 거래대금, 시가총액, 수익률, 변동성
-
-**활용 목적**:
-
-1. **퀀트 스크리닝** (08:55, 퀀트 전략 사용 시):
-   - Momentum 팩터: 1일/5일/20일 수익률 계산
-   - Size 팩터: 시가총액 기준 필터링 (1,000억 이상)
-   - 변동성: 리스크 평가
-
-2. **전략 시그널 생성**:
-   - 과거 OHLCV 패턴 분석
-   - 기술적 지표 계산
-   - 매수/매도 시그널 판단
-
-3. **백테스팅**:
-   - 과거 전략 성과 검증
-   - 리스크 분석
-   - 최적 파라미터 탐색
-
-**코드 위치**: `core/data_collector.py`
-
----
-
-### 💰 재무데이터 활용
-
-**수집 데이터 및 활용**:
-
-| 지표 | API 필드 | 퀀트 팩터 | 용도 |
-|------|---------|----------|------|
-| **PER** | `per` or 계산 | Value | 저평가 종목 발굴 (낮을수록 좋음) |
-| **PBR** | `pbr` or 계산 | Value | 저평가 종목 발굴 (낮을수록 좋음) |
-| **PSR** | `psr` | Value | 매출 대비 주가 평가 |
-| **ROE** | `roe_value` | Quality | 수익성 평가 (높을수록 좋음) |
-| **부채비율** | `liability_ratio` | Quality | 재무건전성 (낮을수록 좋음) |
-| **영업이익률** | `operating_margin` | Quality | 수익성 평가 |
-| **매출액** | `revenue` | Growth | 성장성 평가 (증가율) |
-| **영업이익** | `operating_profit` | Growth | 수익성 개선 추세 |
-| **순이익** | `net_income` | Growth | 순이익 증가율 |
-
-**퀀트 팩터 점수 계산 예시** (퀀트 전략 사용 시):
-
-```python
-# Value Score 계산
-value_score = 0
-if per and per > 0:
-    # PER이 낮을수록 높은 점수 (상위 25% → 100점)
-    value_score += score_per(per)
-
-if pbr and pbr > 0:
-    # PBR이 낮을수록 높은 점수
-    value_score += score_pbr(pbr)
-
-value_score = value_score / 2  # 평균
-
-# Quality Score 계산
-quality_score = 0
-if roe and roe > 0:
-    # ROE가 높을수록 높은 점수 (상위 25% → 100점)
-    quality_score += score_roe(roe)
-
-if debt_ratio:
-    # 부채비율이 낮을수록 높은 점수
-    quality_score += score_debt_ratio(debt_ratio)
-
-quality_score = quality_score / 2  # 평균
-
-# Momentum Score 계산 (OHLCV 사용)
-momentum_score = 0
-if returns_20d:
-    # 20일 수익률이 높을수록 높은 점수
-    momentum_score = score_momentum(returns_20d)
-```
-
-**종합 점수**:
-```python
-total_score = (
-    value_score * 0.25 +
-    quality_score * 0.25 +
-    momentum_score * 0.30 +
-    growth_score * 0.20
-)
-```
-
-**코드 위치**: 퀀트 전략 구현 시 별도 모듈 작성 필요
-
----
-
-**마지막 업데이트**: 2026-03-22
+## 1. 하루 시간표 (DB 쓰기 기준 · 페이퍼 봇 `INSTANCE_ID='default'`)
+
+| 시각 | 무엇 | 코드 | 쓰는 표 |
+|---|---|---|---|
+| 07:40 기동 | 상태 복원(§4) | `bot/initializer.py` → `bot/state_restorer.py` | (읽기) |
+| 장전 루프 | 전략 `get_target_stocks` 등록 → **regime 지수 갱신**(KOSPI/KOSDAQ → `daily_prices` 의사티커, 하루 1회·성공 시 래치) → 브리핑 | `bot/system_monitor._handle_premarket_tasks` → `core/regime/index_refresh.refresh_regime_indices` | `daily_prices` |
+| 후보 로드 직전 | 스크리너 스냅샷 훅(`SCREENER_SNAPSHOT_ENABLED=true` 일 때 · 하루 1회 · `scan_date`=직전 거래일) → 후보 저장 | `bot/candidate_loader.py` → `bot/liquidation_handler.run_screener_snapshot_hook` → `runners/screener_snapshot_collector.run_once` · `candidate_repo.save_candidate_stocks` | `screener_snapshots` · `candidate_stocks` · `sector_news_rerank_log`(`core/candidate_selector._apply_sector_news_rerank`) |
+| 장중 · 종목 선정 시 | **W1** 일봉 150봉 UPSERT(원주가 · 과거 행은 «빈 칸만», 당일 행만 덮어씀 — `W1_PAST_ROWS_INSERT_ONLY=True`) | `core/intraday_stock_manager.add_selected_stock` → `core/intraday/data_collector._save_daily_to_db` → `db/repositories/price.save_daily_prices_batch` | `daily_prices` |
+| 장중 · 체결 즉시 | BUY/SELL 기록(`source='kis_template'` · P/L 은 gross 계산) | `core/virtual_trading_manager` → `db/repositories/trading.save_virtual_buy/sell` (실전은 `core/orders/order_db_handler` · `core/trading/order_completion_handler` → `save_real_buy/sell` → `real_trading_<instance>`) | `virtual_trading_records` / `real_trading_*` |
+| 장중 · 분봉 | **DB 쓰기 0** — 분봉은 `IntradayStockManager` 메모리에만 있다(`core/data_collector.RealTimeDataCollector` 는 인메모리). 3초 주기 포지션 감시도 메모리 현재가 | — | — |
+| 15:00 EOD 청산 훅 | 페이퍼 현금 잔고 저장(현금만) | `bot/liquidation_handler` → `virtual_trading_manager.save_paper_trading_state` | `paper_trading_state` |
+| **15:35+ 후장 블록** | §2 | `bot/system_monitor._handle_postmarket_tasks` | 아래 · `paper_trading_state`(§2 5·8단계 재저장) |
+
+휴장일(`is_holiday`)엔 15:35 블록 전체 스킵. 실전 인스턴스(`INSTANCE_ID≠default`)는 자금 정합성 검증만 하고 **생성 작업은 전부 페이퍼 봇에 위임**(같은 행 이중 UPSERT·분봉 이중 재적재 방지).
+
+## 2. 15:35 후장 블록 — 실행 순서 (`bot/system_monitor._handle_postmarket_tasks`)
+
+1. `_verify_eod_fund_integrity` — 자금 등식 검사(DB 쓰기 0)
+2. `tools.daily_trading_summary.print_today_trading_summary` — 일일 매매 리포트(로그 · gross 라벨)
+3. `_log_regime_index_resolution` — 급락게이트 지수 해석 집계(로그)
+4. `_verify_screener_snapshot` — 오늘 스냅샷 존재 검증(로그)
+5. `_run_equity_snapshot` **1차** → `tools/paper_strategy_equity.run_daily_equity_snapshot` → `paper_strategy_equity`(이 시점 보유평가는 전일 종가 · 스냅샷 직전 `_resave_paper_trading_state` → `paper_trading_state` 재저장 · 8단계 재실행 때도)
+6. `_run_regime_index_refresh` — KOSPI/KOSDAQ 일봉 → `daily_prices`(멱등 UPSERT)
+7. `_run_data_collection` → **`collectors/eod_collection.run_data_collection(trade_date)`** — §3 (수 분, `to_thread`)
+8. `_run_equity_snapshot` **재실행** — 당일 종가로 보유평가 덮어쓰기(전구간 UPSERT 멱등 · `paper_trading_state` 재저장 포함)
+9. `_log_eod_benchmark` — 벤치마크 한 줄(맨 끝 · `bot/eod_benchmark.py`)
+
+각 단계는 try/except 로 격리된다 — 한 단계 실패가 다음을 막지 않는다.
+
+## 3. EOD 수집 체인 `collectors/eod_collection.run_data_collection` (kis_template 단일 · 단계별 예외 격리 `_safe`)
+
+| # | 키 | 함수 | 하는 일 | 표 |
+|---|---|---|---|---|
+| 1 | `daily` | `daily_collector.collect_daily` | 유니버스 = `stock_market ∪ daily_prices`(`SQL_STOCK_ONLY`) · 종목당 최근 7봉 KIS fetch → `daily_writer.upsert_daily_rows` → `daily_derived.update_returns_volatility` → `split_factor_infer.infer_and_stamp_split_factors`(corp_events.meta 에 배수·권리락일 스탬프) → `daily_adj.update_adj_factors` → `corp_action_watch.scan_and_queue`(미조정 이력 «탐지만») | `daily_prices` · `corp_events.meta` |
+| 2 | `minute` | `minute_collector.collect_minute` | 거래대금 top300(`minute_universe`) 당일 분봉 → `minute_writer.replace_minute_day`(DELETE+INSERT) | `minute_candles` |
+| 3 | `index` | `index_collector.collect_index` | KIS 업종 일봉(FDR 폴백) → `index_writer`(날짜 기준 신선도 판정) | `index_daily` |
+| 4 | `stock_market` | `stock_market_collector.collect_stock_market` | FDR 상장목록 → 시장 라벨(성공 시에만 `market_classifier.reset_cache`) | `stock_market` |
+| 5 | `foreign_flow` | `foreign_flow_collector.collect_foreign_flow` | 네이버 외국인 순매매량 · `rows==0` 은 ERROR 승격 | `foreign_flow` |
+| 6 | `corp_events` | `corp_events_collector.collect_corp_events` | OpenDART `list.json` 최근 7일 · `ON CONFLICT DO NOTHING` | `corp_events` |
+| 7·8 | `financials` · `financials_reconcile` | `financial_collector.collect_financials` / `reconcile_financials` | DART as-filed 원장(키=접수건) + KIS 분기비율(교차검증용) — 쓰기는 `financial_writer.py` 한 곳 | `dart_financial_*` · `kis_financial_ratio` · `collection_reconciliation` |
+| 9·10 | `sector` · `sector_reconcile` | `sector_collector.collect_sector` / `reconcile_sector` | KSIC 명부(SCD2)·업종 일별 성적표·이름표 — 쓰기는 `sector_writer.py` 한 곳 | `stock_sector_map` · `sector_daily_stats` · `ksic_code_name` · `sector_ksic_nodata` |
+| 11~15 | `investor_trend` · `program_trade` · `short_sale` · `credit_balance` · `overtime` | `investor_trend_collector` · `market_flow_collector` | KIS 수급 축. 공급 TR 이 **최근 30거래일 롤링**이라 놓치면 영구 결손 → EOD 편입. 각 수집기가 **신선도 가드**(마지막 적재가 오래됐을 때만 실행)를 걸어 보통 `{"skipped": …}` 가 **정상** | `investor_trend_daily` · `program_trade_daily` · `short_sale_daily` · `credit_balance_daily` · `overtime_daily` |
+| — | `reconcile` | (항상 `{}`) | 레거시 교차비교는 2026-08-17 폐지. 키만 로그 계약 때문에 유지 | — |
+
+로그 한 줄 「EOD 데이터 수집 완료: 일봉 … 분봉 … 지수 …」에 모든 키가 찍힌다. 시장매핑·수급·외국인 실패는 ERROR 로 승격된다(조용한 결손 방지).
+
+## 4. 재기동 복원 (`bot/initializer.py` → `StateRestorer.restore_todays_candidates`)
+
+1. `_restore_candidates(today)` — `candidate_stocks` 의 **오늘** 행 → `TradingStockManager` 등록.
+2. 보유 복원 — 모드별 소스가 다르다:
+   - 페이퍼(`paper_trading=true`): `_restore_holdings_from_db` → `db_manager.get_virtual_open_positions()` = `vtr` 에서 `BUY ∧ is_test=true ∧ source='kis_template' ∧ NOT EXISTS SELL`.
+   - 실전: `_restore_holdings_from_real_account`(계좌 잔고 대조) + `get_real_open_positions()` = `real_trading_<instance>` 의 **잔량 술어**(`BUY.qty − ΣSELL.qty > 0`, 부분매도 대응).
+3. 행마다 `target_profit_rate`/`stop_loss_rate` 복원 — NULL·NaN 이면 `DEFAULT_TARGET_PROFIT_RATE`/`DEFAULT_STOP_LOSS_RATE`, 장기보유는 `_apply_stale_position_check` 가 덮어쓴다. owner 전략(`strategy` 컬럼)별로 `self.positions` 에 주입 · 상태 `POSITIONED`.
+4. 보유 0건이어도 `_reconstruct_strategy_ledger([])` 는 반드시 돈다 — 안 돌면 누적손익이 원장에서 사라진다(코드 주석).
+5. 현금은 `paper_trading_state` 최근 `eod_balance` 이월 + `get_strategy_trade_sums`(전 이력 gross 합)로 전략별 재구성(`core/virtual_trading_manager`).
+
+로그 「N/N 복원」이 포지션 SSOT 다.
+
+## 5. adj_factor · 기업행위 — 어디서 계산되나
+
+- 규약: **`adj_close = raw_close / adj_factor`** · `daily_prices.close` 는 이미 조정본, `volume` 은 원본(읽을 때 `× COALESCE(adj_factor,1)`). `collectors/adj_factors.compute_adj_factors` 는 «권리락일 이후» 이벤트 계수의 곱만 하고, 방향(분할 `f=10` / 병합 `f=1/10`)은 호출자 `daily_adj.load_split_events` 가 `corp_events.meta.direction` 으로 정한다.
+- 조정 시점 = `COALESCE(meta.effective_date, event_date)` — `event_date`(DART 공시일, PK)는 절대 바꾸지 않고, `split_factor_infer` 가 공시일 +90일 구간의 «첫 clean 갭»을 `meta.effective_date` 로 스탬프한다.
+- 7봉 창 «밖»의 과거 OHLC 를 다시 쓰는 라이브 코드는 없다 — EOD `daily_writer.upsert_daily_rows` 는 종목당 최근 7봉(`daily_collector.collect_one(lookback_days=7)`)의 OHLCV 를 매일 `ON CONFLICT DO UPDATE` 로 덮어쓰고, 장중 W1 은 당일 행만 덮어쓴다(과거 행은 `DO NOTHING`). 기업행위 매매정지는 7봉보다 길어 창이 정지 구간을 못 넘는다(`corp_action_watch.py` docstring). 미조정 이력은 `corp_action_watch` 가 **목록만** 적재하고, 보정은 `scripts/repair_corp_action_prices.py`(+`db/adj_backup.py` 백업 필수)로 사람이 돌린다.
+
+## 6. 예전 문서에 있었지만 «없는» 것
+
+`SQLite`/`INSERT OR IGNORE` · `core/ml_data_collector.py` · `core/helpers/state_restoration_helper.py` · `save_virtual_sell(profit_loss=…)` 파라미터(P/L 은 내부 계산) · `is_test = 1`(boolean) · `financial_statements` 08:30 수집(writer 0 · 2026-03 스냅샷) · `quant_factor_scores`/08:55 퀀트 스크리닝 실행자 · 1분 모니터링(실제 3초 · `core/trading/position_monitor.py` `monitor_interval = 3`) · `core/post_market_data_saver` 의 일봉 DB 저장(2026-09-03 제거 · 분봉 텍스트 덤프만 남음).

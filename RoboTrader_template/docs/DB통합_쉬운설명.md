@@ -1,8 +1,20 @@
 # DB 통합 — 쉬운 설명판
 
-> 2026-08-16~17 작업. **엄밀본**은 메모리 `changelog-2026-08-16-db-consolidation.md` 와
+> 2026-08-16~17 작업. **엄밀본**은 레포 밖 Claude Code 프로젝트 메모리 `changelog-2026-08-16-db-consolidation.md` 와
 > 커밋 `351e8c6`·`698e3ed`·`6bead97`·`a00adbd` 의 메시지에 있다. 이 문서는 그걸 **대체하지 않는다.**
 > 사장님 원칙: ***"kis_template 디비 하나로 관리해야 합니다."***
+
+> ### 📌 현재 상태 (2026-09-17 실측 · 아래 본문은 2026-08-17~09-07 시점 기록이라 「미결」로 남은 항목이 여기서 갱신된다)
+>
+> | 항목 | 상태 | 근거(코드·DB 실측) |
+> |---|---|---|
+> | 옛 `robotrader` DB | ✅ **RENAME 완료 → `robotrader_retired_20260817`** · `datallowconn = false`(모든 접속 거부) · 11 GB | `SELECT datname, datallowconn FROM pg_database` |
+> | 남은 단계 | ⬜ `pg_dump` → `DROP` — **사장님 결정 대기**. 덤프 전 `ALTER DATABASE … ALLOW_CONNECTIONS true` 필요 | — |
+> | §6 「GRANT SELECT 못 받음」 | ✅ **해소** — `robotrader` 롤이 `robotrader_backtest` 13/13 표 · `robotrader_optuna` 13/13 표 SELECT 가능 | `has_table_privilege(...)` 실측 |
+> | §9 「커밋 4개 미푸시」 | ✅ **푸시됨** — 네 커밋 모두 `origin/main` 에 포함 | `git branch -r --contains` |
+> | §9 「백필 스크립트 기본 주소」 | ✅ **구현됨** — `config.constants.require_explicit_target_db()`: `TIMESCALE_DB` 미설정/공백이면 `SystemExit`(기본값을 «없앴다»). 채택 7개: `scripts/backfill_corp_events.py` · `backfill_daily_prices_fundamental.py` · `backfill_foreign_flow.py` · `backfill_kospi_index.py` · `backfill_operating_cash_flow.py` · `backfill_vkospi.py` · `scripts/10pct_strategy/p0_apply_adj_factor.py` | `config/constants.py` · `tests/db/test_data_source_flag.py` |
+> | 읽기 DB 기본값 | ✅ `db/connection.py`(`TIMESCALE_DB`) · `db/kis_db_connection.py`(`KIS_DB_NAME`) 모두 **`kis_template`** · resolver `resolve_daily/minute/corp_events_source_db()` 는 **상수** `kis_template`(롤백 env `KIS_DATA_SOURCE`·`QUANT_DB`·`MINUTE_DB`·`CORP_EVENTS_DB` 는 2026-08-17 폐지 · 설정해도 무시) · 재무만 `QUANT_FINANCIAL_DB`(기본 `kis_template`)로 분리 제어 | `config/constants.py` · `multiverse/data/pit_reader.py` |
+> | 현행 표·컬럼·접속 | → [DATABASE.md](DATABASE.md)(2026-09-17 판) · 수집 시간표 → [DATA_MANAGEMENT.md](DATA_MANAGEMENT.md) | |
 
 ---
 

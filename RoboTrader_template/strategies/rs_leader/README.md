@@ -22,7 +22,7 @@ derived 전략 (Book20 아님) — 상대강도(RS) / 추세.
   `config.yaml` `risk_management`(`stop_loss_pct` / `take_profit_pct`) 값을 **라이브 현재가**로 판정한다
   (2026-08-25 `1810cd2`, D-1 종가 익절 환영 결함 → `docs/prereg_2026-08-25_d1close_tp_phantom.md`).
 
-## 매수 배제 가드 — 미조정 기업행위(합병) 의심 (2026-09-10, 기본 `shadow`)
+## 매수 배제 가드 — 미조정 기업행위(합병) 의심 (2026-09-10 · 코드 기본 `shadow` · 라이브 **`live`** 2026-09-17 07:40 발효)
 
 RS 점수의 **입력값이 오염된 종목**을 랭킹에 넣지 않는다. 알파 주장이 아니라 **데이터 위생 가드**다
 (`utils/data_sanity.py` 불가능봉 가드와 같은 계열 — 그쪽은 «하락» 절벽, 이쪽은 정지런 뒤의 «상승» 불연속).
@@ -39,9 +39,11 @@ RS 점수의 **입력값이 오염된 종목**을 랭킹에 넣지 않는다. �
   `backtest/live_universe_revalidation/run.py:214` · `backtest/universe_lookahead_ladder/run.py:203`
   이 `match()` 를 **직접** 루프하기 때문이다. 그 경로는 mode 와 무관하게 이전 동작이다
   (`_ca_active` 플래그 · 계약은 `tests/…/test_corp_action_exclusion.py::test_t13_*`).
-- **스위치**: `config.constants.RS_LEADER_CORP_ACTION_MODE` = `off` / `shadow`(기본) / `live`
+- **스위치**: `config.constants.RS_LEADER_CORP_ACTION_MODE` = `off` / `shadow`(**코드 기본값** — env 미설정·빈 값이면 shadow, 모르는 값이면 off + WARNING · `resolve_rs_leader_corp_action_mode`) / `live`
   (env `RS_LEADER_CORP_ACTION_MODE` — env→mode 변환은 **import 시 1회**라 `.env` 롤백은 «재기동»이
   있어야 성립한다). 🔴 롤백은 `off` «하나»뿐이고, 이미 체결된 매매를 되돌리지 않는다.
+  - 🟢 **라이브 현재값 = `live`** — `.env` 한 줄(`RS_LEADER_CORP_ACTION_MODE=live`)로 2026-09-17 07:40 재기동 발효, 코드 0줄
+    (사전등록 `docs/prereg_2026-09-16_rsleader_exclusion_live.md` · 09-10 사장님 「3거래일 관측 후 live 별도 승인」 · 롤백 조건은 그 문서 §⑥). `live`→`shadow` 복귀는 그 줄을 지우고 재기동하면 된다(env 미설정 = 코드 기본값 shadow).
 - **로그**: 기동 1줄 `[rs-corp-action] mode=… (startup)` + 스캔당 1줄
   `[rs-corp-action] mode=… scan_date=… universe=… evaluated=… matched=… flagged=… kept=… codes=…`
   (`matched`=룰 통과 총수 · `flagged`=표시 수 · `kept`=**실제 후보가 된 수** — 세 칸 다 모드에 안 걸린다)

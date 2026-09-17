@@ -1,255 +1,80 @@
-# 🤖 KIS Trading Template
+# kis-template — KIS API 페이퍼 트레이딩 봇
 
-> 한국투자증권 API 기반 **자동매매 프레임워크 템플릿**
->
-> 전략만 갈아끼우면 새로운 자동매매 봇이 탄생합니다.
+> 한국투자증권(KIS) Open API 로 국내 주식을 자동매매하는 봇. 현재는 **8전략 페이퍼(가상) 매매**로 매 거래일 운영 중이다. 출발점은 「전략만 갈아끼우는 프레임워크 템플릿」이었고, 코드 디렉토리명 `RoboTrader_template/` 은 그 흔적이다.
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-Private-red.svg)]()
+[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/) [![License](https://img.shields.io/badge/License-MIT-green.svg)](../pyproject.toml)
 
----
+## 1. 지금 이 레포는
 
-## 💡 이게 뭔가요?
+- 활성 전략 8종 = `config/trading_config.json` `strategies[]`(8개 전부 `enabled: true`, 최상위 `"paper_trading": true`). 목록·수치 → [docs/PAPER_STRATEGIES.md](docs/PAPER_STRATEGIES.md).
+- 2026-09-05 부터 3전략(`book_pullback_ma20` · `minervini_volume_dryup` · `daytrading_3methods_breakout`)만 고도화하고 나머지 5종은 관측만 한다 → [docs/plan_2026-09-05_focus3_roadmap.md](docs/plan_2026-09-05_focus3_roadmap.md).
+- 실전(실주문) 전환은 보류 중. 실전 인스턴스 구조는 [instances/README.md](instances/README.md).
+- 봇은 월~금 07:40 Windows 작업 스케줄러가 `run_robotrader.bat` 로 자동 기동한다. 라이브 트리에서 테스트·브랜치 전환 금지 → [CLAUDE.md](CLAUDE.md).
 
-주식 자동매매 프로그램을 만들 때마다 API 연동, DB 설정, 주문 처리, 텔레그램 알림 등을 **매번 새로 짜는 건 비효율적**입니다.
+## 2. 요구 사항
 
-이 템플릿은 **공통 인프라**를 제공하고, 개발자는 **전략 로직에만 집중**할 수 있게 해줍니다.
+| 항목 | 값 | 근거 |
+|---|---|---|
+| Python | 3.9+ | 레포 루트 `pyproject.toml` `requires-python = ">=3.9"` |
+| DB | PostgreSQL 16 + TimescaleDB · **포트 5433** · DB `kis_template` · user `robotrader` | `db/connection.py` 코드 기본값 · 상세 [docs/DATABASE.md](docs/DATABASE.md) |
+| KIS Open API | `[KIS]` 키 5개 — BASE_URL · APP_KEY · APP_SECRET · 계좌번호 · HTS ID | `config/key.ini` `[KIS]` |
+| OS | Windows(런처가 `.bat`) | `run_robotrader.bat` |
 
-```
-kis-trading-template/          ← 공통 프레임워크
-├── RoboTrader (전략 A)        ← 전략만 다름
-├── RoboTrader_orb (전략 B)    ← 전략만 다름
-└── RoboTrader_quant (전략 C)  ← 전략만 다름
-```
+## 3. 설정 (한 번만)
 
----
-
-## 📋 빠른 시작
-
-```bash
-# 1. 클론 및 설치
-git clone <repository_url>
-cd RoboTrader_template
-pip install -r requirements.txt
-
-# 2. API 설정
-cp config/key.ini.example config/key.ini
-# config/key.ini 편집 (APP_KEY, APP_SECRET, 계좌번호 입력)
-
-# 3. 전략 작성
-cp -r strategies/sample strategies/my_strategy
-# strategies/my_strategy/strategy.py 수정
-
-# 4. 실행
-python main.py
+```bat
+copy config\key.ini.example config\key.ini
+copy .env.example .env
 ```
 
----
+- `config/key.ini` = `[KIS]` 키 5개(BASE_URL·APP_KEY·APP_SECRET·계좌번호·HTS ID) + `[TELEGRAM]` `enabled`/`token`/`chat_id`. **API 키는 `.env` 가 아니라 여기다** — `config/settings.py` 가 `configparser` 로 `[KIS]` 절을 읽고, `core/telegram_integration.py` 가 `[TELEGRAM]` 절을 읽는다. `key.ini` 가 없으면 `run_robotrader.bat` 가 기동 전에 멈춘다.
+- `.env` 는 **선택**이다. `db/connection.py` 기본값이 이미 `localhost:5433/kis_template` 이라 없어도 붙는다. 쓰면 `config/env_bootstrap.py` 가 읽되 **인라인 `#` 주석이 값에 포함**되니 주석은 별도 줄에 둘 것. 변수 전수 → [docs/CONFIGURATION.md](docs/CONFIGURATION.md) §4.
 
-## 🏗️ 아키텍처
+## 4. 실행
 
-### 프레임워크 구조
-
-```
-RoboTrader_template/
-│
-├── framework/              # 🔧 추상화 레이어
-│   ├── broker.py          #   증권사 API 추상화 (계좌, 포지션, 자금)
-│   ├── data.py            #   데이터 제공자 추상화
-│   ├── executor.py        #   주문 실행 추상화
-│   └── utils.py           #   공통 유틸리티
-│
-├── api/                    # 📡 KIS API 래퍼
-│   ├── kis_auth.py        #   인증 + Rate Limiting
-│   ├── kis_order_api.py   #   주문 API
-│   ├── kis_chart_api.py   #   차트/시세 API
-│   ├── kis_account_api.py #   계좌 API
-│   ├── kis_market_api.py  #   시장 정보 API
-│   └── kis_financial_api.py #  재무 데이터 API
-│
-├── strategies/             # 🎯 전략 모듈
-│   ├── base.py            #   BaseStrategy 추상 클래스
-│   ├── config.py          #   전략 설정 관리
-│   └── sample/            #   예제 전략
-│       ├── strategy.py
-│       └── config.yaml
-│
-├── core/                   # ⚙️ 공통 핵심 모듈
-│   ├── models.py          #   데이터 모델
-│   ├── order_manager.py   #   주문 관리
-│   ├── fund_manager.py    #   자금 관리 (가상/실전)
-│   ├── data_collector.py  #   데이터 수집
-│   ├── price_calculator.py #  가격 계산
-│   ├── virtual_trading_manager.py  # 가상매매
-│   └── telegram_integration.py     # 텔레그램 알림
-│
-├── config/                 # ⚙️ 설정
-│   ├── settings.py        #   환경 설정
-│   ├── constants.py       #   상수 정의
-│   └── market_hours.py    #   시장 시간 관리
-│
-├── db/                     # 💾 데이터베이스
-│   ├── connection.py      #   DB 연결
-│   └── database_manager.py #  DB 인터페이스
-│
-├── utils/                  # 🛠️ 유틸리티
-│   ├── korean_time.py     #   한국 시간 처리
-│   ├── korean_holidays.py #   공휴일 캘린더
-│   ├── logger.py          #   로깅
-│   └── async_helpers.py   #   비동기 헬퍼
-│
-├── tests/                  # 🧪 테스트
-├── visualization/          # 📊 차트 시각화
-├── main.py                 # 🚀 진입점
-└── .env.example            # 환경변수 예제
+```bat
+run_robotrader.bat
 ```
 
-### 전략 개발 흐름
+`run_robotrader.bat` 가 하는 일(순서): `venv` 없으면 `python -m venv venv` → `venv\Scripts\activate.bat` → `pip install -r requirements.txt` → `config\key.ini` 존재 확인(없으면 `exit /b 1`) → `logs\` 생성 → `PYTHONIOENCODING=utf-8` · `SCREENER_SNAPSHOT_ENABLED=true` → `python -X utf8 main.py` 를 `logs\robotrader_template_YYYYMMDD_HHMMSS.log` 로 리다이렉트.
 
-```
-BaseStrategy 상속 → generate_signal() 구현 → 끝!
+**`python main.py` 를 직접 치면 다르다:**
 
-┌─────────────────────────────────────────────┐
-│  Your Strategy (전략만 작성)                  │
-│  ├── generate_signal() → BUY / SELL / HOLD  │
-│  ├── on_market_open()                        │
-│  └── on_market_close()                       │
-├─────────────────────────────────────────────┤
-│  Framework (프레임워크가 알아서 처리)          │
-│  ├── API 인증 & Rate Limiting               │
-│  ├── 주문 실행 & 체결 확인                    │
-│  ├── 포지션 관리 & DB 저장                    │
-│  ├── 텔레그램 알림                            │
-│  └── 에러 핸들링 & 재시도                     │
-└─────────────────────────────────────────────┘
-```
+1. `bot/env_guard.py` 가 `sys.prefix` 가 프로젝트 `venv` 가 아니면 **exit 1** 한다(`ALLOW_FOREIGN_VENV=1` 이면 경고만). 시스템 파이썬·다른 venv 에서는 기동이 안 된다.
+2. `SCREENER_SNAPSHOT_ENABLED` 가 없으면 `false`(`config/constants.py`) → 장 시작 후 최초 후보 로드 시(`bot/candidate_loader.py` → `liquidation_handler.run_screener_snapshot_hook`, scan_date=직전 거래일) 스냅샷이 생성되지 않아 **당일 후보가 없다**(소비자 `core/candidate_selector.py` 는 같은 직전 거래일 스냅샷을 DB 에서 읽을 뿐이라, 같은 날 다른 프로세스가 만든 스냅샷이 있으면 예외). 전 전략 0건이면 `bot/candidate_loader.py` 가 `[E6]` ERROR 를 찍고 거래량 순위 대체 풀로 떨어진다.
+3. 콘솔 캡처 로그(`robotrader_template_*.log`)가 안 생긴다. `logs/trading_YYYYMMDD.log` 는 `utils/logger.py` 의 RotatingFileHandler(10MB × 7)가 따로 쓴다.
 
----
+`main.py` 에 명령행 인자 처리(argparse)는 없다. 종료는 Ctrl+C(SIGINT/SIGTERM 핸들러).
 
-## 🎯 전략 만들기
+## 5. 페이퍼 vs 실전
 
-### 1. BaseStrategy 상속
+| | 페이퍼(현재) | 실전 |
+|---|---|---|
+| 스위치 | `config/trading_config.json` `"paper_trading": true` | `instances/<id>/trading_config.json` `"paper_trading": false` + **`"real_total_funds_cap"`(원) 필수** |
+| 런처 | `run_robotrader.bat` | `run_instance.bat <id>`(`KIS_INSTANCE_DIR=instances\<id>`) |
+| 주문 기록 | DB 시뮬레이션 `virtual_trading_records` | KIS 실주문 · `real_trading_<id>` |
 
-```python
-from strategies.base import BaseStrategy, Signal, SignalType
+`real_total_funds_cap` 이 없거나 0 이하면 `bot/initializer.py` 가 `LiveStartupAbort` 로 기동을 중단한다. 상세 → [instances/README.md](instances/README.md). 🔴 실전 전환은 현재 보류.
 
-class MyStrategy(BaseStrategy):
-    name = "MyStrategy"
-    version = "1.0.0"
-    description = "나만의 매매 전략"
-    author = "taegeon"
+## 6. 전략 추가·교체
 
-    def on_init(self, broker, data_provider, executor):
-        self._broker = broker
-        self._data = data_provider
-        self._executor = executor
-        self._is_initialized = True
-        return True
+폴더를 복사하는 것만으로는 로드되지 않는다. `config/trading_config.json` `strategies[]` 에 `{name, enabled, max_capital_pct, regime_index, regime_gate}` 항목을 넣어야 `main._load_strategies()` 가 읽고, 후보 공급이 필요하면 `runners/_adapter_factory.py` 의 `if/elif` 에 어댑터를 등록해야 한다. 클래스명은 `Strategy` 로 끝나야 한다(`strategies/config.py`). Step-by-step → [docs/STRATEGY_GUIDE.md](docs/STRATEGY_GUIDE.md).
 
-    def generate_signal(self, stock_code, data):
-        """핵심! 여기에 매매 로직을 작성합니다."""
-        
-        # 예: 단순 이동평균 크로스
-        ma5 = data['close'].rolling(5).mean().iloc[-1]
-        ma20 = data['close'].rolling(20).mean().iloc[-1]
-        
-        if ma5 > ma20:
-            return Signal(
-                signal_type=SignalType.BUY,
-                stock_code=stock_code,
-                confidence=75,
-                reasons=["5일선이 20일선 상향 돌파"]
-            )
-        elif ma5 < ma20:
-            return Signal(
-                signal_type=SignalType.SELL,
-                stock_code=stock_code,
-                confidence=70,
-                reasons=["5일선이 20일선 하향 돌파"]
-            )
-        
-        return None  # HOLD
-```
+## 7. 문서 지도
 
-### 2. 전략 설정 (config.yaml)
+| 문서 | 내용 |
+|---|---|
+| [CLAUDE.md](CLAUDE.md) | 개발 라우터 — 운영/연구 코드 경계, 데이터 SSOT, 규칙 |
+| [docs/README.md](docs/README.md) | `docs/` 색인 + 명명·배치 규약 |
+| [docs/PAPER_STRATEGIES.md](docs/PAPER_STRATEGIES.md) | 활성 8전략 허브 |
+| [docs/STRATEGY_GUIDE.md](docs/STRATEGY_GUIDE.md) | 새 전략 작성·등록·테스트 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 레이어·모듈 관계 |
+| [docs/TRADING_FLOW.md](docs/TRADING_FLOW.md) | 하루 타임라인(초기화 → 루프 → EOD) |
+| [docs/DATABASE.md](docs/DATABASE.md) | 접속 · env · 표 인벤토리 · DDL 위치 |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | key.ini · trading_config.json · config.yaml · env · 상수 |
+| [docs/OWNERSHIP_MODEL.md](docs/OWNERSHIP_MODEL.md) | 포지션 소유권(전략 키잉) 모델 |
+| [docs/code/MODULES.md](docs/code/MODULES.md) · [docs/CODE_MAP.md](docs/CODE_MAP.md) | 모듈 목록 · 운영/연구 경계 — 디렉토리 구조는 여기서 |
 
-```yaml
-strategy:
-  name: MyStrategy
-  portfolio_size: 15
-  check_interval_sec: 60
+## ⚠️ 면책
 
-risk:
-  max_loss_per_day: -0.03      # 일일 최대 손실 3%
-  stop_loss_rate: 0.08          # 종목당 손절 8%
-  target_profit_rate: 0.15      # 종목당 익절 15%
-
-screening:
-  min_market_cap: 100000000000  # 시가총액 1,000억 이상
-  min_volume: 100000            # 최소 거래량
-```
-
-### 3. 실행
-
-```bash
-python main.py
-```
-
----
-
-## 🔧 주요 기능
-
-| 기능 | 설명 |
-|------|------|
-| **KIS API 래퍼** | 인증, Rate Limiting, 재시도 자동 처리 |
-| **가상매매** | 실제 주문 없이 DB에서 시뮬레이션 |
-| **포지션 복원** | 프로그램 재시작 시 DB에서 자동 복원 |
-| **텔레그램 알림** | 매수/매도/에러 실시간 알림 |
-| **데이터 수집** | 일봉, 재무제표 자동 수집 및 저장 |
-| **시장 시간 관리** | 장 시작/종료, 공휴일 자동 판단 |
-| **로깅** | 일별 로그 파일 자동 생성 |
-
----
-
-## 🛡️ 안전 운영 가이드
-
-### 1단계: 가상매매로 검증
-
-```json
-// config/trading_config.json
-"paper_trading": true  // 최소 1개월 테스트
-```
-
-### 2단계: 소액 실전
-
-```json
-// config/trading_config.json
-"paper_trading": false  // 소액(100만원)부터 시작
-```
-
-### 3단계: 점진적 증액
-
-검증된 후 자금을 늘려가세요.
-
----
-
-## ⚠️ 주의사항
-
-- 이 소프트웨어는 **교육 및 연구 목적**입니다
-- 실제 투자 시 **모든 손실은 사용자 책임**입니다
-- 과거 성과 ≠ 미래 수익 보장
-- 반드시 **충분한 테스트 후** 실제 운영하세요
-
----
-
-## 📚 관련 문서
-
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — 시스템 아키텍처, 모듈 관계도
-- **[docs/TRADING_FLOW.md](docs/TRADING_FLOW.md)** — 매매 흐름 (초기화→루프→청산)
-- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** — 설정 가이드
-- **[SYSTEM_FLOW.md](SYSTEM_FLOW.md)** — 시스템 동작 흐름 상세
-- **[CLAUDE.md](CLAUDE.md)** — AI 개발 협업 가이드
-
----
-
-**마지막 업데이트**: 2026-03-22
+교육·연구 목적의 소프트웨어다. 실제 투자 손실은 전적으로 사용자 책임이며, 과거 성과는 미래 수익을 보장하지 않는다.

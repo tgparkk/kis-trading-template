@@ -1,3 +1,7 @@
+> **DEPRECATED 2026-09-17 — 보관용.** 이유: 문서가 호출하는 `db_manager.get_factor_scores()`·`db_manager.update_virtual_buy_targets()`·`from api.kis_market_api import get_current_price`·테이블 `quant_factor_scores` 는 코드에 없다(실재는 `DatabaseManager.get_quant_factors()`·`api/kis_market_api.get_inquire_price()`·`KISAPIManager.get_current_price()`·테이블 `quant_factors`). 08:55 스크리닝·09:05 리밸런싱 실행자도 없고(`rebalancing_mode` 는 일봉 수집 모드 플래그 · `core/models.py`), 메인 루프는 「1분」이 아니라 3초(`main.py` `LOOP_INTERVAL = 3`). 등급표만 `config/constants.py` `SCORE_PROFIT_LOSS_TIERS` 에 운영 코드 참조 0인 상수로 남아 있다.
+> 대체 문서: 매매 흐름 → `docs/TRADING_FLOW.md` · 전략별 손익비 → `docs/STRATEGY_GUIDE.md` + `strategies/{name}/config.yaml` 의 `risk_management`(읽는 곳 `strategies/config.py`).
+> 원문은 아래 그대로.
+
 # 퀀트 전략: 동적 손익비 관리
 
 > 퀀트 팩터 전략에서 종목 품질에 따라 익절/손절률을 동적으로 조정하는 메커니즘을 설명합니다.

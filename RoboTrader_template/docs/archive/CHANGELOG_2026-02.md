@@ -1,3 +1,8 @@
+> **DEPRECATED 2026-09-17 — 보관용.** 이 변경 이력은 **2026-02-11(커밋 `549fad2`)에서 동결**됐다. 마지막 항목 `[0.9.0] 2026-02-10` 이후 약 1,180 커밋이 기록되지 않았고, 태그는 2개(`pre-quant-removal` 02-08 · `v0.9.0-pre-test` 03-02), 루트 `pyproject.toml` 의 version 은 0.9.0 고정.
+> 이후 이력 = `git log`(레포) + 세션 changelog(`changelog-YYYY-MM-DD-*.md` · 레포 밖 Claude Code 프로젝트 메모리).
+> 아래 수치는 2026-02 당시 값 — 「Test count 1014」는 현재 `tests/` 372 파일·`def test_` 5,012(정적 집계)와 다르고, 예제 전략(momentum·mean_reversion·volume_breakout)은 `strategies/` 에 코드(strategy.py·config.yaml)가 남아 있지만 `config/trading_config.json` `strategies[]` 에 없어 로드되지 않는 비활성(`main.py` `_load_strategies` 는 그 목록만 로드)이며, 라이브는 그 목록의 8전략이다.
+> 원문은 아래 그대로.
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
