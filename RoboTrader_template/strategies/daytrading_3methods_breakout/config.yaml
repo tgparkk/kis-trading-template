@@ -39,7 +39,7 @@ risk_management:
   stop_loss_pct: 0.10         # 손절 -10%
   max_hold_days: 10           # 최대 보유 거래일 (주말/공휴일 제외)
   trail_ma: null              # trailing 미사용 (돌파 타법은 고정 손익절)
-  max_positions: 5
+  max_positions: 10           # K 상향 5→10 (사전등록 docs/prereg_2026-09-15_focus3_K_raise.md · 발효 2026-09-18 07:40 · 이전 값 5 = 근거 주석 없던 초기값)
   max_daily_trades: 5
   max_per_stock_amount: 3000000  # 종목당 최대 투자금액 (원)
 
