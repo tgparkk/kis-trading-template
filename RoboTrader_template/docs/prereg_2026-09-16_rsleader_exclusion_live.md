@@ -134,7 +134,10 @@
 | **P1** | 발효 후 **매 스캔**에서 `kept == matched − flagged` 가 **100%** 성립 | `[rs-corp-action]` 스캔 줄(`screener.py:178`) | 20거래일 전 스캔 줄 산술 대조. **1회라도 불성립 → 즉시 롤백** |
 | **P2** | 발효 후 20거래일간 rs_leader **매수 종목** 중, 정지런(일봉 `volume=0` **≥3봉 연속** + 재개 종가비가 밴드 `[0.69, 1.45]` **밖**)이 **RS 121봉 창 안**에 있는 건 **0건** | 매수 체결 종목 × `daily_prices` SQL | 20거래일 누적. **≥1건이면 배제가 새는 것 → 배선 결함으로 조사** |
 | **P3** (R2) | 20거래일 누적 **「회피 체결」**(= flagged 인데 live 였다면 샀을 후보) **≥5건이면 실효** · **<5건이면 `off` 복귀 검토** | shadow 기간 로그와 동일 정의로 매일 계수 | shadow 3일 누적이 이미 **4건** ⇒ 페이스상 달성 가능. 미달 = 「가드가 걸릴 일이 거의 없다」는 뜻 |
+| **P3** 🔧 (R2 · **2026-09-17 개정 — 판정은 이 행**) | 20거래일 누적 **「회피 체결」 후보 단계 계수**(= 관측일마다 「flagged ∩ 가상 상위 K_c ∖ 그날 09:00 rs_leader 보유」의 원소 수를 더한 값) **≥5건이면 실효** · **<5건이면 `off` 복귀 검토** — 🔒 문턱·행동은 원문과 동일 | 스캔 줄 `codes=` · E6 줄 `목표 N건` · `screener_snapshots` · `daily_prices` · `virtual_trading_records`(§4-2) | 매일 §4-2 SQL 로 계수 · 누적 = 종목-일 합 · 재현 게이트 불성립일 = 「판정 불가」(0 으로 세지 않음) · 09-17 = **3** |
 | **P4** (R4) | flagged 집합의 **일간 Jaccard 유사도** 중앙값이 **≥0.5** | 스캔 줄 `codes=` 집합 차분 | 20일 중앙값 **<0.5 면 「탐지기 불안정」 별건 등재**(이 결정의 롤백 사유는 아니다) |
+
+> 🔴 **P3 원문 행(위 표의 첫 번째 P3 행) — 2026-09-17 개정으로 대체 · 판정에 쓰지 않는다.** 원문 관측 지점 「shadow 기간 로그와 동일 정의로 매일 계수」는 live 에서 **원리적으로 존재하지 않는다** — flagged 종목은 스크리너에서 정렬·topK «전»에 빠져(`strategies/rs_leader/screener.py:155-156`) 스냅샷·후보·체결 로그가 생기지 않는다. 판정은 바로 위 「🔧 2026-09-17 개정」 P3 행과 §4-2 규약으로 한다(개정 이력 참조). 원문 행은 보존한다.
 
 ### 4-1. 용어 정의 (관측 전 고정)
 
@@ -142,7 +145,137 @@
   `재개 종가 ÷ 정지 직전 종가` 가 밴드 **`[0.69, 1.45]` 밖**. 판정기는 `corp_action_guard` 단일 소스이며 상수 0개다.
 - **회피 체결(P3)**: 그날 flagged 된 종목이 **live 가 아니었다면 후보로 남아 실제 체결됐을** 건.
   shadow 기간과 **같은 정의·같은 로그 축**으로 센다.
+  - 🔴 **↑ 원문 — 2026-09-17 개정으로 대체 · 판정에 쓰지 않는다.** live 에서는 flagged 종목의 체결 로그가 원리적으로 생기지 않아 「실제 체결됐을 건 · 같은 로그 축」으로는 셀 수 없다(§4-2).
+  - 🔧 **2026-09-17 개정 정의(판정은 이 정의로)**: 관측일 D 마다 **「flagged(D) ∩ 가상 상위 K_c(D) ∖ D 09:00 rs_leader 보유 종목」의 원소 수**를 세고, 20거래일 동안 더한다(종목-일 합). **가상 상위 K_c** = 배제가 없었을 때의 후보 수(= 그날 E6 목표 수)만큼, matched 전체(flagged 포함)를 스크리너 score 로 내림차순 정렬한 상위. 원문 §5-2 「P3 의 「회피 체결」은 **후보 단계**에서 세므로」와 같은 단계다. 계수 규약·SQL = §4-2.
 - **RS 121봉 창**: RS 점수 계산 창. 재개일이 이 창 안이면 인공 점프가 점수에 들어 있다.
+
+### 4-2. 🔧 2026-09-17 개정 — P3 「회피 체결」 후보 단계 계수 규약 (P3 판정은 이 규약으로 한다)
+
+**결함(왜 바꾸나)**
+
+- 원문 P3 는 「flagged 인데 live 가 아니었다면 **실제 체결됐을** 건」을 **shadow 기간과 같은 로그 축**으로 세라고 했다. shadow 에선 flagged 종목이 후보로 남아 실제 체결 로그가 생겼다.
+- live 에선 flagged 종목이 `match()` 에서 `None` 으로 빠져(`strategies/rs_leader/screener.py:155-156`) **정렬·topK «전»에** 사라진다(`strategies/_rule_screener_base.py:147-148`). ⇒ `screener_snapshots` 에도(09-17 스냅샷 20행 중 flagged **0**) · E6 후보에도 · 체결 로그에도 **원리적으로 나타나지 않는다**.
+- ⇒ 원문 관측 지점으로 세면 20거래일 내내 0 이 되고, §5-1 「P3 < 5 → `off` 복귀 검토」가 **가드 효과가 아니라 계기 부재 때문에** 발화한다.
+- 근거: `scratchpad/eod_20260917/LANE_C_gate_guards.md` §1-e · §1-g · §11-2.
+
+**개정 정의**
+
+```
+P3(D)   = | flagged(D) ∩ 가상상위K_c(D) ∖ 보유_rs_leader(D 09:00) |
+P3 누적 = Σ P3(D)   (관측 창 20거래일 · 종목-일 합 — 같은 종목이 여러 날 걸리면 날마다 다시 센다)
+```
+
+| 기호 | 정의 | 출처 |
+|---|---|---|
+| D | 관측일(거래일). 그날 09:00 스캔 줄의 `scan_date=` 는 D 의 직전 거래일이다 | 봇 로그 |
+| flagged(D) | 그날 스캔 줄 `[rs-corp-action] mode=live scan_date=… codes=…` 의 **`codes=` 집합** | 봇 로그(`screener.py:177-182`) |
+| K_c(D) | 배제가 없었을 때의 후보 수 = 그날 E6 줄 `[E6] rs_leader: screener_snapshots N건 확보 (스냅샷 M건, 목표 K건, D-1=…)` 의 **목표 K** | 봇 로그(`core/candidate_selector.py:1139-1140`) · 09-17 = **10**(593행) |
+| 가상상위K_c(D) | **matched 전체(flagged 포함)** 를 스크리너 score 로 내림차순 정렬한 상위 K_c(동순위는 `RANK()` 로 함께 포함) | 아래 두 원천의 합집합 |
+| └ 비-flagged 순위·score | `screener_snapshots`(`strategy='rs_leader'` · `scan_date` = 스캔 줄 `scan_date=`) | DB |
+| └ flagged score | `daily_prices` 재계산: **score = `close[-1] / close[-121] − 1`**(`screener.py:118-128` · 130봉 프레임 `:29`) · `date <= scan_date` | DB — **재현 게이트 통과 후에만** 사용 |
+| 보유_rs_leader(D 09:00) | `virtual_trading_records`(`is_test=true` · `strategy='rs_leader'` · `timestamp < D 09:00`) 종목별 순매수 수량 > 0 | DB · 교차검산 = 기동 `[sync_positions]` 줄(`RSLeaderStrategy`) |
+
+- **재현 게이트(매일 · 선행)**: 같은 식으로 비-flagged 스냅샷 **전 행**의 score 를 재계산해 `|재계산 − 스냅샷 score| < 1e-9` 가 전 행 성립해야 flagged 재계산 score 를 쓴다. 1행이라도 불일치(또는 121봉 부족으로 재계산 불가)면 그날 P3 는 **「판정 불가(재현 실패)」로 기록하고 0 으로 세지 않는다.**
+- 스냅샷은 비-flagged 상위 20행이므로 K_c ≤ 20 이면 가상 상위 K_c 는 이 두 원천만으로 확정된다(09-17 K_c = 10).
+- 🔑 **원문 §5-2 와 정합**: 원문 §5-2(캡 포화일 항)는 이미 「P3 의 「회피 체결」은 **후보 단계**에서 세므로」라고 적었다. 이 개정은 새 개념을 들이는 것이 아니라, §④ 표·§4-1 의 「실제 체결 · 같은 로그 축」 문구를 §5-2 가 전제한 **후보 단계**에 맞추는 것이다.
+
+**체결 계수와의 관계 — 방향 명시**
+
+- 후보 단계 계수는 원문 체결 계수보다 **크거나 같다.** 체결되려면 먼저 후보(상위 K_c)이고 rs_leader 미보유여야 하는데, 후보 단계는 그 뒤의 캡(`max_positions`) 포화 · 틱당 1건 쿨다운 · 진입가 밴드(D-1 종가 × 1.03) · 다른 전략 보유 중복을 **거르지 않는다.** ⇒ 문턱 5 에 **더 관대한 방향**이다.
+- 예외 1가지: 안전성 필터(`_filter_unsafe_stocks`)가 가상 상위 K_c 안의 종목을 빼면 실제로는 K_c+1위 이하가 백필되는데, 이 규약은 필터를 재현하지 않는다(가상 후보의 필터 결과는 미관측). 이 경우에 한해 「크거나 같다」가 깨질 수 있다. 09-17 은 `안전성 필터: 10건 조회 → 10건 통과 (0건 제외)`(592행).
+- 종목-일 합이라 같은 flagged 종목이 상위에 머무는 한 **날마다 1씩 쌓인다**(원문 체결 단위는 한 번 사면 보유 중 재매수가 없다).
+- 원문 판정 방식 칸의 「shadow 3일 누적 **4건**」은 **체결 단위** 수치다. 이 단위와 직접 비교하지 않는다(후보 단위로 재산출하지 않았다).
+- 섹터뉴스 재정렬은 09-17 현재 `[섹터뉴스] rs_leader mode=shadow`(원래 순서 반환 · 587행)다. live 로 바뀌면 실제 후보 집합이 score 순위와 달라질 수 있으나, **이 규약은 score 순위로 고정한다.**
+
+**계수 SQL (예시 · D = 2026-09-17)** — 입력 4곳(①~④)만 날마다 바꾼다.
+
+```sql
+-- 🔧 2026-09-17 개정 — P3 후보 단계 계수 (예: 관측일 D = 2026-09-17)
+--   입력 ① flagged   = 그날 스캔 줄 `codes=`                    (09-17 로그 555행)
+--        ② scan_date = 스캔 줄 `scan_date=` (= E6 줄 `D-1=`)     (555·593행)
+--        ③ K_c       = E6 줄 `목표 N건`                          (593행 · 09-17 = 10)
+--        ④ D 09:00   = 관측일 장 시작 시각(보유 기준)
+WITH flagged(stock_code) AS (
+    VALUES ('049080'),('062970'),('024850'),('001210'),('140430'),('053950')   -- ①
+),
+snap AS (          -- 비-flagged 순위 원천 (live 스냅샷엔 flagged 가 없다)
+    SELECT stock_code, score
+    FROM screener_snapshots
+    WHERE strategy = 'rs_leader'
+      AND scan_date = '2026-09-16'                                            -- ②
+),
+px AS (            -- score = close[-1] / close[-121] − 1  (screener.py:118-128 · 130봉 프레임)
+    SELECT stock_code, close::float8 AS close,
+           ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY date DESC) AS rn
+    FROM daily_prices
+    WHERE date <= '2026-09-16'                                                -- ②
+      AND stock_code IN (SELECT stock_code FROM flagged
+                         UNION SELECT stock_code FROM snap)
+),
+recalc AS (
+    SELECT a.stock_code, a.close / b.close - 1 AS score_sql
+    FROM px a
+    JOIN px b ON b.stock_code = a.stock_code AND a.rn = 1 AND b.rn = 121
+),
+gate AS (          -- 재현 게이트: n_mismatch = 0 이어야 flagged 재계산 score 를 쓴다
+    SELECT COUNT(*) AS n_snap,
+           COUNT(*) FILTER (WHERE r.score_sql IS NULL
+                               OR abs(r.score_sql - s.score) >= 1e-9) AS n_mismatch
+    FROM snap s LEFT JOIN recalc r USING (stock_code)
+),
+held AS (          -- 관측일 D 09:00 rs_leader 보유 (순매수 수량 > 0)
+    SELECT stock_code
+    FROM virtual_trading_records
+    WHERE is_test = true
+      AND strategy = 'rs_leader'
+      AND timestamp < '2026-09-17 09:00:00+09'                                -- ④
+    GROUP BY stock_code
+    HAVING SUM(CASE WHEN action = 'BUY' THEN quantity ELSE -quantity END) > 0
+),
+pool AS (          -- 가상 모집단 = 비-flagged(스냅샷 score) ∪ flagged(재계산 score)
+    SELECT stock_code, score, false AS is_flagged FROM snap
+    UNION ALL
+    SELECT r.stock_code, r.score_sql, true
+    FROM recalc r JOIN flagged USING (stock_code)
+),
+ranked AS (
+    SELECT p.*, RANK() OVER (ORDER BY p.score DESC) AS vrank FROM pool p
+)
+SELECT g.n_snap, g.n_mismatch,
+       k.vrank, k.stock_code, round(k.score::numeric, 4) AS score,
+       k.is_flagged,
+       (h.stock_code IS NOT NULL)               AS held_0900,
+       (k.is_flagged AND h.stock_code IS NULL)  AS p3_count
+FROM ranked k
+CROSS JOIN gate g
+LEFT JOIN held h USING (stock_code)
+WHERE k.vrank <= 10                                                           -- ③
+ORDER BY k.vrank;
+-- 그날 P3 = p3_count = true 인 행 수 · 단 n_mismatch ≠ 0 이면 그날은 「판정 불가」
+```
+
+**09-17 재현 (관측 창 1일째 · 2026-09-17 밤 위 SQL 직접 실행)**
+
+| 가상 순위 | 종목 | score | flagged | D 09:00 rs_leader 보유 | P3 계수 |
+|---:|---|---:|:---:|:---:|:---:|
+| 1 | 049080 | 15.4275 | ✅ | ❌ | **1** |
+| 2 | 001210 | 13.0177 | ✅ | 보유 | — |
+| 3 | 140430 | 4.3382 | ✅ | ❌ | **1** |
+| 4 | 079650 | 3.3946 | | 보유 | — |
+| 5 | 017900 | 3.0000 | | 보유 | — |
+| 6 | 024850 | 2.5531 | ✅ | 보유 | — |
+| 7 | 351320 | 2.0880 | | ❌ | — |
+| 8 | 064290 | 2.0233 | | ❌ | — |
+| 9 | 020120 | 1.8019 | | ❌(envelope 보유) | — |
+| 10 | 053950 | 1.7257 | ✅ | ❌ | **1** |
+
+- 재현 게이트: 비-flagged 스냅샷 **20/20 일치**(`n_snap = 20` · `n_mismatch = 0`).
+- flagged 6 중 `062970` 은 score **0.4392** — 스냅샷 20위(`053260` 0.7227)보다 낮아 가상 상위 10 밖.
+- 보유 7종목(DB 순매수) = 07:40 `[sync_positions]` RSLeaderStrategy 줄(344행) 7종목과 **7/7 일치**.
+- **P3(09-17) = 3**(049080 · 140430 · 053950) — LANE_C §1-e ② 표와 순위·score·보유 전부 일치.
+- 참고(판정에 안 씀): 원문 체결 단위 재구성 = **2**(049080 · 140430 · LANE_C §1-e ③④). `053950` 은 가상 10위라, 빈칸 3개(보유 7 / K 10)가 049080(09:05 틱)·140430(09:11 틱)·351320(09:16 틱)으로 찬 뒤에는 도달하지 않는다. 049080 은 09:05 분봉 고가 11,060 ≤ 밴드 10,990×1.03 ≈ 11,320 · 140430 은 09-17 일중 고가 3,380 ≤ 3,315×1.03 ≈ 3,414 로 밴드 안(DB 재확인).
+
+🔒 **불변**: 문턱(20거래일 누적 **≥5 실효 / <5 `off` 복귀 검토** · 자동 롤백 아님) · 관측 창(**2026-09-17 ~ 2026-10-15**) · **P1 · P2 · P4** · §⑤ 반증→행동 · §⑥ 롤백 · §⑦ 결정권(사장님) · 성과 축 판정 금지(R3). 바뀐 것은 **P3 의 계수 단위와 관측 지점**뿐이다.
 
 ---
 
@@ -251,6 +384,12 @@ minervini 9/22 판정과도 무관하다(rs_leader 는 3전략 밖).
 
 6. **정지 구간 패딩.** 정지 구간 종가가 직전 종가로 통째 패딩돼 있다(`184230` 754×9봉 · `285800` 733×14봉 ·
    `001210` 894×11봉) — 기존 「불가능봉/패딩 결함」과 같은 계층이며 별건이다.
+
+---
+
+## 개정 이력
+
+- **2026-09-17 개정** — 시점 = 🔴 **관측 창 1일째(09-17) 값을 «본 뒤»**(09-17 EOD 레인 C 가 P3 를 재구성한 뒤 · 관측 전 개정이 아니다) · 사유 = live 에선 flagged 종목이 스크리너 정렬·topK «전»에 빠져(`strategies/rs_leader/screener.py:155-156`) 스냅샷·후보·체결 로그가 원리적으로 생기지 않으므로, §④ P3 표·§4-1 용어의 「실제 체결됐을 건 · shadow 기간과 같은 로그 축」으로는 **셀 수 없다**(계기 부재로 §5-1 「P3 < 5 → `off` 복귀 검토」가 오발동할 위험) · 결정 = **사장님 2026-09-17 밤 (나) 「P3 를 후보 단계 계수로 재정의」**(LANE_C §11-2 옵션 나) · 변경 범위 = §④ 표에 P3 개정 행 추가 + 원문 P3 행 대체 표시 · §4-1 회피 체결 정의에 원문 대체 표시·개정 정의 추가 · §4-2(계수 규약·SQL·09-17 재현) 신설 — **원문 줄 삭제·수정 0(추가만)** · 🔒 **불변** = 문턱(20거래일 누적 ≥5 실효 / <5 `off` 복귀 검토) · 관측 창(09-17~10-15) · P1 · P2 · P4 · 결정권 · 🔴 **정직 신고**: ① 개정은 관측 1일째 값을 본 뒤에 했다 — 그날 값 = **후보 단계 3**(049080 · 140430 · 053950) · **체결 재구성 2**(049080 · 140430) ② 후보 단계 계수는 체결 계수보다 **크거나 같아**(유일한 예외 = 안전성 필터 백필 · §4-2) 문턱 5 에 **더 관대한 방향**이다 ③ 종목-일 합이라 09-17 과 같은 값(3)이 하루만 더 나와도 누적 6 으로 문턱에 닿는다 · 근거 파일 = `scratchpad/eod_20260917/LANE_C_gate_guards.md` §1-e · §1-g · §11-2 · 수치 재현 = 2026-09-17 밤 §4-2 SQL 직접 실행(스냅샷 score 20/20 일치 · 가상 상위 10 중 flagged 5 · rs_leader 보유 제외 후 3 · 보유 7종목 = 로그 344행 7/7 — LANE_C §1-e 와 일치).
 
 ---
 
