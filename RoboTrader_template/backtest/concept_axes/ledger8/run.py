@@ -15,7 +15,7 @@ import os
 import subprocess
 import tempfile
 from collections import OrderedDict
-from datetime import date, datetime
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -23,9 +23,11 @@ from backtest.concept_axes.minervini.cap_skip_ledger import bootstrap
 from backtest.concept_axes.minervini.cap_skip_ledger import classify as C
 from backtest.concept_axes.minervini.cap_skip_ledger import tradecal as T
 
+from . import exitsim8 as X
 from . import fidelity8 as F
 from . import livesignal8 as LS8
 from . import registry as R
+from . import sources8 as SRC8
 from .context8 import Ctx8
 
 HERE = Path(__file__).resolve().parent
@@ -238,18 +240,71 @@ def _print_signal_tables(sig_rows: Sequence[Dict[str, str]], vintage: Dict[str, 
           f"n={vintage['n']} 범위 {r_(vintage['vmin'])}~{r_(vintage['vmax'])}")
 
 
+# ── ③ 청산 · 익절손절 ──────────────────────────────────────────────────────
+EARLY_FILL = time(9, 5, 0)     # 실제 매수 ≤ 09:05 면 진입일 고저를 쓴다(D_open 취급)
+EXIT_COLS = ["buy_id", "strategy", "code", "buy_date", "buy_time", "buy_price", "entry_basis", "actual_reason",
+             "actual_exit_date", "actual_ret_pct", "sim_reason", "sim_exit_date", "sim_ret_pct", "sim_hold_days",
+             "sim_flags", "outcome", "same_day_actual", "tp_db", "sl_db", "tp_live", "sl_live", "tp_sl_match"]
+
+
+def exit_fidelity_rows(ctx: Ctx8, since: date, until: date) -> List[Dict[str, str]]:
+    """실제 매수(since~until)를 «실제 진입가·시각»으로 청산 시뮬에 통과 → 실제 청산과 사유·날짜 대조."""
+    rows: List[Dict[str, str]] = []
+    for folder in R.ALL_FOLDERS:
+        rules, probe = ctx.rules[folder], ctx.probes[folder]
+        for t in ctx.trades.get(folder, []):
+            d = t.buy_ts.date()
+            if not (since <= d <= until):
+                continue
+            extra = ctx.extras.get(t.buy_id)
+            basis = X.BASIS_D_OPEN if t.buy_ts.time() <= EARLY_FILL else X.BASIS_ACTUAL
+            pos = X.Pos(t.code, d, SRC8.aware(t.buy_ts), float(t.buy_price), extra.qty if extra else 1, basis)
+            sim = X.simulate_lot(pos, rules, ctx.path(t.code, d), probe)
+            ar = F.actual_reason(t.sell_reason) if t.sell_ts is not None else "open"
+            ad = t.sell_ts.date() if t.sell_ts is not None else None
+            tp_db = extra.tp_rate if extra else None
+            sl_db = extra.sl_rate if extra else None
+            match = (_yn(F.rates_equal(tp_db, rules.tp) and F.rates_equal(sl_db, rules.sl))
+                     if tp_db is not None and sl_db is not None else "")
+            rows.append(OrderedDict(
+                buy_id=str(t.buy_id), strategy=folder, code=t.code, buy_date=d.isoformat(),
+                buy_time=f"{t.buy_ts:%H:%M:%S}", buy_price=_fmt(t.buy_price), entry_basis=basis,
+                actual_reason=ar, actual_exit_date=ad.isoformat() if ad else "",
+                actual_ret_pct=_pct((t.sell_price / t.buy_price - 1) * 100) if t.sell_ts is not None else "",
+                sim_reason=sim.reason, sim_exit_date=sim.exit_date.isoformat() if sim.exit_date else "",
+                sim_ret_pct=_pct(sim.ret_pct), sim_hold_days=_fmt(sim.hold_days), sim_flags=" · ".join(sim.flags),
+                outcome=F.exit_outcome(ar, ad, sim.reason, sim.exit_date if sim.closed else None),
+                same_day_actual=_yn(ad == d) if ad else "", tp_db=_fmt(tp_db), sl_db=_fmt(sl_db),
+                tp_live=_fmt(rules.tp), sl_live=_fmt(rules.sl), tp_sl_match=match))
+    return rows
+
+
+def _print_exit_tables(exit_rows: Sequence[Dict[str, str]]) -> None:
+    print("\n== 청산 충실도 (실제 매수 → 실제 진입가로 시뮬 · 분모 = 실제 청산된 건)")
+    print("strategy | n | closed | Y | reason_only | N | actual_only_closed | same_day | reason_rate | verdict")
+    for g in F.exit_table(exit_rows):
+        rate = "-" if g["reason_rate"] is None else f"{g['reason_rate'] * 100:.2f}%"
+        print(f"{g['strategy']} | {g['n']} | {g['closed']} | {g['Y']} | {g['reason_only']} | {g['N']} | "
+              f"{g['actual_only_closed']} | {g['same_day']} | {rate} | {g['verdict']}")
+    print("\n== 익절·손절 비율 (엔진 경로 vs 체결 원장 BUY)")
+    for g in F.tp_sl_table(exit_rows):
+        print(f"{g['strategy']} | {g['match']}/{g['n']}")
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="ledger8 — 8전략 세 arm 관측 원장")
     ap.add_argument("--start", default=R.LEDGER_START.isoformat())
     ap.add_argument("--end", default=R.LEDGER_END.isoformat())
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--log-dir", default=None, help="라이브 로그 폴더(읽기 전용)")
-    ap.add_argument("--stage", choices=("signal",), default="signal")
+    ap.add_argument("--stage", choices=("signal", "exit"), default="exit")
+    ap.add_argument("--exit-fid-since", default=R.EXIT_FID_SINCE.isoformat())
     a = ap.parse_args(argv)
     out = Path(a.out)
     log_dir = _resolve_log_dir(a.log_dir)
     ctx = Ctx8.open(log_dir)
     try:
+        ctx.attach_exit_probes()          # 🔴 _check_buy 보다 먼저(envelope 사본)
         days = T.days_in_range(ctx.calendar, date.fromisoformat(a.start), date.fromisoformat(a.end))
         if not days:
             print(f"거래일 없음: {a.start} ~ {a.end}")
@@ -261,6 +316,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         _atomic_write_csv(out / "fidelity_signal.csv", SIG_COLS, sig_rows)
         _atomic_write_csv(out / "offlist_signals.csv", OFF_COLS, offlist)
         _print_signal_tables(sig_rows, vintage)
+        if a.stage == "exit":
+            exit_rows = exit_fidelity_rows(ctx, date.fromisoformat(a.exit_fid_since), days[-1])
+            _atomic_write_csv(out / "fidelity_exit.csv", EXIT_COLS, exit_rows)
+            _print_exit_tables(exit_rows)
         for w in warnings:
             print(f"[경고] {w}")
         meta = _meta(days, log_dir, a.stage, warnings)

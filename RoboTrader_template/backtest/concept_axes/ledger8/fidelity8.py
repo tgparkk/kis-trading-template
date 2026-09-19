@@ -187,3 +187,102 @@ def signal_table(rows: Sequence[Dict[str, Any]], outcome_key: str = "outcome") -
             g["verdict"] = "ok"
         out.append(g)
     return out
+
+
+# ── ③ 청산 · 익절손절 · 진입가 ─────────────────────────────────────────────
+# 실제 매도 사유(vtr.reason) → 시뮬 사유 코드. position_monitor 문자열(:282·:317-320·:330-333·:229-244)과
+# 전략 매도 신호 사유(', '.join(signal.reasons) — 각 전략 evaluate_sell_conditions)를 앞머리로 가른다.
+_ACTUAL_RULES = (
+    (re.compile(r"^목표 익절 도달"), "tp"),
+    (re.compile(r"^손절 실행"), "sl"),
+    (re.compile(r"^보유기간 \d+일 초과"), "max_hold"),
+    (re.compile(r"^최대 보유일 초과"), "max_hold"),
+    (re.compile(r"^EMA\d+ trailing 이탈"), "trail_ema"),
+    (re.compile(r"^EMA\d+ 추세반전"), "trend_flip"),
+    (re.compile(r"^MA\d+ trailing 이탈"), "trail_ma"),
+    (re.compile(r"^MA\d+×[\d.]+ 회복"), "ma_recovery"),
+    (re.compile(r"^MA\d+ 이탈"), "ma_break"),
+    (re.compile(r"^장기보유 종목"), "stale"),
+)
+
+
+def actual_reason(text: Optional[str]) -> str:
+    t = (text or "").strip()
+    for rx, code in _ACTUAL_RULES:
+        if rx.match(t):
+            return code
+    return f"other:{t[:20]}"
+
+
+def exit_outcome(actual: str, actual_date: Optional[date], sim: str, sim_date: Optional[date]) -> str:
+    if actual == "open" and sim == "open":
+        return "both_open"
+    if actual == "open":
+        return "sim_only_closed"
+    if sim == "open":
+        return "actual_only_closed"
+    if actual == sim:
+        return "Y" if actual_date == sim_date else "reason_only"
+    return "N"
+
+
+def exit_table(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """전략별 청산 일치. 분모 = «실제 청산된» 건(actual_reason != open) — 시뮬만 열려 있으면 불일치로 센다."""
+    groups: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+    for r in rows:
+        g = groups.setdefault(r["strategy"], dict(strategy=r["strategy"], n=0, closed=0, Y=0, reason_only=0, N=0,
+                                                  actual_only_closed=0, sim_only_closed=0, both_open=0, same_day=0))
+        g["n"] += 1
+        g[r["outcome"]] += 1
+        if r["actual_reason"] != "open":
+            g["closed"] += 1
+            g["same_day"] += int(r.get("same_day_actual") == "Y")
+    out: List[Dict[str, Any]] = []
+    for g in groups.values():
+        c = g["closed"]
+        g["reason_rate"] = (g["Y"] + g["reason_only"]) / c if c else None
+        g["full_rate"] = g["Y"] / c if c else None
+        if c < FID_MIN_N:
+            g["verdict"] = f"판정 불가(n={c}<{FID_MIN_N})"
+        else:
+            g["verdict"] = "ok" if g["reason_rate"] >= EXIT_REASON_MIN else "LOW"
+        out.append(g)
+    return out
+
+
+def rates_equal(a: Optional[float], b: Optional[float]) -> bool:
+    return a is not None and b is not None and abs(float(a) - float(b)) < 1e-9
+
+
+def tp_sl_table(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """전략별 — 체결 원장 BUY 의 target_profit_rate/stop_loss_rate 와 엔진 경로 값 일치 건수."""
+    groups: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+    for r in rows:
+        if r.get("tp_sl_match") not in ("Y", "N"):
+            continue
+        g = groups.setdefault(r["strategy"], dict(strategy=r["strategy"], n=0, match=0))
+        g["n"] += 1
+        g["match"] += int(r["tp_sl_match"] == "Y")
+    return list(groups.values())
+
+
+def entry_diff_stats(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """진입차% = (가상 진입가 ÷ 실제 체결가 − 1)×100 · + 면 가상이 비싸다. 전략별 + (전체)."""
+    groups: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+    for r in rows:
+        if not r.get("entry_diff_pct"):
+            continue
+        x = float(r["entry_diff_pct"])
+        for key in (r["strategy"], "(전체)"):
+            g = groups.setdefault(key, dict(strategy=key, n=0, s=0.0, a=0.0, positive=0, n_first=0, s_first=0.0))
+            g["n"] += 1
+            g["s"] += x
+            g["a"] += abs(x)
+            g["positive"] += int(x > 0)
+            if r.get("first_tick") == "Y":
+                g["n_first"] += 1
+                g["s_first"] += x
+    return [dict(strategy=g["strategy"], n=g["n"], signed_mean=g["s"] / g["n"], abs_mean=g["a"] / g["n"],
+                 positive=g["positive"], n_first=g["n_first"],
+                 signed_mean_first=(g["s_first"] / g["n_first"] if g["n_first"] else None))
+            for g in groups.values()]

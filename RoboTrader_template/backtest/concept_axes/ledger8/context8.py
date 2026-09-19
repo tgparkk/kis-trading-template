@@ -18,6 +18,7 @@ from . import fidelity8 as F
 from . import livesignal8 as LS8
 from . import logscan8 as L8
 from . import registry as R
+from . import sellprobe8 as SP
 from . import sources8 as SRC8
 
 CAL_START = date(2026, 6, 1)   # 달력·OHLC 읽기 시작(청산 충실도 창 08-26 보다 앞)
@@ -42,6 +43,8 @@ class Ctx8:
     bars: Dict[str, Dict[date, Bar]] = field(default_factory=dict)
     logs: Dict[date, L8.DayLog] = field(default_factory=dict)
     snaps: Dict[Tuple[str, date], List[Dict]] = field(default_factory=dict)
+    rules: Dict[str, Any] = field(default_factory=dict)     # folder → exitsim8.ExitRules
+    probes: Dict[str, Any] = field(default_factory=dict)    # folder → sellprobe8.SellProbe
 
     @classmethod
     def open(cls, log_dir: Path) -> "Ctx8":
@@ -52,6 +55,13 @@ class Ctx8:
         trades = {k: C.build_trades([r[:7] for r in v]) for k, v in raw.items()}
         extras = {int(r[0]): TradeExtra(int(r[7] or 0), r[8], r[9]) for v in raw.values() for r in v}
         return cls(conn, cal, Path(log_dir), strategies, trades, extras, SRC8.WindowCache())
+
+    def attach_exit_probes(self) -> None:
+        """라이브 청산 규칙(엔진 경로 tp/sl · 전략 매도 분기 탐침). 🔴 `_check_buy` 호출 «전»에 부른다
+        (envelope 인스턴스가 QuantDailyReader 를 품기 전에 사본을 뜬다)."""
+        for f in R.ALL_FOLDERS:
+            self.rules[f] = SP.resolve_live_tp_sl(f, self.strategies[f])
+            self.probes[f] = SP.SellProbe(f, self.strategies[f], self.windows.get)
 
     def close(self) -> None:
         self.conn.close()

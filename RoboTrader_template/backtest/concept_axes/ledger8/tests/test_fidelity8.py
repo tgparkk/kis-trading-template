@@ -124,3 +124,49 @@ def test_day_volume_vintage_and_fragile_direction():
     assert F.vintage_fragile("N", "N", 0.80, 0.70, 0.243) == "Y"
     assert F.vintage_fragile("N", "Y", 0.60, 0.70, 0.243) == "N"
     assert F.vintage_fragile(None, "Y", 2.2, 2.0, 0.243) == "" and F.vintage_fragile("Y", "Y", None, 2.0, 0.2) == ""
+
+
+# ── 청산·익절손절·진입가 ────────────────────────────────────────────────────
+def test_actual_reason_mapping():
+    assert F.actual_reason("목표 익절 도달 (10.12% >= 10.00%)") == "tp"
+    assert F.actual_reason("손절 실행 (-8.10% <= -8.00%)") == "sl"
+    assert F.actual_reason("보유기간 10일 초과 (한도: 10일)") == "max_hold"
+    assert F.actual_reason("최대 보유일 초과 (10거래일)") == "max_hold"
+    assert F.actual_reason("EMA13 trailing 이탈 (종가 1 < EMA13 2)") == "trail_ema"
+    assert F.actual_reason("EMA65 추세반전 청산") == "trend_flip"
+    assert F.actual_reason("MA20 trailing 이탈 (종가 1 < MA20 2)") == "trail_ma"
+    assert F.actual_reason("MA20×0.9 회복 (종가 1 ≥ 2)") == "ma_recovery"
+    assert F.actual_reason("MA20 이탈 (종가 1 < MA 2)") == "ma_break"
+    assert F.actual_reason("장기보유 종목 우선 청산: 수익률 1.00% (보유 31일)") == "stale"
+    assert F.actual_reason("알 수 없는 사유") == "other:알 수 없는 사유"
+
+
+def test_exit_outcome():
+    d1, d2 = date(2026, 9, 11), date(2026, 9, 14)
+    assert F.exit_outcome("tp", d1, "tp", d1) == "Y"
+    assert F.exit_outcome("tp", d1, "tp", d2) == "reason_only"
+    assert F.exit_outcome("sl", d1, "tp", d1) == "N"
+    assert F.exit_outcome("sl", d1, "open", None) == "actual_only_closed"
+    assert F.exit_outcome("open", None, "sl", d1) == "sim_only_closed"
+    assert F.exit_outcome("open", None, "open", None) == "both_open"
+
+
+def test_exit_table_denominator_is_actual_closed():
+    rows = ([dict(strategy="rs_leader", outcome="Y", actual_reason="ma_break", same_day_actual="N")] * 6
+            + [dict(strategy="rs_leader", outcome="actual_only_closed", actual_reason="sl", same_day_actual="Y")] * 2
+            + [dict(strategy="rs_leader", outcome="both_open", actual_reason="open", same_day_actual="")] * 3)
+    t = F.exit_table(rows)[0]
+    assert (t["closed"], t["Y"], t["same_day"]) == (8, 6, 2)
+    assert t["reason_rate"] == 0.75 and t["verdict"] == "ok"
+
+
+def test_tp_sl_table_and_entry_diff_stats():
+    rows = [dict(strategy="book_pullback_ma5", tp_sl_match="Y")] * 3 + [dict(strategy="book_pullback_ma5", tp_sl_match="N")]
+    t = F.tp_sl_table(rows)[0]
+    assert (t["n"], t["match"]) == (4, 3)
+    e = {g["strategy"]: g for g in F.entry_diff_stats([
+        dict(strategy="a", entry_diff_pct="+1.00", first_tick="Y"),
+        dict(strategy="a", entry_diff_pct="-0.50", first_tick="N"),
+        dict(strategy="a", entry_diff_pct="", first_tick="N")])}
+    assert e["a"]["n"] == 2 and e["a"]["positive"] == 1 and e["a"]["signed_mean"] == pytest.approx(0.25)
+    assert e["a"]["signed_mean_first"] == pytest.approx(1.0) and e["(전체)"]["n"] == 2
