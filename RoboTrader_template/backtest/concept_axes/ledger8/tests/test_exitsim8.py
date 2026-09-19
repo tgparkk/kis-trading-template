@@ -1,0 +1,167 @@
+"""exitsim8 — 하루 청산 순서(보유기간 → 갭 익절 → 데이터 청산 → 갭 손절 → 터치) · 평단 이동 · 09:05 플래그."""
+from __future__ import annotations
+
+from datetime import date, datetime
+
+import pytest
+
+from backtest.concept_axes.ledger8 import exitsim8 as X
+from backtest.concept_axes.minervini.cap_skip_ledger.sim import Bar
+
+R10 = X.ExitRules(tp=0.10, sl=0.08, max_hold_days=5, source="test")
+DAYS = [date(2026, 9, 10), date(2026, 9, 11), date(2026, 9, 14), date(2026, 9, 15),
+        date(2026, 9, 16), date(2026, 9, 17), date(2026, 9, 18)]
+FLAT = (100.0, 101.0, 99.0, 100.0)
+
+
+def _pos(price: float = 100.0, basis: str = X.BASIS_D_OPEN) -> X.Pos:
+    return X.Pos("000001", DAYS[0], datetime(2026, 9, 10, 9, 2), price, 10, basis)
+
+
+def _path(*ohlc):
+    return [(i, DAYS[i], None if b is None else Bar(DAYS[i], *b)) for i, b in enumerate(ohlc)]
+
+
+def _no_probe(pos, day):
+    return None
+
+
+def _probe_on(hit_day, reason="trail_ma"):
+    return lambda pos, day: reason if day == hit_day else None
+
+
+def test_open_position_marks_to_last_close():
+    ex = X.simulate_lot(_pos(), R10, _path(FLAT, FLAT, FLAT), _no_probe)
+    assert ex.status == "open" and ex.reason == X.EXIT_OPEN and ex.exit_date == DAYS[2]
+    assert ex.ret_pct == 0.0 and ex.hold_days == 2 and X.FLAG_MTM in ex.flags
+
+
+def test_data_exit_sells_at_that_day_open():
+    ex = X.simulate_lot(_pos(), R10, _path(FLAT, FLAT, (103.0, 104.0, 102.0, 103.0)), _probe_on(DAYS[2]))
+    assert (ex.reason, ex.exit_date, ex.price, ex.hold_days) == ("trail_ma", DAYS[2], 103.0, 2)
+
+
+def test_gap_tp_beats_data_exit():
+    ex = X.simulate_lot(_pos(), R10, _path(FLAT, (111.0, 112.0, 110.0, 111.0)), _probe_on(DAYS[1]))
+    assert ex.reason == X.EXIT_TP and ex.price == 111.0 and X.FLAG_GAP_TP in ex.flags
+
+
+def test_max_hold_comes_first_at_open():
+    path = _path(FLAT, FLAT, FLAT, FLAT, FLAT, (120.0, 121.0, 119.0, 120.0))   # k=5 시가 +20%
+    ex = X.simulate_lot(_pos(), R10, path, _no_probe)
+    assert ex.reason == X.EXIT_MAX_HOLD and ex.hold_days == 5 and ex.price == 120.0
+
+
+def test_gap_down_sl_flags_0905():
+    ex = X.simulate_lot(_pos(), R10, _path(FLAT, (90.0, 91.0, 89.0, 90.0)), _no_probe)
+    assert ex.reason == X.EXIT_SL and ex.price == 90.0 and X.FLAG_SL_GAP_0905 in ex.flags
+
+
+def test_same_bar_touch_prefers_sl():
+    ex = X.simulate_lot(_pos(), R10, _path(FLAT, (100.0, 111.0, 91.0, 100.0)), _no_probe)
+    assert ex.reason == X.EXIT_SL and ex.price == pytest.approx(92.0) and X.FLAG_SL_TP_BOTH in ex.flags
+
+
+def test_average_price_moves_the_stop():
+    path = _path(FLAT, (96.0, 97.0, 91.0, 95.0))
+    assert X.simulate_lot(_pos(100.0), R10, path, _no_probe).reason == X.EXIT_SL   # 100×0.92=92 ≥ 91
+    assert X.simulate_lot(_pos(98.0), R10, path, _no_probe).status == "open"        # 98×0.92=90.16 < 91
+
+
+def test_d_open_entry_day_uses_day_touches():
+    ex = X.simulate_lot(_pos(), R10, _path((100.0, 101.0, 91.0, 95.0)), _no_probe)
+    assert ex.reason == X.EXIT_SL and ex.hold_days == 0
+
+
+def test_band_touch_skips_entry_day_touches_but_probes():
+    path = _path((100.0, 112.0, 90.0, 100.0), FLAT)
+    ex = X.simulate_lot(_pos(basis=X.BASIS_BAND), R10, path, _no_probe)
+    assert ex.status == "open" and X.FLAG_NO_D_TOUCH in ex.flags
+    ex2 = X.simulate_lot(_pos(basis=X.BASIS_BAND), R10, path, _probe_on(DAYS[0]))
+    assert (ex2.reason, ex2.hold_days, ex2.price) == ("trail_ma", 0, 100.0) and X.FLAG_K0_DATA in ex2.flags
+
+
+def test_missing_bar_defers_max_hold():
+    rules = X.ExitRules(tp=0.10, sl=0.08, max_hold_days=2)
+    ex = X.simulate_lot(_pos(), rules, _path(FLAT, FLAT, None, (101.0, 102.0, 100.0, 101.0)), _no_probe)
+    assert ex.reason == X.EXIT_MAX_HOLD and ex.exit_date == DAYS[3] and X.FLAG_MAXHOLD_DEFERRED in ex.flags
+
+
+def test_after_open_can_skip_touches():
+    bar = Bar(DAYS[1], 100.0, 100.5, 85.0, 90.0)
+    assert X.after_open(_pos(), R10, 1, DAYS[1], bar, _no_probe, touches=False) is None
+    assert X.after_open(_pos(), R10, 1, DAYS[1], bar, _no_probe, touches=True).reason == X.EXIT_SL
+
+
+def test_exit_phase_labels():
+    assert X.simulate_lot(_pos(), R10, _path(FLAT, (111.0, 112.0, 110.0, 111.0)), _no_probe).phase == X.PHASE_OPEN
+    assert X.simulate_lot(_pos(), R10, _path(FLAT, (90.0, 91.0, 89.0, 90.0)), _no_probe).phase == X.PHASE_AFTER
+    assert X.simulate_lot(_pos(), R10, _path((100.0, 101.0, 91.0, 95.0)), _no_probe).phase == X.PHASE_ENTRY
+
+
+def _mins(*rows):
+    return [(t, Bar(DAYS[0], float(o), float(h), float(lo), float(c))) for t, o, h, lo, c in rows]
+
+
+def test_lift_entry_first_in_band_minute_after_lift():
+    mins = _mins(("09:23:00", 100, 100, 99, 100), ("09:24:00", 105, 105, 102, 104),
+                 ("09:25:00", 103, 104, 101, 102), ("09:26:00", 101, 102, 95, 96))
+    le = X.lift_entry(DAYS[0], mins, "09:23:09", None, 103.0)
+    # 09:23 봉은 해제 전 · 09:24 시가 105 > 상한 103 이나 저가 102 ≤ 103 → 경계 103 · 터치 봉은 다음 분봉(09:25)부터
+    assert (le.status, le.price, le.time, le.basis) == (X.LIFT_FILLED, 103.0, "09:24:00", "minute_band_touch")
+    tb = le.touch_bar
+    assert (tb.open, tb.high, tb.low, tb.close) == (103.0, 104.0, 95.0, 96.0)
+
+
+def test_lift_entry_statuses():
+    above = _mins(("09:30:00", 110, 111, 109, 110))
+    assert X.lift_entry(DAYS[0], above, "09:23:09", None, 103.0).status == X.LIFT_UNFILLABLE
+    assert X.lift_entry(DAYS[0], [], "09:23:09", None, 103.0).status == X.LIFT_NO_MINUTE
+    assert X.lift_entry(DAYS[0], above, "", None, 103.0).status == X.LIFT_NOT_LIFTED
+
+
+def test_after_lift_entry_day_uses_post_entry_bar_only():
+    tb = Bar(DAYS[0], 100.0, 101.0, 91.0, 95.0)          # 진입 뒤 저가 91 → 손절
+    day_bar = (98.0, 101.0, 80.0, 95.0)                    # 일봉 저가 80 은 진입 «전» 일 수 있다 — 쓰면 안 된다
+    pos = X.Pos("000001", DAYS[0], datetime(2026, 9, 10, 9, 24), 100.0, 10, X.BASIS_LIFT, touch_bar=tb)
+    ex = X.simulate_lot(pos, R10, _path(day_bar), _no_probe)
+    assert (ex.reason, ex.hold_days, ex.phase) == (X.EXIT_SL, 0, X.PHASE_ENTRY) and ex.price == pytest.approx(92.0)
+    pos2 = X.Pos("000001", DAYS[0], datetime(2026, 9, 10, 9, 24), 100.0, 10, X.BASIS_LIFT)
+    assert X.simulate_lot(pos2, R10, _path(day_bar), _no_probe).status == "open"
+
+
+# ── A3(critic 2차 · 사장님 승인) — 분봉이 없는 해제 뒤 진입(LIFT_NO_MINUTE)은 「모른다」 · 상한 민감도 진입 ──
+
+def test_lift_no_minute_is_unknown_not_unfillable():
+    le = X.lift_entry(DAYS[0], [], "09:23:09", 95.0, 103.0)
+    assert le.status == X.LIFT_NO_MINUTE and le.status != X.LIFT_UNFILLABLE and le.price is None
+
+
+def test_lift_upper_bound_close_inside_band_uses_close():
+    le = X.lift_upper_bound(Bar(DAYS[0], 105.0, 106.0, 97.0, 101.0), 95.0, 103.0)
+    assert (le.status, le.price, le.basis, le.time, le.touch_bar) == (X.LIFT_FILLED, 101.0, X.BASIS_UPPER, "", None)
+    # 한쪽 경계만 있는 밴드(하한 없음)
+    assert X.lift_upper_bound(Bar(DAYS[0], 105.0, 106.0, 97.0, 101.0), None, 103.0).price == 101.0
+
+
+def test_lift_upper_bound_close_outside_band_uses_nearest_bound():
+    above = X.lift_upper_bound(Bar(DAYS[0], 100.0, 110.0, 99.0, 108.0), 95.0, 103.0)   # 종가 108 > 상한
+    assert (above.status, above.price) == (X.LIFT_FILLED, 103.0)
+    below = X.lift_upper_bound(Bar(DAYS[0], 100.0, 101.0, 90.0, 92.0), 95.0, 103.0)    # 종가 92 < 하한
+    assert (below.status, below.price) == (X.LIFT_FILLED, 95.0)
+    # 경계 포함 — 저가가 상한과 같으면 겹친 것
+    assert X.lift_upper_bound(Bar(DAYS[0], 110.0, 111.0, 103.0, 109.0), None, 103.0).price == 103.0
+
+
+def test_lift_upper_bound_no_overlap_or_no_bar_is_not_filled():
+    assert X.lift_upper_bound(Bar(DAYS[0], 110.0, 111.0, 104.0, 110.0), 95.0, 103.0).status == X.LIFT_UNFILLABLE
+    assert X.lift_upper_bound(Bar(DAYS[0], 90.0, 94.0, 89.0, 93.0), 95.0, 103.0).status == X.LIFT_UNFILLABLE
+    none = X.lift_upper_bound(None, 95.0, 103.0)
+    assert none.status == X.LIFT_NO_BAR and none.price is None
+
+
+def test_lift_upper_bound_entry_day_touches_not_used():
+    le = X.lift_upper_bound(Bar(DAYS[0], 100.0, 101.0, 80.0, 100.0), None, 103.0)       # 진입일 저가 80 = −20%
+    pos = X.Pos("000001", DAYS[0], datetime(2026, 9, 10, 9, 24), le.price, 10, X.BASIS_LIFT, touch_bar=le.touch_bar)
+    ex = X.simulate_lot(pos, R10, _path((100.0, 101.0, 80.0, 100.0)), _no_probe)
+    assert ex.status == "open" and X.FLAG_NO_D_TOUCH in ex.flags
