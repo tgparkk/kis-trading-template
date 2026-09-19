@@ -140,10 +140,10 @@ def test_lift_fill_uses_post_entry_bar_and_same_day_exit_comes_first():
 FLAT = {d: Bar(d, 100.0, 101.0, 99.0, 100.0) for d in DAYS}
 
 
-def _upper(i, price, tier="lift_ub"):
+def _upper(i, price, tier="lift_ub", lift_time="", entry_time=None):
     """A3 상한 민감도 체결 — 분봉 없는 해제 뒤 진입(시각 불명 · touch_bar 없음) · 본 집계 밖 tier."""
     return A.Fill(FOLDER, "000001", DAYS[i], float(price), X.BASIS_UPPER, 10, "amount", tier=tier,
-                  crash_blocked=True, lift_time="")
+                  crash_blocked=True, lift_time=lift_time, entry_time=entry_time)
 
 
 def test_upper_bound_fill_ignores_entry_day_touches():
@@ -176,7 +176,7 @@ def test_upper_bound_same_day_exit_comes_first_like_after_lift():
     accts = A.run_accounts(fills, RULES, _path_fn(bars), _no_probe, _time)
     assert len(accts) == 2 and (accts[0].exit.reason, accts[0].exit.exit_date) == (X.EXIT_SL, DAYS[1])
     assert accts[1].fills[0].basis == X.BASIS_UPPER and accts[1].exit.status == "open"
-    assert not any(fl.startswith(A.FLAG_ADD_UNKNOWN) for a in accts for fl in a.flags)
+    assert all(f"{A.FLAG_ADD_UNKNOWN}:{DAYS[1]}" in a.flags for a in accts)        # fix 1: 장중 손절과 상한 체결 순서 불명 → 둘 다
     assert sum(lot.is_repeat_while_open for lot in lots) == sum(a.n_adds for a in accts) == 0
 
 
@@ -201,3 +201,24 @@ def test_non_positive_price_fill_is_rejected(price, caplog):
     accts = A.run_accounts([_fill(0, 100), _upper(1, price)], RULES, _path_fn(FLAT), _no_probe, _time)
     assert len(accts) == 1 and accts[0].n_adds == 0 and accts[0].avg_price == 100.0
     assert sum("price" in r.getMessage() and r.levelname == "WARNING" for r in caplog.records) == 3
+
+
+def test_upper_bound_after_open_phase_exit_stays_unflagged():
+    bars = {DAYS[0]: _bar(0, 100, 101, 99, 100), DAYS[1]: _bar(1, 111, 112, 110, 111)}   # 1일째 09:00 갭 익절
+    accts = A.run_accounts([_fill(0, 100), _upper(1, 111)], RULES, _path_fn(bars), _no_probe, _time)
+    assert len(accts) == 2 and accts[0].exit.phase == X.PHASE_OPEN
+    assert not any(fl.startswith(A.FLAG_ADD_UNKNOWN) for a in accts for fl in a.flags)
+
+
+@pytest.mark.parametrize("lift_time, entry_time, unknown", [
+    ("", None, True),                                   # 체결 하한 시각 모름 → 보수적으로 표시
+    ("09:23:09", None, False),                          # 해제(09:23) 뒤 체결 — 09:0x 데이터 청산이 먼저
+    ("090400", None, True),                             # 09:05 전 해제 — 순서 불명
+    ("", datetime(2026, 9, 11, 11, 2, 6), False),       # entry_time 우선
+])
+def test_upper_bound_after_probe_exit_flags_only_when_order_unknown(lift_time, entry_time, unknown):
+    probe = lambda folder: (lambda pos, day: "trail_ma" if (day == DAYS[1] and pos.entry_date == DAYS[0]) else None)  # noqa: E731
+    fills = [_fill(0, 100), _upper(1, 100, lift_time=lift_time, entry_time=entry_time)]
+    accts = A.run_accounts(fills, RULES, _path_fn(FLAT), probe, _time)
+    assert len(accts) == 2 and (accts[0].exit.reason, accts[0].exit.phase) == ("trail_ma", X.PHASE_AFTER)
+    assert [f"{A.FLAG_ADD_UNKNOWN}:{DAYS[1]}" in a.flags for a in accts] == [unknown, unknown]

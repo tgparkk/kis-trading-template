@@ -14,14 +14,16 @@
 B2 하루 순서: 09:00 open_phase(기존 평단) → 09:02 추가매수(평단 갱신) → after_open(새 평단 · band_touch 추가면 그날 터치 생략).
             해제 뒤 추가매수(D3′)는 after_open(기존 평단) 먼저 → 살아 있으면 추가(그날 터치는 이미 봤다).
 A3 상한 민감도(`basis=daily_upper_bound` · `exitsim8.lift_upper_bound`) — 해제 뒤 진입이라 시간선은 after_lift 와 같고,
-   체결 시각 불명이라 진입일 터치는 안 쓴다(NO_D_TOUCH). 열린 B2 계좌에 붙으면 `FLAG_ADD_UNKNOWN`. 엔진은 tier 를 보지
+   체결 시각 불명이라 진입일 터치는 안 쓴다(NO_D_TOUCH). 그날 B2 계좌가 열려 있었으면 `FLAG_ADD_UNKNOWN` — 붙었으면 그
+   계좌에, 그날 09:02 뒤 청산(장중 터치 · 순서가 확실치 않은 데이터 청산)이면 청산 계좌와 상한 새 계좌 «둘 다»에
+   (09:00 시가 단계 청산은 순서가 알려져 있어 표시 안 함). 엔진은 tier 를 보지
    않는다 — 본 집계 분리(상한 체결은 main 밖 tier)는 호출자 몫. 가격 ≤ 0(·NaN) 체결은 포지션을 만들지 않는다(건너뜀+경고).
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from backtest.concept_axes.minervini.cap_skip_ledger import tradecal as T
@@ -33,8 +35,9 @@ from . import registry as R
 CLOCK_FIRST = "first"          # D4-a(적용) — 보유기한은 첫 매수부터
 CLOCK_LAST_ADD = "last_add"    # D4-b(반대편 기록) — 추가매수마다 시계 리셋(라이브 on_order_filled 덮어쓰기와 같은 효과)
 
-FLAG_ADD_UNKNOWN = "add_unknown(상한 체결이 그날 열린 계좌에 붙음 — 추가매수 여부·시각 불명)"   # A3 · 과제 10 분리 집계
+FLAG_ADD_UNKNOWN = "add_unknown(상한 체결 날 그 계좌가 열려 있었음 — 추가매수 여부·순서 불명)"   # A3 · 과제 10 분리 집계
 _AFTER_LIFT = (X.BASIS_LIFT, X.BASIS_UPPER)   # 해제 뒤 진입 — 그날 청산을 전부 «전»으로 본다(B1 `_open_on` = B2 순서)
+_PROBE_EXIT_BY = time(9, 5)   # 데이터 청산(09:0x 시가) — 상한 체결 하한 시각이 이보다 뒤여야 «청산이 먼저»가 확실
 
 _log = logging.getLogger(__name__)
 
@@ -63,7 +66,7 @@ class Fill:
     buy_id: Optional[int] = None        # A_sim — 원 체결 id
     entry_time: Optional[datetime] = None
     touch_bar: Optional[X.Bar] = None   # after_lift — 진입 뒤 분봉만 모은 봉
-    lift_time: str = ""                 # after_lift — 체결 분봉 시각
+    lift_time: str = ""                 # after_lift — 체결 분봉 시각 · daily_upper_bound — 게이트 해제 시각(체결은 그 뒤)
     d5: str = ""                        # D5 — 라이브였다면 막혔을 속도 조절 규칙(쉼표 목록)
 
 
@@ -170,6 +173,21 @@ class Account:
         self.avg_path.append(self.avg_price)
 
 
+def _exit_known_first(ex: X.ExitOut, f: Fill) -> bool:
+    """09:02 뒤 청산이 시각 불명 상한 체결보다 «먼저»인 게 확실한가(A3). 장중 터치(sl·tp)는 봉 안 시각을 몰라 늘 False.
+    데이터 청산(09:0x)은 체결 하한 시각(entry_time → lift_time)이 09:05 뒤일 때만 True — 모르면 False(보수적).
+    탐침 사유가 sl·tp 문자열이면 터치로 보아 False — 틀려도 표시가 늘 뿐 줄지 않는다."""
+    if ex.reason in (X.EXIT_SL, X.EXIT_TP):
+        return False
+    if f.entry_time is not None:
+        t = f.entry_time.time()
+    elif f.lift_time:
+        t = datetime.strptime(f.lift_time.replace(":", "").strip().zfill(6), "%H%M%S").time()
+    else:
+        return False
+    return t > _PROBE_EXIT_BY
+
+
 def _simulate_account(fl: Sequence[Fill], i: int, rules: X.ExitRules, path_fn: PathFn, probe: X.Probe,
                       time_fn: TimeFn, clock: str, acct_id: str) -> Tuple[Account, int]:
     f0 = fl[i]
@@ -208,6 +226,8 @@ def _simulate_account(fl: Sequence[Fill], i: int, rules: X.ExitRules, path_fn: P
             ex = X.after_open(pos(X.BASIS_D_OPEN), rules, kk, day, bar, probe)     # 해제 전(기존 평단) 판정 먼저
             if ex is not None:
                 acct.exit = ex
+                if add.basis == X.BASIS_UPPER and not _exit_known_first(ex, add):
+                    acct.flags.append(f"{FLAG_ADD_UNKNOWN}:{day}")               # 새 계좌에도 run_accounts 가 옮긴다
                 return acct, i                                                   # 해제 뒤 체결은 새 계좌
             i += 1
             acct.add(add)
@@ -245,10 +265,16 @@ def run_accounts(fills: Sequence[Fill], rules: Dict[str, X.ExitRules], path_fn: 
     for key in sorted(by_key):
         fl = sorted(by_key[key], key=lambda x: x.d)
         i = 0
+        prev: Optional[Account] = None
         while i < len(fl):
             acct, i = _simulate_account(fl, i, rules[key[0]], path_fn, probe_for(key[0]), time_fn, clock,
                                         f"{tag}-{len(out):04d}")
+            mark = f"{FLAG_ADD_UNKNOWN}:{acct.first_date}"
+            if prev is not None and prev.exit is not None and prev.exit.exit_date == acct.first_date \
+                    and mark in prev.flags:
+                acct.flags.append(mark)             # 같은 날 09:02 뒤 청산된 계좌를 이은 상한 새 계좌 — 순서 불명(A3)
             out.append(acct)
+            prev = acct
     return out
 
 
