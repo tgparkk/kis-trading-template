@@ -71,6 +71,23 @@ def test_envelope_reads_own_frame_and_clears_cache(strategies):
     assert fetch.called and ev.signal == "Y" and s._entry_df_cache == {}
 
 
+def test_envelope_now_kst_patch_reads_quant_up_to_d(strategies):
+    """리뷰 1차: `_fetch_entry_history` 를 mock 하지 않고 quant 리더만 대체 — now_kst→D 09:02 패치(룩어헤드 가드)를 태운다."""
+    s = strategies["book_envelope_200d"]
+    hist = _frame(n=240)                                                   # 마지막 봉 2026-09-16(D-1)
+    d_bar = hist.iloc[[-1]].assign(date=pd.Timestamp(D), close=999.0)      # D 당일 봉 — 라이브 코드가 지워야 한다
+    reader = mock.Mock()
+    reader.get_daily_prices.return_value = pd.concat([hist, d_bar], ignore_index=True)
+    with mock.patch.object(s, "_quant_reader", return_value=reader), \
+            mock.patch.object(type(s), "evaluate_entry", _forced("book_envelope_200d")):
+        ev = LS8.evaluate8(s, "book_envelope_200d", "000001", D, _frame(n=8))
+    reader.get_daily_prices.assert_called_once_with("000001", end_date=D, days=s._entry_lookback)   # 오늘이 아니라 D
+    assert ev.signal == "Y"
+    assert ev.detail["quant_n"] == 240 and ev.detail["quant_last"] == "2026-09-16"   # 캐시 키 (code, D) 로 읽힘 · D 봉 제거
+    assert ev.ref == pytest.approx(float(hist["close"].iloc[-1]))                     # ref_close = D-1 종가(999 아님)
+    assert s._entry_df_cache == {}
+
+
 def test_state_change_raises_except_rs_leader_skip_log(strategies):
     def mutate(self, code, data):
         self._ontick_skip_log[(code, "probe")] = datetime(2026, 9, 17, 9, 2)
