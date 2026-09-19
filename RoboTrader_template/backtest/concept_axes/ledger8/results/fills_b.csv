@@ -97,6 +97,7 @@ date,strategy,code,tier,price,basis,qty,qty_basis,signal_basis,crash_blocked,oth
 2026-09-10,rs_leader,198440,ext,2147.55,band_touch,465,amount,replay,N,,,,,,,,
 2026-09-11,elder_ema_pullback,443060,ext,242500.0,after_lift,4,amount,replay,Y,,2026-09-11T09:24:00+09:00,09:24:00,242500.0,254000.0,236500.0,247000.0,
 2026-09-11,elder_ema_pullback,105560,ext,175300.0,after_lift,5,amount,replay,Y,,2026-09-11T09:24:00+09:00,09:24:00,175300.0,178800.0,174800.0,177900.0,
+2026-09-11,book_envelope_200d,131290,main,289000.0,live_fill,3,amount,log,Y,,2026-09-11T09:25:38+09:00,09:23:09,,,,,
 2026-09-11,daytrading_3methods_breakout,006880,main,4871.900000000001,band_touch,205,amount,log,N,,,,,,,,
 2026-09-11,daytrading_3methods_breakout,117580,main,7735.3,band_touch,129,amount,log,N,,,,,,,,
 2026-09-11,daytrading_3methods_breakout,073010,main,3335.0,D_open,299,amount,replay,N,,,,,,,,
@@ -122,6 +123,7 @@ date,strategy,code,tier,price,basis,qty,qty_basis,signal_basis,crash_blocked,oth
 2026-09-11,minervini_volume_dryup,098120,main,52530.0,after_lift,19,amount,replay,Y,,2026-09-11T09:36:00+09:00,09:36:00,52530.0,56500.0,52500.0,55800.0,
 2026-09-11,book_pullback_ma20,025980,main,5220.0,after_lift,191,amount,replay,Y,,2026-09-11T09:24:00+09:00,09:24:00,5220.0,5460.0,5210.0,5370.0,
 2026-09-11,book_pullback_ma20,093370,main,13330.0,after_lift,75,amount,log,Y,,2026-09-11T09:24:00+09:00,09:24:00,13330.0,13650.0,13110.0,13310.0,
+2026-09-11,book_pullback_ma20,125490,main,10700.0,live_fill,93,amount,log,Y,,2026-09-11T11:10:31+09:00,09:23:09,,,,,
 2026-09-11,book_pullback_ma20,232140,main,12010.0,after_lift,83,amount,log,Y,,2026-09-11T09:24:00+09:00,09:24:00,12010.0,12060.0,11510.0,11550.0,
 2026-09-11,book_pullback_ma20,000370,main,8420.0,after_lift,118,amount,replay,Y,,2026-09-11T09:24:00+09:00,09:24:00,8420.0,8680.0,8300.0,8420.0,
 2026-09-11,book_pullback_ma20,058610,ext,95200.0,after_lift,10,amount,replay,Y,,2026-09-11T09:24:00+09:00,09:24:00,95200.0,96800.0,93100.0,96800.0,
@@ -134,6 +136,8 @@ date,strategy,code,tier,price,basis,qty,qty_basis,signal_basis,crash_blocked,oth
 2026-09-11,book_pullback_ma5,178320,ext,35950.0,after_lift,27,amount,replay,Y,,2026-09-11T09:24:00+09:00,09:24:00,35950.0,36000.0,35300.0,35750.0,
 2026-09-11,rs_leader,001210,main,11620.0,after_lift,86,amount,replay,Y,,2026-09-11T09:24:00+09:00,09:24:00,11620.0,12700.0,11550.0,12450.0,
 2026-09-11,rs_leader,079650,main,7550.0,after_lift,132,amount,replay,Y,,2026-09-11T09:24:00+09:00,09:24:00,7550.0,8030.0,7160.0,7160.0,
+2026-09-11,rs_leader,351320,main,4085.0,live_fill,244,amount,log,Y,,2026-09-11T09:23:46+09:00,09:23:09,,,,,
+2026-09-11,rs_leader,069540,main,3855.0,live_fill,259,amount,log,Y,,2026-09-11T09:38:44+09:00,09:23:09,,,,,
 2026-09-11,rs_leader,222800,ext,132700.0,after_lift,7,amount,replay,Y,elder_ema_pullback(09-09),2026-09-11T09:24:00+09:00,09:24:00,132700.0,133800.0,127700.0,131200.0,
 2026-09-11,rs_leader,446540,ext,8330.0,after_lift,120,amount,replay,Y,,2026-09-11T09:24:00+09:00,09:24:00,8330.0,9800.0,8110.0,8430.0,
 2026-09-11,rs_leader,006110,ext,63000.0,after_lift,15,amount,replay,Y,,2026-09-11T09:24:00+09:00,09:24:00,63000.0,63500.0,57800.0,59800.0,
@@ -167,13 +171,17 @@ date,strategy,code,tier,price,basis,qty,qty_basis,signal_basis,crash_blocked,oth
 2026-09-14,book_pullback_ma20,003350,main,15310.0,after_lift,65,amount,replay,Y,,2026-09-14T11:03:00+09:00,11:03:00,15310.0,15450.0,15000.0,15030.0,
 2026-09-14,book_pullback_ma20,234340,ext,21750.0,after_lift,45,amount,replay,Y,,2026-09-14T11:03:00+09:00,11:03:00,21750.0,23150.0,21700.0,22950.0,
 2026-09-14,book_pullback_ma20,119850,ext,50400.0,after_lift,19,amount,replay,Y,,2026-09-14T11:03:00+09:00,11:03:00,50400.0,50800.0,49400.0,49900.0,
+2026-09-14,book_pullback_ma5,452190,main,5120.0,live_fill,195,amount,log,Y,,2026-09-14T11:05:11+09:00,11:02:06,,,,,
+2026-09-14,book_pullback_ma5,413630,main,4130.0,live_fill,242,amount,log,Y,,2026-09-14T11:10:07+09:00,11:02:06,,,,,throttle_delay
 2026-09-14,book_pullback_ma5,130660,ext,13162.9,after_lift,75,amount,replay,Y,,2026-09-14T11:03:00+09:00,11:03:00,13162.9,13250.0,12900.0,13000.0,
 2026-09-14,book_pullback_ma5,417840,ext,15248.4,after_lift,65,amount,replay,Y,,2026-09-14T11:08:00+09:00,11:08:00,15248.4,15300.0,14860.0,14870.0,
 2026-09-14,book_pullback_ma5,475150,ext,50600.0,after_lift,19,amount,replay,Y,,2026-09-14T11:03:00+09:00,11:03:00,50600.0,51100.0,50200.0,50400.0,
 2026-09-14,book_pullback_ma5,204270,ext,23100.0,after_lift,43,amount,replay,Y,,2026-09-14T11:03:00+09:00,11:03:00,23100.0,23100.0,21900.0,21950.0,
 2026-09-14,rs_leader,049080,main,8390.0,after_lift,119,amount,replay,Y,,2026-09-14T11:03:00+09:00,11:03:00,8390.0,9650.0,8390.0,8710.0,
 2026-09-14,rs_leader,001210,main,11900.0,after_lift,84,amount,replay,Y,,2026-09-14T11:03:00+09:00,11:03:00,11900.0,11900.0,10700.0,10820.0,
+2026-09-14,rs_leader,067390,main,6380.0,live_fill,156,amount,log,Y,,2026-09-14T11:05:48+09:00,11:02:06,,,,,
 2026-09-14,rs_leader,079650,main,6800.0,after_lift,147,amount,replay,Y,,2026-09-14T11:03:00+09:00,11:03:00,6800.0,6910.0,6510.0,6580.0,
+2026-09-14,rs_leader,060570,main,4940.0,live_fill,202,amount,log,Y,,2026-09-14T11:10:47+09:00,11:02:06,,,,,throttle_delay
 2026-09-14,rs_leader,046970,main,6910.0,after_lift,144,amount,log,Y,,2026-09-14T11:03:00+09:00,11:03:00,6910.0,7950.0,6890.0,7110.0,throttle
 2026-09-14,rs_leader,317400,ext,11370.0,after_lift,87,amount,replay,Y,,2026-09-14T11:03:00+09:00,11:03:00,11370.0,11400.0,10700.0,10900.0,
 2026-09-14,rs_leader,222800,ext,129200.0,after_lift,7,amount,replay,Y,elder_ema_pullback(09-09),2026-09-14T11:03:00+09:00,11:03:00,129200.0,130500.0,124200.0,125000.0,
@@ -559,8 +567,6 @@ date,strategy,code,tier,price,basis,qty,qty_basis,signal_basis,crash_blocked,oth
 2026-09-18,rs_leader,010170,ext,16360.0,D_open,61,amount,replay,N,,,,,,,,
 2026-09-18,rs_leader,228340,ext,3885.0,D_open,257,amount,replay,N,,,,,,,,
 2026-09-18,rs_leader,053260,ext,7500.0,D_open,133,amount,replay,N,,,,,,,,
-2026-09-11,book_envelope_200d,131290,lift_ub,260500.0,daily_upper_bound,3,amount,log,Y,,,09:23:09,,,,,
-2026-09-11,book_pullback_ma20,125490,lift_ub,10610.0,daily_upper_bound,94,amount,log,Y,,,09:23:09,,,,,
 2026-09-11,book_pullback_ma20,413630,lift_ub,4240.0,daily_upper_bound,235,amount,log,Y,,,09:23:09,,,,,
 2026-09-11,book_pullback_ma20,005880,lift_ub,2090.0,daily_upper_bound,478,amount,replay,Y,,,09:23:09,,,,,
 2026-09-11,book_pullback_ma20,006910,lift_ub,7570.0,daily_upper_bound,132,amount,replay,Y,,,09:23:09,,,,,
@@ -573,8 +579,6 @@ date,strategy,code,tier,price,basis,qty,qty_basis,signal_basis,crash_blocked,oth
 2026-09-11,rs_leader,049080,lift_ub,8220.0,daily_upper_bound,121,amount,replay,Y,,,09:23:09,,,,,
 2026-09-11,rs_leader,159010,lift_ub,23350.0,daily_upper_bound,42,amount,replay,Y,,,09:23:09,,,,,
 2026-09-11,rs_leader,024850,lift_ub,16720.0,daily_upper_bound,59,amount,replay,Y,,,09:23:09,,,,,
-2026-09-11,rs_leader,351320,lift_ub,4010.0,daily_upper_bound,249,amount,log,Y,,,09:23:09,,,,,
-2026-09-11,rs_leader,069540,lift_ub,3870.0,daily_upper_bound,258,amount,log,Y,,,09:23:09,,,,,
 2026-09-11,rs_leader,214680,lift_ub,4370.0,daily_upper_bound,228,amount,log,Y,,,09:23:09,,,,,
 2026-09-11,rs_leader,131290,lift_ub,260500.0,daily_upper_bound,3,amount,log,Y,,,09:23:09,,,,,
 2026-09-11,rs_leader,020120,lift_ub,8100.0,daily_upper_bound,123,amount,log,Y,,,09:23:09,,,,,
@@ -583,15 +587,11 @@ date,strategy,code,tier,price,basis,qty,qty_basis,signal_basis,crash_blocked,oth
 2026-09-14,book_pullback_ma20,033790,lift_ub,7420.0,daily_upper_bound,134,amount,replay,Y,,,11:02:06,,,,,
 2026-09-14,book_pullback_ma20,003530,lift_ub,4810.0,daily_upper_bound,207,amount,replay,Y,,,11:02:06,,,,,
 2026-09-14,book_pullback_ma20,091590,lift_ub,6890.0,daily_upper_bound,145,amount,replay,Y,,,11:02:06,,,,,
-2026-09-14,book_pullback_ma5,452190,lift_ub,5000.0,daily_upper_bound,200,amount,log,Y,,,11:02:06,,,,,
 2026-09-14,book_pullback_ma5,198440,lift_ub,2012.75,daily_upper_bound,496,amount,log,Y,,,11:02:06,,,,,
 2026-09-14,book_pullback_ma5,388050,lift_ub,10776.699999999999,daily_upper_bound,92,amount,replay,Y,,,11:02:06,,,,,
 2026-09-14,book_pullback_ma5,289080,lift_ub,2560.0,daily_upper_bound,390,amount,replay,Y,,,11:02:06,,,,,
-2026-09-14,book_pullback_ma5,413630,lift_ub,4112.8,daily_upper_bound,243,amount,log,Y,,,11:02:06,,,,,throttle_delay
 2026-09-14,book_pullback_ma5,452260,lift_ub,2660.0,daily_upper_bound,375,amount,log,Y,,,11:02:06,,,,,throttle
-2026-09-14,rs_leader,067390,lift_ub,6100.0,daily_upper_bound,163,amount,log,Y,,,11:02:06,,,,,
 2026-09-14,rs_leader,002780,lift_ub,6920.0,daily_upper_bound,144,amount,replay,Y,,,11:02:06,,,,,
 2026-09-14,rs_leader,159010,lift_ub,22300.0,daily_upper_bound,44,amount,replay,Y,,,11:02:06,,,,,
-2026-09-14,rs_leader,060570,lift_ub,5050.0,daily_upper_bound,198,amount,log,Y,,,11:02:06,,,,,throttle_delay
 2026-09-14,rs_leader,018470,lift_ub,4670.0,daily_upper_bound,214,amount,log,Y,,,11:02:06,,,,,throttle
 2026-09-14,rs_leader,024850,lift_ub,15300.0,daily_upper_bound,65,amount,log,Y,,,11:02:06,,,,,throttle

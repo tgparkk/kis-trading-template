@@ -1,7 +1,7 @@
 {
   "banner": "관측 원장이다 — 판정 근거로 쓰지 말 것.",
-  "run_ts": "2026-09-19 15:27:43",
-  "git_sha": "685b83b",
+  "run_ts": "2026-09-19 15:43:34",
+  "git_sha": "09b951b",
   "db": "kis_template",
   "log_dir": "D:\\GIT\\kis-trading-template\\RoboTrader_template\\logs",
   "stage": "all",
@@ -41,8 +41,8 @@
       "b2_adds": 6
     },
     "rs_leader": {
-      "b1_repeat": 23,
-      "b2_adds": 22
+      "b1_repeat": 24,
+      "b2_adds": 24
     },
     "deep_mr_dev20": {
       "b1_repeat": 0,

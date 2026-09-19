@@ -50,266 +50,274 @@ B1,B1-0047,main,rs_leader,079650,2026-09-10,D_open,7830,127,amount,994410,replay
 B1,B1-0048,main,rs_leader,159010,2026-09-10,D_open,23900,41,amount,979900,replay,N,,,,,N,1,,closed,ma_break,after0902,2026-09-15,22000,-7.95,3,-77900,
 B1,B1-0049,main,rs_leader,204840,2026-09-10,D_open,4900,204,amount,999600,log,N,,throttle_delay,,,N,1,,closed,sl,after0902,2026-09-11,4508,-8.00,1,-79968,
 B1,B1-0050,main,rs_leader,300120,2026-09-10,D_open,3340,299,amount,998660,log,N,,throttle,,,N,1,,closed,sl,after0902,2026-09-14,3045,-8.83,2,-88205,sl_gap_open(라이브는 09:05 이후 가격)
-B1,B1-0051,main,book_pullback_ma20,000370,2026-09-11,after_lift,8420,118,amount,993560,replay,Y,09:24:00,,,,N,1,,open,open,,2026-09-18,8070,-4.16,5,-41300,mark_to_market(마지막 종가)
-B1,B1-0052,main,book_pullback_ma20,025980,2026-09-11,after_lift,5220,191,amount,997020,replay,Y,09:24:00,,,,Y,2,1,open,open,,2026-09-18,5170,-0.96,5,-9550,mark_to_market(마지막 종가)
-B1,B1-0053,main,book_pullback_ma20,093370,2026-09-11,after_lift,13330,75,amount,999750,log,Y,09:24:00,,,,N,1,,closed,tp,after0902,2026-09-15,14663,+10.00,2,99975,
-B1,B1-0054,main,book_pullback_ma20,232140,2026-09-11,after_lift,12010,83,amount,996830,log,Y,09:24:00,,,,N,1,,closed,sl,after0902,2026-09-14,11049.2,-8.00,1,-79746,
-B1,B1-0055,main,book_pullback_ma5,032940,2026-09-11,after_lift,10185,98,amount,998130,log,Y,09:28:00,,,,N,1,,closed,sl,entry_day,2026-09-11,9879.45,-3.00,0,-29944,
-B1,B1-0056,main,book_pullback_ma5,079650,2026-09-11,after_lift,7800,128,amount,998400,log,Y,10:00:00,,rs_leader(09-09),,N,1,,closed,sl,entry_day,2026-09-11,7566,-3.00,0,-29952,
-B1,B1-0057,main,book_pullback_ma5,092790,2026-09-11,after_lift,14460,69,amount,997740,log,Y,09:24:00,throttle_delay,,,N,1,,closed,sl,after0902,2026-09-15,14026.2,-3.00,2,-29932,
-B1,B1-0058,main,book_pullback_ma5,388050,2026-09-11,after_lift,11280,88,amount,992640,log,Y,09:24:00,,,,N,1,,closed,sl,after0902,2026-09-14,10860,-3.72,1,-36960,sl_gap_open(라이브는 09:05 이후 가격)
-B1,B1-0059,main,daytrading_3methods_breakout,000440,2026-09-11,band_touch,13956.5,71,amount,990912,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-18,12560.85,-10.00,5,-99091,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0060,main,daytrading_3methods_breakout,0011A0,2026-09-11,D_open,11560,86,amount,994160,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-11,12716,+10.00,0,99416,
-B1,B1-0061,main,daytrading_3methods_breakout,004090,2026-09-11,band_touch,13122.2,76,amount,997287,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,11809.98,-10.00,3,-99729,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0062,main,daytrading_3methods_breakout,006880,2026-09-11,band_touch,4871.9,205,amount,998740,log,N,,,,,N,1,,closed,sl,after0902,2026-09-16,4384.71,-10.00,3,-99874,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0063,main,daytrading_3methods_breakout,014530,2026-09-11,band_touch,3517.45,284,amount,998956,replay,N,,,,,N,1,,open,open,,2026-09-18,3375,-4.05,5,-40456,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0064,main,daytrading_3methods_breakout,053050,2026-09-11,band_touch,2126.95,470,amount,999667,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,1914.26,-10.00,3,-99967,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0065,main,daytrading_3methods_breakout,073010,2026-09-11,D_open,3335,299,amount,997165,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-11,3668.5,+10.00,0,99717,
-B1,B1-0066,main,daytrading_3methods_breakout,100590,2026-09-11,D_open,4970,201,amount,998970,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-15,4473,-10.00,2,-99897,
-B1,B1-0067,main,daytrading_3methods_breakout,117580,2026-09-11,band_touch,7735.3,129,amount,997854,log,N,,,,,N,1,,open,open,,2026-09-18,7070,-8.60,5,-85824,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0068,main,daytrading_3methods_breakout,452450,2026-09-11,D_open,4875,205,amount,999375,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-11,5362.5,+10.00,0,99938,
-B1,B1-0069,main,minervini_volume_dryup,006340,2026-09-11,after_lift,13350,74,amount,987900,replay,Y,09:24:00,,,,N,1,,open,open,,2026-09-18,13890,+4.04,5,39960,mark_to_market(마지막 종가)
-B1,B1-0070,main,minervini_volume_dryup,006360,2026-09-11,after_lift,38367.5,26,amount,997555,replay,Y,09:33:00,,,,N,1,,open,open,,2026-09-18,36850,-3.96,5,-39455,mark_to_market(마지막 종가)
-B1,B1-0071,main,minervini_volume_dryup,073240,2026-09-11,after_lift,7510,133,amount,998830,replay,Y,09:24:00,,,,Y,2,1,open,open,,2026-09-18,7010,-6.66,5,-66500,mark_to_market(마지막 종가)
-B1,B1-0072,main,minervini_volume_dryup,098120,2026-09-11,after_lift,52530,19,amount,998070,replay,Y,09:36:00,,,,N,1,,closed,sl,after0902,2026-09-14,48327.6,-8.00,1,-79846,
-B1,B1-0073,main,minervini_volume_dryup,119850,2026-09-11,after_lift,51000,19,amount,969000,replay,Y,09:24:00,,,,N,1,,open,open,,2026-09-18,54200,+6.27,5,60800,mark_to_market(마지막 종가)
-B1,B1-0074,main,rs_leader,001210,2026-09-11,after_lift,11620,86,amount,999320,replay,Y,09:24:00,,,,Y,2,1,closed,tp,after0902,2026-09-14,13363,+15.00,1,149898,
-B1,B1-0075,main,rs_leader,079650,2026-09-11,after_lift,7550,132,amount,996600,replay,Y,09:24:00,,,,N,1,,closed,sl,after0902,2026-09-14,6946,-8.00,1,-79728,
-B1,B1-0076,main,book_envelope_200d,098120,2026-09-14,after_lift,50800,19,amount,965200,log,Y,11:03:00,,,,N,1,,open,open,,2026-09-18,53500,+5.31,4,51300,mark_to_market(마지막 종가)
-B1,B1-0077,main,book_pullback_ma20,003350,2026-09-14,after_lift,15310,65,amount,995150,replay,Y,11:03:00,,,,N,1,,open,open,,2026-09-18,15770,+3.00,4,29900,mark_to_market(마지막 종가)
-B1,B1-0078,main,book_pullback_ma20,025980,2026-09-14,after_lift,5050,198,amount,999900,replay,Y,11:03:00,,,,Y,3,2,closed,trail_ma,after0902,2026-09-16,5170,+2.38,2,23760,
-B1,B1-0079,main,daytrading_3methods_breakout,0011A0,2026-09-14,D_open,13210,75,amount,990750,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,11889,-10.00,2,-99075,
-B1,B1-0080,main,daytrading_3methods_breakout,0015S0,2026-09-14,D_open,8100,123,amount,996300,log,N,,,,,N,1,,closed,tp,after0902,2026-09-15,8910,+10.00,1,99630,
-B1,B1-0081,main,daytrading_3methods_breakout,060570,2026-09-14,D_open,4870,205,amount,998350,replay,N,,,,,N,1,,open,open,,2026-09-18,5090,+4.52,4,45100,mark_to_market(마지막 종가)
-B1,B1-0082,main,daytrading_3methods_breakout,115500,2026-09-14,band_touch,10248.5,97,amount,994104,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,11273.35,+10.00,2,99410,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0083,main,daytrading_3methods_breakout,352940,2026-09-14,D_open,2235,447,amount,999045,replay,N,,,,,N,1,,open,open,,2026-09-18,2115,-5.37,4,-53640,mark_to_market(마지막 종가)
-B1,B1-0084,main,daytrading_3methods_breakout,356680,2026-09-14,band_touch,16541.8,60,amount,992508,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-15,18195.98,+10.00,1,99251,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0085,main,daytrading_3methods_breakout,356890,2026-09-14,band_touch,2662.55,375,amount,998456,replay,N,,,,,N,1,,open,open,,2026-09-18,2535,-4.79,4,-47831,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0086,main,daytrading_3methods_breakout,431190,2026-09-14,D_open,3805,262,amount,996910,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,3424.5,-10.00,2,-99691,
-B1,B1-0087,main,daytrading_3methods_breakout,446540,2026-09-14,D_open,8390,119,amount,998410,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-14,9229,+10.00,0,99841,
-B1,B1-0088,main,minervini_volume_dryup,002990,2026-09-14,after_lift,13940,71,amount,989740,replay,Y,11:03:00,,,,N,1,,open,open,,2026-09-18,13340,-4.30,4,-42600,mark_to_market(마지막 종가)
-B1,B1-0089,main,minervini_volume_dryup,006360,2026-09-14,after_lift,37400,26,amount,972400,replay,Y,11:03:00,,,,Y,2,1,open,open,,2026-09-18,36850,-1.47,4,-14300,mark_to_market(마지막 종가)
-B1,B1-0090,main,minervini_volume_dryup,073240,2026-09-14,after_lift,7200,138,amount,993600,replay,Y,11:03:00,,,,Y,3,2,open,open,,2026-09-18,7010,-2.64,4,-26220,mark_to_market(마지막 종가)
-B1,B1-0091,main,minervini_volume_dryup,119850,2026-09-14,after_lift,50400,19,amount,957600,replay,Y,11:03:00,,,,Y,2,1,closed,tp,after0902,2026-09-18,56448,+12.00,4,114912,
-B1,B1-0092,main,rs_leader,001210,2026-09-14,after_lift,11900,84,amount,999600,replay,Y,11:03:00,,,,N,1,,closed,sl,entry_day,2026-09-14,10948,-8.00,0,-79968,
-B1,B1-0093,main,rs_leader,046970,2026-09-14,after_lift,6910,144,amount,995040,log,Y,11:03:00,throttle,,,N,1,,closed,tp,entry_day,2026-09-14,7946.5,+15.00,0,149256,
-B1,B1-0094,main,rs_leader,049080,2026-09-14,after_lift,8390,119,amount,998410,replay,Y,11:03:00,,,,Y,2,2,closed,tp,entry_day,2026-09-14,9648.5,+15.00,0,149762,
-B1,B1-0095,main,rs_leader,079650,2026-09-14,after_lift,6800,147,amount,999600,replay,Y,11:03:00,,,,N,1,,closed,sl,after0902,2026-09-16,6256,-8.00,2,-79968,
-B1,B1-0096,main,book_envelope_200d,020120,2026-09-15,D_open,8990,111,amount,997890,log,N,,,,,N,1,,open,open,,2026-09-18,8420,-6.34,3,-63270,mark_to_market(마지막 종가)
-B1,B1-0097,main,book_pullback_ma20,005880,2026-09-15,D_open,2065,484,amount,999460,replay,N,,,,,N,1,,open,open,,2026-09-18,2020,-2.18,3,-21780,mark_to_market(마지막 종가)
-B1,B1-0098,main,book_pullback_ma20,010170,2026-09-15,D_open,14410,69,amount,994290,log,N,,,,,N,1,,closed,tp,after0902,2026-09-16,15851,+10.00,1,99429,
-B1,B1-0099,main,book_pullback_ma20,017900,2026-09-15,band_touch,10372.7,96,amount,995779,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-18,11409.97,+10.00,3,99578,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0100,main,book_pullback_ma20,093370,2026-09-15,D_open,14110,70,amount,987700,replay,N,,,,,Y,2,2,open,open,,2026-09-18,14680,+4.04,3,39900,mark_to_market(마지막 종가)
-B1,B1-0101,main,book_pullback_ma20,100790,2026-09-15,D_open,15700,63,amount,989100,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-17,17270,+10.00,2,98910,
-B1,B1-0102,main,book_pullback_ma20,119850,2026-09-15,D_open,49250,20,amount,985000,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-17,54175,+10.00,2,98500,
-B1,B1-0103,main,book_pullback_ma20,204620,2026-09-15,D_open,5660,176,amount,996160,replay,N,,,,,N,1,,open,open,,2026-09-18,5860,+3.53,3,35200,mark_to_market(마지막 종가)
-B1,B1-0104,main,book_pullback_ma20,234690,2026-09-15,D_open,9480,105,amount,995400,replay,N,,,,,N,1,,open,open,,2026-09-18,9200,-2.95,3,-29400,mark_to_market(마지막 종가)
-B1,B1-0105,main,book_pullback_ma20,293490,2026-09-15,D_open,9570,104,amount,995280,replay,N,,,,,N,1,,open,open,,2026-09-18,9160,-4.28,3,-42640,mark_to_market(마지막 종가)
-B1,B1-0106,main,book_pullback_ma20,462860,2026-09-15,band_touch,3211.8,311,amount,998870,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,2740,-14.69,1,-146730,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
-B1,B1-0107,main,book_pullback_ma5,0015N0,2026-09-15,band_touch,12170.5,82,amount,997981,replay,N,,,,,N,1,,open,open,,2026-09-18,13570,+11.50,3,114759,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0108,main,book_pullback_ma5,032820,2026-09-15,D_open,13840,72,amount,996480,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-15,13424.8,-3.00,0,-29894,
-B1,B1-0109,main,book_pullback_ma5,036540,2026-09-15,D_open,7460,134,amount,999640,log,N,,,,,N,1,,closed,tp,entry_day,2026-09-15,8579,+15.00,0,149946,
-B1,B1-0110,main,book_pullback_ma5,100590,2026-09-15,D_open,4790,208,amount,996320,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-15,4646.3,-3.00,0,-29890,
-B1,B1-0111,main,book_pullback_ma5,115440,2026-09-15,band_touch,8978.9,111,amount,996658,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,10325.73,+15.00,1,149499,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0112,main,book_pullback_ma5,162300,2026-09-15,band_touch,2774.2,360,amount,998712,log,N,,,,,N,1,,closed,sl,after0902,2026-09-16,2680,-3.40,1,-33912,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
-B1,B1-0113,main,book_pullback_ma5,332570,2026-09-15,D_open,8020,124,amount,994480,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,9223,+15.00,1,149172,
-B1,B1-0114,main,book_pullback_ma5,441270,2026-09-15,D_open,8950,111,amount,993450,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,8681.5,-3.00,1,-29804,
-B1,B1-0115,main,book_pullback_ma5,452260,2026-09-15,D_open,2635,379,amount,998665,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-15,2555.95,-3.00,0,-29960,
-B1,B1-0116,main,book_pullback_ma5,950250,2026-09-15,D_open,3585,278,amount,996630,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-15,3477.45,-3.00,0,-29899,
-B1,B1-0117,main,daytrading_3methods_breakout,003200,2026-09-15,D_open,11600,86,amount,997600,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,12760,+10.00,1,99760,
-B1,B1-0118,main,daytrading_3methods_breakout,005160,2026-09-15,D_open,3095,323,amount,999685,log,N,,,,,N,1,,closed,tp,after0902,2026-09-16,3404.5,+10.00,1,99969,
-B1,B1-0119,main,daytrading_3methods_breakout,072950,2026-09-15,D_open,11260,88,amount,990880,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,12386,+10.00,1,99088,
-B1,B1-0120,main,daytrading_3methods_breakout,080160,2026-09-15,D_open,9870,101,amount,996870,replay,N,,,,,N,1,,open,open,,2026-09-18,8920,-9.63,3,-95950,mark_to_market(마지막 종가)
-B1,B1-0121,main,daytrading_3methods_breakout,104620,2026-09-15,D_open,3270,305,amount,997350,replay,N,,,,,N,1,,open,open,,2026-09-18,3260,-0.31,3,-3050,mark_to_market(마지막 종가)
-B1,B1-0122,main,daytrading_3methods_breakout,150900,2026-09-15,band_touch,4392.95,227,amount,997200,replay,N,,,,,N,1,,open,open,,2026-09-18,4100,-6.67,3,-66500,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0123,main,daytrading_3methods_breakout,184230,2026-09-15,band_touch,2374.15,421,amount,999517,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-17,2136.74,-10.00,2,-99952,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0124,main,daytrading_3methods_breakout,263860,2026-09-15,band_touch,19982,50,amount,999100,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,21980.2,+10.00,1,99910,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0125,main,daytrading_3methods_breakout,411080,2026-09-15,band_touch,7107,140,amount,994980,log,N,,,,,N,1,,closed,tp,after0902,2026-09-16,7817.7,+10.00,1,99498,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0126,main,daytrading_3methods_breakout,480370,2026-09-15,D_open,1926,519,amount,999594,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,1733.4,-10.00,1,-99959,
-B1,B1-0127,main,elder_ema_pullback,000810,2026-09-15,band_touch,678000,1,amount,678000,log,N,,,,,N,1,,open,open,,2026-09-18,648000,-4.42,3,-30000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0128,main,elder_ema_pullback,005830,2026-09-15,band_touch,194100,5,amount,970500,log,N,,,,,N,1,,open,open,,2026-09-18,186900,-3.71,3,-36000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0129,main,elder_ema_pullback,051900,2026-09-15,band_touch,302500,3,amount,907500,log,N,,,,,N,1,,open,open,,2026-09-18,295500,-2.31,3,-21000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0130,main,elder_ema_pullback,064760,2026-09-15,band_touch,268500,3,amount,805500,replay,N,,,,,N,1,,open,open,,2026-09-18,268500,+0.00,3,0,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0131,main,elder_ema_pullback,095340,2026-09-15,band_touch,186800,5,amount,934000,log,N,,,,,N,1,,open,open,,2026-09-18,186300,-0.27,3,-2500,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0132,main,elder_ema_pullback,128940,2026-09-15,band_touch,485500,2,amount,971000,log,N,,,,,N,1,,open,open,,2026-09-18,503000,+3.60,3,35000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0133,main,elder_ema_pullback,192820,2026-09-15,band_touch,282500,3,amount,847500,log,N,,,,,N,1,,open,open,,2026-09-18,273000,-3.36,3,-28500,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0134,main,minervini_volume_dryup,002990,2026-09-15,D_open,13490,74,amount,998260,replay,N,,,,,Y,2,1,open,open,,2026-09-18,13340,-1.11,3,-11100,mark_to_market(마지막 종가)
-B1,B1-0135,main,minervini_volume_dryup,006360,2026-09-15,D_open,36500,27,amount,985500,replay,N,,,,,Y,3,2,open,open,,2026-09-18,36850,+0.96,3,9450,mark_to_market(마지막 종가)
-B1,B1-0136,main,minervini_volume_dryup,073240,2026-09-15,D_open,7100,140,amount,994000,replay,N,,,,,Y,4,3,open,open,,2026-09-18,7010,-1.27,3,-12600,mark_to_market(마지막 종가)
-B1,B1-0137,main,minervini_volume_dryup,090430,2026-09-15,D_open,144200,6,amount,865200,replay,N,,,,,N,1,,open,open,,2026-09-18,143400,-0.55,3,-4800,mark_to_market(마지막 종가)
-B1,B1-0138,main,minervini_volume_dryup,119850,2026-09-15,D_open,49250,20,amount,985000,replay,N,,,,,Y,3,2,closed,tp,after0902,2026-09-18,55160,+12.00,3,118200,
-B1,B1-0139,main,minervini_volume_dryup,282330,2026-09-15,D_open,146600,6,amount,879600,replay,N,,,,,N,1,,open,open,,2026-09-18,138400,-5.59,3,-49200,mark_to_market(마지막 종가)
-B1,B1-0140,main,rs_leader,00088K,2026-09-15,D_open,42300,23,amount,972900,log,N,,throttle,,,N,1,,open,open,,2026-09-18,40550,-4.14,3,-40250,mark_to_market(마지막 종가)
-B1,B1-0141,main,rs_leader,001210,2026-09-15,band_touch,11093.1,90,amount,998379,log,N,,,,,N,1,,closed,ma_break,after0902,2026-09-18,10730,-3.27,3,-32679,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0142,main,rs_leader,017900,2026-09-15,band_touch,10578.1,94,amount,994341,log,N,,throttle,,,N,1,,open,open,,2026-09-18,10520,-0.55,3,-5461,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0143,main,rs_leader,020120,2026-09-15,D_open,8990,111,amount,997890,log,N,,throttle,book_envelope_200d(09-15),,N,1,,open,open,,2026-09-18,8420,-6.34,3,-63270,mark_to_market(마지막 종가)
-B1,B1-0144,main,rs_leader,024850,2026-09-15,D_open,15650,63,amount,985950,log,N,,throttle,,,N,1,,closed,ma_break,after0902,2026-09-18,15070,-3.71,3,-36540,
-B1,B1-0145,main,rs_leader,049080,2026-09-15,D_open,8830,113,amount,997790,replay,N,,,,,Y,2,3,closed,tp,after0902,2026-09-16,10154.5,+15.00,1,149668,
-B1,B1-0146,main,rs_leader,079650,2026-09-15,D_open,6490,154,amount,999460,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,6370,-1.85,3,-18480,mark_to_market(마지막 종가)
-B1,B1-0147,main,rs_leader,184230,2026-09-15,band_touch,2374.15,421,amount,999517,log,N,,,,,N,1,,closed,sl,after0902,2026-09-16,2184.22,-8.00,1,-79961,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0148,main,rs_leader,285800,2026-09-15,D_open,4550,219,amount,996450,log,N,,throttle,,,N,1,,closed,sl,entry_day,2026-09-15,4186,-8.00,0,-79716,
-B1,B1-0149,main,rs_leader,351320,2026-09-15,D_open,4100,243,amount,996300,log,N,,throttle,,,N,1,,closed,sl,after0902,2026-09-17,3772,-8.00,2,-79704,
-B1,B1-0150,main,book_envelope_200d,031980,2026-09-16,D_open,158900,6,amount,953400,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-16,146188,-8.00,0,-76272,
-B1,B1-0151,main,book_pullback_ma20,027360,2026-09-16,D_open,3325,300,amount,997500,log,N,,,,,N,1,,closed,tp,after0902,2026-09-17,3657.5,+10.00,1,99750,
-B1,B1-0152,main,book_pullback_ma20,059120,2026-09-16,D_open,7100,140,amount,994000,replay,N,,,,,Y,2,4,open,open,,2026-09-18,7250,+2.11,2,21000,mark_to_market(마지막 종가)
-B1,B1-0153,main,book_pullback_ma20,064550,2026-09-16,D_open,9750,102,amount,994500,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-18,8970,-8.00,2,-79560,
-B1,B1-0154,main,book_pullback_ma20,078150,2026-09-16,D_open,2040,490,amount,999600,replay,N,,,book_pullback_ma5(09-09),,N,1,,open,open,,2026-09-18,2045,+0.25,2,2450,mark_to_market(마지막 종가)
-B1,B1-0155,main,book_pullback_ma20,100790,2026-09-16,D_open,16030,62,amount,993860,replay,N,,,,,Y,2,1,closed,tp,after0902,2026-09-17,17633,+10.00,1,99386,
-B1,B1-0156,main,book_pullback_ma20,130660,2026-09-16,D_open,13000,76,amount,988000,replay,N,,,,,N,1,,open,open,,2026-09-18,13040,+0.31,2,3040,mark_to_market(마지막 종가)
-B1,B1-0157,main,book_pullback_ma20,232140,2026-09-16,D_open,11680,85,amount,992800,replay,N,,,,,N,1,,open,open,,2026-09-18,11910,+1.97,2,19550,mark_to_market(마지막 종가)
-B1,B1-0158,main,book_pullback_ma20,317400,2026-09-16,D_open,11130,89,amount,990570,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-16,10239.6,-8.00,0,-79246,
-B1,B1-0159,main,book_pullback_ma20,372910,2026-09-16,D_open,2015,496,amount,999440,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-17,2216.5,+10.00,1,99944,
-B1,B1-0160,main,book_pullback_ma20,413630,2026-09-16,D_open,4480,223,amount,999040,log,N,,,,,N,1,,closed,tp,entry_day,2026-09-16,4928,+10.00,0,99904,
-B1,B1-0161,main,book_pullback_ma5,003350,2026-09-16,D_open,14680,68,amount,998240,log,N,,throttle_delay,,,N,1,,closed,trail_ma,after0902,2026-09-18,14870,+1.29,2,12920,
-B1,B1-0162,main,book_pullback_ma5,004310,2026-09-16,D_open,10190,98,amount,998620,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-16,9884.3,-3.00,0,-29959,
-B1,B1-0163,main,book_pullback_ma5,036540,2026-09-16,D_open,8470,118,amount,999460,log,N,,throttle,,,N,1,,closed,sl,entry_day,2026-09-16,8215.9,-3.00,0,-29984,
-B1,B1-0164,main,book_pullback_ma5,053300,2026-09-16,D_open,5500,181,amount,995500,log,N,,throttle_delay,,,N,1,,closed,sl,entry_day,2026-09-16,5335,-3.00,0,-29865,
-B1,B1-0165,main,book_pullback_ma5,073010,2026-09-16,band_touch,3535,282,amount,996870,log,N,,throttle_delay,,,N,1,,closed,sl,after0902,2026-09-17,3410,-3.54,1,-35250,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
-B1,B1-0166,main,book_pullback_ma5,317400,2026-09-16,D_open,11130,89,amount,990570,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-16,10796.1,-3.00,0,-29717,
-B1,B1-0167,main,book_pullback_ma5,321370,2026-09-16,D_open,1174,851,amount,999074,log,N,,throttle,,,N,1,,closed,tp,entry_day,2026-09-16,1350.1,+15.00,0,149861,
-B1,B1-0168,main,book_pullback_ma5,332570,2026-09-16,band_touch,8484,117,amount,992628,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,9100,+7.26,2,72072,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0169,main,book_pullback_ma5,391710,2026-09-16,band_touch,1456.94,686,amount,999461,log,N,,,,,N,1,,closed,sl,after0902,2026-09-17,1359,-6.72,1,-67187,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
-B1,B1-0170,main,book_pullback_ma5,441270,2026-09-16,D_open,9010,110,amount,991100,log,N,,,,,Y,2,1,closed,sl,entry_day,2026-09-16,8739.7,-3.00,0,-29733,
-B1,B1-0171,main,daytrading_3methods_breakout,028100,2026-09-16,D_open,19010,52,amount,988520,replay,N,,,,,N,1,,open,open,,2026-09-18,19940,+4.89,2,48360,mark_to_market(마지막 종가)
-B1,B1-0172,main,daytrading_3methods_breakout,036220,2026-09-16,D_open,7100,140,amount,994000,log,N,,,,,N,1,,open,open,,2026-09-18,6760,-4.79,2,-47600,mark_to_market(마지막 종가)
-B1,B1-0173,main,daytrading_3methods_breakout,053300,2026-09-16,D_open,5500,181,amount,995500,replay,N,,,,,N,1,,open,open,,2026-09-18,5200,-5.45,2,-54300,mark_to_market(마지막 종가)
-B1,B1-0174,main,daytrading_3methods_breakout,054920,2026-09-16,band_touch,5386.9,185,amount,996577,replay,N,,,,,N,1,,open,open,,2026-09-18,4930,-8.48,2,-84527,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0175,main,daytrading_3methods_breakout,062970,2026-09-16,band_touch,3460.8,288,amount,996710,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-17,3114.72,-10.00,1,-99671,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0176,main,daytrading_3methods_breakout,071200,2026-09-16,D_open,12500,80,amount,1000000,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-17,13750,+10.00,1,100000,
-B1,B1-0177,main,daytrading_3methods_breakout,158430,2026-09-16,D_open,6390,156,amount,996840,replay,N,,,,,N,1,,closed,sl,entry_day,2026-09-16,5751,-10.00,0,-99684,
-B1,B1-0178,main,daytrading_3methods_breakout,372910,2026-09-16,D_open,2015,496,amount,999440,log,N,,,,,N,1,,closed,tp,after0902,2026-09-17,2216.5,+10.00,1,99944,
-B1,B1-0179,main,daytrading_3methods_breakout,391710,2026-09-16,D_open,1417,705,amount,998985,replay,N,,,,,N,1,,open,open,,2026-09-18,1320,-6.85,2,-68385,mark_to_market(마지막 종가)
-B1,B1-0180,main,daytrading_3methods_breakout,417860,2026-09-16,D_open,7450,134,amount,998300,replay,N,,,,,N,1,,open,open,,2026-09-18,7350,-1.34,2,-13400,mark_to_market(마지막 종가)
-B1,B1-0181,main,elder_ema_pullback,000150,2026-09-16,band_touch,1320000,1,one_share,1320000,log,N,,,,,N,1,,open,open,,2026-09-18,1447000,+9.62,2,127000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0182,main,elder_ema_pullback,039030,2026-09-16,band_touch,462000,2,amount,924000,log,N,,,,,N,1,,open,open,,2026-09-18,453500,-1.84,2,-17000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0183,main,elder_ema_pullback,128940,2026-09-16,band_touch,508000,1,amount,508000,log,N,,,,,Y,2,1,open,open,,2026-09-18,503000,-0.98,2,-5000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0184,main,elder_ema_pullback,192820,2026-09-16,band_touch,285000,3,amount,855000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,273000,-4.21,2,-36000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0185,main,elder_ema_pullback,373220,2026-09-16,band_touch,372000,2,amount,744000,log,N,,,,,N,1,,open,open,,2026-09-18,364000,-2.15,2,-16000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0186,main,elder_ema_pullback,443060,2026-09-16,band_touch,237000,4,amount,948000,replay,N,,,,,Y,2,4,open,open,,2026-09-18,246000,+3.80,2,36000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0187,main,minervini_volume_dryup,001450,2026-09-16,D_open,49000,20,amount,980000,replay,N,,,,,N,1,,open,open,,2026-09-18,48800,-0.41,2,-4000,mark_to_market(마지막 종가)
-B1,B1-0188,main,minervini_volume_dryup,002990,2026-09-16,D_open,13490,74,amount,998260,replay,N,,,,,Y,3,2,open,open,,2026-09-18,13340,-1.11,2,-11100,mark_to_market(마지막 종가)
-B1,B1-0189,main,minervini_volume_dryup,006360,2026-09-16,D_open,37750,26,amount,981500,replay,N,,,,,Y,4,3,open,open,,2026-09-18,36850,-2.38,2,-23400,mark_to_market(마지막 종가)
-B1,B1-0190,main,minervini_volume_dryup,041830,2026-09-16,D_open,58600,17,amount,996200,replay,N,,,,,N,1,,open,open,,2026-09-18,57500,-1.88,2,-18700,mark_to_market(마지막 종가)
-B1,B1-0191,main,minervini_volume_dryup,073240,2026-09-16,D_open,7090,141,amount,999690,replay,N,,,,,Y,5,4,open,open,,2026-09-18,7010,-1.13,2,-11280,mark_to_market(마지막 종가)
-B1,B1-0192,main,minervini_volume_dryup,089860,2026-09-16,D_open,47750,20,amount,955000,replay,N,,,,,N,1,,open,open,,2026-09-18,48900,+2.41,2,23000,mark_to_market(마지막 종가)
-B1,B1-0193,main,minervini_volume_dryup,090430,2026-09-16,D_open,143500,6,amount,861000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,143400,-0.07,2,-600,mark_to_market(마지막 종가)
-B1,B1-0194,main,minervini_volume_dryup,119850,2026-09-16,D_open,48700,20,amount,974000,replay,N,,,,,Y,4,3,closed,tp,after0902,2026-09-18,54544,+12.00,2,116880,
-B1,B1-0195,main,minervini_volume_dryup,282330,2026-09-16,D_open,143500,6,amount,861000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,138400,-3.55,2,-30600,mark_to_market(마지막 종가)
-B1,B1-0196,main,rs_leader,001210,2026-09-16,band_touch,11124,89,amount,990036,replay,N,,,,,Y,2,1,closed,ma_break,after0902,2026-09-18,10730,-3.54,2,-35066,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0197,main,rs_leader,017900,2026-09-16,D_open,10500,95,amount,997500,log,N,,,,,Y,2,1,open,open,,2026-09-18,10520,+0.19,2,1900,mark_to_market(마지막 종가)
-B1,B1-0198,main,rs_leader,020120,2026-09-16,D_open,8800,113,amount,994400,log,N,,throttle,book_envelope_200d(09-15),,Y,2,1,open,open,,2026-09-18,8420,-4.32,2,-42940,mark_to_market(마지막 종가)
-B1,B1-0199,main,rs_leader,024850,2026-09-16,D_open,15750,63,amount,992250,log,N,,throttle_delay,,,Y,2,1,closed,ma_break,after0902,2026-09-18,15070,-4.32,2,-42840,
-B1,B1-0200,main,rs_leader,034940,2026-09-16,D_open,2825,353,amount,997225,log,N,,throttle,,,N,1,,open,open,,2026-09-18,2700,-4.42,2,-44125,mark_to_market(마지막 종가)
-B1,B1-0201,main,rs_leader,049080,2026-09-16,D_open,8630,115,amount,992450,replay,N,,,,,Y,3,4,closed,tp,entry_day,2026-09-16,9924.5,+15.00,0,148868,
-B1,B1-0202,main,rs_leader,079650,2026-09-16,band_touch,6664.1,150,amount,999615,log,N,,throttle_delay,,,Y,3,2,open,open,,2026-09-18,6370,-4.41,2,-44115,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0203,main,rs_leader,140430,2026-09-16,D_open,2645,378,amount,999810,log,N,,throttle_delay,,,N,1,,closed,tp,entry_day,2026-09-16,3041.75,+15.00,0,149971,
-B1,B1-0204,main,rs_leader,184230,2026-09-16,D_open,2310,432,amount,997920,replay,N,,,,,Y,2,1,closed,sl,after0902,2026-09-17,2125.2,-8.00,1,-79834,
-B1,B1-0205,main,rs_leader,351320,2026-09-16,D_open,4200,238,amount,999600,log,N,,throttle,,,Y,2,1,closed,sl,entry_day,2026-09-16,3864,-8.00,0,-79968,
-B1,B1-0206,main,book_pullback_ma20,024840,2026-09-17,D_open,5580,179,amount,998820,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-18,6138,+10.00,1,99882,
-B1,B1-0207,main,book_pullback_ma20,033790,2026-09-17,D_open,7800,128,amount,998400,replay,N,,,,,N,1,,open,open,,2026-09-18,8000,+2.56,1,25600,mark_to_market(마지막 종가)
-B1,B1-0208,main,book_pullback_ma20,077360,2026-09-17,band_touch,10766.6,92,amount,990527,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-18,11843.26,+10.00,1,99053,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0209,main,book_pullback_ma20,100130,2026-09-17,D_open,1450,689,amount,999050,replay,N,,,,,N,1,,open,open,,2026-09-18,1460,+0.69,1,6890,mark_to_market(마지막 종가)
-B1,B1-0210,main,book_pullback_ma20,100790,2026-09-17,band_touch,16564,60,amount,993840,replay,N,,,,,Y,3,2,closed,tp,after0902,2026-09-18,18220.4,+10.00,1,99384,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0211,main,book_pullback_ma20,125020,2026-09-17,D_open,5890,169,amount,995410,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-18,6479,+10.00,1,99541,
-B1,B1-0212,main,book_pullback_ma20,232140,2026-09-17,D_open,12000,83,amount,996000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,11910,-0.75,1,-7470,mark_to_market(마지막 종가)
-B1,B1-0213,main,book_pullback_ma5,003350,2026-09-17,D_open,14700,68,amount,999600,replay,N,,,,,Y,2,1,closed,trail_ma,after0902,2026-09-18,14870,+1.16,1,11560,
-B1,B1-0214,main,book_pullback_ma5,005160,2026-09-17,D_open,3435,291,amount,999585,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-17,3950.25,+15.00,0,149938,
-B1,B1-0215,main,book_pullback_ma5,046970,2026-09-17,band_touch,7312.4,136,amount,994486,log,N,,,,,N,1,,closed,tp,after0902,2026-09-18,8409.26,+15.00,1,149173,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0216,main,book_pullback_ma5,069540,2026-09-17,D_open,4415,226,amount,997790,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-17,4282.55,-3.00,0,-29934,
-B1,B1-0217,main,book_pullback_ma5,072950,2026-09-17,band_touch,13665.3,73,amount,997567,log,N,,,,,N,1,,closed,sl,after0902,2026-09-18,13255.34,-3.00,1,-29927,entry_day_touch_skipped(진입 시각 불명) · sl_tp_same_bar(손절 우선)
-B1,B1-0218,main,book_pullback_ma5,093370,2026-09-17,D_open,14650,68,amount,996200,log,N,,,,,N,1,,open,open,,2026-09-18,14680,+0.20,1,2040,mark_to_market(마지막 종가)
-B1,B1-0219,main,book_pullback_ma5,115440,2026-09-17,band_touch,9766.7,102,amount,996203,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-18,9430,-3.45,1,-34343,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
-B1,B1-0220,main,book_pullback_ma5,256840,2026-09-17,D_open,2865,349,amount,999885,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-18,2779.05,-3.00,1,-29997,
-B1,B1-0221,main,book_pullback_ma5,413630,2026-09-17,D_open,4680,213,amount,996840,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-17,4539.6,-3.00,0,-29905,
-B1,B1-0222,main,book_pullback_ma5,443670,2026-09-17,D_open,5230,191,amount,998930,log,N,,,,,N,1,,closed,tp,after0902,2026-09-18,6014.5,+15.00,1,149839,
-B1,B1-0223,main,daytrading_3methods_breakout,0007J0,2026-09-17,D_open,10490,95,amount,996550,log,N,,,,,N,1,,closed,tp,entry_day,2026-09-17,11539,+10.00,0,99655,
-B1,B1-0224,main,daytrading_3methods_breakout,005160,2026-09-17,D_open,3435,291,amount,999585,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-17,3778.5,+10.00,0,99959,
-B1,B1-0225,main,daytrading_3methods_breakout,024900,2026-09-17,D_open,1944,514,amount,999216,log,N,,,,,N,1,,open,open,,2026-09-18,1995,+2.62,1,26214,mark_to_market(마지막 종가)
-B1,B1-0226,main,daytrading_3methods_breakout,035460,2026-09-17,D_open,2570,389,amount,999730,replay,N,,,,,N,1,,open,open,,2026-09-18,2650,+3.11,1,31120,mark_to_market(마지막 종가)
-B1,B1-0227,main,daytrading_3methods_breakout,039560,2026-09-17,D_open,2600,384,amount,998400,replay,N,,,,,N,1,,open,open,,2026-09-18,2625,+0.96,1,9600,mark_to_market(마지막 종가)
-B1,B1-0228,main,daytrading_3methods_breakout,072950,2026-09-17,band_touch,13935.9,71,amount,989449,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-18,15329.49,+10.00,1,98945,entry_day_touch_skipped(진입 시각 불명)
-B1,B1-0229,main,daytrading_3methods_breakout,125210,2026-09-17,D_open,6100,163,amount,994300,replay,N,,,,,N,1,,open,open,,2026-09-18,6180,+1.31,1,13040,mark_to_market(마지막 종가)
-B1,B1-0230,main,daytrading_3methods_breakout,357580,2026-09-17,band_touch,6633.2,150,amount,994980,replay,N,,,,,N,1,,open,open,,2026-09-18,7190,+8.39,1,83520,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0231,main,daytrading_3methods_breakout,406820,2026-09-17,D_open,2540,393,amount,998220,replay,N,,,,,N,1,,closed,sl,entry_day,2026-09-17,2286,-10.00,0,-99822,sl_tp_same_bar(손절 우선)
-B1,B1-0232,main,daytrading_3methods_breakout,452280,2026-09-17,D_open,13380,74,amount,990120,replay,N,,,,,N,1,,open,open,,2026-09-18,13500,+0.90,1,8880,mark_to_market(마지막 종가)
-B1,B1-0233,main,elder_ema_pullback,000150,2026-09-17,band_touch,1425960,1,one_share,1425960,log,N,,,,,Y,2,1,open,open,,2026-09-18,1447000,+1.48,1,21040,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0234,main,elder_ema_pullback,005935,2026-09-17,D_open,196500,5,amount,982500,log,N,,,,,N,1,,open,open,,2026-09-18,196100,-0.20,1,-2000,mark_to_market(마지막 종가)
-B1,B1-0235,main,elder_ema_pullback,036930,2026-09-17,band_touch,204500,4,amount,818000,log,N,,,,,N,1,,open,open,,2026-09-18,205500,+0.49,1,4000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0236,main,elder_ema_pullback,039030,2026-09-17,D_open,472000,2,amount,944000,log,N,,,,,Y,2,1,open,open,,2026-09-18,453500,-3.92,1,-37000,mark_to_market(마지막 종가)
-B1,B1-0237,main,elder_ema_pullback,051900,2026-09-17,band_touch,307000,3,amount,921000,replay,N,,,,,Y,2,2,open,open,,2026-09-18,295500,-3.75,1,-34500,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0238,main,elder_ema_pullback,062040,2026-09-17,D_open,201000,4,amount,804000,log,N,,throttle_delay,,,N,1,,closed,trend_flip,after0902,2026-09-18,205000,+1.99,1,16000,
-B1,B1-0239,main,elder_ema_pullback,064760,2026-09-17,band_touch,271500,3,amount,814500,replay,N,,,,,Y,2,2,open,open,,2026-09-18,268500,-1.10,1,-9000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0240,main,elder_ema_pullback,192820,2026-09-17,band_touch,286000,3,amount,858000,replay,N,,,,,Y,3,2,open,open,,2026-09-18,273000,-4.55,1,-39000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0241,main,minervini_volume_dryup,002990,2026-09-17,D_open,13650,73,amount,996450,replay,N,,,,,Y,4,3,open,open,,2026-09-18,13340,-2.27,1,-22630,mark_to_market(마지막 종가)
-B1,B1-0242,main,minervini_volume_dryup,005090,2026-09-17,D_open,54000,18,amount,972000,replay,N,,,,,N,1,,open,open,,2026-09-18,54400,+0.74,1,7200,mark_to_market(마지막 종가)
-B1,B1-0243,main,minervini_volume_dryup,006360,2026-09-17,D_open,36850,27,amount,994950,replay,N,,,,,Y,5,4,open,open,,2026-09-18,36850,+0.00,1,0,mark_to_market(마지막 종가)
-B1,B1-0244,main,minervini_volume_dryup,073240,2026-09-17,D_open,7030,142,amount,998260,replay,N,,,,,Y,6,5,open,open,,2026-09-18,7010,-0.28,1,-2840,mark_to_market(마지막 종가)
-B1,B1-0245,main,minervini_volume_dryup,089860,2026-09-17,D_open,47700,20,amount,954000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,48900,+2.52,1,24000,mark_to_market(마지막 종가)
-B1,B1-0246,main,minervini_volume_dryup,090430,2026-09-17,D_open,146000,6,amount,876000,replay,N,,,,,Y,3,2,open,open,,2026-09-18,143400,-1.78,1,-15600,mark_to_market(마지막 종가)
-B1,B1-0247,main,minervini_volume_dryup,282330,2026-09-17,D_open,142000,7,amount,994000,replay,N,,,,,Y,3,2,open,open,,2026-09-18,138400,-2.54,1,-25200,mark_to_market(마지막 종가)
-B1,B1-0248,main,minervini_volume_dryup,317400,2026-09-17,D_open,10360,96,amount,994560,replay,N,,,book_pullback_ma20(09-16),,N,1,,open,open,,2026-09-18,9960,-3.86,1,-38400,mark_to_market(마지막 종가)
-B1,B1-0249,main,rs_leader,017900,2026-09-17,band_touch,10773.8,92,amount,991190,replay,N,,,,,Y,3,2,open,open,,2026-09-18,10520,-2.36,1,-23350,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0250,main,rs_leader,020120,2026-09-17,D_open,8890,112,amount,995680,log,N,,throttle,book_envelope_200d(09-15),,Y,3,2,open,open,,2026-09-18,8420,-5.29,1,-52640,mark_to_market(마지막 종가)
-B1,B1-0251,main,rs_leader,024840,2026-09-17,D_open,5580,179,amount,998820,log,N,,throttle,,,N,1,,closed,tp,after0902,2026-09-18,6417,+15.00,1,149823,
-B1,B1-0252,main,rs_leader,036930,2026-09-17,D_open,203000,4,amount,812000,log,N,,throttle,,,N,1,,open,open,,2026-09-18,205500,+1.23,1,10000,mark_to_market(마지막 종가)
-B1,B1-0253,main,rs_leader,064290,2026-09-17,D_open,50100,19,amount,951900,log,N,,throttle_delay,,,N,1,,closed,sl,entry_day,2026-09-17,46092,-8.00,0,-76152,
-B1,B1-0254,main,rs_leader,079650,2026-09-17,D_open,6580,151,amount,993580,replay,N,,,,,Y,3,2,open,open,,2026-09-18,6370,-3.19,1,-31710,mark_to_market(마지막 종가)
-B1,B1-0255,main,rs_leader,092190,2026-09-17,band_touch,9043.4,110,amount,994774,log,N,,throttle_delay,,,N,1,,open,open,,2026-09-18,8610,-4.79,1,-47674,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0256,main,rs_leader,351320,2026-09-17,D_open,3860,259,amount,999740,log,N,,,,,Y,2,2,open,open,,2026-09-18,3915,+1.42,1,14245,mark_to_market(마지막 종가)
-B1,B1-0257,main,rs_leader,356680,2026-09-17,D_open,17150,58,amount,994700,log,N,,throttle,,,N,1,,open,open,,2026-09-18,17570,+2.45,1,24360,mark_to_market(마지막 종가)
-B1,B1-0258,main,rs_leader,446540,2026-09-17,D_open,8960,111,amount,994560,log,N,,throttle,,,N,1,,open,open,,2026-09-18,8550,-4.58,1,-45510,mark_to_market(마지막 종가)
-B1,B1-0259,main,book_pullback_ma20,003280,2026-09-18,D_open,1817,550,amount,999350,log,N,,,,,N,1,,open,open,,2026-09-18,1803,-0.77,0,-7700,mark_to_market(마지막 종가)
-B1,B1-0260,main,book_pullback_ma20,006910,2026-09-18,band_touch,7393.2,135,amount,998082,log,N,,throttle,,,N,1,,open,open,,2026-09-18,7640,+3.34,0,33318,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0261,main,book_pullback_ma20,024840,2026-09-18,band_touch,5938.8,168,amount,997718,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,6500,+9.45,0,94282,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0262,main,book_pullback_ma20,067310,2026-09-18,band_touch,37976,26,amount,987376,log,N,,throttle,,,N,1,,open,open,,2026-09-18,38650,+1.77,0,17524,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0263,main,book_pullback_ma20,090460,2026-09-18,band_touch,19755.6,50,amount,987780,log,N,,throttle,,,N,1,,open,open,,2026-09-18,20550,+4.02,0,39720,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0264,main,book_pullback_ma20,130660,2026-09-18,band_touch,12998.7,76,amount,987901,log,N,,throttle,,,Y,2,2,open,open,,2026-09-18,13040,+0.32,0,3139,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0265,main,book_pullback_ma20,134580,2026-09-18,D_open,3940,253,amount,996820,log,N,,throttle,,,N,1,,open,open,,2026-09-18,3740,-5.08,0,-50600,mark_to_market(마지막 종가)
-B1,B1-0266,main,book_pullback_ma20,142280,2026-09-18,D_open,3235,309,amount,999615,log,N,,throttle,,,N,1,,open,open,,2026-09-18,3300,+2.01,0,20085,mark_to_market(마지막 종가)
-B1,B1-0267,main,book_pullback_ma20,289080,2026-09-18,D_open,2650,377,amount,999050,log,N,,throttle,,,N,1,,open,open,,2026-09-18,2700,+1.89,0,18850,mark_to_market(마지막 종가)
-B1,B1-0268,main,book_pullback_ma20,388050,2026-09-18,band_touch,10372.7,96,amount,995779,log,N,,throttle,,,N,1,,open,open,,2026-09-18,10480,+1.03,0,10301,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0269,main,book_pullback_ma5,004310,2026-09-18,band_touch,10605,94,amount,996870,log,N,,throttle_delay,,,N,1,,open,open,,2026-09-18,10070,-5.04,0,-50290,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0270,main,book_pullback_ma5,067290,2026-09-18,band_touch,3595.6,278,amount,999577,log,N,,,,,N,1,,open,open,,2026-09-18,3390,-5.72,0,-57157,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0271,main,book_pullback_ma5,093370,2026-09-18,D_open,14910,67,amount,998970,log,N,,throttle,,,Y,2,1,closed,sl,entry_day,2026-09-18,14462.7,-3.00,0,-29969,
-B1,B1-0272,main,book_pullback_ma5,332570,2026-09-18,band_touch,8696.1,114,amount,991355,log,N,,throttle,,,Y,2,2,open,open,,2026-09-18,9100,+4.64,0,46045,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0273,main,book_pullback_ma5,372910,2026-09-18,D_open,2165,461,amount,998065,log,N,,throttle,,,N,1,,closed,sl,entry_day,2026-09-18,2100.05,-3.00,0,-29942,
-B1,B1-0274,main,book_pullback_ma5,443670,2026-09-18,band_touch,5726.7,174,amount,996446,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,5470,-4.48,0,-44666,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0275,main,book_pullback_ma5,452260,2026-09-18,D_open,2650,377,amount,999050,log,N,,throttle,,,N,1,,open,open,,2026-09-18,2680,+1.13,0,11310,mark_to_market(마지막 종가)
-B1,B1-0276,main,book_pullback_ma5,457370,2026-09-18,band_touch,12260.8,81,amount,993125,log,N,,,,,N,1,,open,open,,2026-09-18,11660,-4.90,0,-48665,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0277,main,daytrading_3methods_breakout,042370,2026-09-18,D_open,11450,87,amount,996150,log,N,,throttle_delay,,,N,1,,open,open,,2026-09-18,11440,-0.09,0,-870,mark_to_market(마지막 종가)
-B1,B1-0278,main,daytrading_3methods_breakout,051160,2026-09-18,D_open,11750,85,amount,998750,log,N,,throttle,,,N,1,,open,open,,2026-09-18,12060,+2.64,0,26350,mark_to_market(마지막 종가)
-B1,B1-0279,main,daytrading_3methods_breakout,072990,2026-09-18,D_open,3225,310,amount,999750,log,N,,throttle_delay,,,N,1,,open,open,,2026-09-18,3145,-2.48,0,-24800,mark_to_market(마지막 종가)
-B1,B1-0280,main,daytrading_3methods_breakout,201490,2026-09-18,D_open,4465,223,amount,995695,log,N,,throttle,,,N,1,,open,open,,2026-09-18,4220,-5.49,0,-54635,mark_to_market(마지막 종가)
-B1,B1-0281,main,daytrading_3methods_breakout,209640,2026-09-18,D_open,3820,261,amount,997020,log,N,,,,,N,1,,open,open,,2026-09-18,3780,-1.05,0,-10440,mark_to_market(마지막 종가)
-B1,B1-0282,main,daytrading_3methods_breakout,234030,2026-09-18,D_open,3425,291,amount,996675,log,N,,throttle,,,N,1,,open,open,,2026-09-18,3470,+1.31,0,13095,mark_to_market(마지막 종가)
-B1,B1-0283,main,daytrading_3methods_breakout,274090,2026-09-18,D_open,11530,86,amount,991580,log,N,,throttle,,,N,1,,closed,tp,entry_day,2026-09-18,12683,+10.00,0,99158,
-B1,B1-0284,main,daytrading_3methods_breakout,288180,2026-09-18,D_open,8170,122,amount,996740,log,N,,throttle,,,N,1,,open,open,,2026-09-18,8230,+0.73,0,7320,mark_to_market(마지막 종가)
-B1,B1-0285,main,daytrading_3methods_breakout,396270,2026-09-18,D_open,2440,409,amount,997960,log,N,,throttle_delay,,,N,1,,open,open,,2026-09-18,2355,-3.48,0,-34765,mark_to_market(마지막 종가)
-B1,B1-0286,main,daytrading_3methods_breakout,478340,2026-09-18,band_touch,14265.5,70,amount,998585,log,N,,throttle,,,N,1,,open,open,,2026-09-18,14460,+1.36,0,13615,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0287,main,elder_ema_pullback,005935,2026-09-18,D_open,200000,5,amount,1000000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,196100,-1.95,0,-19500,mark_to_market(마지막 종가)
-B1,B1-0288,main,elder_ema_pullback,010950,2026-09-18,D_open,153600,6,amount,921600,log,N,,throttle,,,N,1,,open,open,,2026-09-18,149500,-2.67,0,-24600,mark_to_market(마지막 종가)
-B1,B1-0289,main,elder_ema_pullback,012450,2026-09-18,D_open,1116000,1,one_share,1116000,log,N,,,,,N,1,,open,open,,2026-09-18,1078000,-3.41,0,-38000,mark_to_market(마지막 종가)
-B1,B1-0290,main,elder_ema_pullback,086280,2026-09-18,D_open,208500,4,amount,834000,log,N,,,,,N,1,,open,open,,2026-09-18,203500,-2.40,0,-20000,mark_to_market(마지막 종가)
-B1,B1-0291,main,minervini_volume_dryup,001450,2026-09-18,D_open,49600,20,amount,992000,log,N,,throttle,,,Y,2,2,open,open,,2026-09-18,48800,-1.61,0,-16000,mark_to_market(마지막 종가)
-B1,B1-0292,main,minervini_volume_dryup,002990,2026-09-18,D_open,13450,74,amount,995300,log,N,,,,,Y,5,4,open,open,,2026-09-18,13340,-0.82,0,-8140,mark_to_market(마지막 종가)
-B1,B1-0293,main,minervini_volume_dryup,005090,2026-09-18,D_open,54500,18,amount,981000,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,54400,-0.18,0,-1800,mark_to_market(마지막 종가)
-B1,B1-0294,main,minervini_volume_dryup,006360,2026-09-18,D_open,37000,27,amount,999000,replay,N,,,,,Y,6,5,open,open,,2026-09-18,36850,-0.41,0,-4050,mark_to_market(마지막 종가)
-B1,B1-0295,main,minervini_volume_dryup,007340,2026-09-18,D_open,48300,20,amount,966000,log,N,,throttle,,,N,1,,open,open,,2026-09-18,49300,+2.07,0,20000,mark_to_market(마지막 종가)
-B1,B1-0296,main,minervini_volume_dryup,041830,2026-09-18,D_open,58400,17,amount,992800,log,N,,throttle,,,Y,2,2,open,open,,2026-09-18,57500,-1.54,0,-15300,mark_to_market(마지막 종가)
-B1,B1-0297,main,minervini_volume_dryup,073240,2026-09-18,D_open,7170,139,amount,996630,replay,N,,,,,Y,7,6,open,open,,2026-09-18,7010,-2.23,0,-22240,mark_to_market(마지막 종가)
-B1,B1-0298,main,minervini_volume_dryup,089860,2026-09-18,D_open,48250,20,amount,965000,log,N,,throttle,,,Y,3,2,open,open,,2026-09-18,48900,+1.35,0,13000,mark_to_market(마지막 종가)
-B1,B1-0299,main,minervini_volume_dryup,090430,2026-09-18,D_open,144700,6,amount,868200,log,N,,throttle,,,Y,4,3,open,open,,2026-09-18,143400,-0.90,0,-7800,mark_to_market(마지막 종가)
-B1,B1-0300,main,minervini_volume_dryup,317400,2026-09-18,D_open,10110,98,amount,990780,log,N,,throttle,book_pullback_ma20(09-16),,Y,2,1,open,open,,2026-09-18,9960,-1.48,0,-14700,mark_to_market(마지막 종가)
-B1,B1-0301,main,rs_leader,00088K,2026-09-18,D_open,42550,23,amount,978650,log,N,,,,,Y,2,3,open,open,,2026-09-18,40550,-4.70,0,-46000,mark_to_market(마지막 종가)
-B1,B1-0302,main,rs_leader,017900,2026-09-18,D_open,10280,97,amount,997160,replay,N,,,,,Y,4,3,open,open,,2026-09-18,10520,+2.33,0,23280,mark_to_market(마지막 종가)
-B1,B1-0303,main,rs_leader,020120,2026-09-18,D_open,9250,108,amount,999000,log,N,,,book_envelope_200d(09-15),,Y,4,3,closed,sl,entry_day,2026-09-18,8510,-8.00,0,-79920,
-B1,B1-0304,main,rs_leader,024840,2026-09-18,D_open,5950,168,amount,999600,log,N,,throttle_delay,,,Y,2,1,closed,tp,entry_day,2026-09-18,6842.5,+15.00,0,149940,
-B1,B1-0305,main,rs_leader,036930,2026-09-18,D_open,210000,4,amount,840000,log,N,,throttle,elder_ema_pullback(09-17),,Y,2,1,open,open,,2026-09-18,205500,-2.14,0,-18000,mark_to_market(마지막 종가)
-B1,B1-0306,main,rs_leader,064290,2026-09-18,band_touch,49697.5,20,amount,993950,replay,N,,,,,N,1,,open,open,,2026-09-18,46750,-5.93,0,-58950,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1,B1-0307,main,rs_leader,071200,2026-09-18,D_open,13700,72,amount,986400,log,N,,throttle,,,N,1,,closed,sl,entry_day,2026-09-18,12604,-8.00,0,-78912,
-B1,B1-0308,main,rs_leader,092190,2026-09-18,D_open,8740,114,amount,996360,replay,N,,,,,Y,2,1,open,open,,2026-09-18,8610,-1.49,0,-14820,mark_to_market(마지막 종가)
-B1,B1-0309,main,rs_leader,134580,2026-09-18,D_open,3940,253,amount,996820,log,N,,throttle,,,N,1,,open,open,,2026-09-18,3740,-5.08,0,-50600,mark_to_market(마지막 종가)
-B1,B1-0310,main,rs_leader,446540,2026-09-18,D_open,9000,111,amount,999000,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,8550,-5.00,0,-49950,mark_to_market(마지막 종가)
+B1,B1-0051,main,book_envelope_200d,131290,2026-09-11,live_fill,289000,3,amount,867000,log,Y,09:23:09,,,,N,1,,closed,sl,after0902,2026-09-14,251000,-13.15,1,-114000,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
+B1,B1-0052,main,book_pullback_ma20,000370,2026-09-11,after_lift,8420,118,amount,993560,replay,Y,09:24:00,,,,N,1,,open,open,,2026-09-18,8070,-4.16,5,-41300,mark_to_market(마지막 종가)
+B1,B1-0053,main,book_pullback_ma20,025980,2026-09-11,after_lift,5220,191,amount,997020,replay,Y,09:24:00,,,,Y,2,1,open,open,,2026-09-18,5170,-0.96,5,-9550,mark_to_market(마지막 종가)
+B1,B1-0054,main,book_pullback_ma20,093370,2026-09-11,after_lift,13330,75,amount,999750,log,Y,09:24:00,,,,N,1,,closed,tp,after0902,2026-09-15,14663,+10.00,2,99975,
+B1,B1-0055,main,book_pullback_ma20,125490,2026-09-11,live_fill,10700,93,amount,995100,log,Y,09:23:09,,,,N,1,,closed,tp,after0902,2026-09-15,11770,+10.00,2,99510,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0056,main,book_pullback_ma20,232140,2026-09-11,after_lift,12010,83,amount,996830,log,Y,09:24:00,,,,N,1,,closed,sl,after0902,2026-09-14,11049.2,-8.00,1,-79746,
+B1,B1-0057,main,book_pullback_ma5,032940,2026-09-11,after_lift,10185,98,amount,998130,log,Y,09:28:00,,,,N,1,,closed,sl,entry_day,2026-09-11,9879.45,-3.00,0,-29944,
+B1,B1-0058,main,book_pullback_ma5,079650,2026-09-11,after_lift,7800,128,amount,998400,log,Y,10:00:00,,rs_leader(09-09),,N,1,,closed,sl,entry_day,2026-09-11,7566,-3.00,0,-29952,
+B1,B1-0059,main,book_pullback_ma5,092790,2026-09-11,after_lift,14460,69,amount,997740,log,Y,09:24:00,throttle_delay,,,N,1,,closed,sl,after0902,2026-09-15,14026.2,-3.00,2,-29932,
+B1,B1-0060,main,book_pullback_ma5,388050,2026-09-11,after_lift,11280,88,amount,992640,log,Y,09:24:00,,,,N,1,,closed,sl,after0902,2026-09-14,10860,-3.72,1,-36960,sl_gap_open(라이브는 09:05 이후 가격)
+B1,B1-0061,main,daytrading_3methods_breakout,000440,2026-09-11,band_touch,13956.5,71,amount,990912,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-18,12560.85,-10.00,5,-99091,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0062,main,daytrading_3methods_breakout,0011A0,2026-09-11,D_open,11560,86,amount,994160,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-11,12716,+10.00,0,99416,
+B1,B1-0063,main,daytrading_3methods_breakout,004090,2026-09-11,band_touch,13122.2,76,amount,997287,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,11809.98,-10.00,3,-99729,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0064,main,daytrading_3methods_breakout,006880,2026-09-11,band_touch,4871.9,205,amount,998740,log,N,,,,,N,1,,closed,sl,after0902,2026-09-16,4384.71,-10.00,3,-99874,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0065,main,daytrading_3methods_breakout,014530,2026-09-11,band_touch,3517.45,284,amount,998956,replay,N,,,,,N,1,,open,open,,2026-09-18,3375,-4.05,5,-40456,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0066,main,daytrading_3methods_breakout,053050,2026-09-11,band_touch,2126.95,470,amount,999667,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,1914.26,-10.00,3,-99967,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0067,main,daytrading_3methods_breakout,073010,2026-09-11,D_open,3335,299,amount,997165,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-11,3668.5,+10.00,0,99717,
+B1,B1-0068,main,daytrading_3methods_breakout,100590,2026-09-11,D_open,4970,201,amount,998970,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-15,4473,-10.00,2,-99897,
+B1,B1-0069,main,daytrading_3methods_breakout,117580,2026-09-11,band_touch,7735.3,129,amount,997854,log,N,,,,,N,1,,open,open,,2026-09-18,7070,-8.60,5,-85824,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0070,main,daytrading_3methods_breakout,452450,2026-09-11,D_open,4875,205,amount,999375,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-11,5362.5,+10.00,0,99938,
+B1,B1-0071,main,minervini_volume_dryup,006340,2026-09-11,after_lift,13350,74,amount,987900,replay,Y,09:24:00,,,,N,1,,open,open,,2026-09-18,13890,+4.04,5,39960,mark_to_market(마지막 종가)
+B1,B1-0072,main,minervini_volume_dryup,006360,2026-09-11,after_lift,38367.5,26,amount,997555,replay,Y,09:33:00,,,,N,1,,open,open,,2026-09-18,36850,-3.96,5,-39455,mark_to_market(마지막 종가)
+B1,B1-0073,main,minervini_volume_dryup,073240,2026-09-11,after_lift,7510,133,amount,998830,replay,Y,09:24:00,,,,Y,2,1,open,open,,2026-09-18,7010,-6.66,5,-66500,mark_to_market(마지막 종가)
+B1,B1-0074,main,minervini_volume_dryup,098120,2026-09-11,after_lift,52530,19,amount,998070,replay,Y,09:36:00,,,,N,1,,closed,sl,after0902,2026-09-14,48327.6,-8.00,1,-79846,
+B1,B1-0075,main,minervini_volume_dryup,119850,2026-09-11,after_lift,51000,19,amount,969000,replay,Y,09:24:00,,,,N,1,,open,open,,2026-09-18,54200,+6.27,5,60800,mark_to_market(마지막 종가)
+B1,B1-0076,main,rs_leader,001210,2026-09-11,after_lift,11620,86,amount,999320,replay,Y,09:24:00,,,,Y,2,1,closed,tp,after0902,2026-09-14,13363,+15.00,1,149898,
+B1,B1-0077,main,rs_leader,069540,2026-09-11,live_fill,3855,259,amount,998445,log,Y,09:23:09,,,,N,1,,closed,tp,after0902,2026-09-14,4433.25,+15.00,1,149767,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0078,main,rs_leader,079650,2026-09-11,after_lift,7550,132,amount,996600,replay,Y,09:24:00,,,,N,1,,closed,sl,after0902,2026-09-14,6946,-8.00,1,-79728,
+B1,B1-0079,main,rs_leader,351320,2026-09-11,live_fill,4085,244,amount,996740,log,Y,09:23:09,,,,N,1,,closed,sl,after0902,2026-09-17,3758.2,-8.00,4,-79739,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0080,main,book_envelope_200d,098120,2026-09-14,after_lift,50800,19,amount,965200,log,Y,11:03:00,,,,N,1,,open,open,,2026-09-18,53500,+5.31,4,51300,mark_to_market(마지막 종가)
+B1,B1-0081,main,book_pullback_ma20,003350,2026-09-14,after_lift,15310,65,amount,995150,replay,Y,11:03:00,,,,N,1,,open,open,,2026-09-18,15770,+3.00,4,29900,mark_to_market(마지막 종가)
+B1,B1-0082,main,book_pullback_ma20,025980,2026-09-14,after_lift,5050,198,amount,999900,replay,Y,11:03:00,,,,Y,3,2,closed,trail_ma,after0902,2026-09-16,5170,+2.38,2,23760,
+B1,B1-0083,main,book_pullback_ma5,413630,2026-09-14,live_fill,4130,242,amount,999460,log,Y,11:02:06,throttle_delay,,,N,1,,closed,sl,after0902,2026-09-15,3985,-3.51,1,-35090,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
+B1,B1-0084,main,book_pullback_ma5,452190,2026-09-14,live_fill,5120,195,amount,998400,log,Y,11:02:06,,,,N,1,,closed,sl,after0902,2026-09-15,4850,-5.27,1,-52650,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
+B1,B1-0085,main,daytrading_3methods_breakout,0011A0,2026-09-14,D_open,13210,75,amount,990750,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,11889,-10.00,2,-99075,
+B1,B1-0086,main,daytrading_3methods_breakout,0015S0,2026-09-14,D_open,8100,123,amount,996300,log,N,,,,,N,1,,closed,tp,after0902,2026-09-15,8910,+10.00,1,99630,
+B1,B1-0087,main,daytrading_3methods_breakout,060570,2026-09-14,D_open,4870,205,amount,998350,replay,N,,,,,N,1,,open,open,,2026-09-18,5090,+4.52,4,45100,mark_to_market(마지막 종가)
+B1,B1-0088,main,daytrading_3methods_breakout,115500,2026-09-14,band_touch,10248.5,97,amount,994104,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,11273.35,+10.00,2,99410,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0089,main,daytrading_3methods_breakout,352940,2026-09-14,D_open,2235,447,amount,999045,replay,N,,,,,N,1,,open,open,,2026-09-18,2115,-5.37,4,-53640,mark_to_market(마지막 종가)
+B1,B1-0090,main,daytrading_3methods_breakout,356680,2026-09-14,band_touch,16541.8,60,amount,992508,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-15,18195.98,+10.00,1,99251,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0091,main,daytrading_3methods_breakout,356890,2026-09-14,band_touch,2662.55,375,amount,998456,replay,N,,,,,N,1,,open,open,,2026-09-18,2535,-4.79,4,-47831,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0092,main,daytrading_3methods_breakout,431190,2026-09-14,D_open,3805,262,amount,996910,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,3424.5,-10.00,2,-99691,
+B1,B1-0093,main,daytrading_3methods_breakout,446540,2026-09-14,D_open,8390,119,amount,998410,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-14,9229,+10.00,0,99841,
+B1,B1-0094,main,minervini_volume_dryup,002990,2026-09-14,after_lift,13940,71,amount,989740,replay,Y,11:03:00,,,,N,1,,open,open,,2026-09-18,13340,-4.30,4,-42600,mark_to_market(마지막 종가)
+B1,B1-0095,main,minervini_volume_dryup,006360,2026-09-14,after_lift,37400,26,amount,972400,replay,Y,11:03:00,,,,Y,2,1,open,open,,2026-09-18,36850,-1.47,4,-14300,mark_to_market(마지막 종가)
+B1,B1-0096,main,minervini_volume_dryup,073240,2026-09-14,after_lift,7200,138,amount,993600,replay,Y,11:03:00,,,,Y,3,2,open,open,,2026-09-18,7010,-2.64,4,-26220,mark_to_market(마지막 종가)
+B1,B1-0097,main,minervini_volume_dryup,119850,2026-09-14,after_lift,50400,19,amount,957600,replay,Y,11:03:00,,,,Y,2,1,closed,tp,after0902,2026-09-18,56448,+12.00,4,114912,
+B1,B1-0098,main,rs_leader,001210,2026-09-14,after_lift,11900,84,amount,999600,replay,Y,11:03:00,,,,N,1,,closed,sl,entry_day,2026-09-14,10948,-8.00,0,-79968,
+B1,B1-0099,main,rs_leader,046970,2026-09-14,after_lift,6910,144,amount,995040,log,Y,11:03:00,throttle,,,N,1,,closed,tp,entry_day,2026-09-14,7946.5,+15.00,0,149256,
+B1,B1-0100,main,rs_leader,049080,2026-09-14,after_lift,8390,119,amount,998410,replay,Y,11:03:00,,,,Y,2,2,closed,tp,entry_day,2026-09-14,9648.5,+15.00,0,149762,
+B1,B1-0101,main,rs_leader,060570,2026-09-14,live_fill,4940,202,amount,997880,log,Y,11:02:06,throttle_delay,,,N,1,,open,open,,2026-09-18,5090,+3.04,4,30300,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0102,main,rs_leader,067390,2026-09-14,live_fill,6380,156,amount,995280,log,Y,11:02:06,,,,N,1,,closed,sl,after0902,2026-09-15,5869.6,-8.00,1,-79622,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0103,main,rs_leader,079650,2026-09-14,after_lift,6800,147,amount,999600,replay,Y,11:03:00,,,,N,1,,closed,sl,after0902,2026-09-16,6256,-8.00,2,-79968,
+B1,B1-0104,main,book_envelope_200d,020120,2026-09-15,D_open,8990,111,amount,997890,log,N,,,,,N,1,,open,open,,2026-09-18,8420,-6.34,3,-63270,mark_to_market(마지막 종가)
+B1,B1-0105,main,book_pullback_ma20,005880,2026-09-15,D_open,2065,484,amount,999460,replay,N,,,,,N,1,,open,open,,2026-09-18,2020,-2.18,3,-21780,mark_to_market(마지막 종가)
+B1,B1-0106,main,book_pullback_ma20,010170,2026-09-15,D_open,14410,69,amount,994290,log,N,,,,,N,1,,closed,tp,after0902,2026-09-16,15851,+10.00,1,99429,
+B1,B1-0107,main,book_pullback_ma20,017900,2026-09-15,band_touch,10372.7,96,amount,995779,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-18,11409.97,+10.00,3,99578,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0108,main,book_pullback_ma20,093370,2026-09-15,D_open,14110,70,amount,987700,replay,N,,,,,Y,2,2,open,open,,2026-09-18,14680,+4.04,3,39900,mark_to_market(마지막 종가)
+B1,B1-0109,main,book_pullback_ma20,100790,2026-09-15,D_open,15700,63,amount,989100,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-17,17270,+10.00,2,98910,
+B1,B1-0110,main,book_pullback_ma20,119850,2026-09-15,D_open,49250,20,amount,985000,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-17,54175,+10.00,2,98500,
+B1,B1-0111,main,book_pullback_ma20,204620,2026-09-15,D_open,5660,176,amount,996160,replay,N,,,,,N,1,,open,open,,2026-09-18,5860,+3.53,3,35200,mark_to_market(마지막 종가)
+B1,B1-0112,main,book_pullback_ma20,234690,2026-09-15,D_open,9480,105,amount,995400,replay,N,,,,,N,1,,open,open,,2026-09-18,9200,-2.95,3,-29400,mark_to_market(마지막 종가)
+B1,B1-0113,main,book_pullback_ma20,293490,2026-09-15,D_open,9570,104,amount,995280,replay,N,,,,,N,1,,open,open,,2026-09-18,9160,-4.28,3,-42640,mark_to_market(마지막 종가)
+B1,B1-0114,main,book_pullback_ma20,462860,2026-09-15,band_touch,3211.8,311,amount,998870,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,2740,-14.69,1,-146730,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
+B1,B1-0115,main,book_pullback_ma5,0015N0,2026-09-15,band_touch,12170.5,82,amount,997981,replay,N,,,,,N,1,,open,open,,2026-09-18,13570,+11.50,3,114759,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0116,main,book_pullback_ma5,032820,2026-09-15,D_open,13840,72,amount,996480,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-15,13424.8,-3.00,0,-29894,
+B1,B1-0117,main,book_pullback_ma5,036540,2026-09-15,D_open,7460,134,amount,999640,log,N,,,,,N,1,,closed,tp,entry_day,2026-09-15,8579,+15.00,0,149946,
+B1,B1-0118,main,book_pullback_ma5,100590,2026-09-15,D_open,4790,208,amount,996320,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-15,4646.3,-3.00,0,-29890,
+B1,B1-0119,main,book_pullback_ma5,115440,2026-09-15,band_touch,8978.9,111,amount,996658,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,10325.73,+15.00,1,149499,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0120,main,book_pullback_ma5,162300,2026-09-15,band_touch,2774.2,360,amount,998712,log,N,,,,,N,1,,closed,sl,after0902,2026-09-16,2680,-3.40,1,-33912,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
+B1,B1-0121,main,book_pullback_ma5,332570,2026-09-15,D_open,8020,124,amount,994480,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,9223,+15.00,1,149172,
+B1,B1-0122,main,book_pullback_ma5,441270,2026-09-15,D_open,8950,111,amount,993450,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,8681.5,-3.00,1,-29804,
+B1,B1-0123,main,book_pullback_ma5,452260,2026-09-15,D_open,2635,379,amount,998665,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-15,2555.95,-3.00,0,-29960,
+B1,B1-0124,main,book_pullback_ma5,950250,2026-09-15,D_open,3585,278,amount,996630,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-15,3477.45,-3.00,0,-29899,
+B1,B1-0125,main,daytrading_3methods_breakout,003200,2026-09-15,D_open,11600,86,amount,997600,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,12760,+10.00,1,99760,
+B1,B1-0126,main,daytrading_3methods_breakout,005160,2026-09-15,D_open,3095,323,amount,999685,log,N,,,,,N,1,,closed,tp,after0902,2026-09-16,3404.5,+10.00,1,99969,
+B1,B1-0127,main,daytrading_3methods_breakout,072950,2026-09-15,D_open,11260,88,amount,990880,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,12386,+10.00,1,99088,
+B1,B1-0128,main,daytrading_3methods_breakout,080160,2026-09-15,D_open,9870,101,amount,996870,replay,N,,,,,N,1,,open,open,,2026-09-18,8920,-9.63,3,-95950,mark_to_market(마지막 종가)
+B1,B1-0129,main,daytrading_3methods_breakout,104620,2026-09-15,D_open,3270,305,amount,997350,replay,N,,,,,N,1,,open,open,,2026-09-18,3260,-0.31,3,-3050,mark_to_market(마지막 종가)
+B1,B1-0130,main,daytrading_3methods_breakout,150900,2026-09-15,band_touch,4392.95,227,amount,997200,replay,N,,,,,N,1,,open,open,,2026-09-18,4100,-6.67,3,-66500,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0131,main,daytrading_3methods_breakout,184230,2026-09-15,band_touch,2374.15,421,amount,999517,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-17,2136.74,-10.00,2,-99952,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0132,main,daytrading_3methods_breakout,263860,2026-09-15,band_touch,19982,50,amount,999100,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-16,21980.2,+10.00,1,99910,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0133,main,daytrading_3methods_breakout,411080,2026-09-15,band_touch,7107,140,amount,994980,log,N,,,,,N,1,,closed,tp,after0902,2026-09-16,7817.7,+10.00,1,99498,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0134,main,daytrading_3methods_breakout,480370,2026-09-15,D_open,1926,519,amount,999594,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,1733.4,-10.00,1,-99959,
+B1,B1-0135,main,elder_ema_pullback,000810,2026-09-15,band_touch,678000,1,amount,678000,log,N,,,,,N,1,,open,open,,2026-09-18,648000,-4.42,3,-30000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0136,main,elder_ema_pullback,005830,2026-09-15,band_touch,194100,5,amount,970500,log,N,,,,,N,1,,open,open,,2026-09-18,186900,-3.71,3,-36000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0137,main,elder_ema_pullback,051900,2026-09-15,band_touch,302500,3,amount,907500,log,N,,,,,N,1,,open,open,,2026-09-18,295500,-2.31,3,-21000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0138,main,elder_ema_pullback,064760,2026-09-15,band_touch,268500,3,amount,805500,replay,N,,,,,N,1,,open,open,,2026-09-18,268500,+0.00,3,0,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0139,main,elder_ema_pullback,095340,2026-09-15,band_touch,186800,5,amount,934000,log,N,,,,,N,1,,open,open,,2026-09-18,186300,-0.27,3,-2500,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0140,main,elder_ema_pullback,128940,2026-09-15,band_touch,485500,2,amount,971000,log,N,,,,,N,1,,open,open,,2026-09-18,503000,+3.60,3,35000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0141,main,elder_ema_pullback,192820,2026-09-15,band_touch,282500,3,amount,847500,log,N,,,,,N,1,,open,open,,2026-09-18,273000,-3.36,3,-28500,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0142,main,minervini_volume_dryup,002990,2026-09-15,D_open,13490,74,amount,998260,replay,N,,,,,Y,2,1,open,open,,2026-09-18,13340,-1.11,3,-11100,mark_to_market(마지막 종가)
+B1,B1-0143,main,minervini_volume_dryup,006360,2026-09-15,D_open,36500,27,amount,985500,replay,N,,,,,Y,3,2,open,open,,2026-09-18,36850,+0.96,3,9450,mark_to_market(마지막 종가)
+B1,B1-0144,main,minervini_volume_dryup,073240,2026-09-15,D_open,7100,140,amount,994000,replay,N,,,,,Y,4,3,open,open,,2026-09-18,7010,-1.27,3,-12600,mark_to_market(마지막 종가)
+B1,B1-0145,main,minervini_volume_dryup,090430,2026-09-15,D_open,144200,6,amount,865200,replay,N,,,,,N,1,,open,open,,2026-09-18,143400,-0.55,3,-4800,mark_to_market(마지막 종가)
+B1,B1-0146,main,minervini_volume_dryup,119850,2026-09-15,D_open,49250,20,amount,985000,replay,N,,,,,Y,3,2,closed,tp,after0902,2026-09-18,55160,+12.00,3,118200,
+B1,B1-0147,main,minervini_volume_dryup,282330,2026-09-15,D_open,146600,6,amount,879600,replay,N,,,,,N,1,,open,open,,2026-09-18,138400,-5.59,3,-49200,mark_to_market(마지막 종가)
+B1,B1-0148,main,rs_leader,00088K,2026-09-15,D_open,42300,23,amount,972900,log,N,,throttle,,,N,1,,open,open,,2026-09-18,40550,-4.14,3,-40250,mark_to_market(마지막 종가)
+B1,B1-0149,main,rs_leader,001210,2026-09-15,band_touch,11093.1,90,amount,998379,log,N,,,,,N,1,,closed,ma_break,after0902,2026-09-18,10730,-3.27,3,-32679,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0150,main,rs_leader,017900,2026-09-15,band_touch,10578.1,94,amount,994341,log,N,,throttle,,,N,1,,open,open,,2026-09-18,10520,-0.55,3,-5461,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0151,main,rs_leader,020120,2026-09-15,D_open,8990,111,amount,997890,log,N,,throttle,book_envelope_200d(09-15),,N,1,,open,open,,2026-09-18,8420,-6.34,3,-63270,mark_to_market(마지막 종가)
+B1,B1-0152,main,rs_leader,024850,2026-09-15,D_open,15650,63,amount,985950,log,N,,throttle,,,N,1,,closed,ma_break,after0902,2026-09-18,15070,-3.71,3,-36540,
+B1,B1-0153,main,rs_leader,049080,2026-09-15,D_open,8830,113,amount,997790,replay,N,,,,,Y,2,3,closed,tp,after0902,2026-09-16,10154.5,+15.00,1,149668,
+B1,B1-0154,main,rs_leader,079650,2026-09-15,D_open,6490,154,amount,999460,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,6370,-1.85,3,-18480,mark_to_market(마지막 종가)
+B1,B1-0155,main,rs_leader,184230,2026-09-15,band_touch,2374.15,421,amount,999517,log,N,,,,,N,1,,closed,sl,after0902,2026-09-16,2184.22,-8.00,1,-79961,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0156,main,rs_leader,285800,2026-09-15,D_open,4550,219,amount,996450,log,N,,throttle,,,N,1,,closed,sl,entry_day,2026-09-15,4186,-8.00,0,-79716,
+B1,B1-0157,main,rs_leader,351320,2026-09-15,D_open,4100,243,amount,996300,log,N,,throttle,,,Y,2,2,closed,sl,after0902,2026-09-17,3772,-8.00,2,-79704,
+B1,B1-0158,main,book_envelope_200d,031980,2026-09-16,D_open,158900,6,amount,953400,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-16,146188,-8.00,0,-76272,
+B1,B1-0159,main,book_pullback_ma20,027360,2026-09-16,D_open,3325,300,amount,997500,log,N,,,,,N,1,,closed,tp,after0902,2026-09-17,3657.5,+10.00,1,99750,
+B1,B1-0160,main,book_pullback_ma20,059120,2026-09-16,D_open,7100,140,amount,994000,replay,N,,,,,Y,2,4,open,open,,2026-09-18,7250,+2.11,2,21000,mark_to_market(마지막 종가)
+B1,B1-0161,main,book_pullback_ma20,064550,2026-09-16,D_open,9750,102,amount,994500,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-18,8970,-8.00,2,-79560,
+B1,B1-0162,main,book_pullback_ma20,078150,2026-09-16,D_open,2040,490,amount,999600,replay,N,,,book_pullback_ma5(09-09),,N,1,,open,open,,2026-09-18,2045,+0.25,2,2450,mark_to_market(마지막 종가)
+B1,B1-0163,main,book_pullback_ma20,100790,2026-09-16,D_open,16030,62,amount,993860,replay,N,,,,,Y,2,1,closed,tp,after0902,2026-09-17,17633,+10.00,1,99386,
+B1,B1-0164,main,book_pullback_ma20,130660,2026-09-16,D_open,13000,76,amount,988000,replay,N,,,,,N,1,,open,open,,2026-09-18,13040,+0.31,2,3040,mark_to_market(마지막 종가)
+B1,B1-0165,main,book_pullback_ma20,232140,2026-09-16,D_open,11680,85,amount,992800,replay,N,,,,,N,1,,open,open,,2026-09-18,11910,+1.97,2,19550,mark_to_market(마지막 종가)
+B1,B1-0166,main,book_pullback_ma20,317400,2026-09-16,D_open,11130,89,amount,990570,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-16,10239.6,-8.00,0,-79246,
+B1,B1-0167,main,book_pullback_ma20,372910,2026-09-16,D_open,2015,496,amount,999440,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-17,2216.5,+10.00,1,99944,
+B1,B1-0168,main,book_pullback_ma20,413630,2026-09-16,D_open,4480,223,amount,999040,log,N,,,,,N,1,,closed,tp,entry_day,2026-09-16,4928,+10.00,0,99904,
+B1,B1-0169,main,book_pullback_ma5,003350,2026-09-16,D_open,14680,68,amount,998240,log,N,,throttle_delay,,,N,1,,closed,trail_ma,after0902,2026-09-18,14870,+1.29,2,12920,
+B1,B1-0170,main,book_pullback_ma5,004310,2026-09-16,D_open,10190,98,amount,998620,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-16,9884.3,-3.00,0,-29959,
+B1,B1-0171,main,book_pullback_ma5,036540,2026-09-16,D_open,8470,118,amount,999460,log,N,,throttle,,,N,1,,closed,sl,entry_day,2026-09-16,8215.9,-3.00,0,-29984,
+B1,B1-0172,main,book_pullback_ma5,053300,2026-09-16,D_open,5500,181,amount,995500,log,N,,throttle_delay,,,N,1,,closed,sl,entry_day,2026-09-16,5335,-3.00,0,-29865,
+B1,B1-0173,main,book_pullback_ma5,073010,2026-09-16,band_touch,3535,282,amount,996870,log,N,,throttle_delay,,,N,1,,closed,sl,after0902,2026-09-17,3410,-3.54,1,-35250,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
+B1,B1-0174,main,book_pullback_ma5,317400,2026-09-16,D_open,11130,89,amount,990570,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-16,10796.1,-3.00,0,-29717,
+B1,B1-0175,main,book_pullback_ma5,321370,2026-09-16,D_open,1174,851,amount,999074,log,N,,throttle,,,N,1,,closed,tp,entry_day,2026-09-16,1350.1,+15.00,0,149861,
+B1,B1-0176,main,book_pullback_ma5,332570,2026-09-16,band_touch,8484,117,amount,992628,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,9100,+7.26,2,72072,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0177,main,book_pullback_ma5,391710,2026-09-16,band_touch,1456.94,686,amount,999461,log,N,,,,,N,1,,closed,sl,after0902,2026-09-17,1359,-6.72,1,-67187,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
+B1,B1-0178,main,book_pullback_ma5,441270,2026-09-16,D_open,9010,110,amount,991100,log,N,,,,,Y,2,1,closed,sl,entry_day,2026-09-16,8739.7,-3.00,0,-29733,
+B1,B1-0179,main,daytrading_3methods_breakout,028100,2026-09-16,D_open,19010,52,amount,988520,replay,N,,,,,N,1,,open,open,,2026-09-18,19940,+4.89,2,48360,mark_to_market(마지막 종가)
+B1,B1-0180,main,daytrading_3methods_breakout,036220,2026-09-16,D_open,7100,140,amount,994000,log,N,,,,,N,1,,open,open,,2026-09-18,6760,-4.79,2,-47600,mark_to_market(마지막 종가)
+B1,B1-0181,main,daytrading_3methods_breakout,053300,2026-09-16,D_open,5500,181,amount,995500,replay,N,,,,,N,1,,open,open,,2026-09-18,5200,-5.45,2,-54300,mark_to_market(마지막 종가)
+B1,B1-0182,main,daytrading_3methods_breakout,054920,2026-09-16,band_touch,5386.9,185,amount,996577,replay,N,,,,,N,1,,open,open,,2026-09-18,4930,-8.48,2,-84527,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0183,main,daytrading_3methods_breakout,062970,2026-09-16,band_touch,3460.8,288,amount,996710,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-17,3114.72,-10.00,1,-99671,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0184,main,daytrading_3methods_breakout,071200,2026-09-16,D_open,12500,80,amount,1000000,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-17,13750,+10.00,1,100000,
+B1,B1-0185,main,daytrading_3methods_breakout,158430,2026-09-16,D_open,6390,156,amount,996840,replay,N,,,,,N,1,,closed,sl,entry_day,2026-09-16,5751,-10.00,0,-99684,
+B1,B1-0186,main,daytrading_3methods_breakout,372910,2026-09-16,D_open,2015,496,amount,999440,log,N,,,,,N,1,,closed,tp,after0902,2026-09-17,2216.5,+10.00,1,99944,
+B1,B1-0187,main,daytrading_3methods_breakout,391710,2026-09-16,D_open,1417,705,amount,998985,replay,N,,,,,N,1,,open,open,,2026-09-18,1320,-6.85,2,-68385,mark_to_market(마지막 종가)
+B1,B1-0188,main,daytrading_3methods_breakout,417860,2026-09-16,D_open,7450,134,amount,998300,replay,N,,,,,N,1,,open,open,,2026-09-18,7350,-1.34,2,-13400,mark_to_market(마지막 종가)
+B1,B1-0189,main,elder_ema_pullback,000150,2026-09-16,band_touch,1320000,1,one_share,1320000,log,N,,,,,N,1,,open,open,,2026-09-18,1447000,+9.62,2,127000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0190,main,elder_ema_pullback,039030,2026-09-16,band_touch,462000,2,amount,924000,log,N,,,,,N,1,,open,open,,2026-09-18,453500,-1.84,2,-17000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0191,main,elder_ema_pullback,128940,2026-09-16,band_touch,508000,1,amount,508000,log,N,,,,,Y,2,1,open,open,,2026-09-18,503000,-0.98,2,-5000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0192,main,elder_ema_pullback,192820,2026-09-16,band_touch,285000,3,amount,855000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,273000,-4.21,2,-36000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0193,main,elder_ema_pullback,373220,2026-09-16,band_touch,372000,2,amount,744000,log,N,,,,,N,1,,open,open,,2026-09-18,364000,-2.15,2,-16000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0194,main,elder_ema_pullback,443060,2026-09-16,band_touch,237000,4,amount,948000,replay,N,,,,,Y,2,4,open,open,,2026-09-18,246000,+3.80,2,36000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0195,main,minervini_volume_dryup,001450,2026-09-16,D_open,49000,20,amount,980000,replay,N,,,,,N,1,,open,open,,2026-09-18,48800,-0.41,2,-4000,mark_to_market(마지막 종가)
+B1,B1-0196,main,minervini_volume_dryup,002990,2026-09-16,D_open,13490,74,amount,998260,replay,N,,,,,Y,3,2,open,open,,2026-09-18,13340,-1.11,2,-11100,mark_to_market(마지막 종가)
+B1,B1-0197,main,minervini_volume_dryup,006360,2026-09-16,D_open,37750,26,amount,981500,replay,N,,,,,Y,4,3,open,open,,2026-09-18,36850,-2.38,2,-23400,mark_to_market(마지막 종가)
+B1,B1-0198,main,minervini_volume_dryup,041830,2026-09-16,D_open,58600,17,amount,996200,replay,N,,,,,N,1,,open,open,,2026-09-18,57500,-1.88,2,-18700,mark_to_market(마지막 종가)
+B1,B1-0199,main,minervini_volume_dryup,073240,2026-09-16,D_open,7090,141,amount,999690,replay,N,,,,,Y,5,4,open,open,,2026-09-18,7010,-1.13,2,-11280,mark_to_market(마지막 종가)
+B1,B1-0200,main,minervini_volume_dryup,089860,2026-09-16,D_open,47750,20,amount,955000,replay,N,,,,,N,1,,open,open,,2026-09-18,48900,+2.41,2,23000,mark_to_market(마지막 종가)
+B1,B1-0201,main,minervini_volume_dryup,090430,2026-09-16,D_open,143500,6,amount,861000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,143400,-0.07,2,-600,mark_to_market(마지막 종가)
+B1,B1-0202,main,minervini_volume_dryup,119850,2026-09-16,D_open,48700,20,amount,974000,replay,N,,,,,Y,4,3,closed,tp,after0902,2026-09-18,54544,+12.00,2,116880,
+B1,B1-0203,main,minervini_volume_dryup,282330,2026-09-16,D_open,143500,6,amount,861000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,138400,-3.55,2,-30600,mark_to_market(마지막 종가)
+B1,B1-0204,main,rs_leader,001210,2026-09-16,band_touch,11124,89,amount,990036,replay,N,,,,,Y,2,1,closed,ma_break,after0902,2026-09-18,10730,-3.54,2,-35066,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0205,main,rs_leader,017900,2026-09-16,D_open,10500,95,amount,997500,log,N,,,,,Y,2,1,open,open,,2026-09-18,10520,+0.19,2,1900,mark_to_market(마지막 종가)
+B1,B1-0206,main,rs_leader,020120,2026-09-16,D_open,8800,113,amount,994400,log,N,,throttle,book_envelope_200d(09-15),,Y,2,1,open,open,,2026-09-18,8420,-4.32,2,-42940,mark_to_market(마지막 종가)
+B1,B1-0207,main,rs_leader,024850,2026-09-16,D_open,15750,63,amount,992250,log,N,,throttle_delay,,,Y,2,1,closed,ma_break,after0902,2026-09-18,15070,-4.32,2,-42840,
+B1,B1-0208,main,rs_leader,034940,2026-09-16,D_open,2825,353,amount,997225,log,N,,throttle,,,N,1,,open,open,,2026-09-18,2700,-4.42,2,-44125,mark_to_market(마지막 종가)
+B1,B1-0209,main,rs_leader,049080,2026-09-16,D_open,8630,115,amount,992450,replay,N,,,,,Y,3,4,closed,tp,entry_day,2026-09-16,9924.5,+15.00,0,148868,
+B1,B1-0210,main,rs_leader,079650,2026-09-16,band_touch,6664.1,150,amount,999615,log,N,,throttle_delay,,,Y,3,2,open,open,,2026-09-18,6370,-4.41,2,-44115,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0211,main,rs_leader,140430,2026-09-16,D_open,2645,378,amount,999810,log,N,,throttle_delay,,,N,1,,closed,tp,entry_day,2026-09-16,3041.75,+15.00,0,149971,
+B1,B1-0212,main,rs_leader,184230,2026-09-16,D_open,2310,432,amount,997920,replay,N,,,,,Y,2,1,closed,sl,after0902,2026-09-17,2125.2,-8.00,1,-79834,
+B1,B1-0213,main,rs_leader,351320,2026-09-16,D_open,4200,238,amount,999600,log,N,,throttle,,,Y,3,3,closed,sl,entry_day,2026-09-16,3864,-8.00,0,-79968,
+B1,B1-0214,main,book_pullback_ma20,024840,2026-09-17,D_open,5580,179,amount,998820,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-18,6138,+10.00,1,99882,
+B1,B1-0215,main,book_pullback_ma20,033790,2026-09-17,D_open,7800,128,amount,998400,replay,N,,,,,N,1,,open,open,,2026-09-18,8000,+2.56,1,25600,mark_to_market(마지막 종가)
+B1,B1-0216,main,book_pullback_ma20,077360,2026-09-17,band_touch,10766.6,92,amount,990527,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-18,11843.26,+10.00,1,99053,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0217,main,book_pullback_ma20,100130,2026-09-17,D_open,1450,689,amount,999050,replay,N,,,,,N,1,,open,open,,2026-09-18,1460,+0.69,1,6890,mark_to_market(마지막 종가)
+B1,B1-0218,main,book_pullback_ma20,100790,2026-09-17,band_touch,16564,60,amount,993840,replay,N,,,,,Y,3,2,closed,tp,after0902,2026-09-18,18220.4,+10.00,1,99384,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0219,main,book_pullback_ma20,125020,2026-09-17,D_open,5890,169,amount,995410,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-18,6479,+10.00,1,99541,
+B1,B1-0220,main,book_pullback_ma20,232140,2026-09-17,D_open,12000,83,amount,996000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,11910,-0.75,1,-7470,mark_to_market(마지막 종가)
+B1,B1-0221,main,book_pullback_ma5,003350,2026-09-17,D_open,14700,68,amount,999600,replay,N,,,,,Y,2,1,closed,trail_ma,after0902,2026-09-18,14870,+1.16,1,11560,
+B1,B1-0222,main,book_pullback_ma5,005160,2026-09-17,D_open,3435,291,amount,999585,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-17,3950.25,+15.00,0,149938,
+B1,B1-0223,main,book_pullback_ma5,046970,2026-09-17,band_touch,7312.4,136,amount,994486,log,N,,,,,N,1,,closed,tp,after0902,2026-09-18,8409.26,+15.00,1,149173,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0224,main,book_pullback_ma5,069540,2026-09-17,D_open,4415,226,amount,997790,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-17,4282.55,-3.00,0,-29934,
+B1,B1-0225,main,book_pullback_ma5,072950,2026-09-17,band_touch,13665.3,73,amount,997567,log,N,,,,,N,1,,closed,sl,after0902,2026-09-18,13255.34,-3.00,1,-29927,entry_day_touch_skipped(진입 시각 불명) · sl_tp_same_bar(손절 우선)
+B1,B1-0226,main,book_pullback_ma5,093370,2026-09-17,D_open,14650,68,amount,996200,log,N,,,,,N,1,,open,open,,2026-09-18,14680,+0.20,1,2040,mark_to_market(마지막 종가)
+B1,B1-0227,main,book_pullback_ma5,115440,2026-09-17,band_touch,9766.7,102,amount,996203,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-18,9430,-3.45,1,-34343,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
+B1,B1-0228,main,book_pullback_ma5,256840,2026-09-17,D_open,2865,349,amount,999885,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-18,2779.05,-3.00,1,-29997,
+B1,B1-0229,main,book_pullback_ma5,413630,2026-09-17,D_open,4680,213,amount,996840,log,N,,,,,N,1,,closed,sl,entry_day,2026-09-17,4539.6,-3.00,0,-29905,
+B1,B1-0230,main,book_pullback_ma5,443670,2026-09-17,D_open,5230,191,amount,998930,log,N,,,,,N,1,,closed,tp,after0902,2026-09-18,6014.5,+15.00,1,149839,
+B1,B1-0231,main,daytrading_3methods_breakout,0007J0,2026-09-17,D_open,10490,95,amount,996550,log,N,,,,,N,1,,closed,tp,entry_day,2026-09-17,11539,+10.00,0,99655,
+B1,B1-0232,main,daytrading_3methods_breakout,005160,2026-09-17,D_open,3435,291,amount,999585,replay,N,,,,,N,1,,closed,tp,entry_day,2026-09-17,3778.5,+10.00,0,99959,
+B1,B1-0233,main,daytrading_3methods_breakout,024900,2026-09-17,D_open,1944,514,amount,999216,log,N,,,,,N,1,,open,open,,2026-09-18,1995,+2.62,1,26214,mark_to_market(마지막 종가)
+B1,B1-0234,main,daytrading_3methods_breakout,035460,2026-09-17,D_open,2570,389,amount,999730,replay,N,,,,,N,1,,open,open,,2026-09-18,2650,+3.11,1,31120,mark_to_market(마지막 종가)
+B1,B1-0235,main,daytrading_3methods_breakout,039560,2026-09-17,D_open,2600,384,amount,998400,replay,N,,,,,N,1,,open,open,,2026-09-18,2625,+0.96,1,9600,mark_to_market(마지막 종가)
+B1,B1-0236,main,daytrading_3methods_breakout,072950,2026-09-17,band_touch,13935.9,71,amount,989449,replay,N,,,,,N,1,,closed,tp,after0902,2026-09-18,15329.49,+10.00,1,98945,entry_day_touch_skipped(진입 시각 불명)
+B1,B1-0237,main,daytrading_3methods_breakout,125210,2026-09-17,D_open,6100,163,amount,994300,replay,N,,,,,N,1,,open,open,,2026-09-18,6180,+1.31,1,13040,mark_to_market(마지막 종가)
+B1,B1-0238,main,daytrading_3methods_breakout,357580,2026-09-17,band_touch,6633.2,150,amount,994980,replay,N,,,,,N,1,,open,open,,2026-09-18,7190,+8.39,1,83520,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0239,main,daytrading_3methods_breakout,406820,2026-09-17,D_open,2540,393,amount,998220,replay,N,,,,,N,1,,closed,sl,entry_day,2026-09-17,2286,-10.00,0,-99822,sl_tp_same_bar(손절 우선)
+B1,B1-0240,main,daytrading_3methods_breakout,452280,2026-09-17,D_open,13380,74,amount,990120,replay,N,,,,,N,1,,open,open,,2026-09-18,13500,+0.90,1,8880,mark_to_market(마지막 종가)
+B1,B1-0241,main,elder_ema_pullback,000150,2026-09-17,band_touch,1425960,1,one_share,1425960,log,N,,,,,Y,2,1,open,open,,2026-09-18,1447000,+1.48,1,21040,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0242,main,elder_ema_pullback,005935,2026-09-17,D_open,196500,5,amount,982500,log,N,,,,,N,1,,open,open,,2026-09-18,196100,-0.20,1,-2000,mark_to_market(마지막 종가)
+B1,B1-0243,main,elder_ema_pullback,036930,2026-09-17,band_touch,204500,4,amount,818000,log,N,,,,,N,1,,open,open,,2026-09-18,205500,+0.49,1,4000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0244,main,elder_ema_pullback,039030,2026-09-17,D_open,472000,2,amount,944000,log,N,,,,,Y,2,1,open,open,,2026-09-18,453500,-3.92,1,-37000,mark_to_market(마지막 종가)
+B1,B1-0245,main,elder_ema_pullback,051900,2026-09-17,band_touch,307000,3,amount,921000,replay,N,,,,,Y,2,2,open,open,,2026-09-18,295500,-3.75,1,-34500,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0246,main,elder_ema_pullback,062040,2026-09-17,D_open,201000,4,amount,804000,log,N,,throttle_delay,,,N,1,,closed,trend_flip,after0902,2026-09-18,205000,+1.99,1,16000,
+B1,B1-0247,main,elder_ema_pullback,064760,2026-09-17,band_touch,271500,3,amount,814500,replay,N,,,,,Y,2,2,open,open,,2026-09-18,268500,-1.10,1,-9000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0248,main,elder_ema_pullback,192820,2026-09-17,band_touch,286000,3,amount,858000,replay,N,,,,,Y,3,2,open,open,,2026-09-18,273000,-4.55,1,-39000,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0249,main,minervini_volume_dryup,002990,2026-09-17,D_open,13650,73,amount,996450,replay,N,,,,,Y,4,3,open,open,,2026-09-18,13340,-2.27,1,-22630,mark_to_market(마지막 종가)
+B1,B1-0250,main,minervini_volume_dryup,005090,2026-09-17,D_open,54000,18,amount,972000,replay,N,,,,,N,1,,open,open,,2026-09-18,54400,+0.74,1,7200,mark_to_market(마지막 종가)
+B1,B1-0251,main,minervini_volume_dryup,006360,2026-09-17,D_open,36850,27,amount,994950,replay,N,,,,,Y,5,4,open,open,,2026-09-18,36850,+0.00,1,0,mark_to_market(마지막 종가)
+B1,B1-0252,main,minervini_volume_dryup,073240,2026-09-17,D_open,7030,142,amount,998260,replay,N,,,,,Y,6,5,open,open,,2026-09-18,7010,-0.28,1,-2840,mark_to_market(마지막 종가)
+B1,B1-0253,main,minervini_volume_dryup,089860,2026-09-17,D_open,47700,20,amount,954000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,48900,+2.52,1,24000,mark_to_market(마지막 종가)
+B1,B1-0254,main,minervini_volume_dryup,090430,2026-09-17,D_open,146000,6,amount,876000,replay,N,,,,,Y,3,2,open,open,,2026-09-18,143400,-1.78,1,-15600,mark_to_market(마지막 종가)
+B1,B1-0255,main,minervini_volume_dryup,282330,2026-09-17,D_open,142000,7,amount,994000,replay,N,,,,,Y,3,2,open,open,,2026-09-18,138400,-2.54,1,-25200,mark_to_market(마지막 종가)
+B1,B1-0256,main,minervini_volume_dryup,317400,2026-09-17,D_open,10360,96,amount,994560,replay,N,,,book_pullback_ma20(09-16),,N,1,,open,open,,2026-09-18,9960,-3.86,1,-38400,mark_to_market(마지막 종가)
+B1,B1-0257,main,rs_leader,017900,2026-09-17,band_touch,10773.8,92,amount,991190,replay,N,,,,,Y,3,2,open,open,,2026-09-18,10520,-2.36,1,-23350,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0258,main,rs_leader,020120,2026-09-17,D_open,8890,112,amount,995680,log,N,,throttle,book_envelope_200d(09-15),,Y,3,2,open,open,,2026-09-18,8420,-5.29,1,-52640,mark_to_market(마지막 종가)
+B1,B1-0259,main,rs_leader,024840,2026-09-17,D_open,5580,179,amount,998820,log,N,,throttle,,,N,1,,closed,tp,after0902,2026-09-18,6417,+15.00,1,149823,
+B1,B1-0260,main,rs_leader,036930,2026-09-17,D_open,203000,4,amount,812000,log,N,,throttle,,,N,1,,open,open,,2026-09-18,205500,+1.23,1,10000,mark_to_market(마지막 종가)
+B1,B1-0261,main,rs_leader,064290,2026-09-17,D_open,50100,19,amount,951900,log,N,,throttle_delay,,,N,1,,closed,sl,entry_day,2026-09-17,46092,-8.00,0,-76152,
+B1,B1-0262,main,rs_leader,079650,2026-09-17,D_open,6580,151,amount,993580,replay,N,,,,,Y,3,2,open,open,,2026-09-18,6370,-3.19,1,-31710,mark_to_market(마지막 종가)
+B1,B1-0263,main,rs_leader,092190,2026-09-17,band_touch,9043.4,110,amount,994774,log,N,,throttle_delay,,,N,1,,open,open,,2026-09-18,8610,-4.79,1,-47674,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0264,main,rs_leader,351320,2026-09-17,D_open,3860,259,amount,999740,log,N,,,,,Y,3,4,open,open,,2026-09-18,3915,+1.42,1,14245,mark_to_market(마지막 종가)
+B1,B1-0265,main,rs_leader,356680,2026-09-17,D_open,17150,58,amount,994700,log,N,,throttle,,,N,1,,open,open,,2026-09-18,17570,+2.45,1,24360,mark_to_market(마지막 종가)
+B1,B1-0266,main,rs_leader,446540,2026-09-17,D_open,8960,111,amount,994560,log,N,,throttle,,,N,1,,open,open,,2026-09-18,8550,-4.58,1,-45510,mark_to_market(마지막 종가)
+B1,B1-0267,main,book_pullback_ma20,003280,2026-09-18,D_open,1817,550,amount,999350,log,N,,,,,N,1,,open,open,,2026-09-18,1803,-0.77,0,-7700,mark_to_market(마지막 종가)
+B1,B1-0268,main,book_pullback_ma20,006910,2026-09-18,band_touch,7393.2,135,amount,998082,log,N,,throttle,,,N,1,,open,open,,2026-09-18,7640,+3.34,0,33318,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0269,main,book_pullback_ma20,024840,2026-09-18,band_touch,5938.8,168,amount,997718,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,6500,+9.45,0,94282,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0270,main,book_pullback_ma20,067310,2026-09-18,band_touch,37976,26,amount,987376,log,N,,throttle,,,N,1,,open,open,,2026-09-18,38650,+1.77,0,17524,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0271,main,book_pullback_ma20,090460,2026-09-18,band_touch,19755.6,50,amount,987780,log,N,,throttle,,,N,1,,open,open,,2026-09-18,20550,+4.02,0,39720,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0272,main,book_pullback_ma20,130660,2026-09-18,band_touch,12998.7,76,amount,987901,log,N,,throttle,,,Y,2,2,open,open,,2026-09-18,13040,+0.32,0,3139,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0273,main,book_pullback_ma20,134580,2026-09-18,D_open,3940,253,amount,996820,log,N,,throttle,,,N,1,,open,open,,2026-09-18,3740,-5.08,0,-50600,mark_to_market(마지막 종가)
+B1,B1-0274,main,book_pullback_ma20,142280,2026-09-18,D_open,3235,309,amount,999615,log,N,,throttle,,,N,1,,open,open,,2026-09-18,3300,+2.01,0,20085,mark_to_market(마지막 종가)
+B1,B1-0275,main,book_pullback_ma20,289080,2026-09-18,D_open,2650,377,amount,999050,log,N,,throttle,,,N,1,,open,open,,2026-09-18,2700,+1.89,0,18850,mark_to_market(마지막 종가)
+B1,B1-0276,main,book_pullback_ma20,388050,2026-09-18,band_touch,10372.7,96,amount,995779,log,N,,throttle,,,N,1,,open,open,,2026-09-18,10480,+1.03,0,10301,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0277,main,book_pullback_ma5,004310,2026-09-18,band_touch,10605,94,amount,996870,log,N,,throttle_delay,,,N,1,,open,open,,2026-09-18,10070,-5.04,0,-50290,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0278,main,book_pullback_ma5,067290,2026-09-18,band_touch,3595.6,278,amount,999577,log,N,,,,,N,1,,open,open,,2026-09-18,3390,-5.72,0,-57157,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0279,main,book_pullback_ma5,093370,2026-09-18,D_open,14910,67,amount,998970,log,N,,throttle,,,Y,2,1,closed,sl,entry_day,2026-09-18,14462.7,-3.00,0,-29969,
+B1,B1-0280,main,book_pullback_ma5,332570,2026-09-18,band_touch,8696.1,114,amount,991355,log,N,,throttle,,,Y,2,2,open,open,,2026-09-18,9100,+4.64,0,46045,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0281,main,book_pullback_ma5,372910,2026-09-18,D_open,2165,461,amount,998065,log,N,,throttle,,,N,1,,closed,sl,entry_day,2026-09-18,2100.05,-3.00,0,-29942,
+B1,B1-0282,main,book_pullback_ma5,443670,2026-09-18,band_touch,5726.7,174,amount,996446,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,5470,-4.48,0,-44666,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0283,main,book_pullback_ma5,452260,2026-09-18,D_open,2650,377,amount,999050,log,N,,throttle,,,N,1,,open,open,,2026-09-18,2680,+1.13,0,11310,mark_to_market(마지막 종가)
+B1,B1-0284,main,book_pullback_ma5,457370,2026-09-18,band_touch,12260.8,81,amount,993125,log,N,,,,,N,1,,open,open,,2026-09-18,11660,-4.90,0,-48665,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0285,main,daytrading_3methods_breakout,042370,2026-09-18,D_open,11450,87,amount,996150,log,N,,throttle_delay,,,N,1,,open,open,,2026-09-18,11440,-0.09,0,-870,mark_to_market(마지막 종가)
+B1,B1-0286,main,daytrading_3methods_breakout,051160,2026-09-18,D_open,11750,85,amount,998750,log,N,,throttle,,,N,1,,open,open,,2026-09-18,12060,+2.64,0,26350,mark_to_market(마지막 종가)
+B1,B1-0287,main,daytrading_3methods_breakout,072990,2026-09-18,D_open,3225,310,amount,999750,log,N,,throttle_delay,,,N,1,,open,open,,2026-09-18,3145,-2.48,0,-24800,mark_to_market(마지막 종가)
+B1,B1-0288,main,daytrading_3methods_breakout,201490,2026-09-18,D_open,4465,223,amount,995695,log,N,,throttle,,,N,1,,open,open,,2026-09-18,4220,-5.49,0,-54635,mark_to_market(마지막 종가)
+B1,B1-0289,main,daytrading_3methods_breakout,209640,2026-09-18,D_open,3820,261,amount,997020,log,N,,,,,N,1,,open,open,,2026-09-18,3780,-1.05,0,-10440,mark_to_market(마지막 종가)
+B1,B1-0290,main,daytrading_3methods_breakout,234030,2026-09-18,D_open,3425,291,amount,996675,log,N,,throttle,,,N,1,,open,open,,2026-09-18,3470,+1.31,0,13095,mark_to_market(마지막 종가)
+B1,B1-0291,main,daytrading_3methods_breakout,274090,2026-09-18,D_open,11530,86,amount,991580,log,N,,throttle,,,N,1,,closed,tp,entry_day,2026-09-18,12683,+10.00,0,99158,
+B1,B1-0292,main,daytrading_3methods_breakout,288180,2026-09-18,D_open,8170,122,amount,996740,log,N,,throttle,,,N,1,,open,open,,2026-09-18,8230,+0.73,0,7320,mark_to_market(마지막 종가)
+B1,B1-0293,main,daytrading_3methods_breakout,396270,2026-09-18,D_open,2440,409,amount,997960,log,N,,throttle_delay,,,N,1,,open,open,,2026-09-18,2355,-3.48,0,-34765,mark_to_market(마지막 종가)
+B1,B1-0294,main,daytrading_3methods_breakout,478340,2026-09-18,band_touch,14265.5,70,amount,998585,log,N,,throttle,,,N,1,,open,open,,2026-09-18,14460,+1.36,0,13615,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0295,main,elder_ema_pullback,005935,2026-09-18,D_open,200000,5,amount,1000000,replay,N,,,,,Y,2,1,open,open,,2026-09-18,196100,-1.95,0,-19500,mark_to_market(마지막 종가)
+B1,B1-0296,main,elder_ema_pullback,010950,2026-09-18,D_open,153600,6,amount,921600,log,N,,throttle,,,N,1,,open,open,,2026-09-18,149500,-2.67,0,-24600,mark_to_market(마지막 종가)
+B1,B1-0297,main,elder_ema_pullback,012450,2026-09-18,D_open,1116000,1,one_share,1116000,log,N,,,,,N,1,,open,open,,2026-09-18,1078000,-3.41,0,-38000,mark_to_market(마지막 종가)
+B1,B1-0298,main,elder_ema_pullback,086280,2026-09-18,D_open,208500,4,amount,834000,log,N,,,,,N,1,,open,open,,2026-09-18,203500,-2.40,0,-20000,mark_to_market(마지막 종가)
+B1,B1-0299,main,minervini_volume_dryup,001450,2026-09-18,D_open,49600,20,amount,992000,log,N,,throttle,,,Y,2,2,open,open,,2026-09-18,48800,-1.61,0,-16000,mark_to_market(마지막 종가)
+B1,B1-0300,main,minervini_volume_dryup,002990,2026-09-18,D_open,13450,74,amount,995300,log,N,,,,,Y,5,4,open,open,,2026-09-18,13340,-0.82,0,-8140,mark_to_market(마지막 종가)
+B1,B1-0301,main,minervini_volume_dryup,005090,2026-09-18,D_open,54500,18,amount,981000,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,54400,-0.18,0,-1800,mark_to_market(마지막 종가)
+B1,B1-0302,main,minervini_volume_dryup,006360,2026-09-18,D_open,37000,27,amount,999000,replay,N,,,,,Y,6,5,open,open,,2026-09-18,36850,-0.41,0,-4050,mark_to_market(마지막 종가)
+B1,B1-0303,main,minervini_volume_dryup,007340,2026-09-18,D_open,48300,20,amount,966000,log,N,,throttle,,,N,1,,open,open,,2026-09-18,49300,+2.07,0,20000,mark_to_market(마지막 종가)
+B1,B1-0304,main,minervini_volume_dryup,041830,2026-09-18,D_open,58400,17,amount,992800,log,N,,throttle,,,Y,2,2,open,open,,2026-09-18,57500,-1.54,0,-15300,mark_to_market(마지막 종가)
+B1,B1-0305,main,minervini_volume_dryup,073240,2026-09-18,D_open,7170,139,amount,996630,replay,N,,,,,Y,7,6,open,open,,2026-09-18,7010,-2.23,0,-22240,mark_to_market(마지막 종가)
+B1,B1-0306,main,minervini_volume_dryup,089860,2026-09-18,D_open,48250,20,amount,965000,log,N,,throttle,,,Y,3,2,open,open,,2026-09-18,48900,+1.35,0,13000,mark_to_market(마지막 종가)
+B1,B1-0307,main,minervini_volume_dryup,090430,2026-09-18,D_open,144700,6,amount,868200,log,N,,throttle,,,Y,4,3,open,open,,2026-09-18,143400,-0.90,0,-7800,mark_to_market(마지막 종가)
+B1,B1-0308,main,minervini_volume_dryup,317400,2026-09-18,D_open,10110,98,amount,990780,log,N,,throttle,book_pullback_ma20(09-16),,Y,2,1,open,open,,2026-09-18,9960,-1.48,0,-14700,mark_to_market(마지막 종가)
+B1,B1-0309,main,rs_leader,00088K,2026-09-18,D_open,42550,23,amount,978650,log,N,,,,,Y,2,3,open,open,,2026-09-18,40550,-4.70,0,-46000,mark_to_market(마지막 종가)
+B1,B1-0310,main,rs_leader,017900,2026-09-18,D_open,10280,97,amount,997160,replay,N,,,,,Y,4,3,open,open,,2026-09-18,10520,+2.33,0,23280,mark_to_market(마지막 종가)
+B1,B1-0311,main,rs_leader,020120,2026-09-18,D_open,9250,108,amount,999000,log,N,,,book_envelope_200d(09-15),,Y,4,3,closed,sl,entry_day,2026-09-18,8510,-8.00,0,-79920,
+B1,B1-0312,main,rs_leader,024840,2026-09-18,D_open,5950,168,amount,999600,log,N,,throttle_delay,,,Y,2,1,closed,tp,entry_day,2026-09-18,6842.5,+15.00,0,149940,
+B1,B1-0313,main,rs_leader,036930,2026-09-18,D_open,210000,4,amount,840000,log,N,,throttle,elder_ema_pullback(09-17),,Y,2,1,open,open,,2026-09-18,205500,-2.14,0,-18000,mark_to_market(마지막 종가)
+B1,B1-0314,main,rs_leader,064290,2026-09-18,band_touch,49697.5,20,amount,993950,replay,N,,,,,N,1,,open,open,,2026-09-18,46750,-5.93,0,-58950,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1,B1-0315,main,rs_leader,071200,2026-09-18,D_open,13700,72,amount,986400,log,N,,throttle,,,N,1,,closed,sl,entry_day,2026-09-18,12604,-8.00,0,-78912,
+B1,B1-0316,main,rs_leader,092190,2026-09-18,D_open,8740,114,amount,996360,replay,N,,,,,Y,2,1,open,open,,2026-09-18,8610,-1.49,0,-14820,mark_to_market(마지막 종가)
+B1,B1-0317,main,rs_leader,134580,2026-09-18,D_open,3940,253,amount,996820,log,N,,throttle,,,N,1,,open,open,,2026-09-18,3740,-5.08,0,-50600,mark_to_market(마지막 종가)
+B1,B1-0318,main,rs_leader,446540,2026-09-18,D_open,9000,111,amount,999000,log,N,,throttle,,,Y,2,1,open,open,,2026-09-18,8550,-5.00,0,-49950,mark_to_market(마지막 종가)
 B1_nogate,B1G-0000,main,book_envelope_200d,131290,2026-09-11,D_open,291000,3,amount,873000,log,Y,,,,,N,1,,closed,sl,entry_day,2026-09-11,267720,-8.00,0,-69840,
 B1_nogate,B1G-0001,main,book_pullback_ma20,000370,2026-09-11,D_open,8390,119,amount,998410,replay,Y,,,,,N,1,,open,open,,2026-09-18,8070,-3.81,5,-38080,mark_to_market(마지막 종가)
 B1_nogate,B1G-0002,main,book_pullback_ma20,005880,2026-09-11,D_open,2120,471,amount,998520,replay,Y,,,,,N,1,,open,open,,2026-09-18,2020,-4.72,5,-47100,mark_to_market(마지막 종가)
@@ -680,7 +688,7 @@ B1_ub,B1U-0047,main,rs_leader,079650,2026-09-10,D_open,7830,127,amount,994410,re
 B1_ub,B1U-0048,main,rs_leader,159010,2026-09-10,D_open,23900,41,amount,979900,replay,N,,,,,N,1,,closed,ma_break,after0902,2026-09-15,22000,-7.95,3,-77900,
 B1_ub,B1U-0049,main,rs_leader,204840,2026-09-10,D_open,4900,204,amount,999600,log,N,,throttle_delay,,,N,1,,closed,sl,after0902,2026-09-11,4508,-8.00,1,-79968,
 B1_ub,B1U-0050,main,rs_leader,300120,2026-09-10,D_open,3340,299,amount,998660,log,N,,throttle,,,N,1,,closed,sl,after0902,2026-09-14,3045,-8.83,2,-88205,sl_gap_open(라이브는 09:05 이후 가격)
-B1_ub,B1U-0051,lift_ub,book_envelope_200d,131290,2026-09-11,daily_upper_bound,260500,3,amount,781500,log,Y,09:23:09,,,,N,1,,closed,sl,after0902,2026-09-14,239660,-8.00,1,-62520,entry_day_touch_skipped(진입 시각 불명)
+B1_ub,B1U-0051,main,book_envelope_200d,131290,2026-09-11,live_fill,289000,3,amount,867000,log,Y,09:23:09,,,,N,1,,closed,sl,after0902,2026-09-14,251000,-13.15,1,-114000,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
 B1_ub,B1U-0052,main,book_pullback_ma20,000370,2026-09-11,after_lift,8420,118,amount,993560,replay,Y,09:24:00,,,,N,1,,open,open,,2026-09-18,8070,-4.16,5,-41300,mark_to_market(마지막 종가)
 B1_ub,B1U-0053,lift_ub,book_pullback_ma20,005880,2026-09-11,daily_upper_bound,2090,478,amount,999020,replay,Y,09:23:09,,,,N,1,,open,open,,2026-09-18,2020,-3.35,5,-33460,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
 B1_ub,B1U-0054,lift_ub,book_pullback_ma20,006910,2026-09-11,daily_upper_bound,7570,132,amount,999240,replay,Y,09:23:09,,,,N,1,,open,open,,2026-09-18,7640,+0.92,5,9240,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
@@ -688,7 +696,7 @@ B1_ub,B1U-0055,lift_ub,book_pullback_ma20,019010,2026-09-11,daily_upper_bound,49
 B1_ub,B1U-0056,main,book_pullback_ma20,025980,2026-09-11,after_lift,5220,191,amount,997020,replay,Y,09:24:00,,,,Y,2,1,open,open,,2026-09-18,5170,-0.96,5,-9550,mark_to_market(마지막 종가)
 B1_ub,B1U-0057,lift_ub,book_pullback_ma20,078150,2026-09-11,daily_upper_bound,2015,496,amount,999440,replay,Y,09:23:09,,book_pullback_ma5(09-09),,N,1,,open,open,,2026-09-18,2045,+1.49,5,14880,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
 B1_ub,B1U-0058,main,book_pullback_ma20,093370,2026-09-11,after_lift,13330,75,amount,999750,log,Y,09:24:00,,,,N,1,,closed,tp,after0902,2026-09-15,14663,+10.00,2,99975,
-B1_ub,B1U-0059,lift_ub,book_pullback_ma20,125490,2026-09-11,daily_upper_bound,10610,94,amount,997340,log,Y,09:23:09,,,,N,1,,closed,tp,after0902,2026-09-15,11671,+10.00,2,99734,entry_day_touch_skipped(진입 시각 불명)
+B1_ub,B1U-0059,main,book_pullback_ma20,125490,2026-09-11,live_fill,10700,93,amount,995100,log,Y,09:23:09,,,,N,1,,closed,tp,after0902,2026-09-15,11770,+10.00,2,99510,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0060,main,book_pullback_ma20,232140,2026-09-11,after_lift,12010,83,amount,996830,log,Y,09:24:00,,,,N,1,,closed,sl,after0902,2026-09-14,11049.2,-8.00,1,-79746,
 B1_ub,B1U-0061,lift_ub,book_pullback_ma20,413630,2026-09-11,daily_upper_bound,4240,235,amount,996400,log,Y,09:23:09,,,,N,1,,closed,tp,after0902,2026-09-16,4664,+10.00,3,99640,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0062,lift_ub,book_pullback_ma5,006910,2026-09-11,daily_upper_bound,7570,132,amount,999240,log,Y,09:23:09,throttle,,,N,1,,closed,sl,after0902,2026-09-14,7342.9,-3.00,1,-29977,entry_day_touch_skipped(진입 시각 불명)
@@ -718,12 +726,12 @@ B1_ub,B1U-0085,main,rs_leader,001210,2026-09-11,after_lift,11620,86,amount,99932
 B1_ub,B1U-0086,lift_ub,rs_leader,020120,2026-09-11,daily_upper_bound,8100,123,amount,996300,log,Y,09:23:09,,,,N,1,,closed,tp,after0902,2026-09-15,9315,+15.00,2,149445,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0087,lift_ub,rs_leader,024850,2026-09-11,daily_upper_bound,16720,59,amount,986480,replay,Y,09:23:09,,,,N,1,,closed,sl,after0902,2026-09-14,15382.4,-8.00,1,-78918,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0088,lift_ub,rs_leader,049080,2026-09-11,daily_upper_bound,8220,121,amount,994620,replay,Y,09:23:09,,,,Y,2,1,closed,tp,after0902,2026-09-14,9453,+15.00,1,149193,entry_day_touch_skipped(진입 시각 불명)
-B1_ub,B1U-0089,lift_ub,rs_leader,069540,2026-09-11,daily_upper_bound,3870,258,amount,998460,log,Y,09:23:09,,,,N,1,,closed,tp,after0902,2026-09-14,4450.5,+15.00,1,149769,entry_day_touch_skipped(진입 시각 불명)
+B1_ub,B1U-0089,main,rs_leader,069540,2026-09-11,live_fill,3855,259,amount,998445,log,Y,09:23:09,,,,N,1,,closed,tp,after0902,2026-09-14,4433.25,+15.00,1,149767,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0090,main,rs_leader,079650,2026-09-11,after_lift,7550,132,amount,996600,replay,Y,09:24:00,,,,N,1,,closed,sl,after0902,2026-09-14,6946,-8.00,1,-79728,
 B1_ub,B1U-0091,lift_ub,rs_leader,131290,2026-09-11,daily_upper_bound,260500,3,amount,781500,log,Y,09:23:09,,,,N,1,,closed,sl,after0902,2026-09-14,239660,-8.00,1,-62520,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0092,lift_ub,rs_leader,159010,2026-09-11,daily_upper_bound,23350,42,amount,980700,replay,Y,09:23:09,,,,Y,2,1,closed,ma_break,after0902,2026-09-15,22000,-5.78,2,-56700,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0093,lift_ub,rs_leader,214680,2026-09-11,daily_upper_bound,4370,228,amount,996360,log,Y,09:23:09,,,,N,1,,closed,sl,after0902,2026-09-15,4020.4,-8.00,2,-79709,entry_day_touch_skipped(진입 시각 불명)
-B1_ub,B1U-0094,lift_ub,rs_leader,351320,2026-09-11,daily_upper_bound,4010,249,amount,998490,log,Y,09:23:09,,,,N,1,,open,open,,2026-09-18,3915,-2.37,5,-23655,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1_ub,B1U-0094,main,rs_leader,351320,2026-09-11,live_fill,4085,244,amount,996740,log,Y,09:23:09,,,,N,1,,closed,sl,after0902,2026-09-17,3758.2,-8.00,4,-79739,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0095,main,book_envelope_200d,098120,2026-09-14,after_lift,50800,19,amount,965200,log,Y,11:03:00,,,,N,1,,open,open,,2026-09-18,53500,+5.31,4,51300,mark_to_market(마지막 종가)
 B1_ub,B1U-0096,main,book_pullback_ma20,003350,2026-09-14,after_lift,15310,65,amount,995150,replay,Y,11:03:00,,,,N,1,,open,open,,2026-09-18,15770,+3.00,4,29900,mark_to_market(마지막 종가)
 B1_ub,B1U-0097,lift_ub,book_pullback_ma20,003530,2026-09-14,daily_upper_bound,4810,207,amount,995670,replay,Y,11:02:06,,,,Y,2,2,open,open,,2026-09-18,4495,-6.55,4,-65205,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
@@ -735,8 +743,8 @@ B1_ub,B1U-0102,lift_ub,book_pullback_ma20,091590,2026-09-14,daily_upper_bound,68
 B1_ub,B1U-0103,lift_ub,book_pullback_ma5,198440,2026-09-14,daily_upper_bound,2012.75,496,amount,998324,log,Y,11:02:06,,,,N,1,,closed,sl,after0902,2026-09-15,1927,-4.26,1,-42532,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
 B1_ub,B1U-0104,lift_ub,book_pullback_ma5,289080,2026-09-14,daily_upper_bound,2560,390,amount,998400,replay,Y,11:02:06,,,,Y,2,2,closed,sl,after0902,2026-09-16,2483.2,-3.00,2,-29952,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0105,lift_ub,book_pullback_ma5,388050,2026-09-14,daily_upper_bound,10776.7,92,amount,991456,replay,Y,11:02:06,,,,N,1,,closed,sl,after0902,2026-09-15,10453.4,-3.00,1,-29744,entry_day_touch_skipped(진입 시각 불명)
-B1_ub,B1U-0106,lift_ub,book_pullback_ma5,413630,2026-09-14,daily_upper_bound,4112.8,243,amount,999410,log,Y,11:02:06,throttle_delay,,,N,1,,closed,sl,after0902,2026-09-15,3985,-3.11,1,-31055,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
-B1_ub,B1U-0107,lift_ub,book_pullback_ma5,452190,2026-09-14,daily_upper_bound,5000,200,amount,1000000,log,Y,11:02:06,,,,N,1,,closed,sl,after0902,2026-09-15,4850,-3.00,1,-30000,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
+B1_ub,B1U-0106,main,book_pullback_ma5,413630,2026-09-14,live_fill,4130,242,amount,999460,log,Y,11:02:06,throttle_delay,,,N,1,,closed,sl,after0902,2026-09-15,3985,-3.51,1,-35090,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
+B1_ub,B1U-0107,main,book_pullback_ma5,452190,2026-09-14,live_fill,5120,195,amount,998400,log,Y,11:02:06,,,,N,1,,closed,sl,after0902,2026-09-15,4850,-5.27,1,-52650,entry_day_touch_skipped(진입 시각 불명) · sl_gap_open(라이브는 09:05 이후 가격)
 B1_ub,B1U-0108,lift_ub,book_pullback_ma5,452260,2026-09-14,daily_upper_bound,2660,375,amount,997500,log,Y,11:02:06,throttle,,,N,1,,closed,sl,after0902,2026-09-15,2580.2,-3.00,1,-29925,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0109,main,daytrading_3methods_breakout,0011A0,2026-09-14,D_open,13210,75,amount,990750,replay,N,,,,,N,1,,closed,sl,after0902,2026-09-16,11889,-10.00,2,-99075,
 B1_ub,B1U-0110,main,daytrading_3methods_breakout,0015S0,2026-09-14,D_open,8100,123,amount,996300,log,N,,,,,N,1,,closed,tp,after0902,2026-09-15,8910,+10.00,1,99630,
@@ -757,8 +765,8 @@ B1_ub,B1U-0124,lift_ub,rs_leader,018470,2026-09-14,daily_upper_bound,4670,214,am
 B1_ub,B1U-0125,lift_ub,rs_leader,024850,2026-09-14,daily_upper_bound,15300,65,amount,994500,log,Y,11:02:06,throttle,,,N,1,,closed,ma_break,after0902,2026-09-18,15070,-1.50,4,-14950,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0126,main,rs_leader,046970,2026-09-14,after_lift,6910,144,amount,995040,log,Y,11:03:00,throttle,,,N,1,,closed,tp,entry_day,2026-09-14,7946.5,+15.00,0,149256,
 B1_ub,B1U-0127,main,rs_leader,049080,2026-09-14,after_lift,8390,119,amount,998410,replay,Y,11:03:00,,,,Y,2,2,closed,tp,entry_day,2026-09-14,9648.5,+15.00,0,149762,
-B1_ub,B1U-0128,lift_ub,rs_leader,060570,2026-09-14,daily_upper_bound,5050,198,amount,999900,log,Y,11:02:06,throttle_delay,,,N,1,,open,open,,2026-09-18,5090,+0.79,4,7920,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
-B1_ub,B1U-0129,lift_ub,rs_leader,067390,2026-09-14,daily_upper_bound,6100,163,amount,994300,log,Y,11:02:06,,,,N,1,,open,open,,2026-09-18,5880,-3.61,4,-35860,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1_ub,B1U-0128,main,rs_leader,060570,2026-09-14,live_fill,4940,202,amount,997880,log,Y,11:02:06,throttle_delay,,,N,1,,open,open,,2026-09-18,5090,+3.04,4,30300,entry_day_touch_skipped(진입 시각 불명) · mark_to_market(마지막 종가)
+B1_ub,B1U-0129,main,rs_leader,067390,2026-09-14,live_fill,6380,156,amount,995280,log,Y,11:02:06,,,,N,1,,closed,sl,after0902,2026-09-15,5869.6,-8.00,1,-79622,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0130,main,rs_leader,079650,2026-09-14,after_lift,6800,147,amount,999600,replay,Y,11:03:00,,,,N,1,,closed,sl,after0902,2026-09-16,6256,-8.00,2,-79968,
 B1_ub,B1U-0131,lift_ub,rs_leader,159010,2026-09-14,daily_upper_bound,22300,44,amount,981200,replay,Y,11:02:06,,,,Y,3,2,closed,ma_break,after0902,2026-09-15,22000,-1.35,1,-13200,entry_day_touch_skipped(진입 시각 불명)
 B1_ub,B1U-0132,main,book_envelope_200d,020120,2026-09-15,D_open,8990,111,amount,997890,log,N,,,,,N,1,,open,open,,2026-09-18,8420,-6.34,3,-63270,mark_to_market(마지막 종가)
