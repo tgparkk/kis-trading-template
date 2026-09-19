@@ -760,8 +760,27 @@ class BaseStrategy(ABC):
                         signal=signal
                     )
 
+        # ★ 캡 상태 칸 (2026-09-19 · 09-18 EOD 패널 발견) — 「신호 0건」이 ①룰을 평가했는데
+        #   안 맞음(type-1)과 ②자리·일일 한도 포화로 generate_signal 이 _check_buy 에 도달조차
+        #   못 함(type-2)을 구분하지 못했다(09-18 rs_leader 10/10 포화 — 09:24 이후 미도달인데
+        #   「5종목 검토, 신호 0건」). 값은 on_tick «끝» 시점이다(매수는 체결 콜백에서 positions 에
+        #   반영되므로 미체결분은 빠질 수 있다). 넷은 BaseStrategy 계약이 아닌 전략별 속성이라
+        #   _log_cap_skip 과 같은 이름을 읽되, 없거나 읽다 실패하면 0 이 아니라 '?'(0 은 거짓말).
+        #   🔑 로그 전용 — 반환값·흐름 불변, 예외를 밖으로 내지 않는다.
+        cap_vals = []
+        for read in (
+            lambda: len(self.positions),
+            lambda: self._max_positions,
+            lambda: self.daily_trades,
+            lambda: self._max_daily_trades,
+        ):
+            try:
+                cap_vals.append(str(read()))
+            except Exception:  # noqa: BLE001 — 계기가 매매 루프를 죽이면 안 된다
+                cap_vals.append("?")
         self.logger.info(
             f"[on_tick] 매수검토 {buy_checked}종목(스킵 {buy_skipped}), 신호 {buy_signals}건 | "
+            f"자리 {cap_vals[0]}/{cap_vals[1]}·일일 {cap_vals[2]}/{cap_vals[3]} | "
             f"매도검토 {sell_checked}종목, 신호 {sell_signals}건"
         )
 

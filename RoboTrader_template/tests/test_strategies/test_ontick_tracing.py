@@ -316,3 +316,103 @@ class TestOnTickExitTimeframe:
         assert intraday_calls == ["005930"], "기본 전략은 분봉을 조회해야 함"
         assert daily_calls == [], "기본 전략은 매도판단에 일봉을 조회하면 안 됨"
         assert strat.sell_timeframes == ["intraday"]
+
+
+# ============================================================================
+# Test 6: 요약 줄 캡 상태 칸 (2026-09-19) — 「신호 0건」의 평가함/평가 안 함 구분
+# ============================================================================
+
+_SUMMARY_PREFIX = "[on_tick] 매수검토"
+
+
+class _CapAttrStrategy(_TestStrategy):
+    """전략별 캡 속성(positions·_max_positions·daily_trades·_max_daily_trades)을 가진 전략."""
+
+    def __init__(self, positions, max_positions, daily_trades, max_daily_trades):
+        super().__init__(signal_to_return=None)
+        self.positions = positions
+        self._max_positions = max_positions
+        self.daily_trades = daily_trades
+        self._max_daily_trades = max_daily_trades
+
+
+class _NoLen:
+    """len() 이 TypeError 를 던지는 객체."""
+
+
+class _BrokenCapStrategy(_CapAttrStrategy):
+    """속성 접근 자체가 예외를 던지는 전략."""
+
+    @property
+    def _max_daily_trades(self):
+        raise RuntimeError("boom")
+
+    @_max_daily_trades.setter
+    def _max_daily_trades(self, value):
+        pass
+
+
+async def _run_and_get_summaries(strategy):
+    """on_tick 1회 실행 후 요약 줄(logger.info 인자)만 돌려준다."""
+    strategy.logger = MagicMock()
+    ctx = _make_ctx(daily_data=_make_daily_data(25))
+    await strategy.on_tick(ctx)
+    return [
+        c.args[0] for c in strategy.logger.info.call_args_list
+        if c.args and str(c.args[0]).startswith(_SUMMARY_PREFIX)
+    ]
+
+
+class TestOnTickSummaryCapState:
+    """요약 줄 가운데 `자리 n/N·일일 d/D` 칸 — 로그 전용, 거동 불변."""
+
+    @pytest.mark.asyncio
+    async def test_summary_shows_cap_state_when_attrs_present(self):
+        strat = _CapAttrStrategy(
+            positions={"000001": {}, "000002": {}, "000003": {}},
+            max_positions=5, daily_trades=2, max_daily_trades=5,
+        )
+        lines = await _run_and_get_summaries(strat)
+        assert lines == [
+            "[on_tick] 매수검토 1종목(스킵 0), 신호 0건 | 자리 3/5·일일 2/5 | 매도검토 0종목, 신호 0건"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_summary_shows_question_marks_when_attrs_missing(self):
+        strat = _TestStrategy(signal_to_return=None)  # 캡 속성 없음(BaseStrategy 계약 아님)
+        assert not hasattr(strat, "positions")
+        lines = await _run_and_get_summaries(strat)
+        assert lines == [
+            "[on_tick] 매수검토 1종목(스킵 0), 신호 0건 | 자리 ?/?·일일 ?/? | 매도검토 0종목, 신호 0건"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_summary_never_raises_when_attr_access_fails(self):
+        strat = _BrokenCapStrategy(
+            positions=_NoLen(), max_positions=5, daily_trades=2, max_daily_trades=5,
+        )
+        lines = await _run_and_get_summaries(strat)  # 예외 없이 끝나야 한다
+        assert lines == [
+            "[on_tick] 매수검토 1종목(스킵 0), 신호 0건 | 자리 ?/5·일일 2/? | 매도검토 0종목, 신호 0건"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_ledger8_parser_still_matches_new_summary(self):
+        """ledger8 logscan8 의 요약 줄 파서(RE_ONTICK_SUMMARY · `"[on_tick] 매수검토" in msg`)가
+        새 형식에도 같은 그룹 값으로 매치된다."""
+        from backtest.concept_axes.ledger8 import logscan8 as L
+
+        strat = _CapAttrStrategy(
+            positions={"000001": {}}, max_positions=10, daily_trades=0, max_daily_trades=5,
+        )
+        (new_line,) = await _run_and_get_summaries(strat)
+        old_line = "[on_tick] 매수검토 1종목(스킵 0), 신호 0건 | 매도검토 0종목, 신호 0건"
+
+        m_new = L.RE_ONTICK_SUMMARY.search(new_line)
+        m_old = L.RE_ONTICK_SUMMARY.search(old_line)
+        assert m_new is not None
+        assert m_new.groups() == m_old.groups() == ("1", "0", "0")
+
+        sd = L.StratDay()
+        L._scan_strategy_line(sd, "rs_leader", new_line, "09:24:00", None, {})
+        assert sd.ontick_times == ["09:24:00"]
