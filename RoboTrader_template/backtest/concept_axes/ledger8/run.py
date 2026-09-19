@@ -310,9 +310,9 @@ LEDGER_COLS = [
     "a_stop_stage", "a_stop_result", "a_stop_basis", "a_stop_detail", "a_per_stock", "a_per_stock_src",
     "a_qty_upper", "a_buy_time", "a_buy_price",
     "b_entry_status", "b_entry_basis", "b_entry_price", "b_entry_vs_ref_pct", "b_entry_note",
-    "b_qty", "b_qty_basis", "b_notional_won", "crash_blocked", "crash_lifted_at", "lift_status", "lift_time",
-    "lift_price", "lift_unknown", "ub_status", "ub_price", "limitup_possible", "d5_flags", "b1_lot_id", "b2_acct_id",
-    "caveats",
+    "b_qty", "b_qty_basis", "b_notional_won", "crash_blocked", "crash_lifted_at", "gate_open", "lift_status",
+    "lift_time", "lift_window", "lift_price", "lift_reblocked", "lift_unknown", "ub_status", "ub_price",
+    "limitup_possible", "d5_flags", "b1_lot_id", "b2_acct_id", "caveats",
 ]
 FILL_COLS = ["date", "strategy", "code", "tier", "price", "basis", "qty", "qty_basis", "signal_basis",
              "crash_blocked", "other_holder_live", "entry_time", "lift_time", "touch_open", "touch_high", "touch_low",
@@ -369,20 +369,25 @@ def per_stock_for(sd: L8.StratDay, strategy, folder: str, d: date) -> Tuple[floa
     return R.VIRTUAL_CAPITAL_PER_STRATEGY / k, "fallback(자본/K · 복리 미반영)"
 
 
-def crash_state(ctx: Ctx8, folder: str, code: str, d: date) -> Tuple[bool, str]:
-    """D3 — 급락게이트 «유지». B 진입 시각(09:02) 그 지수의 로그 판정이 `차단` 이면 막힘 + 풀린 첫 시각(D3′ 에 쓴다)."""
+def crash_state(ctx: Ctx8, folder: str, code: str, d: date) -> Tuple[bool, str, List[Tuple[str, str]]]:
+    """D3 — 급락게이트 «유지». B 진입 시각(09:02) 그 지수의 로그 판정이 `차단` 이면 막힘 + 첫 해제 시각 + 그 뒤 게이트가
+    «열린» 구간들(D3′ — 라이브처럼 열려 있는 동안만 산다 · 재차단 구간 제외 · 과제 9 I1). 해제 없으면 ("", [])."""
     cfg, _ = R.regime_index_for(folder, d)
     idx = resolve_regime_index(cfg, code, strategy_name=None, count=False)
     if idx == "none":
-        return False, ""
+        return False, "", []
     names = ("KOSPI", "KOSDAQ") if idx == "both" else (idx,)
     dl = ctx.log_for(d)
     t = SRC8.FIRST_TICK.strftime("%H:%M:%S")
-    blocked = [n for n in names if dl.index_state(n, t) == "차단"]
-    if not blocked:
-        return False, ""
-    lifts = [dl.first_verdict_after(n, t, "허용") for n in blocked]
-    return True, (max(lifts) if all(lifts) else "")
+    if not any(dl.index_state(n, t) == "차단" for n in names):
+        return False, "", []
+    wins = dl.open_windows(names, t)
+    return True, (wins[0][0] if wins else ""), wins
+
+
+def reblocks(windows: Sequence[Tuple[str, str]]) -> List[str]:
+    """해제 뒤 게이트가 다시 막힌 시각들 — 열린 구간의 끝(끝 없음 = 장 끝까지 열림)."""
+    return [e for _, e in windows if e]
 
 
 def cooldown_flag(day_buys: Sequence[Tuple[str, C.Trade]], folder: str, code: str, entry: datetime, own_slot: bool,
@@ -434,28 +439,34 @@ def d5_flags(ctx: Ctx8, sd: L8.StratDay, folder: str, code: str, entry_naive: da
 
 
 def lift_fills(folder: str, code: str, d: date, minutes: Sequence[Tuple[str, X.Bar]], d_bar: Optional[X.Bar],
-               lifted: str, band: Tuple[Optional[float], Optional[float], Optional[float]], common: Dict[str, Any]
-               ) -> Tuple[X.LiftEntry, Optional[A.Fill], Optional[X.LiftEntry], Optional[A.Fill]]:
-    """D3′ 급락 차단 행 → (해제 뒤 진입, 본 체결, 상한 진입, 상한 체결).
+               windows: Sequence[Tuple[str, str]], band: Tuple[Optional[float], Optional[float], Optional[float]],
+               common: Dict[str, Any]
+               ) -> Tuple[X.LiftEntry, Optional[A.Fill], Optional[X.LiftEntry], Optional[A.Fill], bool]:
+    """D3′ 급락 차단 행 → (해제 뒤 진입, 본 체결, 상한 진입, 상한 체결, 재차단 표시).
 
-    본 = 게이트가 풀린 뒤 첫 밴드 안 분봉 가격(`exitsim8.lift_entry` · basis after_lift · entry_time = 그 분봉 시각).
+    본 = 게이트가 «열린» 구간(`windows` · 재차단 구간 제외 · 과제 9 I1)의 첫 밴드 안 분봉 가격(`exitsim8.lift_entry`
+    · basis after_lift · entry_time·lift_time = 그 분봉 시각 · 쓴 구간 = `LiftEntry.window`). 진입 뒤 터치는 전 분봉.
+    재차단 표시 = 첫 해제 시각만 보는 규칙(재차단 무시)이었다면 재차단 구간에서 샀을 행(본 체결은 다음 열린 구간 또는 미체결).
     A3 — 분봉이 아예 없으면(`LIFT_NO_MINUTE`) «안 산 것»이 아니라 «모른다»: 본 체결은 만들지 않고, 상한 민감도 체결만
-    D 일봉으로 만든다(`exitsim8.lift_upper_bound` · tier `lift_ub` · lift_time = 게이트 해제 시각 · entry_time None →
-    진입일 탐침은 09:02 로 본다). 본 집계는 상한 체결을 넣지 않는다(build_arms)."""
-    le = X.lift_entry(d, minutes, lifted, band[1], band[2])
+    D 일봉으로 만든다(`exitsim8.lift_upper_bound` · tier `lift_ub` · lift_time = 첫 해제 시각 · entry_time None →
+    진입일 탐침은 09:02 로 본다 · 시각 불명이라 재차단 구간을 가르지 못한다 — 원장 caveats). 본 집계는 상한을 넣지 않는다."""
+    lifted = windows[0][0] if windows else ""
+    le = X.lift_entry(d, minutes, lifted, band[1], band[2], windows)
+    first_only = X.lift_entry(d, minutes, lifted, band[1], band[2])
+    reblocked = first_only.status == X.LIFT_FILLED and (le.status != X.LIFT_FILLED or le.time != first_only.time)
     if le.status == X.LIFT_FILLED:
         q = Z.arm_b_qty(le.price)
         return le, A.Fill(folder, code, d, float(le.price), X.BASIS_LIFT, q.qty, q.basis, crash_blocked=True,
                           entry_time=SRC8.aware(datetime.combine(d, time.fromisoformat(le.time))),
-                          touch_bar=le.touch_bar, lift_time=le.time, **common), None, None
+                          touch_bar=le.touch_bar, lift_time=le.time, **common), None, None, reblocked
     if le.status != X.LIFT_NO_MINUTE:
-        return le, None, None, None
+        return le, None, None, None, reblocked
     ub = X.lift_upper_bound(d_bar, band[1], band[2])
     if ub.status != X.LIFT_FILLED:
-        return le, None, ub, None
+        return le, None, ub, None, reblocked
     q = Z.arm_b_qty(ub.price)
     return le, None, ub, A.Fill(folder, code, d, float(ub.price), ub.basis, q.qty, q.basis, crash_blocked=True,
-                                lift_time=lifted, **dict(common, tier=R.TIER_LIFT_UB))
+                                lift_time=lifted, **dict(common, tier=R.TIER_LIFT_UB)), reblocked
 
 
 def unique_fills(fills: Sequence[A.Fill], key: Callable[[A.Fill], Tuple], what: str) -> List[A.Fill]:
@@ -556,25 +567,29 @@ def attach_rows(ctx: Ctx8, cands: Sequence[Dict[str, Any]], reuse: Optional[Dict
             if ent.price is not None and band[0]:
                 row["b_entry_vs_ref_pct"] = _pct((ent.price / band[0] - 1) * 100)
             common = dict(tier=tier, signal_basis=c["signal_basis"], other_holder_live=",".join(others))
-            crash, lifted = crash_state(ctx, folder, code, d)
+            crash, lifted, wins = crash_state(ctx, folder, code, d)
             if not crash:
                 if ent.status == S.ENTRY_FILLED:
                     q = Z.arm_b_qty(ent.price)
                     fill = A.Fill(folder, code, d, float(ent.price), ent.basis, q.qty, q.basis, **common)
             else:
-                row.update(crash_blocked="Y", crash_lifted_at=lifted)
+                row.update(crash_blocked="Y", crash_lifted_at=lifted,
+                           gate_open=" ".join(f"{a}~{b}" for a, b in wins))
                 if ent.status == S.ENTRY_FILLED:           # D3 반대편 — 게이트가 없었다면 09:02 에 샀다(민감도)
                     q0 = Z.arm_b_qty(ent.price)
                     nogate.append(A.Fill(folder, code, d, float(ent.price), ent.basis, q0.qty, q0.basis,
                                          crash_blocked=True, **common))
-                le, fill, ub, ub_fill = lift_fills(folder, code, d, ctx.minute_bars(code, d),
-                                                   ctx.bars_for(code).get(d), lifted, band, common)
-                row.update(lift_status=le.status, lift_time=le.time, lift_price=_fmt(le.price),
-                           b_entry_status=f"crash→{le.status}")
+                le, fill, ub, ub_fill, reblocked = lift_fills(folder, code, d, ctx.minute_bars(code, d),
+                                                              ctx.bars_for(code).get(d), wins, band, common)
+                row.update(lift_status=le.status, lift_time=le.time, lift_window=le.window, lift_price=_fmt(le.price),
+                           lift_reblocked="Y" if reblocked else "", b_entry_status=f"crash→{le.status}")
                 if ub is not None:                      # A3 — 분봉 없음 = 모른다(본 집계 밖)
                     row["lift_unknown"] = "Y"
                     if tier == R.TIER_MAIN:
                         row.update(ub_status=ub.status, ub_price=_fmt(ub.price))
+                        if reblocks(wins):
+                            caveats.append(f"게이트 재차단 있음({','.join(reblocks(wins))}) — 상한(일봉)은 체결 시각 "
+                                           "불명이라 재차단 구간 체결을 배제하지 못한다")
                     else:
                         ub_fill = None
         if fill is not None:
@@ -791,6 +806,10 @@ def _print_counts(res: Dict[str, Any]) -> None:
     for r in crash:
         st[r["lift_status"] or "(밴드 없음)"] = st.get(r["lift_status"] or "(밴드 없음)", 0) + 1
     print(f"D3′ 급락 차단 main 행 {len(crash)} → " + " · ".join(f"{k} {v}" for k, v in sorted(st.items())))
+    rb = [r for r in crash if r["lift_reblocked"] == "Y"]
+    print(f"D3′ 재차단 — 첫 해제만 보면 재차단 구간에서 샀을 main 행 {len(rb)} → 다음 열린 구간 체결 "
+          f"{sum(1 for r in rb if r['lift_status'] == X.LIFT_FILLED)} · 미체결 "
+          f"{sum(1 for r in rb if r['lift_status'] != X.LIFT_FILLED)}")
     unk = [r for r in crash if r["lift_unknown"] == "Y"]
     ub: Dict[str, int] = {}
     for r in unk:

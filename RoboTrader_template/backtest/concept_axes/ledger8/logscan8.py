@@ -198,6 +198,24 @@ class DayLog:
                 return t
         return ""
 
+    def open_windows(self, names: Sequence[str], after: str) -> List[Tuple[str, str]]:
+        """`after` 부터 급락게이트가 «열린» 구간들 [(시작, 끝)] — 끝 "" = 장 끝까지. `names` 지수 중 하나라도 `차단` 이면
+        닫힘(라이브 both 는 어느 쪽이든 급락이면 막는다 — core/trading_decision_engine.py:171-213). 판정은 다음 관측까지
+        유지(`index_state`). 해제 뒤 재차단 구간은 빠진다(과제 9 I1 · 09-14 13:11 이후 · 09-11 22회 전환)."""
+        pts = [after] + sorted({t for t, i, _ in self.market_dir if i in names and t > after})
+        out: List[Tuple[str, str]] = []
+        start = ""
+        for t in pts:
+            is_open = all(self.index_state(n, t) != "차단" for n in names)
+            if is_open and not start:
+                start = t
+            elif not is_open and start:
+                out.append((start, t))
+                start = ""
+        if start:
+            out.append((start, ""))
+        return out
+
 
 @dataclass
 class GateHit:

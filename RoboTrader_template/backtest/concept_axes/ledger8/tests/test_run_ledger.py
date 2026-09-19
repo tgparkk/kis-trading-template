@@ -114,11 +114,12 @@ def test_d5_flags_wires_daily_loss_and_cooldown_without_own_buy_false_positive()
 BAND = (100.0, 98.0, 103.0)
 COMMON = dict(tier=R.TIER_MAIN, signal_basis="replay", other_holder_live="")
 DBAR = X.Bar(D, 104.0, 106.0, 99.0, 101.5)
+OPEN = [("09:23:09", "")]
 
 
 def test_no_minute_data_makes_no_main_fill_and_an_upper_bound_fill():
-    le, main, ub, ubf = RUN.lift_fills(MA20, "005930", D, [], DBAR, "09:23:09", BAND, COMMON)
-    assert le.status == X.LIFT_NO_MINUTE and main is None
+    le, main, ub, ubf, reblocked = RUN.lift_fills(MA20, "005930", D, [], DBAR, OPEN, BAND, COMMON)
+    assert le.status == X.LIFT_NO_MINUTE and main is None and not reblocked
     assert ub.status == X.LIFT_FILLED and ub.price == 101.5
     q = Z.arm_b_qty(101.5)
     assert ubf == A.Fill(MA20, "005930", D, 101.5, X.BASIS_UPPER, q.qty, q.basis, tier=R.TIER_LIFT_UB,
@@ -129,14 +130,14 @@ def test_no_minute_data_makes_no_main_fill_and_an_upper_bound_fill():
 def test_no_minute_data_without_daily_overlap_or_bar_has_no_upper_fill():
     far = X.Bar(D, 110.0, 112.0, 108.0, 111.0)
     for bar, status in ((far, X.LIFT_UNFILLABLE), (None, X.LIFT_NO_BAR)):
-        le, main, ub, ubf = RUN.lift_fills(MA20, "005930", D, [], bar, "09:23:09", BAND, COMMON)
+        le, main, ub, ubf, _ = RUN.lift_fills(MA20, "005930", D, [], bar, OPEN, BAND, COMMON)
         assert (le.status, main, ub.status, ubf) == (X.LIFT_NO_MINUTE, None, status, None)
 
 
 def test_minute_fill_after_lift_is_main_and_has_no_upper_bound():
     mins = [("09:23:00", X.Bar(D, 100.0, 100.0, 100.0, 100.0)), ("09:24:00", X.Bar(D, 102.0, 102.5, 101.0, 101.5))]
-    le, main, ub, ubf = RUN.lift_fills(MA20, "005930", D, mins, DBAR, "09:23:09", BAND, COMMON)
-    assert le.status == X.LIFT_FILLED and (ub, ubf) == (None, None)
+    le, main, ub, ubf, reblocked = RUN.lift_fills(MA20, "005930", D, mins, DBAR, OPEN, BAND, COMMON)
+    assert le.status == X.LIFT_FILLED and (ub, ubf, reblocked) == (None, None, False)
     assert (main.basis, main.price, main.tier, main.lift_time, main.crash_blocked) == \
         (X.BASIS_LIFT, 102.0, R.TIER_MAIN, "09:24:00", True)
     assert main.entry_time is not None and main.entry_time.time() == _hm(9, 24)
@@ -144,13 +145,34 @@ def test_minute_fill_after_lift_is_main_and_has_no_upper_bound():
 
 def test_minutes_present_but_out_of_band_stays_unfillable_without_upper_bound():
     mins = [("09:24:00", X.Bar(D, 110.0, 111.0, 109.0, 110.0))]
-    le, main, ub, ubf = RUN.lift_fills(MA20, "005930", D, mins, DBAR, "09:23:09", BAND, COMMON)
+    le, main, ub, ubf, _ = RUN.lift_fills(MA20, "005930", D, mins, DBAR, OPEN, BAND, COMMON)
     assert (le.status, main, ub, ubf) == (X.LIFT_UNFILLABLE, None, None, None)
 
 
 def test_not_lifted_is_not_unknown():
-    le, main, ub, ubf = RUN.lift_fills(MA20, "005930", D, [], DBAR, "", BAND, COMMON)
-    assert (le.status, main, ub, ubf) == (X.LIFT_NOT_LIFTED, None, None, None)
+    le, main, ub, ubf, reblocked = RUN.lift_fills(MA20, "005930", D, [], DBAR, [], BAND, COMMON)
+    assert (le.status, main, ub, ubf, reblocked) == (X.LIFT_NOT_LIFTED, None, None, None, False)
+
+
+def test_reblocked_window_moves_the_entry_and_marks_the_row():
+    """과제 9 I1 — 첫 해제만 보면 재차단 구간(09:33:50~09:35:03)에서 샀을 행: 다음 열린 구간 봉에 사고 재차단 표시."""
+    wins = [("09:23:09", "09:33:50"), ("09:35:03", "")]
+    mins = [("09:34:00", X.Bar(D, 101.0, 102.0, 100.0, 101.0)), ("09:36:00", X.Bar(D, 102.0, 102.5, 90.0, 95.0))]
+    le, main, ub, ubf, reblocked = RUN.lift_fills(MA20, "005930", D, mins, DBAR, wins, BAND, COMMON)
+    assert reblocked and (ub, ubf) == (None, None)
+    assert (le.time, le.window, main.price, main.lift_time) == ("09:36:00", "09:35:03~", 102.0, "09:36:00")
+    assert main.entry_time.time() == _hm(9, 36) and main.touch_bar.low == 90.0
+    only_reblock = mins[:1]                                        # 재차단 구간에만 밴드 안 → 미체결 + 표시
+    le2, main2, _, _, reblocked2 = RUN.lift_fills(MA20, "005930", D, only_reblock, DBAR, wins, BAND, COMMON)
+    assert (le2.status, main2, reblocked2) == (X.LIFT_UNFILLABLE, None, True)
+
+
+def test_upper_bound_keeps_first_lift_time_on_reblocked_days():
+    wins = [("11:02:06", "13:11:00")]
+    le, main, ub, ubf, reblocked = RUN.lift_fills(MA20, "005930", D, [], DBAR, wins, BAND, COMMON)
+    assert (le.status, main, ub.status, ubf.lift_time, reblocked) == \
+        (X.LIFT_NO_MINUTE, None, X.LIFT_FILLED, "11:02:06", False)
+    assert RUN.reblocks(wins) == ["13:11:00"] and RUN.reblocks([("11:02:06", "")]) == []
 
 
 # ── 중복 체결 가드(과제 8 M1) ────────────────────────────────────────────────

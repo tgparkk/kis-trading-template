@@ -198,3 +198,48 @@ def test_lift_upper_bound_entry_day_touches_not_used():
     pos = X.Pos("000001", DAYS[0], datetime(2026, 9, 10, 9, 24), le.price, 10, X.BASIS_LIFT, touch_bar=le.touch_bar)
     ex = X.simulate_lot(pos, R10, _path((100.0, 101.0, 80.0, 100.0)), _no_probe)
     assert ex.status == "open" and X.FLAG_NO_D_TOUCH in ex.flags
+
+
+# ── 과제 9 I1 — 게이트가 «열려 있는» 구간(재차단 제외)에서만 진입 · 터치는 진입 뒤 전 분봉 ─────────────────────────
+REBLOCK = [("09:23:09", "09:33:50"), ("09:35:03", "")]   # 09-11 형: 해제 → 재차단 → 재해제
+
+
+def test_lift_entry_skips_bars_inside_a_reblocked_window():
+    mins = _mins(("09:24:00", 110, 111, 109, 110),        # 열림 · 밴드 밖
+                 ("09:34:00", 101, 102, 100, 101),        # 재차단 구간 안 · 밴드 안 → 안 씀
+                 ("09:35:00", 101, 102, 100, 101),        # 봉 시작 < 재해제 09:35:03 → 안 씀(해제 경계 규칙 그대로)
+                 ("09:36:00", 102, 102.5, 101, 102))      # 다시 열림 · 밴드 안 → 씀
+    le = X.lift_entry(DAYS[0], mins, "09:23:09", None, 103.0, REBLOCK)
+    assert (le.status, le.price, le.time, le.basis, le.window) == \
+        (X.LIFT_FILLED, 102.0, "09:36:00", "minute_open", "09:35:03~")
+    old = X.lift_entry(DAYS[0], mins, "09:23:09", None, 103.0)           # 첫 해제만 보면 재차단 구간에서 샀다
+    assert (old.time, old.window) == ("09:34:00", "09:23:09~")
+
+
+def test_lift_entry_window_end_is_exclusive_and_mixed_formats():
+    mins = _mins(("093350", 101, 102, 100, 101), ("093400", 101, 102, 100, 101))
+    wins = [("092309", "09:33:50"), ("09:34:00", "")]
+    le = X.lift_entry(DAYS[0], mins, "09:23:09", None, 103.0, wins)     # 09:33:50 시작 = 재차단 시각 → 안 씀
+    assert (le.time, le.window) == ("09:34:00", "09:34:00~")
+    closed = X.lift_entry(DAYS[0], _mins(("09:40:00", 101, 102, 100, 101)), "09:23:09", None, 103.0,
+                          [("09:23:09", "09:33:50")])                    # 재차단 뒤 다시 안 열림 → 미체결
+    assert closed.status == X.LIFT_UNFILLABLE
+    assert X.lift_entry(DAYS[0], mins, "", None, 103.0, []).status == X.LIFT_NOT_LIFTED
+
+
+def test_lift_entry_touches_after_entry_use_all_minutes_even_when_reblocked():
+    """청산은 게이트가 막지 않는다 — 진입 뒤 터치 봉은 재차단 구간 분봉까지 전부 모은다."""
+    mins = _mins(("09:24:00", 101, 102, 100, 101),        # 열림 · 진입(minute_open)
+                 ("09:31:00", 100, 100, 80, 85),          # 재차단 구간 — 저가 80 은 터치에 들어가야 한다
+                 ("09:41:00", 90, 95, 88, 94))
+    le = X.lift_entry(DAYS[0], mins, "09:23:09", None, 103.0, [("09:23:09", "09:30:00"), ("09:40:00", "")])
+    assert (le.time, le.window) == ("09:24:00", "09:23:09~09:30:00")
+    assert (le.touch_bar.open, le.touch_bar.high, le.touch_bar.low, le.touch_bar.close) == (101.0, 102.0, 80.0, 94.0)
+
+
+def test_lift_entry_default_equals_single_open_ended_window():
+    mins = _mins(("09:23:00", 100, 100, 99, 100), ("09:24:00", 105, 105, 102, 104),
+                 ("09:25:00", 103, 104, 101, 102), ("09:26:00", 101, 102, 95, 96))
+    a = X.lift_entry(DAYS[0], mins, "09:23:09", None, 103.0)
+    b = X.lift_entry(DAYS[0], mins, "09:23:09", None, 103.0, [("09:23:09", "")])
+    assert a == b and a.window == "09:23:09~"

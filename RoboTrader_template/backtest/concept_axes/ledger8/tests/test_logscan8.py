@@ -171,3 +171,19 @@ def test_ambiguous_lookup_lines_are_kept_by_code(tmp_path):
     plain = tmp_path / "plain"
     plain.mkdir()
     assert _scan(plain).ambiguous == {}
+
+
+def test_open_windows_follow_every_gate_flip(tmp_path):
+    """과제 9 I1 — 해제 뒤 재차단 구간을 뺀 «열린» 구간들. both 는 어느 한쪽이라도 차단이면 닫힘."""
+    extra = (
+        "2026-09-14 10:00:00 | core.trading_decision_engine | INFO | [시장방향성필터] 관측 지수=KOSDAQ 코드=1001 "
+        "등락률=-3.10% 임계값=-3.0% 판정=차단\n"
+        "2026-09-14 10:30:00 | core.trading_decision_engine | INFO | [시장방향성필터] 관측 지수=KOSDAQ 코드=1001 "
+        "등락률=-2.90% 임계값=-3.0% 판정=허용\n"
+        "2026-09-14 13:11:00 | core.trading_decision_engine | INFO | [시장방향성필터] 관측 지수=KOSPI 코드=0001 "
+        "등락률=-2.60% 임계값=-2.5% 판정=차단\n")
+    dl = L.scan_day(_dir(tmp_path, LOG + extra), D, R.ALL_FOLDERS, R.LOGGER_TO_FOLDER)
+    assert dl.open_windows(("KOSPI",), "09:02:00") == [("09:09:22", "13:11:00")]
+    assert dl.open_windows(("KOSDAQ",), "09:02:00") == [("09:02:00", "10:00:00"), ("10:30:00", "")]
+    assert dl.open_windows(("KOSPI", "KOSDAQ"), "09:02:00") == [("09:09:22", "10:00:00"), ("10:30:00", "13:11:00")]
+    assert dl.open_windows(("NONE",), "09:02:00") == [("09:02:00", "")]

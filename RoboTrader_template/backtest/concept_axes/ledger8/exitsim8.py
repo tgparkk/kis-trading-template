@@ -203,6 +203,7 @@ class LiftEntry:
     time: str = ""                       # 체결로 본 분봉의 시작 시각 — 늘 'HH:MM:SS'(상한은 "" — 시각 불명)
     basis: str = ""                      # minute_open | minute_band_touch | daily_upper_bound
     touch_bar: Optional[Bar] = None      # 진입 «이후» 분봉만 모은 D 봉(시가 = 진입가)
+    window: str = ""                     # 진입을 허용한 게이트 열린 구간 'HH:MM:SS~HH:MM:SS'(끝 없음 = 'HH:MM:SS~')
 
 
 def _hhmmss(t: object) -> str:
@@ -218,35 +219,44 @@ def _hhmmss(t: object) -> str:
     return s
 
 
-def lift_entry(d: date, minutes: Sequence[MinuteBar], lift_hhmmss: str, band_min: Optional[float],
-               band_max: Optional[float]) -> LiftEntry:
-    """D3′ — 급락 게이트가 풀린 뒤 첫 매수 밴드 안 가격(스펙 「추가 결정」).
+def _colon(s: str) -> str:
+    return f"{s[:2]}:{s[2:4]}:{s[4:]}"
 
-    시각은 분봉·해제 모두 `_hhmmss` 로 맞춘 뒤 비교한다(DB 'HHMMSS' · 로그 'HH:MM:SS') · `LiftEntry.time` 은 'HH:MM:SS'.
-    분봉 시작 시각 ≥ 해제 시각인 봉만 본다(해제 시각이 든 분봉엔 해제 전 가격이 섞인다). 각 분봉을
-    `sim.simulate_entry` 에 그대로 넣는다 — 시가가 밴드 안이면 그 시가(basis=minute_open), 시가 밖·봉 안 복귀면
-    밴드 경계값(minute_band_touch · 그 분 안 시각 불명). 끝까지 없으면 unfillable. 진입일 터치용 봉은
-    minute_open 이면 그 분봉부터, band_touch 면 «다음» 분봉부터 모은다(진입 시각 이후만).
+
+def lift_entry(d: date, minutes: Sequence[MinuteBar], lift_hhmmss: str, band_min: Optional[float],
+               band_max: Optional[float], windows: Optional[Sequence[Tuple[str, str]]] = None) -> LiftEntry:
+    """D3′ — 급락 게이트가 «열려 있는» 동안의 첫 매수 밴드 안 가격(스펙 「추가 결정」 · 과제 9 I1 «라이브와 같게»).
+
+    `windows` = 게이트가 열린 구간 [(시작, 끝)] — 끝 "" = 장 끝까지. 없으면(None) 기본 [(lift_hhmmss, "")] = 첫 해제 뒤
+    전부(재차단 무시 · 옛 동작). 주어지면 그것만 본다(lift_hhmmss 는 안 씀) · 빈 목록 = 해제 없음.
+    시각은 분봉·구간 모두 `_hhmmss` 로 맞춘 뒤 비교한다(DB 'HHMMSS' · 로그 'HH:MM:SS') · `LiftEntry.time` 은 'HH:MM:SS'.
+    진입 후보 = 분봉 시작 시각이 어느 구간의 [시작, 끝) 안인 봉(해제 시각이 든 분봉엔 해제 전 가격이 섞인다 · 재차단
+    시각에 시작하는 봉은 이미 막힌 뒤다). 각 분봉을 `sim.simulate_entry` 에 그대로 넣는다 — 시가가 밴드 안이면 그
+    시가(basis=minute_open), 시가 밖·봉 안 복귀면 밴드 경계값(minute_band_touch · 그 분 안 시각 불명). 끝까지 없으면
+    unfillable. 진입일 터치용 봉은 minute_open 이면 그 분봉부터, band_touch 면 «다음» 분봉부터 «전부» 모은다
+    (청산은 게이트가 막지 않는다 — 재차단 구간 분봉도 들어간다).
     """
-    if not lift_hhmmss:
+    if windows is None:
+        windows = [(lift_hhmmss, "")] if lift_hhmmss else []
+    if not windows:
         return LiftEntry(LIFT_NOT_LIFTED)
-    lift = _hhmmss(lift_hhmmss)
+    wins = [(_hhmmss(a), _hhmmss(b) if b else "") for a, b in windows]
     if not minutes:
         return LiftEntry(LIFT_NO_MINUTE)
-    after: List[MinuteBar] = []
-    for t, b in minutes:
-        s = _hhmmss(t)
-        if s >= lift:
-            after.append((f"{s[:2]}:{s[2:4]}:{s[4:]}", b))
-    for i, (t, b) in enumerate(after):
+    norm: List[Tuple[str, Bar]] = [(_hhmmss(t), b) for t, b in minutes]
+    for i, (s, b) in enumerate(norm):
+        win = next(((a, e) for a, e in wins if a <= s and (not e or s < e)), None)
+        if win is None:
+            continue
         ent = S.simulate_entry(b, band_min, band_max)
         if ent.status != S.ENTRY_FILLED:
             continue
-        rest = after[i:] if ent.basis == BASIS_D_OPEN else after[i + 1:]
+        rest = norm[i:] if ent.basis == BASIS_D_OPEN else norm[i + 1:]
         touch = (Bar(d, float(ent.price), max(x.high for _, x in rest), min(x.low for _, x in rest),
                      float(rest[-1][1].close)) if rest else None)
-        return LiftEntry(LIFT_FILLED, float(ent.price), t,
-                         "minute_open" if ent.basis == BASIS_D_OPEN else "minute_band_touch", touch)
+        return LiftEntry(LIFT_FILLED, float(ent.price), _colon(s),
+                         "minute_open" if ent.basis == BASIS_D_OPEN else "minute_band_touch", touch,
+                         f"{_colon(win[0])}~{_colon(win[1]) if win[1] else ''}")
     return LiftEntry(LIFT_UNFILLABLE)
 
 
