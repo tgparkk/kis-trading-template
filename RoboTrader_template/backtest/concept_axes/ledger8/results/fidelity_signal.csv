@@ -1,0 +1,407 @@
+date,strategy,mode,code,list_pos,slot_state,slot_state_v2,eval_v1,signal_replay,replay_reason,signal_log,signal_log_v1,signal_log_v2,n_evals,first_ts,last_ts,outcome,outcome_v1,outcome_v2,no_slot_but_log_y,no_slot_but_log_y_v2,reasons_equal,ref_equal,receipt_ref,replay_ref,signal_basis,vol_ratio,vol_threshold,rule_margin_pct,vintage_fragile
+2026-09-10,elder_ema_pullback,,009150,1,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-10,elder_ema_pullback,,006400,2,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=525000<=ema13*1.02 close=5740,Y,Y,Y,69,09:05:54,14:39:15,agree_Y,agree_Y,agree_Y,N,N,Y,Y,574000,574000,log,,,,
+2026-09-10,elder_ema_pullback,,009155,3,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-10,elder_ema_pullback,,128940,4,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=461500<=ema13*1.02 close=4945,Y,Y,Y,69,09:05:54,14:39:15,agree_Y,agree_Y,agree_Y,N,N,Y,Y,494500,494500,log,,,,
+2026-09-10,elder_ema_pullback,,028260,5,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-10,elder_ema_pullback,,443060,6,bought,bought,Y,Y,triple_screen_ema_pullback low=207500<=ema13*1.02 close=2105,Y,Y,Y,57,09:05:54,13:40:38,agree_Y,agree_Y,agree_Y,N,N,Y,Y,210500,210500,log,,,,
+2026-09-10,elder_ema_pullback,,066570,7,bought,bought,Y,Y,triple_screen_ema_pullback low=201500<=ema13*1.02 close=2045,Y,Y,Y,6,09:05:55,09:30:52,agree_Y,agree_Y,agree_Y,N,N,Y,Y,204500,204500,log,,,,
+2026-09-10,elder_ema_pullback,,005935,8,bought,bought,Y,Y,triple_screen_ema_pullback low=195600<=ema13*1.02 close=1975,Y,Y,Y,69,09:05:55,14:39:15,agree_Y,agree_Y,agree_Y,N,N,Y,Y,197500,197500,log,,,,
+2026-09-10,elder_ema_pullback,,003670,9,held,held,N,Y,triple_screen_ema_pullback low=180600<=ema13*1.02 close=1921,NA,NA,NA,,,,na,na,na,N,N,,,,192100,replay,,,,
+2026-09-10,elder_ema_pullback,,105560,10,held,held,N,Y,triple_screen_ema_pullback low=171600<=ema13*1.02 close=1720,NA,NA,NA,,,,na,na,na,N,N,,,,172000,replay,,,,
+2026-09-10,book_envelope_200d,,096770,1,bought,bought,Y,Y,envelope_200d_high close=153500 >= env_upper=145167 200d_hig,Y,Y,Y,2,09:01:37,09:06:36,agree_Y,agree_Y,agree_Y,N,N,Y,Y,153500,153500,log,,,,
+2026-09-10,book_envelope_200d,,053260,2,bought,bought,N,Y,envelope_200d_high close=7990 >= env_upper=6652 200d_high vo,Y,Y,Y,1,09:01:37,09:01:37,agree_Y,agree_Y,agree_Y,N,N,Y,Y,7990,7990,log,,,,
+2026-09-10,daytrading_3methods_breakout,,115440,1,bought,bought,Y,Y,breakout_prev_high close=8200.00 prior20_high=7790.00 vol=25,Y,Y,Y,1,09:02:14,09:02:14,agree_Y,agree_Y,agree_Y,N,N,N,Y,8200,8200,log,39.9024,2,+1895.12,
+2026-09-10,daytrading_3methods_breakout,,100590,2,no_slot,no_slot,Y,Y,breakout_prev_high close=4355.00 prior20_high=3980.00 vol=37,NA,N,NA,,,,na,replay_only,na,N,N,,,,4355,replay,30.6722,2,+1433.61,N
+2026-09-10,daytrading_3methods_breakout,,014280,3,no_slot,no_slot,Y,Y,breakout_prev_high close=4745.00 prior20_high=4660.00 vol=33,NA,N,NA,,,,na,replay_only,na,N,N,,,,4745,replay,29.4657,2,+1373.29,N
+2026-09-10,daytrading_3methods_breakout,,010580,4,no_slot,no_slot,Y,Y,breakout_prev_high close=2540.00 prior20_high=2200.00 vol=19,NA,N,NA,,,,na,replay_only,na,N,N,,,,2540,replay,16.115,2,+705.75,N
+2026-09-10,daytrading_3methods_breakout,,012210,5,no_slot,no_slot,Y,Y,breakout_prev_high close=13030.00 prior20_high=10970.00 vol=,NA,N,NA,,,,na,replay_only,na,N,N,,,,13030,replay,10.9448,2,+447.24,N
+2026-09-10,daytrading_3methods_breakout,,126600,6,no_slot,no_slot,Y,Y,breakout_prev_high close=3110.00 prior20_high=3055.00 vol=38,NA,N,NA,,,,na,replay_only,na,N,N,,,,3110,replay,10.9485,2,+447.43,N
+2026-09-10,daytrading_3methods_breakout,,162300,7,no_slot,no_slot,Y,Y,breakout_prev_high close=2765.00 prior20_high=2720.00 vol=38,NA,N,NA,,,,na,replay_only,na,N,N,,,,2765,replay,10.5274,2,+426.37,N
+2026-09-10,daytrading_3methods_breakout,,053260,8,no_slot,no_slot,Y,Y,breakout_prev_high close=7990.00 prior20_high=7670.00 vol=17,NA,N,NA,,,,na,replay_only,na,N,N,,,,7990,replay,10.2627,2,+413.14,N
+2026-09-10,daytrading_3methods_breakout,,088280,9,no_slot,no_slot,Y,Y,breakout_prev_high close=2850.00 prior20_high=2700.00 vol=45,NA,N,NA,,,,na,replay_only,na,N,N,,,,2850,replay,9.8755,2,+393.78,N
+2026-09-10,daytrading_3methods_breakout,,069540,10,no_slot,no_slot,Y,Y,breakout_prev_high close=3810.00 prior20_high=3640.00 vol=69,NA,N,NA,,,,na,replay_only,na,N,N,,,,3810,replay,8.9586,2,+347.93,N
+2026-09-10,minervini_volume_dryup,,073240,1,held,held,N,Y,volume_dryup recent/base=0.33 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,7100,replay,0.33,0.7,-52.86,N
+2026-09-10,minervini_volume_dryup,,006360,2,bought,bought,Y,Y,volume_dryup recent/base=0.57 ≤ 0.70,Y,Y,Y,1,09:02:49,09:02:49,agree_Y,agree_Y,agree_Y,N,N,Y,Y,35550,35550,log,0.57,0.7,-18.57,
+2026-09-10,minervini_volume_dryup,,119850,3,no_slot,no_slot,Y,Y,volume_dryup recent/base=0.61 ≤ 0.70,NA,N,NA,,,,na,replay_only,na,N,N,,,,48300,replay,0.61,0.7,-12.86,N
+2026-09-10,minervini_volume_dryup,,098120,4,no_slot,no_slot,Y,Y,volume_dryup recent/base=0.49 ≤ 0.70,NA,N,NA,,,,na,replay_only,na,N,N,,,,47900,replay,0.49,0.7,-30.00,N
+2026-09-10,minervini_volume_dryup,,093320,5,no_slot,no_slot,Y,Y,volume_dryup recent/base=0.63 ≤ 0.70,NA,N,NA,,,,na,replay_only,na,N,N,,,,141700,replay,0.63,0.7,-10.00,N
+2026-09-10,book_pullback_ma20,,025980,1,bought,bought,N,Y,daily_ma20_pull ma20=5051.00 low=5090.00 close=5220.00,Y,Y,Y,1,09:38:28,09:38:28,agree_Y,agree_Y,agree_Y,N,N,Y,Y,5220,5220,log,,,,
+2026-09-10,book_pullback_ma20,,032820,2,no_slot,no_slot,N,Y,daily_ma20_pull ma20=11734.50 low=11950.00 close=14320.00,NA,NA,NA,,,,na,na,na,N,N,,,,14320,replay,,,,
+2026-09-10,book_pullback_ma20,,413630,3,no_slot,no_slot,N,Y,daily_ma20_pull ma20=3828.50 low=3895.00 close=3970.00,NA,NA,NA,,,,na,na,na,N,N,,,,3970,replay,,,,
+2026-09-10,book_pullback_ma20,,003530,4,no_slot,no_slot,N,Y,daily_ma20_pull ma20=4812.75 low=4790.00 close=4845.00,NA,NA,NA,,,,na,na,na,N,N,,,,4845,replay,,,,
+2026-09-10,book_pullback_ma20,,396300,5,no_slot,no_slot,N,Y,daily_ma20_pull ma20=4790.25 low=4855.00 close=5070.00,NA,NA,NA,,,,na,na,na,N,N,,,,5070,replay,,,,
+2026-09-10,book_pullback_ma20,,003350,6,held,held,N,Y,daily_ma20_pull ma20=12663.50 low=12690.00 close=13340.00,NA,NA,NA,,,,na,na,na,N,N,,,,13340,replay,,,,
+2026-09-10,book_pullback_ma20,,201490,7,no_slot,no_slot,N,Y,daily_ma20_pull ma20=2477.50 low=2500.00 close=2775.00,NA,NA,NA,,,,na,na,na,N,N,,,,2775,replay,,,,
+2026-09-10,book_pullback_ma20,,094480,8,no_slot,no_slot,N,Y,daily_ma20_pull ma20=5736.00 low=5650.00 close=5810.00,NA,NA,NA,,,,na,na,na,N,N,,,,5810,replay,,,,
+2026-09-10,book_pullback_ma20,,059120,9,no_slot,no_slot,N,Y,daily_ma20_pull ma20=6817.00 low=6880.00 close=7030.00,NA,NA,NA,,,,na,na,na,N,N,,,,7030,replay,,,,
+2026-09-10,book_pullback_ma20,,026940,10,no_slot,no_slot,N,Y,daily_ma20_pull ma20=2175.50 low=2205.00 close=2260.00,NA,NA,NA,,,,na,na,na,N,N,,,,2260,replay,,,,
+2026-09-10,book_pullback_ma5,,012210,1,bought,bought,Y,Y,ma5_pullback ma5=9990.00 low=10040.00 close=13030.00,Y,Y,Y,1,09:04:00,09:04:00,agree_Y,agree_Y,agree_Y,N,N,Y,Y,13030,13030,log,,,,
+2026-09-10,book_pullback_ma5,,004770,2,slot_available,slot_available,Y,Y,ma5_pullback ma5=2143.00 low=2130.00 close=2260.00,Y,Y,Y,3,09:04:00,09:14:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2260,2260,log,,,,
+2026-09-10,book_pullback_ma5,,023790,3,bought,bought,Y,Y,ma5_pullback ma5=1546.00 low=1516.00 close=1682.00,Y,Y,Y,3,09:04:00,09:14:07,agree_Y,agree_Y,agree_Y,N,N,Y,Y,1682,1682,log,,,,
+2026-09-10,book_pullback_ma5,,289080,4,bought,bought,Y,Y,ma5_pullback ma5=2410.00 low=2450.00 close=2635.00,Y,Y,Y,2,09:04:01,09:09:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2635,2635,log,,,,
+2026-09-10,book_pullback_ma5,,387690,5,slot_available,slot_available,Y,Y,ma5_pullback ma5=16868.00 low=16940.00 close=17550.00,Y,Y,Y,2,09:04:01,09:09:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,17550,17550,log,,,,
+2026-09-10,book_pullback_ma5,,036540,6,slot_available,slot_available,Y,Y,ma5_pullback ma5=5982.00 low=6010.00 close=6630.00,Y,Y,Y,2,09:04:01,09:09:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,6630,6630,log,,,,
+2026-09-10,book_pullback_ma5,,001510,7,slot_available,slot_available,Y,Y,ma5_pullback ma5=2453.00 low=2455.00 close=2515.00,Y,Y,Y,2,09:04:01,09:09:07,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2515,2515,log,,,,
+2026-09-10,book_pullback_ma5,,452260,8,slot_available,slot_available,Y,Y,ma5_pullback ma5=2350.00 low=2340.00 close=2565.00,Y,Y,Y,2,09:04:02,09:09:07,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2565,2565,log,,,,
+2026-09-10,book_pullback_ma5,,003530,9,slot_available,slot_available,Y,Y,ma5_pullback ma5=4882.00 low=4790.00 close=4845.00,Y,Y,Y,2,09:04:02,09:09:07,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4845,4845,log,,,,
+2026-09-10,book_pullback_ma5,,093370,10,slot_available,slot_available,Y,Y,ma5_pullback ma5=12794.00 low=12910.00 close=13350.00,Y,Y,Y,2,09:04:02,09:09:07,agree_Y,agree_Y,agree_Y,N,N,Y,Y,13350,13350,log,,,,
+2026-09-10,rs_leader,shadow,049080,1,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,1,09:04:38,09:04:38,agree_Y,agree_Y,agree_Y,N,N,Y,Y,8680,8680,log,,,,
+2026-09-10,rs_leader,shadow,001210,2,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,12070,replay,,,,
+2026-09-10,rs_leader,shadow,002780,3,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,7260,replay,,,,
+2026-09-10,rs_leader,shadow,079650,4,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,7830,replay,,,,
+2026-09-10,rs_leader,shadow,159010,5,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,24200,replay,,,,
+2026-09-10,rs_leader,shadow,204840,6,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:38,09:09:44,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4990,4990,log,,,,
+2026-09-10,rs_leader,shadow,001290,7,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:04:38,09:14:43,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4500,4500,log,,,,
+2026-09-10,rs_leader,shadow,024850,8,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,15030,replay,,,,
+2026-09-10,rs_leader,shadow,060230,9,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:04:38,15:17:18,agree_Y,agree_Y,agree_Y,N,N,Y,Y,1337,1337,log,,,,
+2026-09-10,rs_leader,shadow,300120,10,slot_available,no_slot,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:38,09:09:44,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,3390,3390,log,,,,
+2026-09-11,elder_ema_pullback,,009150,1,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-11,elder_ema_pullback,,034730,2,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=584000<=ema13*1.02 close=6120,Y,Y,Y,80,09:05:26,15:29:20,agree_Y,agree_Y,agree_Y,N,N,Y,Y,612000,612000,log,,,,
+2026-09-11,elder_ema_pullback,,009155,3,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-11,elder_ema_pullback,,002380,4,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=481500<=ema13*1.02 close=4950,Y,Y,Y,80,09:05:26,15:29:20,agree_Y,agree_Y,agree_Y,N,N,Y,Y,495000,495000,log,,,,
+2026-09-11,elder_ema_pullback,,128940,5,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=475000<=ema13*1.02 close=4815,Y,Y,Y,80,09:05:26,15:29:21,agree_Y,agree_Y,agree_Y,N,N,Y,Y,481500,481500,log,,,,
+2026-09-11,elder_ema_pullback,,028260,6,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-11,elder_ema_pullback,,298020,7,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=328000<=ema13*1.02 close=3430,Y,Y,Y,80,09:05:26,15:29:21,agree_Y,agree_Y,agree_Y,N,N,Y,Y,343000,343000,log,,,,
+2026-09-11,elder_ema_pullback,,357780,8,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-11,elder_ema_pullback,,131290,9,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=256000<=ema13*1.02 close=3065,Y,Y,Y,80,09:05:26,15:29:21,agree_Y,agree_Y,agree_Y,N,N,Y,Y,306500,306500,log,,,,
+2026-09-11,elder_ema_pullback,,064760,10,held,held,N,Y,triple_screen_ema_pullback low=252000<=ema13*1.02 close=2715,NA,NA,NA,,,,na,na,na,N,N,,,,271500,replay,,,,
+2026-09-11,book_envelope_200d,,131290,1,bought,bought,Y,Y,envelope_200d_high close=306500 >= env_upper=273405 200d_hig,Y,Y,Y,6,09:01:13,09:25:37,agree_Y,agree_Y,agree_Y,N,N,Y,Y,306500,306500,log,,,,
+2026-09-11,daytrading_3methods_breakout,,006880,1,bought,bought,N,Y,breakout_prev_high close=4730.00 prior20_high=4575.00 vol=13,Y,Y,Y,1,09:01:49,09:01:49,agree_Y,agree_Y,agree_Y,N,N,N,Y,4730,4730,log,85.927,2,+4196.35,
+2026-09-11,daytrading_3methods_breakout,,117580,2,bought,bought,N,Y,breakout_prev_high close=7510.00 prior20_high=7400.00 vol=49,Y,Y,Y,1,09:16:29,09:16:29,agree_Y,agree_Y,agree_Y,N,N,N,Y,7510,7510,log,69.7022,2,+3385.11,
+2026-09-11,daytrading_3methods_breakout,,073010,3,no_slot,no_slot,N,Y,breakout_prev_high close=3350.00 prior20_high=3070.00 vol=62,NA,NA,NA,,,,na,na,na,N,N,,,,3350,replay,53.0982,2,+2554.91,N
+2026-09-11,daytrading_3methods_breakout,,004090,4,no_slot,no_slot,N,Y,breakout_prev_high close=12740.00 prior20_high=12200.00 vol=,NA,NA,NA,,,,na,na,na,N,N,,,,12740,replay,49.7012,2,+2385.06,N
+2026-09-11,daytrading_3methods_breakout,,014530,5,no_slot,no_slot,N,Y,breakout_prev_high close=3415.00 prior20_high=3320.00 vol=64,NA,NA,NA,,,,na,na,na,N,N,,,,3415,replay,48.0083,2,+2300.41,N
+2026-09-11,daytrading_3methods_breakout,,452450,6,no_slot,no_slot,N,Y,breakout_prev_high close=4925.00 prior20_high=4495.00 vol=54,NA,NA,NA,,,,na,na,na,N,N,,,,4925,replay,42.0092,2,+2000.46,N
+2026-09-11,daytrading_3methods_breakout,,0011A0,7,no_slot,no_slot,N,Y,breakout_prev_high close=11700.00 prior20_high=11110.00 vol=,NA,NA,NA,,,,na,na,na,N,N,,,,11700,replay,39.6025,2,+1880.13,N
+2026-09-11,daytrading_3methods_breakout,,053050,8,no_slot,no_slot,N,Y,breakout_prev_high close=2065.00 prior20_high=2010.00 vol=39,NA,NA,NA,,,,na,na,na,N,N,,,,2065,replay,36.7373,2,+1736.86,N
+2026-09-11,daytrading_3methods_breakout,,100590,9,no_slot,no_slot,N,Y,breakout_prev_high close=4970.00 prior20_high=4355.00 vol=10,NA,NA,NA,,,,na,na,na,N,N,,,,4970,replay,33.4938,2,+1574.69,N
+2026-09-11,daytrading_3methods_breakout,,000440,10,no_slot,no_slot,N,Y,breakout_prev_high close=13550.00 prior20_high=13490.00 vol=,NA,NA,NA,,,,na,na,na,N,N,,,,13550,replay,29.5415,2,+1377.07,N
+2026-09-11,minervini_volume_dryup,,006340,1,no_slot,no_slot,N,Y,volume_dryup recent/base=0.17 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,13530,replay,0.17,0.7,-75.71,N
+2026-09-11,minervini_volume_dryup,,073240,2,held,held,N,Y,volume_dryup recent/base=0.39 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,7680,replay,0.39,0.7,-44.29,N
+2026-09-11,minervini_volume_dryup,,006360,3,held,held,N,Y,volume_dryup recent/base=0.53 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,37250,replay,0.53,0.7,-24.29,N
+2026-09-11,minervini_volume_dryup,,119850,4,no_slot,no_slot,N,Y,volume_dryup recent/base=0.65 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,51200,replay,0.65,0.7,-7.14,N
+2026-09-11,minervini_volume_dryup,,098120,5,no_slot,no_slot,N,Y,volume_dryup recent/base=0.56 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,51000,replay,0.56,0.7,-20.00,N
+2026-09-11,book_pullback_ma20,,025980,1,held,held,N,Y,daily_ma20_pull ma20=5114.50 low=5080.00 close=5240.00,NA,NA,NA,,,,na,na,na,N,N,,,,5240,replay,,,,
+2026-09-11,book_pullback_ma20,,093370,2,slot_available,slot_available,N,Y,daily_ma20_pull ma20=12623.50 low=12700.00 close=13240.00,Y,Y,Y,2,11:10:31,13:40:48,agree_Y,agree_Y,agree_Y,N,N,Y,Y,13240,13240,log,,,,
+2026-09-11,book_pullback_ma20,,125490,3,bought,bought,N,Y,daily_ma20_pull ma20=11028.00 low=10850.00 close=11070.00,Y,Y,Y,1,11:10:31,11:10:31,agree_Y,agree_Y,agree_Y,N,N,Y,Y,11070,11070,log,,,,
+2026-09-11,book_pullback_ma20,,413630,4,slot_available,slot_available,N,Y,daily_ma20_pull ma20=3838.50 low=3845.00 close=4200.00,Y,Y,Y,1,13:40:49,13:40:49,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4200,4200,log,,,,
+2026-09-11,book_pullback_ma20,,005880,5,held,held,N,Y,daily_ma20_pull ma20=2074.40 low=2045.00 close=2110.00,NA,NA,NA,,,,na,na,na,N,N,,,,2110,replay,,,,
+2026-09-11,book_pullback_ma20,,232140,6,bought,bought,N,Y,daily_ma20_pull ma20=11293.00 low=11500.00 close=12200.00,Y,Y,Y,1,13:40:49,13:40:49,agree_Y,agree_Y,agree_Y,N,N,Y,Y,12200,12200,log,,,,
+2026-09-11,book_pullback_ma20,,006910,7,no_slot,no_slot,N,Y,daily_ma20_pull ma20=7213.00 low=7320.00 close=7640.00,NA,NA,NA,,,,na,na,na,N,N,,,,7640,replay,,,,
+2026-09-11,book_pullback_ma20,,000370,8,no_slot,no_slot,N,Y,daily_ma20_pull ma20=7843.00 low=7890.00 close=8380.00,NA,NA,NA,,,,na,na,na,N,N,,,,8380,replay,,,,
+2026-09-11,book_pullback_ma20,,078150,9,no_slot,no_slot,N,Y,daily_ma20_pull ma20=1953.40 low=1950.00 close=2085.00,NA,NA,NA,,,,na,na,na,N,N,,,,2085,replay,,,,
+2026-09-11,book_pullback_ma20,,019010,10,no_slot,no_slot,N,Y,daily_ma20_pull ma20=4670.25 low=4630.00 close=4875.00,NA,NA,NA,,,,na,na,na,N,N,,,,4875,replay,,,,
+2026-09-11,book_pullback_ma5,,079650,1,slot_available,slot_available,Y,Y,ma5_pullback ma5=7398.00 low=7490.00 close=8040.00,Y,Y,Y,6,09:03:37,09:28:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,8040,8040,log,,,,
+2026-09-11,book_pullback_ma5,,032940,2,slot_available,slot_available,Y,Y,ma5_pullback ma5=10132.00 low=10090.00 close=10500.00,Y,Y,Y,6,09:03:37,09:28:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,10500,10500,log,,,,
+2026-09-11,book_pullback_ma5,,388050,3,bought,bought,Y,Y,ma5_pullback ma5=10712.00 low=10640.00 close=11180.00,Y,Y,Y,5,09:03:37,09:23:09,agree_Y,agree_Y,agree_Y,N,N,Y,Y,11180,11180,log,,,,
+2026-09-11,book_pullback_ma5,,008970,4,held,held,N,Y,ma5_pullback ma5=1163.80 low=1156.00 close=1177.00,NA,NA,NA,,,,na,na,na,N,N,,,,1177,replay,,,,
+2026-09-11,book_pullback_ma5,,078150,5,held,held,N,Y,ma5_pullback ma5=1978.00 low=1950.00 close=2085.00,NA,NA,NA,,,,na,na,na,N,N,,,,2085,replay,,,,
+2026-09-11,book_pullback_ma5,,092790,6,bought,bought,Y,Y,ma5_pullback ma5=13408.00 low=13460.00 close=14370.00,Y,Y,Y,6,09:03:37,09:28:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,14370,14370,log,,,,
+2026-09-11,book_pullback_ma5,,006910,7,slot_available,no_slot,Y,Y,ma5_pullback ma5=7354.00 low=7320.00 close=7640.00,Y,Y,Y,5,09:03:37,09:23:10,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,7640,7640,log,,,,
+2026-09-11,book_pullback_ma5,,125490,8,slot_available,no_slot,Y,Y,ma5_pullback ma5=10812.00 low=10850.00 close=11070.00,Y,Y,Y,5,09:03:37,09:23:10,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,11070,11070,log,,,,
+2026-09-11,book_pullback_ma5,,356680,9,slot_available,no_slot,Y,Y,ma5_pullback ma5=11866.00 low=11920.00 close=12360.00,Y,Y,Y,5,09:03:37,09:23:10,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,12360,12360,log,,,,
+2026-09-11,book_pullback_ma5,,452450,10,slot_available,no_slot,Y,Y,ma5_pullback ma5=4323.00 low=4250.00 close=4925.00,Y,Y,Y,5,09:03:37,09:23:10,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,4925,4925,log,,,,
+2026-09-11,rs_leader,shadow,049080,1,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,8420,replay,,,,
+2026-09-11,rs_leader,shadow,001210,2,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,11950,replay,,,,
+2026-09-11,rs_leader,shadow,079650,3,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,8040,replay,,,,
+2026-09-11,rs_leader,shadow,159010,4,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,23500,replay,,,,
+2026-09-11,rs_leader,shadow,024850,5,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,16590,replay,,,,
+2026-09-11,rs_leader,shadow,351320,6,bought,bought,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:14:04,09:23:46,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4160,4160,log,,,,
+2026-09-11,rs_leader,shadow,069540,7,bought,bought,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,4,09:14:04,09:38:44,agree_Y,agree_Y,agree_Y,N,N,Y,Y,3925,3925,log,,,,
+2026-09-11,rs_leader,shadow,214680,8,slot_available,no_slot,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:14:04,09:33:50,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,5040,5040,log,,,,
+2026-09-11,rs_leader,shadow,131290,9,slot_available,no_slot,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:14:04,09:33:50,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,306500,306500,log,,,,
+2026-09-11,rs_leader,shadow,020120,10,slot_available,no_slot,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:14:04,09:33:50,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,8400,8400,log,,,,
+2026-09-14,elder_ema_pullback,,000660,1,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=1768000<=ema13*1.02 close=181,Y,Y,Y,79,09:06:10,15:27:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,1812000,1812000,log,,,,
+2026-09-14,elder_ema_pullback,,009150,2,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-14,elder_ema_pullback,,402340,3,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-14,elder_ema_pullback,,000810,4,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=635000<=ema13*1.02 close=6860,Y,Y,Y,79,09:06:10,15:27:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,686000,686000,log,,,,
+2026-09-14,elder_ema_pullback,,034730,5,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=575000<=ema13*1.02 close=5850,Y,Y,Y,79,09:06:10,15:27:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,585000,585000,log,,,,
+2026-09-14,elder_ema_pullback,,006400,6,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=541000<=ema13*1.02 close=5450,Y,Y,Y,79,09:06:10,15:27:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,545000,545000,log,,,,
+2026-09-14,elder_ema_pullback,,002380,7,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=477500<=ema13*1.02 close=4855,Y,Y,Y,79,09:06:10,15:27:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,485500,485500,log,,,,
+2026-09-14,elder_ema_pullback,,039030,8,held,held,N,Y,triple_screen_ema_pullback low=435000<=ema13*1.02 close=4455,NA,NA,NA,,,,na,na,na,N,N,,,,445500,replay,,,,
+2026-09-14,elder_ema_pullback,,131290,9,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=259500<=ema13*1.02 close=2605,Y,Y,Y,79,09:06:10,15:27:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,260500,260500,log,,,,
+2026-09-14,elder_ema_pullback,,267250,10,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=238000<=ema13*1.02 close=2475,Y,Y,Y,79,09:06:10,15:27:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,247500,247500,log,,,,
+2026-09-14,book_envelope_200d,,098120,1,bought,bought,Y,Y,envelope_200d_high close=55800 >= env_upper=50017 200d_high ,Y,Y,Y,26,09:01:42,11:02:43,agree_Y,agree_Y,agree_Y,N,N,Y,Y,55800,55800,log,,,,
+2026-09-14,daytrading_3methods_breakout,,203650,1,slot_available,slot_available,Y,Y,breakout_prev_high close=2620.00 prior20_high=2290.00 vol=51,Y,Y,Y,1,09:02:20,09:02:20,agree_Y,agree_Y,agree_Y,N,N,N,Y,2620,2620,log,61.3758,2,+2968.79,
+2026-09-14,daytrading_3methods_breakout,,0015S0,2,bought,bought,Y,Y,breakout_prev_high close=7900.00 prior20_high=7620.00 vol=78,Y,Y,Y,1,09:02:21,09:02:21,agree_Y,agree_Y,agree_Y,N,N,N,Y,7900,7900,log,60.909,2,+2945.45,
+2026-09-14,daytrading_3methods_breakout,,352940,3,no_slot,no_slot,Y,Y,breakout_prev_high close=2225.00 prior20_high=2145.00 vol=51,NA,N,NA,,,,na,replay_only,na,N,N,,,,2225,replay,48.8601,2,+2343.01,N
+2026-09-14,daytrading_3methods_breakout,,356890,4,no_slot,no_slot,Y,Y,breakout_prev_high close=2585.00 prior20_high=2570.00 vol=10,NA,N,NA,,,,na,replay_only,na,N,N,,,,2585,replay,38.1871,2,+1809.35,N
+2026-09-14,daytrading_3methods_breakout,,115500,5,no_slot,no_slot,Y,Y,breakout_prev_high close=9950.00 prior20_high=9910.00 vol=21,NA,N,NA,,,,na,replay_only,na,N,N,,,,9950,replay,28.7927,2,+1339.63,N
+2026-09-14,daytrading_3methods_breakout,,446540,6,no_slot,no_slot,Y,Y,breakout_prev_high close=8430.00 prior20_high=8350.00 vol=54,NA,N,NA,,,,na,replay_only,na,N,N,,,,8430,replay,23.0602,2,+1053.01,N
+2026-09-14,daytrading_3methods_breakout,,0011A0,7,no_slot,no_slot,Y,Y,breakout_prev_high close=13100.00 prior20_high=12860.00 vol=,NA,N,NA,,,,na,replay_only,na,N,N,,,,13100,replay,21.7883,2,+989.42,N
+2026-09-14,daytrading_3methods_breakout,,060570,8,no_slot,no_slot,Y,Y,breakout_prev_high close=5040.00 prior20_high=4945.00 vol=30,NA,N,NA,,,,na,replay_only,na,N,N,,,,5040,replay,20.3471,2,+917.35,N
+2026-09-14,daytrading_3methods_breakout,,431190,9,no_slot,no_slot,Y,Y,breakout_prev_high close=3810.00 prior20_high=3390.00 vol=49,NA,N,NA,,,,na,replay_only,na,N,N,,,,3810,replay,18.2592,2,+812.96,N
+2026-09-14,daytrading_3methods_breakout,,356680,10,no_slot,no_slot,Y,Y,breakout_prev_high close=16060.00 prior20_high=13450.00 vol=,NA,N,NA,,,,na,replay_only,na,N,N,,,,16060,replay,15.6261,2,+681.31,N
+2026-09-14,minervini_volume_dryup,,002990,1,no_slot,no_slot,N,Y,volume_dryup recent/base=0.69 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,14710,replay,0.69,0.7,-1.43,N
+2026-09-14,minervini_volume_dryup,,073240,2,held,held,N,Y,volume_dryup recent/base=0.36 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,7370,replay,0.36,0.7,-48.57,N
+2026-09-14,minervini_volume_dryup,,006360,3,held,held,N,Y,volume_dryup recent/base=0.59 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,38500,replay,0.59,0.7,-15.71,N
+2026-09-14,minervini_volume_dryup,,119850,4,no_slot,no_slot,N,Y,volume_dryup recent/base=0.68 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,50600,replay,0.68,0.7,-2.86,N
+2026-09-14,minervini_volume_dryup,,090430,5,no_slot,no_slot,N,Y,volume_dryup recent/base=0.65 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,140500,replay,0.65,0.7,-7.14,N
+2026-09-14,book_pullback_ma20,,025980,1,held,held,N,Y,daily_ma20_pull ma20=5187.50 low=5130.00 close=5370.00,NA,NA,NA,,,,na,na,na,N,N,,,,5370,replay,,,,
+2026-09-14,book_pullback_ma20,,047770,2,no_slot,no_slot,N,Y,daily_ma20_pull ma20=3614.50 low=3655.00 close=3750.00,NA,NA,NA,,,,na,na,na,N,N,,,,3750,replay,,,,
+2026-09-14,book_pullback_ma20,,045390,3,no_slot,no_slot,N,Y,daily_ma20_pull ma20=3305.25 low=3355.00 close=3395.00,NA,NA,NA,,,,na,na,na,N,N,,,,3395,replay,,,,
+2026-09-14,book_pullback_ma20,,093370,4,no_slot,no_slot,N,Y,daily_ma20_pull ma20=12691.00 low=12770.00 close=13310.00,NA,NA,NA,,,,na,na,na,N,N,,,,13310,replay,,,,
+2026-09-14,book_pullback_ma20,,033790,5,no_slot,no_slot,N,Y,daily_ma20_pull ma20=7302.00 low=7310.00 close=7600.00,NA,NA,NA,,,,na,na,na,N,N,,,,7600,replay,,,,
+2026-09-14,book_pullback_ma20,,443670,6,no_slot,no_slot,N,Y,daily_ma20_pull ma20=3537.75 low=3575.00 close=4725.00,NA,NA,NA,,,,na,na,na,N,N,,,,4725,replay,,,,
+2026-09-14,book_pullback_ma20,,017900,7,no_slot,no_slot,N,Y,daily_ma20_pull ma20=7720.50 low=7750.00 close=7900.00,NA,NA,NA,,,,na,na,na,N,N,,,,7900,replay,,,,
+2026-09-14,book_pullback_ma20,,003530,8,no_slot,no_slot,N,Y,daily_ma20_pull ma20=4831.50 low=4735.00 close=4785.00,NA,NA,NA,,,,na,na,na,N,N,,,,4785,replay,,,,
+2026-09-14,book_pullback_ma20,,003350,9,no_slot,no_slot,N,Y,daily_ma20_pull ma20=12940.00 low=12910.00 close=15710.00,NA,NA,NA,,,,na,na,na,N,N,,,,15710,replay,,,,
+2026-09-14,book_pullback_ma20,,091590,10,no_slot,no_slot,N,Y,daily_ma20_pull ma20=6731.50 low=6710.00 close=7000.00,NA,NA,NA,,,,na,na,na,N,N,,,,7000,replay,,,,
+2026-09-14,book_pullback_ma5,,010170,1,slot_available,slot_available,N,Y,ma5_pullback ma5=14204.00 low=14030.00 close=14150.00,Y,Y,Y,26,09:09:12,11:10:05,agree_Y,agree_Y,agree_Y,N,N,Y,Y,14150,14150,log,,,,
+2026-09-14,book_pullback_ma5,,053260,2,slot_available,slot_available,N,Y,ma5_pullback ma5=7324.00 low=7450.00 close=7870.00,Y,Y,Y,26,09:09:12,11:10:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,7870,7870,log,,,,
+2026-09-14,book_pullback_ma5,,452190,3,bought,bought,N,Y,ma5_pullback ma5=4717.00 low=4790.00 close=5080.00,Y,Y,Y,25,09:09:12,11:05:11,agree_Y,agree_Y,agree_Y,N,N,Y,Y,5080,5080,log,,,,
+2026-09-14,book_pullback_ma5,,198440,4,slot_available,slot_available,N,Y,ma5_pullback ma5=2034.40 low=2000.00 close=2075.00,Y,Y,Y,26,09:09:12,11:10:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2075,2075,log,,,,
+2026-09-14,book_pullback_ma5,,017900,5,slot_available,slot_available,N,Y,ma5_pullback ma5=7888.00 low=7750.00 close=7900.00,Y,Y,Y,26,09:09:12,11:10:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,7900,7900,log,,,,
+2026-09-14,book_pullback_ma5,,388050,6,held,held,N,Y,ma5_pullback ma5=10974.00 low=10920.00 close=11110.00,NA,NA,NA,,,,na,na,na,N,N,,,,11110,replay,,,,
+2026-09-14,book_pullback_ma5,,356680,7,slot_available,slot_available,N,Y,ma5_pullback ma5=12792.00 low=12690.00 close=16060.00,Y,Y,Y,26,09:09:12,11:10:07,agree_Y,agree_Y,agree_Y,N,N,Y,Y,16060,16060,log,,,,
+2026-09-14,book_pullback_ma5,,289080,8,held,held,N,Y,ma5_pullback ma5=2552.00 low=2585.00 close=2605.00,NA,NA,NA,,,,na,na,na,N,N,,,,2605,replay,,,,
+2026-09-14,book_pullback_ma5,,413630,9,bought,bought,N,Y,ma5_pullback ma5=4085.00 low=4095.00 close=4240.00,Y,Y,Y,26,09:09:12,11:10:07,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4240,4240,log,,,,
+2026-09-14,book_pullback_ma5,,452260,10,slot_available,no_slot,N,Y,ma5_pullback ma5=2507.00 low=2485.00 close=2680.00,Y,Y,Y,25,09:09:12,11:05:12,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,2680,2680,log,,,,
+2026-09-14,rs_leader,shadow,049080,1,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,8220,replay,,,,
+2026-09-14,rs_leader,shadow,001210,2,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,12450,replay,,,,
+2026-09-14,rs_leader,shadow,067390,3,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,26,09:04:48,11:05:48,agree_Y,agree_Y,agree_Y,N,N,Y,Y,6300,6300,log,,,,
+2026-09-14,rs_leader,shadow,002780,4,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,7200,replay,,,,
+2026-09-14,rs_leader,shadow,159010,5,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,23350,replay,,,,
+2026-09-14,rs_leader,shadow,079650,6,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,7160,replay,,,,
+2026-09-14,rs_leader,shadow,060570,7,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,27,09:04:48,11:10:46,agree_Y,agree_Y,agree_Y,N,N,Y,Y,5040,5040,log,,,,
+2026-09-14,rs_leader,shadow,018470,8,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,26,09:04:48,11:05:49,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4655,4655,log,,,,
+2026-09-14,rs_leader,shadow,046970,9,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,26,09:04:48,11:05:49,agree_Y,agree_Y,agree_Y,N,N,Y,Y,7190,7190,log,,,,
+2026-09-14,rs_leader,shadow,024850,10,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,26,09:04:48,11:05:49,agree_Y,agree_Y,agree_Y,N,N,Y,Y,16720,16720,log,,,,
+2026-09-15,elder_ema_pullback,,000150,1,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-15,elder_ema_pullback,,000810,2,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=659000<=ema13*1.02 close=6750,Y,Y,Y,75,09:06:27,15:26:35,agree_Y,agree_Y,agree_Y,N,N,Y,Y,675000,675000,log,,,,
+2026-09-15,elder_ema_pullback,,128940,3,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=452000<=ema13*1.02 close=4740,Y,Y,Y,75,09:06:28,15:26:35,agree_Y,agree_Y,agree_Y,N,N,Y,Y,474000,474000,log,,,,
+2026-09-15,elder_ema_pullback,,051900,4,bought,bought,Y,Y,triple_screen_ema_pullback low=290000<=ema13*1.02 close=2990,Y,Y,Y,2,09:06:28,09:11:46,agree_Y,agree_Y,agree_Y,N,N,Y,Y,299000,299000,log,,,,
+2026-09-15,elder_ema_pullback,,192820,5,bought,bought,Y,Y,triple_screen_ema_pullback low=269500<=ema13*1.02 close=2760,Y,Y,Y,3,09:06:28,09:17:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,276000,276000,log,,,,
+2026-09-15,elder_ema_pullback,,064760,6,held,held,N,Y,triple_screen_ema_pullback low=241500<=ema13*1.02 close=2610,NA,NA,NA,,,,na,na,na,N,N,,,,261000,replay,,,,
+2026-09-15,elder_ema_pullback,,062040,7,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=191800<=ema13*1.02 close=1980,Y,Y,Y,75,09:06:29,15:26:36,agree_Y,agree_Y,agree_Y,N,N,Y,Y,198000,198000,log,,,,
+2026-09-15,elder_ema_pullback,,005830,8,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=184800<=ema13*1.02 close=1925,Y,Y,Y,75,09:06:29,15:26:36,agree_Y,agree_Y,agree_Y,N,N,Y,Y,192500,192500,log,,,,
+2026-09-15,elder_ema_pullback,,105560,9,held,held,N,Y,triple_screen_ema_pullback low=174700<=ema13*1.02 close=1816,NA,NA,NA,,,,na,na,na,N,N,,,,181600,replay,,,,
+2026-09-15,elder_ema_pullback,,095340,10,bought,bought,Y,Y,triple_screen_ema_pullback low=179700<=ema13*1.02 close=1802,Y,Y,Y,29,09:06:29,11:32:51,agree_Y,agree_Y,agree_Y,N,N,Y,Y,180200,180200,log,,,,
+2026-09-15,book_envelope_200d,,020120,1,bought,bought,N,Y,envelope_200d_high close=9000 >= env_upper=8228 200d_high vo,Y,Y,Y,1,09:01:48,09:01:48,agree_Y,agree_Y,agree_Y,N,N,Y,Y,9000,9000,log,,,,
+2026-09-15,daytrading_3methods_breakout,,005160,1,bought,bought,N,Y,breakout_prev_high close=3125.00 prior20_high=2675.00 vol=46,Y,Y,Y,1,13:01:37,13:01:37,agree_Y,agree_Y,agree_Y,N,N,N,Y,3125,3125,log,181.0816,2,+8954.08,
+2026-09-15,daytrading_3methods_breakout,,411080,2,bought,bought,N,Y,breakout_prev_high close=6900.00 prior20_high=5510.00 vol=12,Y,Y,Y,1,15:07:56,15:07:56,agree_Y,agree_Y,agree_Y,N,N,N,Y,6900,6900,log,56.1138,2,+2705.69,
+2026-09-15,daytrading_3methods_breakout,,104620,3,no_slot,no_slot,N,Y,breakout_prev_high close=3340.00 prior20_high=3280.00 vol=35,NA,NA,NA,,,,na,na,na,N,N,,,,3340,replay,56.7693,2,+2738.47,N
+2026-09-15,daytrading_3methods_breakout,,480370,4,no_slot,no_slot,N,Y,breakout_prev_high close=1954.00 prior20_high=1789.00 vol=52,NA,NA,NA,,,,na,na,na,N,N,,,,1954,replay,43.4358,2,+2071.79,N
+2026-09-15,daytrading_3methods_breakout,,150900,5,no_slot,no_slot,N,Y,breakout_prev_high close=4265.00 prior20_high=4000.00 vol=14,NA,NA,NA,,,,na,na,na,N,N,,,,4265,replay,27.7129,2,+1285.65,N
+2026-09-15,daytrading_3methods_breakout,,080160,6,no_slot,no_slot,N,Y,breakout_prev_high close=9870.00 prior20_high=9660.00 vol=10,NA,NA,NA,,,,na,na,na,N,N,,,,9870,replay,25.5535,2,+1177.67,N
+2026-09-15,daytrading_3methods_breakout,,003200,7,no_slot,no_slot,N,Y,breakout_prev_high close=12250.00 prior20_high=11110.00 vol=,NA,NA,NA,,,,na,na,na,N,N,,,,12250,replay,29.3132,2,+1365.66,N
+2026-09-15,daytrading_3methods_breakout,,263860,8,no_slot,no_slot,N,Y,breakout_prev_high close=19400.00 prior20_high=18670.00 vol=,NA,NA,NA,,,,na,na,na,N,N,,,,19400,replay,22.5615,2,+1028.08,N
+2026-09-15,daytrading_3methods_breakout,,184230,9,no_slot,no_slot,N,Y,breakout_prev_high close=2305.00 prior20_high=2170.00 vol=15,NA,NA,NA,,,,na,na,na,N,N,,,,2305,replay,22.3038,2,+1015.19,N
+2026-09-15,daytrading_3methods_breakout,,072950,10,no_slot,no_slot,N,Y,breakout_prev_high close=11240.00 prior20_high=9810.00 vol=6,NA,NA,NA,,,,na,na,na,N,N,,,,11240,replay,21.0344,2,+951.72,N
+2026-09-15,minervini_volume_dryup,,002990,1,no_slot,no_slot,N,Y,volume_dryup recent/base=0.52 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,13600,replay,0.52,0.7,-25.71,N
+2026-09-15,minervini_volume_dryup,,073240,2,held,held,N,Y,volume_dryup recent/base=0.33 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,7110,replay,0.33,0.7,-52.86,N
+2026-09-15,minervini_volume_dryup,,006360,3,held,held,N,Y,volume_dryup recent/base=0.57 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,36650,replay,0.57,0.7,-18.57,N
+2026-09-15,minervini_volume_dryup,,119850,4,no_slot,no_slot,N,Y,volume_dryup recent/base=0.66 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,49750,replay,0.66,0.7,-5.71,N
+2026-09-15,minervini_volume_dryup,,090430,5,no_slot,no_slot,N,Y,volume_dryup recent/base=0.64 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,146000,replay,0.64,0.7,-8.57,N
+2026-09-15,minervini_volume_dryup,,282330,6,no_slot,no_slot,N,Y,volume_dryup recent/base=0.60 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,145900,replay,0.6,0.7,-14.29,N
+2026-09-15,book_pullback_ma20,,010170,1,bought,bought,N,Y,daily_ma20_pull ma20=13594.50 low=13800.00 close=14490.00,Y,Y,Y,1,09:56:15,09:56:15,agree_Y,agree_Y,agree_Y,N,N,Y,Y,14490,14490,log,,,,
+2026-09-15,book_pullback_ma20,,462860,2,no_slot,no_slot,N,Y,daily_ma20_pull ma20=2918.30 low=2885.00 close=3180.00,NA,NA,NA,,,,na,na,na,N,N,,,,3180,replay,,,,
+2026-09-15,book_pullback_ma20,,017900,3,no_slot,no_slot,N,Y,daily_ma20_pull ma20=7808.00 low=7700.00 close=10270.00,NA,NA,NA,,,,na,na,na,N,N,,,,10270,replay,,,,
+2026-09-15,book_pullback_ma20,,093370,4,no_slot,no_slot,N,Y,daily_ma20_pull ma20=12776.50 low=12940.00 close=14110.00,NA,NA,NA,,,,na,na,na,N,N,,,,14110,replay,,,,
+2026-09-15,book_pullback_ma20,,005880,5,held,held,N,Y,daily_ma20_pull ma20=2082.10 low=2055.00 close=2090.00,NA,NA,NA,,,,na,na,na,N,N,,,,2090,replay,,,,
+2026-09-15,book_pullback_ma20,,204620,6,no_slot,no_slot,N,Y,daily_ma20_pull ma20=5350.25 low=5330.00 close=5660.00,NA,NA,NA,,,,na,na,na,N,N,,,,5660,replay,,,,
+2026-09-15,book_pullback_ma20,,234690,7,no_slot,no_slot,N,Y,daily_ma20_pull ma20=9331.50 low=9360.00 close=9510.00,NA,NA,NA,,,,na,na,na,N,N,,,,9510,replay,,,,
+2026-09-15,book_pullback_ma20,,119850,8,no_slot,no_slot,N,Y,daily_ma20_pull ma20=48437.50 low=49050.00 close=49750.00,NA,NA,NA,,,,na,na,na,N,N,,,,49750,replay,,,,
+2026-09-15,book_pullback_ma20,,100790,9,no_slot,no_slot,N,Y,daily_ma20_pull ma20=15597.50 low=15350.00 close=15860.00,NA,NA,NA,,,,na,na,na,N,N,,,,15860,replay,,,,
+2026-09-15,book_pullback_ma20,,293490,10,no_slot,no_slot,N,Y,daily_ma20_pull ma20=8882.50 low=9030.00 close=9660.00,NA,NA,NA,,,,na,na,na,N,N,,,,9660,replay,,,,
+2026-09-15,book_pullback_ma5,,032820,1,slot_available,slot_available,Y,Y,ma5_pullback ma5=13726.00 low=13520.00 close=13850.00,Y,Y,Y,3,09:04:19,10:34:09,agree_Y,agree_Y,agree_Y,N,N,Y,Y,13850,13850,log,,,,
+2026-09-15,book_pullback_ma5,,162300,2,slot_available,slot_available,Y,Y,ma5_pullback ma5=2731.00 low=2770.00 close=2860.00,Y,Y,Y,1,09:04:19,09:04:19,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2860,2860,log,,,,
+2026-09-15,book_pullback_ma5,,036540,3,bought,bought,Y,Y,ma5_pullback ma5=6870.00 low=6820.00 close=7530.00,Y,Y,Y,1,09:04:19,09:04:19,agree_Y,agree_Y,agree_Y,N,N,Y,Y,7530,7530,log,,,,
+2026-09-15,book_pullback_ma5,,950250,4,bought,bought,Y,Y,ma5_pullback ma5=3373.00 low=3400.00 close=3585.00,Y,Y,Y,1,09:09:39,09:09:39,agree_Y,agree_Y,agree_Y,N,N,Y,Y,3585,3585,log,,,,
+2026-09-15,book_pullback_ma5,,100590,5,slot_available,slot_available,Y,Y,ma5_pullback ma5=4442.00 low=4515.00 close=4785.00,Y,Y,Y,1,10:34:10,10:34:10,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4785,4785,log,,,,
+2026-09-15,book_pullback_ma5,,452260,6,bought,bought,Y,Y,ma5_pullback ma5=2563.00 low=2575.00 close=2660.00,Y,Y,Y,1,10:34:10,10:34:10,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2660,2660,log,,,,
+2026-09-15,book_pullback_ma5,,0015N0,7,no_slot,no_slot,Y,Y,ma5_pullback ma5=10722.00 low=10520.00 close=12050.00,NA,N,NA,,,,na,replay_only,na,N,N,,,,12050,replay,,,,
+2026-09-15,book_pullback_ma5,,115440,8,no_slot,no_slot,Y,Y,ma5_pullback ma5=8144.00 low=8080.00 close=8890.00,NA,N,NA,,,,na,replay_only,na,N,N,,,,8890,replay,,,,
+2026-09-15,book_pullback_ma5,,441270,9,no_slot,no_slot,Y,Y,ma5_pullback ma5=8350.00 low=8300.00 close=9210.00,NA,N,NA,,,,na,replay_only,na,N,N,,,,9210,replay,,,,
+2026-09-15,book_pullback_ma5,,332570,10,no_slot,no_slot,Y,Y,ma5_pullback ma5=7654.00 low=7600.00 close=8060.00,NA,N,NA,,,,na,replay_only,na,N,N,,,,8060,replay,,,,
+2026-09-15,rs_leader,shadow,049080,1,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,8750,replay,,,,
+2026-09-15,rs_leader,shadow,001210,2,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,1,09:04:57,09:04:57,agree_Y,agree_Y,agree_Y,N,N,Y,Y,10770,10770,log,,,,
+2026-09-15,rs_leader,shadow,017900,3,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:57,09:10:21,agree_Y,agree_Y,agree_Y,N,N,Y,Y,10270,10270,log,,,,
+2026-09-15,rs_leader,shadow,079650,4,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:57,09:10:21,agree_Y,agree_Y,agree_Y,N,N,Y,Y,6510,6510,log,,,,
+2026-09-15,rs_leader,shadow,184230,5,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:58,09:10:21,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2305,2305,log,,,,
+2026-09-15,rs_leader,shadow,351320,6,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:58,09:10:22,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4090,4090,log,,,,
+2026-09-15,rs_leader,shadow,285800,7,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:58,09:10:22,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4615,4615,log,,,,
+2026-09-15,rs_leader,shadow,024850,8,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:58,09:10:22,agree_Y,agree_Y,agree_Y,N,N,Y,Y,15300,15300,log,,,,
+2026-09-15,rs_leader,shadow,00088K,9,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:58,09:10:23,agree_Y,agree_Y,agree_Y,N,N,Y,Y,42700,42700,log,,,,
+2026-09-15,rs_leader,shadow,020120,10,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:58,09:10:23,agree_Y,agree_Y,agree_Y,N,N,Y,Y,9000,9000,log,,,,
+2026-09-16,elder_ema_pullback,,000150,1,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=1232000<=ema13*1.02 close=128,Y,Y,Y,73,09:06:11,15:27:27,agree_Y,agree_Y,agree_Y,N,N,Y,Y,1289000,1289000,log,,,,
+2026-09-16,elder_ema_pullback,,006400,2,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=531000<=ema13*1.02 close=5470,Y,Y,Y,73,09:06:12,15:27:27,agree_Y,agree_Y,agree_Y,N,N,Y,Y,547000,547000,log,,,,
+2026-09-16,elder_ema_pullback,,128940,3,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=477500<=ema13*1.02 close=4965,Y,Y,Y,73,09:06:12,15:27:28,agree_Y,agree_Y,agree_Y,N,N,Y,Y,496500,496500,log,,,,
+2026-09-16,elder_ema_pullback,,039030,4,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=426500<=ema13*1.02 close=4465,Y,Y,Y,73,09:06:12,15:27:28,agree_Y,agree_Y,agree_Y,N,N,Y,Y,446500,446500,log,,,,
+2026-09-16,elder_ema_pullback,,373220,5,bought,bought,Y,Y,triple_screen_ema_pullback low=347500<=ema13*1.02 close=3655,Y,Y,Y,1,09:06:13,09:06:13,agree_Y,agree_Y,agree_Y,N,N,Y,Y,365500,365500,log,,,,
+2026-09-16,elder_ema_pullback,,051900,6,held,held,N,Y,triple_screen_ema_pullback low=294500<=ema13*1.02 close=3020,NA,NA,NA,,,,na,na,na,N,N,,,,302000,replay,,,,
+2026-09-16,elder_ema_pullback,,192820,7,held,held,N,Y,triple_screen_ema_pullback low=272000<=ema13*1.02 close=2730,NA,NA,NA,,,,na,na,na,N,N,,,,273000,replay,,,,
+2026-09-16,elder_ema_pullback,,064760,8,held,held,N,Y,triple_screen_ema_pullback low=257500<=ema13*1.02 close=2595,NA,NA,NA,,,,na,na,na,N,N,,,,259500,replay,,,,
+2026-09-16,elder_ema_pullback,,443060,9,held,held,N,Y,triple_screen_ema_pullback low=225500<=ema13*1.02 close=2320,NA,NA,NA,,,,na,na,na,N,N,,,,232000,replay,,,,
+2026-09-16,elder_ema_pullback,,036930,10,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=191800<=ema13*1.02 close=1928,Y,Y,Y,73,09:06:15,15:27:28,agree_Y,agree_Y,agree_Y,N,N,Y,Y,192800,192800,log,,,,
+2026-09-16,book_envelope_200d,,031980,1,bought,bought,N,Y,envelope_200d_high close=166900 >= env_upper=163328 200d_hig,Y,Y,Y,1,09:01:40,09:01:40,agree_Y,agree_Y,agree_Y,N,N,Y,Y,166900,166900,log,,,,
+2026-09-16,daytrading_3methods_breakout,,036220,1,bought,bought,N,Y,breakout_prev_high close=7210.00 prior20_high=6950.00 vol=41,Y,Y,Y,1,09:12:52,09:12:52,agree_Y,agree_Y,agree_Y,N,N,N,Y,7210,7210,log,336.9165,2,+16745.82,
+2026-09-16,daytrading_3methods_breakout,,372910,2,bought,bought,N,Y,breakout_prev_high close=2065.00 prior20_high=1915.00 vol=12,Y,Y,Y,1,09:44:47,09:44:47,agree_Y,agree_Y,agree_Y,N,N,N,Y,2065,2065,log,195.6588,2,+9682.94,
+2026-09-16,daytrading_3methods_breakout,,053300,3,no_slot,no_slot,N,Y,breakout_prev_high close=5500.00 prior20_high=5300.00 vol=66,NA,NA,NA,,,,na,na,na,N,N,,,,5500,replay,65.1852,2,+3159.26,N
+2026-09-16,daytrading_3methods_breakout,,158430,4,no_slot,no_slot,N,Y,breakout_prev_high close=6310.00 prior20_high=5100.00 vol=11,NA,NA,NA,,,,na,na,na,N,N,,,,6310,replay,40.5249,2,+1926.25,N
+2026-09-16,daytrading_3methods_breakout,,417860,5,no_slot,no_slot,N,Y,breakout_prev_high close=7450.00 prior20_high=7450.00 vol=52,NA,NA,NA,,,,na,na,na,N,N,,,,7450,replay,40.6575,2,+1932.87,N
+2026-09-16,daytrading_3methods_breakout,,028100,6,no_slot,no_slot,N,Y,breakout_prev_high close=18690.00 prior20_high=18280.00 vol=,NA,NA,NA,,,,na,na,na,N,N,,,,18690,replay,50.2394,2,+2411.97,N
+2026-09-16,daytrading_3methods_breakout,,054920,7,no_slot,no_slot,N,Y,breakout_prev_high close=5230.00 prior20_high=4165.00 vol=10,NA,NA,NA,,,,na,na,na,N,N,,,,5230,replay,30.7184,2,+1435.92,N
+2026-09-16,daytrading_3methods_breakout,,062970,8,no_slot,no_slot,N,Y,breakout_prev_high close=3360.00 prior20_high=2745.00 vol=43,NA,NA,NA,,,,na,na,na,N,N,,,,3360,replay,28.4561,2,+1322.80,N
+2026-09-16,daytrading_3methods_breakout,,391710,9,no_slot,no_slot,N,Y,breakout_prev_high close=1502.00 prior20_high=1400.00 vol=74,NA,NA,NA,,,,na,na,na,N,N,,,,1502,replay,28.6716,2,+1333.58,N
+2026-09-16,daytrading_3methods_breakout,,071200,10,no_slot,no_slot,N,Y,breakout_prev_high close=12950.00 prior20_high=11310.00 vol=,NA,NA,NA,,,,na,na,na,N,N,,,,12950,replay,24.0932,2,+1104.66,N
+2026-09-16,minervini_volume_dryup,,002990,1,no_slot,no_slot,N,Y,volume_dryup recent/base=0.47 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,13300,replay,0.47,0.7,-32.86,N
+2026-09-16,minervini_volume_dryup,,073240,2,held,held,N,Y,volume_dryup recent/base=0.27 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,7080,replay,0.27,0.7,-61.43,N
+2026-09-16,minervini_volume_dryup,,006360,3,held,held,N,Y,volume_dryup recent/base=0.54 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,37800,replay,0.54,0.7,-22.86,N
+2026-09-16,minervini_volume_dryup,,119850,4,no_slot,no_slot,N,Y,volume_dryup recent/base=0.63 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,48450,replay,0.63,0.7,-10.00,N
+2026-09-16,minervini_volume_dryup,,001450,5,no_slot,no_slot,N,Y,volume_dryup recent/base=0.69 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,49200,replay,0.69,0.7,-1.43,N
+2026-09-16,minervini_volume_dryup,,090430,6,no_slot,no_slot,N,Y,volume_dryup recent/base=0.64 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,144000,replay,0.64,0.7,-8.57,N
+2026-09-16,minervini_volume_dryup,,089860,7,no_slot,no_slot,N,Y,volume_dryup recent/base=0.56 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,48400,replay,0.56,0.7,-20.00,N
+2026-09-16,minervini_volume_dryup,,041830,8,no_slot,no_slot,N,Y,volume_dryup recent/base=0.57 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,58300,replay,0.57,0.7,-18.57,N
+2026-09-16,minervini_volume_dryup,,282330,9,no_slot,no_slot,N,Y,volume_dryup recent/base=0.56 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,141800,replay,0.56,0.7,-20.00,N
+2026-09-16,book_pullback_ma20,,413630,1,bought,bought,N,Y,daily_ma20_pull ma20=3913.25 low=3925.00 close=4500.00,Y,Y,Y,1,10:39:57,10:39:57,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4500,4500,log,,,,
+2026-09-16,book_pullback_ma20,,232140,2,held,held,N,Y,daily_ma20_pull ma20=11397.50 low=11180.00 close=11680.00,NA,NA,NA,,,,na,na,na,N,N,,,,11680,replay,,,,
+2026-09-16,book_pullback_ma20,,027360,3,slot_available,slot_available,N,Y,daily_ma20_pull ma20=3313.00 low=3250.00 close=3330.00,Y,Y,Y,1,11:02:04,11:02:04,agree_Y,agree_Y,agree_Y,N,N,Y,Y,3330,3330,log,,,,
+2026-09-16,book_pullback_ma20,,317400,4,bought,bought,N,Y,daily_ma20_pull ma20=10731.50 low=10720.00 close=11140.00,Y,Y,Y,1,11:02:04,11:02:04,agree_Y,agree_Y,agree_Y,N,N,Y,Y,11140,11140,log,,,,
+2026-09-16,book_pullback_ma20,,064550,5,no_slot,no_slot,N,Y,daily_ma20_pull ma20=9477.50 low=9400.00 close=9860.00,NA,NA,NA,,,,na,na,na,N,N,,,,9860,replay,,,,
+2026-09-16,book_pullback_ma20,,130660,6,no_slot,no_slot,N,Y,daily_ma20_pull ma20=12380.50 low=12600.00 close=13000.00,NA,NA,NA,,,,na,na,na,N,N,,,,13000,replay,,,,
+2026-09-16,book_pullback_ma20,,078150,7,no_slot,no_slot,N,Y,daily_ma20_pull ma20=1941.45 low=1980.00 close=2040.00,NA,NA,NA,,,,na,na,na,N,N,,,,2040,replay,,,,
+2026-09-16,book_pullback_ma20,,059120,8,no_slot,no_slot,N,Y,daily_ma20_pull ma20=6727.50 low=6700.00 close=7070.00,NA,NA,NA,,,,na,na,na,N,N,,,,7070,replay,,,,
+2026-09-16,book_pullback_ma20,,372910,9,no_slot,no_slot,N,Y,daily_ma20_pull ma20=1862.30 low=1876.00 close=2065.00,NA,NA,NA,,,,na,na,na,N,N,,,,2065,replay,,,,
+2026-09-16,book_pullback_ma20,,100790,10,no_slot,no_slot,N,Y,daily_ma20_pull ma20=15592.00 low=15570.00 close=16020.00,NA,NA,NA,,,,na,na,na,N,N,,,,16020,replay,,,,
+2026-09-16,book_pullback_ma5,,004310,1,bought,bought,Y,Y,ma5_pullback ma5=10000.00 low=9980.00 close=10120.00,Y,Y,Y,1,09:04:04,09:04:04,agree_Y,agree_Y,agree_Y,N,N,Y,Y,10120,10120,log,,,,
+2026-09-16,book_pullback_ma5,,036540,2,slot_available,slot_available,Y,Y,ma5_pullback ma5=7382.00 low=7400.00 close=8600.00,Y,Y,Y,4,09:04:04,09:19:54,agree_Y,agree_Y,agree_Y,N,N,Y,Y,8600,8600,log,,,,
+2026-09-16,book_pullback_ma5,,003350,3,bought,bought,Y,Y,ma5_pullback ma5=14398.00 low=14470.00 close=14810.00,Y,Y,Y,2,09:04:05,09:09:35,agree_Y,agree_Y,agree_Y,N,N,Y,Y,14810,14810,log,,,,
+2026-09-16,book_pullback_ma5,,332570,4,slot_available,slot_available,Y,Y,ma5_pullback ma5=7834.00 low=7820.00 close=8400.00,Y,Y,Y,4,09:04:05,09:19:55,agree_Y,agree_Y,agree_Y,N,N,Y,Y,8400,8400,log,,,,
+2026-09-16,book_pullback_ma5,,391710,5,slot_available,slot_available,Y,Y,ma5_pullback ma5=1186.60 low=1205.00 close=1502.00,Y,Y,Y,4,09:04:05,09:19:55,agree_Y,agree_Y,agree_Y,N,N,Y,Y,1502,1502,log,,,,
+2026-09-16,book_pullback_ma5,,441270,6,slot_available,slot_available,Y,Y,ma5_pullback ma5=8582.00 low=8750.00 close=9230.00,Y,Y,Y,4,09:04:05,09:19:55,agree_Y,agree_Y,agree_Y,N,N,Y,Y,9230,9230,log,,,,
+2026-09-16,book_pullback_ma5,,073010,7,bought,bought,Y,Y,ma5_pullback ma5=3355.00 low=3365.00 close=3500.00,Y,Y,Y,3,09:04:05,09:14:43,agree_Y,agree_Y,agree_Y,N,N,Y,Y,3500,3500,log,,,,
+2026-09-16,book_pullback_ma5,,317400,8,slot_available,slot_available,Y,Y,ma5_pullback ma5=10692.00 low=10720.00 close=11140.00,Y,Y,Y,4,09:04:06,09:19:55,agree_Y,agree_Y,agree_Y,N,N,Y,Y,11140,11140,log,,,,
+2026-09-16,book_pullback_ma5,,321370,9,slot_available,slot_available,Y,Y,ma5_pullback ma5=1160.20 low=1143.00 close=1173.00,Y,Y,Y,4,09:04:06,09:19:55,agree_Y,agree_Y,agree_Y,N,N,Y,Y,1173,1173,log,,,,
+2026-09-16,book_pullback_ma5,,053300,10,bought,bought,Y,Y,ma5_pullback ma5=5166.00 low=5100.00 close=5500.00,Y,Y,Y,4,09:04:06,09:19:56,agree_Y,agree_Y,agree_Y,N,N,Y,Y,5500,5500,log,,,,
+2026-09-16,rs_leader,shadow,049080,1,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,8460,replay,,,,
+2026-09-16,rs_leader,shadow,001210,2,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,10800,replay,,,,
+2026-09-16,rs_leader,shadow,017900,3,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,1,09:04:43,09:04:43,agree_Y,agree_Y,agree_Y,N,N,Y,Y,10660,10660,log,,,,
+2026-09-16,rs_leader,shadow,140430,4,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:04:44,09:10:15,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2830,2830,log,,,,
+2026-09-16,rs_leader,shadow,184230,5,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,2310,replay,,,,
+2026-09-16,rs_leader,shadow,079650,6,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:04:44,09:15:25,agree_Y,agree_Y,agree_Y,N,N,Y,Y,6470,6470,log,,,,
+2026-09-16,rs_leader,shadow,024850,7,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,4,09:04:44,09:20:39,agree_Y,agree_Y,agree_Y,N,N,Y,Y,15880,15880,log,,,,
+2026-09-16,rs_leader,shadow,034940,8,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:04:44,09:15:25,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2765,2765,log,,,,
+2026-09-16,rs_leader,shadow,351320,9,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:04:44,09:15:25,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4105,4105,log,,,,
+2026-09-16,rs_leader,shadow,020120,10,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:04:44,09:15:25,agree_Y,agree_Y,agree_Y,N,N,Y,Y,8960,8960,log,,,,
+2026-09-17,elder_ema_pullback,,000660,1,slot_available,slot_available,Y,N,rule_not_met,N,N,N,,,,agree_N,agree_N,agree_N,N,N,,,,,log,,,,
+2026-09-17,elder_ema_pullback,,000150,2,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=1273000<=ema13*1.02 close=138,Y,Y,Y,66,09:06:46,15:29:17,agree_Y,agree_Y,agree_Y,N,N,Y,Y,1387000,1387000,log,,,,
+2026-09-17,elder_ema_pullback,,006400,3,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=532000<=ema13*1.02 close=5440,Y,Y,Y,66,09:06:47,15:29:17,agree_Y,agree_Y,agree_Y,N,N,Y,Y,544000,544000,log,,,,
+2026-09-17,elder_ema_pullback,,039030,4,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=438500<=ema13*1.02 close=4680,Y,Y,Y,66,09:06:47,15:29:18,agree_Y,agree_Y,agree_Y,N,N,Y,Y,468000,468000,log,,,,
+2026-09-17,elder_ema_pullback,,051900,5,held,held,N,Y,triple_screen_ema_pullback low=296000<=ema13*1.02 close=3015,NA,NA,NA,,,,na,na,na,N,N,,,,301500,replay,,,,
+2026-09-17,elder_ema_pullback,,192820,6,held,held,N,Y,triple_screen_ema_pullback low=270000<=ema13*1.02 close=2805,NA,NA,NA,,,,na,na,na,N,N,,,,280500,replay,,,,
+2026-09-17,elder_ema_pullback,,064760,7,held,held,N,Y,triple_screen_ema_pullback low=254500<=ema13*1.02 close=2700,NA,NA,NA,,,,na,na,na,N,N,,,,270000,replay,,,,
+2026-09-17,elder_ema_pullback,,036930,8,bought,bought,Y,Y,triple_screen_ema_pullback low=189200<=ema13*1.02 close=2020,Y,Y,Y,1,09:06:47,09:06:47,agree_Y,agree_Y,agree_Y,N,N,Y,Y,202000,202000,log,,,,
+2026-09-17,elder_ema_pullback,,062040,9,bought,bought,Y,Y,triple_screen_ema_pullback low=188800<=ema13*1.02 close=1963,Y,Y,Y,2,09:06:48,09:12:39,agree_Y,agree_Y,agree_Y,N,N,Y,Y,196300,196300,log,,,,
+2026-09-17,elder_ema_pullback,,005935,10,bought,bought,Y,Y,triple_screen_ema_pullback low=186100<=ema13*1.02 close=1946,Y,Y,Y,49,09:06:48,13:51:16,agree_Y,agree_Y,agree_Y,N,N,Y,Y,194600,194600,log,,,,
+2026-09-17,daytrading_3methods_breakout,,0007J0,1,slot_available,slot_available,N,Y,breakout_prev_high close=10500.00 prior20_high=9590.00 vol=1,Y,Y,Y,1,10:59:20,10:59:20,agree_Y,agree_Y,agree_Y,N,N,N,Y,10500,10500,log,58.4571,2,+2822.85,
+2026-09-17,daytrading_3methods_breakout,,024900,2,bought,bought,N,Y,breakout_prev_high close=1990.00 prior20_high=1745.00 vol=25,Y,Y,Y,1,10:59:21,10:59:21,agree_Y,agree_Y,agree_Y,N,N,N,Y,1990,1990,log,52.1247,2,+2506.24,
+2026-09-17,daytrading_3methods_breakout,,005160,3,no_slot,no_slot,N,Y,breakout_prev_high close=3490.00 prior20_high=3300.00 vol=14,NA,NA,NA,,,,na,na,na,N,N,,,,3490,replay,44.989,2,+2149.45,N
+2026-09-17,daytrading_3methods_breakout,,357580,4,no_slot,no_slot,N,Y,breakout_prev_high close=6440.00 prior20_high=5630.00 vol=20,NA,NA,NA,,,,na,na,na,N,N,,,,6440,replay,38.5534,2,+1827.67,N
+2026-09-17,daytrading_3methods_breakout,,125210,5,no_slot,no_slot,N,Y,breakout_prev_high close=6160.00 prior20_high=6095.00 vol=24,NA,NA,NA,,,,na,na,na,N,N,,,,6160,replay,26.2619,2,+1213.10,N
+2026-09-17,daytrading_3methods_breakout,,035460,6,no_slot,no_slot,N,Y,breakout_prev_high close=2550.00 prior20_high=2435.00 vol=15,NA,NA,NA,,,,na,na,na,N,N,,,,2550,replay,25.7076,2,+1185.38,N
+2026-09-17,daytrading_3methods_breakout,,452280,7,no_slot,no_slot,N,Y,breakout_prev_high close=13000.00 prior20_high=11370.00 vol=,NA,NA,NA,,,,na,na,na,N,N,,,,13000,replay,24.5507,2,+1127.53,N
+2026-09-17,daytrading_3methods_breakout,,072950,8,no_slot,no_slot,N,Y,breakout_prev_high close=13530.00 prior20_high=11540.00 vol=,NA,NA,NA,,,,na,na,na,N,N,,,,13530,replay,20.5119,2,+925.60,N
+2026-09-17,daytrading_3methods_breakout,,406820,9,no_slot,no_slot,N,Y,breakout_prev_high close=2540.00 prior20_high=2160.00 vol=47,NA,NA,NA,,,,na,na,na,N,N,,,,2540,replay,17.5917,2,+779.58,N
+2026-09-17,daytrading_3methods_breakout,,039560,10,no_slot,no_slot,N,Y,breakout_prev_high close=2600.00 prior20_high=2530.00 vol=10,NA,NA,NA,,,,na,na,na,N,N,,,,2600,replay,10.7885,2,+439.43,N
+2026-09-17,minervini_volume_dryup,,002990,1,no_slot,no_slot,N,Y,volume_dryup recent/base=0.28 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,13630,replay,0.28,0.7,-60.00,N
+2026-09-17,minervini_volume_dryup,,073240,2,held,held,N,Y,volume_dryup recent/base=0.26 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,7030,replay,0.26,0.7,-62.86,N
+2026-09-17,minervini_volume_dryup,,006360,3,held,held,N,Y,volume_dryup recent/base=0.52 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,36700,replay,0.52,0.7,-25.71,N
+2026-09-17,minervini_volume_dryup,,317400,4,no_slot,no_slot,N,Y,volume_dryup recent/base=0.66 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,10240,replay,0.66,0.7,-5.71,N
+2026-09-17,minervini_volume_dryup,,119850,5,no_slot,no_slot,N,Y,volume_dryup recent/base=0.61 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,47350,replay,0.61,0.7,-12.86,N
+2026-09-17,minervini_volume_dryup,,001450,6,no_slot,no_slot,N,N,rule_not_met,NA,NA,NA,,,,na,na,na,N,N,,,,,replay,0.74,0.7,+5.71,Y
+2026-09-17,minervini_volume_dryup,,090430,7,no_slot,no_slot,N,Y,volume_dryup recent/base=0.63 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,144600,replay,0.63,0.7,-10.00,N
+2026-09-17,minervini_volume_dryup,,005090,8,no_slot,no_slot,N,Y,volume_dryup recent/base=0.67 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,53300,replay,0.67,0.7,-4.29,N
+2026-09-17,minervini_volume_dryup,,089860,9,no_slot,no_slot,N,Y,volume_dryup recent/base=0.51 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,48150,replay,0.51,0.7,-27.14,N
+2026-09-17,minervini_volume_dryup,,282330,10,no_slot,no_slot,N,Y,volume_dryup recent/base=0.52 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,141500,replay,0.52,0.7,-25.71,N
+2026-09-17,book_pullback_ma20,,024840,1,no_slot,no_slot,N,Y,daily_ma20_pull ma20=5447.50 low=5490.00 close=5630.00,NA,NA,NA,,,,na,na,na,N,N,,,,5630,replay,,,,
+2026-09-17,book_pullback_ma20,,033790,2,no_slot,no_slot,N,Y,daily_ma20_pull ma20=7502.00 low=7380.00 close=7770.00,NA,NA,NA,,,,na,na,na,N,N,,,,7770,replay,,,,
+2026-09-17,book_pullback_ma20,,232140,3,held,held,N,Y,daily_ma20_pull ma20=11480.50 low=11350.00 close=11890.00,NA,NA,NA,,,,na,na,na,N,N,,,,11890,replay,,,,
+2026-09-17,book_pullback_ma20,,027360,4,no_slot,no_slot,N,Y,daily_ma20_pull ma20=3308.75 low=3270.00 close=3500.00,NA,NA,NA,,,,na,na,na,N,N,,,,3500,replay,,,,
+2026-09-17,book_pullback_ma20,,043260,5,no_slot,no_slot,N,Y,daily_ma20_pull ma20=17143.00 low=16810.00 close=18560.00,NA,NA,NA,,,,na,na,na,N,N,,,,18560,replay,,,,
+2026-09-17,book_pullback_ma20,,100130,6,no_slot,no_slot,N,Y,daily_ma20_pull ma20=1374.20 low=1355.00 close=1448.00,NA,NA,NA,,,,na,na,na,N,N,,,,1448,replay,,,,
+2026-09-17,book_pullback_ma20,,125020,7,no_slot,no_slot,N,Y,daily_ma20_pull ma20=5851.50 low=5750.00 close=5890.00,NA,NA,NA,,,,na,na,na,N,N,,,,5890,replay,,,,
+2026-09-17,book_pullback_ma20,,077360,8,no_slot,no_slot,N,Y,daily_ma20_pull ma20=9986.50 low=10090.00 close=10660.00,NA,NA,NA,,,,na,na,na,N,N,,,,10660,replay,,,,
+2026-09-17,book_pullback_ma20,,204270,9,no_slot,no_slot,N,Y,daily_ma20_pull ma20=20355.50 low=20500.00 close=21550.00,NA,NA,NA,,,,na,na,na,N,N,,,,21550,replay,,,,
+2026-09-17,book_pullback_ma20,,100790,10,no_slot,no_slot,N,Y,daily_ma20_pull ma20=15640.00 low=15900.00 close=16400.00,NA,NA,NA,,,,na,na,na,N,N,,,,16400,replay,,,,
+2026-09-17,book_pullback_ma5,,069540,1,slot_available,slot_available,N,Y,ma5_pullback ma5=4130.00 low=4100.00 close=4410.00,Y,Y,Y,2,09:22:03,11:19:05,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4410,4410,log,,,,
+2026-09-17,book_pullback_ma5,,046970,2,bought,bought,N,Y,ma5_pullback ma5=7086.00 low=6980.00 close=7240.00,Y,Y,Y,1,09:22:03,09:22:03,agree_Y,agree_Y,agree_Y,N,N,Y,Y,7240,7240,log,,,,
+2026-09-17,book_pullback_ma5,,413630,3,slot_available,slot_available,N,Y,ma5_pullback ma5=4340.00 low=4290.00 close=4725.00,Y,Y,Y,1,11:19:05,11:19:05,agree_Y,agree_Y,agree_Y,N,N,Y,Y,4725,4725,log,,,,
+2026-09-17,book_pullback_ma5,,443670,4,slot_available,slot_available,N,Y,ma5_pullback ma5=4762.00 low=4855.00 close=5290.00,Y,Y,Y,1,11:19:05,11:19:05,agree_Y,agree_Y,agree_Y,N,N,Y,Y,5290,5290,log,,,,
+2026-09-17,book_pullback_ma5,,093370,5,slot_available,slot_available,N,Y,ma5_pullback ma5=13994.00 low=14050.00 close=14530.00,Y,Y,Y,1,11:19:05,11:19:05,agree_Y,agree_Y,agree_Y,N,N,Y,Y,14530,14530,log,,,,
+2026-09-17,book_pullback_ma5,,072950,6,bought,bought,N,Y,ma5_pullback ma5=10702.00 low=10740.00 close=13530.00,Y,Y,Y,1,11:19:06,11:19:06,agree_Y,agree_Y,agree_Y,N,N,Y,Y,13530,13530,log,,,,
+2026-09-17,book_pullback_ma5,,003350,7,held,held,N,Y,ma5_pullback ma5=14720.00 low=14510.00 close=14950.00,NA,NA,NA,,,,na,na,na,N,N,,,,14950,replay,,,,
+2026-09-17,book_pullback_ma5,,115440,8,no_slot,no_slot,N,Y,ma5_pullback ma5=8718.00 low=8760.00 close=9670.00,NA,NA,NA,,,,na,na,na,N,N,,,,9670,replay,,,,
+2026-09-17,book_pullback_ma5,,005160,9,no_slot,no_slot,N,Y,ma5_pullback ma5=2953.00 low=3000.00 close=3490.00,NA,NA,NA,,,,na,na,na,N,N,,,,3490,replay,,,,
+2026-09-17,book_pullback_ma5,,256840,10,no_slot,no_slot,N,Y,ma5_pullback ma5=2763.00 low=2755.00 close=2840.00,NA,NA,NA,,,,na,na,na,N,N,,,,2840,replay,,,,
+2026-09-17,rs_leader,live,079650,1,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,6570,replay,,,,
+2026-09-17,rs_leader,live,017900,2,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,10460,replay,,,,
+2026-09-17,rs_leader,live,351320,3,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,1,09:05:14,09:05:14,agree_Y,agree_Y,agree_Y,N,N,Y,Y,3860,3860,log,,,,
+2026-09-17,rs_leader,live,064290,4,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:05:14,09:11:09,agree_Y,agree_Y,agree_Y,N,N,Y,Y,50700,50700,log,,,,
+2026-09-17,rs_leader,live,020120,5,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:05:14,09:16:52,agree_Y,agree_Y,agree_Y,N,N,Y,Y,8980,8980,log,,,,
+2026-09-17,rs_leader,live,024840,6,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:05:15,09:16:52,agree_Y,agree_Y,agree_Y,N,N,Y,Y,5630,5630,log,,,,
+2026-09-17,rs_leader,live,036930,7,slot_available,slot_available,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:05:15,09:16:52,agree_Y,agree_Y,agree_Y,N,N,Y,Y,202000,202000,log,,,,
+2026-09-17,rs_leader,live,092190,8,bought,bought,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,3,09:05:15,09:16:52,agree_Y,agree_Y,agree_Y,N,N,Y,Y,8780,8780,log,,,,
+2026-09-17,rs_leader,live,356680,9,slot_available,no_slot,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:05:15,09:11:11,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,17090,17090,log,,,,
+2026-09-17,rs_leader,live,446540,10,slot_available,no_slot,Y,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:05:15,09:11:11,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,8950,8950,log,,,,
+2026-09-18,elder_ema_pullback,,012450,1,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=1058000<=ema13*1.02 close=109,Y,Y,Y,62,09:07:06,15:25:57,agree_Y,agree_Y,agree_Y,N,N,Y,Y,1097000,1097000,log,,,,
+2026-09-18,elder_ema_pullback,,000810,2,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=660000<=ema13*1.02 close=6660,Y,Y,Y,62,09:07:07,15:25:57,agree_Y,agree_Y,agree_Y,N,N,Y,Y,666000,666000,log,,,,
+2026-09-18,elder_ema_pullback,,108490,3,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=300000<=ema13*1.02 close=3100,Y,Y,Y,62,09:07:07,15:25:58,agree_Y,agree_Y,agree_Y,N,N,Y,Y,310000,310000,log,,,,
+2026-09-18,elder_ema_pullback,,086280,4,bought,bought,Y,Y,triple_screen_ema_pullback low=202000<=ema13*1.02 close=2060,Y,Y,Y,1,09:07:07,09:07:07,agree_Y,agree_Y,agree_Y,N,N,Y,Y,206000,206000,log,,,,
+2026-09-18,elder_ema_pullback,,062040,5,held,held,N,N,rule_not_met,NA,NA,NA,,,,na,na,na,N,N,,,,,replay,,,,
+2026-09-18,elder_ema_pullback,,005935,6,held,held,N,Y,triple_screen_ema_pullback low=191900<=ema13*1.02 close=1933,NA,NA,NA,,,,na,na,na,N,N,,,,193300,replay,,,,
+2026-09-18,elder_ema_pullback,,005830,7,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=186100<=ema13*1.02 close=1928,Y,Y,Y,62,09:07:08,15:25:58,agree_Y,agree_Y,agree_Y,N,N,Y,Y,192800,192800,log,,,,
+2026-09-18,elder_ema_pullback,,095340,8,held,held,N,Y,triple_screen_ema_pullback low=183900<=ema13*1.02 close=1879,NA,NA,NA,,,,na,na,na,N,N,,,,187900,replay,,,,
+2026-09-18,elder_ema_pullback,,105560,9,held,held,N,Y,triple_screen_ema_pullback low=175400<=ema13*1.02 close=1792,NA,NA,NA,,,,na,na,na,N,N,,,,179200,replay,,,,
+2026-09-18,elder_ema_pullback,,010950,10,slot_available,slot_available,Y,Y,triple_screen_ema_pullback low=142200<=ema13*1.02 close=1522,Y,Y,Y,62,09:07:08,15:25:58,agree_Y,agree_Y,agree_Y,N,N,Y,Y,152200,152200,log,,,,
+2026-09-18,daytrading_3methods_breakout,,209640,1,bought,bought,Y,Y,breakout_prev_high close=3820.00 prior20_high=3245.00 vol=67,Y,Y,Y,1,09:02:13,09:02:13,agree_Y,agree_Y,agree_Y,N,N,N,Y,3820,3820,log,92.7448,2,+4537.24,
+2026-09-18,daytrading_3methods_breakout,,072990,2,bought,bought,Y,Y,breakout_prev_high close=3210.00 prior20_high=3150.00 vol=12,Y,Y,Y,5,09:02:13,09:27:22,agree_Y,agree_Y,agree_Y,N,N,N,Y,3210,3210,log,74.3241,2,+3616.21,
+2026-09-18,daytrading_3methods_breakout,,042370,3,bought,bought,Y,Y,breakout_prev_high close=11440.00 prior20_high=9030.00 vol=8,Y,Y,Y,6,09:02:13,09:33:39,agree_Y,agree_Y,agree_Y,N,N,N,Y,11440,11440,log,70.1453,2,+3407.27,
+2026-09-18,daytrading_3methods_breakout,,396270,4,bought,bought,Y,Y,breakout_prev_high close=2405.00 prior20_high=2230.00 vol=62,Y,Y,Y,7,09:02:14,09:39:48,agree_Y,agree_Y,agree_Y,N,N,N,Y,2405,2405,log,58.1372,2,+2806.86,
+2026-09-18,daytrading_3methods_breakout,,051160,5,slot_available,slot_available,Y,Y,breakout_prev_high close=11980.00 prior20_high=10930.00 vol=,Y,Y,Y,6,09:02:14,09:33:40,agree_Y,agree_Y,agree_Y,N,N,N,Y,11980,11980,log,54.2693,2,+2613.47,
+2026-09-18,daytrading_3methods_breakout,,478340,6,slot_available,slot_available,Y,Y,breakout_prev_high close=13850.00 prior20_high=10800.00 vol=,Y,Y,Y,6,09:02:14,09:33:40,agree_Y,agree_Y,agree_Y,N,N,N,Y,13850,13850,log,35.7854,2,+1689.27,
+2026-09-18,daytrading_3methods_breakout,,274090,7,slot_available,slot_available,Y,Y,breakout_prev_high close=11530.00 prior20_high=10480.00 vol=,Y,Y,Y,6,09:02:14,09:33:40,agree_Y,agree_Y,agree_Y,N,N,N,Y,11530,11530,log,36.0163,2,+1700.82,
+2026-09-18,daytrading_3methods_breakout,,234030,8,slot_available,slot_available,Y,Y,breakout_prev_high close=3460.00 prior20_high=3175.00 vol=10,Y,Y,Y,6,09:02:14,09:33:40,agree_Y,agree_Y,agree_Y,N,N,N,Y,3460,3460,log,29.0688,2,+1353.44,
+2026-09-18,daytrading_3methods_breakout,,201490,9,slot_available,slot_available,Y,Y,breakout_prev_high close=4635.00 prior20_high=3840.00 vol=75,Y,Y,Y,6,09:02:14,09:33:40,agree_Y,agree_Y,agree_Y,N,N,N,Y,4635,4635,log,24.3062,2,+1115.31,
+2026-09-18,daytrading_3methods_breakout,,288180,10,slot_available,slot_available,Y,Y,breakout_prev_high close=8170.00 prior20_high=7770.00 vol=37,Y,Y,Y,6,09:02:14,09:33:40,agree_Y,agree_Y,agree_Y,N,N,N,Y,8170,8170,log,22.8771,2,+1043.86,
+2026-09-18,minervini_volume_dryup,,002990,1,bought,bought,Y,Y,volume_dryup recent/base=0.23 ≤ 0.70,Y,Y,Y,1,09:02:58,09:02:58,agree_Y,agree_Y,agree_Y,N,N,Y,Y,13360,13360,log,0.23,0.7,-67.14,
+2026-09-18,minervini_volume_dryup,,073240,2,held,held,N,Y,volume_dryup recent/base=0.25 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,7020,replay,0.25,0.7,-64.29,N
+2026-09-18,minervini_volume_dryup,,006360,3,held,held,N,Y,volume_dryup recent/base=0.49 ≤ 0.70,NA,NA,NA,,,,na,na,na,N,N,,,,36600,replay,0.49,0.7,-30.00,N
+2026-09-18,minervini_volume_dryup,,317400,4,slot_available,slot_available,Y,Y,volume_dryup recent/base=0.65 ≤ 0.70,Y,Y,Y,63,09:02:59,15:28:14,agree_Y,agree_Y,agree_Y,N,N,N,Y,10000,10000,log,0.65,0.7,-7.14,
+2026-09-18,minervini_volume_dryup,,001450,5,slot_available,slot_available,Y,Y,volume_dryup recent/base=0.68 ≤ 0.70,Y,Y,Y,63,09:02:59,15:28:14,agree_Y,agree_Y,agree_Y,N,N,Y,Y,49300,49300,log,0.68,0.7,-2.86,
+2026-09-18,minervini_volume_dryup,,090430,6,slot_available,slot_available,Y,Y,volume_dryup recent/base=0.60 ≤ 0.70,Y,Y,Y,63,09:02:59,15:28:14,agree_Y,agree_Y,agree_Y,N,N,Y,Y,143100,143100,log,0.6,0.7,-14.29,
+2026-09-18,minervini_volume_dryup,,007340,7,slot_available,slot_available,Y,Y,volume_dryup recent/base=0.38 ≤ 0.70,Y,Y,Y,63,09:02:59,15:28:14,agree_Y,agree_Y,agree_Y,N,N,Y,Y,48100,48100,log,0.38,0.7,-45.71,
+2026-09-18,minervini_volume_dryup,,005090,8,slot_available,slot_available,Y,Y,volume_dryup recent/base=0.67 ≤ 0.70,Y,Y,Y,63,09:02:59,15:28:15,agree_Y,agree_Y,agree_Y,N,N,Y,Y,54000,54000,log,0.67,0.7,-4.29,
+2026-09-18,minervini_volume_dryup,,089860,9,slot_available,slot_available,Y,Y,volume_dryup recent/base=0.46 ≤ 0.70,Y,Y,Y,63,09:02:59,15:28:15,agree_Y,agree_Y,agree_Y,N,N,Y,Y,48600,48600,log,0.46,0.7,-34.29,
+2026-09-18,minervini_volume_dryup,,041830,10,slot_available,slot_available,Y,Y,volume_dryup recent/base=0.54 ≤ 0.70,Y,Y,Y,63,09:03:00,15:28:15,agree_Y,agree_Y,agree_Y,N,N,Y,Y,58100,58100,log,0.54,0.7,-22.86,
+2026-09-18,book_pullback_ma20,,003280,1,bought,bought,Y,Y,daily_ma20_pull ma20=1766.05 low=1785.00 close=1818.00,Y,Y,Y,1,09:03:45,09:03:45,agree_Y,agree_Y,agree_Y,N,N,Y,Y,1818,1818,log,,,,
+2026-09-18,book_pullback_ma20,,289080,2,slot_available,slot_available,Y,Y,daily_ma20_pull ma20=2450.50 low=2495.00 close=2655.00,Y,Y,Y,63,09:03:45,15:29:00,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2655,2655,log,,,,
+2026-09-18,book_pullback_ma20,,024840,3,slot_available,slot_available,Y,Y,daily_ma20_pull ma20=5463.50 low=5540.00 close=5880.00,Y,Y,Y,63,09:03:45,15:29:00,agree_Y,agree_Y,agree_Y,N,N,Y,Y,5880,5880,log,,,,
+2026-09-18,book_pullback_ma20,,388050,4,slot_available,slot_available,Y,Y,daily_ma20_pull ma20=10096.00 low=10200.00 close=10270.00,Y,Y,Y,63,09:03:45,15:29:00,agree_Y,agree_Y,agree_Y,N,N,Y,Y,10270,10270,log,,,,
+2026-09-18,book_pullback_ma20,,142280,5,slot_available,slot_available,Y,Y,daily_ma20_pull ma20=3069.75 low=3050.00 close=3300.00,Y,Y,Y,63,09:03:46,15:29:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,3300,3300,log,,,,
+2026-09-18,book_pullback_ma20,,090460,6,slot_available,slot_available,Y,Y,daily_ma20_pull ma20=18962.50 low=18730.00 close=19560.00,Y,Y,Y,63,09:03:46,15:29:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,19560,19560,log,,,,
+2026-09-18,book_pullback_ma20,,067310,7,slot_available,slot_available,Y,Y,daily_ma20_pull ma20=35542.50 low=35550.00 close=37600.00,Y,Y,Y,63,09:03:46,15:29:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,37600,37600,log,,,,
+2026-09-18,book_pullback_ma20,,006910,8,slot_available,slot_available,Y,Y,daily_ma20_pull ma20=7191.00 low=7170.00 close=7320.00,Y,Y,Y,63,09:03:46,15:29:01,agree_Y,agree_Y,agree_Y,N,N,Y,Y,7320,7320,log,,,,
+2026-09-18,book_pullback_ma20,,134580,9,slot_available,slot_available,Y,Y,daily_ma20_pull ma20=3536.00 low=3527.00 close=3940.00,Y,Y,Y,63,09:03:46,15:29:02,agree_Y,agree_Y,agree_Y,N,N,Y,Y,3940,3940,log,,,,
+2026-09-18,book_pullback_ma20,,130660,10,slot_available,slot_available,Y,Y,daily_ma20_pull ma20=12539.50 low=12630.00 close=12870.00,Y,Y,Y,63,09:03:47,15:29:02,agree_Y,agree_Y,agree_Y,N,N,Y,Y,12870,12870,log,,,,
+2026-09-18,book_pullback_ma5,,203650,1,slot_available,slot_available,N,Y,ma5_pullback ma5=2728.00 low=2675.00 close=2760.00,Y,Y,Y,2,09:11:00,09:17:25,agree_Y,agree_Y,agree_Y,N,N,Y,Y,2760,2760,log,,,,
+2026-09-18,book_pullback_ma5,,067290,2,bought,bought,N,Y,ma5_pullback ma5=3531.00 low=3515.00 close=3560.00,Y,Y,Y,1,09:11:00,09:11:00,agree_Y,agree_Y,agree_Y,N,N,Y,Y,3560,3560,log,,,,
+2026-09-18,book_pullback_ma5,,004310,3,bought,bought,N,Y,ma5_pullback ma5=10080.00 low=10250.00 close=10500.00,Y,Y,Y,2,09:11:01,09:17:25,agree_Y,agree_Y,agree_Y,N,N,Y,Y,10500,10500,log,,,,
+2026-09-18,book_pullback_ma5,,356680,4,slot_available,no_slot,N,Y,ma5_pullback ma5=17030.00 low=17010.00 close=17250.00,Y,Y,Y,1,09:11:01,09:11:01,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,17250,17250,log,,,,
+2026-09-18,book_pullback_ma5,,443670,5,slot_available,no_slot,N,Y,ma5_pullback ma5=5169.00 low=5160.00 close=5670.00,Y,Y,Y,1,09:11:02,09:11:02,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,5670,5670,log,,,,
+2026-09-18,book_pullback_ma5,,093370,6,slot_available,no_slot,N,Y,ma5_pullback ma5=14308.00 low=14450.00 close=14810.00,Y,Y,Y,1,09:11:02,09:11:02,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,14810,14810,log,,,,
+2026-09-18,book_pullback_ma5,,457370,7,slot_available,no_slot,N,Y,ma5_pullback ma5=9448.00 low=9350.00 close=12640.00,Y,Y,Y,1,09:11:02,09:11:02,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,12640,12640,log,,,,
+2026-09-18,book_pullback_ma5,,332570,8,slot_available,no_slot,N,Y,ma5_pullback ma5=8256.00 low=8400.00 close=8610.00,Y,Y,Y,1,09:11:02,09:11:02,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,8610,8610,log,,,,
+2026-09-18,book_pullback_ma5,,372910,9,slot_available,no_slot,N,Y,ma5_pullback ma5=2005.00 low=1970.00 close=2190.00,Y,Y,Y,1,09:11:03,09:11:03,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,2190,2190,log,,,,
+2026-09-18,book_pullback_ma5,,452260,10,slot_available,no_slot,N,Y,ma5_pullback ma5=2611.00 low=2580.00 close=2650.00,Y,Y,Y,1,09:11:03,09:11:03,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,2650,2650,log,,,,
+2026-09-18,rs_leader,live,017900,1,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,10250,replay,,,,
+2026-09-18,rs_leader,live,020120,2,slot_available,slot_available,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:11:51,09:18:09,agree_Y,agree_Y,agree_Y,N,N,Y,Y,9250,9250,log,,,,
+2026-09-18,rs_leader,live,00088K,3,bought,bought,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,1,09:11:51,09:11:51,agree_Y,agree_Y,agree_Y,N,N,Y,Y,42000,42000,log,,,,
+2026-09-18,rs_leader,live,064290,4,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,48250,replay,,,,
+2026-09-18,rs_leader,live,036930,5,slot_available,slot_available,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:11:51,09:18:09,agree_Y,agree_Y,agree_Y,N,N,Y,Y,204000,204000,log,,,,
+2026-09-18,rs_leader,live,024840,6,bought,bought,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,2,09:11:51,09:18:09,agree_Y,agree_Y,agree_Y,N,N,Y,Y,5880,5880,log,,,,
+2026-09-18,rs_leader,live,092190,7,held,held,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),NA,NA,NA,,,,na,na,na,N,N,,,,8730,replay,,,,
+2026-09-18,rs_leader,live,134580,8,slot_available,no_slot,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,1,09:11:52,09:11:52,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,3940,3940,log,,,,
+2026-09-18,rs_leader,live,446540,9,slot_available,no_slot,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,1,09:11:52,09:11:52,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,8930,8930,log,,,,
+2026-09-18,rs_leader,live,071200,10,slot_available,no_slot,N,Y,절대상승추세(종가>MA20·종가>MA60·MA20>MA60·60일수익>0),Y,Y,Y,1,09:11:52,09:11:52,agree_Y,agree_Y,agree_Y,N,Y,Y,Y,13400,13400,log,,,,
