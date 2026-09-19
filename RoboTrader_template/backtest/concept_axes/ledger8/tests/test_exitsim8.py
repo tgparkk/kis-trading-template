@@ -222,9 +222,20 @@ def test_lift_entry_window_end_is_exclusive_and_mixed_formats():
     le = X.lift_entry(DAYS[0], mins, "09:23:09", None, 103.0, wins)     # 09:33:50 시작 = 재차단 시각 → 안 씀
     assert (le.time, le.window) == ("09:34:00", "09:34:00~")
     closed = X.lift_entry(DAYS[0], _mins(("09:40:00", 101, 102, 100, 101)), "09:23:09", None, 103.0,
-                          [("09:23:09", "09:33:50")])                    # 재차단 뒤 다시 안 열림 → 미체결
-    assert closed.status == X.LIFT_UNFILLABLE
+                          [("09:23:09", "09:33:50")])                    # 열린 구간 안 분봉 0개 → 모른다(A3 · 최종 검수 #15)
+    assert closed.status == X.LIFT_NO_MINUTE
     assert X.lift_entry(DAYS[0], mins, "", None, 103.0, []).status == X.LIFT_NOT_LIFTED
+
+
+def test_lift_entry_minutes_outside_every_open_window_is_unknown_not_unfillable():
+    """최종 검수 #15(A3) — 분봉은 있는데 열린 구간 안(해제 뒤)에서 시작하는 봉이 하나도 없으면 해제 뒤 가격을 «못 본» 것
+    = `LIFT_NO_MINUTE`(모른다). `LIFT_UNFILLABLE` 은 «구간 안 봉은 있는데 밴드 안이 없다» 뿐이다."""
+    before_lift = _mins(("09:20:00", 101, 102, 100, 101), ("09:23:00", 101, 102, 100, 101))   # 전부 해제(09:23:09) 전
+    assert X.lift_entry(DAYS[0], before_lift, "09:23:09", None, 103.0).status == X.LIFT_NO_MINUTE
+    in_reblock_only = _mins(("09:34:00", 101, 102, 100, 101), ("09:35:00", 101, 102, 100, 101))  # 재차단 구간 안뿐
+    assert X.lift_entry(DAYS[0], in_reblock_only, "09:23:09", None, 103.0, REBLOCK).status == X.LIFT_NO_MINUTE
+    out_of_band = in_reblock_only + _mins(("09:36:00", 110, 111, 109, 110))                  # 구간 안 봉 · 밴드 밖
+    assert X.lift_entry(DAYS[0], out_of_band, "09:23:09", None, 103.0, REBLOCK).status == X.LIFT_UNFILLABLE
 
 
 def test_lift_entry_touches_after_entry_use_all_minutes_even_when_reblocked():

@@ -163,9 +163,13 @@ def test_reblocked_window_moves_the_entry_and_marks_the_row():
     assert reblocked and (ub, ubf) == (None, None)
     assert (le.time, le.window, main.price, main.lift_time) == ("09:36:00", "09:35:03~", 102.0, "09:36:00")
     assert main.entry_time.time() == _hm(9, 36) and main.touch_bar.low == 90.0
-    only_reblock = mins[:1]                                        # 재차단 구간에만 밴드 안 → 미체결 + 표시
-    le2, main2, _, _, reblocked2 = RUN.lift_fills(MA20, "005930", D, only_reblock, DBAR, wins, BAND, COMMON)
-    assert (le2.status, main2, reblocked2) == (X.LIFT_UNFILLABLE, None, True)
+    only_reblock = mins[:1]           # 재차단 구간 봉뿐 — 열린 구간 안 분봉 0개 = 모른다(A3 · 최종 검수 #15) + 재차단 표시
+    le2, main2, ub2, ubf2, reblocked2 = RUN.lift_fills(MA20, "005930", D, only_reblock, DBAR, wins, BAND, COMMON)
+    assert (le2.status, main2, ub2.status, ubf2.tier, reblocked2) == \
+        (X.LIFT_NO_MINUTE, None, X.LIFT_FILLED, R.TIER_LIFT_UB, True)
+    out_of_band = only_reblock + [("09:36:00", X.Bar(D, 110.0, 111.0, 109.0, 110.0))]   # 구간 안 봉 · 밴드 밖 → 미체결
+    le3, main3, ub3, ubf3, reblocked3 = RUN.lift_fills(MA20, "005930", D, out_of_band, DBAR, wins, BAND, COMMON)
+    assert (le3.status, main3, ub3, ubf3, reblocked3) == (X.LIFT_UNFILLABLE, None, None, None, True)
 
 
 def test_upper_bound_keeps_first_lift_time_on_reblocked_days():
@@ -228,3 +232,67 @@ def test_unique_guard_raises_instead_of_overlapping_lots_or_accounts():
     with pytest.raises(ValueError, match="B2_ub"):                               # 계좌 키는 (날짜, 전략, 종목)
         RUN.unique_fills([_f(), _f(R.TIER_LIFT_UB)], RUN.acct_key, "B2_ub")
     RUN.unique_fills([_f(buy_id=1), _f(buy_id=2)], RUN.lot_key, "A_sim")        # A_sim — 같은 날 재매수는 buy_id 로 구분
+
+
+# ── 최종 검수 I1: A_sim 도 B1 과 같은 D3′ 경로(급락일 실제 매수에 09:02 진입을 만들지 않는다) ──────────────────
+ABAR = X.Bar(D, 101.0, 106.0, 99.0, 101.5)                 # 09:02 시뮬이면 D 시가 101(밴드 안)에 샀을 봉
+MINS = [("09:24:00", X.Bar(D, 102.0, 102.5, 101.0, 101.5))]
+WINS = [("09:23:09", "")]
+
+
+def _asim(monkeypatch, trade, crash, minutes):
+    monkeypatch.setattr(RUN.LS8, "evaluate8",
+                        lambda *a: SimpleNamespace(signal="Y", ref=BAND[0], band_min=BAND[1], band_max=BAND[2]))
+    monkeypatch.setattr(RUN, "crash_state", lambda ctx, f, c, d: (True, WINS[0][0], WINS) if crash else (False, "", []))
+    ctx = SimpleNamespace(strategies={f: None for f in R.ALL_FOLDERS}, trades={MA20: [trade]},
+                          windows=SimpleNamespace(get=lambda code, d: (None, None)), bars_for=lambda code: {D: ABAR},
+                          minute_bars=lambda code, d: minutes, extras={trade.buy_id: SimpleNamespace(qty=7)})
+    fills, rows, warns = RUN.a_sim_fills(ctx, [D], {(D, MA20): ["005930"]})
+    assert warns == [] and len(rows) == 1
+    return fills, rows[0]
+
+
+def test_a_sim_crash_day_buy_enters_like_b1_after_the_lift_not_at_0902(monkeypatch):
+    live = _live(_hm(9, 25, 38), price=102.0)
+    fills, row = _asim(monkeypatch, live, True, MINS)
+    _, b1, _, _, _ = RUN.lift_fills(MA20, "005930", D, MINS, ABAR, WINS, BAND, COMMON, [live])
+    (f,) = fills
+    assert (f.basis, f.price, f.entry_time, f.lift_time) == (b1.basis, b1.price, b1.entry_time, b1.lift_time)
+    assert (f.basis, f.price, f.qty, f.qty_basis, f.buy_id, f.tier, f.crash_blocked) == \
+        (X.BASIS_LIFT, 102.0, 7, "actual", 7, R.TIER_MAIN, True)                  # 수량 = 실제 · 09:02 D 시가 101 아님
+    assert (row["sim_entry_status"], row["sim_entry_basis"], row["sim_entry_price"], row["entry_diff_pct"]) == \
+        ("crash→" + X.LIFT_FILLED, X.BASIS_LIFT, "102", "+0.00")
+
+
+def test_a_sim_crash_day_without_minutes_is_the_live_fill_and_not_an_entry_bias_sample(monkeypatch):
+    live = _live(_hm(9, 25, 38), price=101.7)
+    fills, row = _asim(monkeypatch, live, True, [])
+    (f,) = fills
+    assert (f.basis, f.price, f.qty, f.qty_basis, f.crash_blocked) == (X.BASIS_LIVE_FILL, 101.7, 7, "actual", True)
+    assert f.entry_time.replace(tzinfo=None) == live.buy_ts
+    # 시뮬이 아니라 실제 체결 그대로 — 진입가 차(§1-6) 표본이 아니다(0.00 으로 평균을 희석하지 않는다)
+    assert (row["sim_entry_basis"], row["sim_entry_price"], row["entry_diff_pct"]) == (X.BASIS_LIVE_FILL, "101.7", "")
+
+
+def test_a_sim_crash_day_buy_before_the_lift_without_minutes_stays_unknown_and_non_crash_is_0902(monkeypatch):
+    fills, row = _asim(monkeypatch, _live(_hm(9, 1, 38)), True, [])           # B1 main 과 같이 «모른다» → 체결 없음
+    assert fills == [] and row["sim_entry_status"] == "crash→" + X.LIFT_NO_MINUTE and row["entry_diff_pct"] == ""
+    fills, row = _asim(monkeypatch, _live(_hm(9, 25, 38)), False, MINS)       # 게이트 안 막힘 → 09:02 D 시가 그대로
+    (f,) = fills
+    assert (f.basis, f.price, f.crash_blocked, row["sim_entry_status"]) == (X.BASIS_D_OPEN, 101.0, False, "filled")
+
+
+# ── 최종 검수 M1(수정 목록 4): --reuse-fills 동결본의 출처 SHA ────────────────────────────────────────────
+def test_reuse_source_sha_reads_the_frozen_runs_meta_and_follows_a_chain(tmp_path):
+    fills = tmp_path / "fills_b.csv"
+    assert RUN.reuse_source_sha(fills) == ""                                   # run_meta.json 없음 → 불명
+    (tmp_path / "run_meta.json").write_text('{"git_sha": "09b951b", "reuse_fills": ""}', encoding="utf-8")
+    assert RUN.reuse_source_sha(fills) == "09b951b"
+    (tmp_path / "run_meta.json").write_text(                                  # 재추적 결과를 또 재추적 → 원 산출 SHA
+        '{"git_sha": "aaaaaaa", "reuse_fills": "x/fills_b.csv", "reuse_fills_sha": "09b951b"}', encoding="utf-8")
+    assert RUN.reuse_source_sha(fills) == "09b951b"
+    (tmp_path / "run_meta.json").write_text(                                  # 원 산출 SHA 불명 → 재추적 SHA 로 안 채움
+        '{"git_sha": "aaaaaaa", "reuse_fills": "x/fills_b.csv", "reuse_fills_sha": ""}', encoding="utf-8")
+    assert RUN.reuse_source_sha(fills) == ""
+    (tmp_path / "run_meta.json").write_text("{not json", encoding="utf-8")
+    assert RUN.reuse_source_sha(fills) == ""

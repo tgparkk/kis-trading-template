@@ -54,7 +54,8 @@ LIMITS = [
     "일일손실한도는 B 에 적용하지 않고, 라이브였다면 걸렸을 건만 §6-3 D5 표로 따로 센다 — 진입억제는 멈춘 단계로 세 갈래, "
     "25분 쿨다운은 «관측 불가» 표시만(슬롯 객체 단위라 막힘을 확정할 수 없다), VI 는 DEBUG 로그라 관측 불가.",
     "D3′ 급락 게이트 = «풀린 뒤 산다»: 09:02 에 막혀 있으면 로그 `[시장방향성필터]` 시간선에서 게이트가 «열린» 구간"
-    "(재차단 구간 제외) 안의 첫 밴드 안 분봉 가격(`minute_candles`)에 산다. 분봉이 아예 없는 행(`no_minute_data`)은 "
+    "(재차단 구간 제외) 안의 첫 밴드 안 분봉 가격(`minute_candles`)에 산다. A_sim(실제 매수)도 같은 경로를 탄다. "
+    "열린 구간 안 분봉이 없는 행(`no_minute_data` · 분봉 0개 포함)은 "
     "«안 산 것»이 아니라 «모른다»다 — 본 집계에서 빼고(하한 = 안 삼) D 일봉 상한(tier `lift_ub`)을 §6-2 에 나란히 싣는다. "
     "상한은 체결 시각을 몰라 재차단 구간 체결을 배제하지 못한다. 단 분봉이 없어도 라이브가 해제 뒤 실제로 산 행은 «아는 "
     "것»이다 — 그 체결 시각·가격으로 진입한다(basis `live_fill` · 본 집계 안 · 진입 뒤 고저를 몰라 진입일 터치는 안 본다). "
@@ -274,13 +275,22 @@ def render(meta: Dict[str, Any], sig_rows: Sequence[Dict[str, str]], exit_rows: 
     main_accts = main_accounts(accounts)
     stray = (sum(1 for r in lots if r["arm"] == ARM_B1) - len(b1)) + (len(accounts) - len(main_accts))
     grp = lot_groups(ledger)
-    L: List[str] = ["# ledger8 — 8전략 세 arm 관측 원장 요약", "", BANNER,
-                    f"> 창 {meta['window']}({meta['n_days']}거래일) · 청산 추적 = DB 최신 봉 {meta.get('last_bar', '')} · "
-                    f"DB {meta['db']} · 로그 {meta['log_dir']} · 실행 시각·git SHA 는 run_meta.json", ""]
+    L: List[str] = ["# ledger8 — 8전략 세 arm 관측 원장 요약", "", BANNER]
+    if meta.get("reuse_fills"):                  # 최종 검수 M1 — 재추적 실행임을 머리에서 밝힌다
+        L.append(f"> 🔒 **재추적 모드 — B 진입 집합은 이전 실행에서 동결했다**: `{meta['reuse_fills']}`(그 실행 git SHA "
+                 f"{meta.get('reuse_fills_sha') or '불명 — 원본 run_meta.json 없음'}). 신호를 다시 평가해도 B 진입은 바뀌지 "
+                 "않고 청산만 DB 최신 봉까지 다시 추적했다. 이 모드는 D3 반대편(B1_nogate)을 다시 만들지 않고 원장의 급락 행 "
+                 "세부(lift_status 등)가 비어 있다 — §6-1 D3 반대편·§6-2 급락 행 수치는 동결 원본 실행의 summary 를 볼 것.")
+    L += [f"> 창 {meta['window']}({meta['n_days']}거래일) · 청산 추적 = DB 최신 봉 {meta.get('last_bar', '')} · "
+          f"DB {meta['db']} · 로그 {meta['log_dir']} · 실행 시각·git SHA 는 run_meta.json", ""]
 
     L += ["## 0. 원장 신뢰도", ""]
     L.append(f"- 충실도 LOW: {', '.join(f'{k} {v}' for k, v in low.items()) or '없음'} — "
              "LOW 전략의 수치는 그 표기와 함께만 인용할 것(기준값은 결과를 보고 바꾸지 않았다).")
+    exit_na = [f"{g['strategy']} {g['verdict']}" for g in exit_table if g["verdict"].startswith("판정 불가")]
+    if exit_na:
+        L.append(f"- 청산 충실도 판정 불가(실제 청산 표본 < {F.FID_MIN_N}): {', '.join(exit_na)} — LOW 는 아니지만 청산 "
+                 "재현이 확인되지 않았다. 이 전략의 청산 결과(§2~§5)는 이 표기와 함께 인용할 것(§1-4).")
     v3_low = {g["group"] for g in sig_table if g["verdict"] == "LOW"}
     for k, _ in RULES[:2]:
         was = [grp_ for grp_, g in tabs[k].items() if g["verdict"] == "LOW" and grp_ not in v3_low]
@@ -359,6 +369,11 @@ def render(meta: Dict[str, Any], sig_rows: Sequence[Dict[str, str]], exit_rows: 
                       [[g["strategy"], g["n"], pct(g["signed_mean"]), pct(g["abs_mean"]).replace("+", ""),
                         f"{g['positive']}/{g['n']}", g["n_first"], pct(g["signed_mean_first"])] for g in es])
              if es else "(없음)")
+    n_live = sum(1 for r in entry_rows if r.get("sim_entry_basis") == X.BASIS_LIVE_FILL)
+    if n_live:
+        L += ["", f"- 급락일 실제 매수 중 `live_fill` {n_live}건은 해제 뒤 열린 구간 분봉이 없어 A_sim 진입 = 실제 체결 "
+              "그대로다(B1 과 같은 D3′ 경로) — 시뮬 진입가가 아니라 이 표에서 뺐다. 급락일 나머지는 해제 뒤 첫 밴드 안 분봉 "
+              "진입가(after_lift)로 비교한다."]
     off: Counter = Counter()
     for r in offlist:
         off[r["strategy"]] += _i(r["n_offlist"])

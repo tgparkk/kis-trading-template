@@ -35,7 +35,7 @@ $PY -m pytest backtest/concept_axes/ledger8/tests -q -p no:cacheprovider
 | `--start` `--end` | 거래일 범위(KOSPI 달력). 기본 2026-09-10 ~ 2026-09-18(7거래일) |
 | `--stage` | `signal` · `exit` · `all`(기본) |
 | `--exit-fid-since` | 청산 충실도 대상 실제 매수 시작일(기본 2026-08-26 — 1810cd2 전략 고유 sl/tp 제거 다음 기동) |
-| `--reuse-fills` | B 진입 집합을 이 파일로 고정(신호 재평가 결과와 무관하게 같은 진입) — main·ext·`tier=lift_ub` 전부 복원하지만 `B1_nogate` 는 다시 만들지 않는다(원 설계 · `fills_b.csv` 에 nogate 행이 없다). 이 모드에서 원장은 얇다(lift_status 등 빠짐) — 청산 재추적 용도로만 쓸 것 |
+| `--reuse-fills` | B 진입 집합을 이 파일로 고정(신호 재평가 결과와 무관하게 같은 진입) — main·ext·`tier=lift_ub` 전부 복원하지만 `B1_nogate` 는 다시 만들지 않는다(원 설계 · `fills_b.csv` 에 nogate 행이 없다). 이 모드에서 원장은 얇다(lift_status 등 빠짐) — 청산 재추적 용도로만 쓸 것. `summary.md` 머리에 «재추적 모드» 배너(동결본 경로 · 그 실행 git SHA)가 붙는다(§6.10) |
 | `--out` · `--log-dir` | 출력 폴더(기본 `results/`) · 라이브 로그 폴더(기본 env `LEDGER8_LOG_DIR` → `<ROOT>/logs` → 라이브 로그) |
 
 - 매 실행은 창 전체를 다시 계산한다(청산이 최신 봉에 따라 바뀜). 같은 입력이면 CSV·`summary.md` 는 같은 바이트이고 실행 시각·git SHA 는 `run_meta.json` 에만 있다(실측: 같은 코드로 4회 재실행 — CSV·summary.md 바이트 동일, `run_meta.json` 의 `run_ts`·`git_sha` 만 다름).
@@ -53,8 +53,9 @@ $PY -m pytest backtest/concept_axes/ledger8/tests -q -p no:cacheprovider
   신호 일치는 Y·N 방향을 나눠 본다(검증 실행: N 방향 표본은 elder 11 뿐). 재현 행은 day·min 룰 여유와 «빈티지 취약»(관측 재기록 폭 안에서 뒤집힐 수 있음)을 표시한다.
 - **진입(B·A_sim)**: D 09:02 한 번 — D 시가가 밴드 안이면 시가, 밖이고 장중 복귀면 경계값, 장중 내내 밖이면 불가(`cap_skip_ledger/sim.py`).
   그 시각 급락 게이트가 막고 있으면 **D3′ 게이트가 «열린» 구간 안에서만 산다**(재차단 구간 제외 — 라이브와 같게) — 로그 시장방향성 시간선의 열린 구간 안 첫 밴드 안 분봉(`minute_candles`) 가격.
-  분봉이 아예 없는 행은 «안 산 것」이 아니라 **«모른다»**(§6.5 A3) — 다만 그 행에서 라이브가 실제로 산 것이 확인되면(§6.9 `live_fill`) 그 체결로 진입한다.
-  **D5** — 진입억제·25분 매수 쿨다운·VI·일일손실한도는 B 미적용(«후보 통과 종목은 전부 산다»), 라이브였다면 막혔을 로트만 `d5_flags` 로 표시(VI 관측 불가 · 쿨다운은 대부분 관측 불가 — §6.7).
+  열린 구간 안에 분봉이 없는 행(분봉 0개 포함)은 «안 산 것」이 아니라 **«모른다»**(§6.4 A3) — 다만 그 행에서 라이브가 실제로 산 것이 확인되면(§6.5 `live_fill`) 그 체결로 진입한다.
+  **A_sim 도 같은 경로**다(§6.10): 급락일 실제 매수는 열린 구간 첫 밴드 안 분봉(`after_lift`), 분봉이 없으면 그 실제 체결(`live_fill`) — 09:02 진입을 만들지 않는다.
+  **D5** — 진입억제·25분 매수 쿨다운·VI·일일손실한도는 B 미적용(«후보 통과 종목은 전부 산다»), 라이브였다면 막혔을 로트만 `d5_flags` 로 표시(VI 관측 불가 · 쿨다운은 대부분 관측 불가 — §6.6).
 - **청산(8전략 공통 1벌)**: 익절·손절 비율 = 라이브 엔진 `execute_virtual_buy` 경로(config `take_profit_pct/stop_loss_pct` → 손절 하한 3%)를
   캡처 스텁으로 호출해 얻는다. 데이터 청산 = 전략 사본에 포지션(평단·첫 매수 시각)을 넣고 `now_kst` 를 D+k 09:02 로 바꿔
   `generate_signal(code, D+k 일봉 창, 'daily')` → `_check_sell`. 하루 순서 = 보유기간(position_monitor `days_held=k`) → 갭 익절 →
@@ -75,7 +76,7 @@ $PY -m pytest backtest/concept_axes/ledger8/tests -q -p no:cacheprovider
 | `accounts_b2_ub.csv` | B2 A3 상한 계좌(id 접두 `B2U-`) — `FLAG_ADD_UNKNOWN`(추가매수 불명)이 나오는 유일한 파일 |
 | `a_actual.csv` · `a_sim.csv` · `a_sim_entry.csv` | 실제 체결 · 같은 시뮬 로트 · 시뮬 진입가 vs 실제 체결가 |
 | `fidelity_signal.csv` · `fidelity_exit.csv` · `offlist_signals.csv` | 신호(v1·v2·v3 결과 · 재구성 모순 · 룰 여유)·청산·익절손절 충실도 · E6 목록 밖 매수신호 |
-| `run_meta.json` | `banner` · 실행 시각(`run_ts`) · git SHA(`git_sha`) · DB · 로그 폴더 · 창 · 최신 봉 · 관측 빈티지(`vintage`) · B1 재신호 vs B2 추가매수(`repeat_vs_adds`) · 경고(`warnings`) |
+| `run_meta.json` | `banner` · 실행 시각(`run_ts`) · git SHA(`git_sha`) · DB · 로그 폴더 · 창 · 최신 봉 · 관측 빈티지(`vintage`) · B1 재신호 vs B2 추가매수(`repeat_vs_adds`) · 경고(`warnings`) · 재추적 동결본(`reuse_fills` · 그 출처 SHA `reuse_fills_sha`) |
 
 CSV 는 어느 파일도 머리에 배너 문장을 두지 않는다(기계 판독용 — 첫 줄에 문장을 넣으면 파서가 깨진다). 배너는 `summary.md` 3번째 줄과
 `run_meta.json` 의 `banner` 필드, 그리고 이 README 에 있다.
@@ -108,14 +109,16 @@ CSV 는 어느 파일도 머리에 배너 문장을 두지 않는다(기계 판�
    3+3행 이동: 09-11 ma5 079650 09:47→10:00 · 09-11 minervini/rs_leader 098120 09:35→09:36 · 09-14 ma20 443670·ma5 446540·elder
    005830 은 unfillable 로 전환). 진입 뒤 청산 판정에 쓰는 터치 분봉은 재차단 여부와 무관하게 전부 쓴다(청산은 게이트 대상이 아니다).
 4. **A3 — 분봉 없는 급락 해제 행 = 「모른다」, 「안 산 것」이 아니다.** `minute_candles` 는 하루 ~300종목만 있어(선정 종목 위주 —
-   무작위 결측이 아니다), 막힌 main 86행 중 44행은 애초에 분봉이 없다. 이 행들은 `lift_unknown=Y` 로 본 집계(하한)에서 빼고,
+   무작위 결측이 아니다), 막힌 main 86행 중 44행은 애초에 분봉이 없다. 판정 기준은 «게이트가 열린 구간 안에서 시작하는 분봉이
+   없다»이다 — 분봉이 있어도 전부 해제 전·재차단 구간이면 해제 뒤 가격을 못 본 것이라 같은 «모른다»(`no_minute_data`)이고,
+   `unfillable` 은 «구간 안 봉은 있는데 밴드 안이 없다»뿐이다(최종 검수 #15 · 현재 창 영향 0행 — 44행 모두 분봉 0개). 이 행들은 `lift_unknown=Y` 로 본 집계(하한)에서 빼고,
    D 일봉 상한 민감도를 나란히 싣는다: `tier=lift_ub`(`fills_b.csv`) 로 별도 실행해 `lots_b1.csv arm=B1_ub`(main 재포함 · 더하지
    말 것)와 `accounts_b2_ub.csv`(id `B2U-`)에 담는다. 상한 가격 규칙 — D 일봉 [저가, 고가]가 밴드와 겹치면 체결, 가격은 D 종가가
    밴드 안이면 종가, 아니면 가까운 밴드 경계값, 진입일 터치(`touch_bar`)는 쓰지 않음(`FLAG_NO_D_TOUCH`); 겹치지 않으면 상한도
    미체결. 상한 체결 날 같은 (전략, 종목) B2 계좌가 이미 열려 있으면 `FLAG_ADD_UNKNOWN`(추가매수 불명 — 상한 파일에만 존재).
-   현재 창: main 44 unknown 중 상한 filled 28 · unfillable 8, B1 상한−하한 = **−114,324원**(28개 `lift_ub` 로트 몫), B2
-   `FLAG_ADD_UNKNOWN` **10**.
-5. **`live_fill` — 「아는 것은 안다」.** A3 의 44 unknown 행 중 **8행**은 실제로 라이브가 그 종목을 게이트 해제 뒤에 샀다(분봉이
+   현재 창: 분봉 없는 main **44행 = `live_fill` 8(§6.5 · «아는 것» — 본 집계 안) + «모른다» 36(상한 filled 28 · 상한도
+   unfillable 8)**, B1 상한−하한 = **−114,324원**(28개 `lift_ub` 로트 몫), B2 `FLAG_ADD_UNKNOWN` **10**.
+5. **`live_fill` — 「아는 것은 안다」.** A3 의 분봉 없는 44행 중 **8행**은 실제로 라이브가 그 종목을 게이트 해제 뒤에 샀다(분봉이
    없을 뿐 매수 자체는 사실 · A_actual 로 확인). 이 8행은 «모른다» 로 두지 않고 그 라이브 체결 시각·가격(`basis=live_fill`)으로
    본 집계(main)에 넣는다 — 진입 뒤 분봉이 없어 진입일 고저(`touch_bar`)는 못 보므로 `FLAG_NO_D_TOUCH`. 상한 쪽에는 넣지 않는다
    (이미 아는 값이라 상한 민감도 대상이 아니다). 이 보정 뒤 **라이브 실제 매수 76건 전부가 B1 본 집계에 있다**(`live_fill` 8건
@@ -146,6 +149,19 @@ CSV 는 어느 파일도 머리에 배너 문장을 두지 않는다(기계 판�
    이 README 에만 있다 — CSV 는 기계 판독용이라 첫 줄에 문장을 넣으면 파서가 깨진다(controller ruling).
 9. **결과 커밋은 2개(과제 9·10 각각 코드→결과).** 코드 커밋과 결과 커밋을 분리해서, `run_meta.json` 의 `git_sha` 가 그 결과를
    만든 정확한 코드 커밋을 가리키게 했다(한 커밋으로 묶으면 dirty 코드 상태에서 결과가 나온 것처럼 SHA 가 부모 커밋을 가리킨다).
+10. **최종 검수 수정(I1 · #15 · #48 · M1 · M5).**
+   - **I1 — A_sim 도 D3′.** A_sim 은 급락일에도 09:02 D 시가로 샀다 — 라이브가 할 수 없던 진입이다(09-11·09-14 는 09:02 에 KOSPI
+     차단). 이제 `run.a_sim_fills` 가 B1 과 같이 `crash_state` → `lift_fills(..., [그 실제 매수])` 를 탄다(수량은 실제 그대로).
+     급락일 실제 매수 12건 = `after_lift` 4 + `live_fill` 8 로, 76건 전부 진입(basis·가격)이 같은 행의 B1 로트와 같다(수정 전
+     12건이 달랐다). §2 A_sim 명목가중 %: envelope −4.69→**−3.33** · ma20 +3.29→**+1.91** · ma5 −1.21→**−1.35** ·
+     rs_leader −0.50→**−0.67**(나머지 3전략·B1·B2·§3~§6 은 바이트 그대로). §1-6 진입가 차는 `live_fill` 8건(진입가 = 실제
+     체결가 그대로 · 시뮬이 아님)을 표본에서 빼고 그 수를 적는다 — (전체) 76건 +1.14% → **68건 +1.41%**.
+   - **#15 — «열린 구간 안 분봉 없음» = 모른다.** 위 §6.4 참조(현재 창 영향 0행).
+   - **#48 — §0 이 청산 충실도 «판정 불가»도 적는다.** «LOW: 없음» 바로 아래에 표본 < 5 인 전략을 표에서 생성해 적는다(현재
+     minervini n=4).
+   - **M1 — 재추적 배너.** `--reuse-fills` 실행의 `summary.md` 는 머리(4번째 줄)에 «재추적 모드» 배너를 단다 — 동결본 경로 ·
+     그 동결본을 만든 실행의 git SHA(같은 폴더 `run_meta.json` · 그 실행도 재추적이었으면 그것이 적은 원 산출 SHA) · 이 모드에서
+     다시 만들지 않는 것(D3 반대편 · 급락 행 세부). `run_meta.json` 에는 `reuse_fills_sha` 로 남는다.
 
 ## 7. 가정·한계
 
@@ -169,5 +185,5 @@ CSV 는 어느 파일도 머리에 배너 문장을 두지 않는다(기계 판�
 | `arms.py` | A_actual · A_sim · B1 · B2 엔진(순수) |
 | `fidelity8.py` | 충실도 판정·집계 · «평가 가능» 규칙 `slot_verdict`(v3 시작 경계 포함) · 빈티지 표시(순수) |
 | `sources8.py` · `context8.py` | DB SELECT · 실행 문맥 |
-| `run.py` · `report.py` | CLI · 요약 MD(`report.py` 는 브리프의 ~340줄에서 시나리오 분리·D5 세 갈래·A3/A4/A5 표시를 더해 524줄) |
+| `run.py` · `report.py` | CLI · 요약 MD(`report.py` 는 브리프의 ~340줄 초안에 시나리오 분리·D5 세 갈래·A3/A4/A5 표시·재추적 배너를 더해 커졌다) |
 | 재사용(수정 금지) | `../minervini/cap_skip_ledger/{bootstrap,sources,sim,tradecal,classify}.py` |

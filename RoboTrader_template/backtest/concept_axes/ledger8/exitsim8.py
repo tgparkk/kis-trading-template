@@ -15,7 +15,8 @@
   터치 판정 — basis=D_open 은 D 일봉 전체 · after_lift(D3′)는 진입 분봉 뒤 분봉만 모은 봉(`Pos.touch_bar`) ·
   band_touch·actual(시각 불명)·live_fill(시각은 알지만 진입 뒤 분봉 없음)은 진입일 고저를 쓰지 않는다.
 D3′(급락 게이트 = 풀린 뒤 산다): `lift_entry` 가 해제 시각 뒤 분봉을 차례로 `sim.simulate_entry` 에 넣어 첫 체결을 찾는다.
-  분봉이 없으면(LIFT_NO_MINUTE) 「안 산 것」이 아니라 「모른다」(A3) — 하한 = 안 삼 · 상한 = `lift_upper_bound`(D 일봉).
+  열린 구간 안에 분봉이 없으면(LIFT_NO_MINUTE · 분봉 0개 포함) 「안 산 것」이 아니라 「모른다」(A3) — 하한 = 안 삼 ·
+  상한 = `lift_upper_bound`(D 일봉).
   단 라이브가 해제 뒤 실제로 샀으면 «아는 것은 안다» — 그 체결 시각·가격(`BASIS_LIVE_FILL` · run.lift_fills).
 🔴 일봉으로 안 되는 것 — 갭다운 손절 체결가(라이브 09:05 가격) · 폴링이 놓친 짧은 꼬리 · 같은 날 청산 후 재진입 — 플래그로만.
 """
@@ -234,9 +235,10 @@ def lift_entry(d: date, minutes: Sequence[MinuteBar], lift_hhmmss: str, band_min
     시각은 분봉·구간 모두 `_hhmmss` 로 맞춘 뒤 비교한다(DB 'HHMMSS' · 로그 'HH:MM:SS') · `LiftEntry.time` 은 'HH:MM:SS'.
     진입 후보 = 분봉 시작 시각이 어느 구간의 [시작, 끝) 안인 봉(해제 시각이 든 분봉엔 해제 전 가격이 섞인다 · 재차단
     시각에 시작하는 봉은 이미 막힌 뒤다). 각 분봉을 `sim.simulate_entry` 에 그대로 넣는다 — 시가가 밴드 안이면 그
-    시가(basis=minute_open), 시가 밖·봉 안 복귀면 밴드 경계값(minute_band_touch · 그 분 안 시각 불명). 끝까지 없으면
-    unfillable. 진입일 터치용 봉은 minute_open 이면 그 분봉부터, band_touch 면 «다음» 분봉부터 «전부» 모은다
-    (청산은 게이트가 막지 않는다 — 재차단 구간 분봉도 들어간다).
+    시가(basis=minute_open), 시가 밖·봉 안 복귀면 밴드 경계값(minute_band_touch · 그 분 안 시각 불명). 구간 안 봉은
+    있는데 끝까지 밴드 안이 없으면 unfillable. 구간 안에서 시작하는 봉이 하나도 없으면(분봉 0개 포함) 해제 뒤 가격을 못 본
+    것이라 no_minute_data = «모른다»(A3 · 최종 검수 #15). 진입일 터치용 봉은 minute_open 이면 그 분봉부터, band_touch 면
+    «다음» 분봉부터 «전부» 모은다(청산은 게이트가 막지 않는다 — 재차단 구간 분봉도 들어간다).
     """
     if windows is None:
         windows = [(lift_hhmmss, "")] if lift_hhmmss else []
@@ -246,10 +248,12 @@ def lift_entry(d: date, minutes: Sequence[MinuteBar], lift_hhmmss: str, band_min
     if not minutes:
         return LiftEntry(LIFT_NO_MINUTE)
     norm: List[Tuple[str, Bar]] = [(_hhmmss(t), b) for t, b in minutes]
+    seen_in_window = False
     for i, (s, b) in enumerate(norm):
         win = next(((a, e) for a, e in wins if a <= s and (not e or s < e)), None)
         if win is None:
             continue
+        seen_in_window = True
         ent = S.simulate_entry(b, band_min, band_max)
         if ent.status != S.ENTRY_FILLED:
             continue
@@ -259,7 +263,7 @@ def lift_entry(d: date, minutes: Sequence[MinuteBar], lift_hhmmss: str, band_min
         return LiftEntry(LIFT_FILLED, float(ent.price), _colon(s),
                          "minute_open" if ent.basis == BASIS_D_OPEN else "minute_band_touch", touch,
                          f"{_colon(win[0])}~{_colon(win[1]) if win[1] else ''}")
-    return LiftEntry(LIFT_UNFILLABLE)
+    return LiftEntry(LIFT_UNFILLABLE if seen_in_window else LIFT_NO_MINUTE)
 
 
 def lift_upper_bound(bar: Optional[Bar], band_min: Optional[float], band_max: Optional[float]) -> LiftEntry:

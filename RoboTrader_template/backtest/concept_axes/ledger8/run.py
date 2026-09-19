@@ -448,8 +448,8 @@ def lift_fills(folder: str, code: str, d: date, minutes: Sequence[Tuple[str, X.B
     본 = 게이트가 «열린» 구간(`windows` · 재차단 구간 제외 · 과제 9 I1)의 첫 밴드 안 분봉 가격(`exitsim8.lift_entry`
     · basis after_lift · entry_time·lift_time = 그 분봉 시각 · 쓴 구간 = `LiftEntry.window`). 진입 뒤 터치는 전 분봉.
     재차단 표시 = 첫 해제 시각만 보는 규칙(재차단 무시)이었다면 재차단 구간에서 샀을 행(본 체결은 다음 열린 구간 또는 미체결).
-    A3 — 분봉이 아예 없으면(`LIFT_NO_MINUTE`) «안 산 것»이 아니라 «모른다»: 본 체결은 만들지 않고, 상한 민감도 체결만
-    D 일봉으로 만든다(`exitsim8.lift_upper_bound` · tier `lift_ub` · lift_time = 첫 해제 시각 · entry_time None →
+    A3 — 열린 구간 안에 분봉이 없으면(`LIFT_NO_MINUTE` · 분봉 0개 포함) «안 산 것»이 아니라 «모른다»: 본 체결은 만들지
+    않고, 상한 민감도 체결만 D 일봉으로 만든다(`exitsim8.lift_upper_bound` · tier `lift_ub` · lift_time = 첫 해제 시각 · entry_time None →
     진입일 탐침은 09:02 로 본다 · 시각 불명이라 재차단 구간을 가르지 못한다 — 원장 caveats). 본 집계는 상한을 넣지 않는다.
     과제 10 fix 1 «모르는 것은 모르고, 아는 것은 안다» — 분봉이 없어도 라이브가 해제 뒤 실제로 샀으면(`live_buys` = 이
     main 행의 라이브 매수 · 첫 해제 시각 이후 첫 건) 그 체결 가격·시각으로 본 체결을 만든다(basis live_fill · lift_time =
@@ -634,6 +634,9 @@ def attach_rows(ctx: Ctx8, cands: Sequence[Dict[str, Any]], reuse: Optional[Dict
 def a_sim_fills(ctx: Ctx8, days: Sequence[date], in_list: Dict[Tuple[date, str], List[str]]
                 ) -> Tuple[List[A.Fill], List[Dict[str, str]], List[str]]:
     """실제 매수 → B 와 같은 진입 시뮬(D 시가 · 밴드 복귀). 밴드 = 재현 Y 면 그 밴드, 아니면 강제 밴드. 수량 = 실제.
+    09:02 에 급락 게이트가 막고 있으면 B1 과 같은 D3′ 경로(최종 검수 I1 — 라이브가 못 했을 09:02 진입을 만들지 않는다):
+    `crash_state` → `lift_fills(..., [이 실제 매수])` — 열린 구간 첫 밴드 안 분봉(after_lift), 열린 구간 분봉이 없으면 이
+    실제 체결(live_fill · 시뮬이 아니라 진입가 차 표본에서 뺀다), 그 밖(밴드 밖 · 해제 전 매수의 «모른다»)은 미체결.
     체결 원장에 수량이 없으면 수량 0 으로 두되 «경고»로 남긴다(조용히 넣지 않는다)."""
     fills: List[A.Fill] = []
     rows: List[Dict[str, str]] = []
@@ -653,22 +656,37 @@ def a_sim_fills(ctx: Ctx8, days: Sequence[date], in_list: Dict[Tuple[date, str],
                 band, basis = LS8.forced_band(strat, folder, t.code, d, data), "forced"
             if band is None:
                 band, basis = (None, None, None), "none(밴드 없음 → D 시가)"
-            ent = S.simulate_entry(ctx.bars_for(t.code).get(d), band[1], band[2])
+            d_bar = ctx.bars_for(t.code).get(d)
+            ent = S.simulate_entry(d_bar, band[1], band[2])
             listed = t.code in in_list.get((d, folder), [])
+            tier = R.TIER_MAIN if listed else R.TIER_OFFLIST
             extra = ctx.extras.get(t.buy_id)
+            qty = extra.qty if extra else 0
             if extra is None:
                 warns.append(f"A_sim {folder} {t.code} {d} buy_id={t.buy_id}: 체결 원장 수량 없음 → 수량 0(손익 0)")
+            fill: Optional[A.Fill] = None
+            status, e_basis, e_price = ent.status, ent.basis, ent.price
+            crash, _, wins = crash_state(ctx, folder, t.code, d)
+            if crash:
+                le, lf, _, _, _ = lift_fills(folder, t.code, d, ctx.minute_bars(t.code, d), d_bar, wins, band,
+                                             dict(tier=tier, signal_basis=basis, buy_id=t.buy_id), [t])
+                status, e_basis, e_price = f"crash→{le.status}", "", None
+                if lf is not None:
+                    fill = dataclasses.replace(lf, qty=qty, qty_basis="actual")
+                    e_basis, e_price = lf.basis, lf.price
+            elif ent.status == S.ENTRY_FILLED:
+                fill = A.Fill(folder, t.code, d, float(ent.price), ent.basis, qty, "actual", tier=tier,
+                              signal_basis=basis, buy_id=t.buy_id)
             rows.append(OrderedDict(
                 buy_id=str(t.buy_id), strategy=folder, code=t.code, date=d.isoformat(), in_list=_yn(listed),
-                band_basis=basis, sim_entry_status=ent.status, sim_entry_basis=ent.basis,
-                sim_entry_price=_fmt(ent.price), actual_buy_time=f"{t.buy_ts:%H:%M:%S}",
+                band_basis=basis, sim_entry_status=status, sim_entry_basis=e_basis,
+                sim_entry_price=_fmt(e_price), actual_buy_time=f"{t.buy_ts:%H:%M:%S}",
                 actual_buy_price=_fmt(t.buy_price),
-                entry_diff_pct=_pct((ent.price / t.buy_price - 1) * 100) if ent.price else "",
+                entry_diff_pct=(_pct((e_price / t.buy_price - 1) * 100)
+                                if e_price and e_basis != X.BASIS_LIVE_FILL else ""),
                 first_tick=_yn(t.buy_ts.time() <= EARLY_FILL)))
-            if ent.status == S.ENTRY_FILLED:
-                fills.append(A.Fill(folder, t.code, d, float(ent.price), ent.basis, extra.qty if extra else 0,
-                                    "actual", tier=R.TIER_MAIN if listed else R.TIER_OFFLIST, signal_basis=basis,
-                                    buy_id=t.buy_id))
+            if fill is not None:
+                fills.append(fill)
     return fills, rows, warns
 
 
@@ -750,6 +768,17 @@ def read_fills(path: Path) -> Dict[FillKey, A.Fill]:
                 entry_time=datetime.fromisoformat(r["entry_time"]) if r["entry_time"] else None,
                 touch_bar=tb, lift_time=r["lift_time"], d5=r["d5"])
     return out
+
+
+def reuse_source_sha(fills_path: Path) -> str:
+    """`--reuse-fills` 동결본을 만든 실행의 git SHA — 같은 폴더 `run_meta.json`(없거나 깨졌으면 ""). 그 실행도 재추적이었으면
+    그 실행이 적어 둔 원 산출 SHA(`reuse_fills_sha` · 비었으면 불명 — 재추적 실행 자신의 SHA 로 채우지 않는다)를 따른다
+    — 진입 집합은 거기서 만들어졌다."""
+    try:
+        m = json.loads((fills_path.parent / "run_meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return str((m.get("reuse_fills_sha") if m.get("reuse_fills") else m.get("git_sha")) or "")
 
 
 def build_arms(ctx: Ctx8, days: Sequence[date], cands: Sequence[Dict[str, Any]],
@@ -858,6 +887,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     out = Path(a.out)
     log_dir = _resolve_log_dir(a.log_dir)
     reuse = read_fills(Path(a.reuse_fills)) if a.reuse_fills else None
+    reuse_sha = reuse_source_sha(Path(a.reuse_fills)) if a.reuse_fills else ""   # 출력이 run_meta.json 을 덮기 «전»에
     ctx = Ctx8.open(log_dir)
     try:
         ctx.attach_exit_probes()          # 🔴 _check_buy 보다 먼저(envelope 사본)
@@ -890,6 +920,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         meta["vintage"] = vintage
         meta["last_bar"] = ctx.calendar[-1].isoformat() if ctx.calendar else ""
         meta["reuse_fills"] = a.reuse_fills or ""
+        meta["reuse_fills_sha"] = reuse_sha
         meta["repeat_vs_adds"] = res.get("repeat_vs_adds", {})
         if a.stage == "all":
             md = RP.render(meta, sig_rows, exit_rows, res["a_sim_entry"], res["ledger"], res["lots"],

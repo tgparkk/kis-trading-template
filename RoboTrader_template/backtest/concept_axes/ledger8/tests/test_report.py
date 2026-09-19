@@ -250,3 +250,47 @@ def test_live_fill_rows_leave_unknown_and_live_buys_are_checked_against_b1_main(
     assert "분봉 없음 main 2행 중 1행은 라이브가 게이트 해제 뒤 실제로 샀다" in sec6
     assert "분봉 없음(모른다 · 본 집계 밖) main 1행" in sec6
     assert "| D3′ 분봉 없음 — 라이브 실제 체결로 진입(live_fill · 본 집계 안) | 1 |" in sec6
+
+
+# ── 최종 검수 수정 목록 2 · 1 · 4 ─────────────────────────────────────────────────────────────────
+def _exit(strategy, outcome="Y", reason="tp"):
+    return dict(strategy=strategy, outcome=outcome, actual_reason=reason, same_day_actual="N", tp_sl_match="Y")
+
+
+def _section0(md):
+    return md.split("## 0.", 1)[1].split("## 1.", 1)[0]
+
+
+def test_section0_lists_exit_fidelity_groups_that_cannot_be_judged_next_to_low():
+    """#48 — §0 이 «LOW: 없음» 만 말하고 청산 충실도 «판정 불가»(표본 < FID_MIN_N) 전략을 숨기지 않는다(표에서 생성)."""
+    rows = [_exit(MIN)] * 4 + [_exit(DAY)] * 5
+    s0 = _section0(RP.render(META, [], rows, [], [], [], [], [], [], []))
+    assert "충실도 LOW: 없음" in s0
+    line = next(ln for ln in s0.splitlines() if "청산 충실도 판정 불가" in ln)
+    assert f"{MIN} 판정 불가(n=4<5)" in line and DAY not in line
+    s0_all_ok = _section0(RP.render(META, [], [_exit(MIN)] * 5, [], [], [], [], [], [], []))
+    assert "청산 충실도 판정 불가" not in s0_all_ok
+
+
+def test_entry_bias_table_says_live_fill_rows_are_not_simulated_entries():
+    """I1 — 급락일 실제 매수가 분봉 없이 live_fill 로 들어가면 진입가 = 실제 체결가(시뮬 아님) → §1-6 표본에서 빼고 그 수를 적는다."""
+    entry = [dict(strategy=MIN, entry_diff_pct="+1.00", first_tick="N", sim_entry_basis="D_open"),
+             dict(strategy=MIN, entry_diff_pct="", first_tick="N", sim_entry_basis=X.BASIS_LIVE_FILL)]
+    md = RP.render(META, [], [], entry, [], [], [], [], [], [])
+    s16 = md.split("### 1-6.", 1)[1].split("## 2.", 1)[0]
+    assert "| (전체) | 1 |" in s16 and "`live_fill` 1건" in s16
+    assert "live_fill" not in RP.render(META, [], [], entry[:1], [], [], [], [], [], []).split("### 1-6.", 1)[1] \
+        .split("## 2.", 1)[0]
+
+
+def test_reuse_fills_run_heads_summary_with_the_frozen_entry_source():
+    """M1(수정 목록 4) — 재추적(--reuse-fills) 실행은 summary 머리에 «진입 집합 동결» 배너(출처 파일 · 그 실행 SHA)."""
+    meta = dict(META, reuse_fills="backtest/concept_axes/ledger8/results/fills_b.csv", reuse_fills_sha="09b951b")
+    head = RP.render(meta, [], [], [], [], [], [], [], [], []).splitlines()[:5]
+    line = next(ln for ln in head if "재추적 모드" in ln)
+    assert "backtest/concept_axes/ledger8/results/fills_b.csv" in line and "09b951b" in line
+    assert "판정 근거로 쓰지 말 것" in "".join(head[:3])                            # 관측 원장 배너는 그대로 3번째 줄
+    unknown = RP.render(dict(meta, reuse_fills_sha=""), [], [], [], [], [], [], [], [], []).splitlines()[:5]
+    assert any("재추적 모드" in ln and "불명" in ln for ln in unknown)
+    assert "재추적 모드" not in RP.render(dict(META, reuse_fills=""), [], [], [], [], [], [], [], [], [])
+    assert "재추적 모드" not in RP.render(META, [], [], [], [], [], [], [], [], [])
