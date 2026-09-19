@@ -18,7 +18,7 @@ import tempfile
 from collections import OrderedDict
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from backtest.concept_axes.minervini.cap_skip_ledger import bootstrap
 from backtest.concept_axes.minervini.cap_skip_ledger import classify as C
@@ -311,7 +311,8 @@ LEDGER_COLS = [
     "a_qty_upper", "a_buy_time", "a_buy_price",
     "b_entry_status", "b_entry_basis", "b_entry_price", "b_entry_vs_ref_pct", "b_entry_note",
     "b_qty", "b_qty_basis", "b_notional_won", "crash_blocked", "crash_lifted_at", "lift_status", "lift_time",
-    "lift_price", "limitup_possible", "d5_flags", "b1_lot_id", "b2_acct_id", "caveats",
+    "lift_price", "lift_unknown", "ub_status", "ub_price", "limitup_possible", "d5_flags", "b1_lot_id", "b2_acct_id",
+    "caveats",
 ]
 FILL_COLS = ["date", "strategy", "code", "tier", "price", "basis", "qty", "qty_basis", "signal_basis",
              "crash_blocked", "other_holder_live", "entry_time", "lift_time", "touch_open", "touch_high", "touch_low",
@@ -320,9 +321,9 @@ LOT_COLS = ["arm", "lot_id", "tier", "strategy", "code", "entry_date", "entry_ba
             "qty_basis", "notional_won", "signal_basis", "crash_blocked", "lift_time", "d5_flags", "other_holder_live",
             "buy_id", "is_repeat_while_open", "open_lot_seq", "days_since_open_lot", "exit_status", "exit_reason",
             "exit_phase", "exit_date", "exit_price", "ret_pct", "hold_days", "pnl_won", "flags"]
-ACCT_COLS = ["acct_id", "strategy", "code", "first_date", "n_fills", "n_adds", "fill_dates", "avg_price_path",
-             "final_avg_price", "qty", "notional_won", "exit_status", "exit_reason", "exit_date", "exit_price",
-             "ret_pct", "hold_days", "pnl_won", "hold_clock_reset_diff", "avg_flip", "flags"]
+ACCT_COLS = ["acct_id", "strategy", "code", "first_date", "n_fills", "n_adds", "fill_dates", "fill_tiers",
+             "avg_price_path", "final_avg_price", "qty", "notional_won", "exit_status", "exit_reason", "exit_date",
+             "exit_price", "ret_pct", "hold_days", "pnl_won", "hold_clock_reset_diff", "avg_flip", "flags"]
 ACTUAL_COLS = ["buy_id", "strategy", "code", "buy_date", "buy_time", "buy_price", "qty", "notional_won", "in_list",
                "exit_status", "exit_reason", "exit_date", "exit_price", "ret_pct", "pnl_won"]
 ASIM_ENTRY_COLS = ["buy_id", "strategy", "code", "date", "in_list", "band_basis", "sim_entry_status",
@@ -330,17 +331,31 @@ ASIM_ENTRY_COLS = ["buy_id", "strategy", "code", "date", "in_list", "band_basis"
                    "first_tick"]
 OUT_FILES = (("ledger8.csv", "ledger", LEDGER_COLS), ("funnel.csv", "funnel", ST.FUNNEL_COLS),
              ("fills_b.csv", "fills", FILL_COLS), ("lots_b1.csv", "lots", LOT_COLS),
-             ("accounts_b2.csv", "accounts", ACCT_COLS), ("a_sim.csv", "a_sim", LOT_COLS),
+             ("accounts_b2.csv", "accounts", ACCT_COLS), ("accounts_b2_ub.csv", "accounts_ub", ACCT_COLS),
+             ("a_sim.csv", "a_sim", LOT_COLS),
              ("a_sim_entry.csv", "a_sim_entry", ASIM_ENTRY_COLS), ("a_actual.csv", "a_actual", ACTUAL_COLS))
 
 FillKey = Tuple[date, str, str, str]      # (날짜, 전략, 종목, tier)
 
+
+def lot_key(f: A.Fill) -> Tuple:
+    """중복 체결 가드 키(과제 8 M1) — 로트: (날짜, 전략, 종목, tier, 원 체결 id · A_sim 같은 날 재매수 구분)."""
+    return f.d, f.folder, f.code, f.tier, f.buy_id
+
+
+def acct_key(f: A.Fill) -> Tuple:
+    """B2 계좌 가드 키 — (날짜, 전략, 종목): tier 가 달라도 같은 날 두 체결은 겹치는 계좌가 된다(과제 8 M1)."""
+    return f.d, f.folder, f.code
+
+
 # D5 — 속도 조절 규칙은 B 에 적용하지 않는다(사장님 규칙 «후보 통과 종목은 전부 산다»). 라이브였다면 막혔을 건만 표시.
 COOLDOWN_MIN = next(f.default for f in dataclasses.fields(TradingStock) if f.name == "buy_cooldown_minutes")
-D5_THROTTLE = "throttle"          # [진입억제] 60초 쿨다운·사이클 3건(로그 · core/trading_context.py:484-515)
-D5_COOLDOWN = "buy_cooldown"      # 25분 매수 쿨다운(체결 원장 재구성 · bot/trading_analyzer.py:132-136 · DEBUG 라 로그 없음)
+D5_THROTTLE = "throttle"          # [진입억제] 60초 쿨다운·사이클 3건(로그 · core/trading_context.py:484-515) — 라이브가 못 샀다
+D5_THROTTLE_DELAY = "throttle_delay"   # 같은 줄이 있으나 라이브가 결국 샀다(A 단계 fill) — 막힘이 아니라 지연(A1)
+D5_COOLDOWN_UNKNOWN = "buy_cooldown(관측 불가)"   # 25분 매수 쿨다운 — 어느 객체였는지 몰라 막혔는지 모른다(cooldown_flag)
 D5_DAILY_LOSS = "daily_loss"      # 일일손실한도(로그 · core/trading_context.py:428-436)
 # VI 매수 보류(trading_context.py:424-426)는 DEBUG 로그라 관측 불가 — 표시하지 않고 한계로 적는다.
+# 25분 쿨다운의 «막힘 확정» 표시는 없다 — cooldown_flag 가 검증한 라이브 의미로는 확정할 수 있는 경우가 없다.
 
 
 def per_stock_for(sd: L8.StratDay, strategy, folder: str, d: date) -> Tuple[float, str]:
@@ -370,31 +385,111 @@ def crash_state(ctx: Ctx8, folder: str, code: str, d: date) -> Tuple[bool, str]:
     return True, (max(lifts) if all(lifts) else "")
 
 
-def d5_flags(ctx: Ctx8, sd: L8.StratDay, folder: str, code: str, entry_naive: datetime) -> List[str]:
-    """D5 — 라이브였다면 이 B 진입을 막았을 속도 조절 규칙. 관측 가능한 것만(로그 줄 · 체결 원장)."""
+def cooldown_flag(day_buys: Sequence[Tuple[str, C.Trade]], folder: str, code: str, entry: datetime, own_slot: bool,
+                  ambiguous: Sequence[str]) -> str:
+    """D5 25분 매수 쿨다운 — 라이브였다면 이 B 진입(entry)을 막았나. 확정 «안 막힘»이면 "", 모르면 `관측 불가`.
+
+    라이브 의미(코드 실측 2026-09-19): 쿨다운은 `TradingStock` 객체의 `last_buy_time`(core/models.py:195-196 ·
+    :284-296)이고, 객체는 (종목, 소유 전략) 슬롯마다 따로다 — E6 후보는 전략별로 등록되고(bot/candidate_loader.py:231-245 ·
+    core/trading/order_execution.py:86-120 · core/trading/stock_state_manager.py:95-106), 매수 경로는 «호출 전략 자기 슬롯»을
+    쓴다(core/trading_context.py:88-109 · :376) → 전 전략 보유 확인(bot/trading_analyzer.py:127-130) → 그 객체 쿨다운(:132-136)
+    → 체결 뒤 그 객체에 `set_buy_time`(:305). 재선정은 `last_buy_time` 을 지우지 않는다(order_execution.py:92-104) · 복원·전날
+    포지션엔 설정 경로가 없다(봇은 매일 재기동).
+    ⇒ 이 후보 자신의 라이브 매수(같은 날·전략·종목)는 B 진입 그 자체라 뺀다(09-10 053260 형 가짜 표시). 다른 전략의 매수는
+    그 전략 슬롯 객체에 시계를 건다 — 이 전략 객체에 닿는 길은 코드 단독 폴백(trading_context.py:109)뿐이고, 이 전략이 자기
+    슬롯을 가진 채(main) 폴백이 돌면 슬롯이 둘 이상이라 `[모호조회]` WARNING 이 남는다(stock_state_manager.py:347-351).
+    판정: 다른 전략이 진입 25분 안에 사고 진입 시각 전에 판 매수만 본다(아직 보유면 보유 게이트가 먼저 — D2
+    `other_holder_live` 몫). main 이고 진입 전 `[모호조회]` 가 없으면 이 전략 객체는 안 건드렸다 → 안 막힘(표시 없음).
+    `[모호조회]` 가 있거나 자기 슬롯이 없는 ext(가정 매수 = 코드 단독 폴백)면 어느 객체였는지 모른다 → `관측 불가`."""
+    hms = entry.strftime("%H:%M:%S")
+    for f, t in day_buys:
+        if f == folder or t.code != code:
+            continue
+        if not timedelta(0) <= entry - t.buy_ts < timedelta(minutes=COOLDOWN_MIN):
+            continue
+        if t.sell_ts is None or t.sell_ts > entry:
+            continue
+        if own_slot and not any(a <= hms for a in ambiguous):
+            continue
+        return D5_COOLDOWN_UNKNOWN
+    return ""
+
+
+def d5_flags(ctx: Ctx8, sd: L8.StratDay, folder: str, code: str, entry_naive: datetime, own_slot: bool,
+             a_stage: str = "") -> List[str]:
+    """D5 — 라이브였다면 이 B 진입을 막았을 속도 조절 규칙. 관측 가능한 것만(로그 줄 · 체결 원장).
+    진입억제는 A 멈춘 단계가 fill(라이브가 결국 샀다)이면 «지연»으로 따로 적는다(A1) — A 단계가 없는 ext 는 관측 그대로."""
     g = sd.gates_for(code)
     out: List[str] = []
     if L8.G_THROTTLE in g:
-        out.append(D5_THROTTLE)
+        out.append(D5_THROTTLE_DELAY if a_stage == ST.STAGE_FILL else D5_THROTTLE)
     if L8.G_DAILY_LOSS in g:
         out.append(D5_DAILY_LOSS)
-    if any(t.code == code and timedelta(0) <= entry_naive - t.buy_ts < timedelta(minutes=COOLDOWN_MIN)
-           for t in ctx.buys_on(folder, entry_naive.date())):
-        out.append(D5_COOLDOWN)
+    d = entry_naive.date()
+    day_buys = [(f, t) for f, ts in sorted(ctx.trades.items()) for t in ts if t.buy_ts.date() == d]
+    cd = cooldown_flag(day_buys, folder, code, entry_naive, own_slot, ctx.log_for(d).ambiguous.get(code, []))
+    if cd:
+        out.append(cd)
     return out
 
 
+def lift_fills(folder: str, code: str, d: date, minutes: Sequence[Tuple[str, X.Bar]], d_bar: Optional[X.Bar],
+               lifted: str, band: Tuple[Optional[float], Optional[float], Optional[float]], common: Dict[str, Any]
+               ) -> Tuple[X.LiftEntry, Optional[A.Fill], Optional[X.LiftEntry], Optional[A.Fill]]:
+    """D3′ 급락 차단 행 → (해제 뒤 진입, 본 체결, 상한 진입, 상한 체결).
+
+    본 = 게이트가 풀린 뒤 첫 밴드 안 분봉 가격(`exitsim8.lift_entry` · basis after_lift · entry_time = 그 분봉 시각).
+    A3 — 분봉이 아예 없으면(`LIFT_NO_MINUTE`) «안 산 것»이 아니라 «모른다»: 본 체결은 만들지 않고, 상한 민감도 체결만
+    D 일봉으로 만든다(`exitsim8.lift_upper_bound` · tier `lift_ub` · lift_time = 게이트 해제 시각 · entry_time None →
+    진입일 탐침은 09:02 로 본다). 본 집계는 상한 체결을 넣지 않는다(build_arms)."""
+    le = X.lift_entry(d, minutes, lifted, band[1], band[2])
+    if le.status == X.LIFT_FILLED:
+        q = Z.arm_b_qty(le.price)
+        return le, A.Fill(folder, code, d, float(le.price), X.BASIS_LIFT, q.qty, q.basis, crash_blocked=True,
+                          entry_time=SRC8.aware(datetime.combine(d, time.fromisoformat(le.time))),
+                          touch_bar=le.touch_bar, lift_time=le.time, **common), None, None
+    if le.status != X.LIFT_NO_MINUTE:
+        return le, None, None, None
+    ub = X.lift_upper_bound(d_bar, band[1], band[2])
+    if ub.status != X.LIFT_FILLED:
+        return le, None, ub, None
+    q = Z.arm_b_qty(ub.price)
+    return le, None, ub, A.Fill(folder, code, d, float(ub.price), ub.basis, q.qty, q.basis, crash_blocked=True,
+                                lift_time=lifted, **dict(common, tier=R.TIER_LIFT_UB))
+
+
+def unique_fills(fills: Sequence[A.Fill], key: Callable[[A.Fill], Tuple], what: str) -> List[A.Fill]:
+    """arm 실행 입력의 중복 체결을 막는다(과제 8 M1) — 조용히 겹치는 로트·B2 계좌를 만들지 않고 멈춘다."""
+    seen: Dict[Tuple, A.Fill] = {}
+    for f in fills:
+        k = key(f)
+        if k in seen:
+            raise ValueError(f"ledger8 {what}: 같은 키 체결 2건 {k} — 겹치는 로트/계좌를 만들지 않는다(과제 8 M1)")
+        seen[k] = f
+    return list(fills)
+
+
+def _with_d5(ctx: Ctx8, sd: L8.StratDay, f: A.Fill, own_slot: bool, a_stage: str) -> A.Fill:
+    """체결에 D5 표시를 붙인다 — 진입 시각 = 해제 뒤 체결 분봉 · 상한은 게이트 해제 시각(체결은 그 뒤) · 그 밖 09:02."""
+    t_naive = (datetime.combine(f.d, time.fromisoformat(f.lift_time)) if f.lift_time else ctx.first_tick(f.d))
+    return dataclasses.replace(f, d5=",".join(d5_flags(ctx, sd, f.folder, f.code, t_naive, own_slot, a_stage)))
+
+
 def attach_rows(ctx: Ctx8, cands: Sequence[Dict[str, Any]], reuse: Optional[Dict[FillKey, A.Fill]] = None
-                ) -> Tuple[List[Dict[str, str]], List[A.Fill], List[A.Fill], List[Dict[str, str]]]:
-    """후보 행 → (원장 행, B 체결, D3 «게이트 없었다면» 09:02 체결(민감도), 접힌 단계 행). A 단계는 main 만.
+                ) -> Tuple[List[Dict[str, str]], List[A.Fill], List[A.Fill], List[Dict[str, str]], List[A.Fill]]:
+    """후보 행 → (원장 행, B 체결, D3 «게이트 없었다면» 09:02 체결(민감도), 접힌 단계 행, A3 상한 체결(민감도)).
+    A 단계는 main 만.
 
     B 진입 = D 09:02 한 번(설계 판단 7). 그 시각 급락 게이트가 막고 있으면 D3′ — 게이트가 풀린 뒤 첫 밴드 안 분봉
-    가격(`exitsim8.lift_entry`)에 산다. 속도 조절 규칙(D5)은 적용하지 않고 라이브였다면 막혔을 규칙만 `d5` 에 적는다.
+    가격(`exitsim8.lift_entry`)에 산다. 분봉이 아예 없으면 «모른다»(A3) — 본 체결 없이 `lift_unknown=Y` 로 두고, main 행은
+    D 일봉 상한 체결(tier `lift_ub`)을 따로 모은다(`lift_fills` · ext 는 그 자체가 별도 칸이라 상한을 만들지 않는다).
+    속도 조절 규칙(D5)은 적용하지 않고 라이브였다면 막혔을 규칙만 `d5` 에 적는다(`d5_flags` — A1 진입억제 지연·쿨다운 관측 불가).
     """
     ledger: List[Dict[str, str]] = []
     fills: List[A.Fill] = []
     nogate: List[A.Fill] = []
     funnel: List[Dict[str, str]] = []
+    upper: List[A.Fill] = []
     for c in cands:
         d, folder, code, tier, ev = c["d"], c["folder"], c["code"], c["tier"], c["ev"]
         strat = ctx.strategies[folder]
@@ -428,6 +523,7 @@ def attach_rows(ctx: Ctx8, cands: Sequence[Dict[str, Any]], reuse: Optional[Dict
                     caveats.append("밴드 산출 불가 — 강제 _check_buy 도 None(rs_leader live 배제·데이터 없음)")
         if band is not None:
             row.update(ref=_fmt(band[0]), band_min=_fmt(band[1], 2), band_max=_fmt(band[2], 2))
+        a_stage = ""
         if tier == R.TIER_MAIN:
             buys = [t for t in ctx.buys_on(folder, d) if t.code == code]
             per_stock, ps_src = per_stock_for(sd, strat, folder, d)
@@ -437,6 +533,7 @@ def attach_rows(ctx: Ctx8, cands: Sequence[Dict[str, Any]], reuse: Optional[Dict
                               sd.gates_for(code), buys[0] if buys else None, c["signal_log"], ev.signal,
                               qa.qty if ref_px else None)
             stop = ST.classify_a(facts)
+            a_stage = stop.stage
             funnel.extend(ST.funnel_rows(facts))
             row.update(a_stop_stage=stop.stage, a_stop_result=stop.result, a_stop_basis=stop.basis,
                        a_stop_detail=stop.detail[:200], a_per_stock=_won_str(per_stock), a_per_stock_src=ps_src,
@@ -444,10 +541,15 @@ def attach_rows(ctx: Ctx8, cands: Sequence[Dict[str, Any]], reuse: Optional[Dict
             if buys:
                 row.update(a_buy_time=f"{buys[0].buy_ts:%H:%M:%S}", a_buy_price=_fmt(buys[0].buy_price))
         fill: Optional[A.Fill] = None
+        ub_fill: Optional[A.Fill] = None
         if reuse is not None:
             fill = reuse.get((d, folder, code, tier))
             if fill is not None:
                 row.update(b_entry_status=S.ENTRY_FILLED, b_entry_note="reuse-fills")
+            if tier == R.TIER_MAIN:
+                ub_fill = reuse.get((d, folder, code, R.TIER_LIFT_UB))
+                if ub_fill is not None:
+                    row.update(crash_blocked="Y", lift_unknown="Y", ub_status=X.LIFT_FILLED, b_entry_note="reuse-fills")
         elif band is not None:
             ent = S.simulate_entry(ctx.bars_for(code).get(d), band[1], band[2])
             row.update(b_entry_status=ent.status, b_entry_basis=ent.basis, b_entry_note=ent.note)
@@ -465,28 +567,33 @@ def attach_rows(ctx: Ctx8, cands: Sequence[Dict[str, Any]], reuse: Optional[Dict
                     q0 = Z.arm_b_qty(ent.price)
                     nogate.append(A.Fill(folder, code, d, float(ent.price), ent.basis, q0.qty, q0.basis,
                                          crash_blocked=True, **common))
-                le = X.lift_entry(d, ctx.minute_bars(code, d), lifted, band[1], band[2])
+                le, fill, ub, ub_fill = lift_fills(folder, code, d, ctx.minute_bars(code, d),
+                                                   ctx.bars_for(code).get(d), lifted, band, common)
                 row.update(lift_status=le.status, lift_time=le.time, lift_price=_fmt(le.price),
                            b_entry_status=f"crash→{le.status}")
-                if le.status == X.LIFT_FILLED:
-                    q = Z.arm_b_qty(le.price)
-                    fill = A.Fill(folder, code, d, float(le.price), X.BASIS_LIFT, q.qty, q.basis, crash_blocked=True,
-                                  entry_time=SRC8.aware(datetime.combine(d, time.fromisoformat(le.time))),
-                                  touch_bar=le.touch_bar, lift_time=le.time, **common)
+                if ub is not None:                      # A3 — 분봉 없음 = 모른다(본 집계 밖)
+                    row["lift_unknown"] = "Y"
+                    if tier == R.TIER_MAIN:
+                        row.update(ub_status=ub.status, ub_price=_fmt(ub.price))
+                    else:
+                        ub_fill = None
         if fill is not None:
             if reuse is None:
-                t_naive = (datetime.combine(d, time.fromisoformat(fill.lift_time)) if fill.lift_time
-                           else ctx.first_tick(d))
-                fill = dataclasses.replace(fill, d5=",".join(d5_flags(ctx, sd, folder, code, t_naive)))
+                fill = _with_d5(ctx, sd, fill, tier == R.TIER_MAIN, a_stage)
             fills.append(fill)
             row.update(b_entry_basis=fill.basis, b_entry_price=_fmt(fill.price), b_qty=str(fill.qty),
                        b_qty_basis=fill.qty_basis, b_notional_won=_won_str(fill.price * fill.qty),
                        crash_blocked=_fmt(fill.crash_blocked), d5_flags=fill.d5)
             if band is not None and band[0] and fill.price >= band[0] * (1 + PRICE_LIMIT_GUARD_RATE):
                 row["limitup_possible"] = "Y"          # 상한가 +25% 게이트(trading_context.py:466-482) — 플래그만
+        if ub_fill is not None:                        # 원장 d5_flags·b_* 칸은 본 체결만 — 상한은 fills_b·lots(B1_ub)에
+            if reuse is None:
+                ub_fill = _with_d5(ctx, sd, ub_fill, True, a_stage)
+            upper.append(ub_fill)
+            row["ub_price"] = _fmt(ub_fill.price)
         row["caveats"] = " | ".join(caveats)
         ledger.append(row)
-    return ledger, fills, nogate, funnel
+    return ledger, fills, nogate, funnel, upper
 
 
 def a_sim_fills(ctx: Ctx8, days: Sequence[date], in_list: Dict[Tuple[date, str], List[str]]
@@ -554,6 +661,7 @@ def acct_rows(accts: Sequence[A.Account]) -> List[Dict[str, str]]:
         out.append(OrderedDict(
             acct_id=a.acct_id, strategy=a.folder, code=a.code, first_date=a.first_date.isoformat(),
             n_fills=str(len(a.fills)), n_adds=str(a.n_adds), fill_dates=",".join(f.d.isoformat() for f in a.fills),
+            fill_tiers=",".join(f.tier for f in a.fills),
             avg_price_path="→".join(_fmt(p, 2) for p in a.avg_path), final_avg_price=_fmt(a.avg_price, 2),
             qty=str(a.qty), notional_won=str(a.notional_won), exit_status=e.status, exit_reason=e.reason,
             exit_date=e.exit_date.isoformat() if e.exit_date else "", exit_price=_fmt(e.price, 2),
@@ -597,7 +705,10 @@ def read_fills(path: Path) -> Dict[FillKey, A.Fill]:
             d = date.fromisoformat(r["date"])
             tb = (X.Bar(d, float(r["touch_open"]), float(r["touch_high"]), float(r["touch_low"]),
                         float(r["touch_close"])) if r["touch_open"] else None)
-            out[(d, r["strategy"], r["code"], r["tier"])] = A.Fill(
+            key = (d, r["strategy"], r["code"], r["tier"])
+            if key in out:
+                raise ValueError(f"ledger8 {path.name}: 같은 키 체결 2건 {key} — 동결본이 깨졌다(과제 8 M1)")
+            out[key] = A.Fill(
                 r["strategy"], r["code"], d, float(r["price"]), r["basis"], int(r["qty"]), r["qty_basis"],
                 tier=r["tier"], signal_basis=r["signal_basis"], crash_blocked=(r["crash_blocked"] == "Y"),
                 other_holder_live=r["other_holder_live"],
@@ -608,24 +719,40 @@ def read_fills(path: Path) -> Dict[FillKey, A.Fill]:
 
 def build_arms(ctx: Ctx8, days: Sequence[date], cands: Sequence[Dict[str, Any]],
                reuse: Optional[Dict[FillKey, A.Fill]] = None) -> Dict[str, Any]:
-    ledger, fills, nogate, funnel = attach_rows(ctx, cands, reuse)
+    """세 arm 실행. 🔑 본 집계(B1 · B2)는 main 체결만으로 돈다(과제 8 M3) — 민감도는 전부 따로 돈 별도 결과다:
+    B1_nogate(D3 반대편 · 09:02) · B1_ext(D1 11~20위) · B1_ub/accounts_ub(A3 상한 = main + lift_ub 를 «함께» 돌린 판 —
+    같은 (전략, 종목)의 본 체결과 한 시간선에 놓여야 B2 평단·B1 재신호가 맞다). 실행 입력마다 중복 체결은 멈춘다(M1)."""
+    ledger, fills, nogate, funnel, upper = attach_rows(ctx, cands, reuse)
     in_list: Dict[Tuple[date, str], List[str]] = {}
     for c in cands:
         if c["tier"] == R.TIER_MAIN:
             in_list.setdefault((c["d"], c["folder"]), []).append(c["code"])
     probe_for = ctx.probes.__getitem__
-    main_f = [f for f in fills if f.tier == R.TIER_MAIN]               # D3′: 해제 뒤 체결 포함
-    b1 = A.run_lots(main_f, ctx.rules, ctx.path, probe_for, ctx.calendar, SRC8.as_of, "B1")
-    b1g = A.run_lots([f for f in nogate if f.tier == R.TIER_MAIN],        # D3 반대편 — 게이트 없었다면(09:02)
-                     ctx.rules, ctx.path, probe_for, ctx.calendar, SRC8.as_of, "B1G")
-    b1x = A.run_lots([f for f in fills if f.tier == R.TIER_EXT],           # D1: 11~20위 별도 칸
-                     ctx.rules, ctx.path, probe_for, ctx.calendar, SRC8.as_of, "B1X")
-    b2 = A.run_accounts(main_f, ctx.rules, ctx.path, probe_for, SRC8.as_of, A.CLOCK_FIRST)
-    b2r = A.run_accounts(main_f, ctx.rules, ctx.path, probe_for, SRC8.as_of, A.CLOCK_LAST_ADD)
+
+    def lots(fs: Sequence[A.Fill], prefix: str) -> List[A.Lot]:
+        return A.run_lots(unique_fills(fs, lot_key, prefix), ctx.rules, ctx.path, probe_for, ctx.calendar,
+                          SRC8.as_of, prefix)
+
+    def accounts(fs: Sequence[A.Fill], what: str) -> Tuple[List[A.Account], List[A.Account]]:
+        fs = unique_fills(fs, acct_key, what)
+        first = A.run_accounts(fs, ctx.rules, ctx.path, probe_for, SRC8.as_of, A.CLOCK_FIRST)
+        return first, A.run_accounts(fs, ctx.rules, ctx.path, probe_for, SRC8.as_of, A.CLOCK_LAST_ADD)
+
+    main_f = [f for f in fills if f.tier == R.TIER_MAIN]               # D3′: 해제 뒤 체결 포함 · 상한(lift_ub) 없음
+    b1 = lots(main_f, "B1")
+    b1g = lots([f for f in nogate if f.tier == R.TIER_MAIN], "B1G")     # D3 반대편 — 게이트 없었다면(09:02)
+    b1x = lots([f for f in fills if f.tier == R.TIER_EXT], "B1X")       # D1: 11~20위 별도 칸
+    b2, b2r = accounts(main_f, "B2")
     A.mark_clock_diff(b2, b2r)
     A.mark_avg_flip(b2, b1)
+    b1u = lots(main_f + upper, "B1U")                                  # A3 상한 민감도(본 + 상한)
+    b2u, b2ur = accounts(main_f + upper, "B2_ub")
+    for a in b2u + b2ur:                                               # 본 B2 와 id 가 겹치지 않게
+        a.acct_id = a.acct_id.replace("B2", "B2U", 1)
+    A.mark_clock_diff(b2u, b2ur)
+    A.mark_avg_flip(b2u, b1u)
     af, asim_entry, warns = a_sim_fills(ctx, days, in_list)
-    asim = A.run_lots(af, ctx.rules, ctx.path, probe_for, ctx.calendar, SRC8.as_of, "AS")
+    asim = lots(af, "AS")
     aact = A.a_actual(ctx.trades, lambda i: ctx.extras[i].qty if i in ctx.extras else 0, days, ctx.last_close,
                       F.actual_reason)
     lot_id = {(lot.fill.d, lot.fill.folder, lot.fill.code, lot.fill.tier): lot.lot_id for lot in b1 + b1x}
@@ -639,10 +766,12 @@ def build_arms(ctx: Ctx8, days: Sequence[date], cands: Sequence[Dict[str, Any]],
     # 갈린 경우뿐이다(결함 아님) — 전략별로 적어 둔다.
     repeat_vs_adds = {f: dict(b1_repeat=sum(1 for x in b1 if x.fill.folder == f and x.is_repeat_while_open),
                               b2_adds=sum(a.n_adds for a in b2 if a.folder == f)) for f in R.ALL_FOLDERS}
-    return dict(ledger=ledger, funnel=funnel, fills=fill_rows(fills),
-                lots=lot_rows(b1, "B1") + lot_rows(b1g, "B1_nogate") + lot_rows(b1x, "B1_ext"),
-                accounts=acct_rows(b2), a_sim=lot_rows(asim, "A_sim"), a_sim_entry=asim_entry,
-                a_actual=actual_rows(aact, in_list), warnings=warns, repeat_vs_adds=repeat_vs_adds)
+    return dict(ledger=ledger, funnel=funnel, fills=fill_rows(fills + upper),
+                lots=(lot_rows(b1, "B1") + lot_rows(b1g, "B1_nogate") + lot_rows(b1x, "B1_ext")
+                      + lot_rows(b1u, "B1_ub")),
+                accounts=acct_rows(b2), accounts_ub=acct_rows(b2u), a_sim=lot_rows(asim, "A_sim"),
+                a_sim_entry=asim_entry, a_actual=actual_rows(aact, in_list), warnings=warns,
+                repeat_vs_adds=repeat_vs_adds)
 
 
 def _print_counts(res: Dict[str, Any]) -> None:
@@ -662,6 +791,17 @@ def _print_counts(res: Dict[str, Any]) -> None:
     for r in crash:
         st[r["lift_status"] or "(밴드 없음)"] = st.get(r["lift_status"] or "(밴드 없음)", 0) + 1
     print(f"D3′ 급락 차단 main 행 {len(crash)} → " + " · ".join(f"{k} {v}" for k, v in sorted(st.items())))
+    unk = [r for r in crash if r["lift_unknown"] == "Y"]
+    ub: Dict[str, int] = {}
+    for r in unk:
+        ub[r["ub_status"]] = ub.get(r["ub_status"], 0) + 1
+    print(f"A3 분봉 없음(모른다 · 본 집계 밖) main 행 {len(unk)} → 상한 " + " · ".join(f"{k} {v}" for k, v in sorted(ub.items()))
+          + f" · B1_ub 로트 {sum(1 for r in res['lots'] if r['arm'] == 'B1_ub')}"
+          f"(그중 상한 {sum(1 for r in res['lots'] if r['arm'] == 'B1_ub' and r['tier'] == R.TIER_LIFT_UB)})"
+          f" · B2_ub 계좌 {len(res['accounts_ub'])}")
+    b1 = [r for r in res["lots"] if r["arm"] == "B1"]
+    d5 = (D5_THROTTLE, D5_THROTTLE_DELAY, D5_COOLDOWN_UNKNOWN, D5_DAILY_LOSS)
+    print("D5 B1 로트 표시 — " + " · ".join(f"{k} {sum(1 for r in b1 if k in r['d5_flags'].split(','))}" for k in d5))
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

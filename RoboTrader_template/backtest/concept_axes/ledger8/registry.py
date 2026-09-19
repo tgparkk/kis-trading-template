@@ -69,6 +69,7 @@ FRAME_QUANT = "quant_entry_hist"   # envelope `_check_buy` 가 스스로 읽는 
 TIER_MAIN = "main"        # 라이브 E6 상위 T(목표 10) — D1 본 결과
 TIER_EXT = "ext"          # 스냅샷 T+1~20위 — 라이브가 후보로 본 적 없음(안전필터 미검사) · 별도 칸
 TIER_OFFLIST = "offlist"  # 실제 매수인데 그날 E6 목록 밖(소유자 미지정 SELECTED) — A 에만 있다
+TIER_LIFT_UB = "lift_ub"  # A3 상한 민감도 — D3′ 분봉 없는 main 행을 D 일봉으로 «체결로 본» 것 · 본 집계에 넣지 않는다
 
 Hist = Tuple[Tuple[date, Any, str], ...]
 

@@ -156,3 +156,18 @@ def test_live_candidate_list_main_ext(tmp_path):
 def test_missing_file(tmp_path):
     dl = L.scan_day(tmp_path, D, R.ALL_FOLDERS, R.LOGGER_TO_FOLDER)
     assert not dl.found and dl.get("rs_leader").e6 is None
+
+
+def test_ambiguous_lookup_lines_are_kept_by_code(tmp_path):
+    """`[모호조회]`(core/trading/stock_state_manager.py:347-351 · 코드 단독 폴백이 슬롯 여럿 중 첫째를 돌려줌) — 25분 매수
+    쿨다운이 다른 전략 객체에서 올 수 있었는지 가르는 유일한 흔적(run.cooldown_flag)."""
+    text = LOG + (
+        "2026-09-14 09:50:00 | core.trading.stock_state_manager | WARNING | [모호조회] 005930 다중 소유(2) — "
+        "strategy 인자 필요. 첫 소유자 반환: rs_leader\n"
+        "2026-09-14 10:05:00 | core.trading.stock_state_manager | WARNING | [모호조회] 005930 다중 소유(2) — "
+        "strategy 인자 필요. 첫 소유자 반환: BookPullbackMa20Strategy\n")
+    dl = L.scan_day(_dir(tmp_path, text), D, R.ALL_FOLDERS, R.LOGGER_TO_FOLDER)
+    assert dl.ambiguous == {"005930": ["09:50:00", "10:05:00"]}
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert _scan(plain).ambiguous == {}

@@ -22,6 +22,7 @@
 | `restore_n` | `[진단] 런타임 포지션 엔트리 … 소유자별 {…}` | bot/state_restorer.py |
 | `market_dir` | `[시장방향성필터] 관측 지수=X … 판정=차단|허용` — 급락게이트 시간선 | core/trading_decision_engine.py:210-218 |
 | `rs_mode` | `[rs-corp-action] mode=… (startup)` | strategies/rs_leader/strategy.py:85 |
+| `ambiguous` | `[모호조회] CODE 다중 소유(n) — … 첫 소유자 반환: …` — 코드 단독 조회가 슬롯 여럿 중 첫째를 돌려줌(다른 전략 객체를 쓸 수 있었던 흔적 · run.cooldown_flag) | core/trading/stock_state_manager.py:347-351 |
 
 매수 실행 경로 게이트 (core/trading_context.py:313-539 → bot/trading_analyzer.py:103-186 → 엔진 → VTM)
 | 게이트 | 줄 | 종목 칸 |
@@ -77,6 +78,7 @@ RE_RECALC = re.compile(r"종목당 투자금액 재산정: (\S+) ([\d,]+)원 →
 RE_RS_MODE = re.compile(r"\[rs-corp-action\] mode=(\w+) \(startup\)")
 RE_MKT_DIR = re.compile(r"\[시장방향성필터\] 관측 지수=(\w+) 코드=\w+ 등락률=([+-]?[\d.]+)% "
                         r"임계값=([+-]?[\d.]+)% 판정=(\S+)")
+RE_AMBIG = re.compile(r"\[모호조회\] (\w{6}) 다중 소유")
 # ── 전략 로거(strategy.<Cls>) ──
 RE_BUYSIG = re.compile(r"\[on_tick\] 매수신호: (\w{6})\((\w+), 신뢰도 ([\d.]+), 이유: (.*)\)$")
 RE_ONTICK_SUMMARY = re.compile(r"\[on_tick\] 매수검토 (\d+)종목\(스킵 (\d+)\), 신호 (\d+)건")
@@ -173,6 +175,7 @@ class DayLog:
     rs_mode: str = ""
     market_dir: List[Tuple[str, str, str]] = field(default_factory=list)   # (hhmmss, 지수, 판정)
     unattributed: Dict[str, int] = field(default_factory=dict)
+    ambiguous: Dict[str, List[str]] = field(default_factory=dict)          # 종목 → `[모호조회]` 시각들
 
     @property
     def found(self) -> bool:
@@ -328,6 +331,11 @@ def _scan_startup(out: DayLog, known: set, msg: str, t: str) -> bool:
         md = RE_MKT_DIR.search(msg)
         if md:
             out.market_dir.append((t, md.group(1), md.group(4)))
+        return True
+    if "[모호조회]" in msg:
+        ma = RE_AMBIG.search(msg)
+        if ma:
+            out.ambiguous.setdefault(ma.group(1), []).append(t)
         return True
     return False
 
