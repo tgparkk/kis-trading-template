@@ -10,24 +10,33 @@ from __future__ import annotations
 
 import argparse
 import csv
+import dataclasses
 import json
 import os
 import subprocess
 import tempfile
 from collections import OrderedDict
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from backtest.concept_axes.minervini.cap_skip_ledger import bootstrap
 from backtest.concept_axes.minervini.cap_skip_ledger import classify as C
 from backtest.concept_axes.minervini.cap_skip_ledger import tradecal as T
+from backtest.concept_axes.minervini.cap_skip_ledger import sim as S
+from config.constants import PRICE_LIMIT_GUARD_RATE                  # noqa: E402  (bootstrap 뒤)
+from core.models import TradingStock                                 # noqa: E402
+from core.regime.market_classifier import resolve_regime_index       # noqa: E402
 
+from . import arms as A
 from . import exitsim8 as X
 from . import fidelity8 as F
 from . import livesignal8 as LS8
+from . import logscan8 as L8
 from . import registry as R
+from . import sizing as Z
 from . import sources8 as SRC8
+from . import stages as ST
 from .context8 import Ctx8
 
 HERE = Path(__file__).resolve().parent
@@ -291,17 +300,383 @@ def _print_exit_tables(exit_rows: Sequence[Dict[str, str]]) -> None:
         print(f"{g['strategy']} | {g['match']}/{g['n']}")
 
 
+# ── ④⑤ 원장 · 세 arm ─────────────────────────────────────────────────────
+LEDGER_COLS = [
+    "date", "strategy", "code", "tier", "list_pos", "snap_rank", "list_src", "scan_date", "sector_mode",
+    "K", "held_live", "no_slot_live", "slot_state", "slot_state_v2", "eval_v1", "slot_note", "other_holder_live",
+    "signal_replay", "replay_reason", "n_bars", "last_bar", "signal_log", "n_evals", "first_ts", "last_ts",
+    "reasons_equal", "signal_used", "signal_basis", "vol_ratio", "vol_threshold", "rule_margin_pct",
+    "vintage_fragile", "ref", "band_min", "band_max", "band_basis",
+    "a_stop_stage", "a_stop_result", "a_stop_basis", "a_stop_detail", "a_per_stock", "a_per_stock_src",
+    "a_qty_upper", "a_buy_time", "a_buy_price",
+    "b_entry_status", "b_entry_basis", "b_entry_price", "b_entry_vs_ref_pct", "b_entry_note",
+    "b_qty", "b_qty_basis", "b_notional_won", "crash_blocked", "crash_lifted_at", "lift_status", "lift_time",
+    "lift_price", "limitup_possible", "d5_flags", "b1_lot_id", "b2_acct_id", "caveats",
+]
+FILL_COLS = ["date", "strategy", "code", "tier", "price", "basis", "qty", "qty_basis", "signal_basis",
+             "crash_blocked", "other_holder_live", "entry_time", "lift_time", "touch_open", "touch_high", "touch_low",
+             "touch_close", "d5"]
+LOT_COLS = ["arm", "lot_id", "tier", "strategy", "code", "entry_date", "entry_basis", "entry_price", "qty",
+            "qty_basis", "notional_won", "signal_basis", "crash_blocked", "lift_time", "d5_flags", "other_holder_live",
+            "buy_id", "is_repeat_while_open", "open_lot_seq", "days_since_open_lot", "exit_status", "exit_reason",
+            "exit_phase", "exit_date", "exit_price", "ret_pct", "hold_days", "pnl_won", "flags"]
+ACCT_COLS = ["acct_id", "strategy", "code", "first_date", "n_fills", "n_adds", "fill_dates", "avg_price_path",
+             "final_avg_price", "qty", "notional_won", "exit_status", "exit_reason", "exit_date", "exit_price",
+             "ret_pct", "hold_days", "pnl_won", "hold_clock_reset_diff", "avg_flip", "flags"]
+ACTUAL_COLS = ["buy_id", "strategy", "code", "buy_date", "buy_time", "buy_price", "qty", "notional_won", "in_list",
+               "exit_status", "exit_reason", "exit_date", "exit_price", "ret_pct", "pnl_won"]
+ASIM_ENTRY_COLS = ["buy_id", "strategy", "code", "date", "in_list", "band_basis", "sim_entry_status",
+                   "sim_entry_basis", "sim_entry_price", "actual_buy_time", "actual_buy_price", "entry_diff_pct",
+                   "first_tick"]
+OUT_FILES = (("ledger8.csv", "ledger", LEDGER_COLS), ("funnel.csv", "funnel", ST.FUNNEL_COLS),
+             ("fills_b.csv", "fills", FILL_COLS), ("lots_b1.csv", "lots", LOT_COLS),
+             ("accounts_b2.csv", "accounts", ACCT_COLS), ("a_sim.csv", "a_sim", LOT_COLS),
+             ("a_sim_entry.csv", "a_sim_entry", ASIM_ENTRY_COLS), ("a_actual.csv", "a_actual", ACTUAL_COLS))
+
+FillKey = Tuple[date, str, str, str]      # (날짜, 전략, 종목, tier)
+
+# D5 — 속도 조절 규칙은 B 에 적용하지 않는다(사장님 규칙 «후보 통과 종목은 전부 산다»). 라이브였다면 막혔을 건만 표시.
+COOLDOWN_MIN = next(f.default for f in dataclasses.fields(TradingStock) if f.name == "buy_cooldown_minutes")
+D5_THROTTLE = "throttle"          # [진입억제] 60초 쿨다운·사이클 3건(로그 · core/trading_context.py:484-515)
+D5_COOLDOWN = "buy_cooldown"      # 25분 매수 쿨다운(체결 원장 재구성 · bot/trading_analyzer.py:132-136 · DEBUG 라 로그 없음)
+D5_DAILY_LOSS = "daily_loss"      # 일일손실한도(로그 · core/trading_context.py:428-436)
+# VI 매수 보류(trading_context.py:424-426)는 DEBUG 로그라 관측 불가 — 표시하지 않고 한계로 적는다.
+
+
+def per_stock_for(sd: L8.StratDay, strategy, folder: str, d: date) -> Tuple[float, str]:
+    """arm A 종목당 금액 — 로그 복리 재산정(검증표 #12) → config paper_investment_per_stock(#13) → 자본/K."""
+    if sd.per_stock:
+        return float(sd.per_stock["new"]), "log(종목당 투자금액 재산정)"
+    rm = (getattr(strategy, "config", None) or {}).get("risk_management", {})
+    if rm.get("paper_investment_per_stock"):
+        return float(rm["paper_investment_per_stock"]), "config(paper_investment_per_stock · 복리 미반영)"
+    k, _ = R.k_for(folder, d)
+    return R.VIRTUAL_CAPITAL_PER_STRATEGY / k, "fallback(자본/K · 복리 미반영)"
+
+
+def crash_state(ctx: Ctx8, folder: str, code: str, d: date) -> Tuple[bool, str]:
+    """D3 — 급락게이트 «유지». B 진입 시각(09:02) 그 지수의 로그 판정이 `차단` 이면 막힘 + 풀린 첫 시각(D3′ 에 쓴다)."""
+    cfg, _ = R.regime_index_for(folder, d)
+    idx = resolve_regime_index(cfg, code, strategy_name=None, count=False)
+    if idx == "none":
+        return False, ""
+    names = ("KOSPI", "KOSDAQ") if idx == "both" else (idx,)
+    dl = ctx.log_for(d)
+    t = SRC8.FIRST_TICK.strftime("%H:%M:%S")
+    blocked = [n for n in names if dl.index_state(n, t) == "차단"]
+    if not blocked:
+        return False, ""
+    lifts = [dl.first_verdict_after(n, t, "허용") for n in blocked]
+    return True, (max(lifts) if all(lifts) else "")
+
+
+def d5_flags(ctx: Ctx8, sd: L8.StratDay, folder: str, code: str, entry_naive: datetime) -> List[str]:
+    """D5 — 라이브였다면 이 B 진입을 막았을 속도 조절 규칙. 관측 가능한 것만(로그 줄 · 체결 원장)."""
+    g = sd.gates_for(code)
+    out: List[str] = []
+    if L8.G_THROTTLE in g:
+        out.append(D5_THROTTLE)
+    if L8.G_DAILY_LOSS in g:
+        out.append(D5_DAILY_LOSS)
+    if any(t.code == code and timedelta(0) <= entry_naive - t.buy_ts < timedelta(minutes=COOLDOWN_MIN)
+           for t in ctx.buys_on(folder, entry_naive.date())):
+        out.append(D5_COOLDOWN)
+    return out
+
+
+def attach_rows(ctx: Ctx8, cands: Sequence[Dict[str, Any]], reuse: Optional[Dict[FillKey, A.Fill]] = None
+                ) -> Tuple[List[Dict[str, str]], List[A.Fill], List[A.Fill], List[Dict[str, str]]]:
+    """후보 행 → (원장 행, B 체결, D3 «게이트 없었다면» 09:02 체결(민감도), 접힌 단계 행). A 단계는 main 만.
+
+    B 진입 = D 09:02 한 번(설계 판단 7). 그 시각 급락 게이트가 막고 있으면 D3′ — 게이트가 풀린 뒤 첫 밴드 안 분봉
+    가격(`exitsim8.lift_entry`)에 산다. 속도 조절 규칙(D5)은 적용하지 않고 라이브였다면 막혔을 규칙만 `d5` 에 적는다.
+    """
+    ledger: List[Dict[str, str]] = []
+    fills: List[A.Fill] = []
+    nogate: List[A.Fill] = []
+    funnel: List[Dict[str, str]] = []
+    for c in cands:
+        d, folder, code, tier, ev = c["d"], c["folder"], c["code"], c["tier"], c["ev"]
+        strat = ctx.strategies[folder]
+        sd = ctx.log_for(d).get(folder)
+        others = ctx.others_at(folder, code, ctx.first_tick(d))
+        bs = c["buysig"]
+        caveats: List[str] = []
+        margin = ((c["vol_ratio"] / c["vol_threshold"] - 1) * 100
+                  if c["vol_ratio"] is not None and c["vol_threshold"] else None)
+        row: Dict[str, str] = OrderedDict((k, "") for k in LEDGER_COLS)
+        row.update(date=d.isoformat(), strategy=folder, code=code, tier=tier, list_pos=str(c["list_pos"]),
+                   snap_rank=_fmt(c["snap_rank"]), list_src=c["list_src"], scan_date=_fmt(c["scan_date"]),
+                   sector_mode=c["sector_mode"], K=str(R.k_for(folder, d)[0]), held_live=_fmt(c["held"]),
+                   no_slot_live=_fmt(c["no_slot"]), slot_state=c["slot_state"], slot_state_v2=c["slot_state_v2"],
+                   eval_v1=_fmt(c["eval_v1"]), slot_note=c["slot_note"], other_holder_live=",".join(others),
+                   signal_replay=ev.signal, replay_reason=ev.reason[:80], n_bars=str(ev.n_bars),
+                   last_bar=ev.last_bar, signal_log=c["signal_log"], reasons_equal=c["reasons_equal"],
+                   signal_used=c["signal_used"], signal_basis=c["signal_basis"], vol_ratio=_fmt(c["vol_ratio"]),
+                   vol_threshold=_fmt(c["vol_threshold"]), rule_margin_pct=_pct(margin),
+                   vintage_fragile=c["vintage_fragile"])
+        if bs is not None:
+            row.update(n_evals=str(bs.n), first_ts=bs.first, last_ts=bs.last)
+        band: Optional[Tuple[Optional[float], Optional[float], Optional[float]]] = None
+        if c["signal_used"] == "Y":
+            if ev.signal == "Y":
+                band, row["band_basis"] = (ev.ref, ev.band_min, ev.band_max), "replay"
+            else:
+                data, _ = ctx.windows.get(code, d)
+                band, row["band_basis"] = LS8.forced_band(strat, folder, code, d, data), "forced(로그 Y·재현 N)"
+                if band is None:
+                    caveats.append("밴드 산출 불가 — 강제 _check_buy 도 None(rs_leader live 배제·데이터 없음)")
+        if band is not None:
+            row.update(ref=_fmt(band[0]), band_min=_fmt(band[1], 2), band_max=_fmt(band[2], 2))
+        if tier == R.TIER_MAIN:
+            buys = [t for t in ctx.buys_on(folder, d) if t.code == code]
+            per_stock, ps_src = per_stock_for(sd, strat, folder, d)
+            ref_px = band[0] if band is not None else ev.ref
+            qa = Z.arm_a_qty(ref_px, per_stock, getattr(strat, "_max_per_stock_amount", None), ps_src)
+            facts = ST.AFacts(d, folder, code, c["held"], c["no_slot"], c["slot_note"], sd.cap_blocking(code), bs,
+                              sd.gates_for(code), buys[0] if buys else None, c["signal_log"], ev.signal,
+                              qa.qty if ref_px else None)
+            stop = ST.classify_a(facts)
+            funnel.extend(ST.funnel_rows(facts))
+            row.update(a_stop_stage=stop.stage, a_stop_result=stop.result, a_stop_basis=stop.basis,
+                       a_stop_detail=stop.detail[:200], a_per_stock=_won_str(per_stock), a_per_stock_src=ps_src,
+                       a_qty_upper=str(qa.qty) if ref_px else "")
+            if buys:
+                row.update(a_buy_time=f"{buys[0].buy_ts:%H:%M:%S}", a_buy_price=_fmt(buys[0].buy_price))
+        fill: Optional[A.Fill] = None
+        if reuse is not None:
+            fill = reuse.get((d, folder, code, tier))
+            if fill is not None:
+                row.update(b_entry_status=S.ENTRY_FILLED, b_entry_note="reuse-fills")
+        elif band is not None:
+            ent = S.simulate_entry(ctx.bars_for(code).get(d), band[1], band[2])
+            row.update(b_entry_status=ent.status, b_entry_basis=ent.basis, b_entry_note=ent.note)
+            if ent.price is not None and band[0]:
+                row["b_entry_vs_ref_pct"] = _pct((ent.price / band[0] - 1) * 100)
+            common = dict(tier=tier, signal_basis=c["signal_basis"], other_holder_live=",".join(others))
+            crash, lifted = crash_state(ctx, folder, code, d)
+            if not crash:
+                if ent.status == S.ENTRY_FILLED:
+                    q = Z.arm_b_qty(ent.price)
+                    fill = A.Fill(folder, code, d, float(ent.price), ent.basis, q.qty, q.basis, **common)
+            else:
+                row.update(crash_blocked="Y", crash_lifted_at=lifted)
+                if ent.status == S.ENTRY_FILLED:           # D3 반대편 — 게이트가 없었다면 09:02 에 샀다(민감도)
+                    q0 = Z.arm_b_qty(ent.price)
+                    nogate.append(A.Fill(folder, code, d, float(ent.price), ent.basis, q0.qty, q0.basis,
+                                         crash_blocked=True, **common))
+                le = X.lift_entry(d, ctx.minute_bars(code, d), lifted, band[1], band[2])
+                row.update(lift_status=le.status, lift_time=le.time, lift_price=_fmt(le.price),
+                           b_entry_status=f"crash→{le.status}")
+                if le.status == X.LIFT_FILLED:
+                    q = Z.arm_b_qty(le.price)
+                    fill = A.Fill(folder, code, d, float(le.price), X.BASIS_LIFT, q.qty, q.basis, crash_blocked=True,
+                                  entry_time=SRC8.aware(datetime.combine(d, time.fromisoformat(le.time))),
+                                  touch_bar=le.touch_bar, lift_time=le.time, **common)
+        if fill is not None:
+            if reuse is None:
+                t_naive = (datetime.combine(d, time.fromisoformat(fill.lift_time)) if fill.lift_time
+                           else ctx.first_tick(d))
+                fill = dataclasses.replace(fill, d5=",".join(d5_flags(ctx, sd, folder, code, t_naive)))
+            fills.append(fill)
+            row.update(b_entry_basis=fill.basis, b_entry_price=_fmt(fill.price), b_qty=str(fill.qty),
+                       b_qty_basis=fill.qty_basis, b_notional_won=_won_str(fill.price * fill.qty),
+                       crash_blocked=_fmt(fill.crash_blocked), d5_flags=fill.d5)
+            if band is not None and band[0] and fill.price >= band[0] * (1 + PRICE_LIMIT_GUARD_RATE):
+                row["limitup_possible"] = "Y"          # 상한가 +25% 게이트(trading_context.py:466-482) — 플래그만
+        row["caveats"] = " | ".join(caveats)
+        ledger.append(row)
+    return ledger, fills, nogate, funnel
+
+
+def a_sim_fills(ctx: Ctx8, days: Sequence[date], in_list: Dict[Tuple[date, str], List[str]]
+                ) -> Tuple[List[A.Fill], List[Dict[str, str]], List[str]]:
+    """실제 매수 → B 와 같은 진입 시뮬(D 시가 · 밴드 복귀). 밴드 = 재현 Y 면 그 밴드, 아니면 강제 밴드. 수량 = 실제.
+    체결 원장에 수량이 없으면 수량 0 으로 두되 «경고»로 남긴다(조용히 넣지 않는다)."""
+    fills: List[A.Fill] = []
+    rows: List[Dict[str, str]] = []
+    warns: List[str] = []
+    dayset = set(days)
+    for folder in R.ALL_FOLDERS:
+        strat = ctx.strategies[folder]
+        for t in ctx.trades.get(folder, []):
+            d = t.buy_ts.date()
+            if d not in dayset:
+                continue
+            data, _ = ctx.windows.get(t.code, d)
+            ev = LS8.evaluate8(strat, folder, t.code, d, data)
+            if ev.signal == "Y":
+                band, basis = (ev.ref, ev.band_min, ev.band_max), "replay"
+            else:
+                band, basis = LS8.forced_band(strat, folder, t.code, d, data), "forced"
+            if band is None:
+                band, basis = (None, None, None), "none(밴드 없음 → D 시가)"
+            ent = S.simulate_entry(ctx.bars_for(t.code).get(d), band[1], band[2])
+            listed = t.code in in_list.get((d, folder), [])
+            extra = ctx.extras.get(t.buy_id)
+            if extra is None:
+                warns.append(f"A_sim {folder} {t.code} {d} buy_id={t.buy_id}: 체결 원장 수량 없음 → 수량 0(손익 0)")
+            rows.append(OrderedDict(
+                buy_id=str(t.buy_id), strategy=folder, code=t.code, date=d.isoformat(), in_list=_yn(listed),
+                band_basis=basis, sim_entry_status=ent.status, sim_entry_basis=ent.basis,
+                sim_entry_price=_fmt(ent.price), actual_buy_time=f"{t.buy_ts:%H:%M:%S}",
+                actual_buy_price=_fmt(t.buy_price),
+                entry_diff_pct=_pct((ent.price / t.buy_price - 1) * 100) if ent.price else "",
+                first_tick=_yn(t.buy_ts.time() <= EARLY_FILL)))
+            if ent.status == S.ENTRY_FILLED:
+                fills.append(A.Fill(folder, t.code, d, float(ent.price), ent.basis, extra.qty if extra else 0,
+                                    "actual", tier=R.TIER_MAIN if listed else R.TIER_OFFLIST, signal_basis=basis,
+                                    buy_id=t.buy_id))
+    return fills, rows, warns
+
+
+def lot_rows(lots: Sequence[A.Lot], arm: str) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    for lot in lots:
+        f, e = lot.fill, lot.exit
+        out.append(OrderedDict(
+            arm=arm, lot_id=lot.lot_id, tier=f.tier, strategy=f.folder, code=f.code, entry_date=f.d.isoformat(),
+            entry_basis=f.basis, entry_price=_fmt(f.price), qty=str(f.qty), qty_basis=f.qty_basis,
+            notional_won=str(lot.notional_won), signal_basis=f.signal_basis, crash_blocked=_fmt(f.crash_blocked),
+            lift_time=f.lift_time, d5_flags=f.d5, other_holder_live=f.other_holder_live, buy_id=_fmt(f.buy_id),
+            is_repeat_while_open=_fmt(lot.is_repeat_while_open), open_lot_seq=str(lot.open_lot_seq),
+            days_since_open_lot=_fmt(lot.days_since_open_lot), exit_status=e.status, exit_reason=e.reason,
+            exit_phase=e.phase, exit_date=e.exit_date.isoformat() if e.exit_date else "",
+            exit_price=_fmt(e.price, 2), ret_pct=_pct(e.ret_pct), hold_days=_fmt(e.hold_days),
+            pnl_won=_fmt(lot.pnl_won), flags=" · ".join(e.flags)))
+    return out
+
+
+def acct_rows(accts: Sequence[A.Account]) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    for a in accts:
+        e = a.exit
+        out.append(OrderedDict(
+            acct_id=a.acct_id, strategy=a.folder, code=a.code, first_date=a.first_date.isoformat(),
+            n_fills=str(len(a.fills)), n_adds=str(a.n_adds), fill_dates=",".join(f.d.isoformat() for f in a.fills),
+            avg_price_path="→".join(_fmt(p, 2) for p in a.avg_path), final_avg_price=_fmt(a.avg_price, 2),
+            qty=str(a.qty), notional_won=str(a.notional_won), exit_status=e.status, exit_reason=e.reason,
+            exit_date=e.exit_date.isoformat() if e.exit_date else "", exit_price=_fmt(e.price, 2),
+            ret_pct=_pct(e.ret_pct), hold_days=_fmt(e.hold_days), pnl_won=_fmt(a.pnl_won),
+            hold_clock_reset_diff=a.hold_clock_reset_diff, avg_flip=a.avg_flip, flags=" · ".join(a.flags + e.flags)))
+    return out
+
+
+def actual_rows(rows: Sequence[A.ActualRow], in_list: Dict[Tuple[date, str], List[str]]) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    for r in rows:
+        t, d = r.trade, r.trade.buy_ts.date()
+        out.append(OrderedDict(
+            buy_id=str(t.buy_id), strategy=r.folder, code=t.code, buy_date=d.isoformat(),
+            buy_time=f"{t.buy_ts:%H:%M:%S}", buy_price=_fmt(t.buy_price), qty=str(r.qty),
+            notional_won=str(r.notional_won), in_list=_yn(t.code in in_list.get((d, r.folder), [])),
+            exit_status=r.exit_status, exit_reason=r.exit_reason,
+            exit_date=r.exit_date.isoformat() if r.exit_date else "", exit_price=_fmt(r.exit_price, 2),
+            ret_pct=_pct(r.ret_pct), pnl_won=_fmt(r.pnl_won)))
+    return out
+
+
+def fill_rows(fills: Sequence[A.Fill]) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    for f in fills:
+        tb = f.touch_bar
+        out.append(OrderedDict(
+            date=f.d.isoformat(), strategy=f.folder, code=f.code, tier=f.tier, price=repr(f.price), basis=f.basis,
+            qty=str(f.qty), qty_basis=f.qty_basis, signal_basis=f.signal_basis, crash_blocked=_fmt(f.crash_blocked),
+            other_holder_live=f.other_holder_live, entry_time=f.entry_time.isoformat() if f.entry_time else "",
+            lift_time=f.lift_time, touch_open=repr(tb.open) if tb else "", touch_high=repr(tb.high) if tb else "",
+            touch_low=repr(tb.low) if tb else "", touch_close=repr(tb.close) if tb else "", d5=f.d5))
+    return out
+
+
+def read_fills(path: Path) -> Dict[FillKey, A.Fill]:
+    """`fills_b.csv`(진입 집합 동결본) → 키별 Fill. 스펙 §4 「진입 집합 동결 후 청산만 재추적」."""
+    out: Dict[FillKey, A.Fill] = {}
+    with path.open("r", encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh):
+            d = date.fromisoformat(r["date"])
+            tb = (X.Bar(d, float(r["touch_open"]), float(r["touch_high"]), float(r["touch_low"]),
+                        float(r["touch_close"])) if r["touch_open"] else None)
+            out[(d, r["strategy"], r["code"], r["tier"])] = A.Fill(
+                r["strategy"], r["code"], d, float(r["price"]), r["basis"], int(r["qty"]), r["qty_basis"],
+                tier=r["tier"], signal_basis=r["signal_basis"], crash_blocked=(r["crash_blocked"] == "Y"),
+                other_holder_live=r["other_holder_live"],
+                entry_time=datetime.fromisoformat(r["entry_time"]) if r["entry_time"] else None,
+                touch_bar=tb, lift_time=r["lift_time"], d5=r["d5"])
+    return out
+
+
+def build_arms(ctx: Ctx8, days: Sequence[date], cands: Sequence[Dict[str, Any]],
+               reuse: Optional[Dict[FillKey, A.Fill]] = None) -> Dict[str, Any]:
+    ledger, fills, nogate, funnel = attach_rows(ctx, cands, reuse)
+    in_list: Dict[Tuple[date, str], List[str]] = {}
+    for c in cands:
+        if c["tier"] == R.TIER_MAIN:
+            in_list.setdefault((c["d"], c["folder"]), []).append(c["code"])
+    probe_for = ctx.probes.__getitem__
+    main_f = [f for f in fills if f.tier == R.TIER_MAIN]               # D3′: 해제 뒤 체결 포함
+    b1 = A.run_lots(main_f, ctx.rules, ctx.path, probe_for, ctx.calendar, SRC8.as_of, "B1")
+    b1g = A.run_lots([f for f in nogate if f.tier == R.TIER_MAIN],        # D3 반대편 — 게이트 없었다면(09:02)
+                     ctx.rules, ctx.path, probe_for, ctx.calendar, SRC8.as_of, "B1G")
+    b1x = A.run_lots([f for f in fills if f.tier == R.TIER_EXT],           # D1: 11~20위 별도 칸
+                     ctx.rules, ctx.path, probe_for, ctx.calendar, SRC8.as_of, "B1X")
+    b2 = A.run_accounts(main_f, ctx.rules, ctx.path, probe_for, SRC8.as_of, A.CLOCK_FIRST)
+    b2r = A.run_accounts(main_f, ctx.rules, ctx.path, probe_for, SRC8.as_of, A.CLOCK_LAST_ADD)
+    A.mark_clock_diff(b2, b2r)
+    A.mark_avg_flip(b2, b1)
+    af, asim_entry, warns = a_sim_fills(ctx, days, in_list)
+    asim = A.run_lots(af, ctx.rules, ctx.path, probe_for, ctx.calendar, SRC8.as_of, "AS")
+    aact = A.a_actual(ctx.trades, lambda i: ctx.extras[i].qty if i in ctx.extras else 0, days, ctx.last_close,
+                      F.actual_reason)
+    lot_id = {(lot.fill.d, lot.fill.folder, lot.fill.code, lot.fill.tier): lot.lot_id for lot in b1 + b1x}
+    acct_id = {(f.d, f.folder, f.code): a.acct_id for a in b2 for f in a.fills}
+    for r in ledger:
+        d = date.fromisoformat(r["date"])
+        r["b1_lot_id"] = lot_id.get((d, r["strategy"], r["code"], r["tier"]), "")
+        if r["tier"] == R.TIER_MAIN:
+            r["b2_acct_id"] = acct_id.get((d, r["strategy"], r["code"]), "")
+    # B1 «열린 로트 위 재신호» 와 B2 «추가매수» 는 같은 시간선이라 대부분 같다. 남는 차이는 로트별 청산 vs 평단 청산이
+    # 갈린 경우뿐이다(결함 아님) — 전략별로 적어 둔다.
+    repeat_vs_adds = {f: dict(b1_repeat=sum(1 for x in b1 if x.fill.folder == f and x.is_repeat_while_open),
+                              b2_adds=sum(a.n_adds for a in b2 if a.folder == f)) for f in R.ALL_FOLDERS}
+    return dict(ledger=ledger, funnel=funnel, fills=fill_rows(fills),
+                lots=lot_rows(b1, "B1") + lot_rows(b1g, "B1_nogate") + lot_rows(b1x, "B1_ext"),
+                accounts=acct_rows(b2), a_sim=lot_rows(asim, "A_sim"), a_sim_entry=asim_entry,
+                a_actual=actual_rows(aact, in_list), warnings=warns, repeat_vs_adds=repeat_vs_adds)
+
+
+def _print_counts(res: Dict[str, Any]) -> None:
+    print("\n== 규모 (전략별)")
+    print("strategy | 후보(main) | 사용신호Y | B체결(main) | 그중 해제 뒤 | B1로트 | B2계좌 | B1 재신호/B2 추가 | A실제매수")
+    for f in R.ALL_FOLDERS:
+        led = [r for r in res["ledger"] if r["strategy"] == f and r["tier"] == R.TIER_MAIN]
+        ra = res["repeat_vs_adds"][f]
+        print(f"{f} | {len(led)} | {sum(1 for r in led if r['signal_used'] == 'Y')} | "
+              f"{sum(1 for r in led if r['b_entry_price'])} | "
+              f"{sum(1 for r in led if r['b_entry_basis'] == X.BASIS_LIFT)} | "
+              f"{sum(1 for r in res['lots'] if r['strategy'] == f and r['arm'] == 'B1')} | "
+              f"{sum(1 for r in res['accounts'] if r['strategy'] == f)} | {ra['b1_repeat']}/{ra['b2_adds']} | "
+              f"{sum(1 for r in res['a_actual'] if r['strategy'] == f)}")
+    crash = [r for r in res["ledger"] if r["crash_blocked"] == "Y" and r["tier"] == R.TIER_MAIN]
+    st: Dict[str, int] = {}
+    for r in crash:
+        st[r["lift_status"] or "(밴드 없음)"] = st.get(r["lift_status"] or "(밴드 없음)", 0) + 1
+    print(f"D3′ 급락 차단 main 행 {len(crash)} → " + " · ".join(f"{k} {v}" for k, v in sorted(st.items())))
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="ledger8 — 8전략 세 arm 관측 원장")
     ap.add_argument("--start", default=R.LEDGER_START.isoformat())
     ap.add_argument("--end", default=R.LEDGER_END.isoformat())
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--log-dir", default=None, help="라이브 로그 폴더(읽기 전용)")
-    ap.add_argument("--stage", choices=("signal", "exit"), default="exit")
+    ap.add_argument("--stage", choices=("signal", "exit", "all"), default="all")
     ap.add_argument("--exit-fid-since", default=R.EXIT_FID_SINCE.isoformat())
+    ap.add_argument("--reuse-fills", default=None, help="진입 집합 동결 파일(fills_b.csv) — 청산만 재추적")
     a = ap.parse_args(argv)
     out = Path(a.out)
     log_dir = _resolve_log_dir(a.log_dir)
+    reuse = read_fills(Path(a.reuse_fills)) if a.reuse_fills else None
     ctx = Ctx8.open(log_dir)
     try:
         ctx.attach_exit_probes()          # 🔴 _check_buy 보다 먼저(envelope 사본)
@@ -316,14 +691,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         _atomic_write_csv(out / "fidelity_signal.csv", SIG_COLS, sig_rows)
         _atomic_write_csv(out / "offlist_signals.csv", OFF_COLS, offlist)
         _print_signal_tables(sig_rows, vintage)
-        if a.stage == "exit":
+        exit_rows: List[Dict[str, str]] = []
+        if a.stage in ("exit", "all"):
             exit_rows = exit_fidelity_rows(ctx, date.fromisoformat(a.exit_fid_since), days[-1])
             _atomic_write_csv(out / "fidelity_exit.csv", EXIT_COLS, exit_rows)
             _print_exit_tables(exit_rows)
+        res: Dict[str, Any] = {}
+        if a.stage == "all":
+            res = build_arms(ctx, days, cands, reuse)
+            for name, key, cols in OUT_FILES:
+                _atomic_write_csv(out / name, cols, res[key])
+            _print_counts(res)
+            warnings.extend(res["warnings"])
         for w in warnings:
             print(f"[경고] {w}")
         meta = _meta(days, log_dir, a.stage, warnings)
         meta["vintage"] = vintage
+        meta["last_bar"] = ctx.calendar[-1].isoformat() if ctx.calendar else ""
+        meta["reuse_fills"] = a.reuse_fills or ""
+        meta["repeat_vs_adds"] = res.get("repeat_vs_adds", {})
         _atomic_write_text(out / "run_meta.json", json.dumps(meta, ensure_ascii=False, indent=2, default=str))
         return 0
     finally:

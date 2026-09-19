@@ -45,6 +45,7 @@ class Ctx8:
     snaps: Dict[Tuple[str, date], List[Dict]] = field(default_factory=dict)
     rules: Dict[str, Any] = field(default_factory=dict)     # folder → exitsim8.ExitRules
     probes: Dict[str, Any] = field(default_factory=dict)    # folder → sellprobe8.SellProbe
+    minutes: Dict[Tuple[str, date], List[Tuple[str, Bar]]] = field(default_factory=dict)
 
     @classmethod
     def open(cls, log_dir: Path) -> "Ctx8":
@@ -55,6 +56,12 @@ class Ctx8:
         trades = {k: C.build_trades([r[:7] for r in v]) for k, v in raw.items()}
         extras = {int(r[0]): TradeExtra(int(r[7] or 0), r[8], r[9]) for v in raw.values() for r in v}
         return cls(conn, cal, Path(log_dir), strategies, trades, extras, SRC8.WindowCache())
+
+    def minute_bars(self, code: str, d: date) -> List[Tuple[str, Bar]]:
+        key = (code, d)
+        if key not in self.minutes:
+            self.minutes[key] = SRC8.minute_bars(code, d)
+        return self.minutes[key]
 
     def attach_exit_probes(self) -> None:
         """라이브 청산 규칙(엔진 경로 tp/sl · 전략 매도 분기 탐침). 🔴 `_check_buy` 호출 «전»에 부른다

@@ -68,6 +68,27 @@ def load_trades8(conn, until: date) -> Dict[str, List[Tuple]]:
     return out
 
 
+_MINUTE_REPO = None
+
+
+def minute_bars(code: str, d: date) -> List[Tuple[str, Bar]]:
+    """D3′ 용 하루 분봉 — 라이브 `PriceRepository.get_minute_prices`(db/repositories/price.py:188-229 · `minute_candles`
+    · 키 `trade_date` · SELECT 만)를 그대로 부른다 → [(분봉 시작 HH:MM:SS, Bar)]. 그날이 아닌 행(팬텀 세션)은 버린다.
+    ⚠️ `minute_candles` 는 그날 선정 종목 위주로 ~300종목/일만 있다 — 없으면 [] (D3′ 상태 `no_minute_data`)."""
+    global _MINUTE_REPO
+    if _MINUTE_REPO is None:
+        _MINUTE_REPO = _S._price_mod.PriceRepository()
+    df = _MINUTE_REPO.get_minute_prices(code, d.strftime("%Y%m%d"))
+    if df is None or df.empty:
+        return []
+    out: List[Tuple[str, Bar]] = []
+    for ts, o, h, lo, c in zip(pd.to_datetime(df["datetime"]), df["open"], df["high"], df["low"], df["close"]):
+        if ts.date() != d or any(pd.isna(x) for x in (o, h, lo, c)):
+            continue
+        out.append((ts.strftime("%H:%M:%S"), Bar(d, float(o), float(h), float(lo), float(c))))
+    return out
+
+
 class WindowCache:
     """`(code, D)` → 라이브가 D 첫 틱에 넘겼을 일봉 창(마지막 봉 = D-1). `cap_skip_ledger.sources.live_daily_window`."""
 
