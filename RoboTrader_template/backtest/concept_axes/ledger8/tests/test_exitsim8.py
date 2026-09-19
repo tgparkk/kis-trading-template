@@ -120,6 +120,39 @@ def test_lift_entry_statuses():
     assert X.lift_entry(DAYS[0], above, "", None, 103.0).status == X.LIFT_NOT_LIFTED
 
 
+def test_lift_entry_db_minutes_with_colon_lift():
+    # minute_candles.time = 'HHMMSS'(DB) · 해제 시각 = 'HH:MM:SS'(로그) — 섞여도 같은 판정
+    mins = _mins(("092300", 100, 100, 99, 100), ("092400", 105, 105, 102, 104),
+                 ("092500", 103, 104, 101, 102), ("092600", 101, 102, 95, 96))
+    le = X.lift_entry(DAYS[0], mins, "09:23:09", None, 103.0)
+    assert (le.status, le.price, le.time, le.basis) == (X.LIFT_FILLED, 103.0, "09:24:00", "minute_band_touch")
+    assert (le.touch_bar.open, le.touch_bar.high, le.touch_bar.low, le.touch_bar.close) == (103.0, 104.0, 95.0, 96.0)
+
+
+def test_lift_entry_colon_minutes_with_db_lift_never_fills_before_lift():
+    mins = _mins(("09:23:00", 100, 100, 99, 100), ("09:24:00", 105, 105, 102, 104),
+                 ("09:25:00", 103, 104, 101, 102))
+    le = X.lift_entry(DAYS[0], mins, "092309", None, 103.0)          # 09:23:00 봉(시가 100 · 밴드 안)은 해제 전
+    assert (le.status, le.price, le.time) == (X.LIFT_FILLED, 103.0, "09:24:00")
+
+
+def test_lift_entry_minute_boundary():
+    mins = _mins(("092300", 100, 100, 99, 100), ("092400", 101, 102, 100, 101), ("092500", 101, 103, 98, 99))
+    le = X.lift_entry(DAYS[0], mins, "09:23:09", None, 103.0)         # 092300 봉 시작 < 해제 → 안 씀 · 092400 → 씀
+    assert (le.status, le.price, le.time, le.basis) == (X.LIFT_FILLED, 101.0, "09:24:00", "minute_open")
+    assert (le.touch_bar.high, le.touch_bar.low) == (103.0, 98.0)
+    assert X.lift_entry(DAYS[0], mins, "09:24:00", None, 103.0).time == "09:24:00"   # 봉 시작 = 해제 → 씀
+    assert X.lift_entry(DAYS[0], mins, "9:23:09", None, 103.0).time == "09:24:00"    # H:MM:SS
+    assert X.lift_entry(DAYS[0], _mins(("92400", 101, 102, 100, 101)), "92309", None, 103.0).time == "09:24:00"
+
+
+def test_lift_entry_rejects_unknown_time_format():
+    with pytest.raises(ValueError):
+        X.lift_entry(DAYS[0], _mins(("09:24", 101, 102, 100, 101)), "09:23:09", None, 103.0)
+    with pytest.raises(ValueError):
+        X.lift_entry(DAYS[0], _mins(("092400", 101, 102, 100, 101)), "9h23", None, 103.0)
+
+
 def test_after_lift_entry_day_uses_post_entry_bar_only():
     tb = Bar(DAYS[0], 100.0, 101.0, 91.0, 95.0)          # 진입 뒤 저가 91 → 손절
     day_bar = (98.0, 101.0, 80.0, 95.0)                    # 일봉 저가 80 은 진입 «전» 일 수 있다 — 쓰면 안 된다

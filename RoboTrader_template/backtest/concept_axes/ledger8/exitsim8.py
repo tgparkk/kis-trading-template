@@ -200,15 +200,29 @@ def simulate_lot(pos: Pos, rules: ExitRules, path: PathT, probe: Probe) -> ExitO
 class LiftEntry:
     status: str                          # filled | unfillable | no_minute_data | not_lifted | no_bar
     price: Optional[float] = None
-    time: str = ""                       # 체결로 본 분봉의 시작 시각 HH:MM:SS (상한은 "" — 시각 불명)
+    time: str = ""                       # 체결로 본 분봉의 시작 시각 — 늘 'HH:MM:SS'(상한은 "" — 시각 불명)
     basis: str = ""                      # minute_open | minute_band_touch | daily_upper_bound
     touch_bar: Optional[Bar] = None      # 진입 «이후» 분봉만 모은 D 봉(시가 = 진입가)
+
+
+def _hhmmss(t: object) -> str:
+    """비교용 'HHMMSS' — 'HH:MM:SS'(로그 해제 시각)·'HHMMSS'(DB `minute_candles.time`)·'H:MM:SS'·'HMMSS' 허용.
+
+    형식이 섞인 채 문자열로 비교하면 조용히 틀린다('2' < ':' → 전부 탈락, 또는 해제 전 봉 체결) ⇒ 모르는 형식은 ValueError.
+    """
+    s = str(t).strip().replace(":", "")
+    if len(s) == 5:
+        s = "0" + s
+    if len(s) != 6 or not s.isdigit():
+        raise ValueError(f"시각 형식 불명: {t!r} ('HH:MM:SS' 또는 'HHMMSS')")
+    return s
 
 
 def lift_entry(d: date, minutes: Sequence[MinuteBar], lift_hhmmss: str, band_min: Optional[float],
                band_max: Optional[float]) -> LiftEntry:
     """D3′ — 급락 게이트가 풀린 뒤 첫 매수 밴드 안 가격(스펙 「추가 결정」).
 
+    시각은 분봉·해제 모두 `_hhmmss` 로 맞춘 뒤 비교한다(DB 'HHMMSS' · 로그 'HH:MM:SS') · `LiftEntry.time` 은 'HH:MM:SS'.
     분봉 시작 시각 ≥ 해제 시각인 봉만 본다(해제 시각이 든 분봉엔 해제 전 가격이 섞인다). 각 분봉을
     `sim.simulate_entry` 에 그대로 넣는다 — 시가가 밴드 안이면 그 시가(basis=minute_open), 시가 밖·봉 안 복귀면
     밴드 경계값(minute_band_touch · 그 분 안 시각 불명). 끝까지 없으면 unfillable. 진입일 터치용 봉은
@@ -216,9 +230,14 @@ def lift_entry(d: date, minutes: Sequence[MinuteBar], lift_hhmmss: str, band_min
     """
     if not lift_hhmmss:
         return LiftEntry(LIFT_NOT_LIFTED)
+    lift = _hhmmss(lift_hhmmss)
     if not minutes:
         return LiftEntry(LIFT_NO_MINUTE)
-    after = [(t, b) for t, b in minutes if t >= lift_hhmmss]
+    after: List[MinuteBar] = []
+    for t, b in minutes:
+        s = _hhmmss(t)
+        if s >= lift:
+            after.append((f"{s[:2]}:{s[2:4]}:{s[4:]}", b))
     for i, (t, b) in enumerate(after):
         ent = S.simulate_entry(b, band_min, band_max)
         if ent.status != S.ENTRY_FILLED:
