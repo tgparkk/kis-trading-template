@@ -224,3 +224,29 @@ def test_money_is_integer_won_and_forbidden_words_absent():
         assert w not in md
     pcts = re.findall(r"(\d[\d.]*)%", md)                                          # 한계 문구 포함 전부
     assert pcts and all(re.fullmatch(r"\d+\.\d\d", m) for m in pcts)               # % 는 소수 2자리만
+
+
+def test_live_fill_rows_leave_unknown_and_live_buys_are_checked_against_b1_main():
+    """과제 10 fix 1 — 분봉 없음이라도 라이브가 해제 뒤 산 행은 live_fill 로 본 집계 안(모름에서 빠짐) · §2 에 라이브 매수
+    대비 B1 본 집계 포함 여부 · §6 에 건수 · «하루 종일 막았으면»은 live_fill 도 뺀다."""
+    base = dict(crash_blocked="Y", lift_status=X.LIFT_NO_MINUTE)
+    ledger = [_led(DAY, "000001", "B1-0000", "fill", "filled", **base, b_entry_basis=X.BASIS_LIVE_FILL),
+              _led(DAY, "000002", **base, lift_unknown="Y", ub_status=X.LIFT_FILLED),
+              _led(DAY, "000003", "B1-0001", "fill", "filled"),
+              _led(MIN, "000004", "", "fill", "filled")]
+    lots = [_lot(DAY, "B1-0000", "open", "", "10", "1000", entry_basis=X.BASIS_LIVE_FILL),
+            _lot(DAY, "B1-0001", "open", "", "20", "1000", code="000003")]
+    actual = [_lot(DAY, "a1", "open", "", "1", "1000", arm="A"), _lot(DAY, "a2", "open", "", "1", "1000", arm="A"),
+              _lot(MIN, "a3", "open", "", "1", "1000", arm="A")]
+    cs = RP.crash_summary(ledger)
+    assert (cs["n_live"], cs["n_unknown"], cs["status"][X.LIFT_NO_MINUTE]) == (1, 1, 2)
+    sc = {label: b1p for label, _, b1p, _ in RP.scenarios(lots, [], [])}
+    assert sc[RP.SCN_ALLDAY]["pnl_open"] == 20                                          # live_fill 은 막힌 날 체결
+    md = RP.render(META, [], [], [], ledger, lots, [], [], actual, [])
+    sec2 = md.split("## 2.")[1].split("## 3.")[0]
+    assert ("라이브 실제 매수 3건(A_actual) · main 후보 행 3 · 그중 B1 본 집계 로트가 있는 것 2(live_fill 1) · "
+            f"빠진 것 {MIN} 1") in sec2
+    sec6 = md.split("## 6.")[1].split("## 7.")[0]
+    assert "분봉 없음 main 2행 중 1행은 라이브가 게이트 해제 뒤 실제로 샀다" in sec6
+    assert "분봉 없음(모른다 · 본 집계 밖) main 1행" in sec6
+    assert "| D3′ 분봉 없음 — 라이브 실제 체결로 진입(live_fill · 본 집계 안) | 1 |" in sec6

@@ -16,7 +16,9 @@ B2 하루 순서: 09:00 open_phase(기존 평단) → 09:02 추가매수(평단 
 A3 상한 민감도(`basis=daily_upper_bound` · `exitsim8.lift_upper_bound`) — 해제 뒤 진입이라 시간선은 after_lift 와 같고,
    체결 시각 불명이라 진입일 터치는 안 쓴다(NO_D_TOUCH). 그날 B2 계좌가 열려 있었으면 `FLAG_ADD_UNKNOWN` — 붙었으면 그
    계좌에, 그날 09:02 뒤 청산(장중 터치 · 순서가 확실치 않은 데이터 청산)이면 청산 계좌와 상한 새 계좌 «둘 다»에
-   (09:00 시가 단계 청산은 순서가 알려져 있어 표시 안 함). 엔진은 tier 를 보지
+   (09:00 시가 단계 청산은 순서가 알려져 있어 표시 안 함). 분봉 없는데 라이브가 실제로 산 행(`basis=live_fill` ·
+   과제 10 fix 1)은 시각·가격을 알아 after_lift 와 똑같이 다룬다(해제 뒤 · 추가면 FLAG_LIFT_ADD · 진입 뒤 분봉이
+   없어 진입일 터치 생략 · 상한이 아니라 FLAG_ADD_UNKNOWN 없음). 엔진은 tier 를 보지
    않는다 — 본 집계 분리(상한 체결은 main 밖 tier)는 호출자 몫. 가격 ≤ 0(·NaN) 체결은 포지션을 만들지 않는다(건너뜀+경고).
 """
 from __future__ import annotations
@@ -36,7 +38,7 @@ CLOCK_FIRST = "first"          # D4-a(적용) — 보유기한은 첫 매수부�
 CLOCK_LAST_ADD = "last_add"    # D4-b(반대편 기록) — 추가매수마다 시계 리셋(라이브 on_order_filled 덮어쓰기와 같은 효과)
 
 FLAG_ADD_UNKNOWN = "add_unknown(상한 체결 날 그 계좌가 열려 있었음 — 추가매수 여부·순서 불명)"   # A3 · 과제 10 분리 집계
-_AFTER_LIFT = (X.BASIS_LIFT, X.BASIS_UPPER)   # 해제 뒤 진입 — 그날 청산을 전부 «전»으로 본다(B1 `_open_on` = B2 순서)
+_AFTER_LIFT = (X.BASIS_LIFT, X.BASIS_UPPER, X.BASIS_LIVE_FILL)   # 해제 뒤 진입 — 그날 청산을 전부 «전»으로 본다(B1 `_open_on` = B2 순서)
 _PROBE_EXIT_BY = time(9, 5)   # 데이터 청산(09:0x 시가) — 상한 체결 하한 시각이 이보다 뒤여야 «청산이 먼저»가 확실
 
 _log = logging.getLogger(__name__)
@@ -56,7 +58,7 @@ class Fill:
     code: str
     d: date
     price: float
-    basis: str                          # D_open | band_touch | actual | after_lift | daily_upper_bound(A3 상한)
+    basis: str                          # D_open | band_touch | actual | after_lift | live_fill | daily_upper_bound(A3 상한)
     qty: int
     qty_basis: str                      # amount | one_share | actual
     tier: str = R.TIER_MAIN             # 엔진은 안 본다(main·ext·offlist·상한 전용 tier 등 — 분리 집계는 호출자)
@@ -66,7 +68,7 @@ class Fill:
     buy_id: Optional[int] = None        # A_sim — 원 체결 id
     entry_time: Optional[datetime] = None
     touch_bar: Optional[X.Bar] = None   # after_lift — 진입 뒤 분봉만 모은 봉
-    lift_time: str = ""                 # after_lift — 체결 분봉 시각 · daily_upper_bound — 게이트 해제 시각(체결은 그 뒤)
+    lift_time: str = ""                 # after_lift — 체결 분봉 시각 · daily_upper_bound·live_fill — 게이트 해제 시각
     d5: str = ""                        # D5 — 라이브였다면 막혔을 속도 조절 규칙(쉼표 목록)
 
 
@@ -231,7 +233,7 @@ def _simulate_account(fl: Sequence[Fill], i: int, rules: X.ExitRules, path_fn: P
                 return acct, i                                                   # 해제 뒤 체결은 새 계좌
             i += 1
             acct.add(add)
-            acct.flags.append(f"{X.FLAG_LIFT_ADD if add.basis == X.BASIS_LIFT else FLAG_ADD_UNKNOWN}:{day}")
+            acct.flags.append(f"{FLAG_ADD_UNKNOWN if add.basis == X.BASIS_UPPER else X.FLAG_LIFT_ADD}:{day}")
             if clock == CLOCK_LAST_ADD:
                 clock_d, clock_t, k0, kk = day, (add.entry_time or time_fn(day)), k, 0
             last = (kk, day, bar)

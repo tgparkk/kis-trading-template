@@ -13,9 +13,10 @@
 갭 손절·장중 터치·동시 터치 손절 우선은 `cap_skip_ledger/sim.py::simulate_exit`(:87-153)를 봉 1개씩 불러 그대로 쓴다.
 진입일(k=0): 탐침 1회(라이브는 매수 직후 같은 날 on_tick 매도 루프가 D-1 확정봉으로 `_check_sell`) → 진입 «이후» 고저만
   터치 판정 — basis=D_open 은 D 일봉 전체 · after_lift(D3′)는 진입 분봉 뒤 분봉만 모은 봉(`Pos.touch_bar`) ·
-  band_touch·actual(시각 불명)은 진입일 고저를 쓰지 않는다.
+  band_touch·actual(시각 불명)·live_fill(시각은 알지만 진입 뒤 분봉 없음)은 진입일 고저를 쓰지 않는다.
 D3′(급락 게이트 = 풀린 뒤 산다): `lift_entry` 가 해제 시각 뒤 분봉을 차례로 `sim.simulate_entry` 에 넣어 첫 체결을 찾는다.
   분봉이 없으면(LIFT_NO_MINUTE) 「안 산 것」이 아니라 「모른다」(A3) — 하한 = 안 삼 · 상한 = `lift_upper_bound`(D 일봉).
+  단 라이브가 해제 뒤 실제로 샀으면 «아는 것은 안다» — 그 체결 시각·가격(`BASIS_LIVE_FILL` · run.lift_fills).
 🔴 일봉으로 안 되는 것 — 갭다운 손절 체결가(라이브 09:05 가격) · 폴링이 놓친 짧은 꼬리 · 같은 날 청산 후 재진입 — 플래그로만.
 """
 from __future__ import annotations
@@ -32,6 +33,7 @@ BASIS_BAND = "band_touch"
 BASIS_ACTUAL = "actual"
 BASIS_LIFT = "after_lift"
 BASIS_UPPER = "daily_upper_bound"    # A3 상한 민감도 — 분봉 없는 해제 뒤 진입을 D 일봉으로 «체결로 본» 가격
+BASIS_LIVE_FILL = "live_fill"        # 분봉 없는 해제 뒤 진입인데 라이브가 실제로 샀다 — 그 체결 시각·가격(과제 10 fix 1)
 
 PHASE_OPEN = "open0900"        # 09:00 — position_monitor 보유기간·갭 익절(09:02 진입 «전»)
 PHASE_AFTER = "after0902"      # 09:02~ — 데이터 청산·갭 손절·장중 터치

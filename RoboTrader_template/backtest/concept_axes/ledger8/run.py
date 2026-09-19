@@ -441,7 +441,7 @@ def d5_flags(ctx: Ctx8, sd: L8.StratDay, folder: str, code: str, entry_naive: da
 
 def lift_fills(folder: str, code: str, d: date, minutes: Sequence[Tuple[str, X.Bar]], d_bar: Optional[X.Bar],
                windows: Sequence[Tuple[str, str]], band: Tuple[Optional[float], Optional[float], Optional[float]],
-               common: Dict[str, Any]
+               common: Dict[str, Any], live_buys: Sequence[C.Trade] = ()
                ) -> Tuple[X.LiftEntry, Optional[A.Fill], Optional[X.LiftEntry], Optional[A.Fill], bool]:
     """D3′ 급락 차단 행 → (해제 뒤 진입, 본 체결, 상한 진입, 상한 체결, 재차단 표시).
 
@@ -450,7 +450,10 @@ def lift_fills(folder: str, code: str, d: date, minutes: Sequence[Tuple[str, X.B
     재차단 표시 = 첫 해제 시각만 보는 규칙(재차단 무시)이었다면 재차단 구간에서 샀을 행(본 체결은 다음 열린 구간 또는 미체결).
     A3 — 분봉이 아예 없으면(`LIFT_NO_MINUTE`) «안 산 것»이 아니라 «모른다»: 본 체결은 만들지 않고, 상한 민감도 체결만
     D 일봉으로 만든다(`exitsim8.lift_upper_bound` · tier `lift_ub` · lift_time = 첫 해제 시각 · entry_time None →
-    진입일 탐침은 09:02 로 본다 · 시각 불명이라 재차단 구간을 가르지 못한다 — 원장 caveats). 본 집계는 상한을 넣지 않는다."""
+    진입일 탐침은 09:02 로 본다 · 시각 불명이라 재차단 구간을 가르지 못한다 — 원장 caveats). 본 집계는 상한을 넣지 않는다.
+    과제 10 fix 1 «모르는 것은 모르고, 아는 것은 안다» — 분봉이 없어도 라이브가 해제 뒤 실제로 샀으면(`live_buys` = 이
+    main 행의 라이브 매수 · 첫 해제 시각 이후 첫 건) 그 체결 가격·시각으로 본 체결을 만든다(basis live_fill · lift_time =
+    게이트 해제 · entry_time = 라이브 체결 · 진입 뒤 분봉이 없어 진입일 터치 생략). 그 행은 «모른다»·상한에서 빠진다."""
     lifted = windows[0][0] if windows else ""
     le = X.lift_entry(d, minutes, lifted, band[1], band[2], windows)
     first_only = X.lift_entry(d, minutes, lifted, band[1], band[2])
@@ -462,6 +465,12 @@ def lift_fills(folder: str, code: str, d: date, minutes: Sequence[Tuple[str, X.B
                           touch_bar=le.touch_bar, lift_time=le.time, **common), None, None, reblocked
     if le.status != X.LIFT_NO_MINUTE:
         return le, None, None, None, reblocked
+    after = [t for t in live_buys if lifted and t.buy_ts.time() >= time.fromisoformat(lifted)]
+    if after:
+        t = min(after, key=lambda x: x.buy_ts)
+        q = Z.arm_b_qty(t.buy_price)
+        return le, A.Fill(folder, code, d, float(t.buy_price), X.BASIS_LIVE_FILL, q.qty, q.basis, crash_blocked=True,
+                          entry_time=SRC8.aware(t.buy_ts), lift_time=lifted, **common), None, None, reblocked
     ub = X.lift_upper_bound(d_bar, band[1], band[2])
     if ub.status != X.LIFT_FILLED:
         return le, None, ub, None, reblocked
@@ -482,8 +491,14 @@ def unique_fills(fills: Sequence[A.Fill], key: Callable[[A.Fill], Tuple], what: 
 
 
 def _with_d5(ctx: Ctx8, sd: L8.StratDay, f: A.Fill, own_slot: bool, a_stage: str) -> A.Fill:
-    """체결에 D5 표시를 붙인다 — 진입 시각 = 해제 뒤 체결 분봉 · 상한은 게이트 해제 시각(체결은 그 뒤) · 그 밖 09:02."""
-    t_naive = (datetime.combine(f.d, time.fromisoformat(f.lift_time)) if f.lift_time else ctx.first_tick(f.d))
+    """체결에 D5 표시를 붙인다 — 진입 시각 = 체결 시각(해제 뒤 분봉 · live_fill 라이브 체결) · 상한은 게이트 해제 시각
+    (체결은 그 뒤) · 그 밖 09:02."""
+    if f.entry_time is not None:
+        t_naive = f.entry_time.replace(tzinfo=None)
+    elif f.lift_time:
+        t_naive = datetime.combine(f.d, time.fromisoformat(f.lift_time))
+    else:
+        t_naive = ctx.first_tick(f.d)
     return dataclasses.replace(f, d5=",".join(d5_flags(ctx, sd, f.folder, f.code, t_naive, own_slot, a_stage)))
 
 
@@ -536,6 +551,7 @@ def attach_rows(ctx: Ctx8, cands: Sequence[Dict[str, Any]], reuse: Optional[Dict
         if band is not None:
             row.update(ref=_fmt(band[0]), band_min=_fmt(band[1], 2), band_max=_fmt(band[2], 2))
         a_stage = ""
+        buys: List[C.Trade] = []
         if tier == R.TIER_MAIN:
             buys = [t for t in ctx.buys_on(folder, d) if t.code == code]
             per_stock, ps_src = per_stock_for(sd, strat, folder, d)
@@ -581,7 +597,10 @@ def attach_rows(ctx: Ctx8, cands: Sequence[Dict[str, Any]], reuse: Optional[Dict
                     nogate.append(A.Fill(folder, code, d, float(ent.price), ent.basis, q0.qty, q0.basis,
                                          crash_blocked=True, **common))
                 le, fill, ub, ub_fill, reblocked = lift_fills(folder, code, d, ctx.minute_bars(code, d),
-                                                              ctx.bars_for(code).get(d), wins, band, common)
+                                                              ctx.bars_for(code).get(d), wins, band, common, buys)
+                if fill is not None and fill.basis == X.BASIS_LIVE_FILL:
+                    caveats.append(f"분봉 없음 — 라이브 실제 체결({fill.entry_time:%H:%M:%S} @ {_fmt(fill.price)})로 진입"
+                                   "(live_fill · 모른다·상한에서 뺐다)")
                 row.update(lift_status=le.status, lift_time=le.time, lift_window=le.window, lift_price=_fmt(le.price),
                            lift_reblocked="Y" if reblocked else "", b_entry_status=f"crash→{le.status}")
                 if ub is not None:                      # A3 — 분봉 없음 = 모른다(본 집계 밖)
@@ -811,6 +830,8 @@ def _print_counts(res: Dict[str, Any]) -> None:
     print(f"D3′ 재차단 — 첫 해제만 보면 재차단 구간에서 샀을 main 행 {len(rb)} → 다음 열린 구간 체결 "
           f"{sum(1 for r in rb if r['lift_status'] == X.LIFT_FILLED)} · 미체결 "
           f"{sum(1 for r in rb if r['lift_status'] != X.LIFT_FILLED)}")
+    live = [r for r in crash if r["b_entry_basis"] == X.BASIS_LIVE_FILL]
+    print(f"분봉 없음인데 라이브가 해제 뒤 실제로 산 main 행 {len(live)} → 그 체결 시각·가격으로 본 체결(live_fill)")
     unk = [r for r in crash if r["lift_unknown"] == "Y"]
     ub: Dict[str, int] = {}
     for r in unk:

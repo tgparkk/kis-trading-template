@@ -193,6 +193,30 @@ def test_lift_add_into_open_b2_account_exposes_lift_add_flag():
     assert lots[1].is_repeat_while_open is True
 
 
+def _live(i, price):
+    """과제 10 fix 1 — 분봉 없는 급락 해제 뒤 라이브 실제 체결(시각·가격 앎 · 진입 뒤 고저 모름)."""
+    return A.Fill(FOLDER, "000001", DAYS[i], float(price), X.BASIS_LIVE_FILL, 10, "amount", crash_blocked=True,
+                  entry_time=datetime.combine(DAYS[i], time(9, 25, 38)), lift_time="09:23:09")
+
+
+def test_live_fill_is_an_after_lift_entry_without_entry_day_touches():
+    bars = {DAYS[0]: _bar(0, 100, 101, 85, 90)}                     # D 저가 85 — D_open 이면 그날 손절
+    lot, = A.run_lots([_live(0, 100)], RULES, _path_fn(bars), _no_probe, DAYS, _time, "B1")
+    assert lot.exit.status == "open" and X.FLAG_NO_D_TOUCH in lot.exit.flags
+    acct, = A.run_accounts([_live(0, 100)], RULES, _path_fn(bars), _no_probe, _time)
+    assert acct.exit.status == "open" and X.FLAG_NO_D_TOUCH in acct.flags
+    accts = A.run_accounts([_fill(0, 100), _live(1, 100)], RULES, _path_fn(FLAT), _no_probe, _time)
+    assert len(accts) == 1 and accts[0].n_adds == 1                 # 열린 계좌 추가 = 해제 뒤 추가매수(A4)
+    assert f"{X.FLAG_LIFT_ADD}:{DAYS[1]}" in accts[0].flags
+    assert not any(fl.startswith(A.FLAG_ADD_UNKNOWN) for fl in accts[0].flags)
+    bars2 = {DAYS[0]: _bar(0, 100, 101, 99, 100), DAYS[1]: _bar(1, 100, 101, 91, 95)}   # 1일째 기존 로트 손절(92)
+    lots = A.run_lots([_fill(0, 100), _live(1, 95)], RULES, _path_fn(bars2), _no_probe, DAYS, _time, "B1")
+    assert lots[1].is_repeat_while_open is False and lots[1].exit.status == "open"      # 그날 청산이 «먼저»
+    accts = A.run_accounts([_fill(0, 100), _live(1, 95)], RULES, _path_fn(bars2), _no_probe, _time)
+    assert len(accts) == 2 and accts[1].fills[0].basis == X.BASIS_LIVE_FILL
+    assert not any(fl.startswith(A.FLAG_ADD_UNKNOWN) for a in accts for fl in a.flags)
+
+
 @pytest.mark.parametrize("price", [0.0, -1.0, float("nan")])
 def test_non_positive_price_fill_is_rejected(price, caplog):
     caplog.set_level("WARNING", logger=A.__name__)

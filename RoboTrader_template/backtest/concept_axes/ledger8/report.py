@@ -42,6 +42,7 @@ SCN_UB = "A3 상한(main + 분봉 없음 상한)"
 SCN_ALLDAY = "D3′ 민감도 — 하루 종일 막았으면"
 SCN_NOGATE = "D3 반대편 — 게이트가 없었다면(차단 행만 09:02)"
 SCN_EXT = "D1 11~20위(ext)"
+LIFTED_BASES = (X.BASIS_LIFT, X.BASIS_LIVE_FILL)   # 09:02 에 급락 게이트로 막혔다가 해제 뒤 산 본 집계 로트
 LS8_DAY = "daytrading_3methods_breakout"   # livesignal8.DAY 와 같은 값 — report 는 라이브 모듈을 import 하지 않는다
 LS8_MIN = "minervini_volume_dryup"         # livesignal8.MIN
 RULES = (("outcome_v1", "v1 09:02 한 시점"), ("outcome_v2", "v2 classify_candidate"),
@@ -55,7 +56,9 @@ LIMITS = [
     "D3′ 급락 게이트 = «풀린 뒤 산다»: 09:02 에 막혀 있으면 로그 `[시장방향성필터]` 시간선에서 게이트가 «열린» 구간"
     "(재차단 구간 제외) 안의 첫 밴드 안 분봉 가격(`minute_candles`)에 산다. 분봉이 아예 없는 행(`no_minute_data`)은 "
     "«안 산 것»이 아니라 «모른다»다 — 본 집계에서 빼고(하한 = 안 삼) D 일봉 상한(tier `lift_ub`)을 §6-2 에 나란히 싣는다. "
-    "상한은 체결 시각을 몰라 재차단 구간 체결을 배제하지 못한다. daytrading `auto`(09-14~)의 종목 시장은 «지금» "
+    "상한은 체결 시각을 몰라 재차단 구간 체결을 배제하지 못한다. 단 분봉이 없어도 라이브가 해제 뒤 실제로 산 행은 «아는 "
+    "것»이다 — 그 체결 시각·가격으로 진입한다(basis `live_fill` · 본 집계 안 · 진입 뒤 고저를 몰라 진입일 터치는 안 본다). "
+    "daytrading `auto`(09-14~)의 종목 시장은 «지금» "
     "stock_market 매핑(PIT 아님).",
     "09:02 에 게이트가 열려 있던 행의 밴드 복귀(band_touch) 진입은 시각을 몰라, 그날 뒤에 게이트가 다시 막힌 구간에서 "
     "샀을 수도 있다(보정하지 않는다).",
@@ -182,8 +185,8 @@ def scenarios(lots: Sequence[Dict[str, str]], accounts: Sequence[Dict[str, str]]
     return [(SCN_MAIN, "lots_b1 arm=B1 · accounts_b2", perf(b1), perf(main_accounts(accounts))),
             (SCN_UB, "lots_b1 arm=B1_ub 전체(main 반복 + tier=lift_ub) · accounts_b2_ub", perf(arm(ARM_UB)),
              perf(accounts_ub)),
-            (SCN_ALLDAY, "arm=B1 에서 entry_basis=after_lift 제외",
-             perf([r for r in b1 if r["entry_basis"] != X.BASIS_LIFT]), None),
+            (SCN_ALLDAY, "arm=B1 에서 entry_basis=after_lift·live_fill 제외",
+             perf([r for r in b1 if r["entry_basis"] not in LIFTED_BASES]), None),
             (SCN_NOGATE, "arm=B1_nogate(급락 차단 main 행만 · 나머지 로트는 본 집계와 같다)", perf(arm(ARM_NOGATE)), None),
             (SCN_EXT, "arm=B1_ext(라이브 후보 밖)", perf(arm(ARM_EXT)), None)]
 
@@ -211,13 +214,15 @@ def throttle_split(b1: Sequence[Dict[str, str]], grp: Dict[str, str]
 
 
 def crash_summary(ledger: Sequence[Dict[str, str]]) -> Dict[str, Any]:
-    """D3′ 급락 차단 행 — 해제 뒤 상태 · A3 분봉 없음(모른다) · 상한 상태 · 재차단(첫 해제만 봤다면 재차단 구간에서 샀을 행)."""
+    """D3′ 급락 차단 행 — 해제 뒤 상태 · 분봉 없는데 라이브가 산 행(live_fill · 과제 10 fix 1) · A3 분봉 없음(모른다) ·
+    상한 상태 · 재차단(첫 해제만 봤다면 재차단 구간에서 샀을 행)."""
     crash = [r for r in ledger if r.get("crash_blocked") == "Y"]
     main = [r for r in crash if r["tier"] == R.TIER_MAIN]
     ext = [r for r in crash if r["tier"] == R.TIER_EXT]
     unk = [r for r in main if r.get("lift_unknown") == "Y"]
     rb = [r for r in main if r.get("lift_reblocked") == "Y"]
     return dict(n_main=len(main), status=Counter(r.get("lift_status") or "(밴드 없음)" for r in main),
+                n_live=sum(1 for r in main if r.get("b_entry_basis") == X.BASIS_LIVE_FILL),
                 n_unknown=len(unk), ub=Counter(r.get("ub_status") or "(없음)" for r in unk),
                 rb_main=len(rb), rb_main_filled=sum(1 for r in rb if r.get("lift_status") == X.LIFT_FILLED),
                 rb_ext=sum(1 for r in ext if r.get("lift_reblocked") == "Y"),
@@ -381,8 +386,15 @@ def render(meta: Dict[str, Any], sig_rows: Sequence[Dict[str, str]], exit_rows: 
                 perf_rows.append([name(f), f"B1 중 {label}"] + perf_cells(perf(g)) + [replay_share(g)])
     L.append(md_table(["전략", "후보 행(main)", "사용 신호 Y", "B1 로트", "A_sim 로트", "B1 중 A 가 자원 제약(캡·현금)으로 못 산 것"],
                       size_rows))
+    fill_rows = [r for r in ledger if r["tier"] == R.TIER_MAIN and r.get("a_stop_stage") == "fill"]
+    matched = [r for r in fill_rows if r.get("b1_lot_id")]
+    missing = Counter(r["strategy"] for r in fill_rows if not r.get("b1_lot_id"))
     L += ["", md_table(["전략", "묶음"] + PERF_HDR + ["재현 신호 비중"], perf_rows),
-          "", "- A 와 B 는 «A_sim 대 B1»(같은 진입·청산 시뮬)으로만 비교한다. A_actual 은 참고(진실값 · 체결가·시각이 다르다).",
+          "", f"- 라이브 실제 매수 {len(a_actual)}건(A_actual) · main 후보 행 {len(fill_rows)} · 그중 B1 본 집계 로트가 있는 것 "
+          f"{len(matched)}(live_fill {sum(1 for r in matched if r.get('b_entry_basis') == X.BASIS_LIVE_FILL)}) · 빠진 것 "
+          + (" · ".join(f"{k} {n}" for k, n in sorted(missing.items())) or "없음")
+          + " — live_fill = 분봉 없는 급락 해제 뒤 라이브 실제 체결 시각·가격(§6-2).",
+          "- A 와 B 는 «A_sim 대 B1»(같은 진입·청산 시뮬)으로만 비교한다. A_actual 은 참고(진실값 · 체결가·시각이 다르다).",
           "- «재현 신호 비중»이 높은 묶음(특히 «A 캡»·«A 이미 보유»)은 라이브가 그 종목을 평가하지 않아 신호가 전부 재현이다 — "
           "§1-1 N 방향 표본과 §1-3 빈티지를 함께 볼 것.", ""]
 
@@ -463,19 +475,23 @@ def render(meta: Dict[str, Any], sig_rows: Sequence[Dict[str, str]], exit_rows: 
     L += ["### 6-2. D3′ 급락 게이트 · A3 분봉 없음(모른다)", ""]
     L.append(f"- D3′ 급락 차단 main 행 {cs['n_main']}: "
              + (" · ".join(f"{k} {n}" for k, n in sorted(cs["status"].items())) or "없음")
-             + " (filled = 게이트 열린 구간 안 해제 뒤 체결 · no_minute_data = 분봉 없음 → 모른다 · unfillable = 열린 구간 "
+             + " (filled = 게이트 열린 구간 안 해제 뒤 체결 · no_minute_data = 분봉 없음 · unfillable = 열린 구간 "
                "내내 밴드 밖)")
+    if cs["status"].get(X.LIFT_NO_MINUTE):
+        L.append(f"- 분봉 없음 main {cs['status'][X.LIFT_NO_MINUTE]}행 중 {cs['n_live']}행은 라이브가 게이트 해제 뒤 실제로 "
+                 "샀다 — «아는 것은 안다»: 그 체결 시각·가격으로 진입(basis live_fill · 본 집계 안 · 진입 뒤 분봉이 없어 "
+                 "진입일 고저는 안 봄). 나머지만 «모른다»다.")
     L.append(f"- 분봉 없음(모른다 · 본 집계 밖) main {cs['n_unknown']}행 → 상한(D 일봉 [저가, 고가]가 밴드와 겹치면 체결 · "
              "가격 = 종가가 밴드 안이면 종가, 아니면 가까운 밴드 경계): "
              + (" · ".join(f"{k} {n}" for k, n in sorted(cs["ub"].items())) or "없음")
              + f". ext 의 분봉 없음 {cs['unknown_ext']}행은 상한을 만들지 않는다(ext 는 그 자체가 별도 칸).")
-    L += ["", md_table(["항목", "하한 = 본 집계(분봉 없음 → 안 삼)", "상한(분봉 없음 → 일봉 겹치면 체결)"],
+    L += ["", md_table(["항목", "하한 = 본 집계(모른다 → 안 삼)", "상한(모른다 → 일봉 겹치면 체결)"],
                        [["B1 로트", lo1["n"], up1["n"]], ["B1 손익(원·실현+평가)", won(_total(lo1)), won(_total(up1))],
                         ["B1 명목가중%", pct(lo1["nw"]), pct(up1["nw"])], ["B2 계좌", lo2["n"], up2["n"]],
                         ["B2 손익(원·실현+평가)", won(_total(lo2)), won(_total(up2))],
                         ["B2 명목가중%", pct(lo2["nw"]), pct(up2["nw"])]]), ""]
     L.append(f"- B1 상한 − 하한 = 상한 체결 로트 {p_ub['n']}건(tier=lift_ub)의 손익 {won(_total(p_ub))}원 — B1 은 로트 "
-             "독립이라 이 차가 곧 분봉 없음 행 몫이다. B2 는 같은 종목 계좌에 섞이므로 차를 행 단위로 나누지 않는다.")
+             "독립이라 이 차가 곧 «모른다» 행 몫이다. B2 는 같은 종목 계좌에 섞이므로 차를 행 단위로 나누지 않는다.")
     L.append(f"- 추가매수 불명(FLAG_ADD_UNKNOWN) B2 상한 계좌 {n_addunk} — 상한 체결 날 같은 (전략, 종목) 계좌가 열려 있어 "
              "추가매수 여부·순서를 모른다(B2 상한 손익은 이 계좌들만큼 불확실하다).")
     L.append("- D3′ 는 게이트가 «열린» 구간 안에서만 산다(라이브와 같게 재차단 구간 체결을 뺐다 · 과제 9 보정): "
@@ -491,6 +507,8 @@ def render(meta: Dict[str, Any], sig_rows: Sequence[Dict[str, str]], exit_rows: 
     oh = [r for r in b1 if r.get("other_holder_live")]
     L += ["### 6-3. D2 · D5 — 본 집계(B1) 안에서 표시만 한 로트", ""]
     rows_ = [["D3′ 해제 뒤 체결(본 집계 안)"] + perf_cells(perf(lifted)),
+             ["D3′ 분봉 없음 — 라이브 실제 체결로 진입(live_fill · 본 집계 안)"]
+             + perf_cells(perf([r for r in b1 if r["entry_basis"] == X.BASIS_LIVE_FILL])),
              ["D2 라이브였다면 타전략 보유로 막혔을 B1 로트(other_holder_live)"] + perf_cells(perf(oh)),
              ["D5 라이브였다면 진입억제에서 최종 차단(A 멈춘 단계 = 진입억제)"] + perf_cells(perf(final)),
              ["D5 라이브였다면 진입억제로 지연 뒤 체결(A 체결)"] + perf_cells(perf(delay)),

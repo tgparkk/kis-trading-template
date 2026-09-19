@@ -13,6 +13,7 @@ from backtest.concept_axes.ledger8 import logscan8 as L8
 from backtest.concept_axes.ledger8 import registry as R
 from backtest.concept_axes.ledger8 import run as RUN
 from backtest.concept_axes.ledger8 import sizing as Z
+from backtest.concept_axes.ledger8 import sources8 as SRC8
 from backtest.concept_axes.ledger8 import stages as ST
 
 D = date(2026, 9, 10)
@@ -173,6 +174,44 @@ def test_upper_bound_keeps_first_lift_time_on_reblocked_days():
     assert (le.status, main, ub.status, ubf.lift_time, reblocked) == \
         (X.LIFT_NO_MINUTE, None, X.LIFT_FILLED, "11:02:06", False)
     assert RUN.reblocks(wins) == ["13:11:00"] and RUN.reblocks([("11:02:06", "")]) == []
+
+
+# ── 과제 10 fix 1: 분봉 없음 + 라이브 실제 체결 = «아는 것은 안다»(live_fill) ─────────────
+def _live(hms, price=101.0, i=7):
+    return Trade(buy_id=i, code="005930", buy_ts=datetime.combine(D, hms), buy_price=price)
+
+
+def test_no_minute_data_with_live_buy_after_lift_becomes_a_main_live_fill():
+    live = _live(_hm(9, 25, 38))
+    le, main, ub, ubf, reblocked = RUN.lift_fills(MA20, "005930", D, [], DBAR, OPEN, BAND, COMMON, [live])
+    assert le.status == X.LIFT_NO_MINUTE and (ub, ubf, reblocked) == (None, None, False)   # 상한·모름에서 빠진다
+    q = Z.arm_b_qty(101.0)
+    assert (main.basis, main.price, main.qty, main.qty_basis, main.tier, main.crash_blocked, main.lift_time) == \
+        (X.BASIS_LIVE_FILL, 101.0, q.qty, q.basis, R.TIER_MAIN, True, "09:23:09")        # lift_time = 게이트 해제
+    assert main.entry_time.replace(tzinfo=None) == live.buy_ts and main.touch_bar is None  # entry_time = 라이브 체결
+
+
+def test_live_buy_before_the_lift_or_none_leaves_the_row_unknown_with_upper_bound():
+    for lives in ([_live(_hm(9, 1, 38))], [], None):
+        args = (MA20, "005930", D, [], DBAR, OPEN, BAND, COMMON) + (() if lives is None else (lives,))
+        le, main, ub, ubf, _ = RUN.lift_fills(*args)
+        assert (le.status, main, ub.status, ubf.basis, ubf.tier) == \
+            (X.LIFT_NO_MINUTE, None, X.LIFT_FILLED, X.BASIS_UPPER, R.TIER_LIFT_UB)
+
+
+def test_live_buy_does_not_replace_a_minute_fill_after_lift():
+    mins = [("09:24:00", X.Bar(D, 102.0, 102.5, 101.0, 101.5))]
+    le, main, ub, ubf, _ = RUN.lift_fills(MA20, "005930", D, mins, DBAR, OPEN, BAND, COMMON, [_live(_hm(9, 30))])
+    assert (le.status, main.basis, main.price, ub, ubf) == (X.LIFT_FILLED, X.BASIS_LIFT, 102.0, None, None)
+
+
+def test_d5_entry_time_of_a_live_fill_is_the_live_buy_time_not_the_gate_lift():
+    """다른 전략 09:10 매수·09:24 매도 + 폴백 흔적 — 진입이 09:25:38(라이브 체결)이면 25분 안·매도 뒤라 관측 불가,
+    게이트 해제 09:23:09 로 보면 아직 보유라 표시 없음. 표시는 체결 시각으로 본다."""
+    ctx = _ctx({MA5: [_t(2, "005930", _hm(9, 10), _hm(9, 24))]}, {"005930": ["09:10:00"]})
+    f = A.Fill(MA20, "005930", D, 101.0, X.BASIS_LIVE_FILL, 9900, "amount", crash_blocked=True,
+               entry_time=SRC8.aware(datetime.combine(D, _hm(9, 25, 38))), lift_time="09:23:09")
+    assert RUN._with_d5(ctx, L8.StratDay(), f, True, ST.STAGE_FILL).d5 == RUN.D5_COOLDOWN_UNKNOWN
 
 
 # ── 중복 체결 가드(과제 8 M1) ────────────────────────────────────────────────
