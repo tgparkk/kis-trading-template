@@ -34,6 +34,7 @@ from . import fidelity8 as F
 from . import livesignal8 as LS8
 from . import logscan8 as L8
 from . import registry as R
+from . import report as RP
 from . import sizing as Z
 from . import sources8 as SRC8
 from . import stages as ST
@@ -869,6 +870,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         meta["last_bar"] = ctx.calendar[-1].isoformat() if ctx.calendar else ""
         meta["reuse_fills"] = a.reuse_fills or ""
         meta["repeat_vs_adds"] = res.get("repeat_vs_adds", {})
+        if a.stage == "all":
+            md = RP.render(meta, sig_rows, exit_rows, res["a_sim_entry"], res["ledger"], res["lots"],
+                           res["accounts"], res["a_sim"], res["a_actual"], offlist, res["accounts_ub"])
+            _atomic_write_text(out / "summary.md", md)
         _atomic_write_text(out / "run_meta.json", json.dumps(meta, ensure_ascii=False, indent=2, default=str))
         return 0
     finally:
