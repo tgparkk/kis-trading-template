@@ -220,6 +220,45 @@ PAIRS = {
     #    ⚠️ 산문 `RESULTS_S5_POST7.md` 는 **사람이 쓴다** ⇒ `MANUAL_DOCS` 자리다(`RESULTS_WRC_POST6.md`
     #      ↔ `RESULTS_WRC_POST6_NUMBERS.md` 분리 전례 그대로). 스크립트가 산문까지 쓰면 그 구분이 무너진다.
     "RESULTS_S5_POST7_NUMBERS.md": "run_s5_post7.py",
+    # 🔴 2026-09-24 8번째 글(`224416253270`) 산출물 — §5-3 이 잡은 결함(「post5 산출물이 어디에도
+    #    등재돼 있지 않다」)을 이번 글에서도 되풀이하지 않는다. 각 축은 post7 판을 승계한
+    #    «별도 파일»이다(`run_*_post7.py` → `run_*_post8.py`).
+    #    🟢 아래 12건은 **등재 «시점»에 이미 전부 있다**(판정 실행 2026-09-24 00:47~01:29 KST ·
+    #      DB `max(date)` 2026-09-23 · 그날 2,764행 · 창 `max(updated_at)` 2026-09-23 15:46:25)
+    #      ⇒ post7 초판과 달리 `PENDING` 에 올리지 «않는다»(올리면 check() 가 「생겼는데 PENDING 이다」로 FAIL 한다).
+    #    🔑 의존 폐포 — `run_regday_post8.py`·`run_d1_oos_post8.py` 는 `run_selection_post8.py` 의 D-9 도구
+    #      (`MGR`·`PROBE_WIN`·`SWEEP_D1`·`vintage` · regday 는 `REGIME`·`mixed_line` 도)를
+    #      `from run_selection_post8 import …` 로 가져온다(레인 A1 신고). `local_deps()` 는
+    #      `ImportFrom(level=0)` 을 따라가므로 **두 항목의 `deps` 에 `run_selection_post8.py` 와 그 폐포
+    #      (`run_selection`·`run_selection_post6`·`run_selection_post7`·`run_tests`)가 들어간다** — 매니페스트
+    #      `deps` 로 실측 확인. ⇒ `run_selection_post8.py` 한 파일만 고쳐도 세 산출물이 같이 「낡았다」로 잡힌다.
+    "RESULTS_SELECTION_POST8_NUMBERS.md": "run_selection_post8.py",
+    "RESULTS_REGDAY_POST8_NUMBERS.md": "run_regday_post8.py",
+    "RESULTS_EXIT_V2_POST8_NUMBERS.md": "run_exit_v2_post8.py",
+    "RESULTS_RECONSTRUCT_POST8_NUMBERS.md": "run_reconstruct_post8.py",
+    "RESULTS_LADDER_TRANCHE_POST8_NUMBERS.md": "run_ladder_tranche_post8.py",
+    "RESULTS_D1_OOS_POST8_NUMBERS.md": "run_d1_oos_post8.py",
+    "RESULTS_WRC_POST8_NUMBERS.md": "run_wrc_post8.py",
+    # 🔴 C-23 승계 — **인자를 반드시 적는다.** post6·post7 모드 등재와 «같은 형식»이다.
+    #    `run_sector.py` 의 `--mode` 는 `required=True`(기본값 없음)이고 `run()` 의 post8 분기는
+    #    `mode == "post8"` «명시»로만 돈다 — `both` 에 post8 을 넣지 «않았다»(AST 실측).
+    #    `run_ranking.py` 의 `--stage` 기본값 `train` 불변 · post8 분기는 post7 분기 «뒤» · train 경로 «앞».
+    "RESULTS_RANKING_POST8_NUMBERS.md": "run_ranking.py --stage post8",
+    "RESULTS_SECTOR_POST8_NUMBERS.md": "run_sector.py --mode post8",
+    # 🔴 `ANC-` post8 — 한 스크립트가 두 산출물(산문 + 기계 생성)을 쓴다 ⇒ 둘을 «따로» 등재(post7 전례).
+    #    🔑 **진입점이 바뀌었다**(레인 B1): `__main__` 이 `main()` → **`cli()`** 를 부르고, `cli()` 가
+    #      `--mode {post7,post8}`(`required=True`)를 받아 post7 이면 `main(["--mode", "post7"])` 에 **그대로**
+    #      넘기고 post8 이면 `main_post8()` 을 부른다(`main()` 자신의 choices 는 여전히 `("post7",)`).
+    #      `rerun()` 은 `[sys.executable, *script_argv(spec)]` = `python run_anchor_redesign.py --mode post8`
+    #      를 부르므로 **명령줄 경로 = `cli()` 경로**다 — 「post8 은 명령줄에서만 돈다」는 레인 신고와 일치.
+    #    ⚠️ post8 경로는 `RESULTS_LADDER_TRANCHE_POST8_NUMBERS.md` 를 «파일로» 읽는다(`lad_cumulative_pairs()` ·
+    #      `D-1` ② 「누적 비교가능 쌍」 줄) — import 가 아니라 `local_deps()` 폐포 «밖»이다 ⇒ 사다리 산출물만
+    #      바뀌면 아래 두 항목은 「낡았다」로 잡히지 «않는다»(해시 검사의 사각 · `--rerun` byte-diff 로만 보인다).
+    "RESULTS_ANCHOR_POST8.md": "run_anchor_redesign.py --mode post8",
+    "RESULTS_ANCHOR_POST8_NUMBERS.md": "run_anchor_redesign.py --mode post8",
+    # 🔴 `S5` post8 — `run_s5_post8.py` 는 `_NUMBERS` «하나»만 쓴다(그 스크립트 머리 주석 · 끝 인쇄)
+    #    ⇒ 산문 `RESULTS_S5_POST8.md` 는 `MANUAL_DOCS` 자리다(post7 분리 전례 그대로).
+    "RESULTS_S5_POST8_NUMBERS.md": "run_s5_post8.py",
 }
 
 # 🔴 C-23 — 산출물이 «파일 하나»가 아닌 것들. `--rerun` 이 이 디렉토리까지 스냅샷·대조하고,
@@ -234,6 +273,24 @@ ART_DIRS = {
     #    루프 «전체» tripwire 가 이 디렉토리를 «안 본다»(C-23 4번).
     "RESULTS_SECTOR_POST7_NUMBERS.md": ("sector_post7",),
     "RESULTS_WRC_POST7_NUMBERS.md": ("wrc_post7",),
+    # 🔴 2026-09-24 post8 — post7 의 두 디렉토리 산출물(`sector_post7`·`wrc_post7`)에 대응하는 자리.
+    "RESULTS_SECTOR_POST8_NUMBERS.md": ("sector_post8",),
+    "RESULTS_WRC_POST8_NUMBERS.md": ("wrc_post8",),
+    #    🆕 **post7 에 없던 새 종류 — D-9 ① 「최초 읽기 시각」 스탬프 디렉토리 2개**(레인 A3·B2 재량 ·
+    #      `PREREG_POST8.md` §9 (나) 2). 스크립트가 산출물 본문에 벽시계를 넣지 않으려고(바이트 결정론)
+    #      «이 DB 지문을 처음 읽은 KST 시각»을 디렉토리의 json 에 따로 박고 본문은 그 값을 인용한다.
+    #      ⇒ 본문 byte-diff 만으로는 이 json 이 바뀌어도 못 본다. 등재하지 않으면 루프 «전체» tripwire
+    #      (C-23 4번)도 이 디렉토리를 «안 본다» — 디렉토리 산출물 미등재는 `PAIRS` 미등재와 같은 결함이다.
+    #      · `ranking_post8/read_stamp.json` — `run_ranking.py::p8_read_stamp()` · 지문이 같으면 파일을
+    #        **다시 쓰지 않는다** ⇒ 같은 스냅샷 재실행에서 바이트 불변(`sector_post8/`·`wrc_post8/` 안의
+    #        `read_stamp.json` 도 같은 관용이며 그 둘은 위 두 줄로 이미 덮인다).
+    #      · `reconstruct_post8/query_stamp.json` — `run_reconstruct_post8.py::stamp_resolve()` ·
+    #        ⚠️ **지문이 같아도 `runs_kst` 에 이번 벽시계를 «덧붙여» 매 실행 다시 쓴다**(2026-09-24 실측 6회 누적)
+    #        ⇒ `--rerun` 은 이 항목에서 **구조적으로 「디렉토리 산출물이 달라졌다」 FAIL** 을 낼 것이다
+    #        (바이트로 되돌린 뒤 FAIL — 가드가 맞게 도는 것이다). 🔴 등재를 빼서 통과시키지 말 것 —
+    #        고칠 자리는 스크립트 쪽이다(미결 · 관리자 보고).
+    "RESULTS_RANKING_POST8_NUMBERS.md": ("ranking_post8",),
+    "RESULTS_RECONSTRUCT_POST8_NUMBERS.md": ("reconstruct_post8",),
 }
 
 
@@ -265,6 +322,9 @@ def script_argv(spec: str) -> list[str]:
 #      위 ⚠️ 규칙대로 PENDING 에서 뺐다 — 남겨 두면 check() 가
 #      「생겼는데 PENDING 이다」로 FAIL 하고 그때부터 진짜 가드가 죽는다.
 #      🔑 비어 있다고 이 자리를 지우지 말 것 — 8번째 글의 산출물이 다시 여기로 들어온다.
+#    🟢 2026-09-24 — 8번째 글(`224416253270`)의 판정 산출물 12종은 **등재 «시점»에 이미 전부 있었다**
+#      (등재가 판정 실행 «뒤»다) ⇒ 이번엔 «찼다가 비는» 단계 없이 `PAIRS` 에 바로 올렸다.
+#      🔑 비어 있다고 이 자리를 지우지 말 것 — 다음 글의 산출물이 등재 «전»에 생기지 않으면 다시 여기로 들어온다.
 PENDING: dict[str, str] = {}
 
 # 🔴 `MANUAL_DOCS` 쪽의 같은 것 — 등재는 §5-7 이 요구하는데 파일은 그 글이 와야 생긴다.
@@ -281,6 +341,9 @@ PENDING: dict[str, str] = {}
 #      ⇒ 위 ⚠️ 규칙대로 뺐다. 남겨 두면 check() 가 「생겼는데 `PENDING_DOCS` 에 남아 있다」로
 #      FAIL 하고 그때부터 G-1 의 존재 검사가 그 10개 이름에 «진짜로» 돌지 않는다.
 #      🔑 비어 있다고 이 자리를 지우지 말 것 — 8번째 글의 산문이 다시 여기로 들어온다.
+#    🟢 2026-09-24 — 8번째 글의 인테이크 3문서(`cdc6533`)와 산문 10종은 **등재 «시점»에 이미 전부 있었다**
+#      ⇒ `PENDING_DOCS` 를 거치지 않고 `MANUAL_DOCS` 에 바로 올렸다(G-1 존재 검사가 첫 회부터 «진짜로» 돈다).
+#      🔑 비어 있다고 이 자리를 지우지 말 것 — 다음 글의 산문이 다시 여기로 들어올 수 있다.
 PENDING_DOCS: dict[str, str] = {}
 
 # 🔴 §5(C-17·C-20) 정정으로 «스크립트는 바뀌었으나 산출물은 재생성하지 않은» 것들.
@@ -322,6 +385,11 @@ FROZEN_STALE = {
         "🆕 2026-09-15: **post7 모드(`--stage post7`)를 더했다** — 순수 «덧붙임»이고 "
         "`load_ledger`·`build_codes`·`exact_items`·`approx_items`·`post6_main` 함수 본문 md5 가 "
         "**전건 불변**임을 실증했다(제거 줄 0 · `--stage` 기본값 `train` 불변) ⇒ 훈련 수치 0줄 영향. "
+        "🆕 2026-09-24: **post8 모드(`--stage post8`)를 더했다** — `main` 을 뺀 HEAD 최상위 정의 92개의 "
+        "본문 md5 가 **전건 불변**(`load_ledger`·`build_codes`·`build_codes7`·`exact_items`·`approx_items`·"
+        "`post6_main`·`post7_main` 포함 · 새 정의는 `build_codes8()` 등 따로 뒀다)이고 `main` 의 변경은 "
+        "`--stage` choices 에 `post8` 추가 + post8 분기 3줄뿐이다(AST 실측 · git diff 제거 줄 1 = 그 choices 줄) "
+        "· 기본값 `train` 불변 ⇒ 훈련 수치 0줄 영향. "
         "🔴 재측정 금지 · 선택 규칙 RNK-A1 은 이 동결본에서 왔다(홀드아웃의 근거)",
     "RESULTS_WRC_EXPLORE.md":
         "동결(FREEZE_WRC_2026-09-02) — run_wrc_explore.py 에 post6 제외 필터 +11줄 · 입력 DB 이동. "
@@ -332,10 +400,16 @@ FROZEN_STALE = {
     #    (조용한 통과 금지). 🔑 ***사유를 안 적으면 다음 사람이 「낡았으니 다시 돌리자」로 읽는다.***
     "RESULTS_RANKING_POST6_NUMBERS.md":
         "post6 판정 동결 — run_ranking.py 에 post7 모드(`--stage post7`)를 더해 sha 가 움직였으나 "
-        "post6 경로 함수 본문 md5 는 전건 불변(제거 줄 0)이다. 🔴 재측정 금지(post6 판정 불변 의무)",
+        "post6 경로 함수 본문 md5 는 전건 불변(제거 줄 0)이다. "
+        "🆕 2026-09-24: post8 모드(`--stage post8`)를 더해 sha 가 다시 움직였으나 `post6_main` 을 포함한 "
+        "`main` 외 최상위 정의 본문 md5 는 전건 불변이고 `main` 의 변경은 choices 추가 + post8 분기 3줄뿐이다"
+        "(AST 실측). 🔴 재측정 금지(post6 판정 불변 의무)",
     "RESULTS_SECTOR_POST6_NUMBERS.md":
         "post6 판정 동결 — run_sector.py 에 post7 모드(`--mode post7`)를 더해 sha 가 움직였으나 "
         "`main_post6`·`db_context` 함수 본문 md5 는 불변이고 `both` 에 post7 을 넣지 않았다. "
+        "🆕 2026-09-24: post8 모드(`--mode post8`)를 더해 sha 가 다시 움직였으나 `main_post6`·`db_context` "
+        "본문 md5 는 여전히 불변이고 `run()` 의 변경은 post8 분기 3줄뿐이며 `both` 에 post8 도 넣지 않았다"
+        "(의존 run_ranking.py 도 `main` 외 불변). "
         "🔴 재측정 금지 · **--rerun 금지**(sector_post6/ 디렉토리 동반 산출물)",
     "RESULTS_SECTOR_DRYRUN_NUMBERS.md":
         "동결(FREEZE_SECTOR_2026-09-03) — run_sector.py 에 모드 분기가 들어갔고 DB 가 이동했으나 "
@@ -343,7 +417,40 @@ FROZEN_STALE = {
         "🔴 **--rerun 금지** — 기본 모드(both)면 sector_dryrun/ 23파일까지 덮어쓴다(C-23). "
         "🆕 2026-09-15: **post7 모드(`--mode post7`)를 더했다** — `main`·`main_post6`·`db_context` "
         "함수 본문 md5 **전건 불변**(공유 헬퍼에 인자를 달지 않고 `post7_context()` 를 따로 뒀다) · "
-        "🔴 **`both` 에는 post7 을 넣지 «않았다»** — `both` 의 뜻을 바꾸면 `--rerun` 계약이 조용히 달라진다",
+        "🔴 **`both` 에는 post7 을 넣지 «않았다»** — `both` 의 뜻을 바꾸면 `--rerun` 계약이 조용히 달라진다. "
+        "🆕 2026-09-24: **post8 모드(`--mode post8`)를 더했다** — `main`·`main_post6`·`main_post7`·`db_context`·"
+        "`post7_context` 함수 본문 md5 **전건 불변**(`post8_context()`·`main_post8()` 을 따로 뒀다) · "
+        "`run()` 은 파일 끝으로 옮겨지며 post8 분기 3줄만 더해졌다(AST 실측 · git diff 제거 18줄은 그 이동분) · "
+        "🔴 **`both` 에는 post8 도 넣지 «않았다»**",
+    # 🆕 2026-09-24 — post8 모드 추가로 **생성 스크립트의 sha 가 움직였다**(post7 때 post6 두 판정본에
+    #    한 것과 같은 처리). 아래 넷은 post7 «판정»본이라 재측정하지 않는다(`PREREG_POST6.md` §5-1-5
+    #    *「과거 산출물을 다시 재지 않는다」* · §5-4-2 *「과거 발표값을 조용히 갱신하지 않는다」*).
+    #    ⇒ 사유를 박아 check() 가 매번 인쇄하게 한다(조용한 통과 금지). 🔑 이 넷은 post7 등재 때 이미
+    #      `absorbed_stale`(「처음 등재」)을 이고 있어 `--update` 가 새 흡수 기록을 «남기지 않는다»
+    #      (`build()` 가 옛 기록을 그대로 물려준다) ⇒ **이번 sha 이동의 기록은 이 사유 문구가 유일하다.**
+    #    🔴 **`RESULTS_ANCHOR_POST7.md` 와 `_NUMBERS` 는 같은 argv(`--mode post7`)를 쓴다 ⇒ 둘 다 동결한다**
+    #      — 하나만 동결하면 다른 키의 실행이 곁다리로 동결본을 덮어쓴다(C-23 의 바로 그 경로).
+    #    ⚠️ 입력도 움직였다 — DB 지문 `max(date)` 2026-09-15 → 2026-09-23 · 원장 `b302f7f` +10행/+37레그.
+    #      재실행 결과가 같은지는 **재지 않았다**(재측정 금지 대상이다).
+    "RESULTS_RANKING_POST7_NUMBERS.md":
+        "post7 판정 동결 — run_ranking.py 에 post8 모드(`--stage post8`)를 더해 sha 가 움직였으나 "
+        "`post7_main`·`build_codes7` 을 포함한 `main` 외 최상위 정의 본문 md5 는 전건 불변이고 `main` 의 변경은 "
+        "choices 추가 + post8 분기 3줄뿐이다(AST 실측 · 기본값 `train` 불변). 🔴 재측정 금지(post7 판정 불변 의무)",
+    "RESULTS_SECTOR_POST7_NUMBERS.md":
+        "post7 판정 동결 — run_sector.py 에 post8 모드(`--mode post8`)를 더해 sha 가 움직였으나 "
+        "`main_post7`·`post7_context`·`db_context` 함수 본문 md5 는 불변이고 `run()` 의 변경은 post8 분기 3줄뿐이며 "
+        "`both` 에 post8 을 넣지 않았다(의존 run_ranking.py 도 `main` 외 불변). "
+        "🔴 재측정 금지 · **--rerun 금지**(sector_post7/ 디렉토리 동반 산출물)",
+    "RESULTS_ANCHOR_POST7.md":
+        "post7 판정 동결 — run_anchor_redesign.py 에 post8 모드를 더해 sha 가 움직였으나 `main` 을 포함한 "
+        "HEAD 최상위 정의 본문 md5 는 전건 불변이고(변경 = `__main__` 의 `main()` → `cli()` 1줄) `cli()` 가 "
+        "post7 을 `main(['--mode', 'post7'])` 에 그대로 넘긴다(의존 run_ranking.py 도 `main` 외 불변). "
+        "🔴 재측정 금지(post7 판정 불변 의무) · `_NUMBERS` 와 같은 argv 라 **둘 다** 동결",
+    "RESULTS_ANCHOR_POST7_NUMBERS.md":
+        "post7 판정 동결 — run_anchor_redesign.py 에 post8 모드를 더해 sha 가 움직였으나 `main` 을 포함한 "
+        "HEAD 최상위 정의 본문 md5 는 전건 불변이고(변경 = `__main__` 의 `main()` → `cli()` 1줄) `cli()` 가 "
+        "post7 을 `main(['--mode', 'post7'])` 에 그대로 넘긴다(의존 run_ranking.py 도 `main` 외 불변). "
+        "🔴 재측정 금지(post7 판정 불변 의무) · `RESULTS_ANCHOR_POST7.md` 와 같은 argv 라 **둘 다** 동결",
 }
 
 # 스크립트가 만들지 않는 문서 — 사람이 쓴 것. 게이트 대상 아님을 명시해 둔다.
@@ -424,6 +531,19 @@ MANUAL_DOCS = [
     #      — 그래야 동결 커밋의 diff 가 그 문서 한 파일로 남아 순서 증거가 깨끗하다.
     #    ⚠️ `PREREG_S5_FUND_NEWS_OOS.md` 는 위 2026-09-14 줄에 **이미 있다**(`31933c4`) — 다시 넣지 않는다.
     "PREREG_POST8.md",
+    # 🔴 2026-09-24 — 2026-09-18 발행 8번째 글(`224416253270`) 계열.
+    #    인테이크 3문서는 **이미 있다**(커밋 `cdc6533` · 정오 `df62b38`) ⇒ G-1 존재 검사가 «진짜로» 돈다.
+    "INTAKE_2026-09-18_post8.md", "PREDECISION_2026-09-18_post8.md", "LABELS_2026-09-18_post8.md",
+    #    산문 **10종**도 등재 «시점»에 이미 있다 ⇒ post7 초판과 달리 `PENDING_DOCS` 를 거치지 않는다.
+    "RESULTS_SELECTION_POST8.md", "RESULTS_REGDAY_POST8.md", "RESULTS_EXIT_V2_POST8.md",
+    "RESULTS_RECONSTRUCT_POST8.md", "RESULTS_LADDER_TRANCHE_POST8.md", "RESULTS_D1_OOS_POST8.md",
+    "RESULTS_WRC_POST8.md", "RESULTS_RANKING_POST8.md", "RESULTS_SECTOR_POST8.md",
+    "RESULTS_S5_POST8.md",
+    #    🆕 `RESULTS_ANCHOR_POST8.md` 는 **스크립트가 쓴다**(`run_anchor_redesign.py::main_post8()` 가 두 산출물을
+    #      같이 쓴다) ⇒ 여기가 아니라 `PAIRS` 자리다(post7 전례). ⚠️ **`RESULTS_S5_POST8.md` 는 «사람이» 쓴다**
+    #      — `run_s5_post8.py` 는 `_NUMBERS` 만 쓰고 끝에 그렇게 인쇄한다 ⇒ 위 10종에 들어가는 것이 맞다.
+    # 🔴 `verify_ledger_post8.py` 는 post5·post6·post7 판 전례대로 **일부러 등재하지 않는다**
+    #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]
 
 
