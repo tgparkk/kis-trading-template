@@ -10,12 +10,12 @@
   R4  `build_codes8()` 이 `POST8_CODES` 를 전부 담고 **post7 이하 매핑을 덮어쓰지 않는다**
   R5  부수 집합(`POST8_REENTRY`·`POST8_REENTRY_ITEM`·`POST8_PRIOR_CYCLE`·`POST8_NONE_NEW`·`POST8_APPROX`)의
       이름이 전부 `POST8_CODES` 안에 있고, `POST8_FOLLOWUP` 은 계열 기존 코드에 있다
-  S1  🔴 **스테이지 추가는 «순수 덧붙임»** — `post6_main`·`post7_main` 과 공유 헬퍼 본문 md5 가 `HEAD` 블롭과 같다
+  S1  🔴 **스테이지 추가는 «순수 덧붙임»** — `post6_main`·`post7_main` 과 공유 헬퍼 본문 md5 가 `154b80c`(post8 이전) 블롭과 같다
       (바뀐 함수는 `main` 하나 · `choices` 에 `post8` 추가 + 분기 1개)
   S2  원장 분모 — post8 `exact` 4(우리로·JW신약·액스비스·우리기술) · `approx` 2 · `none` 4
   S3  `RESULTS_RANKING_POST8_NUMBERS.md` 의무 줄(`D-3`·`D-5`·`D-8`·`D-9` ①~⑤ · 라이브 금지 · 「새 정보 없음」) ·
       등급 이름 0 · D-9 ① = `ranking_post8/read_stamp.json`
-  S4  post7 이하 산출물(`RESULTS_RANKING_POST7/POST6/TRAIN_NUMBERS.md`)이 `HEAD` 블롭과 **내용 동일**
+  S4  post7 이하 산출물(`RESULTS_RANKING_POST7/POST6/TRAIN_NUMBERS.md`)이 `154b80c` 블롭과 **내용 동일**
 
 실행: `python -m pytest test_post8_ranking.py -q -p no:cacheprovider` (DB 접속 0 · 라이브 import 0)
 """
@@ -33,6 +33,7 @@ import run_ranking as R
 BASE = Path(__file__).resolve().parent
 INTAKE = "INTAKE_2026-09-18_post8.md"
 NUMBERS = BASE / "RESULTS_RANKING_POST8_NUMBERS.md"
+BASE_REF = "154b80c"   # 🔴 정정 1차(C-1) — post8 산출 «이전» 마지막 커밋(HEAD 는 post8 WIP 뒤라 S1 이 거짓 실패)
 CODE_RE = re.compile(r"[0-9][0-9A-Z]{5}")
 
 
@@ -48,7 +49,7 @@ def _intake_table() -> dict:
 
 
 def _head(rel: str) -> str:
-    r = subprocess.run(["git", "show", f"HEAD:./{rel}"], cwd=str(BASE), capture_output=True)
+    r = subprocess.run(["git", "show", f"{BASE_REF}:./{rel}"], cwd=str(BASE), capture_output=True)
     assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
     return r.stdout.decode("utf-8")
 
@@ -111,6 +112,8 @@ def test_S1_pure_addition_function_bodies_unchanged():
     src = (BASE / "run_ranking.py").read_text(encoding="utf-8")
     assert 'choices=["train", "post6", "post7", "post8"]' in src
     assert 'if a.stage == "post8":' in src
+    # 🔴 대칭 — 기준 ref 에는 post8 판이 «없다»(ref 가 post8 이전임을 확인 · 검사력)
+    assert "post8_main" not in old
 
 
 def test_S1b_constants_are_the_intake_values():
@@ -143,6 +146,10 @@ def test_S3_duty_lines_and_no_grade_names():
               "| `1.0.42` | 10 | 1 |", "라이브 채택 대상이 아니다", "새 정보 없음 = `REG-M4` 재진술",
               "「우리로 제외」 | 3 |", "인쇄만 — 갈래로 세지 않는다", "이번 회차 재판정", "창 종료 `2026-09-18` = 발행 당일"):
         assert s in t, s
+    # 🆕 정정 1차 — 값 없는 `approx` 갈래에 n·「충족」을 적지 않는다 · X-1 동결/머지 해시 분리
+    apx = [ln for ln in t.splitlines() if ln.startswith("| 등록일 정밀도 `approx` 포함 |")]
+    assert len(apx) == 1 and apx[0].startswith("| 등록일 정밀도 `approx` 포함 | **—** | — |"), apx
+    assert "동결 `04cd785` · 머지 `729f28b`" in t and "(동결 `729f28b`" not in t
     for g in ("GT-A", "GT-B", "GT-C", "GT-D", "GT-E", "GT-F", "충족·참고용", "낡음(재실행 금지)", "[갈래 의존]"):
         assert g not in t, g
 

@@ -18,7 +18,8 @@
       X2 보류 · 모호 신고 2건(신규만 A/B · `~` H/P) · 등급 이름 0 · 새 라벨(「분모 의존」) 0
   P6  결정성 — 임시 디렉토리 렌더 = 저장소 `RESULTS_EXIT_V2_POST8_NUMBERS.md` byte 동일(저장소 산출물은 건드리지 않는다)
   R1  post7 회귀 — `test_post7_exit.py` 가 이 트리에서 그대로 통과(별 프로세스)
-  R2  옛 판 스크립트·post7 산출물이 HEAD 블롭과 byte 동일(= 이 레인이 고치지 않았다)
+  R2  옛 판 스크립트·post7 산출물이 `154b80c` 블롭과 byte 동일(= 이 레인이 고치지 않았다) — 🔴 정정 1차(A-8):
+      기준 ref = post8 산출 «이전» 마지막 커밋(`HEAD` 는 post8 WIP 커밋 뒤라 작업트리를 자기 자신과 비교한다)
   R3  소스 위생 — 허용 import · psycopg2 0 · 파일 쓰기 1곳
 
 🔴 어떤 원본 파일도 고치지 않는다. 라벨은 **메모리 사본**에서만 흔든다.
@@ -42,6 +43,7 @@ import run_exit_v2_post8 as P8
 BASE = Path(__file__).resolve().parent
 NUMBERS8 = BASE / "RESULTS_EXIT_V2_POST8_NUMBERS.md"
 NUMBERS7 = BASE / "RESULTS_EXIT_V2_POST7_NUMBERS.md"
+BASE_REF = "154b80c"   # 🔴 정정 1차(A-8·C-1) — post8 산출 «이전» 마지막 커밋
 LOG8 = "224416253270"
 NM, LB, LG, LM, OP, TI, BE, NW, RG, PR = range(10)
 GRADE_NAMES = ["충족·참고용", "조건 미달", "낡음(재실행 금지)", "GT-A", "GT-B", "GT-C", "GT-D", "GT-E", "GT-F"]
@@ -221,7 +223,7 @@ def test_R1_post7_suite_still_passes():
 
 
 def _blob_md5(rel):
-    out = subprocess.run(["git", "show", f"HEAD:RoboTrader_template/backtest/tasso_program_journal/{rel}"],
+    out = subprocess.run(["git", "show", f"{BASE_REF}:RoboTrader_template/backtest/tasso_program_journal/{rel}"],
                          cwd=BASE, capture_output=True)
     assert out.returncode == 0, rel
     return hashlib.md5(out.stdout).hexdigest()
@@ -231,7 +233,12 @@ def test_R2_upstream_untouched():
     for rel in ("run_exit_v2_post4.py", "run_exit_v2_post5.py", "run_exit_v2_post6.py", "run_exit_v2_post7.py",
                 "RESULTS_EXIT_V2_POST7_NUMBERS.md", "RESULTS_EXIT_V2_POST6_NUMBERS.md",
                 "ledger_trades.csv", "ledger_legs.csv"):
-        assert hashlib.md5((BASE / rel).read_bytes()).hexdigest() == _blob_md5(rel), f"{rel} 가 HEAD 와 다르다"
+        assert hashlib.md5((BASE / rel).read_bytes()).hexdigest() == _blob_md5(rel), f"{rel} 가 {BASE_REF} 와 다르다"
+    # 🔴 대칭 — 기준 ref 에 post8 판은 «없다»(ref 가 post8 이전임을 확인 · 검사력)
+    miss = subprocess.run(["git", "cat-file", "-e",
+                           f"{BASE_REF}:RoboTrader_template/backtest/tasso_program_journal/run_exit_v2_post8.py"],
+                          cwd=BASE, capture_output=True)
+    assert miss.returncode != 0
 
 
 def test_R3_source_hygiene():

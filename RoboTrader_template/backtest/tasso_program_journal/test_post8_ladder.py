@@ -20,7 +20,8 @@
   P7  산출물 필수 문구(D-9 ①~⑤ · D-7 두 산술·분모 갈래·1회차 · D-1 세 수·누적 줄 · D-5 · D-3 · 라이브 금지 · 계열 재현)
   P8  산출물 수치 정합 — 「누적 비교가능 쌍」 줄 = §2 창5 행 · 혼합 빈티지 8줄 = PD-27 (바) · 등급 이름 0
   R1  post7 회귀 — `test_post7_ladder.py --require-artifact` 가 이 트리에서 그대로 통과(별 프로세스)
-  R2  상류 파일·post7 산출물이 HEAD 블롭과 byte 동일(= 이 레인이 고치지 않았다)
+  R2  상류 파일·post7 산출물이 `154b80c` 블롭과 byte 동일(= 이 레인이 고치지 않았다) — 🔴 정정 1차(A-8·C-1):
+      기준 ref = post8 산출 «이전» 마지막 커밋 `154b80c`(`HEAD` 는 post8 WIP 커밋 뒤라 작업트리를 자기 자신과 비교한다)
 
 🔴 어떤 원본 파일도 고치지 않는다. 동결본은 메모리 사본에서만 흔든다.
 """
@@ -42,6 +43,7 @@ import run_ladder_tranche_post8 as P8
 BASE = Path(__file__).resolve().parent
 NUMBERS7 = BASE / "RESULTS_LADDER_TRANCHE_POST7_NUMBERS.md"
 NUMBERS8 = BASE / "RESULTS_LADDER_TRANCHE_POST8_NUMBERS.md"
+BASE_REF = "154b80c"   # 🔴 정정 1차 — post8 산출 «이전» 마지막 커밋
 LOG8 = "224416253270"
 
 # `INTAKE_2026-09-18_post8.md` §1 — 신규 7건 중 `exact` 4건 (종목, 코드, 등록일, 차수 N)
@@ -196,6 +198,8 @@ def test_P7_required_phrases():
         "그 글 열 비교가능 쌍 0(구성 · exact 4건 전부 N=1)",
         "`(갈래 이름, n, 답)`",
         "「`approx` 포함 시 최소 n 이 차는 축: 없음 · `exact` 분모 4 / `approx` 포함 분모 6」",
+        "🔴 **`D-3` (나)4 검사**(`PREREG_POST8.md:250`",       # 🆕 정정 1차 A-B2
+        "주 갈래와 같은 쪽 **49/49** ⇒ **갈리지 않는다 — 주 판정 불변**",
         "「우리로 제외」 — **인쇄만 · 판정 효과 없음**",
         "왼쪽 열은 인용이다",
         "대체 전/후 `V`·`p` — 의무 인쇄",
@@ -241,7 +245,7 @@ def test_R1_post7_suite_still_passes():
 
 
 def _blob_md5(rel):
-    out = subprocess.run(["git", "show", f"HEAD:RoboTrader_template/backtest/tasso_program_journal/{rel}"],
+    out = subprocess.run(["git", "show", f"{BASE_REF}:RoboTrader_template/backtest/tasso_program_journal/{rel}"],
                          cwd=BASE, capture_output=True)
     assert out.returncode == 0, rel
     return hashlib.md5(out.stdout).hexdigest()
@@ -252,7 +256,12 @@ def test_R2_upstream_untouched():
                 "RESULTS_LADDER_TRANCHE_POST7_NUMBERS.md", "RESULTS_LADDER_TRANCHE_POST6_NUMBERS.md",
                 "run_tests.py"):
         wt = hashlib.md5((BASE / rel).read_bytes()).hexdigest()
-        assert wt == _blob_md5(rel), f"{rel} 가 HEAD 와 다르다 — 이 레인은 고치지 않는다"
+        assert wt == _blob_md5(rel), f"{rel} 가 {BASE_REF} 와 다르다 — 이 레인은 고치지 않는다"
+    # 🔴 대칭 — 같은 ref 에 post8 스크립트는 «없다»(ref 가 post8 이전임을 확인 · 검사력)
+    miss = subprocess.run(["git", "cat-file", "-e",
+                           f"{BASE_REF}:RoboTrader_template/backtest/tasso_program_journal/run_ladder_tranche_post8.py"],
+                          cwd=BASE, capture_output=True)
+    assert miss.returncode != 0
 
 
 def test_R3_source_hygiene():

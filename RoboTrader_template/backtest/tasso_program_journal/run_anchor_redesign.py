@@ -1341,7 +1341,8 @@ def main(argv=None) -> int:      # noqa: C901
 #       **통계량을 계산하지 않는다**(전제 미충족 · PD-19). `approx`(코데즈 N=2)로 채우지 않는다(PD-21).
 #   ANC8-6 조건 ③ 미판정 ⇒ §5-1 AND 미완성 ⇒ §5-2 세 갈래 어디로도 가지 않고 **미룬다**
 #       (「충족 0 ⇒ 전면 폐기 상신」으로 읽지 않는다 — ③ 은 «못 쟀다»이지 «실패»가 아니다).
-#   ANC8-7 D-9 ① 시각 줄 = 실행일 + 빈티지 구간(분 단위 시각은 stdout) — `run_s5_post8.py` S5-P8-7 과 같은 재량.
+#   ANC8-7 D-9 ① 시각 줄 = 🆕 정정 1차: **최초 읽기 KST 시각 stamp**(`anchor_post8/read_stamp.json` · 지문 같으면
+#       다시 쓰지 않는다 · RNK·WRC·SEC 관용) — 초판의 「실행일 + 빈티지 구간」은 `PREREG_POST8.md:544-545` ① 을 못 채웠다.
 #   🔴 등급 이름은 적지 않는다(§6 단계 · PD-16 · PD-28) — `_assert_no_grade8` 가 문다.
 # ═══════════════════════════════════════════════════════════════════════════
 PUB8 = "2026-09-18"             # 8번째 글 발행일 (금 · 거래일)
@@ -1386,10 +1387,20 @@ LIMITS8 = [
     "🔴 **`END` 가 글마다 그 글의 발행일이다** — 소급 post7 건은 `09-11`(발행 09-12 토) · post8 건은 `09-18`. "
     "🔴 단 **창5(`A2`·`L₅`)는 동결 `win_bars` 가 `END` 를 모른다** — 등록일 뒤 4거래일을 그대로 읽으므로 "
     "소급 post7 건(빛과전자 09-08 · 범한퓨얼셀 09-09)의 창5 는 09-14·09-15 봉까지 들어간다(PD-12 「값 대체」와 같은 방향 · "
-    "혼합 빈티지 신고 줄 참조).",
+    "혼합 빈티지 신고 줄 참조). 🟢 **검정 열(post8 `exact` 4) 무영향** — post8 건의 창5 끝은 전부 `END` 이내다(아래 실측 줄) · "
+    "영향은 소급(탐색) 열에만 있다.",
+    "🔴 **`P-4`·`P-5` 가 정한 한계 절 문장**(`PREREG_POST8.md:567` · `PREDECISION_2026-09-18_post8.md:704`) — "
+    "① `ovtm_vol` 채널은 09-14 에 0/2,756 이고 09-15 이후 `overtime_daily` 행이 **없다** ⇒ 시간외분을 `H`·`L` 에서 뺄 수 없다 · "
+    "② 15:30 마감 분봉이 09-14 1/303 · 09-15~09-18 0(PD-27 (다)) · 09-16~09-23 = 0·0·1·0·1·0(관리자 2026-09-24 00:07:44 KST 실측 "
+    "`p8_probes_postfetch_0924.txt` `P-5`) ⇒ `minute_candles` 로 정규장 상한을 만들 수 없다 ⇒ **「정규장만」 갈래는 열지 않는다**"
+    "(`PREREG_POST8.md:549-550`).",
     "🔴 **제도 경계(2026-09-14)가 post8 창에 처음 들어왔다** — `[D, END]` 는 신규 전건이 걸친다(§1-1). "
     "`daily_prices.high/low` 는 **D+1 재기록 후의 값**이다(`P8-빈티지`) — 「시간외 합산」이라고 단정하지 않는다(`PREREG_POST8.md` §9).",
     "🔴 **표본이 작다** — 판정 분모 4 · 한 건이 비율을 25%p 옮긴다. ***비율과 함께 건별 원표(§2)를 읽을 것.***",
+    "🔴 **`--rerun` 한계 — 다음 sweep 뒤**(🆕 정정 1차 · verifier B 공통) — 다음 D+1 sweep(예정 **2026-09-28 15:35**)이 창 구간 "
+    "`updated_at` 을 일괄 갱신하면 D-9 ②(`max(updated_at)`)·DB 지문이 **반드시** 바뀐다 ⇒ `anchor_post8/read_stamp.json` 에 새 시각이 "
+    "박히고 `regen_gate.py --rerun` 은 이 산출물에서 byte 불일치를 낸다 — 값이 틀렸다는 뜻이 아니라 동결 규칙(D-9 ①② 인쇄 의무)의 "
+    "귀결이다(byte 재현은 «같은 스냅샷» 안에서만 성립).",
 ]
 
 
@@ -1429,6 +1440,54 @@ def lad_cumulative_pairs(base=None):
         if m:
             return int(m.group(1)), f"`{LAD_POST8_NUMBERS}` 의 「누적 비교가능 쌍 = {m.group(1)}」 줄"
     return None, f"`{LAD_POST8_NUMBERS}` 에 「누적 비교가능 쌍 = <수>」 줄이 없다"
+
+
+# 🆕 정정 1차(verifier B B-1) — `D-9` ① 「최초 읽기 시각」 stamp. 초판은 「실행일 + 빈티지 구간」만 인쇄해
+#    `PREREG_POST8.md:544-545`(① 쿼리 실행 시각(KST) · 없으면 무효)를 채우지 못했고, 벽시계 날짜라 다음 날 재실행이면
+#    byte 가 바뀌어 결정론 명분도 없었다 ⇒ RNK·WRC·SEC `read_stamp.json` 관용으로 옮긴다(가분성 `:94-96` · 인쇄 보충).
+ANC8_STAMP_DIR = "anchor_post8"
+ANC8_SPAN_START = "2026-06-01"      # 이 모드가 읽는 가장 이른 날짜(`main_post8` 달력 쿼리 시작) — 지문 구간
+
+
+def anc8_read_stamp(cur, base=None):
+    """`D-9` ① = **이 DB 지문을 이 스크립트가 «처음» 읽은 실행의 KST 시각**(`anchor_post8/read_stamp.json`).
+
+    같은 지문의 재실행은 그 값을 다시 인쇄하고 **파일을 다시 쓰지 않는다**(`run_ranking.py::p8_read_stamp()` 관용 ·
+    이번 실행 벽시계는 stdout 전용). 지문(`max(date)`·그 날 행수·읽은 구간 행수·`min/max(updated_at)`·창 구간
+    `min/max(updated_at)`·`END` 행수)이 바뀌면(= 다른 스냅샷) 새 시각이 박힌다.
+    반환 = (본문 ① 에 쓸 시각, 이번 실행 벽시계, 재사용 여부)."""
+    import json as _json
+    cur.execute("SELECT max(date) FROM daily_prices")
+    mx = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM daily_prices WHERE date = %s", (mx,))
+    mx_rows = int(cur.fetchone()[0])
+    cur.execute("SELECT count(*), min(updated_at), max(updated_at) FROM daily_prices "
+                "WHERE date BETWEEN %s AND %s", (ANC8_SPAN_START, POST8_END))
+    sp_n, sp_min, sp_max = cur.fetchone()
+    cur.execute("SELECT min(updated_at), max(updated_at) FROM daily_prices WHERE date BETWEEN %s AND %s",
+                (WIN_START8, POST8_END))
+    w_min, w_max = cur.fetchone()
+    cur.execute("SELECT count(*), max(updated_at) FROM daily_prices WHERE date = %s", (POST8_END,))
+    e_rows, e_max = cur.fetchone()
+    fp = dict(max_date=str(mx), max_rows=mx_rows, span=[ANC8_SPAN_START, POST8_END], span_n=int(sp_n),
+              span_min_u=str(sp_min), span_max_u=str(sp_max), mgr_win=[WIN_START8, POST8_END],
+              mgr_min_u=str(w_min), mgr_max_u=str(w_max), end_rows=int(e_rows), end_max_u=str(e_max))
+    cur.execute("SELECT to_char(now() AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS')")
+    now_kst = cur.fetchone()[0]
+    d = (base or BASE) / ANC8_STAMP_DIR
+    p = d / "read_stamp.json"
+    prev = None
+    if p.exists():
+        try:
+            prev = _json.loads(p.read_text(encoding="utf-8"))
+        except Exception:                     # noqa: BLE001
+            prev = None
+    if prev and prev.get("fingerprint") == fp and prev.get("first_read_kst"):
+        return prev["first_read_kst"], now_kst, True
+    d.mkdir(exist_ok=True)
+    p.write_text(_json.dumps(dict(fingerprint=fp, first_read_kst=now_kst, timezone="Asia/Seoul"),
+                             ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return now_kst, now_kst, False
 
 
 def post8_items(pub=PUB8):
@@ -1615,6 +1674,7 @@ def main_post8(a) -> int:      # noqa: C901, PLR0912, PLR0915
     win_min, win_max = cur.fetchone()
     next_sweep = _next_sweep8(cur)
     lad_cum, lad_src = lad_cumulative_pairs()
+    first_kst, now_kst, stamp_reused = anc8_read_stamp(cur)
 
     # ═══ 표본 측정 ═══════════════════════════════════════════════════════════
     retro = measure(cur, retro8_items())
@@ -1645,9 +1705,11 @@ def main_post8(a) -> int:      # noqa: C901, PLR0912, PLR0915
            "전 축(`WRC-` 포함) · PD-1** |")
     both(f"| 🔴 실행 시 `max(date)` | **{db_max}** · 그 날짜 행수 **{db_max_rows:,}** — 기록만(창 아님 · PD-1 8번) |")
     both(f"| 창 종료일 행수 | `{POST8_END}` = **{end_rows:,}** 행 |")
-    both(f"| 🔴 D-9 ① 쿼리 실행 시각(KST) | 실행일 **{run_dt.strftime('%Y-%m-%d')}** · 읽은 시각은 "
-           f"**[창 구간 `max(updated_at)` {win_max}, 다음 sweep {next_sweep})** 안 — 🔴 분 단위 시각은 stdout 전용"
-           "(바이트 결정론 · post7 `note()` 관용 · ANC8-7 재량) |")
+    both(f"| 🔴 D-9 ① 쿼리 실행 시각(KST) | **{first_kst}** — 이 DB 지문(`max(date)`·그 날 행수·읽은 구간 "
+           f"`[{ANC8_SPAN_START}, {POST8_END}]` 행수·`min/max(updated_at)`·창 구간 `min/max(updated_at)`·`END` 행수)을 "
+           "이 스크립트가 «처음» 읽은 실행의 DB `now()`(Asia/Seoul) · `anchor_post8/read_stamp.json`(🆕 정정 1차 도입 · "
+           "같은 지문 재실행은 같은 값 · 파일을 다시 쓰지 않는다 · RNK·WRC·SEC `read_stamp.json` 관용) · "
+           f"재실행 벽시계 = stdout 전용 · 읽은 시각은 [창 구간 `max(updated_at)` {win_max}, 다음 sweep {next_sweep}) 안 |")
     both(f"| 🔴 D-9 ② 창 구간 `max(daily_prices.updated_at)` | **{win_max}** (`[{WIN_START8}, {POST8_END}]`) |")
     both("| 🔴 D-9 ③ | **09-18 봉은 D+1(09-21) sweep 이후 읽음** |")
     both(f"| 🔴 D-9 ④ | 창 구간 `min(updated_at)` = **{win_min}** ≥ {DPLUS1_SWEEP8}: "
@@ -1847,7 +1909,9 @@ def main_post8(a) -> int:      # noqa: C901, PLR0912, PLR0915
     both(f"| **D-1 ①** 그 글 «단독» 비교가능 쌍 | **{solo}** | 후보별 최댓값(§5-2 표) · post8 풀 {len(ns8)}건 · 차수 `{ns8}` "
            f"⇒ `N` 이 다른 쌍의 **상한 = {_diff}**(δ 대역 제외 «전») — **구성** |")
     both(f"| **D-1 ②** 누적 비교가능 쌍 | **{lad_cum if lad_cum is not None else '—'}** | 출처 = {lad_src} "
-           "(post7 의 266 과 **같은 출처** = `LAD-` 레인 · `RESULTS_LADDER_TRANCHE_POST7.md:33` · `PREREG_POST8.md` §1 (마)) |")
+           "(post7 의 266 과 **같은 출처** = `LAD-` 레인 · `RESULTS_LADDER_TRANCHE_POST7.md:33` · `PREREG_POST8.md` §1 (마)) · "
+           "🔴 **파일 의존** — 이 수는 LAD 산출물을 «파일로» 읽는다(`lad_cumulative_pairs()`) · `regen_gate.py` 의 의존 폐포"
+           "(import)가 잡지 못하는 의존이다 ⇒ LAD 산출물이 바뀌면 이 스크립트를 **다시 돌린다** |")
     both(f"| **D-1 ③** 게이트 판정에 쓴 수(= ②) | **{lad_cum if lad_cum is not None else '—'}** | 문턱 {PAIR_GATE} ⇒ "
            + ("🟢 **게이트 열림**" if gate_open else "⛔ **게이트 닫힘(또는 출처 없음)**") + " |")
     both("")
@@ -2070,6 +2134,7 @@ def main_post8(a) -> int:      # noqa: C901, PLR0912, PLR0915
                           "A3": lambda h, n: h / n >= 0.5},
                "ANC-P2": {"A0": lambda h, n: h / n < 2 / 3, "A2": lambda h, n: h / n >= 2 / 3,
                           "A3": lambda h, n: h / n < 2 / 3}}
+    dir_branch_rows = 0   # 🆕 정정 1차 — 판정 칸에 「성립/불성립」(방향 대조 분기)이 찍힌 행 수
     for k, pred in (("ANC-P1", PRED_P1), ("ANC-P2", PRED_P2)):
         for c in CANDIDATES:
             r = base[k][c]
@@ -2084,16 +2149,23 @@ def main_post8(a) -> int:      # noqa: C901, PLR0912, PLR0915
                 verdict = f"{block} (예측 방향 {direction} · 값 기록)"
             else:
                 verdict = "성립" if direction == "부합" else "불성립"
+                dir_branch_rows += 1
             both(f"| `{k}` × {c} | {pred[c][1]} | {frac(h, n)} | {verdict} |")
     p3_obs = " · ".join(f"{c} 쌍 {base['ANC-P3'][c]['comp']}" for c in CANDIDATES)
     both(f"| `ANC-P3` × 전 후보 | {PRED_P3} | 그 글 열 비교가능 쌍 {p3_obs} · 누적 게이트 "
            f"{lad_cum if lad_cum is not None else '—'} ≥ {PAIR_GATE} | "
-           "미룸 — 전제 미충족(그 글 열 비교가능 쌍 0(구성 · exact 4건 전부 N=1) ⇒ `V(X)` 정의 안 됨 · 통계량 계산 안 함) |")
+           "미룸 — 전제 미충족(그 글 열 비교가능 쌍 0(구성 · exact 4건 전부 N=1) ⇒ `V(X)` 정의 안 됨 · 통계량 계산 안 함)"
+           + (" · 🔴 " + " · ".join(reasons) + "도 이 항목을 막는다(`PREREG_ANCHOR_REDESIGN.md:406-407` 「전 항목」)"
+              if reasons else "") + " |")
     both("| §5-2 채택 | 정확히 하나 채택 / 2 이상 미룸 / 0 전면 폐기 상신 | 조건 ③ 전 후보 미판정"
            + (" · " + " · ".join(reasons) if reasons else "") + " | 미룸 — §5-1 AND 미완성 · 세 갈래 어디로도 가지 않는다 |")
     both("")
     both("🔴 **「성립/불성립」은 §4 예측 방향과 관측의 대조이지 채택이 아니다** — 채택은 §7 표(§5-1 AND)만 정한다. "
-           "🔴 「판정 불가」·「미룸」 칸의 값은 **기록**이다(선언 금지).")
+           "🔴 「판정 불가」·「미룸」 칸의 값은 **기록**이다(선언 금지). "
+           f"🔴 **이 회차 판정 칸에 「성립/불성립」 분기가 찍힌 행 = {dir_branch_rows}**"
+           + (" — 앞 문장은 «미실행 분기»의 설명이다. 그 분기가 도는 회차에는 판정 칸 낱말이 §6 단계 등급 이름과 "
+              "겹치므로(PD-16 · PD-28) 그 회차의 §6 단계에서 다시 본다." if dir_branch_rows == 0 else
+              " — 판정 칸 낱말이 §6 단계 등급 이름과 겹친다(PD-16 · PD-28) · §6 단계에서 다시 본다."))
     both("")
 
     # ═══ §9 기타 의무 ═══════════════════════════════════════════════════════
@@ -2119,6 +2191,15 @@ def main_post8(a) -> int:      # noqa: C901, PLR0912, PLR0915
     both("## §10. 미리 적어둔 한계 (§13 · 이 회차 고유)\n")
     for s in LIMITS8:
         both(f"- {s}")
+    _cal_s = [str(x) for x in cal]
+    _w5 = []
+    for nm, _code, reg, *_x in POST8_EXACT:
+        _i = _cal_s.index(reg) if reg in _cal_s else None
+        _w5.append((nm, _cal_s[_i + 4] if (_i is not None and _i + 4 < len(_cal_s)) else None))
+    _w5_ok = all(e for _n, e in _w5)
+    both("- 🟢 (실측) post8 `exact` 4건 창5 끝 = " + " · ".join(f"{nm} {e or '— END 넘음'}" for nm, e in _w5)
+           + (f" ⇒ 전부 ≤ `END` {POST8_END} — 「창5 가 END 를 모른다」는 검정 열에 영향 없다" if _w5_ok
+              else " ⇒ 🔴 `END` 를 넘는 건이 있다"))
     both("")
     both("- 🔴 이 분석은 **라이브 채택 대상이 아니다**(`PREREG.md` §0 2번 · `PREREG_POST8.md` §0-1). "
            "*판정·라벨이 무엇이든 라이브 채택 금지는 그대로다.*")
@@ -2133,7 +2214,9 @@ def main_post8(a) -> int:      # noqa: C901, PLR0912, PLR0915
     cur.close()
     conn.close()
     note("")
-    note(f"[D-9 ①] 쿼리 실행 시각(KST) = {run_dt.strftime('%Y-%m-%d %H:%M:%S')} · 창 max(updated_at) = {win_max}")
+    note(f"[D-9 ①] 이번 실행 벽시계(DB now · KST) = {now_kst} · 본문 ① = {first_kst} "
+         f"({'stamp 재사용 — 지문 동일 · 파일 다시 쓰지 않음' if stamp_reused else 'stamp 새로 박음'}) · "
+         f"창 max(updated_at) = {win_max}")
     note(f"[D-1 ②] 누적 비교가능 쌍 = {lad_cum} · 출처 = {lad_src}")
     note(f"[written] RESULTS_ANCHOR_POST8_NUMBERS.md + RESULTS_ANCHOR_POST8.md · 런타임 {time.time() - t0:.3f}s")
     return 0

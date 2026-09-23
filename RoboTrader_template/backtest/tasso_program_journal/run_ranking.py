@@ -2951,7 +2951,7 @@ def post8_main(a):  # noqa: C901, PLR0912, PLR0915
     say("")
     say("| 항목 | 값 |")
     say("|---|---|")
-    say("| 사전등록 | `PREREG_RANKING.md`(818줄 · 동결 `8e97577`) · 🆕 `PREREG_POST8.md`(동결 `729f28b` · 첫 구속 회차) |")
+    say("| 사전등록 | `PREREG_RANKING.md`(818줄 · 동결 `8e97577`) · 🆕 `PREREG_POST8.md`(동결 `04cd785` · 머지 `729f28b` · 첫 구속 회차) |")
     say("| 동결 | `FREEZE_RANKING_2026-08-31.md` — 🔒 선택 규칙 **`%s`** · 계수 없음 |" % sel)
     say("| 인테이크 | `INTAKE_2026-09-18_post8.md` · 결정 `PREDECISION_2026-09-18_post8.md` · 라벨 "
         "`LABELS_2026-09-18_post8.md` · 원장 `b302f7f` |")
@@ -3398,6 +3398,10 @@ def post8_main(a):  # noqa: C901, PLR0912, PLR0915
     for nm, n, v, note_ in br:
         ok_n = n >= 3
         ans = "— (측정 불가)" if v is None else ("🟢" if v else "⛔")
+        if v is None and "갈래 못 만듦" in note_:
+            # 🆕 정정 1차 — 값이 없는 갈래에 n·「충족」을 적으면 «선 갈래»로 읽힌다(포함 분모는 비고 칸의 «구성»일 뿐)
+            say("| %s | **—** | — | **%s** | %s |" % (nm, ans, note_))
+            continue
         say("| %s | **%d** | %s | **%s** | %s |" % (nm, n, "충족" if ok_n else "🔴 미달", ans, note_))
         if ok_n and v is not None and "인쇄만" not in note_:
             counted.append(v)

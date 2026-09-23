@@ -7,7 +7,7 @@ post7 판에는 `test_post7_wrc.py` 가 «없었다»(post6 판 `test_post6_wrc.
      누적 = post6 5(인테이크 post6 예측과 같은 이름) + post7 0 + post8 0.
   3. **`PREREG_POST8.md` 의무 줄** — `D-4` 세 수 «같은 행» · `D-3` 신고 줄 · `D-5` 갈래표 · `D-8` 수준 목록 ·
      `D-9` ①~⑤ · 라이브 채택 금지 · 등급 이름 0.
-  4. **post7 이하 회귀** — `run_wrc_post7.py`·`run_wrc_post6.py`·`run_wrc_explore.py` 와 그 산출물이 `HEAD` 블롭과
+  4. **post7 이하 회귀** — `run_wrc_post7.py`·`run_wrc_post6.py`·`run_wrc_explore.py` 와 그 산출물이 `154b80c`(post8 이전) 블롭과
      **내용 동일**(이 회차가 한 글자도 안 바꿨다).
 
 🔴 DB 접속·라이브 import 0건. `python -m pytest test_post8_wrc.py -q -p no:cacheprovider` 로 돈다.
@@ -27,6 +27,7 @@ import run_wrc_post8 as P8
 BASE = Path(__file__).resolve().parent
 INTAKE = "INTAKE_2026-09-18_post8.md"
 NUMBERS = BASE / "RESULTS_WRC_POST8_NUMBERS.md"
+BASE_REF = "154b80c"   # 🔴 정정 1차(C-1) — post8 산출 «이전» 마지막 커밋(HEAD 는 post8 WIP 뒤라 검사력 0)
 CODE_RE = re.compile(r"[0-9][0-9A-Z]{5}")
 
 
@@ -51,7 +52,7 @@ def _intake_table() -> dict:
 
 
 def _head_blob(rel: str) -> bytes:
-    r = subprocess.run(["git", "show", f"HEAD:./{rel}"], cwd=str(BASE), capture_output=True)
+    r = subprocess.run(["git", "show", f"{BASE_REF}:./{rel}"], cwd=str(BASE), capture_output=True)
     assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
     return r.stdout
 
@@ -175,4 +176,7 @@ def test_post7_and_earlier_untouched_vs_head():
                 "RESULTS_WRC_POST7_NUMBERS.md", "RESULTS_WRC_POST6_NUMBERS.md", "RESULTS_WRC_EXPLORE.md",
                 "RESULTS_WRC_POST7.md", "PREREG_WEIGHTED_RECON.md", "FREEZE_WRC_2026-09-02.md"):
         wt = (BASE / rel).read_bytes().replace(b"\r\n", b"\n")
-        assert wt == _head_blob(rel).replace(b"\r\n", b"\n"), f"{rel} 가 HEAD 와 다르다"
+        assert wt == _head_blob(rel).replace(b"\r\n", b"\n"), f"{rel} 가 {BASE_REF} 와 다르다"
+    # 🔴 대칭 — 기준 ref 에 post8 판은 «없다»(ref 가 post8 이전임을 확인 · 검사력)
+    r = subprocess.run(["git", "cat-file", "-e", f"{BASE_REF}:./run_wrc_post8.py"], cwd=str(BASE), capture_output=True)
+    assert r.returncode != 0

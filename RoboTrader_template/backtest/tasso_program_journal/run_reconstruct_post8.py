@@ -54,8 +54,10 @@
   - 누적 계열(post4~7)을 **같은 스냅샷에서 재계산**해 나란히 인쇄한다(동결 인쇄값은 대조 열로만 · 판정은 그대로).
   - 🔴 **D-9 ① ↔ byte 결정론**: 벽시계는 재실행마다 바뀐다(post7 규약 = 벽시계는 stdout 전용 ·
     `RESULTS_SECTOR_POST7_NUMBERS.md:426`). ⇒ **「이 DB 지문을 처음 읽은 실행의 KST 시각」**을
-    `reconstruct_post8/query_stamp.json` 에 박고 같은 지문의 재실행은 그 값을 다시 인쇄한다(재실행 벽시계는 stdout +
-    그 파일 `runs_kst`). 지문이 바뀌면 새 시각이 찍힌다 ⇒ 산출물도 바뀐다(= 스냅샷 이동 감지).
+    `reconstruct_post8/query_stamp.json` 에 박고 같은 지문의 재실행은 그 값을 다시 인쇄한다(재실행 벽시계는 **stdout 전용**
+    · 🔴 지문이 같으면 stamp 파일을 **다시 쓰지 않는다** — 정정 1차(2026-09-24): 초판은 매 실행 `runs_kst` 에 벽시계를
+    덧붙여 파일을 다시 써서 `--rerun` 이 구조적으로 FAIL 했다 · RNK·WRC·SEC `read_stamp.json` 관용으로 맞췄다).
+    지문이 바뀌면 새 시각이 찍힌다 ⇒ 산출물도 바뀐다(= 스냅샷 이동 감지).
 
 🔴 **라이브 채택 금지**(`PREREG.md` §0 2번 · `PREREG_POST8.md` §0-1) · 라이브 트리 import 0건 · DB 는 SELECT 만 ·
    `adj_factor` 산술 0건 · **새 예측 없음**(이 스크립트는 동결된 항목만 계산한다) · 등급 이름을 쓰지 않는다(§6 단계).
@@ -151,7 +153,10 @@ FROZEN = {
     "post4": dict(y3="1/6", y4n=None, z1=None, z3="0/6",
                   src="Y3 `RESULTS_RECONSTRUCT_POST4_EXACT_NUMBERS.md` §2(정확법) · "
                       "Z3 `PREREG_ANCHOR_REDESIGN.md:68`·`RESULTS_RECONSTRUCT_POST6.md:166`(계열 인용 — "
-                      "post4 산출물(`RESULTS_RECONSTRUCT_POST4*.md`)에 `REC-Z3` 표는 없다: grep 실측)"),
+                      "post4 산출물(`RESULTS_RECONSTRUCT_POST4*.md`)에 `REC-Z3` 표는 없다: grep 실측) · "
+                      "🔴 Z3 「0/6」은 **이미 판정된 사안** — `INTAKE_2026-09-15_post7.md:135` B 3패스 **F1**: "
+                      "*「`#44 REC-Z3` 의 「post4 0/6」이 출처 없음 — `REC-Z3` 는 post5 신설이고 post4 산출물에 "
+                      "`Z3` 0건 · 실측 4/6 이라 **틀렸다** ⇒ post4 항 삭제」*"),
     "post5": dict(y3="4/6", y4n="4/6", z1="2/6", z3="3/6",
                   src="Y3 `RESULTS_RECONSTRUCT_POST5_NUMBERS.md:72` · Y4 `:90` · "
                       "Z1 `PREREG_POST6.md:562` · Z3 `PREREG_POST6.md:568`"),
@@ -244,12 +249,14 @@ def md5_file(p: Path):
 
 
 def stamp_resolve(st, fp, wall):
-    """D-9 ① — 같은 DB 지문이면 «처음 읽은 시각»을 유지하고 이번 벽시계만 `runs_kst` 에 덧붙인다.
-    지문이 다르면(스냅샷 이동) 새 시각으로 다시 시작한다. 반환 = (새 stamp dict, 인쇄할 시각)."""
-    if not st or st.get("fingerprint") != fp:
-        st = dict(fingerprint=fp, first_query_kst=str(wall), runs_kst=[])
-    st = dict(st, runs_kst=list(st.get("runs_kst", [])) + [str(wall)])
-    return st, st["first_query_kst"]
+    """D-9 ① — 같은 DB 지문이면 «처음 읽은 시각»을 유지하고 파일을 **다시 쓰지 않는다**(changed=False).
+    지문이 다르면(스냅샷 이동) 새 시각으로 다시 시작한다(changed=True). 이번 실행 벽시계는 stdout 전용이다
+    (정정 1차 · 초판의 `runs_kst` 누적은 `--rerun` 을 구조적으로 FAIL 시켰다 — RNK `p8_read_stamp()` 관용).
+    반환 = (stamp dict, 인쇄할 시각, 파일을 써야 하나)."""
+    if st and st.get("fingerprint") == fp and st.get("first_query_kst"):
+        return st, st["first_query_kst"], False
+    st = dict(fingerprint=fp, first_query_kst=str(wall))
+    return st, st["first_query_kst"], True
 
 
 def d3_hit(min_n, n_exact, n_incl):
@@ -406,6 +413,37 @@ def a_r1(Rs):
     return fo, f"관측만 — `first_only` {fo} · `full` 누적 1(케이엔알) < 2", False, "관측만"
 
 
+# 🔴 정정 1차(R-1) — `approx` 포함 갈래의 답은 «판정어 없이» 원시 조건으로 적는다(`PREREG_POST8.md:248` (나)2 ·
+#    초판은 「불성립 49/49」·「발동 49/49」·「무효 49/49」처럼 판정어를 붙여 §15 「판정 언어 없이」와 자기모순이었다).
+#    식은 위 판정 함수와 같다 — 문턱 비교의 «방향»만 적고 판정 이름을 붙이지 않는다.
+def raw_key(lab, S, n, ans, cat):
+    if lab == "`REC-Y1`":
+        items = [nm for nm, v in S.items() if len(v["legs"]) >= 4]
+        undef = sum(1 for nm in items if not S[nm]["iv"])
+        ok = sum(1 for nm in items if S[nm]["iv"] and S[nm]["w"] < 3.0)
+        if len(items) < 3:
+            return f"레그≥4 대상 {len(items)} < 3"
+        return f"레그≥4 {len(items)}건: 폭 < 3%p {ok}, 해 0개 {undef}"
+    if lab == "`REC-Y3`":
+        e = sum(1 for v in S.values() if not v["iv"])
+        return f"해 0개 비율 {'≥' if S and e / len(S) >= 1 / 3 else '<'} 1/3"
+    if lab == "`REC-Z1`":
+        k = sum(1 for v in S.values() if v["under"])
+        return f"격자 미달 비율 {'≥' if S and k / len(S) >= 1 / 3 else '<'} 1/3"
+    if lab == "`REC-Z3`":
+        k = sum(1 for v in S.values() if v["h0"] < v["HI"])
+        return f"`H` < 창최고 비율 {'≥' if S and k / len(S) >= 0.5 else '<'} 1/2"
+    if lab == "`HDR-D1`":
+        if cat == "무효":
+            return "`H` < 창최고 비율 ≥ 1/2(#52 대칭 쌍 조건)"
+        if cat == "판정 불가":
+            return f"HDR60 분모 {n} < 3"
+        return "중점 중앙 " + ans.split("중점 중앙 ")[-1].rstrip(")") + " vs [0.50, 0.70]"
+    if lab.startswith("`Q1-R3`") and cat == "판정 불가":
+        return f"`first_only` n {n} < 3"
+    return cat
+
+
 def main() -> int:  # noqa: C901
     conn = psycopg2.connect(**DSN)
     cur = conn.cursor()
@@ -444,11 +482,12 @@ def main() -> int:  # noqa: C901
         st = json.loads(STAMP.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         st = None
-    st, _first = stamp_resolve(st, fp, wall)
-    STAMP.parent.mkdir(exist_ok=True)
-    STAMP.write_text(json.dumps(st, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    st, _first, st_changed = stamp_resolve(st, fp, wall)
+    if st_changed:
+        STAMP.parent.mkdir(exist_ok=True)
+        STAMP.write_text(json.dumps(st, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     note(f"[stdout 전용] 이번 실행 벽시계(DB now()) = {wall} · 지문 최초 읽기 = {st['first_query_kst']} · "
-         f"같은 지문 실행 {len(st['runs_kst'])}회")
+         f"stamp {'새로 씀(지문 변경)' if st_changed else '다시 쓰지 않음(지문 동일)'}")
     umin_ok = str(g_umin) >= SWEEP_D1
 
     exact = [t for t in TARGETS if t[PREC] == "exact"]
@@ -466,8 +505,8 @@ def main() -> int:  # noqa: C901
         "(`WRC-D7` 표기 의무 · §7-B #13) |")
     say(f"| D-9 ① 쿼리 실행 시각(KST) | **{st['first_query_kst']}** — 🔴 이 DB 지문(②·④·`max(date)`·행수)을 이 스크립트가 "
         "«처음» 읽은 실행의 DB `now()` · 같은 지문의 재실행은 같은 값을 인쇄한다(byte 결정론 — post7 규약 "
-        "「벽시계는 stdout 전용」 `RESULTS_SECTOR_POST7_NUMBERS.md:426` 과의 절충 · 재실행마다의 실제 시각 = stdout + "
-        "`reconstruct_post8/query_stamp.json` `runs_kst`) |")
+        "「벽시계는 stdout 전용」 `RESULTS_SECTOR_POST7_NUMBERS.md:426` 과의 절충 · 재실행마다의 실제 시각 = **stdout 전용** · "
+        "`reconstruct_post8/query_stamp.json` 은 지문이 같으면 다시 쓰지 않는다) |")
     say(f"| D-9 ② 창 구간 `max(daily_prices.updated_at)` | **{g_umax}** (창 구간 `{WIN_START}` ~ `{END}` · 전 종목 "
         f"{g_n:,}행 · 거래일 {g_dates}) — 종목별 창의 값은 §0-b |")
     say(f"| D-9 ③ | **09-18 봉은 D+1(09-21) sweep 이후 읽음** — 09-21 행 {d1_rows:,} 존재 · ④ 기록 |")
@@ -1174,6 +1213,7 @@ def main() -> int:  # noqa: C901
     NO_VERDICT = {"`REC-Y4`", "`REC-Z4`"}
     # approx 포함 갈래 — 두 approx 건의 7×7 = 49 조합(D-3 우선 · 계수 밖 · 인쇄만)
     combos = list(itertools.product(AX["헥토파이낸셜"], AX["코데즈컴바인"]))
+    approx_side = []   # (항목, 주 갈래와 같은 쪽 조합 수, 조합 수) — §15 `D-3` (나)4 검사용
     say("| 항목 | 최소 n(동결문) | 갈래 | n | 답 | 최소 n 충족? |")
     say("|---|---|---|---|---|---|")
     summary = []
@@ -1184,14 +1224,21 @@ def main() -> int:  # noqa: C901
             res.append((bname, n, ans, meets, cat))
             say(f"| {lab} | {mn} | {bname} | {n} | {ans} | "
                 f"{'— (대상 밖)' if meets is None else ('✅' if meets else '❌ 미달')} |")
-        cats, ns = {}, []
+        raws, ns, same = {}, [], 0
         for (dh, vh), (dk, vk) in combos:
-            n, ans, meets, cat = fn(with_ax(R, vh, vk))
-            cats[cat] = cats.get(cat, 0) + 1
+            S_ = with_ax(R, vh, vk)
+            n, ans, meets, cat = fn(S_)
+            rk = raw_key(lab, S_, n, ans, cat)
+            raws[rk] = raws.get(rk, 0) + 1
             ns.append(n)
-        cat_s = " · ".join(f"{k} {c}/{len(combos)}" for k, c in sorted(cats.items()))
-        say(f"| {lab} | {mn} | _`approx` 포함(헥토·코데즈 7×7 조합 · `D-3` 우선)_ | _{min(ns)}~{max(ns)}_ | "
-            f"_{cat_s}_ | _— (`D-3`: `approx` 로 최소 n 을 채우지 않는다 · 계수 밖)_ |")
+            same += int(cat == res[0][4])
+        raw_s = " · ".join(f"「{k}」 {c}/{len(combos)}" for k, c in sorted(raws.items()))
+        approx_side.append((lab, same, len(combos)))
+        side = ("판정 없는 항목 · 값만" if lab in NO_VERDICT
+                else f"주 갈래와 같은 쪽 {same}/{len(combos)}")
+        say(f"| {lab} | {mn} | _`approx` 포함(헥토·코데즈 7×7 조합 · 민감도)_ | _{min(ns)}~{max(ns)}_ | "
+            f"_{raw_s} · {side}(판정 언어 없음)_ | "
+            f"_— (계수 밖 · `D-3` (나)2 · (나)4 검사는 §15)_ |")
         summary.append((lab, mn, res))
     say()
     say("**계수 결과**(`approx` 갈래 제외 · 항등 갈래는 주와 같은 답으로 센다)\n")
@@ -1215,7 +1262,8 @@ def main() -> int:  # noqa: C901
         "등급은 §6 단계에서 그 축 문언대로(PD-16 · 여기서 이름을 고르지 않는다).")
     say(f"- 🔴 **§1-5 「재진입 의존」(주 ↔ 「우리로 제외」 판정이 갈림 · `WRC-R5` 유추) 항목: {len(re_items)}개** "
         f"({', '.join(re_items) if re_items else '없음'}) — 🔴 `P8-갈래계수`(동결 최소 n 이 있는 항목의 계수)와 "
-        "**다른 문형**이다: 최소 n 이 «없는» 항목(`REC-Y3`)도 여기에 걸린다(모호 · §18 3번).")
+        "**다른 문형**이다: 최소 n 이 «없는» 항목(`REC-Y3`)도 여기에 걸린다(근거 = §1-5 2 `PREREG_POST6.md:283-284` · "
+        "`WRC-R5` `PREREG_WEIGHTED_RECON.md:435` · 결정 #1-(i) `INTAKE_2026-09-18_post8.md:152` · §18 3번).")
     say(f"- 🔴 **§1-5 재진입(등록 자체가 두 번째 사이클) 제외 갈래 = {'항등' if not reent_ex else '제외 있음'}**"
         f"(exact 안 §1-5 재진입 {len(reent_ex)}건 — 원익은 `none` · 헥토·코데즈는 `approx`) · "
         f"**절단 제외 갈래 = {'항등' if not trunc else '제외 있음'}**(`[D−19,D]` 20/20 · 창5 5봉 — PD-12) — **항등을 명시 인쇄**한다.")
@@ -1251,7 +1299,19 @@ def main() -> int:  # noqa: C901
         "** ⇒ " + ("그 항목은 `approx` 로만 열리므로 **열지 않는다**(`:250`)." if hit_axes else
                    "신고 대상 없음 — 구성 예고(PD-21 「없음」)와 같다.") +
         " `REC-Y4`·`REC-Y3`·`REC-Z4`·`P6-R1'` 는 동결 최소 n 이 없거나(—) `full` 축이라 표 밖.")
-    say("- 🔴 `approx` 포함 값은 **판정 언어 없이** 민감도로만 인쇄했다(§1-b · §14 기울임 행).")
+    mn_labs = {r[0] for r in rows_d3}
+    split4 = [lab for lab, sm, tot in approx_side if lab in mn_labs and sm < tot]
+    other4 = [lab for lab, sm, tot in approx_side
+              if lab not in mn_labs and lab not in NO_VERDICT and sm < tot]
+    say("- 🔴 **`D-3` (나)4 검사**(`PREREG_POST8.md:250` · *「`exact` 갈래와 `approx` 포함 갈래가 둘 다 최소 n 을 채우고 "
+        "답이 갈리면 ⇒ ⛔ 판정 불가」*): 동결 최소 n 이 있는 항목 " + f"{len(mn_labs)}개 중 `approx` 포함 조합이 "
+        "주 갈래와 «다른 쪽»인 항목 **" + (", ".join(split4) if split4 else "0개") + "** ⇒ "
+        + ("그 항목은 ⛔ 판정 불가(등록일 정밀도 의존)." if split4 else "판정 이동 0.")
+        + (" 참고(동결 최소 n 없음 · 계수 밖): " + ", ".join(other4)
+           + " — `REC-Y3` 은 주 갈래가 이미 「재진입 의존」 ⇒ 판정 불가(§5)라 이 차이가 판정을 옮기지 않는다."
+           if other4 else ""))
+    say("- 🔴 `approx` 포함 값은 **판정 언어 없이** 민감도로만 인쇄했다(§1-b · §14 기울임 행 — 원시 조건 · "
+        "「주 갈래와 같은 쪽」 조합 수).")
 
     # ── §16. 봉수 정합 · 절단 가드 ───────────────────────────────────────
     say()
@@ -1347,12 +1407,16 @@ def main() -> int:  # noqa: C901
     say("2. 🔴 **`D-9` ① ↔ byte 결정론**(§1-8 형식) — `PREREG_POST8.md:544` 「쿼리 실행 시각」 인쇄 의무 ↔ "
         "`RESULTS_SECTOR_POST7_NUMBERS.md:426`·`regen_gate.py --rerun` byte-diff(벽시계를 산출물에 적으면 자기 자신을 "
         "재현할 수 없다). **읽기**: 「이 DB 지문을 처음 읽은 실행의 시각」을 인쇄하고 지문이 같은 재실행은 그 값을 "
-        "다시 쓴다(`reconstruct_post8/query_stamp.json`). **대안**: 벽시계 그대로(재실행 byte 불일치) · stdout 전용"
+        "다시 쓴다(`reconstruct_post8/query_stamp.json` · 지문이 같으면 파일도 다시 쓰지 않는다 · 재실행 벽시계 = stdout 전용). "
+        "**대안**: 벽시계 그대로(재실행 byte 불일치) · stdout 전용"
         "(D-9 무효). 🔴 **`D-9` ②(`max(updated_at)`)도 다음 sweep 뒤 재실행에서는 반드시 바뀐다** — 그건 이 절충과 무관한 "
         "동결 규칙의 귀결이다(관리자 `--rerun` 단계에서 볼 자리).")
     say("3. 🔴 **우리로의 「우리로 제외」 갈래의 판정 효과** — `REC-` 는 A-9(flag 만) + `WRC-R5` 유추(PD-3 ③ (i) · 🔒 #1). "
         "`WRC-R5` 는 「판정을 가르면 ⛔ `WRC-V1`」인데 `REC-` 에는 그 이름이 없다 ⇒ **§1-5 2 「재진입 의존」 문형**으로 "
-        "적고(§14 끝 열) · `P8-갈래계수`(`:340`)를 같은 표에 둔다. 두 문형이 다른 답을 주는 자리는 §14 표가 보인다.")
+        "적고(§14 끝 열) · `P8-갈래계수`(`:340`)를 같은 표에 둔다. 두 문형이 다른 답을 주는 자리는 §14 표가 보인다. "
+        "🔴 이 문형은 재량이 아니다 — §1-5 2(`PREREG_POST6.md:283-284` *「두 값이 판정을 가르면 ⇒ 「재진입 의존」으로 적고 "
+        "어느 쪽도 지지로 선언하지 않는다」*) · `WRC-R5`(`PREREG_WEIGHTED_RECON.md:435` *「이 건이 판정을 가르면 ⇒ ⛔」*) · "
+        "결정 #1-(i)(`INTAKE_2026-09-18_post8.md:152` · `REC-` = `WRC-R5` 유추로 같은 처리) ⇒ `REC-Y3` = **판정 불가(재진입 의존)**.")
     say("4. 🔴 **우리로 「17%」 소수 0자리**(PD-10 1) — 17.00 으로 **보정하지 않은 게 아니라 원장이 정규화했다**(`b302f7f` · "
         "`verify_ledger_post8` 선언). 잔차·해 존재 해석에 **±0.5%p 한계**를 §2 에 박았다 · 값 규칙 불변.")
     say("5. 🔴 **`REC-Y3` 의 분모 정의**가 post7 부터 「신규 ∧ `exact`」 — post4~6 계열과 **이어 붙일 때** 같이 읽는다(§17).")

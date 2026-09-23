@@ -15,19 +15,24 @@
   P4 `REC-Y1` 열림(exact 레그≥4 = 3) · 「우리로 제외」 2 < 3 · `approx` 포함 5 · N1 대칭(우리로를 빼면 닫힌다)
   P5 판정 함수(`a_y1`·`a_y3`·`a_z1`·`a_z3`) 문턱 경계 — 양성·음성
   P6 `D-3` 기계 검사(`d3_hit`) · `P8-갈래계수`(`gc_status`) · 「재진입 의존」(`re_dep_status`) — 양성·음성
-  P7 D-9 ① 도장(`stamp_resolve`) — 같은 지문 = 시각 유지 · 다른 지문 = 새 시각(대칭)
+  P7 D-9 ① 도장(`stamp_resolve`) — 같은 지문 = 시각 유지 ∧ 파일 다시 쓰지 않음 · 다른 지문 = 새 시각(대칭) ·
+     🆕 정정 1차: `runs_kst` 누적 폐지(실행 기록은 stdout 전용) · stamp 파일에 `runs_kst` 가 없다
   P8 🔒 `REC-Z4` 판정 없음 · 결정 ④ 종결 목록 = post7 객체 · 귀무 미실행
   P9 동결 인쇄값(`FROZEN`)이 인용 파일:줄에 실제로 있다 · N2 흔든 사본에서 불일치
   P10 `approx` 창 규약 갈래 · 모순 갈래 · 직전 등록일 · 소수 자릿수 한계
   P11 소스 필수 문구 · import 허용 목록 · SELECT 뿐 · `adj_factor` 산술 0 · 쓰기 2곳 · 통계 핵 = post5·post6 «같은 객체»
-  P12 산출물(`RESULTS_RECONSTRUCT_POST8_NUMBERS.md`) 인쇄 의무 — D-9 ①~⑤ · D-3 한 줄 · D-5 세 쪽 · 등급 이름 0
+  P12 산출물(`RESULTS_RECONSTRUCT_POST8_NUMBERS.md`) 인쇄 의무 — D-9 ①~⑤ · D-3 한 줄 · D-5 세 쪽 · 등급 이름 0 ·
+      🆕 정정 1차(R-1): `approx` 포함 행에 판정어(성립·불성립·발동·무효·기각·지지·판정 불가) 0 · (나)4 검사 줄
   R1 post7 회귀 — `test_post7_reconstruct.py`(스크립트형)가 «그대로» 통과 · post4~7 스크립트·산출물 작업트리 무변경
+     (🔴 정정 1차 C-1: 기준 ref = **`154b80c`**(post8 산출 «이전» 마지막 커밋) — `HEAD` 는 post8 WIP 커밋 뒤라
+      작업트리를 자기 자신과 비교하는 검사력 0 시험이 된다)
 
 🔴 어떤 원본 파일도 고치지 않는다. 보존값·인용값은 **메모리 사본**에서만 흔든다.
 """
 from __future__ import annotations
 
 import csv
+import json
 import re
 import subprocess
 import sys
@@ -43,6 +48,7 @@ import run_reconstruct_post8 as P8
 BASE = Path(__file__).resolve().parent
 SRC = (BASE / "run_reconstruct_post8.py").read_text(encoding="utf-8")
 NUMBERS = BASE / "RESULTS_RECONSTRUCT_POST8_NUMBERS.md"
+BASE_REF = "154b80c"   # 🔴 정정 1차 C-1 — post8 산출 «이전» 마지막 커밋(HEAD 는 post8 WIP 뒤라 검사력 0)
 NM, CODE, D0, PREC, LEGS, TR, PRESET, LABEL, FO, REENT = range(10)
 
 # INTAKE_2026-09-18_post8.md §1 (신규 7건) · PD-11 코드 · LABELS 라벨 — 테스트 쪽 독립 사본
@@ -173,12 +179,15 @@ def test_P6_d3_gc_redep_guards():
 # ── P7 ────────────────────────────────────────────────────────────────────
 def test_P7_stamp_resolve_symmetric():
     fp = dict(umax="2026-09-23 15:46:25.855518", snap="2026-09-23")
-    st1, t1 = P8.stamp_resolve(None, fp, "T1")
-    st2, t2 = P8.stamp_resolve(st1, dict(fp), "T2")
-    assert t1 == t2 == "T1" and st2["runs_kst"] == ["T1", "T2"]    # 같은 지문 ⇒ 최초 시각 유지
-    assert st1["runs_kst"] == ["T1"]                               # 입력 사본을 바꾸지 않는다
-    st3, t3 = P8.stamp_resolve(st2, dict(fp, umax="2026-09-28 15:46:00"), "T3")
-    assert t3 == "T3" and st3["runs_kst"] == ["T3"]                # 🔴 대칭 — 지문이 움직이면 새 시각
+    st1, t1, w1 = P8.stamp_resolve(None, fp, "T1")
+    assert t1 == "T1" and w1 is True                                # 처음 ⇒ 새로 쓴다
+    st2, t2, w2 = P8.stamp_resolve(st1, dict(fp), "T2")
+    assert t2 == "T1" and w2 is False and st2 == st1                 # 같은 지문 ⇒ 최초 시각 유지 · 다시 쓰지 않는다
+    assert "runs_kst" not in st1 and "runs_kst" not in st2          # 🆕 실행 기록은 stdout 전용(누적 폐지)
+    st3, t3, w3 = P8.stamp_resolve(st2, dict(fp, umax="2026-09-28 15:46:00"), "T3")
+    assert t3 == "T3" and w3 is True                                # 🔴 대칭 — 지문이 움직이면 새 시각 · 다시 쓴다
+    disk = json.loads(P8.STAMP.read_text(encoding="utf-8"))
+    assert set(disk) == {"fingerprint", "first_query_kst"}          # 🆕 stamp 파일 = 최초 시각 1개
 
 
 # ── P8 ────────────────────────────────────────────────────────────────────
@@ -303,6 +312,19 @@ def test_P12_output_print_obligations(numbers):
     assert "「정규장만」 갈래는 열지 않는다" in t and "`adj_factor` 산술 **0**" in t
 
 
+def test_P12c_approx_rows_carry_no_verdict_words(numbers):
+    """🆕 정정 1차 R-1 — `approx` 포함 값에 판정 언어 금지(`PREREG_POST8.md:248` (나)2) · 대칭: 주 행에는 판정어가 있다."""
+    rows = [ln for ln in numbers.splitlines() if ln.startswith("| ") and "_`approx` 포함(헥토·코데즈 7×7 조합" in ln]
+    assert len(rows) == 12
+    bad = re.compile(r"성립|발동|무효|기각|지지|판정 불가")
+    assert not [ln for ln in rows if bad.search(ln)], [ln for ln in rows if bad.search(ln)]
+    main = [ln for ln in numbers.splitlines() if ln.startswith("| `REC-Z3` ") and "주(우리로 포함" in ln]
+    assert main and bad.search(main[0])                              # 🔴 대칭 — 검사가 판정어를 실제로 잡는다
+    assert sum("주 갈래와 같은 쪽 " in ln for ln in rows) == 10     # 판정 없는 `REC-Y4`·`REC-Z4` 는 「값만」
+    assert "**`D-3` (나)4 검사**(`PREREG_POST8.md:250`" in numbers
+    assert "판정 언어 없이" in numbers                                # 자기모순 해소: 선언과 행이 같은 말을 한다
+
+
 def test_P12b_output_denominators_and_branches(numbers):
     t = numbers
     assert "레그>=4 **`exact` 대상 3건**" in t and "「우리로 제외」 갈래: 대상 **2건**" in t
@@ -327,5 +349,9 @@ def test_R2_prior_scripts_and_outputs_untouched():
              "RESULTS_RECONSTRUCT_POST4_NUMBERS.md", "RESULTS_RECONSTRUCT_POST4_EXACT_NUMBERS.md",
              "RESULTS_RECONSTRUCT_POST5_NUMBERS.md", "RESULTS_RECONSTRUCT_POST6_NUMBERS.md",
              "RESULTS_RECONSTRUCT_POST7_NUMBERS.md", "RESULTS_RECONSTRUCT_POST7.md", "test_post7_reconstruct.py"]
-    r = subprocess.run(["git", "diff", "--quiet", "HEAD", "--"] + paths, cwd=str(BASE))
-    assert r.returncode == 0                                   # 작업트리 = HEAD(한 byte 도 안 고쳤다)
+    r = subprocess.run(["git", "diff", "--quiet", BASE_REF, "--"] + paths, cwd=str(BASE))
+    assert r.returncode == 0                                   # 작업트리 = 154b80c(한 byte 도 안 고쳤다)
+    # 🔴 대칭 — 같은 비교가 post8 파일에선 «다르다»를 낸다(154b80c 엔 이 스크립트가 없다 ⇒ 검사력 확인)
+    r2 = subprocess.run(["git", "cat-file", "-e", f"{BASE_REF}:./run_reconstruct_post8.py"], cwd=str(BASE),
+                        capture_output=True)
+    assert r2.returncode != 0

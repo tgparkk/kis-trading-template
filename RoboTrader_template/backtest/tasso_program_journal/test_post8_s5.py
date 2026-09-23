@@ -22,6 +22,7 @@ import run_s5_post8 as S8
 
 BASE = Path(__file__).resolve().parent
 NUMBERS = BASE / "RESULTS_S5_POST8_NUMBERS.md"
+BASE_REF = "154b80c"   # 🔴 정정 1차(A-8·C-1) — post8 산출 «이전» 마지막 커밋(HEAD 는 post8 WIP 뒤 · 검사력 0)
 
 
 def md5(p):
@@ -29,7 +30,7 @@ def md5(p):
 
 
 def git_clean(rel):
-    r = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", rel], cwd=str(BASE),
+    r = subprocess.run(["git", "diff", "--quiet", BASE_REF, "--", rel], cwd=str(BASE),
                        capture_output=True)
     return r.returncode == 0
 
@@ -188,7 +189,9 @@ def test_p4_pit_cutoff_context_restores_even_on_error():
 def test_p4_post7_files_untouched():
     for f in ("run_s5_post7.py", "RESULTS_S5_POST7_NUMBERS.md", "RESULTS_S5_POST7.md",
               "test_post7_s5.py", "PREREG_S5_FUND_NEWS_OOS.md", "FREEZE_S5_2026-09-16.md"):
-        assert git_clean(f), f"{f} 가 HEAD 와 다르다"
+        assert git_clean(f), f"{f} 가 {BASE_REF} 와 다르다"
+    # 🔴 대칭 — 같은 비교가 post8 스크립트에선 «다르다»(154b80c 에 없다 ⇒ 검사력 확인)
+    assert not git_clean("run_s5_post8.py")
 
 
 def test_p4_frozen_prereg_md5_equals_freeze_table():
@@ -216,6 +219,15 @@ def test_p5_numbers_structure():
     fin = [ln for ln in L if ln.startswith("- ⇒ **최종: ")]
     assert len(fin) == 1
     assert any(lab in fin[0] for lab in S8.LABELS + (S8.AMBIG,))
+    # 🆕 정정 1차(verifier A B1) — `D-3` (나)4 가 판정에 배선됐다(`PREREG_POST8.md:250`)
+    assert "⛔ 판정 불가 — 등록일 정밀도 의존(D-3 (나)4 `PREREG_POST8.md:250`) · 기록: exact (S5-이탈)" in fin[0]
+    n4 = [ln for ln in L if re.match(r"^\| \((가|나|다|라)\) ", ln) and ("반대쪽 조합" in ln or "| 같은 쪽 |" in ln)]
+    assert len(n4) == 4 and all("🔴 **갈린다**" in ln for ln in n4), "셈법 네 개 전부 (나)4 검사 줄"
+    assert [re.search(r"\| (\d+)/49 \|", ln).group(1) for ln in n4] == ["16", "16", "3", "3"]
+    apx = [ln for ln in L if ln.startswith("| `approx` 포함(민감도 판 · 49조합)")]
+    assert len(apx) == 1 and "(판정 언어 없음" in apx[0] and not any(lab in apx[0] for lab in S8.LABELS)
+    assert "S5-P8-" not in body, "A-6 — `P8-<숫자>` 이름공간과 겹치는 옛 ID 가 남지 않는다"
+    assert "자기보고" in body and "46/93 = 49.5%" in body
     assert "주 표본 n = 4" in body and "민감도 판 n = 6" in body
     assert "판정 불가·모호" in body, "모호 규칙 문장이 인쇄된다"
     # 네 셈법이 전부 인쇄된다

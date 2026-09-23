@@ -738,7 +738,9 @@ def main():  # noqa: C901
     say("## §7-1. 민감도 — `approx` 2건의 **갈래별** 값 (PD-4 2번 · `PREREG_POST6.md` §1-4 창 규약)\n")
     say("「8월말」 = `2026-08-21 ~ 2026-08-31` 의 **모든 거래일**을 갈래로 만들어 값을 전부 인쇄한다. **주 판정에는 넣지 않는다** "
         "(`RNK-D5`·`PREREG_S5_FUND_NEWS_OOS.md` §1-1·`PREREG_ANCHOR_REDESIGN.md` §2-3 · 판정 언어 금지).\n")
+    apx_dd5 = {}   # 🆕 정정 1차(A-B2) — 갈래별 DD5 를 §7-3 `approx` 포함 풀 검정에 넘긴다(값은 이 표와 같은 식)
     for nm, code, N, label, lo, hi, n_expect, prev_reg in APPROX_BRANCHES:
+        apx_dd5[nm] = []
         cur.execute("SELECT DISTINCT date FROM daily_prices WHERE date BETWEEN %s AND %s ORDER BY date", (lo, hi))
         days = [str(r[0]) for r in cur.fetchall()]
         say(f"### {nm} ({code}) · N = {N} · 저자 표기 {label} = `{lo}` ~ `{hi}` · 🔂 재진입(직전 등록 {prev_reg})\n")
@@ -760,6 +762,7 @@ def main():  # noqa: C901
             dda = 100 * (1 - min(b[2] for b in bars) / H)
             tr = 1 if len(w5) < TRUNC5_MIN_BARS else 0
             n_tr += tr
+            apx_dd5[nm].append((d0, dd5))
             note = ("🔴 **모순 갈래**(직전 등록 08-28 보다 이르다 · 「한번 더」와 논리 모순 · PD-3 — 좁히지 않고 표시만)"
                     if (nm == "헥토파이낸셜" and d0 < prev_reg) else
                     ("직전 등록일과 같은 날(PD-3)" if d0 == prev_reg else ""))
@@ -806,12 +809,42 @@ def main():  # noqa: C901
         say(f"| {nm_} | {n_items}건 · **{res['comp']}쌍** | **{ans}**(`p` {res['p']:.4f}) | {how} |")
         if how.startswith("계수") and res["comp"] >= PAIR_THRESHOLD:
             counted.append(ans)
-    say(f"| `approx` 갈래(헥토·코데즈 7갈래) | 갈래별 건 값(§7-1) | — (판정 언어 금지 · 풀 검정 안 함) | 🔴 `D-3` 우선 — 계수 대상 아님 |")
+    # 🆕 정정 1차(A-B2) — `approx` 포함 갈래 = 주 풀 + 헥토·코데즈 갈래 1개씩(7×7 조합) · 통계 핵은 동결 함수 그대로
+    #    (`pairset`·`statV`·`permute_null` · 같은 시드 · 같은 표본 수) · `PREREG_POST8.md:342` 「세 쪽 중 하나라도 빠지면 무효」
+    #    · `:250` (나)4 검사 · 가분성 `:94-96` = 인쇄 보충(판정·문턱·분모 불변).
+    apx_nm = [b[0] for b in APPROX_BRANCHES]
+    apx_N = [b[2] for b in APPROX_BRANCHES]
+    apx_res = []
+    for dh, xh in apx_dd5[apx_nm[0]]:
+        for dk, xk in apx_dd5[apx_nm[1]]:
+            ns_ = ns_all + apx_N
+            xs_ = dd5_after + [xh, xk]
+            ps_, _drop = pairset(xs_, DELTA)
+            v_o, c_o = statV(ns_, ps_)
+            vs_, _cs, _z = permute_null(ns_, ps_)
+            apx_res.append(dict(comp=c_o, V=v_o, p=float((vs_ <= v_o).mean())))
+    apx_same = sum(1 for r_ in apx_res if verdict_t1(r_) == verdict_t1(a5))
+    apx_cmin, apx_cmax = min(r_["comp"] for r_ in apx_res), max(r_["comp"] for r_ in apx_res)
+    apx_pmin, apx_pmax = min(r_["p"] for r_ in apx_res), max(r_["p"] for r_ in apx_res)
+    apx_split = apx_same != len(apx_res) and apx_cmin >= PAIR_THRESHOLD
+    say(f"| `approx` 포함(주 {len(rows)}건 + 헥토·코데즈 갈래 1개씩 · 7×7 = {len(apx_res)} 조합) | "
+        f"{len(rows) + len(apx_N)}건 · **{apx_cmin}~{apx_cmax}쌍** | `p` {apx_pmin:.4f}~{apx_pmax:.4f} · "
+        f"주 갈래와 같은 쪽 {apx_same}/{len(apx_res)}(판정 언어 없음 · `PREREG_POST8.md:248` (나)2) | "
+        f"🔴 `D-3` (나)4 검사용 — 두 갈래 모두 최소 n({PAIR_THRESHOLD}) 충족 · "
+        + ("🔴 **갈린다** ⇒ ⛔ 판정 불가(등록일 정밀도 의존)" if apx_split else "**갈리지 않음**") + " |")
     say(f"| (창 민감도) 창3 · 창A | {len(rows)}건 · {a3['comp']}쌍 · {aa['comp']}쌍 | {verdict_t1(a3)}(`p` {a3['p']:.4f}) · "
         f"{verdict_t1(aa)}(`p` {aa['p']:.4f}) | 창 민감도(§4-5 1 의무 · 주 창은 창5 동결) |")
     say()
     say(f"- 최소 n 을 채운 계수 갈래 = **{len(counted)}개** · 답 = {sorted(set(counted))} ⇒ "
         f"**{'갈리지 않는다 — 주 갈래의 답을 그대로 쓴다' if len(set(counted)) <= 1 else '🔴 갈린다 — [갈래 의존]'}**")
+    say(f"- 🔴 **`D-3` (나)4 검사**(`PREREG_POST8.md:250` *「`exact` 갈래와 `approx` 포함 갈래가 둘 다 최소 n 을 채우고 "
+        f"답이 갈리면 ⇒ ⛔ 판정 불가」*): `approx` 포함 {len(apx_res)}조합 · 비교가능 쌍 {apx_cmin}~{apx_cmax}(전 조합 "
+        f"≥ {PAIR_THRESHOLD}) · `p` {apx_pmin:.4f}~{apx_pmax:.4f} ⇒ 주 갈래와 같은 쪽 **{apx_same}/{len(apx_res)}** ⇒ "
+        + ("🔴 **갈린다 ⇒ ⛔ 판정 불가(등록일 정밀도 의존)**" if apx_split
+           else "**갈리지 않는다 — 주 판정 불변**")
+        + " · 🔴 정정 1차 보충(`PREREG_POST8.md:342` 세 쪽 의무 · 가분성 `:94-96` 인쇄 보충) — 초판의 "
+        "「`D-3` 우선 — 계수 대상 아님」은 `approx` 로만 최소 n 이 차는 경우(`:253` · PD-23)의 규칙이라 "
+        "두 갈래가 모두 최소 n 을 채운 이 경우엔 해당하지 않았다.")
 
     # ── §7-4. D-3 ─────────────────────────────────────────────────────
     say()

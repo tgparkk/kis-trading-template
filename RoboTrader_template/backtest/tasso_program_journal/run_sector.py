@@ -4883,17 +4883,21 @@ def main_post8(cur, ctx):                                     # noqa: PLR0912, P
     and_ok = bool(gates_ok and c_n1 and c_b1 and c_b2)
     # 🔴 §3 1행의 ⛔ 열이 `SEC-V1` 을 «판정 불가 조건»으로 열거한다
     #    (`PREREG_SECTOR_COMOVE.md:600`). §7 은 §3 «뒤»에 인쇄되므로 갈림 여부만 앞에서 계산한다.
-    #    🔒 적용 범위(`:819`) = 「같은 판정을 «다른 잣대»로 다시 계산했을 때 갈리는가」뿐이므로
-    #    주 갈래의 AND 가 «거짓»인 사건에는 관여하지 않는다 ⇒ `and_ok` 일 때만 ⛔ 로 간다.
+    #    🔒 적용 범위(`:815-817`) = 「같은 판정을 «다른 잣대»로 다시 계산했을 때 갈리는가」뿐이고 «§3 AND 안 한 항목
+    #    미달» 사건에는 관여하지 않는다. 🆕 정정 1차(S-2): 주 갈래 AND 가 거짓이어도 최소 n 을 채운 다른 잣대에서
+    #    «성립»이 나오면 그건 AND 미달이 아니라 잣대 갈림이다 ⇒ `split ∧ (and_ok ∨ 성립 갈래 존재)` 이면 ⛔.
     V1PRE = v1_axis_verdicts(EV, G1, MAIN, g1_main, NS, MEAS, MAIN_N, MAIN_M,
                              items, ap_items, b2r, full_eval)
     v1_split_pre = bool(V1PRE["split"])                      # post7 방식 — 전 갈래
     NMAP = branch_n_map(EV, items, ap_items)
     v1_split_p8, V1_COUNTED = p8_split(V1PRE["VD"], NMAP)     # 🆕 `P8-갈래계수` — 최소 n 을 채운 갈래만
+    v1_any_ok = any(v is True for v in V1_COUNTED.values())  # 🆕 정정 1차(S-2) — «성립» 갈래 존재
     # 🆕 `SEC-X1` 도 §3 1행 ⛔ 열의 판정 불가 조건이다(`:600`) — post6·post7 모드는 배선하지 않았다.
     x1_ok = x1_ok_pre = bool(_x1_pass(x1, "N1") and _x1_pass(x1, "B1"))
-    p1_blocked_v1 = bool(and_ok and v1_split_p8)
-    p1_blocked_x1 = bool(and_ok and not x1_ok_pre)
+    p1_blocked_v1 = bool(v1_split_p8 and (and_ok or v1_any_ok))
+    # 🆕 정정 1차(S-1) — `SEC-X1` 이탈은 AND 와 «무관하게» 축을 닫는다(`PREREG_SECTOR_COMOVE.md:797-798` ·
+    #    `:895` 「`SEC-P1` 전체 · ⛔ 열리지 않는다」) — 초판 `and_ok ∧ ¬x1_ok` 는 동결보다 좁았다(이번 판정 이동 0).
+    p1_blocked_x1 = bool(not x1_ok_pre)
     p1_blocked = bool(p1_blocked_v1 or p1_blocked_x1)
     p1_ok = bool(and_ok and not v1_split_p8 and x1_ok_pre)
     p1_label = "⛔ 판정 불가" if p1_blocked else ("✅ 성립" if p1_ok else "🔴 불성립")
@@ -4911,21 +4915,30 @@ def main_post8(cur, ctx):                                     # noqa: PLR0912, P
         f"{'🔴 발화' if not c_b2 else '미발화'} | ✅ | `and_ok`(성분) |")
     say(f"| `SEC-V1` 갈림(🆕 `P8-갈래계수`) | 전 갈래 {'갈림' if v1_split_pre else '불갈림'} · 최소 n 갈래 "
         f"{'갈림' if v1_split_p8 else '불갈림'} | {'🔴 발화' if v1_split_p8 else '미발화'}"
-        + ("" if (and_ok or not v1_split_p8) else " — 🔒 **단 주 갈래 AND 가 거짓이라 적용 범위 밖**(`:819` · §3 우선순위표)")
-        + " | ✅ | `p1_blocked_v1 = and_ok ∧ split(P8)` |")
+        + ("" if (p1_blocked_v1 or not v1_split_p8) else
+           " — 🔒 **단 주 갈래 AND 가 거짓이고 «성립» 갈래가 없어 적용 범위 밖**(`:815-817` · §3 우선순위표)")
+        + " | ✅ | `p1_blocked_v1 = split(P8) ∧ (and_ok ∨ 성립 갈래 존재)` |")
     say(f"| `SEC-X1` 절차 무효 | `p<0.05` N1 {_x1_rate(x1, 'N1') * 100:.1f}% · B1 {_x1_rate(x1, 'B1') * 100:.1f}% | "
-        f"{'🔴 발화' if not x1_ok_pre else '미발화'} | ✅ 🆕 | `p1_blocked_x1 = and_ok ∧ ¬x1_ok` |")
+        f"{'🔴 발화' if not x1_ok_pre else '미발화'} | ✅ 🆕 | `p1_blocked_x1 = ¬x1_ok`(AND 와 무관 · `:797-798`·`:895`) |")
     say()
     say("🔴 **post7 교훈 ① 적용** — 가드가 발화했는데 판정에 배선되지 않은 자리가 **없다**(위 6행 전부 ✅). "
         "🔴 **정직 신고**: post6·post7 모드는 `SEC-X1` 을 `SEC-P1` 에 배선하지 **않았다**(두 회차 모두 `SEC-X1` "
         "보정됨 — post6 `z` −1.95/−1.62 · post7 +0.32/+0.97 ⇒ **판정 이동 0**) — 그 모드들은 고치지 않는다(동결 산출물 "
-        "byte 불변). 🔑 `SEC-V1` 은 `and_ok` 가 참일 때만 ⛔ 로 간다(적용 범위 `:819`).")
+        "byte 불변). 🔑 `SEC-V1` 은 갈림이 있고 «주 갈래 AND 참 ∨ 최소 n 갈래 중 «성립» 존재»일 때 ⛔ 로 간다"
+        "(적용 범위 `:815-817` — AND 안 한 항목 미달엔 관여하지 않되, 다른 잣대의 «성립»은 잣대 갈림이다 · 정정 1차 S-2) · "
+        "`SEC-X1` 은 AND 와 무관하게 ⛔ 로 간다(정정 1차 S-1).")
     say()
     say("### 🔒 판정 — `SEC-P1` : **"
         + ("⛔ 판정 불가(" + " · ".join(x for x, f in (("`SEC-V1` 발동", p1_blocked_v1), ("`SEC-X1` 절차 무효", p1_blocked_x1)) if f) + ")"
            if p1_blocked else ("✅ 성립" if p1_ok else "🔴 불성립(지지 아님)")) + "**")
     say()
-    if p1_blocked:
+    if p1_blocked and not and_ok:
+        # 🆕 정정 1차 — S-1·S-2 로 AND 가 거짓인 사건도 ⛔ 로 갈 수 있다(이번 회차엔 미실행 분기)
+        say("🔴 **3중 AND 는 주 갈래에서 «거짓»이다** — 그러나 아래 조건이 판정을 닫아 **«불성립»도 선언하지 않는다**: "
+            + " · ".join(x for x, f in (("`SEC-V1`(다른 잣대에서 «성립» · 잣대 갈림)", p1_blocked_v1),
+                                         ("`SEC-X1` 절차 무효", p1_blocked_x1)) if f) + ".")
+        say()
+    elif p1_blocked:
         say("🔴 **3중 AND 는 주 갈래(`N = 3` · `SEC-M1` · 글 단위 중앙 · `exact` 만)에서 «통과»했다** — "
             f"`SEC-N1` **{fmt(n1p, 5)}** · `SEC-B1` **{fmt(b1p, 5)}** · "
             f"`SEC-B2` **{fmt(b2r * 100 if b2r is not None else None)}%** "
@@ -5029,13 +5042,11 @@ def main_post8(cur, ctx):                                     # noqa: PLR0912, P
     say(f"- 순열 하 `p` 는 이론상 `U(0,1)` 이므로 `p<0.05` 비율의 기대는 **5.0%**, "
         f"{X1_REP} 실현의 SE ≈ **1.5%p** 다(§4-4). `|z| ≤ 2` 를 «어긋나지 않음»으로 읽는다.")
     if min(x1sum[k]["lt05"] for k in ("N1", "B1")) < P_THR:
-        say("- 🔴 **경계값 해석 (비대칭 · 미리 적어 둔다)** — 이번 이탈은 **명목 5%보다 «아래»**"
-            f"(**{x1sum['N1']['lt05'] * 100:.1f}%** · **{x1sum['B1']['lt05'] * 100:.1f}%**)다. "
-            "그 방향은 ***거짓 «양성»을 만들 수 없고 검정력만 잃는다*** ⇒ "
-            "🟢 **이번 «불성립» 판정을 위협하지 않는다**(과소기각은 「지지」를 만들어내지 못한다). "
-            "🔴 **반대로 «통과»가 나온 회차에서 같은 부호가 나오면 그때는 위협이 된다** — "
-            "그리고 «위쪽»으로 `|z| > 2` 면 그건 부호와 무관하게 ⛔ **절차 무효**다. "
-            "🔑 ***가드의 이탈은 「크기」만이 아니라 「방향」까지 읽어야 판정에 대한 함의가 정해진다.***")
+        say("- 🔴 **방향은 근거로 쓰지 않는다**(정정 1차 S-3) — 이번 `p<0.05` 비율은 명목 5%보다 «아래»"
+            f"(**{x1sum['N1']['lt05'] * 100:.1f}%** · **{x1sum['B1']['lt05'] * 100:.1f}%**)지만 `|z| ≤ 2` 라 "
+            "**«보정됨»**이다 — 판정은 그것뿐이다. 음수 `z` 는 과소기각 = 검정력 손실 쪽이라 오히려 «불성립» 쪽 "
+            "거짓 음성 위험이고, 다른 시드에서는 양수도 나온다(post7 `z` +0.32/+0.97) ⇒ ***부호로 판정의 안전을 말하지 "
+            "않는다.*** 🔴 초판의 「이번 «불성립» 판정을 위협하지 않는다」는 방향 해석이 거꾸로였다.")
     say("- ⇒ 🔒 **`SEC-X1` : "
         + ("🟢 보정됨 ⇒ 절차 유효**" if x1_ok else "🔴 ⛔ 절차 무효 — 이 축을 닫는다**")
         + " (어긋나면 구현을 고친 뒤 **새 사전등록**으로만 연다 · §6).")
@@ -5175,8 +5186,9 @@ def main_post8(cur, ctx):                                     # noqa: PLR0912, P
         + "🆕 **판정 배선은 `P8-갈래계수` 읽기(§7-3 · 최소 n 을 채운 갈래만)를 쓴다** — 그 읽기 = "
         + ("🔴 **갈린다**" if v1_split_p8 else "🟢 **갈리지 않는다**") + ". "
         "🔒 §3 1행의 ⛔ 열이 `SEC-V1` 을 판정 불가 조건으로 열거하므로(`:600`) 갈림은 `SEC-P1` 을 ⛔ 로 만든다 — "
-        "🔴 **단 적용 범위(`:819`)는 「같은 판정을 «다른 잣대»로 다시 계산했을 때 갈리는가」뿐이다** — 주 갈래의 "
-        "3중 AND 가 «거짓»인 사건은 §3 이 판정하고 이 조항은 관여하지 않는다. ***어느 쪽이든 잣대를 넓혀 열지 않는다.***"
+        "🔴 **단 적용 범위(`:815-817`)는 「같은 판정을 «다른 잣대»로 다시 계산했을 때 갈리는가」뿐이다** — 주 갈래의 "
+        "3중 AND 가 «거짓»인 사건은 §3 이 판정하고 이 조항은 관여하지 않는다(🆕 정정 1차: 단 최소 n 갈래 중 «성립»이 "
+        "있으면 그건 잣대 갈림이라 ⛔ — S-2). ***어느 쪽이든 잣대를 넓혀 열지 않는다.***"
         + ("" if ap_items else " 🔴 축 ④ 는 이 글에서 구조적으로 갈릴 수 없다(`approx` 0건)."))
     say()
     say("#### 🔴🔴 7-1A. 모호 지점 — **`SEC-V1` 의 «입력»이 4축인가 9 조합인가** (양쪽 인쇄)")
@@ -5254,9 +5266,16 @@ def main_post8(cur, ctx):                                     # noqa: PLR0912, P
             f"(나) 세지 않는다 = 센 갈래 {len(_alt)}개 · 답 {len({str(v) for v in _alt.values()})}종 ⇒ "
             f"{'🔴 갈린다' if _alt_split else '🟢 갈리지 않는다'} ⇒ "
             + ("**두 읽기가 같다**." if _alt_split == v1_split_p8 else
-               "🔴 **두 읽기가 다르다** — 🔒 단 `SEC-V1` 은 주 갈래 AND 가 참일 때만 `SEC-P1` 에 관여한다(`:819`) · "
-               f"이번 AND = {'참' if and_ok else '거짓'} ⇒ "
-               + ("**이 구분은 이번 판정을 가르지 않는다.**" if not and_ok else "🔴 **이 구분이 판정을 가른다 — 판정 불가·모호.**")))
+               "🔴 **두 읽기가 다르다** — 🔒 단 `SEC-V1` 은 «주 갈래 AND 참 ∨ «성립» 갈래 존재»일 때만 `SEC-P1` 에 "
+               "관여한다(`:815-817` · 정정 1차 S-2) · "
+               f"이번 AND = {'참' if and_ok else '거짓'} · «성립» 갈래 {'있음' if v1_any_ok else '없음'} ⇒ "
+               + ("**이 구분은 이번 판정을 가르지 않는다.**" if not (and_ok or v1_any_ok)
+                  else "🔴 **이 구분이 판정을 가른다 — 판정 불가·모호.**")))
+        say("  - 🔴 **`PREREG_POST8.md:250` (나)4 와의 관계**(정정 1차 · 인용) — *「`exact` 갈래와 `approx` 포함 갈래가 **둘 다 "
+            "최소 n 을 채우고** 답이 갈리면 ⇒ ⛔ 판정 불가」*. 이 갈래는 `approx` 값이 **0건**(날짜 없음 · G1 분모에만 들어감)이라 "
+            "«`approx` 포함 갈래의 답»이 서는지가 곧 위 모호다 — (가) 로 읽으면 (나)4 도 걸리고, (나) 로 읽으면(= `RNK-` 축의 "
+            "「갈래 못 만듦」 처리) 걸리지 않는다. 🔴 **양쪽 인쇄 · 이 산출물은 판정을 옮기지 않는다**(값 본 뒤 읽기를 고르지 "
+            "않는다 · 관리자 판단 사안으로 신고).")
     say(f"- ⇒ **`SEC-V1`(`P8-갈래계수`) = {'🔴 갈린다' if v1_split_p8 else '🟢 갈리지 않는다'}** "
         f"(센 갈래 {len(V1_COUNTED)}개 · 답 {len({str(v) for v in V1_COUNTED.values()})}종) · "
         f"post7 방식(전 갈래) = {'🔴 갈린다' if v1_split_pre else '🟢 갈리지 않는다'} ⇒ "
@@ -5313,9 +5332,9 @@ def main_post8(cur, ctx):                                     # noqa: PLR0912, P
         + ("같다" if str(v_re) == str(v_main) else "🔴 다르다 ⇒ 「재진입 의존」으로 적는다") + "**.")
     say(f"- `P6-PRIOR_CYCLE_IN_WINDOW` **판정 분모 안 합 = {sum(PD3_IN.values())}/{len(items)}** ("
         + (" · ".join(f"`{c}`={v}" for c, v in sorted(PD3_IN.items())) or "—")
-        + ") · 🔴 **글 전체 합 = %d/%d**(" % (sum(PD3_FLAG_P8.values()), len(PD3_FLAG_P8))
-        + " · ".join(f"`{c}`={v}" for c, v in sorted(PD3_FLAG_P8.items()))
-        + ") — PD-3 이 계산 «전»에 못박은 값이다. 🔑 **두 수를 한 수로 합치지 않는다.**")
+        + ") · 🔴 **글 전체 = PD-3 표 문형 그대로**(`PREDECISION_2026-09-18_post8.md:113-117`): " + PD3_NOTE_P8
+        + " — PD-3 이 계산 «전»에 못박은 값이다(🆕 정정 1차: 초판 「글 전체 합 = 1/1」은 원익 «계산 안 함»과 헥토 «갈래별»을 "
+        "지워 한 수로 접었다). 🔑 **두 수를 한 수로 합치지 않는다.**")
 
     # ══════════════════════════════════════════════════════════════════════
     # §8 SEC-O1
@@ -5483,6 +5502,11 @@ def main_post8(cur, ctx):                                     # noqa: PLR0912, P
     say("| `SEC-V1` | 🆕 `P8-갈래계수`: " + ("🔴 갈린다" if v1_split_p8 else "🟢 갈리지 않는다")
         + " · post7 방식(전 갈래): " + ("갈린다" if split else "갈리지 않는다")
         + " — 🔴 축 ③ 은 이 글에서 «구조적으로» 갈릴 수 없다(글 하나) |")
+    say("| 🆕 `SEC-V1` 배선 범위(모호 · 정정 1차 S-2) | `:815-817` 은 「AND 안 한 항목 미달 사건엔 관여하지 않는다」만 적고, "
+        "«주 갈래 AND 거짓 ∧ 다른 잣대 «성립»» 사건을 따로 적지 않는다 ⇒ 이 산출물은 **⛔ 쪽(선언 금지)**으로 배선했다"
+        "(`:817` 「하나라도 판정을 가르면 ⇒ ⛔」) · 초판은 `and_ok ∧ split` 이라 그 사건에서 «불성립»을 인쇄했을 것이다 · "
+        + ("이번 회차 «성립» 갈래 **있음** ⇒ 🔴 이 배선이 판정을 닫았다" if v1_any_ok else
+           "이번 회차 «성립» 갈래 **0** ⇒ 판정 이동 0") + " · 문언 정비는 다음 사전등록의 몫 |")
     say("| 승/패 대조(`PREREG_SELECTION.md` §4) | ⛔ **5회 연속 미실시** — post8 `exact` 신규에 "
         f"`all_loss = 1` 이 {sum(1 for it in items if str(it['all_loss']) == '1')}건 ⇒ "
         "***이 축의 최대치는 「기술」이다***(§0-2 ③) |")
@@ -5645,6 +5669,7 @@ def main_post8(cur, ctx):                                     # noqa: PLR0912, P
                    "and_passed": and_ok,
                    "SEC-V1_split": v1_split_pre,
                    "SEC-V1_split_P8": v1_split_p8,
+                   "SEC-V1_any_branch_ok": v1_any_ok,      # 🆕 정정 1차(S-2)
                    "SEC-X1_ok": x1_ok_pre,
                    "blocked_by_SEC-V1": p1_blocked_v1,
                    "blocked_by_SEC-X1": p1_blocked_x1,

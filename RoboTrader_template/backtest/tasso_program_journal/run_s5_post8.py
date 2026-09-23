@@ -17,25 +17,32 @@
   `run_selection_post7.py` 의 `P6.OUT = OUT` 관용과 같은 부류).
 
 이번 회차의 갈림(계산 «전»에 적는다 · 값 아님):
-  S5-P8-1 **판정 분모 = 신규 ∧ `exact` = 4**(우리로 · JW신약 · 액스비스 · 우리기술) · 판정 가능 예고
+  S5-R8-1 **판정 분모 = 신규 ∧ `exact` = 4**(우리로 · JW신약 · 액스비스 · 우리기술) · 판정 가능 예고
       **3**(액스비스 `0011A0` = `dart_financials_asfiled` 0행 · «표 미수록» · 이름 매칭 실패 «아님») ·
       민감도 판 **6**(판정 가능 예고 5 · 헥토파이낸셜·코데즈컴바인 = `approx` 「8월말」 7갈래).
-  S5-P8-2 **PIT** = `status='000'` ∧ `rcept_dt <= 2026-09-18`(글 게시일) · 가장 최근 사업연도 «하나».
+  S5-R8-2 **PIT** = `status='000'` ∧ `rcept_dt <= 2026-09-18`(글 게시일) · 가장 최근 사업연도 «하나».
       ⚠️ 표는 `max(rcept_dt)` 2026-08-06 에서 멈춰 있다(PD-15) — 「형식상 통과」 한계를 박는다.
-  S5-P8-3 **「우리로 제외」 3 ↔ 2 = 인쇄만**(🔒 #1-(ii) · 판정 효과 없음) · §1-5 재진입 = **항등**
+  S5-R8-3 **「우리로 제외」 3 ↔ 2 = 인쇄만**(🔒 #1-(ii) · 판정 효과 없음) · §1-5 재진입 = **항등**
       (exact 열 §1-5 재진입 0) · `none` 1(원익) + 후속 3 = 등록일 축 밖.
-  S5-P8-4 🔴 **대조군 «합치기» 셈법이 동결 문언에 없다**(`RESULTS_S5_POST7.md` §10 이 「이 문서 밖의
-      결정」으로 남겼고, 그 뒤 어느 동결본도 정하지 않았다). 값 보기 «전»에 다음 규칙을 못박는다:
+  S5-R8-4 🔴 **대조군 «합치기» 셈법이 동결 문언에 없다**(`RESULTS_S5_POST7.md` §10 이 「이 문서 밖의
+      결정」으로 남겼고, 그 뒤 어느 동결본도 정하지 않았다). 다음 규칙을 둔다(🔴 「값 보기 «전» 고정」은 **자기보고**다 —
+      증거 없음: 이 파일 수정 시각 01:04:28 > 첫 실행 00:47:07 · 네 셈법이 같은 답이라 이 주장이 판정을 떠받치지 않는다):
       셈법 네 개를 **전부** 인쇄한다 — (가) 종목-일 pooled × 전 `exact` 날짜(= post7 구현 승계 · 주 열) ·
       (나) 날짜별 비율 평균 × 전 `exact` 날짜 · (다) pooled × «판정 가능» 건의 날짜만 ·
       (라) 날짜별 평균 × «판정 가능» 건의 날짜만. **네 셈법의 라벨이 모두 같으면 그 라벨**,
       하나라도 다르면 **「판정 불가·모호」**(공통 지시 §4-11 · 새 문턱·새 라벨 0개).
-  S5-P8-5 `approx` 민감도(§1-1 「두 값을 «둘 다»」) = 판정 가능 5 기준 차이 «범위»(갈래 7×7 조합) ·
+  S5-R8-5 `approx` 민감도(§1-1 「두 값을 «둘 다»」) = 판정 가능 5 기준 차이 «범위»(갈래 7×7 조합) ·
       🔴 판정 언어 금지 · 라벨 문자열을 그 절에 쓰지 않는다(가드가 문다).
-  S5-P8-6 post7 표본은 **같은 2026-09-24 스냅샷에서 재계산**해 나란히 인쇄 · post7 행은 `—`
+  S5-R8-8 🆕 정정 1차(verifier A B1) — **`D-3` (나)4 검사**(`PREREG_POST8.md:250` *「`exact` 갈래와 `approx` 포함
+      갈래가 둘 다 최소 n 을 채우고 답이 갈리면 ⇒ ⛔ 판정 불가」*). 초판은 이 검사를 하지 않고 `exact` 라벨을 최종으로
+      적었다. `approx` 포함 판정 가능 5 ≥ 3 · `exact` 판정 가능 3 ≥ 3 ⇒ 두 갈래 모두 최소 n 충족 ⇒ 셈법 네 개마다
+      `approx` 포함 49조합의 `±10%p` 안/밖을 `exact` 갈래와 대조하고, 한 셈법이라도 «반대쪽» 조합이 있으면 갈린다.
+      🔴 SEL·REG 와 같은 축 공통 규칙이다(REG `P6-M1′` 「선언 없음」과 같은 조항) — `PREREG_S5_FUND_NEWS_OOS.md:24`
+      「판정 언어 금지」는 (나)2 와 같은 말이고 (나)4 를 막지 않는다. `approx` 행에는 라벨을 붙이지 않는다(원시값만).
+  S5-R8-6 post7 표본은 **같은 2026-09-24 스냅샷에서 재계산**해 나란히 인쇄 · post7 행은 `—`
       (판정 없음이었음 · 소급 재판정 금지 `FREEZE_S5_2026-09-16.md` §6 · `PREREG_POST8.md` §12 (라)).
       🔴 post7+post8 합산은 만들지 않는다(판정 분모 = post8 신규 · PD-15 · 소급 금지).
-  S5-P8-7 🔴 **D-9 ① 시각 줄** — 분 단위 실행 시각은 **stdout 전용**(post7 `note()` 관용 · 바이트 결정론).
+  S5-R8-7 🔴 **D-9 ① 시각 줄** — 분 단위 실행 시각은 **stdout 전용**(post7 `note()` 관용 · 바이트 결정론).
       산출물에는 **실행일 + 빈티지 구간**(창 구간 `max(updated_at)` ≤ 읽은 시각 < 다음 sweep)을 박는다.
       🔴 재량 · 충돌 신고 대상(보고서) — `PREREG_POST8.md:544-545` ↔ `FREEZE_WRC_2026-09-02.md` §2
       「커밋(실행)마다 바뀌는 값을 산출물에 적으면 그 산출물은 자기 자신을 재현할 수 없게 된다」.
@@ -161,7 +168,7 @@ def s5_label(sel_loss, sel_ok, ctrl_pct):
 
 
 def final_label(labels):
-    """S5-P8-4 — 네 셈법의 라벨이 전부 같으면 그 라벨, 하나라도 다르면 「판정 불가·모호」."""
+    """S5-R8-4 — 네 셈법의 라벨이 전부 같으면 그 라벨, 하나라도 다르면 「판정 불가·모호」."""
     got = {x for x in labels}
     if None in got or len(got) != 1:
         return AMBIG
@@ -279,7 +286,7 @@ def header_lines(run_day, max_date, max_rows, vint):
              "기록만(창 아님 · PD-1 8번) |")
     L.append(f"| 🔴 D-9 ① 쿼리 실행 시각(KST) | 실행일 **{run_day}** · 읽은 시각은 "
              f"**[창 구간 `max(updated_at)` {vint['win_max']}, 다음 sweep {vint['next_sweep']})** 안 — "
-             "🔴 분 단위 시각은 stdout 전용(바이트 결정론 · post7 `note()` 관용 · S5-P8-7 재량) |")
+             "🔴 분 단위 시각은 stdout 전용(바이트 결정론 · post7 `note()` 관용 · S5-R8-7 재량) |")
     L.append(f"| 🔴 D-9 ② 창 구간 `max(daily_prices.updated_at)` | **{vint['win_max']}** "
              f"(창 구간 `[{WIN_START}, {DB_UPTO}]` · 관리자 착수 프로브와 같은 구간) · "
              f"이 축이 «실제로 읽은» 날짜 집합의 `max(updated_at)` = **{vint['read_max']}** |")
@@ -379,7 +386,7 @@ def d3_line(n_exact, n_incl, j_exact, j_incl):
             "(PD-21 구성 예고 = 「없음」 · 최소 n 은 «판정 가능» 건 기준 `:15`)")
 
 
-def limits_lines():
+def limits_lines(sel_in_ctrl=None):
     L = []
     L.append("## §11. 한계 (승계 · 미리 적는다)\n")
     L.append("- 🔴 **검정력이 없다** — §2 동결 문언: `n=37 · p0=0.30` 에서 `z = −0.39 · p ≈ 0.35` · 뉴스 축 "
@@ -389,8 +396,16 @@ def limits_lines():
     L.append("- 🔴 **이름→코드 매칭 상한 83.0%** — 틀린 매핑은 플래그 «값»으로 전파된다(§0).")
     L.append("- 🔴 **액스비스의 「측정 불가」는 「적자 아님」이 아니다** — 분자·분모 어디에도 넣지 않는다.")
     L.append("- 🔴 **PIT 표가 멈춰 있다**(§2) — 「PIT 를 지켰다」와 「최신 공시를 봤다」는 다른 말이다.")
-    L.append("- 🔴 **대조군 합치기 셈법이 동결 문언에 없다**(S5-P8-4) — 네 셈법을 전부 인쇄했고 "
-             "하나로 고르지 않았다. 정본 셈법은 **다음 사전등록 재료**다(값을 본 뒤라 이 회차엔 소급 금지).")
+    L.append("- 🔴 **대조군 합치기 셈법이 동결 문언에 없다**(S5-R8-4) — 네 셈법을 전부 인쇄했고 "
+             "하나로 고르지 않았다. 정본 셈법은 **다음 사전등록 재료**다(값을 본 뒤라 이 회차엔 소급 금지). "
+             "🔴 「규칙은 값 보기 «전» 고정」은 **자기보고**다(증거 없음).")
+    if sel_in_ctrl is not None:
+        k, lo_x, ok_x, d_x = sel_in_ctrl
+        L.append(f"- 🔴 **선정 건이 자기 날짜 대조군 안에 있다** — 그 날짜에 등록된 선정 `exact` 코드가 그날 상위 1% 에 든 "
+                 f"날짜 줄 **{k}/{len(EXACT4)}**(대조군 = 선정 포함) ⇒ 차이가 **0 쪽으로 당겨진다**(보수 방향 — 「같다」 쪽으로 기운다). "
+                 f"자기 날짜 선정 코드를 뺀 (가) 대조군 = {lo_x}/{ok_x} = {pp(Fraction(100 * lo_x, ok_x) if ok_x else None)} · "
+                 f"차이 {ppd(d_x)} ⇒ `±10%p` {'안' if (d_x is not None and abs(d_x) <= BAND_PP) else '밖'}"
+                 "(`exact` 갈래의 안/밖 불변 · 인쇄만).")
     L.append("- 🔴 **`adj_factor` 를 가격에 곱하지도 나누지도 않는다**(프로젝트 SSOT · 이 축은 가격을 쓰지 않는다).")
     L.append("- 🔴 이 분석은 **라이브 채택 대상이 아니다**(`PREREG.md` §0 2번 · `PREREG_POST8.md` §0-1) — "
              "***라벨이 무엇이든 라이브 채택 금지는 그대로다***(§3).")
@@ -464,7 +479,7 @@ class CtrlCache:
             lo, ok, unk, kinds = S7.loss_rate(self.cur, top)
             for c in unk:
                 self.miss[kinds.get(c) or "unknown"].add(c)
-            self.memo[d] = dict(top=len(top), n_univ=n_univ, lo=lo, ok=ok)
+            self.memo[d] = dict(top=len(top), n_univ=n_univ, lo=lo, ok=ok, codes=list(top))
         return self.memo[d]
 
 
@@ -506,6 +521,16 @@ def main() -> int:      # noqa: C901
         ctrl_main = [cc.get(d) for _n, _c, d in EXACT4]
         apx_ctrl = {code: [cc.get(d) for d in days] for _n, code, _desc, days, _r in apx}
         miss8 = {k: sorted(v) for k, v in cc.miss.items()}
+        # 🆕 정정 1차(A-2) — 선정 코드가 자기 날짜 대조군(상위 1%)에 들어 있나 · 빼면 (가) 대조군이 어떻게 되나(인쇄만)
+        #    「자기 날짜」 = 그 날짜에 등록된 선정 코드(09-11 = 우리로·액스비스) — 다른 날 등록된 선정 코드는 그 날의 정상 대조군이다.
+        x_lo = x_ok = x_k = 0
+        for (_n0, _c0, d_row), c in zip(EXACT4, ctrl_main):
+            own = {cc_ for _n, cc_, dd in EXACT4 if dd == d_row}
+            keep = [t for t in c["codes"] if t not in own]
+            x_k += int(len(keep) != len(c["codes"]))
+            lo_, ok_, _unk, _kinds = S7.loss_rate(cur, keep)
+            x_lo += lo_
+            x_ok += ok_
     with pit_cutoff(S7.POST_DATE):          # post7 재계산 — post7 의 PIT 절단면(09-12)
         sel7 = select_cases(cur, S7.EXACT6)
         cc7 = CtrlCache(cur)
@@ -592,7 +617,7 @@ def main() -> int:      # noqa: C901
         ("(다) pooled 종목-일 × «판정 가능» 건의 날짜만", jud_e, True),
         ("(라) 날짜별 비율 평균 × «판정 가능» 건의 날짜만", jud_e, False),
     ]
-    say("| 대조군 셈법(S5-P8-4) | 날짜 줄 수 | 대조군 적자 비율 | 선정 적자 비율 | 차이(선정 − 대조군) | "
+    say("| 대조군 셈법(S5-R8-4) | 날짜 줄 수 | 대조군 적자 비율 | 선정 적자 비율 | 차이(선정 − 대조군) | "
         "`abs ≤ 10%p`? | 라벨 |")
     say("|---|---|---|---|---|---|---|")
     labs = []
@@ -610,9 +635,48 @@ def main() -> int:      # noqa: C901
     say("")
     say(f"- 판정 가능 **{s_ok}** ≥ {MIN_JUDGEABLE} ⇒ `(S5-보류)` 조건 " + ("**불성립**" if s_ok >= MIN_JUDGEABLE
                                                                         else "**성립**"))
-    say(f"- 🔴 **규칙(S5-P8-4 · 값 보기 «전» 고정)**: 네 셈법의 라벨이 모두 같으면 그 라벨 · 하나라도 다르면 "
-        f"「{AMBIG}」.")
-    say(f"- ⇒ **최종: {fin}**" + ("" if fin != AMBIG else " — 셈법이 판정을 가른다(동결 문언이 셈법을 정하지 않았다)"))
+    say(f"- 🔴 **규칙(S5-R8-4)**: 네 셈법의 라벨이 모두 같으면 그 라벨 · 하나라도 다르면 「{AMBIG}」 — "
+        "🔴 「값 보기 «전» 고정」은 **자기보고**다(증거 없음 · 네 셈법이 같은 답이라 이 주장이 판정을 떠받치지 않는다).")
+    say(f"- `exact` 갈래(주) 답 = **{fin}**" + ("" if fin != AMBIG else " — 셈법이 판정을 가른다(동결 문언이 셈법을 정하지 않았다)"))
+    # ── 🆕 정정 1차(verifier A B1) — `D-3` (나)4 검사(S5-R8-8) · 셈법 네 개 × `approx` 포함 49조합 ──
+    sens_loss4 = s_loss + sum(1 for x in apx_judge if x[4][2] < 0)
+    sens_pct4 = Fraction(100 * sens_loss4, j_sens) if j_sens else None
+    exact_in = {}
+    for name, ents, pooled in variants:
+        cr = ctrl_rate(ents, pooled)
+        exact_in[name] = None if (cr is None or s_pct is None) else abs(s_pct - cr) <= BAND_PP
+    n4_rows, split_any = [], False
+    for (name, ents, pooled), base_e in zip(variants, (all_e, all_e, jud_e, jud_e)):
+        ds = []
+        for pick in itertools.product(*[apx_ctrl[x[1]] for x in apx_judge]):
+            cr = ctrl_rate(base_e + [(c["lo"], c["ok"]) for c in pick], pooled)
+            if cr is not None and sens_pct4 is not None:
+                ds.append(sens_pct4 - cr)
+        n_in = sum(1 for x in ds if abs(x) <= BAND_PP)
+        opp = (n_in if exact_in[name] is False else len(ds) - n_in) if exact_in[name] is not None else 0
+        split = bool(ds) and opp > 0
+        split_any = split_any or split
+        n4_rows.append((name, len(base_e) + len(apx_judge), ds, n_in, split))
+    both_ok = s_ok >= MIN_JUDGEABLE and j_sens >= MIN_JUDGEABLE
+    fin_final = (f"⛔ 판정 불가 — 등록일 정밀도 의존(D-3 (나)4 `PREREG_POST8.md:250`) · 기록: exact {fin}"
+                 if (both_ok and split_any) else fin)
+    say("")
+    say(f"**🔴 `D-3` (나)4 검사**(`PREREG_POST8.md:250` · S5-R8-8) — 두 갈래 최소 n: `exact` 판정 가능 **{s_ok}** · "
+        f"`approx` 포함 판정 가능 **{j_sens}** (최소 n {MIN_JUDGEABLE}) ⇒ **{'둘 다 충족' if both_ok else '한쪽 미달 — 검사 대상 아님'}** · "
+        f"`approx` 포함 선정 적자 비율 = {sens_loss4}/{j_sens} = {pp(sens_pct4)}\n")
+    say("| 대조군 셈법 | 날짜 줄 수(주 + `approx` 1개씩) | `approx` 포함 49조합 차이 범위 | `±10%p` 안 조합 | `exact` 갈래 | 갈리나 |")
+    say("|---|---|---|---|---|---|")
+    for (name, nrow, ds, n_in, split) in n4_rows:
+        rng = f"{ppd(min(ds))} ~ {ppd(max(ds))}" if ds else "—"
+        ex = "—" if exact_in[name] is None else ("`±10%p` 안" if exact_in[name] else "`±10%p` 밖")
+        say(f"| {name.split(' — ')[0]} | {nrow} | {rng} | {n_in}/{len(ds)} | {ex} | "
+            f"{'🔴 **갈린다**(반대쪽 조합 있음)' if split else '같은 쪽'} |")
+    say("")
+    say("- 🔴 **축 공통 규칙** — SEL·REG 와 같은 조항이다(같은 회차 REG `P6-M1′` 「선언 없음」 · "
+        "`RESULTS_REGDAY_POST8_NUMBERS.md` §2) · `PREREG_S5_FUND_NEWS_OOS.md:24` 「판정 언어 금지」는 (나)2 와 같은 말이고 "
+        "(나)4 를 막지 않는다 · RNK-D5(`PREREG_RANKING.md:371-373`) 「두 값이 판정을 가르면 ⇒ ⛔」와 같은 방향. "
+        "🔴 초판(정정 전)은 이 검사를 하지 않고 `exact` 라벨을 최종으로 적었다 — 동결 문언이 지시하는 판정문으로 고친다.")
+    say(f"- ⇒ **최종: {fin_final}**" + ("" if fin_final != AMBIG else " — 셈법이 판정을 가른다(동결 문언이 셈법을 정하지 않았다)"))
     say("- 🔴 Holm 가족 **+0** · 🔴 이 라벨은 **검정이 아니다**(§2 `:35` *「「저자가 재무를 본다」의 «관측»이지 "
         "검정이 아니다」* · `:38` 검정력 없음).")
     say("")
@@ -621,7 +685,7 @@ def main() -> int:      # noqa: C901
     say("### 5-1. 🔴 D-5 갈래 — `(갈래 이름, n, 답)` 세 쪽 (`PREREG_POST8.md` §5 (나) 2 · PD-23)\n")
     say("| 갈래 | n(표본 · 판정 가능) | 답 |")
     say("|---|---|---|")
-    say(f"| 주 갈래 — 신규 ∧ `exact` · 우리로 포함 | {len(EXACT4)} · {s_ok} | **{fin}** |")
+    say(f"| 주 갈래 — 신규 ∧ `exact` · 우리로 포함 | {len(EXACT4)} · {s_ok} | **{fin}**(기록 · 최종은 위 (나)4 검사) |")
     s_no = [(nm, code, d, r) for nm, code, d, r in sel if nm != URIRO]
     s_no_ok = [x for x in s_no if x[3] is not None]
     s_no_loss = sum(1 for *_x, r in s_no_ok if r[2] < 0)
@@ -633,8 +697,11 @@ def main() -> int:      # noqa: C901
         f"대조군(가) {pp(cr_no)} |")
     say(f"| §1-5 재진입 포함 ↔ 제외 | {len(EXACT4)} ↔ {len(EXACT4)} | **항등** — exact 열 §1-5 재진입 0 "
         "(우리로 = 항목 내 2 사이클 · 측정 등록 = 첫 사이클 · `P6-PRIOR_CYCLE_IN_WINDOW` 0) |")
-    say(f"| `approx` 포함(민감도 판) | {len(EXACT4) + len(APPROX2)} · {j_sens} | "
-        "🔴 **판정 언어 금지**(§1-1) — 값은 §6 |")
+    say(f"| `approx` 포함(민감도 판 · 49조합) | {len(EXACT4) + len(APPROX2)} · {j_sens} | "
+        "`±10%p` 안 조합 " + " · ".join(f"{nm.split(' ')[0]} {n_in}/{len(ds)}" for nm, _r, ds, n_in, _s in n4_rows)
+        + " — `exact` 갈래(네 셈법 전부 `±10%p` 밖)와 "
+        + ("🔴 **갈린다** ⇒ `D-3` (나)4" if split_any else "같은 쪽")
+        + "(판정 언어 없음 · §1-1) · 값은 §6 |")
     say("| 대조군 셈법 (가)·(나)·(다)·(라) | 위 표 | 위 표의 라벨 열 그대로 |")
     say("| 창 절단 포함 ↔ 제외 | — | **항등** — 이 축은 창을 쓰지 않는다(날짜 한 개 단위) |")
     say("")
@@ -668,8 +735,9 @@ def main() -> int:      # noqa: C901
     if combos:
         say(f"- 차이(선정 − 대조군) **범위 = {ppd(min(combos))} ~ {ppd(max(combos))}** · "
             f"`±{BAND_PP}%p` 안 조합 {sum(1 for x in combos if abs(x) <= BAND_PP)}/{len(combos)}")
-    say("- 🔴 §1-1 *「`approx` … **판정 언어 금지**」* ⇒ 위 값은 판정에 쓰지 않는다 · 갈래별 값을 한 수로 "
-        "합치지 않는다(범위로만).")
+    say("- 🔴 §1-1 *「`approx` … **판정 언어 금지**」* ⇒ 위 값에 라벨을 붙이지 않는다 · 갈래별 값을 한 수로 "
+        "합치지 않는다(범위로만). 🔴 단 두 갈래가 모두 최소 n 을 채우고 `±10%p` 안/밖이 갈리면 `D-3` (나)4 가 "
+        "판정을 닫는다(§5 (나)4 검사 · 정정 1차 — 초판의 「판정에 쓰지 않는다」는 (나)4 를 빠뜨린 문장이었다).")
     say("- ⚠️ 헥토 「한번 더」 ∧ 「8월말」 — 직전 등록 08-28 보다 이른 **5갈래(08-21~08-27)는 저자 문장과 논리적 "
         "모순 갈래**다(PD-3 · 창 규약은 좁히지 않는다 · 표시만).")
     say("")
@@ -719,7 +787,8 @@ def main() -> int:      # noqa: C901
         say(ln.replace("## §6.", "## §9."))
     for ln in duty_misc_lines():
         say(ln)
-    for ln in limits_lines():
+    _xs = None if not (x_ok and s_ok) else Fraction(100 * s_loss, s_ok) - Fraction(100 * x_lo, x_ok)
+    for ln in limits_lines((x_k, x_lo, x_ok, _xs)):
         say(ln)
 
     # ── 🔴 쓰기 «전» 자기 가드 ────────────────────────────────────────────────

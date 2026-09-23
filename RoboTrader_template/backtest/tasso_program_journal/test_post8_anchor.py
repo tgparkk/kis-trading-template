@@ -23,6 +23,9 @@ import run_ladder_tranche as LAD
 
 BASE = Path(__file__).resolve().parent
 REL = "RoboTrader_template/backtest/tasso_program_journal/run_anchor_redesign.py"
+# 🔴 정정 1차(verifier B C-1) — 기준 ref = post8 산출 «이전» 마지막 커밋. `HEAD` 는 post8 WIP 커밋(`880d26f`) 뒤라
+#    「post7 경로 불변」 시험이 작업트리를 post8 판 자신과 비교하게 된다(검사력 0 · 4건 거짓 실패).
+BASE_REF = "154b80c"
 NUM8 = BASE / "RESULTS_ANCHOR_POST8_NUMBERS.md"
 DOC8 = BASE / "RESULTS_ANCHOR_POST8.md"
 
@@ -32,7 +35,7 @@ def git(*a):
 
 
 def head_src():
-    r = git("show", "HEAD:" + REL)
+    r = git("show", f"{BASE_REF}:" + REL)
     assert r.returncode == 0, r.stderr
     return r.stdout
 
@@ -93,10 +96,10 @@ def test_p2_post7_function_bodies_byte_identical_to_head():
 
 
 def test_p2_only_the_entry_line_was_replaced():
-    r = git("diff", "--numstat", "HEAD", "--", "run_anchor_redesign.py")
+    r = git("diff", "--numstat", BASE_REF, "--", "run_anchor_redesign.py")
     added, deleted, _ = r.stdout.split("\t")
     assert deleted == "1", "지운 줄은 진입점 `sys.exit(main())` 하나뿐이어야 한다"
-    minus = [ln for ln in git("diff", "HEAD", "--", "run_anchor_redesign.py").stdout.splitlines()
+    minus = [ln for ln in git("diff", BASE_REF, "--", "run_anchor_redesign.py").stdout.splitlines()
              if ln.startswith("-") and not ln.startswith("---")]
     assert minus == ["-    sys.exit(main())"]
 
@@ -124,12 +127,14 @@ def test_p2_post7_test_file_still_passes():
 
 def test_p2_post7_frozen_outputs_untouched_in_worktree():
     for f in ("RESULTS_ANCHOR_POST7.md", "RESULTS_ANCHOR_POST7_NUMBERS.md", "test_post7_anchor.py"):
-        assert git("diff", "--quiet", "HEAD", "--", f).returncode == 0, f
+        assert git("diff", "--quiet", BASE_REF, "--", f).returncode == 0, f
+    # 🔴 대칭 — 기준 ref 에 post8 산출물이 «없다»(ref 가 post8 이전임을 확인 · 검사력)
+    assert git("cat-file", "-e", f"{BASE_REF}:./RESULTS_ANCHOR_POST8_NUMBERS.md").returncode != 0
 
 
 @pytest.mark.skipif(not db_ok(), reason="DB 없음")
 def test_p2_post7_mode_output_byte_identical_head_vs_new(tmp_path):
-    """HEAD 판과 새 판을 «같은 스냅샷»에서 `--mode post7` 로 돌려 두 산출물이 byte 같은가.
+    """`154b80c` 판(post8 이전)과 새 판을 «같은 스냅샷»에서 `--mode post7` 로 돌려 두 산출물이 byte 같은가.
 
     🔴 작업트리의 동결 산출물은 쓰지 않는다 — 사본 디렉터리 두 개에서만 돈다.
     (동결 파일 자체와의 비교는 DB 스냅샷 전진으로 구조적으로 불가 — `max(date)` 줄이 움직인다.)"""
@@ -252,8 +257,14 @@ def test_p6_numbers_structure():
     assert sum(1 for ln in L if "`ANC-N4` ① 갈래" in ln and "혼합 빈티지" in ln) == 4
     # 소급 각주가 소급 표마다
     assert body.count("소급 = 탐색 · 채택은 그 글 열로만") >= 8
-    # 분 단위 시각이 본문에 없다
-    assert not re.search(r"실행일 \*\*2026-\d\d-\d\d \d\d:\d\d", body)
+    # 🆕 정정 1차(B-1) — D-9 ① = 최초 읽기 시각 stamp(분 단위 · `PREREG_POST8.md:544-545`) · 「실행일」 줄 없음
+    assert "실행일 **" not in body, "벽시계 날짜 줄은 결정론을 깨뜨린다 — 제거"
+    m1 = re.search(r"^\| 🔴 D-9 ① 쿼리 실행 시각\(KST\) \| \*\*(2026-\d\d-\d\d \d\d:\d\d:\d\d)\*\*", body, re.M)
+    assert m1, "D-9 ① 분 단위 시각"
+    import json
+    st = json.loads((BASE / ANC.ANC8_STAMP_DIR / "read_stamp.json").read_text(encoding="utf-8"))
+    assert st["first_read_kst"] == m1.group(1) and st["timezone"] == "Asia/Seoul"
+    assert st["fingerprint"]["end_rows"] > 0 and st["fingerprint"]["span"] == [ANC.ANC8_SPAN_START, ANC.POST8_END]
 
 
 @pytest.mark.skipif(not (NUM8.exists() and DOC8.exists()), reason="산출물 아직 없음")
@@ -263,10 +274,42 @@ def test_p6_doc_equals_numbers_except_title():
     assert a[1:] == b[1:] and a[0] != b[0]
 
 
+class _FakeCur:
+    """`anc8_read_stamp` 가 던지는 SELECT 6개에 차례로 답한다(DB 없이 stamp 규약만 시험)."""
+
+    def __init__(self, umax, now):
+        self.q = []
+        self.ans = [("2026-09-23",), (2764,), (100, "2026-09-23 15:45:10", umax),
+                    ("2026-09-23 15:45:10", umax), (2764, umax), (now,)]
+
+    def execute(self, sql, params=None):
+        assert sql.lstrip().upper().startswith("SELECT")
+        self.q.append(sql)
+
+    def fetchone(self):
+        return self.ans[len(self.q) - 1]
+
+
+def test_p7_stamp_same_fingerprint_reuses_and_does_not_rewrite(tmp_path):
+    """🆕 정정 1차(B-1) — 같은 지문 = 최초 시각 유지 ∧ 파일 불변 · 다른 지문 = 새 시각(대칭)."""
+    t1, n1, r1 = ANC.anc8_read_stamp(_FakeCur("2026-09-23 15:46:25", "2026-09-24 02:40:00"), base=tmp_path)
+    p = tmp_path / ANC.ANC8_STAMP_DIR / "read_stamp.json"
+    b1 = p.read_bytes()
+    assert (t1, n1, r1) == ("2026-09-24 02:40:00", "2026-09-24 02:40:00", False)
+    t2, n2, r2 = ANC.anc8_read_stamp(_FakeCur("2026-09-23 15:46:25", "2026-09-24 03:00:00"), base=tmp_path)
+    assert (t2, n2, r2) == ("2026-09-24 02:40:00", "2026-09-24 03:00:00", True)
+    assert p.read_bytes() == b1, "같은 지문이면 파일을 다시 쓰지 않는다(--rerun 디렉토리 불변)"
+    t3, _n3, r3 = ANC.anc8_read_stamp(_FakeCur("2026-09-28 15:46:00", "2026-09-28 16:00:00"), base=tmp_path)
+    assert (t3, r3) == ("2026-09-28 16:00:00", False) and p.read_bytes() != b1, "🔴 대칭 — 지문이 움직이면 새 시각"
+
+
 def test_p6_script_writes_only_post8_files_in_post8_block():
     src = (BASE / "run_anchor_redesign.py").read_text(encoding="utf-8")
     blk = src.split("# 🆕 `--mode post8` — **순수 덧붙임**", 1)[1]
     import re
     targets = re.findall(r'BASE / "([^"]+)"\)\.write_text', blk)
     assert sorted(targets) == ["RESULTS_ANCHOR_POST8.md", "RESULTS_ANCHOR_POST8_NUMBERS.md"]
+    # 🆕 정정 1차 — 그 밖의 쓰기는 stamp 하나(`anchor_post8/read_stamp.json`)뿐
+    assert blk.count(".write_text(") == 3 and 'p = d / "read_stamp.json"' in blk
+    assert ANC.ANC8_STAMP_DIR == "anchor_post8"
     assert not re.search(r'^END = "', blk, re.M), "post7 상수 이름 `END` 를 다시 묶지 않는다"

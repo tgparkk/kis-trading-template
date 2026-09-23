@@ -276,7 +276,7 @@ ART_DIRS = {
     # 🔴 2026-09-24 post8 — post7 의 두 디렉토리 산출물(`sector_post7`·`wrc_post7`)에 대응하는 자리.
     "RESULTS_SECTOR_POST8_NUMBERS.md": ("sector_post8",),
     "RESULTS_WRC_POST8_NUMBERS.md": ("wrc_post8",),
-    #    🆕 **post7 에 없던 새 종류 — D-9 ① 「최초 읽기 시각」 스탬프 디렉토리 2개**(레인 A3·B2 재량 ·
+    #    🆕 **post7 에 없던 새 종류 — D-9 ① 「최초 읽기 시각」 스탬프 디렉토리 3개**(레인 A3·B2 재량 + 정정 1차 ANC ·
     #      `PREREG_POST8.md` §9 (나) 2). 스크립트가 산출물 본문에 벽시계를 넣지 않으려고(바이트 결정론)
     #      «이 DB 지문을 처음 읽은 KST 시각»을 디렉토리의 json 에 따로 박고 본문은 그 값을 인용한다.
     #      ⇒ 본문 byte-diff 만으로는 이 json 이 바뀌어도 못 본다. 등재하지 않으면 루프 «전체» tripwire
@@ -285,12 +285,16 @@ ART_DIRS = {
     #        **다시 쓰지 않는다** ⇒ 같은 스냅샷 재실행에서 바이트 불변(`sector_post8/`·`wrc_post8/` 안의
     #        `read_stamp.json` 도 같은 관용이며 그 둘은 위 두 줄로 이미 덮인다).
     #      · `reconstruct_post8/query_stamp.json` — `run_reconstruct_post8.py::stamp_resolve()` ·
-    #        ⚠️ **지문이 같아도 `runs_kst` 에 이번 벽시계를 «덧붙여» 매 실행 다시 쓴다**(2026-09-24 실측 6회 누적)
-    #        ⇒ `--rerun` 은 이 항목에서 **구조적으로 「디렉토리 산출물이 달라졌다」 FAIL** 을 낼 것이다
-    #        (바이트로 되돌린 뒤 FAIL — 가드가 맞게 도는 것이다). 🔴 등재를 빼서 통과시키지 말 것 —
-    #        고칠 자리는 스크립트 쪽이다(미결 · 관리자 보고).
+    #        🟢 **정정 1차(2026-09-24 · verifier B)**: 초판은 지문이 같아도 `runs_kst` 에 벽시계를 «덧붙여» 매 실행
+    #        다시 썼다(6회 누적 ⇒ `--rerun` 구조적 FAIL) — 스크립트를 RNK 관용(지문 같으면 파일을 다시 쓰지 않는다 ·
+    #        실행 기록 = stdout 전용)으로 고치고 stamp 를 최초 시각 1개로 정리했다. 등재는 그대로 둔다.
+    #      · 🆕 `anchor_post8/read_stamp.json` — `run_anchor_redesign.py::anc8_read_stamp()`(정정 1차 · verifier B B-1 ·
+    #        초판 ANC 는 「실행일 + 빈티지 구간」만 인쇄해 D-9 ① 를 못 채웠다) · 지문이 같으면 다시 쓰지 않는다.
+    #        한 스크립트가 두 산출물(산문 + 기계 생성)을 쓰므로 두 항목에 같이 등재한다(어느 쪽 재실행이든 스냅샷된다).
     "RESULTS_RANKING_POST8_NUMBERS.md": ("ranking_post8",),
     "RESULTS_RECONSTRUCT_POST8_NUMBERS.md": ("reconstruct_post8",),
+    "RESULTS_ANCHOR_POST8.md": ("anchor_post8",),
+    "RESULTS_ANCHOR_POST8_NUMBERS.md": ("anchor_post8",),
 }
 
 
