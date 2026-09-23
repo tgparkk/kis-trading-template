@@ -1,0 +1,187 @@
+{
+ "post_log_no": "224416253270",
+ "post_date": "2026-09-18",
+ "window_end": "2026-09-18",
+ "db_snapshot_max_date": "2026-09-23",
+ "d9_first_read_kst": "2026-09-24 01:15:26",
+ "db_snapshot_rows_on_max_date": 2764,
+ "main_branch": {
+  "N": 3,
+  "measure": "SEC-M1"
+ },
+ "denominator_exact": 4,
+ "measurable": 3,
+ "excluded_none_rows": [
+  "빛과전자",
+  "로보티즈",
+  "범한퓨얼셀",
+  "원익"
+ ],
+ "gates": {
+  "min_exact": {
+   "threshold": 3,
+   "n": 4,
+   "open": true
+  },
+  "SEC-G1": {
+   "threshold": 0.3333333333333333,
+   "rate": 0.25,
+   "open": true
+  },
+  "SEC-B1_fire": {
+   "q_top_max": 0.016666666666666666,
+   "q_top_threshold": 0.135,
+   "k": 3,
+   "p_ceiling": 0.000824074074074074,
+   "open": true
+  },
+  "SEC-X1": {
+   "lt05_N1": 0.025,
+   "lt05_B1": 0.03,
+   "z_N1": -1.6222142113076254,
+   "z_B1": -1.2977713690461006,
+   "open": true
+  }
+ },
+ "SEC-P1": {
+  "components": {
+   "SEC-N1": 0.0671,
+   "SEC-B1": 0.1393,
+   "SEC-B2": 1.0
+  },
+  "thresholds": {
+   "SEC-N1": 0.05,
+   "SEC-B1": 0.05,
+   "SEC-B2": 0.5
+  },
+  "passed": {
+   "SEC-N1": false,
+   "SEC-B1": false,
+   "SEC-B2": true
+  },
+  "and_passed": false,
+  "SEC-V1_split": true,
+  "SEC-V1_split_P8": true,
+  "SEC-V1_any_branch_ok": false,
+  "SEC-X1_ok": true,
+  "blocked_by_SEC-V1": false,
+  "blocked_by_SEC-X1": false,
+  "blocked": false,
+  "verdict": false,
+  "verdict_label": "불성립"
+ },
+ "SEC-P2": {
+  "note": "기록만 — 검정 통계량 아님 · 누계 이어가기(결정 ⑥)",
+  "prior": {
+   "n_judgements": 1,
+   "n_support": 0
+  },
+  "n_judgements": 2,
+  "n_support": 0
+ },
+ "SEC-V1": {
+  "split": true,
+  "by_branch": {
+   "1|`N = 2`": false,
+   "1|`N = 3`": false,
+   "1|`N = 5` (🔴 구조적 미정 100.0% 병기)": null,
+   "2|`SEC-M1`": false,
+   "2|`SEC-M2`": false,
+   "2|`SEC-M3`": false,
+   "3|글 단위 중앙": false,
+   "3|건 pooled 중앙": false,
+   "4|`exact` 만": false,
+   "4|`approx` 포함 (6건)": null
+  }
+ },
+ "reentry_sensitivity": {
+  "excluded_codes": [],
+  "P6_PRIOR_CYCLE_IN_WINDOW_in_denominator": {},
+  "P6_PRIOR_CYCLE_IN_WINDOW_whole_post": {
+   "047770": 1
+  },
+  "note": "글 전체 §1-5 재진입 3건(원익 none · 헥토·코데즈 approx)은 전부 분모 밖 — 항등(PD-3)",
+  "verdict_kept": false,
+  "verdict_excluded": false,
+  "main_kept": 76.43312101910828,
+  "main_excluded": 76.43312101910828
+ },
+ "same_snapshot_recompute": {
+  "post6": {
+   "n": 10,
+   "k": 10,
+   "main": 54.140127388535035,
+   "N1": 0.15075,
+   "B1": 0.31275,
+   "B2": 0.8,
+   "B2w": 8,
+   "B2n": 10,
+   "G1": 0.0,
+   "qtop": 0.02040816326530612,
+   "qtop_d": "2026-08-25",
+   "fire": true,
+   "and_ok": false,
+   "split_all": true,
+   "split_p8": false
+  },
+  "post7": {
+   "n": 6,
+   "k": 5,
+   "main": 88.53503184713375,
+   "N1": 0.00315,
+   "B1": 0.00325,
+   "B2": 1.0,
+   "B2w": 5,
+   "B2n": 5,
+   "G1": 0.16666666666666666,
+   "qtop": 0.016666666666666666,
+   "qtop_d": "2026-09-09",
+   "fire": true,
+   "and_ok": true,
+   "split_all": true,
+   "split_p8": true
+  }
+ },
+ "woori_ro_excluded_print_only": {
+  "n": 3,
+  "main": 82.80254777070064,
+  "verdict": null
+ },
+ "SEC-O1": {
+  "frozen_train": {
+   "main": 67.0,
+   "pooled": 69.4,
+   "N1": 0.0382,
+   "B1": 0.3258,
+   "B2": 0.6,
+   "B2_wins": 9,
+   "B2_n": 15,
+   "G1": 0.16666666666666666,
+   "n_measurable": 15,
+   "n_items": 18,
+   "db_snapshot": "2026-09-02"
+  },
+  "recomputed_train": {
+   "main": 66.9807707812626,
+   "SEC-N1": 0.03825,
+   "SEC-B1": 0.3258,
+   "SEC-B2": 0.6,
+   "SEC-G1": 0.16666666666666666,
+   "n_items": 18,
+   "n_measurable": 15
+  },
+  "drift_items": [
+   "관측",
+   "`SEC-N1`"
+  ]
+ },
+ "_notation": [
+  "1. 🔴 **「라이브 채택 금지 · 성과·엣지 추정 금지」** — 이 문서가 만드는 어떤 섹터 지표도 라이브 전략·파라미터 변경의 근거가 아니다(`PREREG_SECTOR_COMOVE.md` §0-1 · `PREREG.md` §0). 산출물은 **기록**이지 전략 후보가 아니다.",
+  "2. 🔴 **「+15%」 문턱이 이 축 «안»에 남아 있다** — `n_up`(대조 풀)과 `SEC-M2` 가 `고가 ≥ 전일종가 × 1.15` 를 쓴다(`run_regday_post5.py:13`·`:327` 승계 · §2-2). **`SEL-S1` 기각은 그대로 유지된다** — 이 값은 «판정 문턱»이 아니라 «대조 풀·측정자 입력»이고, **등록일 당일 저자 종목에 걸지 않는다**(동료에게만 건다).",
+  "3. 🔴 **`SEC-P1` 불성립을 「테마가 아니다」로 읽지 않는다** — 거짓 음성이 구조적이다(에코프로 4종목이 KSIC 에서 «세 칸»으로 흩어진다 · §0-2 · §9). 성립도 「섹터 동반성이 존재한다」까지이며 「테마로 고른다」의 확증이 아니다.",
+  "4. 🔴 **`SEC-N1` 은 «`SEC-B1` 없이는» 증거가 아니다** — 저자 종목은 정의상 급등주이고, 급등주가 섹터 동반성이 높다면 `SEC-N1` 은 그 사실만 되비춘다(= `REG-M4` 재진술). **정보는 `SEC-B1`·`SEC-B2` 에 있다**(§4-1).",
+  "5. 🔒 **여기 있는 값이 «판정»이다**(`SEC-P1`·`SEC-P2` · §0-4 7번) — 분모는 **post8 신규 `exact` 건**이며, **훈련(post1~5) 값은 분모에 «넣지 않는다»**(`SEC-O1` · §4-5). 훈련 열은 🔬 «탐색적 표기»로 나란히 두기만 한다. 그리고 이 축의 최대치는 **「기술」**이다(승/패 대조 **5회 연속** 미실시 · §0-2 ③).",
+  "6. 🔴 **잣대는 이 실행 «전»에 동결됐다** — `SEC-D1`(`N = 3`)·`SEC-D2`(`SEC-M1`) 사장님 확정 2026-09-02(§0-6) · 배선 점검 2026-09-02 · 동결 커밋 `FREEZE_SECTOR_2026-09-03.md` · 그 «뒤»인 2026-09-18 19:04:05 KST 에 `fetch_post.py`(post8)가 돌았다(`PREDECISION_2026-09-18_post8.md` PD-0 표 · 10 SHA 전부 `origin/main`). 🔴 **이 실행은 잣대를 하나도 바꾸지 않는다** — 값을 보고 바꾸면 그게 사후적합이다.",
+  "7. 🔴 **라이브 채택 대상이 아니다**(`PREREG.md` §0 2번 · `PREREG_POST8.md` §0-1) — 🆕 `PREREG_POST8.md` 첫 구속 회차(`D-3`·`D-5`·`D-8`·`D-9` 의무 인쇄 · 등급 이름 0)."
+ ]
+}

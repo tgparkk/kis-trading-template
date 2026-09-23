@@ -1313,9 +1313,931 @@ def main(argv=None) -> int:      # noqa: C901
     return 0
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 🆕 `--mode post8` — **순수 덧붙임** (2026-09-24 · 레인 B1)
+#
+# 🔴🔴 위(post7 경로)의 함수 본문은 한 바이트도 바꾸지 않았다 — 공유 헬퍼에 인자를 달지 않고
+#    post8 전용 상수·함수를 «이 블록에만» 둔다. `main()` 은 post7 전용 그대로(`choices=("post7",)`)이고,
+#    명령줄 진입점만 `cli()` 로 바꿔 `--mode` 를 `("post7", "post8")` 로 연다
+#    (post7 은 `main(["--mode", "post7"])` 로 그대로 넘긴다 ⇒ post7 산출물 byte 불변 · `test_post8_anchor.py`).
+#
+# 동결 준거(1순위 · 값 보기 «전»에 다시 읽었다):
+#   `PREREG_ANCHOR_REDESIGN.md` 전편(§2-1 `END` · §2-3 분모 · §3 후보 · §4 예측 · §5-1~§5-4 · §6 `ANC-N1`~`N5` ·
+#   §7 귀무·시드 · §10 판정 불가) · `PREREG_POST8.md` §1(`D-1` 합성 SSOT: 게이트 = 누적 40 · 값 = 그 글 열) ·
+#   §3(`D-3`) · §5(`D-5` `P8-갈래계수`) · §9(`D-9`) · §0-5-1(가분성) ·
+#   `PREDECISION_2026-09-18_post8.md` PD-1 · PD-3(🔒 #1-(i′)) · PD-12 · PD-13 · PD-14 · **PD-19 · PD-21 · PD-23 ·
+#   PD-27 (바)** · `INTAKE_2026-09-18_post8.md` §1·§2·§5 「ANC-」 행 · 원장 `b302f7f`.
+#
+# 이번 회차의 갈림(계산 «전»에 적는다 · 값 아님):
+#   ANC8-1 `END` = **2026-09-18**(발행 금요일 = 거래일 · 발행 당일 봉 «포함» · PD-1).
+#   ANC8-2 판정 분모 = post8 신규 ∧ `exact` = **4**(우리로 · JW신약 · 액스비스 · 우리기술 · 전부 `N = 1`).
+#   ANC8-3 소급 = post1~7 `exact`(post1~6 28 + post7 6) = **탐색** · 창은 **글별 발행일**(post7 정정 승계).
+#   ANC8-4 🔴🔴 `ANC-N4` 세 축 = ① **살아 있음**(`END` 09-18 ↔ 직전 봉 09-17) · ② **살아 있음**(🔒 #1-(i′) ·
+#       우리로 = 항목 내 2 사이클 · 4 ↔ 3) · ③ **항등**(창5 절단 0 · 명시 인쇄) — **세 축 × 세 판정(P1·P2·P3) ×
+#       네 후보(A0~A3) 전수**를 대조한다(post7 교훈: ②는 P1만·③은 P3만 보면 뒤집힘을 놓친다).
+#   ANC8-5 `D-1` — 게이트 분모 = **누적**(출처 = `LAD-` 레인 `RESULTS_LADDER_TRANCHE_POST8_NUMBERS.md` 의
+#       「누적 비교가능 쌍 = <수>」 줄 · post7 의 266 과 같은 출처 `RESULTS_LADDER_TRANCHE_POST7.md:33`) ·
+#       값 = **그 글 열** — exact 4 전부 `N = 1` ⇒ 그 글 열 비교가능 쌍 **0(구성)** ⇒ `V(X)` 정의 안 됨 ⇒
+#       **통계량을 계산하지 않는다**(전제 미충족 · PD-19). `approx`(코데즈 N=2)로 채우지 않는다(PD-21).
+#   ANC8-6 조건 ③ 미판정 ⇒ §5-1 AND 미완성 ⇒ §5-2 세 갈래 어디로도 가지 않고 **미룬다**
+#       (「충족 0 ⇒ 전면 폐기 상신」으로 읽지 않는다 — ③ 은 «못 쟀다»이지 «실패»가 아니다).
+#   ANC8-7 D-9 ① 시각 줄 = 🆕 정정 1차: **최초 읽기 KST 시각 stamp**(`anchor_post8/read_stamp.json` · 지문 같으면
+#       다시 쓰지 않는다 · RNK·WRC·SEC 관용) — 초판의 「실행일 + 빈티지 구간」은 `PREREG_POST8.md:544-545` ① 을 못 채웠다.
+#   🔴 등급 이름은 적지 않는다(§6 단계 · PD-16 · PD-28) — `_assert_no_grade8` 가 문다.
+# ═══════════════════════════════════════════════════════════════════════════
+PUB8 = "2026-09-18"             # 8번째 글 발행일 (금 · 거래일)
+POST8_LOG_NO = "224416253270"
+POST8_END = "2026-09-18"        # ANC8-1 · PD-1 — 🔴 이름을 `END` 로 두지 않는다(post7 상수 불변)
+RETRO8_LAST_POST_DATE = PUB7    # 소급 = post1~7
+VINTAGE_BOUNDARY8 = "2026-09-14"
+DPLUS1_SWEEP8 = "2026-09-21 15:35"
+WIN_START8 = "2026-07-24"
+HOLIDAYS_NEAR8 = {"2026-09-24", "2026-09-25", "2026-09-26"}   # `utils/korean_holidays.py:69-71` 읽기 전용 참조
+LAD_POST8_NUMBERS = "RESULTS_LADDER_TRANCHE_POST8_NUMBERS.md"
+LAD_CUM_RE = r"^\*\*누적 비교가능 쌍 = (\d+)\*\*\s*$"
+
+# post8 판정 분모 — `INTAKE_2026-09-18_post8.md` §1 표(동결) 그대로 · (종목, 코드, 등록일, N, first_only, 재진입(🔒 #1-(i′)), PRIOR)
+POST8_EXACT = [
+    ("우리로",   "046970", "2026-09-11", 1, True, True,  0),   # 항목 내 2 사이클(`WRC-R5` 명명) · ② 제외 대상
+    ("JW신약",   "067290", "2026-09-01", 1, True, False, 0),
+    ("액스비스", "0011A0", "2026-09-11", 1, True, False, 0),
+    ("우리기술", "032820", "2026-09-09", 1, True, False, 0),
+]
+POST8_APPROX = [
+    ("헥토파이낸셜", "234340", 1, ["2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26",
+                                     "2026-08-27", "2026-08-28", "2026-08-31"]),
+    ("코데즈컴바인", "047770", 2, ["2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26",
+                                     "2026-08-27", "2026-08-28", "2026-08-31"]),
+]
+POST8_NONE = [("원익", "032940")]
+POST8_FOLLOWUP = ["빛과전자", "로보티즈", "범한퓨얼셀"]
+
+RETRO_FOOTNOTE8 = ("🔴 **소급 = 탐색 · 채택은 그 글 열로만**(`PREREG_ANCHOR_REDESIGN.md` §5-4 · "
+                   "`PREREG_POST8.md` §1 (나) 2 · 같은 표본에 정의를 바꿔 다시 돌리는 것은 정의상 사후적합).")
+TEST_FOOTNOTE8 = ("🟢 **이 열이 «검정»이다** — 🔴 **소급 = 탐색 · 채택은 그 글 열로만**"
+                  "(§5-4 · 채택 근거로 쓸 수 있는 유일한 열).")
+_FORBIDDEN_GRADE8 = ("충족·참고용", "조건 미달", "낡음(재실행 금지)")
+
+LIMITS8 = [
+    "🔴 **소급(post1~7)은 탐색이다.** 같은 표본에 새 앵커를 적용한 수는 **증거가 아니다** — 검정은 post8 열뿐이다(§13).",
+    "🔴 **`ANC-P3` 는 이 글에서 잴 수 없었다** — exact 4건이 전부 `N = 1` 이라 그 글 열 비교가능 쌍이 **구성상 0** 이다. "
+    "***값이 닫은 것이 아니라 저자의 체결 차수 서술이 닫았다***(PD-13 · PD-19).",
+    "🔴 **`h_obs` 는 `close` 로 재는 하한 검사다** — 복원 `P` 로 재는 진짜 `h_max` 는 `REC-Y3` 중단 때문에 못 쓴다(§13).",
+    "🔴 **`A2` 의 창5 는 `LAD-` 축에서 «위반 4쪽»이라는 걸 알고 고른 창이다**(§13) — 앵커로 옮겨 써도 편향은 남는다.",
+    "🔴 **`END` 가 글마다 그 글의 발행일이다** — 소급 post7 건은 `09-11`(발행 09-12 토) · post8 건은 `09-18`. "
+    "🔴 단 **창5(`A2`·`L₅`)는 동결 `win_bars` 가 `END` 를 모른다** — 등록일 뒤 4거래일을 그대로 읽으므로 "
+    "소급 post7 건(빛과전자 09-08 · 범한퓨얼셀 09-09)의 창5 는 09-14·09-15 봉까지 들어간다(PD-12 「값 대체」와 같은 방향 · "
+    "혼합 빈티지 신고 줄 참조). 🟢 **검정 열(post8 `exact` 4) 무영향** — post8 건의 창5 끝은 전부 `END` 이내다(아래 실측 줄) · "
+    "영향은 소급(탐색) 열에만 있다.",
+    "🔴 **`P-4`·`P-5` 가 정한 한계 절 문장**(`PREREG_POST8.md:567` · `PREDECISION_2026-09-18_post8.md:704`) — "
+    "① `ovtm_vol` 채널은 09-14 에 0/2,756 이고 09-15 이후 `overtime_daily` 행이 **없다** ⇒ 시간외분을 `H`·`L` 에서 뺄 수 없다 · "
+    "② 15:30 마감 분봉이 09-14 1/303 · 09-15~09-18 0(PD-27 (다)) · 09-16~09-23 = 0·0·1·0·1·0(관리자 2026-09-24 00:07:44 KST 실측 "
+    "`p8_probes_postfetch_0924.txt` `P-5`) ⇒ `minute_candles` 로 정규장 상한을 만들 수 없다 ⇒ **「정규장만」 갈래는 열지 않는다**"
+    "(`PREREG_POST8.md:549-550`).",
+    "🔴 **제도 경계(2026-09-14)가 post8 창에 처음 들어왔다** — `[D, END]` 는 신규 전건이 걸친다(§1-1). "
+    "`daily_prices.high/low` 는 **D+1 재기록 후의 값**이다(`P8-빈티지`) — 「시간외 합산」이라고 단정하지 않는다(`PREREG_POST8.md` §9).",
+    "🔴 **표본이 작다** — 판정 분모 4 · 한 건이 비율을 25%p 옮긴다. ***비율과 함께 건별 원표(§2)를 읽을 것.***",
+    "🔴 **`--rerun` 한계 — 다음 sweep 뒤**(🆕 정정 1차 · verifier B 공통) — 다음 D+1 sweep(예정 **2026-09-28 15:35**)이 창 구간 "
+    "`updated_at` 을 일괄 갱신하면 D-9 ②(`max(updated_at)`)·DB 지문이 **반드시** 바뀐다 ⇒ `anchor_post8/read_stamp.json` 에 새 시각이 "
+    "박히고 `regen_gate.py --rerun` 은 이 산출물에서 byte 불일치를 낸다 — 값이 틀렸다는 뜻이 아니라 동결 규칙(D-9 ①② 인쇄 의무)의 "
+    "귀결이다(byte 재현은 «같은 스냅샷» 안에서만 성립).",
+]
+
+
+def _assert_no_grade8(lines):
+    """🔴 등급 이름이 산출물에 없다(§6 단계 · PD-16 · PD-28)."""
+    import re as _re
+    body = "\n".join(lines)
+    hit = [g for g in _FORBIDDEN_GRADE8 if g in body] + _re.findall(r"GT-[A-F]", body)
+    if hit:
+        raise AssertionError("🔴 등급 이름이 산출물에 들어갔다: %s" % hit)
+    return True
+
+
+_DUTY8 = ("D-9 ①", "D-9 ②", "D-9 ③", "D-9 ④", "D-9 ⑤", "D-1 ①", "D-1 ②", "D-1 ③",
+          "그 글 열 비교가능 쌍 0(구성 · exact 4건 전부 N=1)", "`approx` 포함 시 최소 n 이 차는 축:",
+          "D-5 갈래", "소급 = 탐색 · 채택은 그 글 열로만", "라이브 채택 대상이 아니다",
+          "창 종료 2026-09-18 = 발행 당일(금 · 거래일) 봉 «포함»", "실행 시 `max(date)`",
+          "`ANC-N5`", "`ANC-N4`", "항등 — 표 없음")
+
+
+def _assert_duties8(lines):
+    body = "\n".join(lines)
+    miss = [m for m in _DUTY8 if m not in body]
+    if miss:
+        raise AssertionError("🔴 post8 인쇄 의무 누락: %s" % miss)
+    return True
+
+
+def lad_cumulative_pairs(base=None):
+    """`D-1` ② 의 출처 — `LAD-` 레인 산출물의 「누적 비교가능 쌍 = <수>」 줄(없으면 None)."""
+    import re as _re
+    p = (base or BASE) / LAD_POST8_NUMBERS
+    if not p.exists():
+        return None, f"`{LAD_POST8_NUMBERS}` 없음"
+    for ln in p.read_text(encoding="utf-8").splitlines():
+        m = _re.match(LAD_CUM_RE, ln)
+        if m:
+            return int(m.group(1)), f"`{LAD_POST8_NUMBERS}` 의 「누적 비교가능 쌍 = {m.group(1)}」 줄"
+    return None, f"`{LAD_POST8_NUMBERS}` 에 「누적 비교가능 쌍 = <수>」 줄이 없다"
+
+
+# 🆕 정정 1차(verifier B B-1) — `D-9` ① 「최초 읽기 시각」 stamp. 초판은 「실행일 + 빈티지 구간」만 인쇄해
+#    `PREREG_POST8.md:544-545`(① 쿼리 실행 시각(KST) · 없으면 무효)를 채우지 못했고, 벽시계 날짜라 다음 날 재실행이면
+#    byte 가 바뀌어 결정론 명분도 없었다 ⇒ RNK·WRC·SEC `read_stamp.json` 관용으로 옮긴다(가분성 `:94-96` · 인쇄 보충).
+ANC8_STAMP_DIR = "anchor_post8"
+ANC8_SPAN_START = "2026-06-01"      # 이 모드가 읽는 가장 이른 날짜(`main_post8` 달력 쿼리 시작) — 지문 구간
+
+
+def anc8_read_stamp(cur, base=None):
+    """`D-9` ① = **이 DB 지문을 이 스크립트가 «처음» 읽은 실행의 KST 시각**(`anchor_post8/read_stamp.json`).
+
+    같은 지문의 재실행은 그 값을 다시 인쇄하고 **파일을 다시 쓰지 않는다**(`run_ranking.py::p8_read_stamp()` 관용 ·
+    이번 실행 벽시계는 stdout 전용). 지문(`max(date)`·그 날 행수·읽은 구간 행수·`min/max(updated_at)`·창 구간
+    `min/max(updated_at)`·`END` 행수)이 바뀌면(= 다른 스냅샷) 새 시각이 박힌다.
+    반환 = (본문 ① 에 쓸 시각, 이번 실행 벽시계, 재사용 여부)."""
+    import json as _json
+    cur.execute("SELECT max(date) FROM daily_prices")
+    mx = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM daily_prices WHERE date = %s", (mx,))
+    mx_rows = int(cur.fetchone()[0])
+    cur.execute("SELECT count(*), min(updated_at), max(updated_at) FROM daily_prices "
+                "WHERE date BETWEEN %s AND %s", (ANC8_SPAN_START, POST8_END))
+    sp_n, sp_min, sp_max = cur.fetchone()
+    cur.execute("SELECT min(updated_at), max(updated_at) FROM daily_prices WHERE date BETWEEN %s AND %s",
+                (WIN_START8, POST8_END))
+    w_min, w_max = cur.fetchone()
+    cur.execute("SELECT count(*), max(updated_at) FROM daily_prices WHERE date = %s", (POST8_END,))
+    e_rows, e_max = cur.fetchone()
+    fp = dict(max_date=str(mx), max_rows=mx_rows, span=[ANC8_SPAN_START, POST8_END], span_n=int(sp_n),
+              span_min_u=str(sp_min), span_max_u=str(sp_max), mgr_win=[WIN_START8, POST8_END],
+              mgr_min_u=str(w_min), mgr_max_u=str(w_max), end_rows=int(e_rows), end_max_u=str(e_max))
+    cur.execute("SELECT to_char(now() AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS')")
+    now_kst = cur.fetchone()[0]
+    d = (base or BASE) / ANC8_STAMP_DIR
+    p = d / "read_stamp.json"
+    prev = None
+    if p.exists():
+        try:
+            prev = _json.loads(p.read_text(encoding="utf-8"))
+        except Exception:                     # noqa: BLE001
+            prev = None
+    if prev and prev.get("fingerprint") == fp and prev.get("first_read_kst"):
+        return prev["first_read_kst"], now_kst, True
+    d.mkdir(exist_ok=True)
+    p.write_text(_json.dumps(dict(fingerprint=fp, first_read_kst=now_kst, timezone="Asia/Seoul"),
+                             ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return now_kst, now_kst, False
+
+
+def post8_items(pub=PUB8):
+    """post8 판정 분모 — `exact` 4건(INTAKE §1 옮겨 적은 그대로). `pub` 은 창 종료 계산용 발행일."""
+    out = []
+    for nm, code, reg, n, first_only, reentry, prior in POST8_EXACT:
+        out.append(dict(post=8, log_no=POST8_LOG_NO, name=nm, code=code, reg=reg,
+                        prec="exact", fill_n=str(n), first_only=first_only,
+                        reentry=reentry, prior_cycle=prior, post_date=pub))
+    return out
+
+
+def retro8_items():
+    """소급 post1~7 — post1~6 `exact` 28(동결 로더 그대로) + post7 `exact` 6(post7 판정 분모 그대로)."""
+    return [it for it in retro_items() + post7_items() if it["post_date"] <= RETRO8_LAST_POST_DATE]
+
+
+def pool8(cur, items):
+    """`ANC-P3` 풀 — 차수가 있는 측정 가능 건 · `highs` = 창 `[D, END]` 의 `high`(무작위 앵커 `R` 용)."""
+    rows = []
+    for it in items:
+        if not it.get("ok"):
+            continue
+        try:
+            n = int(it.get("fill_n") or 0)
+        except ValueError:
+            n = 0
+        if n <= 0:
+            continue
+        rows.append(dict(name=it["name"], post=it.get("post", 8), N=n, v=it["v"],
+                         highs=[b[2] for b in window_bars(cur, it["code"], it["reg"], it["end"])]))
+    return rows
+
+
+def p1_eval8(items):
+    usable = [it for it in items if it.get("ok")]
+    out = {}
+    for c in CANDIDATES:
+        if (c, "ANC-P1") in IDENTITY_SLOTS:
+            out[c] = dict(raw=None, n=None, ans=None, ident=True)
+            continue
+        n = len([it for it in usable if z3(it["v"], c) is not None])
+        hits = sum(1 for it in usable if z3(it["v"], c))
+        out[c] = dict(raw=(hits, n), n=n, ans=None if n < MIN_N else bool(hits / n < 0.5), ident=False)
+    return out
+
+
+def p2_eval8(items):
+    usable = [it for it in items if it.get("ok")]
+    out = {}
+    for c in CANDIDATES:
+        if (c, "ANC-P2") in IDENTITY_SLOTS:
+            out[c] = dict(raw=None, n=None, ans=None, ident=True, med=None)
+            continue
+        vals = [x for x in (h_obs(it["v"], c) for it in usable) if x is not None]
+        hit = sum(1 for x in vals if x <= 1.0)
+        out[c] = dict(raw=(hit, len(vals)), n=len(vals), med=med(vals), ident=False,
+                      ans=None if len(vals) < MIN_N else bool(hit / len(vals) >= 2.0 / 3.0))
+    return out
+
+
+def p3_eval8(rows, gate_open):
+    """`ANC-P3`(§5-1 3번) — 🔴 `D-1` 합성: 게이트 = 누적(`gate_open`) · 값 = **그 글 열**(`rows`)만.
+
+    그 글 열 비교가능 쌍이 0 이면 `V(X)` 가 정의되지 않는다 ⇒ **통계량을 계산하지 않는다**(전제 미충족 · PD-19).
+    """
+    out = {c: dict(comp=None, V=None, beat=None, ans=None, why="표본 < 2") for c in CANDIDATES}
+    if len(rows) < 2:
+        return out
+    ns = [r["N"] for r in rows]
+    need_r = []
+    for c in CANDIDATES:
+        xs = [dd_anchor(r["v"], c) for r in rows]
+        keep = [i for i, x in enumerate(xs) if x is not None]
+        if len(keep) < 2:
+            out[c] = dict(comp=None, V=None, beat=None, ans=None, why="표본 < 2")
+            continue
+        ps, _dr = pairset([xs[i] for i in keep], DELTA)
+        v_obs, comp = statV([ns[i] for i in keep], ps)
+        if comp == 0:
+            out[c] = dict(comp=0, V=None, beat=None, ans=None,
+                          why="그 글 열 비교가능 쌍 0 ⇒ `V(X)` 정의 안 됨(전제 미충족)")
+        elif not gate_open:
+            out[c] = dict(comp=comp, V=v_obs, beat=None, ans=None, why="누적 게이트 미달")
+        else:
+            out[c] = dict(comp=comp, V=v_obs, beat=None, ans=None, why="")
+            need_r.append(c)
+    if need_r:
+        vR = []
+        for j in range(S_ANCHOR):
+            hs = random_anchor_highs(rows, j)
+            xs = []
+            for r, h in zip(rows, hs):
+                L5 = r["v"].get("L5")
+                xs.append(None if (h is None or L5 is None or h <= 0)
+                          else 100.0 * (1.0 - float(L5) / float(h)))
+            keep = [i for i, x in enumerate(xs) if x is not None]
+            if len(keep) < 2:
+                continue
+            ps, _dr = pairset([xs[i] for i in keep], DELTA)
+            vo, _c = statV([ns[i] for i in keep], ps)
+            vR.append(vo)
+        for c in need_r:
+            beat = sum(1 for x in vR if x <= out[c]["V"])
+            out[c].update(beat=beat, ans=bool(beat == 0), why=f"`V(R_j) ≤ V(X)` {beat}/{len(vR)}")
+    return out
+
+
+def branch_eval8(cur, items, gate_open):
+    """한 갈래의 세 판정 × 네 후보 — `{검정: {후보: dict}}`."""
+    return {"ANC-P1": p1_eval8(items), "ANC-P2": p2_eval8(items),
+            "ANC-P3": p3_eval8(pool8(cur, items), gate_open)}
+
+
+def branch_diff8(base, alt):
+    """주 ↔ 대안 갈래의 **세 판정 × 네 후보 전수** 차분 — `True ↔ False` 만 「갈린다」(post7 규칙 그대로)."""
+    flips, mutes = [], []
+    for k in ("ANC-P1", "ANC-P2", "ANC-P3"):
+        for c in CANDIDATES:
+            x, y = base[k][c]["ans"], alt[k][c]["ans"]
+            if x is None and y is None:
+                continue
+            if x is None or y is None:
+                mutes.append(f"{c}×`{k}`")
+            elif x != y:
+                flips.append(f"{c}×`{k}`(" + ("△" if y else "▽") + ")")
+    return flips, mutes
+
+
+def _cell8(k, r):
+    if r.get("ident"):
+        return "항등"
+    if k == "ANC-P3":
+        if r["ans"] is None:
+            return "미판정(" + (f"쌍 {r['comp']}" if r["comp"] is not None else "—") + ")"
+        return ("충족" if r["ans"] else "미충족") + f"({r['why']})"
+    raw = r["raw"]
+    s = frac(*raw) if raw else "—"
+    if r["ans"] is None:
+        return f"{s} · n {r['n']} < {MIN_N}"
+    return s + (" · 충족" if r["ans"] else " · 미충족")
+
+
+def _next_sweep8(cur):
+    from datetime import datetime as _dt, timedelta as _td
+    cur.execute("SELECT max(date) FROM daily_prices")
+    d = _dt.strptime(str(cur.fetchone()[0]), "%Y-%m-%d") + _td(days=1)
+    while d.weekday() >= 5 or d.strftime("%Y-%m-%d") in HOLIDAYS_NEAR8:
+        d += _td(days=1)
+    return d.strftime("%Y-%m-%d") + " 15:35 예정"
+
+
+def _split_bars(dates):
+    before = sum(1 for d in dates if str(d) < VINTAGE_BOUNDARY8)
+    return before, len(dates) - before
+
+
+def _cross_line(d0, d1, before, after):
+    return (f"창 `[{d0}, {d1}]` 은 제도 경계 {VINTAGE_BOUNDARY8} 를 걸친다 — 경계 전 `{before}` 봉 / "
+            f"후 `{after}` 봉 · 혼합 빈티지")
+
+
+def main_post8(a) -> int:      # noqa: C901, PLR0912, PLR0915
+    """`--mode post8` — 8번째 글 판정(소급 post1~7 탐색 열 + post8 검정 열)."""
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    t0 = time.time()
+    run_dt = _dt.now(_tz(_td(hours=9)))
+    if run_dt.strftime("%Y-%m-%d %H:%M") < DPLUS1_SWEEP8:
+        raise SystemExit("🔴 착수 조건 미충족 — 09-18 봉은 아직 D 빈티지다(PD-27 (마)). 계산하지 않는다.")
+    conn = psycopg2.connect(**DSN)
+    cur = conn.cursor()
+
+    cur.execute("SELECT max(date) FROM daily_prices")
+    db_max = str(cur.fetchone()[0])
+    cur.execute("SELECT count(*) FROM daily_prices WHERE date = %s", (db_max,))
+    db_max_rows = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM daily_prices WHERE date = %s", (POST8_END,))
+    end_rows = cur.fetchone()[0]
+    cur.execute("SELECT DISTINCT date FROM daily_prices WHERE date BETWEEN '2026-06-01' AND %s "
+                "ORDER BY date", (POST8_END,))
+    cal = [r[0] for r in cur.fetchall()]
+    cur.execute("SELECT min(updated_at), max(updated_at) FROM daily_prices WHERE date >= %s AND date <= %s",
+                (WIN_START8, POST8_END))
+    win_min, win_max = cur.fetchone()
+    next_sweep = _next_sweep8(cur)
+    lad_cum, lad_src = lad_cumulative_pairs()
+    first_kst, now_kst, stamp_reused = anc8_read_stamp(cur)
+
+    # ═══ 표본 측정 ═══════════════════════════════════════════════════════════
+    retro = measure(cur, retro8_items())
+    p8 = measure(cur, post8_items())
+    ax1_ident, ax1_incl, ax1_prev = publish_bar_identity(cal, pub=PUB8, end=POST8_END)
+    p8_end_prev = measure(cur, post8_items(pub=str(ax1_prev)))          # ① END = 발행일 «직전» 봉
+    p8_norein = [it for it in p8 if not it["reentry"]]                  # ② 재진입(우리로) 제외
+    trunc8 = {it["name"]: it["v"]["win5_bars"] for it in p8
+              if it.get("ok") and it["v"]["win5_bars"] < 5}
+    p8_notrunc = [it for it in p8 if it["name"] not in trunc8]          # ③ 창5 절단 제외
+
+    # ═══ §0 ════════════════════════════════════════════════════════════════
+    say("# RESULTS_ANCHOR_POST8_NUMBERS — 기계 생성 (수정 금지)\n")
+    doc("# `ANC-` 앵커 재설계 — 8번째 글 판정 (2회차 · 스크립트 생성)\n")
+    both(f"생성 `run_anchor_redesign.py --mode {a.mode}` · 사전등록 `PREREG_ANCHOR_REDESIGN.md`"
+           "(동결 `63e10a7` → 머지 `ef17c4f`) · `PREREG_POST8.md` §1(`D-1` 합성 SSOT · 동결 `04cd785`) · "
+           "`PREDECISION_2026-09-18_post8.md` PD-19·PD-21·PD-23·PD-27 · `INTAKE_2026-09-18_post8.md` §5 「ANC-」 행 · "
+           "원장 `b302f7f`")
+    both("재사용(새 코드 0줄 · 동결 함수 그대로) `anchors_for`·`measure`·`z3`·`h_obs`·`dd_anchor`·"
+           "`permute_null_strat`·`axis_stats`·`random_anchor_highs`·`publish_bar_identity`·`retro_items`·`post7_items` "
+           "(이 파일 post7 경로) · `run_reconstruct_post6.py`·`run_ladder_tranche.py`·`run_ranking.py` — "
+           "🔴 post7 경로 함수 본문 불변 · post8 전용 블록만 덧붙임")
+    both("")
+    both("## §0. 실행 환경 · 동결 규약\n")
+    both("| 항목 | 값 |")
+    both("|---|---|")
+    both("| 🔴 창 종료 | **창 종료 2026-09-18 = 발행 당일(금 · 거래일) 봉 «포함» · B-1 · ANC §2-1 `END` · "
+           "전 축(`WRC-` 포함) · PD-1** |")
+    both(f"| 🔴 실행 시 `max(date)` | **{db_max}** · 그 날짜 행수 **{db_max_rows:,}** — 기록만(창 아님 · PD-1 8번) |")
+    both(f"| 창 종료일 행수 | `{POST8_END}` = **{end_rows:,}** 행 |")
+    both(f"| 🔴 D-9 ① 쿼리 실행 시각(KST) | **{first_kst}** — 이 DB 지문(`max(date)`·그 날 행수·읽은 구간 "
+           f"`[{ANC8_SPAN_START}, {POST8_END}]` 행수·`min/max(updated_at)`·창 구간 `min/max(updated_at)`·`END` 행수)을 "
+           "이 스크립트가 «처음» 읽은 실행의 DB `now()`(Asia/Seoul) · `anchor_post8/read_stamp.json`(🆕 정정 1차 도입 · "
+           "같은 지문 재실행은 같은 값 · 파일을 다시 쓰지 않는다 · RNK·WRC·SEC `read_stamp.json` 관용) · "
+           f"재실행 벽시계 = stdout 전용 · 읽은 시각은 [창 구간 `max(updated_at)` {win_max}, 다음 sweep {next_sweep}) 안 |")
+    both(f"| 🔴 D-9 ② 창 구간 `max(daily_prices.updated_at)` | **{win_max}** (`[{WIN_START8}, {POST8_END}]`) |")
+    both("| 🔴 D-9 ③ | **09-18 봉은 D+1(09-21) sweep 이후 읽음** |")
+    both(f"| 🔴 D-9 ④ | 창 구간 `min(updated_at)` = **{win_min}** ≥ {DPLUS1_SWEEP8}: "
+           f"**{'예' if (win_min is not None and str(win_min) >= DPLUS1_SWEEP8) else '아니오'}** "
+           "(기록 · 통과 조건 아님 · `updated_at` 은 sweep 마다 일괄 갱신 값 — PD-27 (라)) |")
+    both("| 🔴 D-9 ⑤ 혼합 빈티지 | 아래 §1-1 — 걸침 창마다 한 줄(`[D, END]` · 창5 · ① 갈래 · `approx` 갈래 · 소급 창5) |")
+    both("| `P8-빈티지` | `H`·`L`·`L₅` = `daily_prices.high/low` 의 **D+1 안정 빈티지**(시간외분이 든 채로 · "
+           "「정규장만」 갈래 열지 않음 · `adj_factor` 산술 0) |")
+    both(f"| 판정 분모 | post8 «신규» ∧ `exact` = **{len(POST8_EXACT)}건** (§2-3 · PD-4) |")
+    both("| 소급(탐색) | post1~6 `exact` **28건** + post7 `exact` **6건** — 🔴 **채택 근거 아님**(§5-4) |")
+    both(f"| 주 검정 `m` | **{M_TESTS}** · Holm 1단계 = **{HOLM1:.4f}** · `R` 시드 **{S_ANCHOR}** "
+           f"(최소 `p` {PERM_MIN_P:.4f}) · `NULL_SEED` **{NULL_SEED}** · `δ` **{DELTA}%p** · 순열 **{NPERM:,}** — "
+           "🔴 전부 동결값 그대로 |")
+    both(f"| `ANC-P3` 게이트 | 비교가능 쌍 **{PAIR_GATE}** — 🔒 `D-1`: **분모 = 누적 · 값 = 그 글 열** · "
+           "🔴 문턱을 낮춰 열지 않는다 |")
+    both("| 최소 n | **3** (`ANC-P1`·`ANC-P2` · §10) |")
+    both("| 등급 | 🔴 이 산출물은 등급 이름을 **한 개도 적지 않는다**(§6 단계 · PD-16 · PD-28) |")
+    both("| 라이브 | 🔴 **라이브 채택 대상이 아니다**(`PREREG.md` §0 2번 · `PREREG_POST8.md` §0-1) |")
+    both("")
+    both("🔴 **`WRC-` 판정 분모를 쓰지 않는다**(§2-3) · **`A0` 는 대조군 전용** · **혼합 금지** · "
+           "**`BUY-L5` 재개 조항은 🔒 결정 ④로 «자동 소멸»**(이 산출물은 재개를 말하지 않는다) · "
+           "🔴 **이 문서 안에서 새 예측을 만들지 않는다.**")
+    both("")
+
+    # ═══ §1 표본 ═══════════════════════════════════════════════════════════
+    both("## §1. 표본 — 판정(post8 `exact` 4) · 소급(post1~7 `exact` 34 · 탐색)\n")
+    r_ok = [it for it in retro if it.get("ok")]
+    p_ok = [it for it in p8 if it.get("ok")]
+    both("| 구분 | 건 | 측정 가능 | 측정 불가 | 지위 |")
+    both("|---|---|---|---|---|")
+    both(f"| 소급 post1~7 `exact` | **{len(retro)}** | {len(r_ok)} | {len(retro) - len(r_ok)} | 🔴 **탐색**(§5-4) |")
+    both(f"| **post8 신규 `exact`** | **{len(p8)}** | **{len(p_ok)}** | {len(p8) - len(p_ok)} | "
+           "🟢 **검정 · 판정 분모** |")
+    both(f"| (민감도 밖) post8 `approx` | {len(POST8_APPROX)} | — | — | ⚪ 판정 분모 **밖**(PD-4 · 🔴 그 글 열을 채우지 않는다 · PD-21) |")
+    both(f"| post8 `none` · 후속 | {len(POST8_NONE)} · {len(POST8_FOLLOWUP)} | — | — | 등록일 축 밖(PD-2 · PD-4) |")
+    both("")
+    for it in retro:
+        if not it.get("ok"):
+            both(f"- 🔴 소급 측정 불가 — post{it['post']} **{it['name']}**({it['reg']}): {it.get('why', '—')}")
+    both("")
+    both("| # | 종목 | 코드 | 등록일 | `[D, END]` 봉수 | 창5 봉수 | 차수 N | 재진입(🔒 #1-(i′)) | `PRIOR_CYCLE_IN_WINDOW` |")
+    both("|---|---|---|---|---|---|---|---|---|")
+    for i, it in enumerate(p8, 1):
+        v = it.get("v") or {}
+        tr = "🔴 **절단**" if it["name"] in trunc8 else "완전"
+        both(f"| {i} | {it['name']} | `{it['code']}` | {it['reg']} | {v.get('bars', '—')} | "
+               f"{v.get('win5_bars', '—')} ({tr}) | {it['fill_n']} | "
+               f"{'🔀 예(항목 내 2 사이클)' if it['reentry'] else '아니오'} | **{it['prior_cycle']}** |")
+    both("")
+    both("🔴 **② 재진입 = 우리로 1건**(🔒 #1-(i′) 「살아 있음」 · `ANC-` 분모 = `REC-` 와 같은 규칙 `:142-144` · "
+           "`WRC-R5` 가 이 모양을 「재진입(같은 항목 안 2사이클)」이라 부른다) · 측정 등록일 09-11 = 사이클 1 "
+           "⇒ `PRIOR_CYCLE_IN_WINDOW` = 0. 🔴 **창5 절단 = "
+           + (f"{len(trunc8)}건" if trunc8 else "0건 ⇒ ③ 축 «항등»(명시 인쇄)") + "**(PD-12).")
+    both("")
+
+    # §1-1 D-9 혼합 빈티지
+    both("### 1-1. 🔴 D-9 ⑤ `P8-혼합빈티지신고` — 걸침 창마다 한 줄 (PD-27 (바) · 봉수 = 그 종목 봉 실측)\n")
+    cross = []
+    for it in p8:
+        if not it.get("ok"):
+            continue
+        dts = [b[0] for b in window_bars(cur, it["code"], it["reg"], it["end"])]
+        b0, a0 = _split_bars(dts)
+        if b0 and a0:
+            cross.append(f"- {it['name']} `[D, END]`: " + _cross_line(it["reg"], it["end"], b0, a0))
+        w5 = [b[0] for b in win_bars(cur, it["code"], it["reg"], back=0, fwd=4)]
+        b5, a5 = _split_bars(w5)
+        if b5 and a5:
+            cross.append(f"- {it['name']} 창5(`A2`·`L₅`): " + _cross_line(it["reg"], w5[-1], b5, a5))
+    for it in p8_end_prev:
+        if not it.get("ok"):
+            continue
+        dts = [b[0] for b in window_bars(cur, it["code"], it["reg"], it["end"])]
+        b0, a0 = _split_bars(dts)
+        if b0 and a0:
+            cross.append(f"- (`ANC-N4` ① 갈래 `END` = {it['end']}) {it['name']} `[D, END]`: "
+                         + _cross_line(it["reg"], it["end"], b0, a0))
+    for nm, code, _n, days in POST8_APPROX:
+        for d in days:
+            dts = [b[0] for b in window_bars(cur, code, d, POST8_END)]
+            b0, a0 = _split_bars(dts)
+            if b0 and a0:
+                cross.append(f"- (`approx` 갈래 · 판정 분모 밖) {nm} D={d} `[D, END]`: "
+                             + _cross_line(d, POST8_END, b0, a0))
+    for it in retro:
+        if not it.get("ok"):
+            continue
+        dts = [b[0] for b in window_bars(cur, it["code"], it["reg"], it["end"])]
+        b0, a0 = _split_bars(dts)
+        if b0 and a0:
+            cross.append(f"- (소급 · 탐색) post{it['post']} {it['name']} `[D, END]`: "
+                         + _cross_line(it["reg"], it["end"], b0, a0))
+        w5 = [b[0] for b in win_bars(cur, it["code"], it["reg"], back=0, fwd=4)]
+        b5, a5 = _split_bars(w5)
+        if b5 and a5:
+            cross.append(f"- (소급 · 탐색) post{it['post']} {it['name']} 창5(`A2`·`L₅`): "
+                         + _cross_line(it["reg"], w5[-1], b5, a5))
+    for ln in cross:
+        both(ln)
+    both("")
+    both(f"- 🔴 `[D−19, D]`(`A3`) 는 전건 {VINTAGE_BOUNDARY8} «전»에서 끝난다(등록일 최대 09-11) ⇒ 걸침 없음. "
+           "`REC-` 창의 두 문서 불일치(`PREREG_POST8.md:546` ↔ `PREREG_ANCHOR_REDESIGN.md:115-124`)는 `REC-` 레인 사안 — "
+           "이 축은 **`[D, END]`·창5·`[D−19, D]` 세 창을 전부** 보았다.")
+    both("- 🔴 「정규장만」 갈래는 열지 않는다(`PREREG_POST8.md` §9 (나) 4) · 방향 추론(「`H` 를 높이고 `L` 을 낮춘다」)을 "
+           "실측으로 인용하지 않는다.")
+    both("")
+
+    # ═══ §2 앵커 원표 ═══════════════════════════════════════════════════════
+    both("## §2. 앵커 원표 — post8 건별 `A0`·`A1`·`A2`·`A3` (새 코드 0줄)\n")
+    both("| 종목 | 등록일 | `A0` 등록일고가 | `A1` 창최고(=`HI`) | `A2` 창5최고 | `A3` 후방20봉최고 | 창최저 `L` | "
+           "창5최저 `L₅` | 창내 최대종가 | **항등 대조** |")
+    both("|---|---|---|---|---|---|---|---|---|---|")
+    ident_fail = []
+    for it in p8:
+        v = it.get("v") or {}
+        if not it.get("ok"):
+            both(f"| {it['name']} | {it['reg']} | — | — | — | — | — | — | — | ⛔ 측정 불가 |")
+            continue
+        if not v.get("identity_ok"):
+            ident_fail.append(it["name"])
+        both(f"| {it['name']} | {it['reg']} | {fmt(v['H0'], 0)} | {fmt(v['H1'], 0)} | {fmt(v['H2'], 0)} | "
+               f"{fmt(v['H3'], 0)} | {fmt(v['L'], 0)} | {fmt(v['L5'], 0)} | {fmt(v['maxclose'], 0)} | "
+               f"{'🟢 일치' if v.get('identity_ok') else '🔴 **불일치**'} |")
+    both("")
+    if ident_fail:
+        both(f"🔴🔴 **항등 대조 실패 {len(ident_fail)}건**({', '.join(ident_fail)}) ⇒ **이 산출물은 무효다**.")
+        both("")
+
+    # ═══ §3 ANC-P1 · §4 ANC-P2 ═════════════════════════════════════════════
+    ev_retro = {"ANC-P1": p1_eval8(retro), "ANC-P2": p2_eval8(retro)}
+    posts = sorted({it["post"] for it in retro})
+    ev_by_post = {k: {"ANC-P1": p1_eval8([it for it in retro if it["post"] == k]),
+                      "ANC-P2": p2_eval8([it for it in retro if it["post"] == k])} for k in posts}
+    gate_open = lad_cum is not None and lad_cum >= PAIR_GATE
+    base = branch_eval8(cur, p8, gate_open)
+
+    def _ptable(key, title, ev, pred_idx, footnote, extra_med=False):
+        both(f"### {title}\n")
+        both("| 후보 | 값 | " + ("중앙 `h_obs` | " if extra_med else "") + "§4 예측 | 최소 n 3 |")
+        both("|---|---|" + ("---|" if extra_med else "") + "---|---|")
+        pred = PRED_P1 if key == "ANC-P1" else PRED_P2
+        for c in CANDIDATES:
+            r = ev[c]
+            if r.get("ident"):
+                both(f"| **{c}** | **항등 — 표 없음** | " + ("— | " if extra_med else "")
+                       + f"{pred[c][pred_idx]} | 🔴 §5-3 — 충족 개수에 **산입 금지** |")
+                continue
+            both(f"| {c} | **{frac(*r['raw'])}** | " + (f"{fmt(r.get('med'), 3)} | " if extra_med else "")
+                   + f"{pred[c][pred_idx]} | {'🟢 충족' if r['n'] >= MIN_N else '⛔ **미달**'} |")
+        both("")
+        both(footnote)
+        both("")
+
+    both("## §3. `ANC-P1` — 앵커 붕괴 재발률 `Z3(X)` = `H_X < HI` 인 건 비율\n")
+    _ptable("ANC-P1", "3-1. 소급 post1~7 (탐색 · 합산)", ev_retro["ANC-P1"], 0, RETRO_FOOTNOTE8)
+    both("### 3-2. 소급 글별 — 같은 2026-09-24 스냅샷에서 재계산 (탐색 · 나란히)\n")
+    both("| 글 | " + " | ".join(CANDIDATES) + " |")
+    both("|---|" + "---|" * len(CANDIDATES))
+    for k in posts:
+        both(f"| post{k} | " + " | ".join(_cell8("ANC-P1", ev_by_post[k]["ANC-P1"][c]) for c in CANDIDATES) + " |")
+    both("| **post8(검정)** | " + " | ".join(_cell8("ANC-P1", base["ANC-P1"][c]) for c in CANDIDATES) + " |")
+    both("")
+    both(RETRO_FOOTNOTE8 + " 🔴 post7 행은 post7 회차의 «검정 열»이었지만 이 회차에서는 **소급**이다. "
+         "칸의 「충족/미충족」 = §5-1 조건 ①(`Z3 < 1/2`)의 충족 여부 — §4 예측 부합 여부가 아니다(`A0` 은 채택 후보가 아니다).")
+    both("")
+    _ptable("ANC-P1", "3-3. **post8 (검정)**", base["ANC-P1"], 1, TEST_FOOTNOTE8)
+
+    both("## §4. `ANC-P2` — 틀 성립률(복원 불요) `h_obs(X) ≤ 1` 인 건 비율\n")
+    both("`h_obs(X) = (max(close over [D, END]) − L) / (H_X − L)` (§4 표 축자)\n")
+    _ptable("ANC-P2", "4-1. 소급 post1~7 (탐색 · 합산)", ev_retro["ANC-P2"], 0, RETRO_FOOTNOTE8, extra_med=True)
+    both("### 4-2. 소급 글별 — 같은 스냅샷 재계산 (탐색 · 나란히)\n")
+    both("| 글 | " + " | ".join(CANDIDATES) + " |")
+    both("|---|" + "---|" * len(CANDIDATES))
+    for k in posts:
+        both(f"| post{k} | " + " | ".join(_cell8("ANC-P2", ev_by_post[k]["ANC-P2"][c]) for c in CANDIDATES) + " |")
+    both("| **post8(검정)** | " + " | ".join(_cell8("ANC-P2", base["ANC-P2"][c]) for c in CANDIDATES) + " |")
+    both("")
+    both(RETRO_FOOTNOTE8 + " 칸의 「충족/미충족」 = §5-1 조건 ②(`h_obs ≤ 1` ≥ 2/3)의 충족 여부 — §4 예측 부합 여부가 아니다.")
+    both("")
+    _ptable("ANC-P2", "4-3. **post8 (검정)**", base["ANC-P2"], 1, TEST_FOOTNOTE8, extra_med=True)
+
+    # ═══ §5 ANC-P3 ════════════════════════════════════════════════════════
+    both("## §5. `ANC-P3` — 앵커가 사다리 «순서»를 설명하는가 (`LAD-T1` 통계량 `V` · 앵커만 교체)\n")
+    both(f"`DD(X) = 1 − L₅ / H_X` · `δ` = **{DELTA}%p** · 통계량 `V` — 🔴 전부 `PREREG_LADDER_TRANCHE.md` §4-2~§4-4 그대로.\n")
+    both(f"예측: **{PRED_P3}**\n")
+    pool_p8 = pool8(cur, p8)
+    ns8 = sorted(r["N"] for r in pool_p8)
+    _tot = len(ns8) * (len(ns8) - 1) // 2
+    _cnt = {}
+    for _v in ns8:
+        _cnt[_v] = _cnt.get(_v, 0) + 1
+    _diff = _tot - sum(c * (c - 1) // 2 for c in _cnt.values())
+    both("### 5-1. 🔴 `D-1` 세 수 (`PREREG_POST8.md` §1 (나) 3 · PD-19)\n")
+    both("| 수 | 값 | 비고 |")
+    both("|---|---|---|")
+    solo = max((r["comp"] or 0) for r in base["ANC-P3"].values())
+    both(f"| **D-1 ①** 그 글 «단독» 비교가능 쌍 | **{solo}** | 후보별 최댓값(§5-2 표) · post8 풀 {len(ns8)}건 · 차수 `{ns8}` "
+           f"⇒ `N` 이 다른 쌍의 **상한 = {_diff}**(δ 대역 제외 «전») — **구성** |")
+    both(f"| **D-1 ②** 누적 비교가능 쌍 | **{lad_cum if lad_cum is not None else '—'}** | 출처 = {lad_src} "
+           "(post7 의 266 과 **같은 출처** = `LAD-` 레인 · `RESULTS_LADDER_TRANCHE_POST7.md:33` · `PREREG_POST8.md` §1 (마)) · "
+           "🔴 **파일 의존** — 이 수는 LAD 산출물을 «파일로» 읽는다(`lad_cumulative_pairs()`) · `regen_gate.py` 의 의존 폐포"
+           "(import)가 잡지 못하는 의존이다 ⇒ LAD 산출물이 바뀌면 이 스크립트를 **다시 돌린다** |")
+    both(f"| **D-1 ③** 게이트 판정에 쓴 수(= ②) | **{lad_cum if lad_cum is not None else '—'}** | 문턱 {PAIR_GATE} ⇒ "
+           + ("🟢 **게이트 열림**" if gate_open else "⛔ **게이트 닫힘(또는 출처 없음)**") + " |")
+    both("")
+    both("- 🔴 **그 글 열 비교가능 쌍 0(구성 · exact 4건 전부 N=1)** — 값을 보고 닫은 것이 아니라 저자의 체결 차수 서술이 "
+           "«구성»으로 닫았다(PD-13 · PD-19).")
+    both("- 🔒 **`D-1` 합성 SSOT**: *「게이트는 존재한다 · 게이트의 분모는 «누적» · 조건 ③ 의 값은 «그 글 열»로만 잰다」*"
+           "(`PREREG_POST8.md` §1 (나)). ⇒ 게이트가 열려도 그 글 열이 0쌍이면 `V(X)` 가 **정의되지 않는다** ⇒ "
+           "🔴 **통계량을 계산하지 않는다**(전제 미충족 · PD-19 · 등급은 §6 단계).")
+    both("- 🔴 `approx`(코데즈컴바인 N=2)를 넣어 그 글 열을 채우는 경로는 **쓰지 않는다**(PD-21).")
+    both("")
+    both("### 5-2. **post8 그 글 열 (검정)** — 후보별 비교가능 쌍\n")
+    both("| 후보 | 비교가능 쌍 | `V(X)` | 조건 ③ |")
+    both("|---|---|---|---|")
+    for c in CANDIDATES:
+        r = base["ANC-P3"][c]
+        both(f"| {c} | **{r['comp'] if r['comp'] is not None else '—'}** | "
+               f"{r['V'] if r['V'] is not None else '— (정의 안 됨)'} | "
+               + ("미판정 — " + r["why"] if r["ans"] is None else ("충족" if r["ans"] else "미충족") + f" ({r['why']})")
+               + " |")
+    both("")
+    both(TEST_FOOTNOTE8)
+    both("")
+
+    # 누적 탐색(소급 + post8)
+    pool_retro = pool8(cur, retro)
+    rows_cum = pool_retro + pool_p8
+    both(f"### 5-3. 누적(소급 post1~7 + post8) — 탐색 · 풀 {len(rows_cum)}건(소급 {len(pool_retro)} · post8 {len(pool_p8)})\n")
+    both("| 후보 | `V_obs` | 비교가능 쌍 | δ 대역 제외 | 귀무 평균 `V` | **`p`(층화)** | `p`(층화 없음 · 민감도) |")
+    both("|---|---|---|---|---|---|---|")
+    cum_res = {}
+    ns_c = [r["N"] for r in rows_cum]
+    gs_c = [r["post"] for r in rows_cum]
+    for c in CANDIDATES:
+        xs = [dd_anchor(r["v"], c) for r in rows_cum]
+        keep = [i for i, x in enumerate(xs) if x is not None]
+        if len(keep) < 2:
+            both(f"| {c} | — | — | — | — | — | — |")
+            continue
+        st = axis_stats([ns_c[i] for i in keep], [xs[i] for i in keep], [gs_c[i] for i in keep], stratified=True)
+        un = axis_stats([ns_c[i] for i in keep], [xs[i] for i in keep], [gs_c[i] for i in keep], stratified=False)
+        cum_res[c] = (st, un)
+        both(f"| {c} | {st['V']} | **{st['comp']}** | {st['dropped']} | {st['mean']:.2f} | **{st['p']:.4f}** | "
+               f"{un['p']:.4f} |")
+    both("")
+    splits_cum = [c for c, (st, un) in cum_res.items() if (st["p"] < ALPHA) != (un["p"] < ALPHA)]
+    both(("🔴 **층화 ↔ 비층화가 갈린다**(" + ", ".join(splits_cum) + ")") if splits_cum
+           else "🟢 층화 ↔ 비층화가 `α = 0.05` 를 사이에 두고 갈리지 않는다(§7-2 의무 민감도 · 탐색 열).")
+    both("- 🔴 이 표의 비교가능 쌍(후보별)은 `ANC-` 풀 기준 **참고값**이다 — 게이트 분모(`D-1` ②)는 `LAD-` 레인 수를 쓴다"
+           "(같은 출처 원칙 · 두 풀의 구성이 다르다). **두 수를 한 수로 합치지 않는다.**")
+    both("")
+    both(RETRO_FOOTNOTE8)
+    both("")
+
+    # N5 상수 검사
+    both("### 5-4. 무작위 앵커 대조군 `R` (§7-3) · `ANC-N5` 상수 검사\n")
+    n_distinct = [len({float(h) for h in r["highs"]}) for r in pool_p8]
+    n5_fail = [r["name"] for r, k in zip(pool_p8, n_distinct) if k < 2]
+    both(f"- `R` 시드 **{S_ANCHOR}개** = `NULL_SEED + j` (= {NULL_SEED} … {NULL_SEED + S_ANCHOR - 1}) — 새 시드 계열 없음.")
+    both("- **`ANC-N5` 상수 검사** — 창 `[D, END]` 안 서로 다른 `high` 값의 개수: "
+           + (", ".join(f"{r['name']} {k}" for r, k in zip(pool_p8, n_distinct)) or "—"))
+    both(("- 🔴🔴 **`ANC-N5` 실패** " + ", ".join(n5_fail) + " ⇒ **절차 무효**") if n5_fail
+           else "- 🟢 **`ANC-N5` 통과** — 모든 건에서 서로 다른 `high` 가 2개 이상이다.")
+    both("- 🔴 `V(R_j) ≤ V(X)` 대조는 **돌리지 않았다** — 그 글 열 `V(X)` 가 정의되지 않기 때문이다(§5-1 · 전제 미충족). "
+           "0쌍에서 `V(R_j) = 0 ≤ V(X) = 0` 을 세면 **항상 「미충족」이 나오는 죽은 비교**가 된다.")
+    both("")
+
+    # ═══ §6 대칭 단언 ═══════════════════════════════════════════════════════
+    alt1 = branch_eval8(cur, p8_end_prev, gate_open)
+    alt2 = branch_eval8(cur, p8_norein, gate_open)
+    alt3 = branch_eval8(cur, p8_notrunc, gate_open)
+    f1, m1 = branch_diff8(base, alt1)
+    f2, m2 = branch_diff8(base, alt2)
+    f3, m3 = branch_diff8(base, alt3)
+    n4_fire = bool(f1 or f2 or f3)
+    flips_all = ["①" + x for x in f1] + ["②" + x for x in f2] + ["③" + x for x in f3]
+    sides = {c: (r["raw"][0] / r["raw"][1] >= 0.5) for c, r in base["ANC-P1"].items()
+             if not r.get("ident") and r["raw"] and r["raw"][1]}
+    n1_fire = len(set(sides.values())) <= 1 and len(sides) >= 2
+
+    both("## §6. 대칭 단언 `ANC-N1`~`N5` — 하나라도 빠지면 산출물 무효(§6)\n")
+    both("| 이름 | 무엇을 묻나 | 실측 | 발동 | 처리 |")
+    both("|---|---|---|---|---|")
+    both("| **`ANC-N1`** 판별력 | 후보들이 서로 «다른 답»을 주는가 | "
+           + (" · ".join(f"{c} {'≥1/2' if s else '<1/2'}" for c, s in sides.items()) or "—")
+           + f" | {'🔴 **발동**' if n1_fire else '🟢 미발동'} | "
+           + ("🔴 「앵커가 원인이 아니다」 ⇒ **어느 채택도 선언 금지**" if n1_fire else "후보 간 답이 갈린다 ⇒ 판정 계속") + " |")
+    both("| **`ANC-N2`** 항등 고지 | 정의상 참을 증거로 세지 않았나 | `A1` 의 `ANC-P1`(0/n)·`ANC-P2`(1) | 🔴 **상시** | "
+           "**「항등 — 표 없음」 인쇄 · 충족 개수 산입 «금지»** ⇒ **`A1` 은 `ANC-P3` 하나로만 결정된다**(매회 명시) |")
+    both("| **`ANC-N3`** 사후 정보 | `H_X` 가 확정되는 날 | 아래 §6-1 | 🔴 **병기 의무** | 중앙 > 0 이면 상시 병기 |")
+    both("| **`ANC-N4`** 창·표본 민감도 | 갈래를 바꾸면 답이 갈리나 | 아래 §6-2 세 축 × 세 판정 × 네 후보 — 갈린 자리 **"
+           + (" · ".join(flips_all) if n4_fire else "없음") + "** | "
+           + ("🔴 **발동**" if n4_fire else "🟢 미발동") + " | 갈리는 축이 하나라도 있으면 🔴 **선언 금지** |")
+    both(f"| **`ANC-N5`** 대조군 상수 검사 | `R` 이 상수가 아닌가 | 서로 다른 `H_R` 개수 "
+           f"{'≥ 2 전건' if not n5_fail else f'1가지 {len(n5_fail)}건'} | "
+           f"{'🟢 미발동' if not n5_fail else '🔴 **발동**'} | 1 이면 **절차 무효** |")
+    both("")
+
+    both("### 6-1. `ANC-N3` — 사후 정보 · 건별 `D` → `d*` 거래일 수\n")
+    both("| 종목 | `A0` | `A1` | `A2` | `A3` |")
+    both("|---|---|---|---|---|")
+    lags = {c: [] for c in CANDIDATES}
+    for it in p8:
+        if not it.get("ok"):
+            continue
+        v, cells = it["v"], []
+        for c in CANDIDATES:
+            d = v["dstar"].get(c)
+            k = None if d is None else trading_days_between(cal, v["d0"], d)
+            if k is not None:
+                lags[c].append(k)
+            cells.append("—" if k is None else str(k))
+        both(f"| {it['name']} | " + " | ".join(cells) + " |")
+    both("")
+    both("| 후보 | 중앙 거래일 수 | 사후 정보? |")
+    both("|---|---|---|")
+    for c in CANDIDATES:
+        m = med(lags[c])
+        both(f"| {c} | {fmt(m, 1)} | " + ("🔴 **예 — 「이 앵커는 사후 정보를 쓴다」 상시 병기**"
+                                            if (m is not None and m > 0) else "아니오(등록일 종가 시점에 확정)") + " |")
+    both("")
+
+    both("### 6-2. `ANC-N4` — 세 축 × 세 판정 × 네 후보 **전수** (post7 교훈 · `PREREG_ANCHOR_REDESIGN.md:282`)\n")
+    both(f"- **①** `END` = 발행일 «직전» 봉: 「발행 당일 포함」 **{ax1_incl}** ↔ 「직전 봉」 **{ax1_prev}** — "
+           + ("🔴 구분 불가(항등)" if ax1_ident else "🟢 **다른 봉 ⇒ 축이 «살아 있다»**(발행일이 거래일)"))
+    both(f"- **②** 재진입 포함 ↔ 제외: **{len(p8)} ↔ {len(p8_norein)}**(우리로 · 🔒 #1-(i′) 「살아 있음」)")
+    both(f"- **③** 창5 절단 포함 ↔ 제외: **{len(p8)} ↔ {len(p8_notrunc)}** — "
+           + ("절단 0 ⇒ 🔴 **항등(명시 인쇄)** · 다른 정의로 대체하지 않는다" if not trunc8 else f"절단 {len(trunc8)}건"))
+    both("")
+    both("| 판정 | 후보 | 주(`END` 09-18 · 4건) | ① `END` 직전 봉 | ② 재진입 제외 | ③ 절단 제외 |")
+    both("|---|---|---|---|---|---|")
+    for k in ("ANC-P1", "ANC-P2", "ANC-P3"):
+        for c in CANDIDATES:
+            both(f"| `{k}` | {c} | {_cell8(k, base[k][c])} | {_cell8(k, alt1[k][c])} | "
+                   f"{_cell8(k, alt2[k][c])} | {_cell8(k, alt3[k][c])} |")
+    both("")
+    for tag, fl, mu in (("①", f1, m1), ("②", f2, m2), ("③", f3, m3)):
+        both(f"- 축 {tag}: " + (f"🔴 **갈린다** — {' · '.join(fl)}" if fl else "🟢 `True ↔ False` 뒤집힘 없음")
+               + (f" · ⚠️ 판정↔미판정 {len(mu)}자리({' · '.join(mu)}) — 갈림으로 세지 않는다" if mu else ""))
+    both("")
+    both(f"⇒ **`ANC-N4` {'🔴 발동 — 선언 금지' if n4_fire else '🟢 미발동'}** — 세 축 × 세 판정(`ANC-P1`·`P2`·`P3`) × "
+           "네 후보 전수 대조 결과(△ = 대안 갈래에서 충족 · ▽ = 대안 갈래에서 미충족). "
+           "🔴 `ANC-P3` 는 모든 갈래에서 그 글 열 0쌍(전제 미충족)이라 갈릴 수 없다 — **「안 갈렸다」가 아니라 «잴 수 없었다»**.")
+    if n4_fire:
+        both("")
+        both("🔴🔴 동결 §6 *「판정이 갈리는 축이 하나라도 있으면 🔴 선언 금지」*(`PREREG_ANCHOR_REDESIGN.md:282`) ⇒ "
+               "***이번 글에서는 어느 채택도 선언하지 않는다.*** 🔑 ***갈리지 않는 축만 골라 읽으면 그게 사후적합이다.***")
+    both("")
+
+    # D-5 갈래 표
+    both("### 6-3. 🔴 D-5 갈래 — `(갈래 이름, n, 답)` 세 쪽 (`PREREG_POST8.md` §5 (나) 2 · PD-23)\n")
+    both("| 갈래 | n | `ANC-P1` 답(A0·A2·A3) | `ANC-P2` 답(A0·A2·A3) | `ANC-P3` 답 |")
+    both("|---|---|---|---|---|")
+    for name, ev, n in (("주 — `END` 09-18 · 우리로 포함", base, len(p8)),
+                        (f"① `END` = {ax1_prev}(발행일 직전 봉)", alt1, len(p8_end_prev)),
+                        ("② 재진입(우리로) 제외", alt2, len(p8_norein)),
+                        ("③ 창5 절단 제외 — " + ("**항등**" if not trunc8 else "절단 제외"), alt3, len(p8_notrunc))):
+        def _ans(k):
+            outs = []
+            for c in ("A0", "A2", "A3"):
+                r = ev[k][c]
+                outs.append(c + " " + ("—" if r["ans"] is None else ("충족" if r["ans"] else "미충족")))
+            return " · ".join(outs)
+        p3a = " · ".join(sorted({("미판정" if ev["ANC-P3"][c]["ans"] is None else
+                                  ("충족" if ev["ANC-P3"][c]["ans"] else "미충족")) for c in CANDIDATES}))
+        both(f"| {name} | {n} | {_ans('ANC-P1')} | {_ans('ANC-P2')} | {p3a}(그 글 열 0쌍 · 전제 미충족) |")
+    both("")
+    both(f"- `P8-갈래계수`: 최소 n(= {MIN_N} · `PREREG_ANCHOR_REDESIGN.md:206-213`)을 채운 갈래만 「답」으로 센다 — "
+           "위 네 갈래 n 은 전부 ≥ 3 ⇒ 전부 답으로 센다. `A1` 은 `ANC-P1`·`P2` 항등(산입 금지) · 「충족/미충족」은 "
+           "§5-1 조건(①`Z3 < 1/2` · ②`h_obs ≤ 1` ≥ 2/3)의 충족 여부다.")
+    both("")
+
+    # ═══ §7 채택 판정 ══════════════════════════════════════════════════════
+    both("## §7. 채택 판정 — §5-1 최소 조건(전부 AND) · §5-2 세 갈래\n")
+    both("| 후보 | ① `Z3 < 1/2` | ② `h_obs ≤ 1` ≥ 2/3 | ③ `V(R_j) ≤ V(X)` = 0 (`D-1` 합성) | 충족 개수 | 비고 |")
+    both("|---|---|---|---|---|---|")
+    p3_done = any(base["ANC-P3"][c]["ans"] is not None for c in CANDIDATES)
+    adopted = []
+    for c in ADOPTABLE:
+        r1, r2, r3 = base["ANC-P1"][c], base["ANC-P2"][c], base["ANC-P3"][c]
+        ok1, ok2, ok3 = bool(r1.get("ans")), bool(r2.get("ans")), bool(r3.get("ans"))
+        c1 = "**항등 — 산입 금지**" if r1.get("ident") else ("🟢 " if ok1 else "🔴 ") + frac(*r1["raw"])
+        c2 = "**항등 — 산입 금지**" if r2.get("ident") else ("🟢 " if ok2 else "🔴 ") + frac(*r2["raw"])
+        c3 = ("⛔ **미판정** — " + r3["why"]) if r3["ans"] is None else ("🟢 0" if ok3 else f"🔴 {r3['beat']}")
+        cnt, need = cond_count(c, ok1, ok2, ok3), required_count(c)
+        both(f"| **{c}** | {c1} | {c2} | {c3} | **{cnt}/{need}** | "
+               + ("🔴 §5-3 — `ANC-P3` 하나로만 결정된다" if c == "A1" else "—") + " |")
+        if p3_done and cnt == need:
+            adopted.append(c)
+    both("| (대조군) `A0` | — | — | — | — | 🔴 **채택 후보가 아니다**(§3) |")
+    both("")
+    reasons = []
+    if ident_fail:
+        reasons.append("항등 대조 실패(산출물 무효)")
+    if n1_fire:
+        reasons.append("`ANC-N1` 발동")
+    if n4_fire:
+        reasons.append("`ANC-N4` 발동(갈래에서 갈린다)")
+    if n5_fail:
+        reasons.append("`ANC-N5` 실패")
+    if reasons:
+        both(f"⇒ 🔴🔴 **어느 채택도 선언하지 않는다** — {' · '.join(reasons)}(§6).")
+    if not p3_done:
+        both("⇒ 🔴 **조건 ③ 이 전 후보 «미판정»**(그 글 열 비교가능 쌍 0 · 전제 미충족) ⇒ §5-1 의 AND 가 **완성되지 않는다** ⇒ "
+               "§5-2 세 갈래 중 **어디로도 가지 않고 미룬다**(§10 *「위 조건이 안 오면 「미룬다」로 적는다」*). "
+               "🔴 **「충족 후보 0 ⇒ 앵커 기반 축 전면 폐기 상신」으로 읽지 않는다** — ③ 은 «못 쟀다»이지 «실패»가 아니다.")
+    elif not reasons and len(adopted) == 1:
+        both(f"⇒ 🟢 **채택 후보 정확히 1: `{adopted[0]}`** (§5-2). 🔴 `BUY-L5` 는 🔒 결정 ④로 «소멸»했다.")
+    elif not reasons and len(adopted) >= 2:
+        both(f"⇒ 🔴 **채택하지 않는다 — 다음 글로 미룬다**(충족 후보 {len(adopted)}개 · §5-2).")
+    elif not reasons:
+        both("⇒ 🔴🔴 **충족 후보 0** — §5-2 대로 앵커 기반 축 전면 폐기를 사장님께 올린다(`BUY-L5` 는 이미 소멸).")
+    both("")
+
+    # ═══ §8 판정 표 (4열) ══════════════════════════════════════════════════
+    both("## §8. 판정 표 — 예측 ID · 예측 문언 · 관측값 · 판정 (등급 열 없음 · §6 단계)\n")
+    both("| 예측 ID | 예측 문언(§4 동결 · post8 열) | 관측값(post8 · exact 4) | 판정 |")
+    both("|---|---|---|---|")
+    block = ("판정 불가 — " + " · ".join(reasons)) if reasons else None
+    pred_ok = {"ANC-P1": {"A0": lambda h, n: h / n >= 0.5, "A2": lambda h, n: h / n < 0.5,
+                          "A3": lambda h, n: h / n >= 0.5},
+               "ANC-P2": {"A0": lambda h, n: h / n < 2 / 3, "A2": lambda h, n: h / n >= 2 / 3,
+                          "A3": lambda h, n: h / n < 2 / 3}}
+    dir_branch_rows = 0   # 🆕 정정 1차 — 판정 칸에 「성립/불성립」(방향 대조 분기)이 찍힌 행 수
+    for k, pred in (("ANC-P1", PRED_P1), ("ANC-P2", PRED_P2)):
+        for c in CANDIDATES:
+            r = base[k][c]
+            if r.get("ident"):
+                both(f"| `{k}` × {c} | {pred[c][1]} | 항등 — 표 없음 | 항등(§5-3 · 산입 금지) — 판정 대상 아님 |")
+                continue
+            h, n = r["raw"]
+            direction = "—" if not n else ("부합" if pred_ok[k][c](h, n) else "불부합")
+            if n < MIN_N:
+                verdict = "미룸 — 최소 n 미달"
+            elif block:
+                verdict = f"⛔ {block} (예측 방향 {direction} · 값 기록)"   # 정정 2 — 선두 기호(post7 INTAKE §6 ANC 「⛔ 판정 불가」 관용)
+            else:
+                verdict = "성립" if direction == "부합" else "불성립"
+                dir_branch_rows += 1
+            both(f"| `{k}` × {c} | {pred[c][1]} | {frac(h, n)} | {verdict} |")
+    p3_obs = " · ".join(f"{c} 쌍 {base['ANC-P3'][c]['comp']}" for c in CANDIDATES)
+    both(f"| `ANC-P3` × 전 후보 | {PRED_P3} | 그 글 열 비교가능 쌍 {p3_obs} · 누적 게이트 "
+           f"{lad_cum if lad_cum is not None else '—'} ≥ {PAIR_GATE} | "
+           "미룸 — 전제 미충족(그 글 열 비교가능 쌍 0(구성 · exact 4건 전부 N=1) ⇒ `V(X)` 정의 안 됨 · 통계량 계산 안 함)"
+           + (" · 🔴 " + " · ".join(reasons) + "도 이 항목을 막는다(`PREREG_ANCHOR_REDESIGN.md:406-407` 「전 항목」)"
+              if reasons else "") + " |")
+    both("| §5-2 채택 | 정확히 하나 채택 / 2 이상 미룸 / 0 전면 폐기 상신 | 조건 ③ 전 후보 미판정"
+           + (" · " + " · ".join(reasons) if reasons else "") + " | 미룸 — §5-1 AND 미완성 · 세 갈래 어디로도 가지 않는다 |")
+    both("")
+    both("🔴 **「성립/불성립」은 §4 예측 방향과 관측의 대조이지 채택이 아니다** — 채택은 §7 표(§5-1 AND)만 정한다. "
+           "🔴 「판정 불가」·「미룸」 칸의 값은 **기록**이다(선언 금지). "
+           f"🔴 **이 회차 판정 칸에 「성립/불성립」 분기가 찍힌 행 = {dir_branch_rows}**"
+           + (" — 앞 문장은 «미실행 분기»의 설명이다. 그 분기가 도는 회차에는 판정 칸 낱말이 §6 단계 등급 이름과 "
+              "겹치므로(PD-16 · PD-28) 그 회차의 §6 단계에서 다시 본다." if dir_branch_rows == 0 else
+              " — 판정 칸 낱말이 §6 단계 등급 이름과 겹친다(PD-16 · PD-28) · §6 단계에서 다시 본다."))
+    both("")
+
+    # ═══ §9 기타 의무 ═══════════════════════════════════════════════════════
+    both("## §9. 그 밖의 `PREREG_POST8.md` 의무\n")
+    n_incl = len(POST8_EXACT) + len(POST8_APPROX)
+    ns_incl = sorted([e[3] for e in POST8_EXACT] + [n for _nm, _c, n, _d in POST8_APPROX])
+    _cnt2 = {}
+    for _v in ns_incl:
+        _cnt2[_v] = _cnt2.get(_v, 0) + 1
+    _tot2 = len(ns_incl) * (len(ns_incl) - 1) // 2
+    _diff2 = _tot2 - sum(c * (c - 1) // 2 for c in _cnt2.values())
+    both(f"- 🔴 **D-3** — *「`approx` 포함 시 최소 n 이 차는 축: **없음** · `exact` 분모 **{len(POST8_EXACT)}** / "
+           f"`approx` 포함 분모 **{n_incl}**」* (`ANC-P1`·`P2` 최소 n 3 을 exact 가 이미 채운다) · "
+           f"(참고 병기) `ANC-P3` 그 글 열 비교가능 쌍 = exact **{_diff}** / `approx` 포함 상한 **{_diff2}**"
+           f"(차수 `{ns_incl}` · δ 대역 제외 «전») — 「최소 n 이 차는」 축이 아니라 «측정이 생기는» 자리 · "
+           "🔴 판정에 안 쓴다(PD-21).")
+    both("- `D-2`(EXIT) · `D-4`(WRC) · `D-7`(LAD) · `D-11`(REG·Q1) — 이 축의 항목이 아니다 · "
+           "`D-6` — 이 산출물은 `n_up` 표준편차를 인쇄하지 않는다(SSOT = `ddof=1` · `PREREG_POST8.md` §6) · "
+           "`D-8` — `prog_ver` 를 공변량으로 쓰지 않는다(PD-26) · `D-10` — §6 단계.")
+    both("")
+
+    # ═══ §10 한계 ══════════════════════════════════════════════════════════
+    both("## §10. 미리 적어둔 한계 (§13 · 이 회차 고유)\n")
+    for s in LIMITS8:
+        both(f"- {s}")
+    _cal_s = [str(x) for x in cal]
+    _w5 = []
+    for nm, _code, reg, *_x in POST8_EXACT:
+        _i = _cal_s.index(reg) if reg in _cal_s else None
+        _w5.append((nm, _cal_s[_i + 4] if (_i is not None and _i + 4 < len(_cal_s)) else None))
+    _w5_ok = all(e for _n, e in _w5)
+    both("- 🟢 (실측) post8 `exact` 4건 창5 끝 = " + " · ".join(f"{nm} {e or '— END 넘음'}" for nm, e in _w5)
+           + (f" ⇒ 전부 ≤ `END` {POST8_END} — 「창5 가 END 를 모른다」는 검정 열에 영향 없다" if _w5_ok
+              else " ⇒ 🔴 `END` 를 넘는 건이 있다"))
+    both("")
+    both("- 🔴 이 분석은 **라이브 채택 대상이 아니다**(`PREREG.md` §0 2번 · `PREREG_POST8.md` §0-1). "
+           "*판정·라벨이 무엇이든 라이브 채택 금지는 그대로다.*")
+    both("")
+
+    _assert_no_grade8(OUT)
+    _assert_no_grade8(DOC)
+    _assert_duties8(OUT)
+    _assert_duties8(DOC)
+    (BASE / "RESULTS_ANCHOR_POST8_NUMBERS.md").write_text("\n".join(OUT) + "\n", encoding="utf-8")
+    (BASE / "RESULTS_ANCHOR_POST8.md").write_text("\n".join(DOC) + "\n", encoding="utf-8")
+    cur.close()
+    conn.close()
+    note("")
+    note(f"[D-9 ①] 이번 실행 벽시계(DB now · KST) = {now_kst} · 본문 ① = {first_kst} "
+         f"({'stamp 재사용 — 지문 동일 · 파일 다시 쓰지 않음' if stamp_reused else 'stamp 새로 박음'}) · "
+         f"창 max(updated_at) = {win_max}")
+    note(f"[D-1 ②] 누적 비교가능 쌍 = {lad_cum} · 출처 = {lad_src}")
+    note(f"[written] RESULTS_ANCHOR_POST8_NUMBERS.md + RESULTS_ANCHOR_POST8.md · 런타임 {time.time() - t0:.3f}s")
+    return 0
+
+
+def cli(argv=None) -> int:
+    """명령줄 진입점 — `--mode` 는 **필수**(C-23). post7 은 `main()` 에 **그대로** 넘긴다(post7 경로 불변)."""
+    ap = argparse.ArgumentParser(
+        description="`ANC-` 앵커 재설계 축 — `PREREG_ANCHOR_REDESIGN.md` 실행. "
+                    "🔴 `--mode` 는 **필수**다(C-23: 인자 없이 부르면 곁다리로 동결본을 덮어쓴다).")
+    ap.add_argument("--mode", choices=("post7", "post8"), required=True,
+                    help="post7 = 7번째 글 판정(동결 산출물 · 재생성 금지) · post8 = 8번째 글 판정(🆕 2026-09-24).")
+    a = ap.parse_args(argv)
+    if a.mode == "post7":
+        return main(["--mode", "post7"])
+    return main_post8(a)
+
+
 if __name__ == "__main__":
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         pass
-    sys.exit(main())
+    sys.exit(cli())
