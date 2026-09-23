@@ -119,7 +119,7 @@
       "script": "run_anchor_redesign.py --mode post7",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "0fffdb3af7301df868c9727396ba90770128dcd23a1dd28ae7dd6cb0cb03ec9a",
+        "run_anchor_redesign.py": "d0b16b258b8ed76c16e3758d994e74a26548cdaa58f840330105d1f4308fd4c6",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
         "run_ranking.py": "fcc80e608a451c80e0f89ad4c5f6597cc89de0c489d623dc847571f617f35046",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
@@ -140,7 +140,7 @@
       "script": "run_anchor_redesign.py --mode post7",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "0fffdb3af7301df868c9727396ba90770128dcd23a1dd28ae7dd6cb0cb03ec9a",
+        "run_anchor_redesign.py": "d0b16b258b8ed76c16e3758d994e74a26548cdaa58f840330105d1f4308fd4c6",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
         "run_ranking.py": "fcc80e608a451c80e0f89ad4c5f6597cc89de0c489d623dc847571f617f35046",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
@@ -161,7 +161,7 @@
       "script": "run_anchor_redesign.py --mode post8",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "0fffdb3af7301df868c9727396ba90770128dcd23a1dd28ae7dd6cb0cb03ec9a",
+        "run_anchor_redesign.py": "d0b16b258b8ed76c16e3758d994e74a26548cdaa58f840330105d1f4308fd4c6",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
         "run_ranking.py": "fcc80e608a451c80e0f89ad4c5f6597cc89de0c489d623dc847571f617f35046",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
@@ -170,7 +170,7 @@
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "b9fe613e2fc0132cca7680e91131b05253f0bc5204d4801fabb58ea653640f48",
+      "results_sha256": "08f566f20b45c38b632c4f84b86c6a272e5fe4af7f15ed60229179c49af9b839",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -181,7 +181,7 @@
       "script": "run_anchor_redesign.py --mode post8",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "0fffdb3af7301df868c9727396ba90770128dcd23a1dd28ae7dd6cb0cb03ec9a",
+        "run_anchor_redesign.py": "d0b16b258b8ed76c16e3758d994e74a26548cdaa58f840330105d1f4308fd4c6",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
         "run_ranking.py": "fcc80e608a451c80e0f89ad4c5f6597cc89de0c489d623dc847571f617f35046",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
@@ -190,7 +190,7 @@
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "300a47d883330db25d3df22e61daf105221a40f39ebc97e7ff09b2881eac0535",
+      "results_sha256": "625d5cce4d2e3d70fe048e1758a15f63337ec6569f8c82de8bc19be6b751aeac",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],

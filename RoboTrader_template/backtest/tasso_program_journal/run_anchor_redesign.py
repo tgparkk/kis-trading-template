@@ -2146,7 +2146,7 @@ def main_post8(a) -> int:      # noqa: C901, PLR0912, PLR0915
             if n < MIN_N:
                 verdict = "미룸 — 최소 n 미달"
             elif block:
-                verdict = f"{block} (예측 방향 {direction} · 값 기록)"
+                verdict = f"⛔ {block} (예측 방향 {direction} · 값 기록)"   # 정정 2 — 선두 기호(post7 INTAKE §6 ANC 「⛔ 판정 불가」 관용)
             else:
                 verdict = "성립" if direction == "부합" else "불성립"
                 dir_branch_rows += 1
