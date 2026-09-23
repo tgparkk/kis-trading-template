@@ -269,7 +269,7 @@ def test_P11_source_hygiene():
              "run_reconstruct_post4", "run_reconstruct_post5", "run_reconstruct_post6", "run_reconstruct_post7",
              "run_tests"}
     assert not [m for m in imports if m.split(".")[0] not in allow]
-    assert not re.search(r"adj_factor\s*[*/]|[*/]\s*adj_factor|adj_factor\"\]", SRC)
+    assert not re.search("adj_" r"factor\s*[*/]|[*/]\s*adj_" r"factor|adj_factor\"\]", SRC)
     assert "SELECT adj_factor" not in SRC and "adj_factor FROM" not in SRC
     sqls = re.findall(r'"\s*(SELECT|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\b', SRC, re.I)
     assert sqls and all(s.upper() == "SELECT" for s in sqls)

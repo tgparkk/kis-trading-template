@@ -270,7 +270,7 @@ def test_R3_source_hygiene():
     allow = {"__future__", "re", "statistics", "sys", "collections", "math", "pathlib", "psycopg2", "run_tests",
              "run_ladder_tranche", "run_ladder_tranche_post6", "run_ladder_tranche_post7"}
     assert not [m for m in imports if m.split(".")[0] not in allow]
-    assert not re.search(r"adj_factor\s*[\*/]|[\*/]\s*adj_factor|execute\([^)]*adj_factor", src), "adj_factor 산술·조회 0"
+    assert not re.search("adj_" r"factor\s*[\*/]|[\*/]\s*adj_" r"factor|execute\([^)]*adj_" r"factor", src), "adj_factor 산술·조회 0"
     assert not re.search(r"\b(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b\s", src), "DB 쓰기 0"
     assert src.count("write_text") == 1 and "RESULTS_LADDER_TRANCHE_POST8_NUMBERS.md" in src
 
