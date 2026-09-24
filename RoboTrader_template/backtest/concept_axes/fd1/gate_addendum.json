@@ -1,0 +1,194 @@
+{
+ "G13": {
+  "calendar_years_2021_to_20260531": {
+   "2021": {
+    "pad_per_day": 17.3,
+    "pad_rows": 4287,
+    "rows": 512668,
+    "trading_days": 248
+   },
+   "2022": {
+    "pad_per_day": 13.7,
+    "pad_rows": 3376,
+    "rows": 530019,
+    "trading_days": 246
+   },
+   "2023": {
+    "pad_per_day": 8.0,
+    "pad_rows": 1954,
+    "rows": 548770,
+    "trading_days": 245
+   },
+   "2024": {
+    "pad_per_day": 44.4,
+    "pad_rows": 10824,
+    "rows": 573060,
+    "trading_days": 244
+   },
+   "2025": {
+    "pad_per_day": 69.3,
+    "pad_rows": 16770,
+    "rows": 593895,
+    "trading_days": 242
+   },
+   "2026": {
+    "pad_per_day": 110.4,
+    "pad_rows": 10927,
+    "rows": 247971,
+    "trading_days": 99
+   }
+  },
+  "deferred_to_phase2": [
+   "n_impossible",
+   "(i) 사건 월별 분포",
+   "G12 flag_cliff 군별"
+  ],
+  "doc_values_fd1_3_0_d": {
+   "2021": 17.3,
+   "2022": 13.7,
+   "2023": 8.0,
+   "2024": 44.4,
+   "2025": 69.3,
+   "2026": 111.9
+  },
+  "drift_note": true,
+  "sample_max_min_ratio": 2.056,
+  "sample_window_by_year": {
+   "2024": {
+    "pad_per_day": 53.7,
+    "pad_rows": 10516,
+    "rows": 464164,
+    "trading_days": 196
+   },
+   "2025": {
+    "pad_per_day": 69.3,
+    "pad_rows": 16770,
+    "rows": 593895,
+    "trading_days": 242
+   },
+   "2026": {
+    "pad_per_day": 110.4,
+    "pad_rows": 10927,
+    "rows": 247971,
+    "trading_days": 99
+   }
+  }
+ },
+ "G9": {
+  "d1_top_share": {
+   "judge": 0.2859,
+   "remeas": 0.2954,
+   "sample": 0.2891
+  },
+  "missing_by_year": {
+   "2024": {
+    "all": 0.0017,
+    "d0": 0.0002,
+    "d1": 0.0009,
+    "unk": 0.0277
+   },
+   "2025": {
+    "all": 0.0011,
+    "d0": 0.0001,
+    "d1": 0.0003,
+    "unk": 0.0219
+   },
+   "2026": {
+    "all": 0.0004,
+    "d0": 0.0,
+    "d1": 0.0001,
+    "unk": 0.009
+   }
+  },
+  "note_d1_top_over60": [],
+  "note_missing_over10": [],
+  "quintile_share": {
+   "judge": {
+    "d0": {
+     "Q1": 0.2413,
+     "Q2": 0.2233,
+     "Q3": 0.206,
+     "Q4": 0.1798,
+     "Q5": 0.1495
+    },
+    "d1": {
+     "Q1": 0.1209,
+     "Q2": 0.16,
+     "Q3": 0.1925,
+     "Q4": 0.2406,
+     "Q5": 0.2859
+    },
+    "unk": {
+     "Q1": 0.1423,
+     "Q2": 0.1199,
+     "Q3": 0.1536,
+     "Q4": 0.2125,
+     "Q5": 0.3718
+    }
+   },
+   "remeas": {
+    "d0": {
+     "Q1": 0.2353,
+     "Q2": 0.2254,
+     "Q3": 0.2087,
+     "Q4": 0.186,
+     "Q5": 0.1446
+    },
+    "d1": {
+     "Q1": 0.1347,
+     "Q2": 0.1578,
+     "Q3": 0.1861,
+     "Q4": 0.2259,
+     "Q5": 0.2954
+    },
+    "unk": {
+     "Q1": 0.1226,
+     "Q2": 0.0982,
+     "Q3": 0.1583,
+     "Q4": 0.2292,
+     "Q5": 0.3916
+    }
+   },
+   "sample": {
+    "d0": {
+     "Q1": 0.2392,
+     "Q2": 0.224,
+     "Q3": 0.207,
+     "Q4": 0.1819,
+     "Q5": 0.1479
+    },
+    "d1": {
+     "Q1": 0.1255,
+     "Q2": 0.1593,
+     "Q3": 0.1904,
+     "Q4": 0.2358,
+     "Q5": 0.2891
+    },
+    "unk": {
+     "Q1": 0.1349,
+     "Q2": 0.1118,
+     "Q3": 0.1554,
+     "Q4": 0.2187,
+     "Q5": 0.3792
+    }
+   }
+  },
+  "rows": 487919
+ },
+ "meta": {
+  "cols_read": [
+   "stock_code",
+   "date",
+   "close×volume×adj(유동성 컷)",
+   "volatility_20d(LAG)",
+   "OHLC 동일∧volume=0 건수(SQL 집계)",
+   "dart_financials_asfiled"
+  ],
+  "elapsed_s": 11.6,
+  "gate_json_sha256_unchanged": "59fa5909c74eb7955d408e8515580ab442cf34336727890a8e5c5d760d62fe23",
+  "git_head": "280aacc0385148734634c54b1fedabb6d43fdccf",
+  "returns_read": false,
+  "run_at": "2026-09-24T22:03:43",
+  "tail_values_computed": false
+ }
+}

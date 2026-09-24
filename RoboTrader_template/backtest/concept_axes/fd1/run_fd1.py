@@ -4,6 +4,7 @@
 단계(각각 별도 프로세스 · 순서 봉인 §3-0-f · 금지 19):
   --phase 1    : §3-5 1단계 게이트(꼬리 «전» 값만) → GATE_FD1_<날짜>.md + gate.json(sha256 봉인)
                  🔴 꼬리·수익률·변동성 대조군 값을 계산·조회·인쇄하지 않는다(G7 은 --phase seal 로 넘긴다).
+  --phase 1b   : 게이트 추가분 G9 · G13 본값(개정문 #2 §7 · 꼬리 «전») → gate_addendum.json
   --phase seal : gate.json 이 git HEAD 에 커밋돼 있을 때만. 재측정 창(2024-03-13~12-31 · 판정 제외)에서
                  G7 `p̂_base` → `eps_panel := 0.5 × p̂_base`(β · r̂ 없음 · 금지 21) → seal.json
   --phase 2    : seal.json 이 git HEAD 에 커밋돼 있을 때만. 판정 창(2025-01-01~2026-05-31)을 연다.
@@ -39,6 +40,7 @@ LEDGER_CSV = BASE.parent / "candidate_ledger" / "results" / "ledger.csv"
 FLAG_CLIFF_SQL = "RoboTrader_template/backtest/concept_axes/_defs/flag_cliff.sql"
 GATE_JSON = BASE / "gate.json"
 SEAL_JSON = BASE / "seal.json"
+GATE_ADD_JSON = BASE / "gate_addendum.json"
 
 # §3-0-b · §3-0-f — 창(달력 SSOT = daily_prices stock_code='KOSPI')
 SAMPLE = ("2024-03-13", "2026-05-31")                    # 표본 창 537
@@ -600,6 +602,147 @@ def gate_md(G: Dict[str, Any], meta: Dict[str, Any], sha: str, days_by_year: Dic
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# PHASE 1b — 게이트 추가분 G9 · G13 본값 (개정문 #2 §7 · seal «전» · 꼬리 «전»)
+# ════════════════════════════════════════════════════════════════════════════
+DOC_PAD_PER_DAY = {2021: 17.3, 2022: 13.7, 2023: 8.0, 2024: 44.4, 2025: 69.3, 2026: 111.9}   # FD1 §3-0-d
+G9_MISS_MAX, G9_TOP_MAX, G13_RATIO_MAX = 0.10, 0.60, 2.0
+
+
+def day_quintiles(V: pd.Series, d: pd.Series) -> pd.Series:
+    """그날 모집단 안 `V` 5분위(0 = 최저 · 4 = 최고) — 결측은 NaN · 그날 유효값 < 5 면 NaN."""
+    def q(x: pd.Series) -> pd.Series:
+        if x.notna().sum() < N_QUINT:
+            return pd.Series(np.nan, index=x.index)
+        return pd.qcut(x.rank(method="first"), N_QUINT, labels=False).astype(float)
+    return V.groupby(d).transform(q)
+
+
+def max_year_ratio(per_day: Dict[int, float]) -> float:
+    """연도 간 «거래일당» 값의 최대/최소 비(§3-0-d 2 · G13) — 0 이 있으면 inf."""
+    v = [x for x in per_day.values()]
+    return float("inf") if min(v) <= 0 else max(v) / min(v)
+
+
+def padding_by_year(conn, a: str, b: str) -> pd.DataFrame:
+    """패딩행(OHLC 동일 ∧ volume=0 · FD1 §0-3) 연도별 건수 — 집계만 가져온다(가격 행을 읽지 않는다)."""
+    return pd.read_sql(f"""
+        SELECT EXTRACT(year FROM date::date)::int AS y,
+               COUNT(*) FILTER (WHERE open = high AND high = low AND low = close AND volume = 0) AS pad,
+               COUNT(*) AS n
+        FROM daily_prices WHERE {LD.STOCK_ONLY} AND date::date BETWEEN '{a}' AND '{b}'
+        GROUP BY 1 ORDER BY 1""", conn)
+
+
+def phase1b(args) -> int:
+    gate_sha = hashlib.sha256(GATE_JSON.read_bytes()).hexdigest()
+    conn = connect()
+    t0 = datetime.now()
+    fin, _ = load_fin(conn)
+    # ── G9 — V = volatility_20d 의 D−1(그 종목 직전 행) 값 · 모집단 = 그날 유동성 컷 통과 집합(§3-2-b v0.4)
+    P = pd.read_sql(f"""
+        WITH px AS (
+          SELECT stock_code, date::date AS d,
+                 (close * (volume * COALESCE(adj_factor, 1)))::double precision AS tv,
+                 LAG(volatility_20d) OVER (PARTITION BY stock_code ORDER BY date::date) AS v_prev
+          FROM daily_prices WHERE {LD.STOCK_ONLY} AND date::date BETWEEN '2024-01-01' AND '{SAMPLE[1]}')
+        SELECT stock_code, d, v_prev AS "V" FROM px
+        WHERE d BETWEEN '{SAMPLE[0]}' AND '{SAMPLE[1]}' AND tv >= {TV_MIN}""", conn)
+    P["d"] = pd.to_datetime(P["d"])
+    C = classify(fin, P["stock_code"].to_numpy(), P["d"].to_numpy().astype("datetime64[D]"))
+    P["D"] = C["D"].to_numpy()
+    P["cls"] = np.where(P["D"] == 1, "d1", np.where(P["D"] == 0, "d0", "unk"))
+    P["Vq"] = day_quintiles(P["V"], P["d"])
+    P["year"] = P["d"].dt.year
+    P["win"] = np.where(in_win(P["d"], REMEAS), "remeas", "judge")
+    miss = {int(y): dict(all=round(float(g["V"].isna().mean()), 4),
+                         **{c: round(float(g.loc[g["cls"] == c, "V"].isna().mean()), 4) for c in ("d0", "unk", "d1")})
+            for y, g in P.groupby("year")}
+    dist = {}
+    for wn in ("remeas", "judge", "sample"):
+        g = P if wn == "sample" else P[P["win"] == wn]
+        dist[wn] = {c: {f"Q{int(q) + 1}": round(float(v), 4) for q, v in
+                        g.loc[(g["cls"] == c) & g["Vq"].notna(), "Vq"].value_counts(normalize=True).sort_index().items()}
+                    for c in ("d0", "unk", "d1")}
+    g9 = dict(rows=int(len(P)), missing_by_year=miss, quintile_share=dist,
+              note_missing_over10=[y for y, v in miss.items() if v["all"] > G9_MISS_MAX],
+              d1_top_share={wn: dist[wn]["d1"].get("Q5") for wn in dist},
+              note_d1_top_over60=[wn for wn in dist if (dist[wn]["d1"].get("Q5") or 0) > G9_TOP_MAX])
+    # ── G13 — 패딩 «거래일당» 연도별(전 종목행)
+    cal_all = pd.Series(pd.to_datetime(trading_days(conn, "2021-01-01", SAMPLE[1]))).dt.year.value_counts()
+    cal_s = pd.Series(pd.to_datetime(trading_days(conn, *SAMPLE))).dt.year.value_counts()
+    pad_all = padding_by_year(conn, "2021-01-01", SAMPLE[1])
+    pad_s = padding_by_year(conn, *SAMPLE)
+    conn.close()
+
+    def per_day(pad: pd.DataFrame, cal: pd.Series) -> Dict[int, Dict[str, Any]]:
+        return {int(r.y): dict(pad_rows=int(r.pad), rows=int(r.n), trading_days=int(cal[int(r.y)]),
+                               pad_per_day=round(float(r.pad) / int(cal[int(r.y)]), 1)) for r in pad.itertuples()}
+    g13_all, g13_s = per_day(pad_all, cal_all), per_day(pad_s, cal_s)
+    ratio_s = max_year_ratio({y: v["pad_per_day"] for y, v in g13_s.items()})
+    g13 = dict(calendar_years_2021_to_20260531=g13_all, sample_window_by_year=g13_s,
+               doc_values_fd1_3_0_d=DOC_PAD_PER_DAY, sample_max_min_ratio=round(ratio_s, 3),
+               drift_note=bool(ratio_s > G13_RATIO_MAX),
+               deferred_to_phase2=["n_impossible", "(i) 사건 월별 분포", "G12 flag_cliff 군별"])
+    meta = dict(gate_json_sha256_unchanged=gate_sha, git_head=git("rev-parse", "HEAD"),
+                run_at=t0.isoformat(timespec="seconds"), elapsed_s=round((datetime.now() - t0).total_seconds(), 1),
+                tail_values_computed=False, returns_read=False,
+                cols_read=["stock_code", "date", "close×volume×adj(유동성 컷)", "volatility_20d(LAG)",
+                           "OHLC 동일∧volume=0 건수(SQL 집계)", "dart_financials_asfiled"])
+    GATE_ADD_JSON.write_bytes(jdump(dict(meta=meta, G9=g9, G13=g13)).encode("utf-8"))
+    sha = hashlib.sha256(GATE_ADD_JSON.read_bytes()).hexdigest()
+    L: List[str] = []
+    a = L.append
+    a("# FD1 1단계 게이트 추가분 — G9 · G13 본값 (개정문 #2 §7 · seal «전»)")
+    a("")
+    a(f"- 🔒 **`gate_addendum.json` sha256 = `{sha}`** · 기존 `gate.json` sha256 `{gate_sha}`(바이트 불변)")
+    a(f"- 실행 HEAD `{meta['git_head'][:7]}` · DB SELECT 전용 · 소요 {meta['elapsed_s']}s")
+    a("- 🔴 **꼬리(i)(ii) · 수익률 · 절벽 · 불가능봉 값: 계산 0 · 조회 0 · 인쇄 0.** 읽은 것 = 유동성 컷 · "
+      "`volatility_20d`(D−1) · 패딩 건수(SQL 집계) · 재무 원장뿐. `n_impossible`·사건 월별·G12 는 phase 2(개정문 #2 §7).")
+    a("")
+    a("## 판정표")
+    a("")
+    a("| # | 값 | 문턱(§3-5) | 판정 |")
+    a("|---|---|---|---|")
+    a(f"| G9 결측 | 연도별 V 결측 최대 {max(v['all'] for v in miss.values())} | 어느 해 > 10% 면 병기 | "
+      + (f"🟡 병기 {g9['note_missing_over10']}" if g9["note_missing_over10"] else "✅ 인쇄") + " |")
+    a(f"| G9 쏠림 | D=1 의 최상위(Q5) 비중: 재측정 {g9['d1_top_share']['remeas']} · 판정 {g9['d1_top_share']['judge']} · "
+      f"표본 {g9['d1_top_share']['sample']} | > 60% 면 「층화 후 비교 가능한 셀이 없다」 병기 | "
+      + (f"🟡 병기 {g9['note_d1_top_over60']}" if g9["note_d1_top_over60"] else "✅ 인쇄") + " |")
+    a(f"| G13 | 표본 창 패딩 거래일당 연도 최대/최소 비 {g13['sample_max_min_ratio']} | > 2배 면 「측정기 드리프트」 병기 + "
+      f"연도 pooled 금지 | " + ("🟡 병기" if g13["drift_note"] else "✅ 인쇄") + " |")
+    a("")
+    a("## G9 — `volatility_20d`(D−1) 결측률 (컷 통과 종목-일)")
+    a("")
+    a("| 연도 | 전체 | D=0 | 모름 | D=1 |")
+    a("|---|--:|--:|--:|--:|")
+    for y, v in miss.items():
+        a(f"| {y} | {v['all']} | {v['d0']} | {v['unk']} | {v['d1']} |")
+    a("")
+    a("## G9 — 군별 `V` 5분위 분포 (분위 = 그날 컷 통과 집합 안 · Q5 = 최고 변동성)")
+    a("")
+    a("| 창 | 군 | Q1 | Q2 | Q3 | Q4 | Q5 |")
+    a("|---|---|--:|--:|--:|--:|--:|")
+    for wn, dd in dist.items():
+        for c, v in dd.items():
+            a(f"| {wn} | {c} | " + " | ".join(str(v.get(f'Q{i}')) for i in range(1, 6)) + " |")
+    a("")
+    a("## G13 — 패딩행(OHLC 동일 ∧ volume=0 · 전 종목행) «거래일당»")
+    a("")
+    a("| 연도 | 달력연도(~2026-05-31) 패딩/일 | 표본 창 안 패딩/일 | 패딩 행 | 거래일 | FD1 §3-0-d 기재값 |")
+    a("|---|--:|--:|--:|--:|--:|")
+    for y, v in g13_all.items():
+        s_ = g13_s.get(y)
+        s_pd = s_["pad_per_day"] if s_ else "-"
+        a(f"| {y} | {v['pad_per_day']} | {s_pd} | {v['pad_rows']:,} | {v['trading_days']} | "
+          f"{DOC_PAD_PER_DAY.get(y)} |")
+    a("")
+    a("G13 (h) `adj` 계단은 `gate.json`(`fd70b18`)에 이미 있다.")
+    (BASE / f"GATE_FD1_{t0.strftime('%Y%m%d')}_addendum.md").write_bytes(("\n".join(L) + "\n").encode("utf-8"))
+    log(f"gate_addendum.json sha256 = {sha}")
+    return 0
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # PHASE seal / 2 — 꼬리 (🔴 1단계 게이트 커밋 «뒤»에만)
 # ════════════════════════════════════════════════════════════════════════════
 def require_committed(path: Path) -> str:
@@ -686,8 +829,7 @@ def build_tail_panel(conn, fin, win: Tuple[str, str]) -> pd.DataFrame:
     P = P.merge(ev, on=["stock_code", "d"], how="left")
     C = classify(fin, P["stock_code"].to_numpy(), P["d"].to_numpy().astype("datetime64[D]"))
     P = pd.concat([P.reset_index(drop=True), C[["D", "unk"]]], axis=1)
-    P["Vq"] = P.groupby("d")["V"].transform(
-        lambda x: pd.qcut(x.rank(method="first"), N_QUINT, labels=False) if x.notna().sum() >= N_QUINT else np.nan)
+    P["Vq"] = day_quintiles(P["V"], P["d"])
     return P
 
 
@@ -814,9 +956,9 @@ def phase2(args) -> int:
 
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--phase", choices=["1", "seal", "2"], required=True)
+    ap.add_argument("--phase", choices=["1", "1b", "seal", "2"], required=True)
     args = ap.parse_args(argv)
-    return {"1": phase1, "seal": phase_seal, "2": phase2}[args.phase](args)
+    return {"1": phase1, "1b": phase1b, "seal": phase_seal, "2": phase2}[args.phase](args)
 
 
 if __name__ == "__main__":

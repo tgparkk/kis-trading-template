@@ -71,3 +71,18 @@ def test_tail_window_uses_t0_close_and_censors_end():
     assert ev.loc[cal[27], "i_s08_w2_inc"] == 0.0 and ev.loc[cal[28], "i_s08_w2_inc"] == 1.0
     assert ev.loc[cal[25], "i_s10_w10_inc"] == 0.0                     # s=0.10 → 90 미만 아님
     assert np.isnan(ev.loc[cal[n - 1], "i_s08_w10_inc"])               # 우측 절단
+
+
+# ── G9 · G13 (게이트 추가분 · 개정문 #2 §7) ─────────────────────────────────
+def test_day_quintiles_within_day_and_missing():
+    d = pd.Series(pd.to_datetime(["2025-01-02"] * 6 + ["2025-01-03"] * 3))
+    V = pd.Series([0.1, 0.5, 0.2, np.nan, 0.9, 0.3, 1.0, 2.0, 3.0])
+    q = F.day_quintiles(V, d)
+    assert q.iloc[:6].tolist()[:3] == [0.0, 3.0, 1.0] and np.isnan(q.iloc[3]) and q.iloc[4] == 4.0
+    assert q.iloc[6:].isna().all()                                      # 그날 유효값 < 5 → 분위 없음
+
+
+def test_max_year_ratio_drift_rule():
+    assert F.max_year_ratio({2024: 44.4, 2025: 69.3}) < F.G13_RATIO_MAX
+    assert F.max_year_ratio({2024: 44.4, 2026: 111.9}) > F.G13_RATIO_MAX  # 2.52배 → 병기
+    assert F.max_year_ratio({2024: 0.0, 2025: 1.0}) == float("inf")
