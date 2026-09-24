@@ -538,7 +538,11 @@ MANUAL_DOCS = [
     # 🔴 2026-09-24 — 2026-09-18 발행 8번째 글(`224416253270`) 계열.
     #    인테이크 3문서는 **이미 있다**(커밋 `cdc6533` · 정오 `df62b38`) ⇒ G-1 존재 검사가 «진짜로» 돈다.
     "INTAKE_2026-09-18_post8.md", "PREDECISION_2026-09-18_post8.md", "LABELS_2026-09-18_post8.md",
-    #    산문 **10종**도 등재 «시점»에 이미 있다 ⇒ post7 초판과 달리 `PENDING_DOCS` 를 거치지 않는다.
+    # 🔴 2026-09-24 — 2026-09-23 발행 9번째 글(`224421214462`) 계열.
+    #    인테이크 3문서는 **이미 있다**(verifier 3패스 APPROVE · 값 계산 «전») ⇒ `PENDING_DOCS` 에 올리지 않는다
+    #    · G-1 존재 검사가 «진짜로» 돈다. 산문 `RESULTS_*_POST9.md` 는 판정 «뒤»에 생긴다 — 그때 등재한다.
+    "INTAKE_2026-09-24_post9.md", "PREDECISION_2026-09-24_post9.md", "LABELS_2026-09-24_post9.md",
+    #    (↓ 다시 post8 계열) 산문 **10종**도 등재 «시점»에 이미 있다 ⇒ post7 초판과 달리 `PENDING_DOCS` 를 거치지 않는다.
     "RESULTS_SELECTION_POST8.md", "RESULTS_REGDAY_POST8.md", "RESULTS_EXIT_V2_POST8.md",
     "RESULTS_RECONSTRUCT_POST8.md", "RESULTS_LADDER_TRANCHE_POST8.md", "RESULTS_D1_OOS_POST8.md",
     "RESULTS_WRC_POST8.md", "RESULTS_RANKING_POST8.md", "RESULTS_SECTOR_POST8.md",
