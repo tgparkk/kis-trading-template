@@ -30,6 +30,7 @@ import numpy as np                                                     # noqa: E
 import pandas as pd                                                    # noqa: E402
 
 from backtest.concept_axes.replayer import loader as LD                # noqa: E402
+from utils.data_sanity import IMPOSSIBLE_DROP_PCT                      # noqa: E402
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -41,6 +42,7 @@ FLAG_CLIFF_SQL = "RoboTrader_template/backtest/concept_axes/_defs/flag_cliff.sql
 GATE_JSON = BASE / "gate.json"
 SEAL_JSON = BASE / "seal.json"
 GATE_ADD_JSON = BASE / "gate_addendum.json"
+RES_JSON = BASE / "results.json"
 
 # §3-0-b · §3-0-f — 창(달력 SSOT = daily_prices stock_code='KOSPI')
 SAMPLE = ("2024-03-13", "2026-05-31")                    # 표본 창 537
@@ -816,7 +818,7 @@ def load_tail_frame(conn, win: Tuple[str, str]) -> Tuple[pd.DataFrame, List[pd.T
     last = max(i for i, d in enumerate(cal_all) if d <= pd.Timestamp(win[1]))
     cal = cal_all[:last + W_MAIN + 1]
     end = pd.Timestamp(cal[-1]).strftime("%Y-%m-%d")
-    q = f"""SELECT stock_code, date::date AS d, open, close,
+    q = f"""SELECT stock_code, date::date AS d, open, high, low, close, volume,
                    (volume * COALESCE(adj_factor,1))::double precision AS vol_adj,
                    COALESCE(adj_factor,1) AS adj1,
                    (close * (volume * COALESCE(adj_factor,1)))::double precision AS tv,
@@ -827,7 +829,7 @@ def load_tail_frame(conn, win: Tuple[str, str]) -> Tuple[pd.DataFrame, List[pd.T
     return px, cal
 
 
-def build_tail_panel(conn, fin, win: Tuple[str, str]) -> pd.DataFrame:
+def build_tail_panel(conn, fin, win: Tuple[str, str], with_px: bool = False):
     px, cal = load_tail_frame(conn, win)
     ev = tail_events(px, cal, t0_last=max(i for i, d in enumerate(cal) if d <= pd.Timestamp(win[1])))
     px = px.sort_values(["stock_code", "d"])
@@ -837,7 +839,7 @@ def build_tail_panel(conn, fin, win: Tuple[str, str]) -> pd.DataFrame:
     C = classify(fin, P["stock_code"].to_numpy(), P["d"].to_numpy().astype("datetime64[D]"))
     P = pd.concat([P.reset_index(drop=True), C[["D", "unk"]]], axis=1)
     P["Vq"] = day_quintiles(P["V"], P["d"])
-    return P
+    return (P, px, cal) if with_px else P
 
 
 def rates(P: pd.DataFrame, col: str) -> Dict[str, Any]:
@@ -961,39 +963,372 @@ def phase_seal(args) -> int:
     return 0
 
 
+def aux_events(px: pd.DataFrame, cal: List[pd.Timestamp], t0_last: int) -> pd.DataFrame:
+    """phase 2 동반 인쇄용 — 절벽 구안(C2 부호 정정 전) · 불가능봉(n_impossible) · 패딩 · 전방 창 패딩.
+
+    모두 «인쇄»만 한다(판정에 안 쓴다). 전일 = 그 종목의 직전 행.
+    """
+    px = px.sort_values(["stock_code", "d"]).reset_index(drop=True)
+    g = px.groupby("stock_code", sort=False)
+    prev = g["close"].shift(1)
+    ret = px["close"] / prev - 1
+    gap = px["open"] / prev - 1
+    vma = g["vol_adj"].transform(lambda x: x.shift(1).rolling(20, min_periods=20).mean())
+    amin = g["adj1"].transform(lambda x: x.rolling(21, min_periods=21).min())
+    amax = g["adj1"].transform(lambda x: x.rolling(21, min_periods=21).max())
+    judgeable = (g.cumcount() >= 20) & (amin == amax) & (prev > 0)
+    base = judgeable & (ret <= -0.18) & (px["vol_adj"] <= 2.0 * vma)
+    px["cliff_old"] = base & (gap.abs() >= 0.80 * ret.abs())
+    px["impossible"] = ret < IMPOSSIBLE_DROP_PCT
+    px["pad"] = ((px["open"] == px["high"]) & (px["high"] == px["low"]) & (px["low"] == px["close"])
+                 & (px["volume"] == 0))
+    cal_ix = pd.DatetimeIndex(cal)
+    q = px[px["d"].isin(cal_ix)]
+    pad = q.pivot(index="d", columns="stock_code", values="pad").reindex(cal_ix).fillna(False).to_numpy(bool)
+    T = len(cal_ix)
+    f = np.zeros_like(pad)
+    for k in range(1, W_MAIN + 1):
+        f[:T - k] |= pad[k:]
+    r = f.astype(float)
+    r[min(T - W_MAIN, t0_last + 1):] = np.nan
+    cols = q.pivot(index="d", columns="stock_code", values="pad").columns
+    pf = pd.DataFrame(r, index=cal_ix, columns=cols).stack(future_stack=True).rename("pad_fwd10").reset_index()
+    pf.columns = ["d", "stock_code", "pad_fwd10"]
+    return q[["stock_code", "d", "cliff_old", "impossible", "pad"]].merge(pf, on=["stock_code", "d"], how="left")
+
+
+def slot_arm(px: pd.DataFrame, cal: List[pd.Timestamp], fin, eps_slot: float) -> Dict[str, Any]:
+    """§3-0-c 슬롯 인쇄 arm(daytrading · 판정 언어 금지) — §3-2 원 정의 (i): 진입 = 다음 거래일 시가 ·
+    창 = 진입 뒤 10거래일 · s = 0.10(daytrading). 원장은 식별 열 4개만 읽는다(청산·수익 열 안 읽음)."""
+    L = pd.read_csv(LEDGER_CSV, usecols=["strategy", "scan_date", "stock_code", "rank"],
+                    dtype={"stock_code": str, "strategy": str, "scan_date": str})
+    L = L[(L["strategy"] == SLOT_TARGET) & (L["rank"] <= POOL_N)].copy()
+    L["scan_ts"] = pd.to_datetime(L["scan_date"])
+    L = L[in_win(L["scan_ts"], JUDGE)].reset_index(drop=True)
+    L["D"] = classify(fin, L["stock_code"].to_numpy(), L["scan_ts"].to_numpy().astype("datetime64[D]"))["D"].to_numpy()
+    cal_ix = pd.DatetimeIndex(cal)
+    ci = {d: i for i, d in enumerate(cal_ix)}
+    O = px[px["d"].isin(cal_ix)].pivot(index="d", columns="stock_code", values="open").reindex(cal_ix)
+    T = len(cal_ix)
+    s = 0.10
+
+    def event(code: str, d: pd.Timestamp) -> float:
+        i = ci.get(d)
+        if i is None or code not in O.columns or i + 1 + W_MAIN > T - 1:
+            return np.nan
+        col = O[code].to_numpy(float)
+        e = col[i + 1]
+        if not np.isfinite(e) or e <= 0:
+            return np.nan
+        w = col[i + 2:i + 2 + W_MAIN]
+        return float(np.nanmin(np.where(np.isfinite(w), w, np.inf)) < e * (1 - s))
+    rows = []
+    for sd, gd in L.groupby("scan_ts"):
+        cands = [(c, int(r), None if np.isnan(x) else int(x)) for c, r, x in zip(gd["stock_code"], gd["rank"], gd["D"])]
+        tb, tbd = b_topk(cands, SLOT_K[SLOT_TARGET]), bd_topk(cands, SLOT_K[SLOT_TARGET])
+        eb = [event(c, sd) for c in tb]
+        ebd = [event(c, sd) for c in tbd]
+        rows.append(dict(d=sd, nb=int(np.sum(np.isfinite(eb))), eb=float(np.nansum(eb)),
+                         nbd=int(np.sum(np.isfinite(ebd))), ebd=float(np.nansum(ebd)),
+                         swapped=len(set(tb) ^ set(tbd)) // 2, k=len(tb)))
+    R = pd.DataFrame(rows)
+    rate_b, rate_bd = R["eb"].sum() / R["nb"].sum(), R["ebd"].sum() / R["nbd"].sum()
+    rng = np.random.default_rng(SEED)
+    idx = rng.integers(0, len(R), size=(N_BOOT, len(R)))
+    eb, nb, ebd, nbd = (R[c].to_numpy(float) for c in ("eb", "nb", "ebd", "nbd"))
+    bs = eb[idx].sum(1) / nb[idx].sum(1) - ebd[idx].sum(1) / nbd[idx].sum(1)
+    se = float(bs.std(ddof=1))
+    mde1, mde2 = Z_MDE * se, Z_MDE * se * np.sqrt(2)
+    return dict(strategy=SLOT_TARGET, window=JUDGE, K=SLOT_K[SLOT_TARGET], pool=POOL_N, s=s,
+                N=int(R["k"].sum()), M=int(R["swapped"].sum()), scan_days=int(len(R)),
+                r_hat=round(float(R["swapped"].sum() / R["k"].sum()), 4),
+                rate_B=round(float(rate_b), 5), rate_BD=round(float(rate_bd), 5),
+                delta_slot=round(float(rate_b - rate_bd), 5),
+                ci95=[round(float(np.percentile(bs, 2.5)), 5), round(float(np.percentile(bs, 97.5)), 5)],
+                mde_paired_deff1=round(float(mde1), 5), mde_paired_deff2=round(float(mde2), 5),
+                eps_slot=eps_slot, G11_pass=bool(mde1 <= eps_slot and mde2 <= eps_slot),
+                boot="날짜 블록 부트스트랩(짝지은 날을 통째로) · B=%d · seed %d" % (N_BOOT, SEED))
+
+
+def by_class_rate(P: pd.DataFrame, col: str) -> Dict[str, Optional[float]]:
+    return {nm: (round(float(P.loc[m, col].dropna().mean()), 5) if P.loc[m, col].notna().any() else None)
+            for nm, m in (("d0", P["D"] == 0), ("unk", P["D"].isna()), ("d1", P["D"] == 1))}
+
+
 def phase2(args) -> int:
     seal_time = require_committed(SEAL_JSON)
     seal = json.loads(SEAL_JSON.read_text(encoding="utf-8"))
+    gate = json.loads(GATE_JSON.read_text(encoding="utf-8"))
+    add = json.loads(GATE_ADD_JSON.read_text(encoding="utf-8"))
     eps = float(seal["eps_panel_beta"])
+    eps_slot = float(seal["eps_slot_print_only"])
+    t_start = datetime.now()
     conn = connect()
     fin, _ = load_fin(conn)
-    P = build_tail_panel(conn, fin, JUDGE)
+    corp = LD.load_corp_events(conn)
+    P, px, cal = build_tail_panel(conn, fin, JUDGE, with_px=True)
     conn.close()
-    res: Dict[str, Any] = dict(seal_commit_time=seal_time, eps_panel=eps, eps_note="r̂ 을 곱하지 않았다(금지 21)")
+    t0_last = max(i for i, d in enumerate(cal) if d <= pd.Timestamp(JUDGE[1]))
+    A = aux_events(px, cal, t0_last)
+    P = P.merge(A[["stock_code", "d", "pad_fwd10"]], on=["stock_code", "d"], how="left")
+    P["year"] = P["d"].dt.year
+    main = f"i_s08_w{W_MAIN}_exc"
+    res: Dict[str, Any] = dict(seal_sha256=hashlib.sha256(SEAL_JSON.read_bytes()).hexdigest(),
+                               seal_commit_time=seal_time, eps_panel=eps,
+                               eps_note="eps_panel := 0.5 × p̂_base(재측정 창 · β) — r̂ 을 곱하지 않았다(금지 21)",
+                               panel_rows=int(len(P)), panel_rows_outcome=int(P[main].notna().sum()),
+                               stocks=int(P["stock_code"].nunique()))
+    # ── 주 검정 + 변형 전부(등록 외 조합 포함 · 전부 인쇄)
     cols = [c for c in P.columns if c.startswith(("i_", "ii_"))]
+    res["outcomes"] = {}
     for c in cols:
         raw, strat = deltas(P, c)
-        res[c] = dict(rates=rates(P, c), delta_raw=round(raw, 6), delta_strat=round(strat, 6))
-    main = f"i_s08_w{W_MAIN}_exc"
-    bs = block_boot(P, main, stratified=True)
-    d_hat = res[main]["delta_strat"]
-    cen = bs - bs.mean()
-    p_hi = float((1 + (cen >= d_hat).sum()) / (len(bs) + 1))
-    p_lo = float((1 + (cen <= d_hat).sum()) / (len(bs) + 1))
-    mde = float(Z_MDE * bs.std(ddof=1))
-    res["main"] = dict(outcome=main, delta_strat=d_hat, delta_raw=res[main]["delta_raw"], p_one_sided_hi=p_hi,
-                       p_one_sided_lo=p_lo, mde_block=round(mde, 6), stocks=int(P["stock_code"].nunique()),
-                       label=label_panel(d_hat, res[main]["delta_raw"], eps, p_hi, p_lo, mde),
-                       null="종목 블록 부트스트랩 · 중심화(Δ*−mean) · B=%d · seed %d" % (N_BOOT, SEED))
-    res["cliff_by_class"] = {k: int(P.loc[m, "cliff"].sum()) for k, m in
-                             (("d0", P["D"] == 0), ("unk", P["D"].isna()), ("d1", P["D"] == 1))}
-    res["vq_cells"] = P[P["D"].notna()].groupby(["Vq", "D"]).size().unstack(fill_value=0).to_dict()
-    ev = P[P[main] == 1]
-    res["event_month_max_share"] = round(float(ev.groupby(ev["d"].dt.strftime("%Y-%m")).size().max() / len(ev)), 4)
-    res["by_year"] = {int(y): deltas(g, main) for y, g in P.groupby(P["d"].dt.year)}
-    (BASE / "phase2.json").write_bytes(jdump(res).encode("utf-8"))
+        rr = rates(P, c)
+        res["outcomes"][c] = dict(rates=rr, delta_raw=round(raw, 6), delta_strat=round(strat, 6),
+                                  ratio_d1_d0=round(rr["d1"]["rate"] / rr["d0"]["rate"], 4) if rr["d0"]["rate"] else None)
+    bs_s = block_boot(P, main, stratified=True)
+    bs_r = block_boot(P, main, stratified=False)
+    d_s, d_r = res["outcomes"][main]["delta_strat"], res["outcomes"][main]["delta_raw"]
+    cen = bs_s - bs_s.mean()
+    p_hi = float((1 + (cen >= d_s).sum()) / (N_BOOT + 1))
+    p_lo = float((1 + (cen <= d_s).sum()) / (N_BOOT + 1))
+    cen_r = bs_r - bs_r.mean()
+    p_hi_r = float((1 + (cen_r >= d_r).sum()) / (N_BOOT + 1))
+    mde = float(Z_MDE * bs_s.std(ddof=1))
+    label = label_panel(d_s, d_r, eps, p_hi, p_lo, mde)
+    res["main"] = dict(outcome=main, delta_strat=d_s, delta_raw=d_r, eps_panel=eps,
+                       p_one_sided_hi=round(p_hi, 5), p_one_sided_lo=round(p_lo, 5), p_raw_hi_print=round(p_hi_r, 5),
+                       ci95_strat=[round(float(np.percentile(bs_s, 2.5)), 6), round(float(np.percentile(bs_s, 97.5)), 6)],
+                       mde_block=round(mde, 6), mde_le_eps=bool(mde <= eps),
+                       absorb_ratio_strat_over_raw=round(d_s / d_r, 4) if d_r else None,
+                       stocks_d1=int(P.loc[P["D"] == 1, "stock_code"].nunique()),
+                       stocks_d0=int(P.loc[P["D"] == 0, "stock_code"].nunique()),
+                       label=label, null="종목 블록 부트스트랩 · 중심화(Δ*−mean Δ*) · B=%d · seed %d" % (N_BOOT, SEED))
+    # 절벽 포함 판(같은 절차 · 병기)
+    inc = main.replace("_exc", "_inc")
+    bs_i = block_boot(P, inc, stratified=True)
+    d_i = res["outcomes"][inc]["delta_strat"]
+    ci_ = bs_i - bs_i.mean()
+    res["main_cliff_included"] = dict(outcome=inc, delta_strat=d_i, delta_raw=res["outcomes"][inc]["delta_raw"],
+                                      p_one_sided_hi=round(float((1 + (ci_ >= d_i).sum()) / (N_BOOT + 1)), 5),
+                                      mde_block=round(float(Z_MDE * bs_i.std(ddof=1)), 6),
+                                      label_if_used=label_panel(d_i, res["outcomes"][inc]["delta_raw"], eps,
+                                                                float((1 + (ci_ >= d_i).sum()) / (N_BOOT + 1)),
+                                                                float((1 + (ci_ <= d_i).sum()) / (N_BOOT + 1)),
+                                                                float(Z_MDE * bs_i.std(ddof=1))))
+    # ── 연도별(개정문 #2 §3 의무 · 판정 언어 없음)
+    res["by_year"] = {}
+    for y, g in P.groupby("year"):
+        res["by_year"][int(y)] = {c: dict(rates=by_class_rate(g, c), delta_raw=round(deltas(g, c)[0], 6),
+                                          delta_strat=round(deltas(g, c)[1], 6)) for c in (main, inc, f"ii_w{W_MAIN}_exc")}
+    # ── G12 절벽
+    Aj = A[in_win(A["d"], JUDGE)]
+    cl = P[P["d"].notna()]
+    g12 = dict(panel_cliff_rows={k: int(cl.loc[m, "cliff"].sum()) for k, m in
+                                 (("d0", cl["D"] == 0), ("unk", cl["D"].isna()), ("d1", cl["D"] == 1))},
+               panel_cliff_unknown_rows=int(cl["cliff_unknown"].sum()),
+               events_removed_by_exclusion={k: int(((cl[inc] == 1) & (cl[main] == 0) & m).sum()) for k, m in
+                                            (("d0", cl["D"] == 0), ("unk", cl["D"].isna()), ("d1", cl["D"] == 1))},
+               removed_share={k: round(float(((cl[inc] == 1) & (cl[main] == 0) & m).sum() / max(m.sum(), 1)), 5)
+                              for k, m in (("d0", cl["D"] == 0), ("unk", cl["D"].isna()), ("d1", cl["D"] == 1))},
+               by_year={int(y): int(g["cliff"].sum()) for y, g in cl.groupby("year")})
+    allc = P[["stock_code", "d", "cliff"]]
+    cliff_keys = {(c, d) for c, d, f in zip(allc["stock_code"], allc["d"], allc["cliff"]) if f}
+    ev_all = px.merge(A[["stock_code", "d", "cliff_old"]], on=["stock_code", "d"], how="left")
+    ev_all = ev_all[in_win(ev_all["d"], JUDGE)]
+    tev = tail_events(px, cal, t0_last=t0_last)
+    tev = tev[in_win(tev["d"], JUDGE)]
+    all_cliff = {(c, d) for c, d, f in zip(tev["stock_code"], tev["d"], tev["cliff"]) if f}
+    corp_keys = {k for k in corp if pd.Timestamp(JUDGE[0]) <= k[1] <= pd.Timestamp(JUDGE[1])}
+    g12.update(all_rows_cliff=len(all_cliff), panel_rows_cliff=len(cliff_keys), corp_events_in_window=len(corp_keys),
+               cliff_and_corp=len(all_cliff & corp_keys), cliff_only=len(all_cliff - corp_keys),
+               corp_only=len(corp_keys - all_cliff),
+               c2_old_rule_rows=int(ev_all["cliff_old"].sum()), c2_new_rule_rows=len(all_cliff))
+    g12["note_over5pct"] = [k for k, v in g12["removed_share"].items() if v > 0.05]
+    res["G12"] = g12
+    # ── G13 n_impossible · 사건 월별 · 패딩 전방 창
+    res["G13"] = dict(n_impossible_all_rows_by_year={int(y): int(g["impossible"].sum()) for y, g in
+                                                     Aj.groupby(Aj["d"].dt.year)},
+                      pad_fwd10_by_class={k: int(P.loc[m, "pad_fwd10"].sum()) for k, m in
+                                          (("d0", P["D"] == 0), ("unk", P["D"].isna()), ("d1", P["D"] == 1))},
+                      drift_ratio_sample_window=add["G13"]["sample_max_min_ratio"])
+    mon = {}
+    for c in (main, f"ii_w{W_MAIN}_exc"):
+        e = P[P[c] == 1]
+        m = e.groupby(e["d"].dt.strftime("%Y-%m")).size()
+        mon[c] = dict(by_month={k: int(v) for k, v in m.items()}, max_month=str(m.idxmax()),
+                      max_share=round(float(m.max() / m.sum()), 4))
+    res["G13_monthly"] = mon
+    # ── §3-2-b 셀 · 매칭(β)
+    J = P[P["D"].notna()]
+    res["vq_cells"] = {f"Q{int(q) + 1}": {"d0": int(((J["Vq"] == q) & (J["D"] == 0)).sum()),
+                                           "d1": int(((J["Vq"] == q) & (J["D"] == 1)).sum())} for q in range(N_QUINT)}
+    cnt0 = J[J["D"] == 0].groupby(["d", "Vq"]).size()
+    d1 = J[(J["D"] == 1) & J["Vq"].notna()]
+    k0 = d1.set_index(["d", "Vq"]).index.map(lambda k: cnt0.get(k, 0))
+    res["matching_beta"] = dict(n_d1=int(len(d1)), success_ge1=round(float((np.asarray(k0) >= 1).mean()), 4),
+                                success_ge3=round(float((np.asarray(k0) >= 3).mean()), 4))
+    # ── 슬롯 인쇄 arm
+    res["slot_arm"] = slot_arm(px, cal, fin, eps_slot)
+    # ── §4 예측 대조
+    gg = gate["gates"]
+    r2 = {s: gg["G2"][s]["windows"]["judge"]["r_hat"] for s in SLOT_K}
+    ratio = res["outcomes"][main]["ratio_d1_d0"]
+    absr = res["main"]["absorb_ratio_strat_over_raw"]
+    res["predictions"] = {
+        "P1": dict(pred="B·BD 날짜별 후보 수 전부 같다", obs="G1 불일치 0/537일", hit=True),
+        "P2": dict(pred="daytrading 노출 25~50%", obs=f"r̂ = {r2[SLOT_TARGET]}(판정 창 · 재현 원장)",
+                   hit=bool(0.25 <= r2[SLOT_TARGET] <= 0.50),
+                   print_only=f"ma20 {r2['book_pullback_ma20']}(예측 20~40%) · minervini {r2['minervini_volume_dryup']}(예측 5~20%)"),
+        "P3": dict(pred="부호 (가-D) · 플래그군 (i) ≥ 비플래그 × 1.5", obs=f"비 {ratio}(판정 창 · (i)_panel 절벽 제외)",
+                   hit=bool(ratio >= 1.5), refuted=bool(ratio <= 1.0)),
+        "P4": dict(pred="minervini 판정 불가일 수 있다(노출 < 20%)", obs=f"minervini r̂ = {r2['minervini_volume_dryup']}",
+                   hit=bool(r2["minervini_volume_dryup"] <= 0.20)),
+        "P5": dict(pred="D 는 사실상 (a) — (a) 기여 ≥ 70%", obs=f"(a) 비중 {gg['G6']['judge']['share_of_D']['a']}",
+                   hit=bool(gg["G6"]["judge"]["share_of_D"]["a"] >= 0.70)),
+        "P6": dict(pred="(iii) 거래정지·상폐 0~수 건", obs="미산출(패널 정의 없음 · 인쇄 전용 지표)", hit=None),
+        "P7": dict(pred="층화 후 delta = 비층화의 50~90%", obs=f"층화/비층화 = {absr}",
+                   hit=bool(absr is not None and 0.5 <= absr <= 0.9)),
+    }
+    res["elapsed_s"] = round((datetime.now() - t_start).total_seconds(), 1)
+    res["git_head"] = git("rev-parse", "HEAD")
+    RES_JSON.write_bytes(jdump(res).encode("utf-8"))
+    sha = hashlib.sha256(RES_JSON.read_bytes()).hexdigest()
+    (BASE / f"RESULTS_FD1_{t_start:%Y%m%d}.md").write_bytes(results_md(res, seal, gate, add, sha).encode("utf-8"))
+    log(f"results.json sha256 = {sha}")
     log(jdump(res["main"]))
     return 0
+
+
+def results_md(res: Dict[str, Any], seal: Dict[str, Any], gate: Dict[str, Any], add: Dict[str, Any], sha: str) -> str:
+    m = res["main"]
+    L: List[str] = []
+    a = L.append
+    main = m["outcome"]
+    a(f"# FD1 결과 — 재무 부실 경고 층 · 종목-일 패널 주 검정 ({res['git_head'][:7]} 실행)")
+    a("")
+    a(f"- 🔒 `results.json` sha256 = `{sha}` · 소요 {res['elapsed_s']}s")
+    a("- 🔒 **결과와 무관하게 실행·보고한다**(등재문 #1 §5-6 · 서랍 편향 방지).")
+    a(f"- 판정 창 **{JUDGE[0]}~{JUDGE[1]}(341거래일)** · 종목-일 {res['panel_rows']:,}(결과 관측 {res['panel_rows_outcome']:,}) · "
+      f"{res['stocks']:,}종목 · 유동성 컷 10억만(시총 미사용)")
+    a(f"- `eps_panel` = **{res['eps_panel']}** = 0.5 × p̂_base {seal['p_base_beta']}(재측정 창 · β · seal `{res['seal_sha256'][:12]}…`) — "
+      "**`r̂` 을 곱하지 않았다**(금지 21) · (α) = 정의 안 함(개정문 #2 §3)")
+    a("")
+    a("## 1. 판정 (주 검정 m = 1)")
+    a("")
+    a(f"### 🔒 라벨: **{m['label']}**")
+    a("")
+    a("| 항목 | 값 |")
+    a("|---|---|")
+    r = res["outcomes"][main]["rates"]
+    a(f"| `(i)_panel` 발생률 D=0 / 모름 / D=1 | {r['d0']['rate']} (n={r['d0']['n']:,}) / {r['unk']['rate']} (n={r['unk']['n']:,}) / "
+      f"{r['d1']['rate']} (n={r['d1']['n']:,}) |")
+    a(f"| 비 D=1/D=0 | {res['outcomes'][main]['ratio_d1_d0']} |")
+    a(f"| `delta_panel` 비층화 | {m['delta_raw']} |")
+    a(f"| **`delta_panel` 층화 후(판정값 · V 5분위 · 가중 = 분위 행 수)** | **{m['delta_strat']}** · 95% {m['ci95_strat']} |")
+    a(f"| `eps_panel` | {m['eps_panel']} |")
+    a(f"| 귀무(종목 블록 · 중심화 · B=10,000 · seed 20260915) 단측 p (+ 방향 / − 방향) | {m['p_one_sided_hi']} / {m['p_one_sided_lo']} |")
+    a(f"| 패널 MDE(= 2.8016 × SD(Δ*)) · MDE ≤ eps | {m['mde_block']} · {'예' if m['mde_le_eps'] else '아니오 → 검정력 없음'} |")
+    a(f"| 고유 종목 D=1 / D=0 | {m['stocks_d1']:,} / {m['stocks_d0']:,} |")
+    a(f"| 층화/비층화 비(P7 · (라-D) 문턱 0.5) | {m['absorb_ratio_strat_over_raw']} |")
+    a("")
+    a("라벨 규칙(§3-6 · §3-2-b 사전 고정): (라-D) 비층화 ≥ eps ∧ 층화 < 0.5 × 비층화 → (가-D) 층화 ≥ eps ∧ p(+) ≤ .05 → "
+      "(다-D) 층화 ≤ −eps ∧ p(−) ≤ .05 → (마-D) |층화| < eps ∧ MDE ≤ eps → MDE > eps 면 판별 보류 → 그 밖 (나-D).")
+    a("")
+    c = res["main_cliff_included"]
+    a(f"**절벽 «포함» 판(병기 · 판정 아님)**: 층화 delta {c['delta_strat']} · 비층화 {c['delta_raw']} · p(+) {c['p_one_sided_hi']} · "
+      f"MDE {c['mde_block']} · 같은 규칙이면 「{c['label_if_used']}」 · **제외 판과의 차 = {round(m['delta_strat'] - c['delta_strat'], 6)}**")
+    a("")
+    a("## 2. 연도별 (개정문 #2 §3 의무 · 판정 언어 없음)")
+    a("")
+    a("| 연도 | 지표 | D=0 | 모름 | D=1 | delta 비층화 | delta 층화 |")
+    a("|---|---|--:|--:|--:|--:|--:|")
+    for y, v in res["by_year"].items():
+        for col, w in v.items():
+            rr = w["rates"]
+            a(f"| {y} | `{col}` | {rr['d0']} | {rr['unk']} | {rr['d1']} | {w['delta_raw']} | {w['delta_strat']} |")
+    a("")
+    a(f"🔴 **G13 측정기 드리프트 병기(의무)**: 표본 창 패딩 거래일당 연도 최대/최소 비 **{res['G13']['drift_ratio_sample_window']}배** "
+      "(> 2배) — *「후보 선택과 꼬리 측정이 시간에 따라 다른 자로 재졌다」*. 연도 pooled 판정은 하지 않았다(판정 = 판정 창 전체 하나 · "
+      "재측정 창과의 pooled 없음). 판정 창 G5 연도 쏠림(원시 0.642 · 정규화 0.577)도 병기한다(개정문 #2 §1).")
+    a("")
+    a("## 3. 변형 전부 (등록 외 조합 포함 · 인쇄 · 판정 언어 없음)")
+    a("")
+    a("| 지표 | D=0 | 모름 | D=1 | 비 | delta 비층화 | delta 층화 |")
+    a("|---|--:|--:|--:|--:|--:|--:|")
+    for col, v in res["outcomes"].items():
+        rr = v["rates"]
+        a(f"| `{col}` | {rr['d0']['rate']} | {rr['unk']['rate']} | {rr['d1']['rate']} | {v['ratio_d1_d0']} | {v['delta_raw']} | {v['delta_strat']} |")
+    a("")
+    a("`s10` = s 0.10 민감도 · `w3`/`w2` = 창 3·2거래일(C11 · 판정은 10 고정) · `ii` = 일간 −8% · `inc`/`exc` = 절벽 포함/제외.")
+    a("")
+    a("## 4. 변동성 대조군 (§3-2-b · 필수)")
+    a("")
+    a(f"- 비층화 {m['delta_raw']} → 층화 {m['delta_strat']} (비 {m['absorb_ratio_strat_over_raw']}) · (라-D) 문턱 = 층화 < 0.5 × 비층화 **그리고** 비층화 ≥ eps.")
+    a(f"- V 분위 셀(D=0/D=1): {res['vq_cells']}")
+    a(f"- 매칭(β) 성공률(같은 날·같은 분위 D=0 ≥1 / ≥3): {res['matching_beta']['success_ge1']} / {res['matching_beta']['success_ge3']} "
+      f"(D=1 {res['matching_beta']['n_d1']:,}행)")
+    a("")
+    a("## 5. §4 예측 대조")
+    a("")
+    a("| # | 예측 | 관측 | 적중 |")
+    a("|---|---|---|---|")
+    for k, v in res["predictions"].items():
+        h = v["hit"]
+        mark = "—" if h is None else ("✅ 적중" if h else ("🔴 반증" if v.get("refuted", True) else "🟡 부호 맞음 · 크기 미달"))
+        a(f"| {k} | {v['pred']} | {v['obs']}{(' · ' + v['print_only']) if v.get('print_only') else ''} | {mark} |")
+    a("")
+    a("## 6. G12 절벽 · G13 동반")
+    a("")
+    g = res["G12"]
+    a(f"- 판정 창 전 종목행 절벽(현 규칙) {g['all_rows_cliff']} · 패널(컷 통과) 절벽 행 {g['panel_cliff_rows']} · 판정 불가 {g['panel_cliff_unknown_rows']:,}")
+    a(f"- 제외로 사라진 사건(`{main.replace('_exc', '_inc')}`=1 → exc=0) 군별 {g['events_removed_by_exclusion']} · 군 대비 비중 {g['removed_share']} · "
+      f"5% 초과 {g['note_over5pct'] or '없음'}")
+    a(f"- `flag_corp_action`(corp_events bonus·split·rights) 판정 창 {g['corp_events_in_window']} · 교집합 {g['cliff_and_corp']} · 절벽만 {g['cliff_only']} · corp 만 {g['corp_only']}")
+    a(f"- C2 부호 정정 전/후 절벽 행: 구안 {g['c2_old_rule_rows']} → 현 규칙 {g['c2_new_rule_rows']}(차 = 구안의 오검출 규모)")
+    a(f"- 연도별 패널 절벽: {g['by_year']}")
+    h = res["G13"]
+    a(f"- n_impossible(일간 < −35% · 전 종목행) 연도별 {h['n_impossible_all_rows_by_year']} · 전방 창에 패딩 든 t0 군별 {h['pad_fwd10_by_class']}")
+    for col, v in res["G13_monthly"].items():
+        a(f"- 사건 월별 `{col}`: 최대 월 {v['max_month']} · 비중 {v['max_share']}")
+    a("")
+    s = res["slot_arm"]
+    a("## 7. 슬롯 인쇄 arm (§3-0-c · 판정 언어 금지)")
+    a("")
+    a(f"daytrading · K=5 · 풀 상위 20 · s=0.10 · 진입 = 다음 거래일 시가 · N={s['N']:,} · M(교체)={s['M']:,} · r̂={s['r_hat']} · "
+      f"rate(B) {s['rate_B']} · rate(BD) {s['rate_BD']} · `delta_slot` {s['delta_slot']} · 95% {s['ci95']} · 짝대응 MDE DEFF1 "
+      f"{s['mde_paired_deff1']} / DEFF2 {s['mde_paired_deff2']} vs `eps_slot` {s['eps_slot']} → G11 {'통과' if s['G11_pass'] else '미통과 = 판별 보류'}. "
+      "G10 ①(라이브 shadow) 미산출이라 **승격 없음.** 「후보 ≠ 매수가능 ≈8.5%」(§3-0-h) · 등재문 #1: 이 arm 은 「판정 창의 후보 단위 D 비교를 이미 본 검정」이다.")
+    a("")
+    a("## 8. 판정문 의무 문장")
+    a("")
+    for t in ("이 문서의 주 검정은 «종목-일 패널»이다 — 「슬롯 기계가 좋아지나」에는 답하지 않는다.",
+              "이 문서의 대상은 daytrading 하나다(C-5 · 슬롯 arm) — 한 전략의 라벨을 「재무가 정보다」로 일반화하지 않는다.",
+              "라이브 12~14 거래일로는 이 축을 판정할 수 없다.",
+              "`daily_prices` 는 생존자 유니버스다(2021 이후 2,796종목 중 소멸 31 = 1.1%). 부실 종목의 최악 사례가 표본에서 빠져 있으므로, "
+              "(가-D) 가 나오면 효과는 «하한»이고, (마-D)·(나-D) 가 나와도 그것이 「위험이 없다」를 뜻하지 않는다.",
+              "판정 창 전 구간의 F11(= `D`) 평균 수익 비교가 동결 뒤 B 특징 연구에서 인쇄됐다(등재문 #1 `0bfbe92`) — 꼬리 빈도는 보지 않았다. "
+              "F11 과 이 D 는 판정 창 695 종목-일에서 다르다(개정문 #2 §5).",
+              "(α) 를 정의하지 않아 `eps` 산식 강건성 점검(§3-0-f 6(c))을 하지 못했다 — 대체 장치로 연도별 delta 를 병기했다.",
+              "`(i)_panel` 은 「이 종목은 갭으로 무너지는 성질이 있나」를 재는 일봉 대리변수이지 「우리가 얼마 잃었나」가 아니다.",
+              "순서 봉인은 (β) 로 「기간 홀드아웃」에서 「부분 홀드아웃」으로 약해졌다(§3-0-f 1-b)."):
+        a(f"- *「{t}」*")
+    a("")
+    a("## 9. §12 실행 기록")
+    a("")
+    a(f"- SHA: 동결 `70979b8` · REGISTRY FD1 등재 `2b5bc45` · 등재문 #1 `0bfbe92` · 1단계 게이트 `fd70b18` · 개정문 #2 + 게이트 추가분 `c8a71ee` · "
+      f"seal `e43ae71`({res['seal_commit_time']}) · 실행 HEAD `{res['git_head'][:7]}`")
+    a(f"- 순서 증거(git 커밋 시각): 게이트 {seal['gate_commit_time']} < 개정문 #2·추가분 {seal['amendment2_commit_time']} < seal {res['seal_commit_time']} < 이 결과 커밋")
+    fp = gate["meta"]["db_fingerprint"]
+    a("- DB 지문 5슬라이스: " + " · ".join(f"{k} `{(v.get('sha256') or v.get('md5'))[:16]}…`" for k, v in fp.items()))
+    a(f"- `_defs` sha256: flag_cliff `{gate['meta']['flag_cliff_sql_sha256_head'][:16]}…` · dart_cls `259d7bd9…5636d` · nw2_counts `d4fe811c…c249e04`")
+    a(f"- 1단계 게이트 전량 = `gate.json` `59fa5909…` + `gate_addendum.json` `8a767b30…` · G7 = seal · G8 생략 · G12·n_impossible·월별 = 위 §6")
+    a(f"- `p̂_base`: (β) {seal['p_base_beta']}(서명) · 모름 포함 {seal['p_base_incl_unknown_print_only']} · 2024-08-05 창 제외 "
+      f"{seal['p_base_without_2024_08_05_window_print_only']} · (α) 정의 안 함 · 787일 사전 구간 인쇄 = 미실행")
+    a("- 미산출(인쇄 전용 항목): ma20 부채비율 단독(§2-2-b · 슬롯 arm 범위) · (iii) 거래정지·상폐 · (iv) 평균 수익률 · 787일 사전 구간 연도별 패널")
+    a("- 실행 N1 누계: +1(패널 주 검정) · 슬롯 인쇄 arm B·BD 2 · 층화 판은 재집계라 +0 — REGISTRY 갱신은 관리자 몫(규칙 3)")
+    a("")
+    return "\n".join(L) + "\n"
 
 
 def main(argv: Optional[List[str]] = None) -> int:
