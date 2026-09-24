@@ -27,6 +27,13 @@ THRESHOLDS: Dict[str, float] = {
 }
 
 TOP_K = 5                          # §4-3 M3 — 판정이 실제로 서는 자리
+# 비교 절단 — M1~M4 는 라이브·재현 둘 다 «rank ≤ COMPARE_TOP_N» 로 자른 뒤 계산한다.
+# 2026-09-28 발효(`2274895`)부터 라이브 스냅샷이 「룰 통과 전수 저장」(rank > 20 행 포함)이라
+# 라이브 전체 집합을 재현 상위 20 과 비교하면 M1 이 왜곡된다. 09-22 이전 창은 라이브가 항상
+# ≤ 20 이라 절단이 항등이다(기존 판정 값 불변). 값은 `config.constants.MAX_CANDIDATES_PER_STRATEGY`
+# (=20 · 라이브 소비 상한)와 같아야 한다 — gate.py 는 config 를 import 하지 않는 순수 모듈이라
+# 하드코딩하고, 일치는 `tests/test_compare_top_n.py` 가 assert 한다.
+COMPARE_TOP_N = 20
 M4_REL_TOL = 1e-6
 
 # §4-5 C1 서명 ② — 회수는 **거래일** 기준이다(리뷰 H-2).
@@ -125,6 +132,9 @@ def compute_metrics(days: Sequence[DayPair]) -> Dict[str, Any]:
     **제거했다**. 사후 제거는 배제로 비운 슬롯에 20위 밖이 밀려 올라온 효과를 되돌리지
     못해 M2·M3 를 «한쪽으로» 움직인다 ⇒ 보조 지표는 「랭킹 «전» 배제 없이 다시
     재현한 상위 20 vs 라이브」 변종으로 낸다(`run.replay(excluded=set())`).
+
+    비교 전 라이브·재현 목록을 둘 다 `COMPARE_TOP_N`(=20) 으로 자른다 — 전수 저장(09-28~)
+    스냅샷 대응. `n_live`·`n_replay` 도 절단 후 크기다.
     """
     inter_sum = union_sum = 0
     top_inter = top_den = 0
@@ -132,7 +142,8 @@ def compute_metrics(days: Sequence[DayPair]) -> Dict[str, Any]:
     rhos: List[float] = []
     skipped = 0
     for d in days:
-        L, R = list(d.live), list(d.replay)
+        # `d.live` 는 rank_in_snapshot 오름차순(`run.build_day_pairs` 가 정렬 보장) ⇒ [:N] = rank ≤ N.
+        L, R = list(d.live)[:COMPARE_TOP_N], list(d.replay)[:COMPARE_TOP_N]
         sL, sR = set(L), set(R)
         inter_sum += len(sL & sR)
         union_sum += len(sL | sR)
@@ -172,8 +183,8 @@ def compute_metrics(days: Sequence[DayPair]) -> Dict[str, Any]:
         "M3": (top_inter / top_den) if top_den else float("nan"),
         "M4": (m4_ok / m4_n) if m4_n else float("nan"),
         "M4_n": m4_n,
-        "n_live": sum(len(d.live) for d in days),
-        "n_replay": sum(len(d.replay) for d in days),
+        "n_live": sum(min(len(d.live), COMPARE_TOP_N) for d in days),
+        "n_replay": sum(min(len(d.replay), COMPARE_TOP_N) for d in days),
         "n_inter": inter_sum,
         "n_union": union_sum,
     }
