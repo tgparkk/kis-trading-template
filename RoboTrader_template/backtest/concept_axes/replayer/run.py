@@ -43,6 +43,9 @@ from backtest.concept_axes.replayer import scan as scn            # noqa: E402
 HIST0 = "2021-01-01"                  # 워밍업 (설계서 §1-3)
 W0, W1 = "2024-03-13", "2026-05-31"   # 판정 창 537 거래일
 GEN_END = "2026-09-11"                # 원장 생성 끝 (그 뒤는 인쇄 전용)
+# 09-30 재판정 창 끝(2026-09-15 결정 · 설계서 v0.6 · 문턱 불변). 09-23 이후 스냅샷은
+# 「룰 통과 전수 저장」 형식(rank > 20 행 · params `max_candidates: None`) — 재판정은 이 날짜까지.
+REVERDICT_END = "2026-09-22"
 
 STRATEGIES: Dict[str, Dict[str, Any]] = {
     "ma20": {
@@ -81,6 +84,16 @@ def make_adapter(key: str):
     spec = STRATEGIES[key]
     mod = __import__(spec["module"], fromlist=[spec["cls"]])
     return getattr(mod, spec["cls"])()
+
+
+def segment_max_candidates(params: Dict[str, Any], default: int) -> int:
+    """세그먼트 params 의 `max_candidates` — None 이거나 키가 없으면 `default`.
+
+    전수 저장(09-28~) 세그먼트는 None → 재현은 상위 max_candidates 로 절단 ·
+    비교는 gate 에서 rank ≤ COMPARE_TOP_N 로 자른다(`gate.compute_metrics`).
+    """
+    v = params.get("max_candidates")
+    return default if v is None else int(v)
 
 
 def params_hash(p: Dict[str, Any]) -> str:
@@ -170,6 +183,10 @@ def replay(px: pd.DataFrame, bar_flags: pd.DataFrame, key: str, *,
 # ────────────────────────────────────────────────────────────────────────────
 def build_day_pairs(live: pd.DataFrame, led: pd.DataFrame) -> List[gt.DayPair]:
     days: List[gt.DayPair] = []
+    # `load_live_snapshots` 가 ORDER BY rank_in_snapshot 이지만 절단(rank ≤ COMPARE_TOP_N)이
+    # 순서에 기대므로 명시적으로 안정 정렬한다(기존 입력엔 항등).
+    if "rank_in_snapshot" in live.columns:
+        live = live.sort_values(["scan_date", "rank_in_snapshot"], kind="mergesort")
     lg = {d: g for d, g in live.groupby("scan_date")}
     rg = {d: g for d, g in led.groupby("scan_date")} if len(led) else {}
     for d in sorted(set(lg) | set(rg)):
@@ -235,7 +252,10 @@ def classify_days(days: List[gt.DayPair], live: pd.DataFrame,
     rows = []
     for dp in days:
         d = pd.Timestamp(dp.scan_date)
-        sL, sR = set(dp.live), set(dp.replay)
+        # `gate.compute_metrics` 와 같은 절단(rank ≤ COMPARE_TOP_N) — 전수 저장(09-28~)
+        # 스냅샷의 21위 이하를 live_only 로 잘못 분류하지 않는다(≤ 09-22 창엔 항등).
+        L, R = list(dp.live)[:gt.COMPARE_TOP_N], list(dp.replay)[:gt.COMPARE_TOP_N]
+        sL, sR = set(L), set(R)
         only_live, only_replay = sL - sR, sR - sL
         swept = bool(uni_info.get(d, {}).get("universe_fallback", False)) or (
             sL and sR and len(only_live) >= 0.5 * len(sL)
@@ -250,8 +270,8 @@ def classify_days(days: List[gt.DayPair], live: pd.DataFrame,
         imp = impossible.get(d, set())
         for code in sorted(only_live) + sorted(only_replay):
             side = "live_only" if code in only_live else "replay_only"
-            lr = (dp.live.index(code) + 1) if code in sL else None
-            rr = (dp.replay.index(code) + 1) if code in sR else None
+            lr = (L.index(code) + 1) if code in sL else None
+            rr = (R.index(code) + 1) if code in sR else None
             lab = gt.classify_mismatch(
                 code=code, side=side, live_rank=lr, replay_rank=rr,
                 score_match=True, created_late=created_late, hash_changed=False,
@@ -301,6 +321,9 @@ def main(argv=None) -> int:
 
     # V5-a — 실행 시간창
     gt.require_time_window()
+    if args.gate and args.end > REVERDICT_END:
+        log("⚠️ --end {} > REVERDICT_END {} — 09-23 이후는 전수 저장 형식 · "
+            "09-30 재판정 창은 scan_date ≤ {}".format(args.end, REVERDICT_END, REVERDICT_END))
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -374,16 +397,14 @@ def main(argv=None) -> int:
                     r = replay(px, bar_flags, key, scan_dates=s["dates"],
                                params=s["params"], excluded=excluded, names=names,
                                markets=markets, corp_events=corp, meta=meta,
-                               max_candidates=int(s["params"].get(
-                                   "max_candidates", args.max_candidates)))
+                               max_candidates=segment_max_candidates(s["params"], args.max_candidates))
                     # 리뷰 M-3 — 보조 지표는 「랭킹 «전» 배제 없이 재현한 상위 20」 으로 낸다.
                     #    라이브 집합에서 배제를 «사후» 빼는 것은 밀려 올라온 슬롯을 되돌리지 못한다.
                     r["ledger_noexcl"] = replay(
                         px, bar_flags, key, scan_dates=s["dates"],
                         params=s["params"], excluded=set(), names=names,
                         markets=markets, corp_events=corp, meta=meta,
-                        max_candidates=int(s["params"].get(
-                            "max_candidates", args.max_candidates)))["ledger"]
+                        max_candidates=segment_max_candidates(s["params"], args.max_candidates))["ledger"]
                     r["seg"] = s
                     r["live"] = live[live["scan_date"].isin(s["dates"])]
                     # 🖨️ 인쇄 전용 보조 판 — 판정에 쓰지 않는다(문턱·주 표 불변).
@@ -396,8 +417,7 @@ def main(argv=None) -> int:
                                         params=s["params"], excluded=excluded,
                                         names=names, markets=markets, corp_events=corp,
                                         meta=meta, vintage_vol=ot_vol,
-                                        max_candidates=int(s["params"].get(
-                                            "max_candidates", args.max_candidates)))
+                                        max_candidates=segment_max_candidates(s["params"], args.max_candidates))
                             r["vintage"] = {"ledger": rv["ledger"], "dates": vdates,
                                             "stats": rv["vintage_stats"],
                                             "secs": rv["secs"]}
