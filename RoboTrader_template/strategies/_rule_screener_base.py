@@ -104,7 +104,8 @@ class RuleScreenerBase(ScreenerBase):
 
     def scan(self, scan_date: date, params: Dict[str, Any]) -> List[CandidateStock]:
         merged = {**self.default_params(), **(params or {})}
-        max_candidates = int(merged.get("max_candidates", 10))
+        mc = merged.get("max_candidates", 10)
+        max_candidates = None if mc is None else int(mc)
         universe = self.base_filter(self._load_universe(scan_date))
 
         stats = {"n_no_data": 0, "n_impossible": 0}
@@ -147,15 +148,15 @@ class RuleScreenerBase(ScreenerBase):
         scored.sort(key=lambda t: t[0], reverse=True)
         selected = [c for _, c in scored[:max_candidates]]
 
-        self.finalize_scan({
-            "scan_date": scan_date,
-            "n_universe": len(universe),
-            "n_no_data": stats["n_no_data"],
-            "n_impossible": stats["n_impossible"],
-            "n_evaluated": n_evaluated,
-            "n_matched": len(scored),
-            "n_selected": len(selected),
-        })
+        diag = {
+            "scan_date": scan_date, "n_universe": len(universe),
+            "n_no_data": stats["n_no_data"], "n_impossible": stats["n_impossible"],
+            "n_evaluated": n_evaluated, "n_matched": len(scored), "n_selected": len(selected),
+        }
+        logger.info("[스크리너] %s scan_date=%s 유니버스 %d · 평가 %d · 룰 통과 %d · 저장 %d",
+                    self.strategy_name, scan_date, diag["n_universe"], diag["n_evaluated"],
+                    diag["n_matched"], diag["n_selected"])
+        self.finalize_scan(diag)
         return selected
 
     def _prepare_frame(

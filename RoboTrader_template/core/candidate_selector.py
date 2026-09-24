@@ -13,6 +13,7 @@ from .models import TradingConfig
 from framework.broker import KISBroker
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, get_previous_trading_day
+from config.constants import MAX_CANDIDATES_PER_STRATEGY
 
 
 @dataclass
@@ -1100,6 +1101,10 @@ class CandidateSelector:
                 f"— 조건에 맞는 종목 없음, 금일 미진입"
             )
             return []
+
+        # 🔒 불변 가드(2026-09-24 사전등록): 스냅샷은 룰 통과 «전부»다.
+        #    라이브는 변경 전과 같은 1~20위만 읽는다 — 재정렬·안전필터·E6 로그 불변.
+        codes = codes[:MAX_CANDIDATES_PER_STRATEGY]
 
         # 스펙 B: 섹터 뉴스 재정렬 — 안전필터(limit 절단) «앞». 아래 메서드는 예외를 내지 않는다(fail-open).
         codes, sector_notes = self._apply_sector_news_rerank(strategy_name, codes, prev_day_str)

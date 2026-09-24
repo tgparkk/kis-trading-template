@@ -551,10 +551,14 @@ class TestScreenerSnapshotHook:
         )
 
     @pytest.mark.asyncio
-    async def test_hook_uses_max_candidates_per_strategy_constant(self):
-        """스냅샷 생성 시 전략당 후보 상한은 MAX_CANDIDATES_PER_STRATEGY(=20)를 사용한다."""
+    async def test_hook_uses_screener_snapshot_max_rows_constant(self):
+        """스냅샷 생성 시 저장 상한은 SCREENER_SNAPSHOT_MAX_ROWS(=None, 룰 통과 전부)를 사용한다.
+
+        사전등록 2026-09-24(docs/prereg_2026-09-24_screener_fullpass_snapshot.md §3-4·§5-1):
+        생성 행 수는 라이브 소비 상한 MAX_CANDIDATES_PER_STRATEGY(=20)와 분리됐다.
+        """
         from datetime import datetime
-        from config.constants import MAX_CANDIDATES_PER_STRATEGY
+        from config.constants import SCREENER_SNAPSHOT_MAX_ROWS
         bot = _make_bot(positioned_stocks=[])
         bot.config = None
         handler = _make_handler(bot)
@@ -574,10 +578,11 @@ class TestScreenerSnapshotHook:
                    side_effect=_fake_run_once):
             await handler.run_screener_snapshot_hook()
 
-        assert MAX_CANDIDATES_PER_STRATEGY == 20
-        assert captured.get('max_candidates') == MAX_CANDIDATES_PER_STRATEGY, (
-            f"스냅샷 생성 상한은 {MAX_CANDIDATES_PER_STRATEGY}여야 하는데 "
-            f"{captured.get('max_candidates')} 사용"
+        assert SCREENER_SNAPSHOT_MAX_ROWS is None
+        assert 'max_candidates' in captured, "훅이 run_once 를 호출하지 않았다"
+        assert captured['max_candidates'] is SCREENER_SNAPSHOT_MAX_ROWS, (
+            f"스냅샷 생성 상한은 {SCREENER_SNAPSHOT_MAX_ROWS}여야 하는데 "
+            f"{captured['max_candidates']} 사용"
         )
 
     @pytest.mark.asyncio
