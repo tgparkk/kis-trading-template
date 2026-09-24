@@ -619,6 +619,45 @@ class VirtualTradingManager:
             return qty if qty > 0 else 0
         except Exception:
             return 0
+
+    def describe_zero_quantity(self, price: float, strategy_name: str = "") -> str:
+        """``get_max_quantity`` 가 0 일 때 «까닭» 접미 (2026-09-24 사전등록 ④ · 로그 전용).
+
+        G1(``get_max_quantity``)과 **같은 항을 같은 규칙으로 읽기만** 한다 — budget(전략
+        원장 잔여 또는 레거시 ``virtual_balance``) · per_stock · cap(G1 과 똑같이
+        ``cap is not None and 0 < cap`` 일 때만) ⇒ ``eff = min(per_stock, cap)``(cap 무효면
+        per_stock). 현금 = ``budget < price`` · 단가 = ``eff < price``:
+          현금만 → ``·현금부족`` · 단가만 → ``·단가초과`` · 둘 다 → ``·현금부족+단가초과``
+          (+ 괄호 안 ``전략잔여 · 종목당 · 1주`` 세 금액) · 둘 다 아님/예외 → ``""``(= 현행 「수량부족」).
+        상태 무변경 · 예외를 밖으로 내지 않는다.
+        """
+        try:
+            if price <= 0:
+                return ""
+            if self._has_strategy_ledger(strategy_name):
+                budget = self._strategy_balances[strategy_name]
+            else:
+                budget = self.virtual_balance
+            per_stock = self._strategy_investment_amounts.get(
+                strategy_name, self.virtual_investment_amount)
+            eff = per_stock
+            cap = self._strategy_max_per_stock.get(strategy_name)
+            if cap is not None and 0 < cap:
+                eff = min(per_stock, cap)
+            cash_short = budget < price
+            unit_over = eff < price
+            if cash_short and unit_over:
+                label = "현금부족+단가초과"
+            elif cash_short:
+                label = "현금부족"
+            elif unit_over:
+                label = "단가초과"
+            else:
+                return ""
+            return (f"·{label} (전략잔여 {budget:,.0f}원 · 종목당 {eff:,.0f}원 · "
+                    f"1주 {price:,.0f}원)")
+        except Exception:
+            return ""
     
     def execute_virtual_buy(self, stock_code: str, stock_name: str, price: float,
                           quantity: int, strategy: str, reason: str,

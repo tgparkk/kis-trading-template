@@ -427,7 +427,21 @@ class TradingDecisionEngine:
                 qty = int(max_amt / price) if price > 0 else 0
 
             if qty <= 0:
-                return False, f"{code} 수량부족", empty
+                # 사유 라벨(2026-09-24 사전등록 ④) — 문자열만, 제어 흐름 0 · 가상모드만.
+                # 「지갑이 비었다(현금부족)」와 「1주가 종목당 예산보다 비싸다(단가초과)」는
+                # 처방이 정반대인데 한 문자열이었다. 접두 「수량부족」 유지(파서·grep 호환).
+                # G2 하드거절(virtual_trading_manager.execute_virtual_buy)은 G1 이 먼저 qty=0 을
+                # 만들어 사실상 도달 불가 — 불변.
+                suffix = ""
+                if self.is_virtual_mode and self.virtual_trading is not None:
+                    try:
+                        suffix = self.virtual_trading.describe_zero_quantity(
+                            price, strategy_name=ledger_key)
+                    except Exception:
+                        suffix = ""
+                    if not isinstance(suffix, str):
+                        suffix = ""
+                return False, f"{code} 수량부족{suffix}", empty
 
             buy_info = {'buy_price': price, 'quantity': qty, 'max_buy_amount': max_amt}
             if signal:

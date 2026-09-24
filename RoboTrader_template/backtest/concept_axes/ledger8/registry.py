@@ -27,6 +27,9 @@
      (core/trading/position_monitor.py:359-361)는 `timeframe='intraday'` 인데 P1 은 게이트에서 None,
      P2·P3 의 `evaluate_sell_conditions` 는 보유기간만 본다 ⇒ **매도 재현은 8전략 공통 1벌**(exitsim8).
    - `[캡] … 사유=timeframe` 은 ② 경로(P1 의 ma20)에서만 찍힌다 — 매수 차단이 아니다.
+     2026-09-28 07:40 부터 `[캡]` 줄 끝에 `경로={매수루프|매도루프|루프밖}` 이 붙는다
+     (docs/prereg_2026-09-24_gate_observability_bundle.md ③) ⇒ 이 줄은 `경로=루프밖` 으로 읽는다.
+     같은 (종목, 사유)가 매수·매도 루프 둘 다에서 찍힐 수 있어 `Fold.n`·`last` 가 늘 수 있다.
    - 매도 루프는 «다른 전략» 보유 종목까지 돈다(core/trading_context.py:300-307). 자기 보유가 아니면 매수
      분기로 떨어져 🧾·`[캡]` 줄이 찍히고 BUY 는 버려진다(base.py:750) ⇒ **신호 기준 줄은 매수 루프 전용
      `[on_tick] 매수신호: CODE(`**(base.py:723-726)이고 `[캡]` 은 E6 목록과 교집합으로만 읽는다.
@@ -142,7 +145,8 @@ SPECS: Tuple[StrategySpec, ...] = (
         k_history=((date(2026, 6, 5), 5, "초기값(근거 주석 없음)"),
                    (date(2026, 9, 18), 10, "bc7df66/c565256 K 5→10 · docs/prereg_2026-09-15_focus3_K_raise.md")),
         mdt_history=_MDT5, regime_history=_KOSPI,
-        note="P1 인데 _log_cap_skip 이 있다 ⇒ [캡] 사유=timeframe 줄은 position_monitor 분봉 경로(매수 차단 아님)",
+        note="P1 인데 _log_cap_skip 이 있다 ⇒ [캡] 사유=timeframe 줄은 position_monitor 분봉 경로(매수 차단 아님)"
+             " · 09-28 부터 그 줄은 `경로=루프밖`(prereg_2026-09-24_gate_observability_bundle ③)",
     ),
     StrategySpec(
         folder="book_pullback_ma5", cls="BookPullbackMa5Strategy",

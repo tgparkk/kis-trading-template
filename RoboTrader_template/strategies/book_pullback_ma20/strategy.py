@@ -140,9 +140,13 @@ class BookPullbackMa20Strategy(BaseStrategy):
 
         if self.daily_trades >= self._max_daily_trades:
             self._log_cap_skip(stock_code, "daily_trades")
+            self._log_cap_shadow(stock_code, "daily_trades", lambda: self.evaluate_entry(
+                data, min_daily_bars=self._min_daily_bars))
             return None
         if len(self.positions) >= self._max_positions:
             self._log_cap_skip(stock_code, "max_positions")
+            self._log_cap_shadow(stock_code, "max_positions", lambda: self.evaluate_entry(
+                data, min_daily_bars=self._min_daily_bars))
             return None
 
         return self._check_buy(stock_code, data)
