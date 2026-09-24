@@ -131,9 +131,13 @@ class DayTrading3MethodsBreakoutStrategy(BaseStrategy):
 
         if self.daily_trades >= self._max_daily_trades:
             self._log_cap_skip(stock_code, "daily_trades")
+            self._log_cap_shadow(stock_code, "daily_trades", lambda: self.evaluate_entry(
+                data, min_daily_bars=self._min_daily_bars, high_window=self._high_window))
             return None
         if len(self.positions) >= self._max_positions:
             self._log_cap_skip(stock_code, "max_positions")
+            self._log_cap_shadow(stock_code, "max_positions", lambda: self.evaluate_entry(
+                data, min_daily_bars=self._min_daily_bars, high_window=self._high_window))
             return None
 
         # 진입은 확정 일봉 기준 (백테스트와 동일). 매도 경로(intraday)에서는 신규 진입 안 함.

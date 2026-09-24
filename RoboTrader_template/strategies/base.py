@@ -619,6 +619,52 @@ class BaseStrategy(ABC):
         except Exception:  # noqa: BLE001 — 계기가 매매 판단을 죽이면 안 된다
             pass
 
+    def _log_cap_shadow(self, stock_code: str, reason: str, evaluate) -> None:
+        """캡에 막힌 매수 후보의 진입 룰을 «평가만» 해 로그한다 (2026-09-24 사전등록 ⑤).
+
+        캡(daily_trades·max_positions)이 걸리면 ``_check_buy`` 에 도달하지 않아 「룰상
+        신호였나」의 증거가 원리적으로 없다. 캡 분기 «안»에서 ``_log_cap_skip`` 바로 뒤에
+        불러, ``evaluate()``(= 그 전략 ``_check_buy`` 와 같은 인자의 ``evaluate_entry``)
+        반환의 ``[0]``(참/거짓)·``[1]``(reasons)만 읽는다.
+
+        🔑 **로그 전용이다** — 반환값·순서·판단 불변 · Signal 을 만들지 않는다 ·
+        ``positions``·``daily_trades`` 무접촉 · 예외를 밖으로 내지 않는다(룰 예외 = ``룰=오류``).
+        매수루프에서만 · (종목, 사유) 거래일당 1회 — 표지를 평가 «전»에 찍어 반복 비용 0.
+        ⚠️ ``룰=참`` ≠ 「샀을 것」: 밴드·현금·쿨다운 이전의 «신호 수준» 반사실이다.
+        """
+        try:
+            if getattr(self, "_eval_path", None) != "매수루프":
+                return
+            key = (stock_code, reason)
+            today = datetime.now().date()
+            if self._cap_shadow_log_date != today:
+                self._cap_shadow_log_date = today
+                self._cap_shadow_logged.clear()
+            if key in self._cap_shadow_logged:
+                return
+            self._cap_shadow_logged.add(key)
+            reasons_str = ""
+            try:
+                result = evaluate()
+                verdict = "참" if result[0] else "거짓"
+                if result[0]:
+                    reasons_str = ", ".join(str(r) for r in (result[1] or []))
+            except Exception:  # noqa: BLE001 — 룰 예외는 기록만 한다
+                verdict = "오류"
+            line = (
+                f"[shadow] {self._strategy_folder_key()} {stock_code} "
+                f"캡사유={reason} 룰={verdict} "
+                f"보유={len(getattr(self, 'positions', {}) or {})}/"
+                f"{getattr(self, '_max_positions', 0)} "
+                f"일일매수={getattr(self, 'daily_trades', 0)}/"
+                f"{getattr(self, '_max_daily_trades', 0)}"
+            )
+            if verdict == "참":
+                line += f" | {reasons_str}"
+            self.logger.info(line)
+        except Exception:  # noqa: BLE001 — 계기가 매매 판단을 죽이면 안 된다
+            pass
+
     def _entry_band(self, ref_price, down_pct=None, up_pct=None):
         """진입 지정가 밴드 (entry_min_price, entry_max_price)를 산출한다.
 
