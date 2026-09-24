@@ -754,7 +754,7 @@ def require_committed(path: Path) -> str:
     return git("log", "-1", "--format=%cI", "--", str(path))
 
 
-def tail_events(px: pd.DataFrame, cal: List[pd.Timestamp]) -> pd.DataFrame:
+def tail_events(px: pd.DataFrame, cal: List[pd.Timestamp], t0_last: Optional[int] = None) -> pd.DataFrame:
     """종목-일마다 꼬리 이진 지표(§3-0-b-ii · §3-2 (ii)) — 절벽 포함(inc)/제외(exc) 두 판.
 
     창 = t0 다음 «달력» 거래일부터 w 거래일(KOSPI 달력). 창 끝이 달력 끝을 넘으면 NaN(우측 절단).
@@ -791,13 +791,13 @@ def tail_events(px: pd.DataFrame, cal: List[pd.Timestamp]) -> pd.DataFrame:
             for k in range(1, w + 1):
                 fmin[:T - k] = np.minimum(fmin[:T - k], Oe[k:])
             r = (fmin < Cl * (1 - s)).astype(float)
-            r[T - w:] = np.nan
+            r[min(T - w, T if t0_last is None else t0_last + 1):] = np.nan
             out[f"i_s{int(round(s * 100)):02d}_w{w}_{tag}"] = r
         fany = np.zeros_like(E2)
         for k in range(1, W_MAIN + 1):
             fany[:T - k] |= Ee[k:]
         r = fany.astype(float)
-        r[T - W_MAIN:] = np.nan
+        r[min(T - W_MAIN, T if t0_last is None else t0_last + 1):] = np.nan
         out[f"ii_w{W_MAIN}_{tag}"] = r
     cols = piv["open"].columns
     frames = [pd.DataFrame(v, index=cal_ix, columns=cols).stack(future_stack=True).rename(k) for k, v in out.items()]
@@ -806,23 +806,30 @@ def tail_events(px: pd.DataFrame, cal: List[pd.Timestamp]) -> pd.DataFrame:
     return res.merge(px[["stock_code", "d", "cliff", "cliff_unknown"]], on=["stock_code", "d"], how="inner")
 
 
-def load_tail_frame(conn, a: str, b: str) -> Tuple[pd.DataFrame, List[pd.Timestamp]]:
-    """꼬리 계산용 가격(원시 · 가격에 adj 미적용 · volume 에만 COALESCE(adj,1)) + V(volatility_20d)."""
-    cal = trading_days(conn, "2023-12-01", "2026-07-31")
+def load_tail_frame(conn, win: Tuple[str, str]) -> Tuple[pd.DataFrame, List[pd.Timestamp]]:
+    """꼬리 계산용 가격(원시 · 가격에 adj 미적용 · volume 에만 COALESCE(adj,1)) + V(volatility_20d).
+
+    읽는 끝 = 창 끝 + W_MAIN 거래일(전방 창에 필요한 만큼만). 그 뒤 날짜는 t0 로 쓰이면 우측 절단(NaN)이다
+    ⇒ seal(재측정 창)에서 판정 창 t0 의 꼬리는 «계산되지 않는다»(첫 10거래일 가격은 재측정 t0 의 전방 창으로만 쓰인다).
+    """
+    cal_all = trading_days(conn, "2023-12-01", "2026-07-31")
+    last = max(i for i, d in enumerate(cal_all) if d <= pd.Timestamp(win[1]))
+    cal = cal_all[:last + W_MAIN + 1]
+    end = pd.Timestamp(cal[-1]).strftime("%Y-%m-%d")
     q = f"""SELECT stock_code, date::date AS d, open, close,
                    (volume * COALESCE(adj_factor,1))::double precision AS vol_adj,
                    COALESCE(adj_factor,1) AS adj1,
                    (close * (volume * COALESCE(adj_factor,1)))::double precision AS tv,
                    volatility_20d AS v20
-            FROM daily_prices WHERE {LD.STOCK_ONLY} AND date::date BETWEEN '2023-12-01' AND '2026-07-31'"""
+            FROM daily_prices WHERE {LD.STOCK_ONLY} AND date::date BETWEEN '2023-12-01' AND '{end}'"""
     px = pd.read_sql(q, conn)
     px["d"] = pd.to_datetime(px["d"])
     return px, cal
 
 
 def build_tail_panel(conn, fin, win: Tuple[str, str]) -> pd.DataFrame:
-    px, cal = load_tail_frame(conn, *win)
-    ev = tail_events(px, cal)
+    px, cal = load_tail_frame(conn, win)
+    ev = tail_events(px, cal, t0_last=max(i for i, d in enumerate(cal) if d <= pd.Timestamp(win[1])))
     px = px.sort_values(["stock_code", "d"])
     px["V"] = px.groupby("stock_code")["v20"].shift(1)                    # D−1 시점 값(§3-2-b)
     P = px[in_win(px["d"], win) & (px["tv"] >= TV_MIN)][["stock_code", "d", "V"]]
@@ -896,26 +903,61 @@ def label_panel(delta: float, delta_raw: float, eps: float, p_hi: float, p_lo: f
 
 def phase_seal(args) -> int:
     gate_time = require_committed(GATE_JSON)
+    add_time = require_committed(GATE_ADD_JSON)
+    amd2_time = require_committed(ROOT / "docs" / "prereg_2026-09-14_fund_distress_warning_amendment2_2026-09-24.md")
+    gate = json.loads(GATE_JSON.read_text(encoding="utf-8"))
     conn = connect()
     fin, _ = load_fin(conn)
+    cal = trading_days(conn, *REMEAS)
     P = build_tail_panel(conn, fin, REMEAS)
     conn.close()
+    assert P["d"].max() <= pd.Timestamp(REMEAS[1]), "재측정 창 밖 t0"
     col = f"i_s08_w{W_MAIN}_exc"
     judged = P[P["D"].notna() & P[col].notna()]
     p_base = float(judged[col].mean())
     p_incl_unk = float(P[col].dropna().mean())
-    p_wo_crash = float(judged.loc[judged["d"] != pd.Timestamp(CRASH_DAY), col].mean())
+    ci = cal.index(pd.Timestamp(CRASH_DAY))
+    crash_t0 = set(cal[max(0, ci - W_MAIN):ci])                     # 전방 10거래일 창에 2024-08-05 가 든 t0
+    p_wo_crash = float(judged.loc[~judged["d"].isin(crash_t0), col].mean())
+    rr = rates(P, col)
+    ratio = rr["d1"]["rate"] / rr["d0"]["rate"] if rr["d0"]["rate"] else None
+    r_hat = gate["gates"]["G2"][SLOT_TARGET]["windows"]["judge"]["r_hat"]
     seal = dict(gate_json_sha256=hashlib.sha256(GATE_JSON.read_bytes()).hexdigest(), gate_commit_time=gate_time,
-                window=REMEAS, outcome=col, p_base_beta=round(p_base, 6),
-                eps_panel_beta=round(0.5 * p_base, 6), eps_formula="eps_panel := 0.5 × p̂_base (r̂ 없음 · 금지 21)",
+                gate_addendum_sha256=hashlib.sha256(GATE_ADD_JSON.read_bytes()).hexdigest(),
+                gate_addendum_commit_time=add_time, amendment2_commit_time=amd2_time,
+                window=REMEAS, trading_days=len(cal), outcome=col,
+                population="D∈{0,1}(U1 모름 제외 · FD1 Open Q3)",
+                p_base_beta=round(p_base, 6), eps_panel_beta=round(0.5 * p_base, 6),
+                eps_formula="eps_panel := 0.5 × p̂_base (r̂ 을 곱하지 않았다 · 금지 21)",
                 p_base_incl_unknown_print_only=round(p_incl_unk, 6),
-                p_base_without_2024_08_05_print_only=round(p_wo_crash, 6),
-                eps_panel_alpha=None,
-                eps_panel_alpha_note="§3-0-f 6(a) (α) 「패딩 거래일당 정규화」 산식이 문서에 없다 — 관리자 확정 전 미산출",
-                ratio_d1_d0_print_only=rates(P, col), n_rows=int(len(judged)),
-                stocks=int(judged["stock_code"].nunique()), git_head=git("rev-parse", "HEAD"))
+                p_base_without_2024_08_05_window_print_only=round(p_wo_crash, 6),
+                crash_excluded_t0=len(crash_t0),
+                eps_panel_alpha=None, eps_panel_alpha_note="개정문 #2 §3 — 이 라운드는 (α) 를 정의하지 않는다",
+                rates_by_class_print_only=rr, ratio_d1_d0_print_only=round(ratio, 4) if ratio else None,
+                r_hat_slot_print_only=r_hat, eps_slot_print_only=round(r_hat * 0.5 * p_base, 6),
+                n_rows=int(len(judged)), stocks=int(judged["stock_code"].nunique()),
+                git_head=git("rev-parse", "HEAD"), judge_window_t0_tail_values_computed=0)
     SEAL_JSON.write_bytes(jdump(seal).encode("utf-8"))
-    log(f"seal.json sha256 = {hashlib.sha256(SEAL_JSON.read_bytes()).hexdigest()} — 커밋 뒤에 --phase 2")
+    sha = hashlib.sha256(SEAL_JSON.read_bytes()).hexdigest()
+    md = [f"# FD1 seal — 재측정 창 `p̂_base` · `eps_panel` 서명 ({datetime.now():%Y-%m-%d})", "",
+          f"- 🔒 **`seal.json` sha256 = `{sha}`**",
+          f"- 선행 커밋(git 사실): gate.json {gate_time} · 게이트 추가분 {add_time} · 개정문 #2 {amd2_time}",
+          f"- 창 = 재측정 {REMEAS[0]}~{REMEAS[1]}({len(cal)}거래일 · **판정 제외**) · 결과 = `{col}`"
+          "(s=0.08 · 10거래일 · 절벽인 날 사건 제외 · 개정문 #2 §4-3)",
+          "- 🔴 **판정 창 t0 의 꼬리 값: 계산 0 · 조회 0 · 인쇄 0.** 판정 창 첫 10거래일 가격은 재측정 창 t0 의 전방 창으로만 읽었다.",
+          "", "| 항목 | 값 |", "|---|---|",
+          f"| **`p̂_base` (β · 서명)** — 모집단 D∈{{0,1}} | **{p_base:.6f}** (n={len(judged):,} · {seal['stocks']:,}종목) |",
+          f"| **`eps_panel := 0.5 × p̂_base`** (r̂ 없음 · 금지 21) | **{0.5 * p_base:.6f}** |",
+          "| `eps_panel` (α) | null (개정문 #2 §3) |",
+          f"| 참고: 「모름」 포함 `p̂_base` | {p_incl_unk:.6f} |",
+          f"| 참고: 전방 창에 2024-08-05 가 든 t0 {len(crash_t0)}일 제외 `p̂_base`(서명 안 씀) | {p_wo_crash:.6f} |",
+          f"| 참고: 군별 발생률 D=0 / 모름 / D=1 | {rr['d0']['rate']} (n={rr['d0']['n']:,}) / {rr['unk']['rate']} "
+          f"(n={rr['unk']['n']:,}) / {rr['d1']['rate']} (n={rr['d1']['n']:,}) |",
+          f"| 참고: D=1/D=0 비(판정 언어 없음 · P3 문턱 1.5 는 판정 창에서) | {seal['ratio_d1_d0_print_only']} |",
+          f"| 참고: `eps_slot = r̂ × 0.5 × p̂_base`(슬롯 인쇄 arm · r̂ = G2 판정 창 {r_hat}) | {seal['eps_slot_print_only']} |",
+          "", "🔴 이 값을 본 뒤 개정문 #2 를 고치지 않는다(개정문 #2 §8-1). 다음 = 이 파일과 seal.json 커밋 → `--phase 2`."]
+    (BASE / f"SEAL_FD1_{datetime.now():%Y%m%d}.md").write_bytes(("\n".join(md) + "\n").encode("utf-8"))
+    log(f"seal.json sha256 = {sha} — 커밋 뒤에 --phase 2")
     return 0
 
 
