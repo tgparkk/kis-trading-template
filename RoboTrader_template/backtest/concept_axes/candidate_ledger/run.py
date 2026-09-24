@@ -94,6 +94,7 @@ EXCL_KEYS = (("excl_pref", "pref"), ("excl_foreign", "foreign"), ("excl_reit", "
 F_BAND_OUT, F_NO_OPEN, F_NO_NEXT = "band_out", "no_open", "no_next_day"
 F_IMPOSSIBLE, F_VINTAGE, F_CORP = "impossible_bar", "vintage_m4", "corp_event"
 F_MINUTE, F_SURVIVOR = "minute_avail", "survivor_universe"
+F_SIM_ERROR = "sim_error"                            # 개정문 2026-09-24 #4 — 진단 플래그(판정 불변)
 
 
 def log(msg: str = "") -> None:
@@ -397,6 +398,7 @@ def lot_row(env: Env, folder: str, m: Dict[str, Any], strategy: Any, rules: X.Ex
             ex = X.simulate_lot(pos, rules, build_path(env.cal, env.cal_idx, bars, d1, rules.max_hold_days), probe)
         except Exception:  # noqa: BLE001 — 로트 단위 격리(scan_diag n_errors)
             ex, err = None, True
+            flags.append(F_SIM_ERROR)
         if ex is not None:
             row.update(exit_date=ex.exit_date, exit_price=ex.price, exit_reason=ex.reason, exit_phase=ex.phase,
                        hold_days=ex.hold_days, ret_pct=ex.ret_pct,
@@ -426,8 +428,12 @@ def part_paths(out: Path, folder: str, ym: str) -> Tuple[Path, Path, Path]:
     return base.with_suffix(".csv"), Path(str(base) + "_diag.csv"), base.with_suffix(".done")
 
 
-def load_done_part(out: Path, folder: str, ym: str, sha: str, fp: str):
-    """`.done` 이 있으면 sha·지문 대조 후 (rows, diag, meta) · 없으면 None · 불일치면 중단."""
+def part_window(days: Sequence[Any]) -> List[str]:
+    return [_fmt(days[0]), _fmt(days[-1])] if len(days) else []
+
+
+def load_done_part(out: Path, folder: str, ym: str, sha: str, fp: str, days: Sequence[Any] = ()):
+    """`.done` 이 있으면 sha·지문·n_days·창(첫/끝 scan_date) 대조 후 (rows, diag, meta) · 없으면 None · 불일치면 중단."""
     p_csv, p_diag, p_done = part_paths(out, folder, ym)
     if not p_done.exists():
         return None
@@ -435,6 +441,9 @@ def load_done_part(out: Path, folder: str, ym: str, sha: str, fp: str):
     if meta.get("git_sha") != sha or meta.get("db_fingerprint") != fp:
         raise SystemExit(f"🔴 체크포인트 불일치 {p_done.name}: git {meta.get('git_sha', '')[:10]}/{sha[:10]} · "
                          f"지문 {str(meta.get('db_fingerprint'))[:12]}/{fp[:12]} — 중단(파트를 지우고 다시 돌릴 것)")
+    if days and (meta.get("n_days") != len(days) or meta.get("window") != part_window(days)):
+        raise SystemExit(f"🔴 체크포인트 창 불일치 {p_done.name}: n_days {meta.get('n_days')}/{len(days)} · "
+                         f"창 {meta.get('window')}/{part_window(days)} — 중단(파트를 지우고 다시 돌릴 것)")
     return read_csv(p_csv), read_csv(p_diag), meta
 
 
@@ -555,7 +564,7 @@ def _has(flags: pd.Series, f: str) -> pd.Series:
 
 def verify(led: pd.DataFrame, diag: pd.DataFrame, conn, scan_days: Sequence[pd.Timestamp],
            folders: Sequence[str]) -> List[str]:
-    L: List[str] = ["## §10 검증 (V1~V5 · 값만 · 판정은 verifier)", ""]
+    L: List[str] = [V_HEAD + " (V1~V5 · 값만 · 판정은 verifier)", ""]
     # V1
     L += ["### V1 스냅샷 일치율 (재스캔 rank≤10 ∩ 라이브 rank_in_snapshot≤10 ÷ 라이브 rank≤10 행수)", ""]
     v1_days = [d for d in scan_days if V1_WIN[0] <= d.strftime("%Y-%m-%d") <= V1_WIN[1]]
@@ -571,17 +580,18 @@ def verify(led: pd.DataFrame, diag: pd.DataFrame, conn, scan_days: Sequence[pd.T
             s = snap[snap["strategy"] == f]
             r = led[(led["strategy"] == f) & (_num(led["rank"]) <= V1_TOP)]
             rep = {d: set(g["stock_code"]) for d, g in r.groupby(pd.to_datetime(r["scan_date"]))}
+            # 스냅샷 params_hash(라이브 계산식)와 재스캔 params_hash(재현기 계산식)는 방식이 달라 서로 대조 불가 — 구간 표시에만 쓴다.
             per: List[Tuple[str, pd.Timestamp, float]] = []
-            for d, g in s.groupby("scan_date"):
+            for (d, h), g in s.groupby(["scan_date", "params_hash"]):
                 if d not in v1_days:
                     continue
                 live = set(g.loc[g["rank_in_snapshot"] <= V1_TOP, "stock_code"].astype(str))
                 if live:
-                    per.append((str(g["params_hash"].iloc[0]), d, len(live & rep.get(d, set())) / len(live)))
+                    per.append((str(h), d, len(live & rep.get(d, set())) / len(live)))
             segs: "OrderedDict[str, List[Tuple[pd.Timestamp, float]]]" = OrderedDict()
-            for h, d, v in sorted(per, key=lambda t: t[1]):
+            for h, d, v in sorted(per, key=lambda t: (t[1], t[0])):
                 segs.setdefault(h, []).append((d, v))
-            last = next(reversed(segs)) if segs else None
+            last = max(segs, key=lambda h: (segs[h][-1][0], h)) if segs else None   # 현행 = 마지막 날짜의 해시
             for h, xs in segs.items():
                 vals = [v for _, v in xs]
                 L.append(f"| {f} | {h} | {xs[0][0]:%Y-%m-%d}~{xs[-1][0]:%Y-%m-%d} | {len(vals)} | "
@@ -647,6 +657,39 @@ def verify(led: pd.DataFrame, diag: pd.DataFrame, conn, scan_days: Sequence[pd.T
     return L
 
 
+V_HEAD = "## §10 검증"
+
+
+def verify_only(out: Path, conn_factory: Callable[[], Any]) -> int:
+    """스캔·시뮬 없이 `ledger.csv`·`scan_diag.csv`·`run_meta.json` 으로 V1~V5 만 재계산 → `summary.md` 검증 절만 교체."""
+    led = pd.DataFrame(read_csv(out / "ledger.csv"), columns=LEDGER_COLS).fillna("")
+    diag = pd.DataFrame(read_csv(out / "scan_diag.csv"), columns=DIAG_COLS).fillna("")
+    meta = json.loads((out / "run_meta.json").read_text(encoding="utf-8"))
+    folders = list(meta["strategies"])
+    scan_days = sorted({pd.Timestamp(d) for d in diag["scan_date"] if d})
+    need_db = any(V1_WIN[0] <= d.strftime("%Y-%m-%d") <= V1_WIN[1] for d in scan_days)
+    conn = conn_factory() if need_db else None
+    try:
+        lines = verify(led, diag, conn, scan_days, folders)
+    finally:
+        if conn is not None:
+            conn.close()
+    p = out / "summary.md"
+    old = p.read_text(encoding="utf-8") if p.exists() else ""
+    nl = "\n"
+    head = old.split(V_HEAD, 1)[0] if V_HEAD in old else (old.rstrip(nl) + nl * 2 if old else "")
+    _atomic_write(p, head + nl.join(lines) + nl)
+    print(f"검증 절 갱신 → {p}")
+    return 0
+
+
+def _connect():
+    import psycopg2
+    conn = psycopg2.connect(**LD.dsn())
+    conn.set_session(readonly=True)
+    return conn
+
+
 def summary_md(led: pd.DataFrame, diag: pd.DataFrame, meta: Dict[str, Any], folders: Sequence[str],
                extra: Sequence[str]) -> str:
     L = ["# candidate_ledger — summary", "",
@@ -703,12 +746,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--pilot", action="store_true", help="--start 2024-03-13 --end 2024-03-31 + 시간 추정")
     ap.add_argument("--out", default=None)
     ap.add_argument("--verify", action="store_true", help="summary 에 V1~V5 인쇄")
+    ap.add_argument("--verify-only", action="store_true",
+                    help="스캔·시뮬 없이 기존 결과로 V1~V5 만 재계산(summary 검증 절만 갱신)")
     a = ap.parse_args(argv)
     if a.pilot:
         a.start, a.end = PILOT
     if not (W_START <= a.start <= a.end <= W_END):
         raise SystemExit(f"창은 PREREG §2 {W_START}~{W_END} 안이어야 한다: {a.start}~{a.end}")
     out = Path(a.out) if a.out else BASE / "results" / ("pilot" if a.pilot else "")
+    if a.verify_only:
+        return verify_only(out, _connect)
     folders = _resolve_folders(a.strategies)
     started = datetime.now().isoformat(timespec="seconds")
     T0 = time.perf_counter()
@@ -722,9 +769,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         guard_rules(f, rules[f], strategies[f], adapters[f])
     log(f"[가드] blob {len(blobs)}파일 = {BASE_SHA} ✓ · tp/sl/max_hold·밴드·lookback = PREREG ✓ · sha {sha[:10]}")
 
-    import psycopg2
-    conn = psycopg2.connect(**LD.dsn())
-    conn.set_session(readonly=True)
+    conn = _connect()
     t = time.perf_counter()
     cal = [pd.Timestamp(d).date() for d in LD.load_trading_calendar(conn, PX_START, W_END)]
     scan_days = [pd.Timestamp(d) for d in cal if a.start <= d.isoformat() <= a.end]
@@ -756,14 +801,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             months.setdefault(d.strftime("%Y-%m"), []).append(d)
         ps = per_strat.setdefault(f, {"scan": 0.0, "exit": 0.0, "rows": 0})
         for ym, days in months.items():
-            got = load_done_part(out, f, ym, sha, fp["sha256"])
+            got = load_done_part(out, f, ym, sha, fp["sha256"], days)
             if got is not None:
                 rows, drows, meta = got
                 log(f"[{STRATS[f]['short']}] {ym} 체크포인트 재사용 · 행 {len(rows):,}")
             else:
                 rows, drows, s_scan, s_exit = run_part(env, f, days, adapter, params, elig, info, strategies[f],
                                                        rules[f], probes[f], px)
-                meta = dict(git_sha=sha, db_fingerprint=fp["sha256"], strategy=f, month=ym, n_days=len(days),
+                meta = dict(git_sha=sha, db_fingerprint=fp["sha256"], strategy=f, month=ym, n_days=len(days), window=part_window(days),
                             n_rows=len(rows), scan_secs=round(s_scan, 2), exit_secs=round(s_exit, 2),
                             probe_calls=probes[f].calls)
                 save_part(out, f, ym, rows, drows, meta)

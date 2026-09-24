@@ -186,11 +186,68 @@ def test_guard_rules_mismatch_stops():
 def test_checkpoint_resume(tmp_path):
     rows = [{k: "x" for k in R.LEDGER_COLS}]
     diag = [{k: "1" for k in R.DIAG_COLS}]
-    assert R.load_done_part(tmp_path, "s", "2024-03", "sha1", "fp1") is None
-    R.save_part(tmp_path, "s", "2024-03", rows, diag, dict(git_sha="sha1", db_fingerprint="fp1"))
-    got = R.load_done_part(tmp_path, "s", "2024-03", "sha1", "fp1")
+    days = [pd.Timestamp("2024-03-13"), pd.Timestamp("2024-03-29")]
+    assert R.load_done_part(tmp_path, "s", "2024-03", "sha1", "fp1", days) is None
+    R.save_part(tmp_path, "s", "2024-03", rows, diag,
+                dict(git_sha="sha1", db_fingerprint="fp1", n_days=2, window=R.part_window(days)))
+    got = R.load_done_part(tmp_path, "s", "2024-03", "sha1", "fp1", days)
     assert got[0] == rows and got[1] == diag
-    with pytest.raises(SystemExit):
-        R.load_done_part(tmp_path, "s", "2024-03", "sha2", "fp1")
-    with pytest.raises(SystemExit):
-        R.load_done_part(tmp_path, "s", "2024-03", "sha1", "fp2")
+    for args in (("sha2", "fp1", days), ("sha1", "fp2", days), ("sha1", "fp1", days[:1]),
+                 ("sha1", "fp1", [days[0], pd.Timestamp("2024-03-28")])):
+        with pytest.raises(SystemExit):
+            R.load_done_part(tmp_path, "s", "2024-03", *args)
+
+
+# ── 창 끝 = D (D 이후 봉이 있어도) ─────────────────────────────────────────
+class _LastDateAdapter:
+    def __init__(self):
+        self.last = []
+
+    def base_filter(self, universe):
+        return universe
+
+    def build_context(self, frames, scan_date):
+        self.last += [f["date"].iloc[-1] for f in frames.values()]
+        return {}
+
+    def match(self, win, params, ctx=None):
+        self.last.append(win["date"].iloc[-1])
+        return 1.0, "ok"
+
+
+def test_scan_window_ends_at_d_despite_future_bars():
+    D = pd.Timestamp("2024-03-15")
+    px = pd.concat([_frame("A00001", 300, "2024-04-30"), _frame("B00001", 300, "2024-04-30")],
+                   ignore_index=True)
+    ad = _LastDateAdapter()
+    rows, _ = R.scan_two_pass(ad, {}, R.build_book(px), {"A00001", "B00001"}, D, 260, 90)
+    assert len(rows) == 2 and set(ad.last) == {D}
+    ad2 = _LastDateAdapter()
+    ms, _, _ = SC.scan_strategy(px, {D: {"A00001", "B00001"}}, ad2, {}, 90, scan_dates=[D], progress_every=0)
+    assert len(ms) == 2 and set(ad2.last) == {D}
+
+
+def test_window_fn_excludes_same_day_with_future_bars():
+    fn = R.make_window_fn(_book(_frame("A00001", 200, "2024-04-30")))
+    data, _ = fn("A00001", date(2024, 3, 15))
+    assert data["date"].max() == pd.Timestamp("2024-03-14")
+
+
+# ── --verify-only ──────────────────────────────────────────────────────────
+def test_verify_only_rewrites_only_verify_section(tmp_path):
+    base = {k: "" for k in R.LEDGER_COLS}
+    rows = [dict(base, strategy="book_pullback_ma20", scan_date="2024-03-13", stock_code="000001", rank="1",
+                 n_passed="1", entry_date="2024-03-14", entry_price="1000", band_lo="920", band_hi="1010",
+                 band_ok="True", qty="1000", notional="1000000", exit_date="2024-03-15", exit_price="1100",
+                 exit_reason="tp", hold_days="1", pnl_won="100000", flags="vintage_m4;survivor_universe")]
+    diag = [dict({k: "0" for k in R.DIAG_COLS}, strategy="book_pullback_ma20", scan_date="2024-03-13",
+                 n_matched="1")]
+    R.write_csv(tmp_path / "ledger.csv", R.LEDGER_COLS, rows)
+    R.write_csv(tmp_path / "scan_diag.csv", R.DIAG_COLS, diag)
+    (tmp_path / "run_meta.json").write_text('{"strategies": ["book_pullback_ma20"]}', encoding="utf-8")
+    (tmp_path / "summary.md").write_text("# head\n\n## 전략별\nkeep\n\n## §10 검증 (old)\nSTALE\n",
+                                         encoding="utf-8")
+    assert R.verify_only(tmp_path, conn_factory=lambda: pytest.fail("V1 창 밖인데 DB 접속")) == 0
+    out = (tmp_path / "summary.md").read_text(encoding="utf-8")
+    assert out.startswith("# head") and "keep" in out and "STALE" not in out
+    assert "Σn_passed 1 · Σn_matched 1 · 불일치 날짜 0" in out and "band_ok 재계산 불일치 0" in out
