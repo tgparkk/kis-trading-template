@@ -82,7 +82,7 @@ def _build_adapter(
 def run_once(
     strategies: List[str],
     scan_date: date,
-    max_candidates: int,
+    max_candidates: Optional[int],
     dry_run: bool,
     broker=None,
     db_manager=None,
