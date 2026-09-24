@@ -80,6 +80,9 @@ class TradingAnalyzer:
         self.logger = RateLimitedLogger(setup_logger(__name__))
         # 거절 로그 스로틀 상태: (종목코드, 사유접두) → 마지막 INFO 시각
         self._reject_log_times: Dict[Tuple[str, str], datetime] = {}
+        # 억제 횟수 (2026-09-24 사전등록 ⑥ · `수량부족` 만): 같은 키의 직전 INFO 이후 억제된 횟수.
+        # 다음 INFO 줄 끝에 「 외 N회」로 붙이고 비운다(새 줄 0).
+        self._reject_suppressed: Dict[Tuple[str, str], int] = {}
 
         # FundManager를 DecisionEngine에 연결 (main.py 수정 없이)
         if hasattr(bot, 'fund_manager') and hasattr(bot, 'decision_engine'):
@@ -171,9 +174,25 @@ class TradingAnalyzer:
             # (문자열을 바꾸면 이 사유를 참조하는 다른 코드·문서가 깨진다).
             # 스로틀: 같은 (종목, 사유) 는 10분 1회 — '시장급락 매수차단' 이
             # 2026-08-19 에 하루 ~2,900회 발생했다. 억제된 건도 DEBUG 로는 남는다.
-            if (not buy_signal and not _is_high_frequency_reject(buy_reason)
-                    and self._should_log_reject(stock_code, buy_reason)):
-                self.logger.info(format_reject_log(stock_code, buy_reason))
+            # 「외 N회」(2026-09-24 사전등록 ⑥): _should_log_reject 는 결정당 «정확히 1회»만
+            # 부른다(부를 때마다 _reject_log_times 를 갱신해 두 번 부르면 스스로 억제된다).
+            # 창·억제 판정·DEBUG 줄 불변 · `수량부족` 외 사유는 접미 0.
+            log_reject = (not buy_signal and not _is_high_frequency_reject(buy_reason)
+                          and self._should_log_reject(stock_code, buy_reason))
+            reject_tail = ""
+            try:
+                if not buy_signal and not _is_high_frequency_reject(buy_reason):
+                    rkey = reject_throttle_key(stock_code, buy_reason)
+                    if log_reject:
+                        n_sup = self._reject_suppressed.pop(rkey, 0)
+                        if n_sup > 0:
+                            reject_tail = f" 외 {n_sup}회"
+                    elif rkey[1].startswith("수량부족"):
+                        self._reject_suppressed[rkey] = self._reject_suppressed.get(rkey, 0) + 1
+            except Exception:
+                reject_tail = ""
+            if log_reject:
+                self.logger.info(format_reject_log(stock_code, buy_reason) + reject_tail)
             else:
                 self.logger.debug(f"{stock_code} 매수 판단 결과: signal={buy_signal}, reason='{buy_reason}'")
             if buy_signal and buy_info:
