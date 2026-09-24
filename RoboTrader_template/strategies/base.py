@@ -382,9 +382,17 @@ class BaseStrategy(ABC):
         # on_tick 스킵 로그 쓰로틀: key=(stock_code, reason), value=마지막 로그 시각
         self._ontick_skip_log: Dict[tuple, datetime] = {}
 
-        # 캡/한도 스킵 계기 억제: 거래일당 (stock_code, reason) 1회 (_log_cap_skip)
+        # 캡/한도 스킵 계기 억제: 거래일당 (stock_code, reason, path) 1회 (_log_cap_skip)
         self._cap_skip_logged: set = set()
         self._cap_skip_log_date = None
+
+        # [캡] 경로 태그 (2026-09-24 사전등록 ③ docs/prereg_2026-09-24_gate_observability_bundle.md):
+        # on_tick 이 generate_signal 호출 직전에 "매수루프"/"매도루프" 를 세우고 finally 로 None 복구.
+        # None = 루프밖(position_monitor 등). 🔑 로그 전용 — 판단에 쓰지 않는다.
+        self._eval_path = None
+        # 캡 shadow 계기 억제 (사전등록 ⑤): 거래일당 (stock_code, reason) 1회 (_log_cap_shadow)
+        self._cap_shadow_logged: set = set()
+        self._cap_shadow_log_date = None
 
         # Logger (will be set up if framework utils available)
         self.logger = None
@@ -581,11 +589,17 @@ class BaseStrategy(ABC):
         불가능했던 날(09-14 ma20 5/5·minervini 3/3)이 「룰 미충족」으로 위장됐다.
 
         🔑 **로그 전용이다** — 반환값·순서·판단에 일절 개입하지 않는다.
-        같은 (전략, 종목, 사유) 는 **거래일당 1회**만 찍는다(호출은 종목당
+        같은 (전략, 종목, 사유, 경로) 는 **거래일당 1회**만 찍는다(호출은 종목당
         하루 수백 회라 억제 없이는 로그가 폭주한다).
+
+        경로 태그(2026-09-24 사전등록 ③): 줄 «끝»에 ``경로={매수루프|매도루프|루프밖}``.
+        09-21 ma20 `[캡]` 44줄 중 38줄이 매도루프(남의 보유종목 스캔)였다 — 태그 없이는
+        진짜 막힌 매수 후보와 구분이 안 된다. 끝에 붙여 기존 파서(`…일일매수=d/D` 까지
+        비앵커 search)와 호환된다.
         """
         try:
-            key = (stock_code, reason)
+            path = getattr(self, "_eval_path", None) or "루프밖"
+            key = (stock_code, reason, path)
             today = datetime.now().date()
             if self._cap_skip_log_date != today:
                 self._cap_skip_log_date = today
@@ -599,7 +613,8 @@ class BaseStrategy(ABC):
                 f"보유={len(getattr(self, 'positions', {}) or {})}/"
                 f"{getattr(self, '_max_positions', 0)} "
                 f"일일매수={getattr(self, 'daily_trades', 0)}/"
-                f"{getattr(self, '_max_daily_trades', 0)}"
+                f"{getattr(self, '_max_daily_trades', 0)} "
+                f"경로={path}"
             )
         except Exception:  # noqa: BLE001 — 계기가 매매 판단을 죽이면 안 된다
             pass
@@ -705,7 +720,12 @@ class BaseStrategy(ABC):
                         "detail": _bad,
                     })
                 continue
-            signal = self.generate_signal(stock.stock_code, data, timeframe='daily')
+            # [캡] 경로 태그(사전등록 ③) — 동기 호출이라 set~reset 사이에 await 가 없다.
+            self._eval_path = "매수루프"
+            try:
+                signal = self.generate_signal(stock.stock_code, data, timeframe='daily')
+            finally:
+                self._eval_path = None
             if not signal:
                 if self._should_log_ontick(stock.stock_code, "signal_none"):
                     self.logger.info(
@@ -746,7 +766,11 @@ class BaseStrategy(ABC):
                 data = await ctx.get_intraday_data(stock.stock_code)
                 sell_timeframe = 'intraday'
             if data is not None and len(data) > 0:
-                signal = self.generate_signal(stock.stock_code, data, timeframe=sell_timeframe)
+                self._eval_path = "매도루프"
+                try:
+                    signal = self.generate_signal(stock.stock_code, data, timeframe=sell_timeframe)
+                finally:
+                    self._eval_path = None
                 if signal and signal.signal_type in (SignalType.SELL, SignalType.STRONG_SELL):
                     sell_signals += 1
                     reasons_str = ', '.join(signal.reasons) if signal.reasons else '-'

@@ -76,7 +76,7 @@ def test_timeframe_skip_logs_reason(cls, key):
     assert len(lines) == 1, lines
     assert lines[0] == (
         f"[캡] {key} 005930 평가 스킵 사유=timeframe "
-        f"보유=0/{s._max_positions} 일일매수=0/{s._max_daily_trades}"
+        f"보유=0/{s._max_positions} 일일매수=0/{s._max_daily_trades} 경로=루프밖"
     )
 
 
@@ -92,7 +92,7 @@ def test_daily_trades_cap_logs_reason(cls, key):
     assert len(lines) == 1, lines
     assert lines[0] == (
         f"[캡] {key} 005930 평가 스킵 사유=daily_trades "
-        f"보유=0/{s._max_positions} 일일매수={s._max_daily_trades}/{s._max_daily_trades}"
+        f"보유=0/{s._max_positions} 일일매수={s._max_daily_trades}/{s._max_daily_trades} 경로=루프밖"
     )
 
 
@@ -109,7 +109,7 @@ def test_max_positions_cap_logs_reason(cls, key):
     assert len(lines) == 1, lines
     assert lines[0] == (
         f"[캡] {key} 005930 평가 스킵 사유=max_positions "
-        f"보유={k}/{k} 일일매수=0/{s._max_daily_trades}"
+        f"보유={k}/{k} 일일매수=0/{s._max_daily_trades} 경로=루프밖"
     )
 
 
