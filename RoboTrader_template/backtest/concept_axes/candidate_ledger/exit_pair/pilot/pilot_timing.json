@@ -1,0 +1,56 @@
+{
+ "started": "2026-09-26T12:55:24",
+ "month": "2024-03",
+ "n_lots": 1002,
+ "n_runs": 4958,
+ "secs_sim": {
+  "book_pullback_ma20": {
+   "orig": 3.509879999999999,
+   "V1": 1.9249004999999997,
+   "V2": 3.3330477000000016,
+   "V3": 2.1479016999999985,
+   "V4": 2.6656104999999997
+  },
+  "minervini_volume_dryup": {
+   "orig": 1.015495399999999,
+   "V1": 0.5905896000000013,
+   "V2": 0.9076880000000003,
+   "V3": 0.7192539000000053,
+   "V4": 0.8479749999999981
+  },
+  "daytrading_3methods_breakout": {
+   "orig": 2.302709,
+   "V1": 1.5271918000000042,
+   "V2": 2.020956600000005,
+   "V3": 1.5314639999999997,
+   "V4": 1.8278386999999938
+  }
+ },
+ "secs_load": 25.6,
+ "per_run_ms": 5.42,
+ "n_runs_full": 197438,
+ "est_full_secs": 1095.7,
+ "guard": {
+  "book_pullback_ma20": {
+   "n": 431,
+   "mismatch": 0,
+   "rate": 0.0,
+   "agree": 1.0
+  },
+  "minervini_volume_dryup": {
+   "n": 186,
+   "mismatch": 0,
+   "rate": 0.0,
+   "agree": 1.0
+  },
+  "daytrading_3methods_breakout": {
+   "n": 385,
+   "mismatch": 0,
+   "rate": 0.0,
+   "agree": 1.0
+  }
+ },
+ "git_sha": "929e9389981f7468de5b97de75acd9f528a9fd14",
+ "code_md5": "37527ff6ccc90dbc6f5772800f9aac3c",
+ "over_budget": false
+}

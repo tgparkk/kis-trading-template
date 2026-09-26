@@ -1,0 +1,250 @@
+{
+ "prereg": "docs/prereg_2026-09-26_exit_bracket_pair_comparison.md (dbea62a)",
+ "git_sha": "929e9389981f7468de5b97de75acd9f528a9fd14",
+ "code_md5": "37527ff6ccc90dbc6f5772800f9aac3c",
+ "sim_md5": "a52e8f5b3a237060a17eced2563fe668",
+ "started": "2026-09-26T12:56:43",
+ "finished": "2026-09-26T13:13:00",
+ "secs_total": 976.8,
+ "secs": {
+  "load": 26.3,
+  "sim": 930.6,
+  "prep": 1.8,
+  "fake": 10.4,
+  "stats": 0.4
+ },
+ "secs_sim": {
+  "ma20": {
+   "orig": 110.5,
+   "V1": 72.4,
+   "V2": 123.3,
+   "V3": 86.0,
+   "V4": 105.1
+  },
+  "minervini": {
+   "orig": 34.3,
+   "V1": 25.5,
+   "V2": 38.8,
+   "V3": 29.1,
+   "V4": 34.9
+  },
+  "daytrading": {
+   "orig": 52.8,
+   "V1": 44.5,
+   "V2": 60.8,
+   "V3": 51.1,
+   "V4": 61.3
+  }
+ },
+ "input_md5": {
+  "ledger_worktree": "980e58492a7ac2ed11d25526f4488dbc",
+  "scan_diag_worktree": "c14fb12854845d34e25e0912addfd4d6",
+  "ledger_archive_file": "980e58492a7ac2ed11d25526f4488dbc",
+  "scan_diag_archive_file": "c14fb12854845d34e25e0912addfd4d6",
+  "ledger_archive_md5sums": "980e58492a7ac2ed11d25526f4488dbc",
+  "scan_diag_archive_md5sums": "c14fb12854845d34e25e0912addfd4d6"
+ },
+ "db_fingerprint": {
+  "sha256": "59c14921cde274f00a00aad749cea7b0750bf33022c7f00ac5e3c644eb0f56f6",
+  "md5": "4171112f56dcb159d905b5c54838f152",
+  "n_stocks": 2799,
+  "n_rows": 2176121,
+  "window": "2023-01-02..2026-09-23"
+ },
+ "blobs_strategy_2274895": {
+  "strategies/book_pullback_ma20/screener.py": "ddf764f794a5b410c17e63bdbc1aa0fd5ac692f3",
+  "strategies/book_pullback_ma20/strategy.py": "cc7548934c8a42ffd078b430dafdb8980bd39507",
+  "strategies/book_pullback_ma20/config.yaml": "c66d2f83ba8ab8947299c2b57b3f3bc53cba6acf",
+  "strategies/minervini_volume_dryup/screener.py": "d9967d30a1f16c07c3cee9c3f35b7da761f5b4fb",
+  "strategies/minervini_volume_dryup/strategy.py": "b9005f66e9d47fdf21f252642dd4dd9160944d48",
+  "strategies/minervini_volume_dryup/config.yaml": "2fa79e3097b4dfa8f9110cf42fa022e31e9930c9",
+  "strategies/daytrading_3methods_breakout/screener.py": "8007ea2942ad4a0a8f1a0170425746498d7d66fc",
+  "strategies/daytrading_3methods_breakout/strategy.py": "0b52406ba95f961ee9fb151c2c73464fb049f9e8",
+  "strategies/daytrading_3methods_breakout/config.yaml": "b1096c27fc29e34cb2b4327480c1cd4838c25442",
+  "strategies/base.py": "948f70184530e1c8da1b743f6dc8af911d557502",
+  "strategies/_rule_screener_base.py": "ed5a188d6af7685f366de3bfca54a7d05154f9bd"
+ },
+ "blobs_a51c631_and_prereg_dbea62a": {
+  "backtest/concept_axes/ledger8/exitsim8.py": "b9678b1f43c2241f0806d709e320b4e02a2246c1",
+  "backtest/concept_axes/ledger8/sellprobe8.py": "eda799e1a2593d43af9e4d35b917e0cd4a659a72",
+  "backtest/concept_axes/ledger8/sources8.py": "add2062bac600a4bb30b1a94e8e6566410b42b5d",
+  "backtest/concept_axes/minervini/cap_skip_ledger/sim.py": "9ab121ca43f8bce02dd94423609a527a156f3ee1",
+  "backtest/concept_axes/replayer/loader.py": "41b7c8f94423011281aba8009264d4e30c1bbc16",
+  "backtest/concept_axes/replayer/flags.py": "275e607335724bc3a6c37019ea18e3afa810fb9e",
+  "utils/korean_holidays.py": "1fcf19be62e52b4c7ee7df982165b94016b218e6",
+  "core/trading_decision_engine.py": "7a4534bbc449d8baa72102a8ab8040ad98013807",
+  "docs/prereg_2026-09-26_exit_bracket_pair_comparison.md": "82ac193fef47d1e35fcdb98778acd17525880c7f"
+ },
+ "seeds": "default_rng([20261003, t, w, s, v, j]) · t 1 F-종목 · 2 F-블록 · 3 F-블록′ · 4 F-블록40(해석 H7)",
+ "repro_guard": {
+  "ma20": {
+   "n": 18016,
+   "mismatch": 0,
+   "rate": 0.0,
+   "agree": 1.0
+  },
+  "minervini": {
+   "n": 8506,
+   "mismatch": 0,
+   "rate": 0.0,
+   "agree": 1.0
+  },
+  "daytrading": {
+   "n": 15000,
+   "mismatch": 0,
+   "rate": 0.0,
+   "agree": 1.0
+  }
+ },
+ "n_L": {
+  "book_pullback_ma20": 18016,
+  "minervini_volume_dryup": 8506,
+  "daytrading_3methods_breakout": 15000
+ },
+ "exclusions": {
+  "ma20": {
+   "ex1": 1294,
+   "ex2": 236,
+   "ex3": 342,
+   "ex4": 0,
+   "ex4_rate": 0.0
+  },
+  "minervini": {
+   "ex1": 72,
+   "ex2": 123,
+   "ex3": 100,
+   "ex4": 0,
+   "ex4_rate": 0.0
+  },
+  "daytrading": {
+   "ex1": 121,
+   "ex2": 90,
+   "ex3": 165,
+   "ex4": 0,
+   "ex4_rate": 0.0
+  }
+ },
+ "ex4_detail": {},
+ "vol_bounds": {
+  "ma20": [
+   0.04649530536612596,
+   0.0613160438139254
+  ],
+  "minervini": [
+   0.051712490216785256,
+   0.06848049651253629
+  ],
+  "daytrading": [
+   0.03891279173295955,
+   0.056426816300181176
+  ]
+ },
+ "gate": {
+  "E": {
+   "ma20": "2원",
+   "minervini": "CR1",
+   "daytrading": "2원"
+  },
+  "C": {
+   "ma20": "fail",
+   "minervini": "2원",
+   "daytrading": "2원"
+  }
+ },
+ "band_coupling_ma20": {
+  "drop_v1": 67,
+  "add_v2": 26
+ },
+ "labels": {
+  "ma20|V1": {
+   "label": "판별 보류",
+   "subs": [
+    "(도구)"
+   ],
+   "tags": []
+  },
+  "ma20|V2": {
+   "label": "판별 보류",
+   "subs": [
+    "(도구)"
+   ],
+   "tags": []
+  },
+  "ma20|V3": {
+   "label": "판별 보류",
+   "subs": [
+    "(도구)"
+   ],
+   "tags": []
+  },
+  "ma20|V4": {
+   "label": "판별 보류",
+   "subs": [
+    "(도구)"
+   ],
+   "tags": []
+  },
+  "minervini|V1": {
+   "label": "판별 보류",
+   "subs": [
+    "(검정력)"
+   ],
+   "tags": []
+  },
+  "minervini|V2": {
+   "label": "판별 보류",
+   "subs": [
+    "(검정력)"
+   ],
+   "tags": []
+  },
+  "minervini|V3": {
+   "label": "판별 보류",
+   "subs": [
+    "(검정력)"
+   ],
+   "tags": []
+  },
+  "minervini|V4": {
+   "label": "판별 보류",
+   "subs": [
+    "(검정력)"
+   ],
+   "tags": []
+  },
+  "daytrading|V1": {
+   "label": "판별 보류",
+   "subs": [
+    "(검정력)"
+   ],
+   "tags": []
+  },
+  "daytrading|V2": {
+   "label": "판별 보류",
+   "subs": [
+    "(검정력)"
+   ],
+   "tags": []
+  },
+  "daytrading|V3": {
+   "label": "판별 보류",
+   "subs": [
+    "(검정력)"
+   ],
+   "tags": []
+  },
+  "daytrading|V4": {
+   "label": "차이 없음",
+   "subs": [],
+   "tags": []
+  }
+ },
+ "outputs": [
+  "run_exit_pair.py",
+  "RESULTS_exit_pair.md",
+  "pair_lots.csv",
+  "fake.json",
+  "run_meta.json",
+  "run_log.txt"
+ ]
+}
