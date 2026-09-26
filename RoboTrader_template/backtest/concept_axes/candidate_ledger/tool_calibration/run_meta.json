@@ -1,0 +1,93 @@
+{
+ "prereg": "docs/prereg_2026-09-24_test_tool_calibration.md",
+ "prereg_commit": "0bfbe92",
+ "git_sha": "266e0b0b3cdcd0dec46fc5a73bc84d17b49e0d31",
+ "input": "backtest/concept_axes/candidate_ledger/feature_study/features.csv",
+ "determinism_check": {
+  "path": "calib_run1.json",
+  "n_equal": 6600,
+  "n_total": 6600
+ },
+ "input_md5": "12216fe9359f5c21d9831400502730eb",
+ "checks": {
+  "n_full": 49651,
+  "n_cal": 617,
+  "cal_first": "2024-03-13",
+  "cal_last": "2026-09-23",
+  "scan_diag_md5": "c14fb12854845d34e25e0912addfd4d6",
+  "cal_eq_scan_diag": true,
+  "ep_first_C_match": true,
+  "ep_first_C_n": 17401,
+  "ep_first_E_n": 19534,
+  "ep_first_E_csv_true": 0,
+  "rows_E": {
+   "ma20": 12766,
+   "minervini": 3648,
+   "daytrading": 8948
+  },
+  "eps_E": {
+   "ma20": 10915,
+   "minervini": 969,
+   "daytrading": 7650
+  },
+  "rows_C": {
+   "ma20": 9929,
+   "minervini": 5529,
+   "daytrading": 8831
+  },
+  "eps_C": {
+   "ma20": 8610,
+   "minervini": 1342,
+   "daytrading": 7449
+  }
+ },
+ "workers": 8,
+ "started": "2026-09-26T11:26:54",
+ "finished": "2026-09-26T11:34:07",
+ "secs": 433.4,
+ "secs_by_step": {
+  "1": 71.4,
+  "2": 2.1,
+  "3": 64.0,
+  "4": 1.3,
+  "0": 81.2,
+  "1_s2": 199.4,
+  "2_s2": 5.7,
+  "s6": 6.5
+ },
+ "stopped": null,
+ "seeds": {
+  "G_stock": "default_rng([20261001, 1, i])",
+  "G_date": "default_rng([20261001, 2, i])",
+  "G_AR": "default_rng([20261001, 4, i])",
+  "perm": "default_rng([20261001, 3, k, i, t]) · 창마다 새로",
+  "s6": "default_rng([20261001, 6, w, f])"
+ },
+ "n_perm": {
+  "calib": 2000,
+  "s6": 10000
+ },
+ "stage1": [
+  1,
+  100
+ ],
+ "stage2": [
+  101,
+  400
+ ],
+ "verdict_stage1": {
+  "K1 (P3+P1)": "경계",
+  "K2 (P3+P2)": "경계",
+  "K3 (창 전체+P1)": "불합격",
+  "K4 (창 전체+P2)": "불합격"
+ },
+ "verdict": {
+  "K1 (P3+P1)": "불합격",
+  "K2 (P3+P2)": "합격",
+  "K3 (창 전체+P1)": "불합격",
+  "K4 (창 전체+P2)": "불합격"
+ },
+ "main_tool": "K2 (P3+P2)",
+ "numpy": "2.0.2",
+ "pandas": "2.3.3"
+}
