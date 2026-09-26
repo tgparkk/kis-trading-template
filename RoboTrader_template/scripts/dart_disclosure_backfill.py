@@ -405,13 +405,19 @@ def release_lock(lock_path: str) -> None:
         pass
 
 
-def run(args) -> dict:
+def run(args, lock_fns=None) -> dict:
+    """lock_fns = (acquire(out_dir) -> handle, release(handle)) — 기본 = 이 스크립트의 `.lock`(동작 그대로).
+
+    연구 ② 전향 적재(`llm_shadow/dart_load.py`)는 공유 OS 잠금을 바깥에서 쥐고 여기엔 no-op 을 넣는다
+    (사전등록 ② §3-4 「잠금만 교체해 재사용」 · 나머지 로직 그대로).
+    """
+    acquire, release = lock_fns or (acquire_lock, release_lock)
     bgn = datetime.strptime(args.bgn, "%Y-%m-%d").date()
     end = datetime.strptime(args.end, "%Y-%m-%d").date()
     types = tuple(t.strip() for t in args.types.split(",") if t.strip())
     out_dir = args.out or os.path.join(ROOT, "scratchpad", f"dart_backfill_{date.today().strftime('%Y%m%d')}")
     os.makedirs(out_dir, exist_ok=True)
-    lock_path = acquire_lock(out_dir)
+    lock_path = acquire(out_dir)
     raw_dir = os.path.join(out_dir, "raw")
     progress = Progress(os.path.join(out_dir, "progress.json"))
     call_log_path = os.path.join(out_dir, "call_log.jsonl")
@@ -453,7 +459,7 @@ def run(args) -> dict:
     finally:
         if conn is not None:
             conn.close()
-        release_lock(lock_path)
+        release(lock_path)
 
     elapsed = time.time() - t_start
     summary = {
