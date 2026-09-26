@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS llm_shadow.search (
     web_search_requests integer,
     web_fetch_requests  integer,
     permission_denials  integer,
+    helper_models       text,                       -- modelUsage 중 가족 모델 아닌 키(콤마 조인 · 개정 3)
     model               text,
     cli_version         text,
     exe_sha256          text,
@@ -219,3 +220,7 @@ RESET ROLE;
 REVOKE ALL ON ALL TABLES IN SCHEMA llm_shadow FROM PUBLIC;
 GRANT USAGE ON SCHEMA llm_shadow TO robotrader;
 GRANT SELECT ON llm_shadow.v_daily_counts, llm_shadow.v_batch_health, llm_shadow.v_search_daily TO robotrader;
+
+-- 개정(2026-09-26 amendment prereg_..._amendment_2026-09-26.md 개정 3) — 이 DDL 은 이미 1회 실행됐다.
+-- 관리자는 아래 ALTER 블록만 다시 실행할 것(postgres 로 접속 · IF NOT EXISTS 로 멱등 · CREATE TABLE 은 재실행 불필요).
+ALTER TABLE llm_shadow.search ADD COLUMN IF NOT EXISTS helper_models text;

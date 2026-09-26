@@ -151,7 +151,10 @@ def argv_main(exe: str, model: str) -> List[str]:
 
 
 def argv_search(exe: str, model: str) -> List[str]:
+    # 개정 1(2026-09-26 amendment) — dry-run 실측 = `--tools` 허용만으론 WebFetch 가 permission_denials 로 막힌다
+    # (web_search_requests 0) ⇒ `--allowedTools` 를 나란히 준다.
     return [exe, "-p", "--model", model, "--effort", "medium", "--safe-mode", "--tools", "WebSearch,WebFetch",
+            "--allowedTools", "WebSearch,WebFetch",
             "--no-session-persistence", "--output-format", "json", "--json-schema", SEARCH_SCHEMA_JSON,
             "--system-prompt", A1_SYSTEM_SEARCH]
 

@@ -62,6 +62,7 @@ class CallResult:
     web_search_requests: Optional[int] = None
     web_fetch_requests: Optional[int] = None
     permission_denials: Optional[int] = None
+    helper_models: Optional[str] = None       # modelUsage 중 가족 모델이 아닌 키(콤마 조인 · 검색 도구 보조 모델)
 
 
 def _clip(s: Any) -> Optional[str]:
@@ -71,18 +72,25 @@ def _clip(s: Any) -> Optional[str]:
     return s[:ERR_MAX] if s else None
 
 
-def pick_model(model_usage: Dict[str, Any], most_output: bool) -> Tuple[Optional[str], List[str]]:
-    """본체 = 유일 키 · 검색 팔 = 출력 토큰이 가장 많은 키(§5-9)."""
+def pick_model(model_usage: Dict[str, Any], most_output: bool, expect_model: Optional[str] = None
+              ) -> Tuple[Optional[str], List[str]]:
+    """본체 = 유일 키. 검색 팔(개정 2 · 2026-09-26 amendment) = 가족 모델 키가 modelUsage 에 있고,
+    그 밖의 키(검색 도구 보조 모델)는 전부 webSearchRequests ≥ 1 이어야 한다 — 아니면 model_mismatch.
+    (구 규칙 "출력 토큰 최다 키"는 폐기 — 보조 모델이 가족 모델보다 출력 토큰이 더 많을 수 있었다.)"""
     keys = sorted((model_usage or {}).keys())
     if not keys:
         return None, keys
     if not most_output:
         return (keys[0] if len(keys) == 1 else None), keys
 
-    def out_tok(k: str) -> float:
+    def ws_req(k: str) -> float:
         v = model_usage.get(k) or {}
-        return float(v.get("outputTokens") or v.get("output_tokens") or 0)
-    return max(keys, key=lambda k: (out_tok(k), k)), keys
+        return float(v.get("webSearchRequests") or v.get("web_search_requests") or 0)
+    if expect_model not in keys:
+        return None, keys
+    if any(ws_req(k) < 1 for k in keys if k != expect_model):
+        return None, keys
+    return expect_model, keys
 
 
 def interpret(stdout: str, stderr: str, expect_model: str, most_output: bool, wall_ms: int) -> CallResult:
@@ -96,12 +104,21 @@ def interpret(stdout: str, stderr: str, expect_model: str, most_output: bool, wa
                           raw_result=stdout or None, latency_ms=wall_ms)
     usage = d.get("usage") or {}
     stu = usage.get("server_tool_use") or {}
-    model, keys = pick_model(d.get("modelUsage") or {}, most_output)
+    model_usage = d.get("modelUsage") or {}
+    model, keys = pick_model(model_usage, most_output, expect_model)
+    # 개정 3(2026-09-26 amendment) — 검색 증거는 modelUsage[*].webSearchRequests 합(도구가 검색을 보조 모델에
+    # 위임해 top-level usage.server_tool_use.web_search_requests 는 0으로 남을 수 있다) · modelUsage 없으면 top-level 폴백.
+    if model_usage:
+        web_search_requests = sum(int((v or {}).get("webSearchRequests") or (v or {}).get("web_search_requests") or 0)
+                                  for v in model_usage.values())
+    else:
+        web_search_requests = stu.get("web_search_requests")
+    helper_models = ",".join(k for k in keys if k != expect_model) or None
     r = CallResult(status=S.ST_OK, is_error=bool(d.get("is_error")), api_error_status=d.get("api_error_status"),
                    raw_result=stdout, structured=d.get("structured_output"), model=model, model_keys=keys,
                    cost_usd=d.get("total_cost_usd"), latency_ms=int(d.get("duration_ms") or wall_ms),
-                   web_search_requests=stu.get("web_search_requests"), web_fetch_requests=stu.get("web_fetch_requests"),
-                   permission_denials=len(d.get("permission_denials") or []))
+                   web_search_requests=web_search_requests, web_fetch_requests=stu.get("web_fetch_requests"),
+                   permission_denials=len(d.get("permission_denials") or []), helper_models=helper_models)
     try:
         r.api_error_status = int(r.api_error_status) if r.api_error_status is not None else None
     except (TypeError, ValueError):

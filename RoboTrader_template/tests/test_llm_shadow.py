@@ -75,12 +75,14 @@ def test_argv_builders_match_a4_a7():
     s = P.argv_search("EXE", "claude-opus-5-5")
     assert s[:9] == ["EXE", "-p", "--model", "claude-opus-5-5", "--effort", "medium", "--safe-mode", "--tools",
                      "WebSearch,WebFetch"]
-    assert s[9:13] == ["--no-session-persistence", "--output-format", "json", "--json-schema"]
-    sch = json.loads(s[13])
+    # 개정 1(2026-09-26 amendment) — `--allowedTools` 없이는 WebFetch 가 permission_denials 로 막힌다(dry-run 실측).
+    assert s[9:11] == ["--allowedTools", "WebSearch,WebFetch"]
+    assert s[11:15] == ["--no-session-persistence", "--output-format", "json", "--json-schema"]
+    sch = json.loads(s[15])
     assert sch["required"] == ["code", "catalyst_tags", "risk_flags", "score", "rationale", "sources",
                                "excluded_after_D"]
     assert "sources" in sch["properties"] and "items" not in sch["properties"]
-    assert s[14] == "--system-prompt" and _fences()["A.5"] in s[15] and P.A1_RULE2_MAIN not in s[15]
+    assert s[16] == "--system-prompt" and _fences()["A.5"] in s[17] and P.A1_RULE2_MAIN not in s[17]
     assert P.argv_sha256(P.argv_main("A", "m")) == P.argv_sha256(P.argv_main("B", "m"))   # exe 경로 제외
 
 
@@ -310,7 +312,34 @@ def test_limit_regex_and_overload_path():
     first, second = C.call_with_overload_retry(lambda: next(seq), slept.append)
     assert slept == [180] and first.status == C.ST_OVERLOAD and second.status == S.ST_OK
     mu = {"claude-haiku-5": {"outputTokens": 3}, "claude-opus-5-5": {"outputTokens": 90}}
-    assert C.pick_model(mu, True)[0] == "claude-opus-5-5" and C.pick_model(mu, False)[0] is None
+    assert C.pick_model(mu, False)[0] is None                            # 본체 = 유일 키 규칙(둘 이상 → None)
+
+
+def test_search_model_check_rule_and_web_search_sum():
+    """개정 2·3(2026-09-26 amendment) — 가족 키 존재 + 보조 키 전부 webSearchRequests≥1 · 증거는 modelUsage 합."""
+    fam = "claude-opus-5-5"
+    mu_ok = {fam: {"inputTokens": 6, "outputTokens": 628, "webSearchRequests": 0},
+             "claude-haiku-4-5-20251001": {"inputTokens": 26758, "outputTokens": 931, "webSearchRequests": 2}}
+    assert C.pick_model(mu_ok, True, fam) == (fam, sorted(mu_ok))
+    r = C.interpret(json.dumps({"is_error": False, "structured_output": {}, "modelUsage": mu_ok}), "", fam, True, 1)
+    assert r.status == S.ST_OK and r.model == fam and r.web_search_requests == 2
+    assert r.helper_models == "claude-haiku-4-5-20251001"
+
+    mu_zero = {fam: {"outputTokens": 628}, "claude-haiku-4-5-20251001": {"outputTokens": 931, "webSearchRequests": 0}}
+    assert C.pick_model(mu_zero, True, fam)[0] is None
+    r2 = C.interpret(json.dumps({"is_error": False, "structured_output": {}, "modelUsage": mu_zero}), "", fam, True, 1)
+    assert r2.status == S.ST_MODEL
+
+    mu_no_fam = {"claude-haiku-4-5-20251001": {"outputTokens": 931, "webSearchRequests": 2}}
+    assert C.pick_model(mu_no_fam, True, fam)[0] is None
+    r3 = C.interpret(json.dumps({"is_error": False, "structured_output": {}, "modelUsage": mu_no_fam}), "", fam,
+                     True, 1)
+    assert r3.status == S.ST_MODEL
+
+    # modelUsage 없으면 top-level usage.server_tool_use.web_search_requests 로 폴백.
+    r4 = C.interpret(json.dumps({"is_error": False, "structured_output": {},
+                                "usage": {"server_tool_use": {"web_search_requests": 5}}}), "", fam, True, 1)
+    assert r4.web_search_requests == 5
 
 
 # ── 잠금 · 가드 ──────────────────────────────────────────────────────────────────
@@ -462,7 +491,8 @@ def test_search_run_writes_rows_and_deadline(tmp_path):
         so = dict(code=code, catalyst_tags=["없음"], risk_flags=[], score=5, rationale="t", sources=[],
                   excluded_after_D=[])
         raw = {"is_error": False, "structured_output": so, "usage": {"server_tool_use": {"web_search_requests": 2}},
-               "modelUsage": {"claude-haiku-5": {"outputTokens": 1}, model: {"outputTokens": 9}}}
+               "modelUsage": {"claude-haiku-5": {"outputTokens": 1, "webSearchRequests": 2},
+                              model: {"outputTokens": 9}}}
         return C.interpret(json.dumps(raw, ensure_ascii=False), "", model, most_output, 1)
     now = datetime(2026, 9, 28, 8, 31)
     sc = SA.SearchCtx(store=store, caller=caller, exe="EXE", code_sha="c", exe_sha256="e", cli_version="v",

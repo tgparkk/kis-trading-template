@@ -32,6 +32,9 @@
 8. 1차 실패 칸은 재시도 뒤 종결 행을 쓴다(INSERT-only 유지) · 재시도 묶음 ≤ 20 · 한도 오류 시 재시도·반복 생략(다음 실행이 재개).
 9. 한도 오류 ⇒ `search_paused.flag`(검색 팔 중단 · 해제 수동).
 10. `scripts/dart_disclosure_backfill.py` 에 `run(args, lock_fns=None)` 주입 매개변수만 추가(기본 동작 동일).
+11. 구현 예산: 사전등록 §12 상한(50만) 초과 — executor+verifier+소수정+개정 누적 ≈ 63만(결과 무관·기록).
+12. 검색 팔 보조 모델(예 `claude-haiku-4-5-20251001`) 사용 = Claude Code CLI 의 WebSearch 위임 구현 사정 · 판정 밖(가족 모델 = 채점 주체) · `helper_models` 열에 기록.
+13. §5-9 개정 1~3(`--allowedTools` · 검색 팔 모델검사 규칙 · 검색 증거 = modelUsage 합) → `docs/prereg_2026-09-26_llm_candidate_shadow_amendment_2026-09-26.md`.
 
 ## 실행 순서(§10)
 
