@@ -1,0 +1,81 @@
+{
+ "git_sha": "fc4494ef78cb5c735c049fa60a1363583d74ccfb",
+ "started": "2026-09-26T16:01:42",
+ "finished": "2026-09-26T16:03:09",
+ "secs_total": 86.5,
+ "secs": {
+  "load": 32.4620156,
+  "guard": 0.8826824000000002,
+  "grid": 11.297246199999996,
+  "events": 2.6830816999999954,
+  "tags": 33.699999999999996
+ },
+ "input_md5": {
+  "ledger.csv": "980e58492a7ac2ed11d25526f4488dbc",
+  "features.csv": "12216fe9359f5c21d9831400502730eb"
+ },
+ "prereg_md5": "6add10a6aa85bad6b1a65447e5bfb5ff",
+ "db_fingerprint": {
+  "sha256": "59c14921cde274f00a00aad749cea7b0750bf33022c7f00ac5e3c644eb0f56f6",
+  "md5": "4171112f56dcb159d905b5c54838f152",
+  "n_stocks": 2799,
+  "n_rows": 2176121,
+  "cols": [
+   "stock_code",
+   "date",
+   "open",
+   "high",
+   "low",
+   "close",
+   "volume",
+   "trading_value",
+   "market_cap",
+   "adj_factor"
+  ],
+  "window": "2023-01-02..2026-09-23"
+ },
+ "dart": {
+  "rows": 165812,
+  "max_fetched_at": "2026-09-26 15:33:34.915923+09:00"
+ },
+ "normalize_counts": {
+  "n_rows_raw": 2176121,
+  "n_dropped_bad_date": 0,
+  "n_dropped_close": 0,
+  "n_patched_ohl": 16281
+ },
+ "is_corr_mismatch_vs_script": 375,
+ "seeds": {
+  "control": "[20261004,3,t,k] k=1..20",
+  "fake": "[20261004,4,t,j] j=1..400",
+  "fake_control": "[20261004,5,t,j,k]",
+  "vol_matched": "[20261004,6,t,k] (개봉 단계 보조)",
+  "corr_included": "[20261004,7,t,k] (개봉 단계 보조 · 문서에 시드 없음 ⇒ 새로 잡음)"
+ },
+ "code_md5": {
+  "run_dart_events.py": "00b4fe282e0466a4ba2875217ebb3657",
+  "dart_tags.py": "f8fcc933f6b8d774de187ecf8afc658e"
+ },
+ "worktree_dirty": true,
+ "exit_rules": {
+  "tp": 0.1,
+  "sl": 0.08,
+  "max_hold_days": 50,
+  "source": "config(take_profit_pct/stop_loss_pct)"
+ },
+ "guard_blobs": {
+  "strategies/book_pullback_ma20/screener.py": "ddf764f794a5b410c17e63bdbc1aa0fd5ac692f3",
+  "strategies/book_pullback_ma20/strategy.py": "cc7548934c8a42ffd078b430dafdb8980bd39507",
+  "strategies/book_pullback_ma20/config.yaml": "c66d2f83ba8ab8947299c2b57b3f3bc53cba6acf",
+  "strategies/minervini_volume_dryup/screener.py": "d9967d30a1f16c07c3cee9c3f35b7da761f5b4fb",
+  "strategies/minervini_volume_dryup/strategy.py": "b9005f66e9d47fdf21f252642dd4dd9160944d48",
+  "strategies/minervini_volume_dryup/config.yaml": "2fa79e3097b4dfa8f9110cf42fa022e31e9930c9",
+  "strategies/daytrading_3methods_breakout/screener.py": "8007ea2942ad4a0a8f1a0170425746498d7d66fc",
+  "strategies/daytrading_3methods_breakout/strategy.py": "0b52406ba95f961ee9fb151c2c73464fb049f9e8",
+  "strategies/daytrading_3methods_breakout/config.yaml": "b1096c27fc29e34cb2b4327480c1cd4838c25442",
+  "strategies/base.py": "948f70184530e1c8da1b743f6dc8af911d557502",
+  "strategies/_rule_screener_base.py": "ed5a188d6af7685f366de3bfca54a7d05154f9bd"
+ },
+ "base_sha": "2274895",
+ "cache_key": "972d2b09e389152b"
+}

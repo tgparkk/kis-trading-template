@@ -1,0 +1,40 @@
+{
+ "mode": "eager",
+ "n_grid": 1350738,
+ "pilot_n": 48155,
+ "pilot_s": 0.78,
+ "pilot_ms_per_lot": 0.01621100197279619,
+ "projected_s": 358.09171848273076,
+ "n_sim": 1350738,
+ "path": "vector",
+ "reasons": [
+  "open",
+  "tp",
+  "sl",
+  "max_hold",
+  "trail_ma"
+ ],
+ "reason_counts": {
+  "open": 119,
+  "tp": 285369,
+  "sl": 432054,
+  "max_hold": 51067,
+  "trail_ma": 582129
+ },
+ "n_R4": 42427,
+ "u_range": [
+  "2024-03-21",
+  "2026-07-13"
+ ],
+ "cache": "grid_972d2b09e389152b.npz",
+ "secs_sim": 11.1,
+ "guard": {
+  "n": 22695,
+  "reason": 0,
+  "date": 0,
+  "ret": 0,
+  "any": 0,
+  "rate": 0.0,
+  "path": "vector"
+ }
+}
