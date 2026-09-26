@@ -43,9 +43,12 @@ from backtest.concept_axes.replayer import scan as scn            # noqa: E402
 HIST0 = "2021-01-01"                  # 워밍업 (설계서 §1-3)
 W0, W1 = "2024-03-13", "2026-05-31"   # 판정 창 537 거래일
 GEN_END = "2026-09-11"                # 원장 생성 끝 (그 뒤는 인쇄 전용)
-# 09-30 재판정 창 끝(2026-09-15 결정 · 설계서 v0.6 · 문턱 불변). 09-23 이후 스냅샷은
-# 「룰 통과 전수 저장」 형식(rank > 20 행 · params `max_candidates: None`) — 재판정은 이 날짜까지.
-REVERDICT_END = "2026-09-22"
+# 09-30 재판정 창 끝(2026-09-26 사장님 승인 · 설계서 v0.7 · 문턱 불변). 09-23 이후 스냅샷은
+# 「룰 통과 전수 저장」 형식(rank > 20 행 · params `max_candidates: None`)이지만, None-safe 헬퍼
+# (`segment_max_candidates`) + rank ≤ `gate.COMPARE_TOP_N` 절단(fcd1667)으로 09-23~ 전수 저장
+# 스냅샷도 라이브와 비교 가능해졌다 — 그래서 재판정 창을 2026-09-29(보호 구간 16거래일)까지
+# 늘렸다(근거 `docs/report_2026-09-24_replayer_gate_3month_preview.md`). 재판정은 이 날짜까지.
+REVERDICT_END = "2026-09-29"
 
 STRATEGIES: Dict[str, Dict[str, Any]] = {
     "ma20": {
@@ -296,6 +299,58 @@ def fmt_metrics(title: str, m: Dict[str, Any]) -> List[str]:
     ]
 
 
+def protected_days_by_segment(results: Dict[str, List[Dict[str, Any]]],
+                              keys: List[str]) -> List[Tuple[str, str, int]]:
+    """세그먼트(전략 · params_hash)별 보호 구간(§4-4-c `scan_date ≥ gt.PROTECTED_FROM`) 거래일 수.
+
+    §4-6 조건 ⑤(보호 구간 ≥ `protected_min_days`)는 «가장 짧은» 세그먼트가 못 채우면
+    전체가 못 채운 것이다 — 마지막 (전략·구간) 하나만 보고하면 다른 세그먼트가 더 짧을 때
+    거짓 충족을 인쇄한다(리뷰 2026-09-26). 순수 함수 — DB·전역 상태에 의존하지 않는다.
+    """
+    out: List[Tuple[str, str, int]] = []
+    for k in keys:
+        for seg in results.get(k, []):
+            days = build_day_pairs(seg["live"], seg["ledger"])
+            n = len([d for d in days if d.scan_date >= gt.PROTECTED_FROM])
+            out.append((STRATEGIES[k]["name"], seg["seg"]["params_hash"][:8], n))
+    return out
+
+
+def format_protected_days_summary(prot_rows: List[Tuple[str, str, int]],
+                                  protected_min_days: int) -> List[str]:
+    """§4-6 조건 ⑤(보호 구간 ≥ `protected_min_days`) 요약 줄 — `_report` 에서 분리한 순수 함수.
+
+    🔴 보호 구간 0일 세그먼트(예: daytrading 06-22 이전 · `high_window` 20 · 09-03 전에 끝남)는
+    ⑤ 판정 대상이 «아니다» — 0을 최솟값에 섞으면 늘 「불가」로 찍힌다(리뷰 2026-09-26 2차).
+    판정 최솟값은 `n > 0`(= 보호 구간에 걸친 = 현행 해시) 세그먼트로만 계산한다.
+    """
+    if not prot_rows:
+        return []
+    eligible = [(name, ph, n) for name, ph, n in prot_rows if n > 0]
+    if not eligible:
+        return ["- **⑤ 판정 대상 세그먼트 없음** — 전 세그먼트가 보호 구간(scan_date ≥ {}) 밖에서 "
+                "끝났다(조건 ⑤는 보호 구간에 걸친 세그먼트에만 해당).".format(gt.PROTECTED_FROM)]
+    listing = " · ".join(
+        "{} {} {}일".format(name, ph, n) if n > 0
+        else "{} {} 보호 구간 없음(09-03 전 종료 · ⑤ 판정 대상 아님)".format(name, ph)
+        for name, ph, n in prot_rows)
+    lines = ["- 세그먼트별 보호 구간 거래일: {}".format(listing)]
+    n_prot_final = min(n for _, _, n in eligible)
+    if n_prot_final >= protected_min_days:
+        lines.append(
+            "🟢 **보호 구간 조건(⑤) 충족** — 설계서 §4-6 3 조건 ⑤(보호 구간 ≥ {}거래일)를 "
+            "⑤ 판정 대상 세그먼트의 «최솟값» **{}거래일**이 채운다. 🔴 조건부 통과는 "
+            "①~④·⑥~⑧ 나머지 조건도 전부 충족해야 하며(§4-6), 이 줄은 ⑤ 하나만 확인한다."
+            .format(protected_min_days, n_prot_final))
+    else:
+        lines.append(
+            "🔴 **조건부 통과 제안 불가** — 설계서 §4-6 3 조건 ⑤(보호 구간 ≥ {}거래일)를 "
+            "⑤ 판정 대상 세그먼트의 «최솟값» **{}거래일**이 못 채운다. 채우려면 대조 창을 "
+            "뒤로 연장한 뒤 재판정해야 한다(연장은 게이트 대조 창만이고 **판정 창 537일은 "
+            "건드리지 않는다**).".format(protected_min_days, n_prot_final))
+    return lines
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # main
 # ────────────────────────────────────────────────────────────────────────────
@@ -322,8 +377,10 @@ def main(argv=None) -> int:
     # V5-a — 실행 시간창
     gt.require_time_window()
     if args.gate and args.end > REVERDICT_END:
-        log("⚠️ --end {} > REVERDICT_END {} — 09-23 이후는 전수 저장 형식 · "
-            "09-30 재판정 창은 scan_date ≤ {}".format(args.end, REVERDICT_END, REVERDICT_END))
+        log("⚠️ --end {} > REVERDICT_END {} — 09-23 이후는 「룰 통과 전수 저장」 형식이지만 "
+            "None-safe + rank ≤ COMPARE_TOP_N 절단(fcd1667)으로 이미 비교 가능하다 · "
+            "09-30 재판정 창은 scan_date ≤ {} 까지만(그 뒤는 아직 없는 데이터)"
+            .format(args.end, REVERDICT_END, REVERDICT_END))
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -845,9 +902,12 @@ def _report(args, started, ended, sha, run_id, fp1, fp2, fp_ok, px, cal,
     a("")
     a("🔴 문턱 미달이면 **고치지 않고** 위 분류표와 함께 보고한다 — "
       "문턱·정렬·룰을 결과를 보고 바꾸는 것은 금지다(REGISTRY 규칙 3).")
-    a("🔴 **조건부 통과 제안 불가** — 설계서 §4-6 3 조건 ⑤(보호 구간 ≥ 15거래일)를 "
-      "실측 보호 구간 **7거래일**이 못 채운다. 채우려면 대조 창을 **2026-09-30** 까지 "
-      "연장한 뒤 재판정해야 한다(연장은 게이트 대조 창만이고 **판정 창 537일은 건드리지 않는다**).")
+    # 🔑 하드코딩 값 대신 «세그먼트별» 실측 보호 구간을 계산한다 — 마지막 (전략·구간) 하나만
+    # 보면 다른 세그먼트가 더 짧을 때 거짓 충족을 인쇄한다(리뷰 2026-09-26). 0일 세그먼트는
+    # ⑤ 판정 대상이 아니라 최솟값에서 뺀다(리뷰 2026-09-26 2차 · `format_protected_days_summary`).
+    prot_rows = protected_days_by_segment(results, keys)
+    for line in format_protected_days_summary(prot_rows, int(gt.THRESHOLDS["protected_min_days"])):
+        a(line)
     a("")
     return r
 

@@ -1,6 +1,6 @@
 # 매수후보 원장 재현기 — `ma20` · `daytrading`
 
-> 설계서 **정본** = `docs/superpowers/specs/2026-09-14-candidate-ledger-replayer-design.md` **v0.6**(2026-09-15 오후 · M4 = 빈티지 동일성 지표 재해석 · 사장님 승인 · 문턱 불변)
+> 설계서 **정본** = `docs/superpowers/specs/2026-09-14-candidate-ledger-replayer-design.md` **v0.7**(2026-09-26 · 09-30 재판정 창 끝 2026-09-29 · 사장님 승인 · 문턱 불변)
 > `flag_cliff` **정본** = `backtest/concept_axes/_defs/flag_cliff.sql` (= `FD1` §3-4-b 규약 1-b)
 > 🔴 이 README 는 **도구 사용법**이다. 판정 절·문턱의 정본은 설계서와 사전등록 문서에 있다.
 
@@ -47,12 +47,19 @@ python backtest/concept_axes/replayer/run.py \
 | `--gate` | §4 일치율 게이트 모드 |
 | `--vintage-adjust` | 🖨️ **인쇄 전용 보조 판**(기본 off) — D 봉 거래량에서 `overtime_daily.ovtm_vol`(시간외 단일가)을 빼 「라이브 09:00 빈티지」를 근사 복원한 창으로 M1~M4 를 «한 번 더» 인쇄한다(2026-07-03~ 만 대상). 🔴 **판정이 아니다** — 문턱·주 게이트 표는 불변이다. 근거 = `TRACE_M4_channel_2026-09-15.md` |
 
-### 09-30 재판정 창 = `scan_date ≤ 2026-09-22`
+### 09-30 재판정 창 = `scan_date ≤ 2026-09-29`
 
-09-23 이후 스냅샷은 「룰 통과 전수 저장」 형식(rank > 20 · params `max_candidates: None`)이다. 재판정(문턱·정의 불변)은 `REVERDICT_END`(`run.py`)까지만 — `--gate --end` 가 그 뒤면 경고 1줄(중단 아님). M1~M4 는 라이브·재현 둘 다 rank ≤ `COMPARE_TOP_N`(=20, `gate.py`)로 자른 뒤 계산한다(≤ 09-22 창에선 항등).
+🆕 **2026-09-26 사장님 승인(v0.7)**: 창 끝을 `2026-09-22`→`2026-09-29`로 늘렸다(보호 구간 14→16거래일 ·
+근거 `docs/report_2026-09-24_replayer_gate_3month_preview.md`). 09-23 이후 스냅샷은 「룰 통과 전수 저장」
+형식(rank > 20 · params `max_candidates: None`)이지만, None-safe 헬퍼(`run.segment_max_candidates`) +
+rank ≤ `COMPARE_TOP_N` 절단(`fcd1667`)으로 09-23~ 전수 저장 스냅샷도 라이브와 비교 가능해졌다 —
+그래서 09-30 재판정 창을 09-29 까지 늘려도 안전하다. 재판정(문턱·정의 불변)은 `REVERDICT_END`(`run.py`)
+까지만 — `--gate --end` 가 그 뒤면 경고 1줄(중단 아님). M1~M4 는 라이브·재현 둘 다 rank ≤
+`COMPARE_TOP_N`(=20, `gate.py`)로 자른 뒤 계산한다(≤ 09-22 창에선 항등 · 09-23~ 창에선 이 절단이
+전수 저장 행을 걸러 낸다).
 
 ```bash
-python backtest/concept_axes/replayer/run.py --strategy both --gate --start 2026-06-05 --end 2026-09-22 --out ../scratchpad/replayer_gate_0930
+python backtest/concept_axes/replayer/run.py --strategy both --gate --start 2026-06-05 --end 2026-09-29 --out ../scratchpad/replayer_gate_0930
 ```
 
 ### 🔴 실행 전 확인 3가지
