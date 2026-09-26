@@ -1184,7 +1184,7 @@ def run_unseal(a: argparse.Namespace) -> int:
          f"DB 지문 {env.fp['sha256'][:12]} = 봉인 단계 ✓",
          "- 판정 언어 = 있음(+) · 있음(−) · 없음 · 판별 보류 뿐. 이 결과는 3전략 룰 변경·라이브 배선 근거가 아니다(§13-4).", "",
          "## (b) 판정 — 이벤트 첫 로트 vs 시총 5분위 층화 무작위 대조 1:1×20 · Holm m=7", "",
-         "| t | 태그 | 도구 | n | δ (%p) | SE | p | Holm p | 95% CI | 비대칭 제한 | 라벨 | 예상 부호 · 일치 |",
+         "| t | 태그 | 도구 | n | δ (%p) | SE | 원 p | Holm p | 95% CI | 비대칭 제한 | 라벨 | 예상 부호 · 일치 |",
          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for b in B:
         L.append(f"| {b['t']} | {b['tag']} | {b['tool']} | {b['n']:,} | {_f(b['delta'])} | {_f(b['se'])} | {_f(b['p'], 4)} | "
@@ -1203,6 +1203,22 @@ def run_unseal(a: argparse.Namespace) -> int:
     for r in CA.itertuples():
         L.append(f"| {r.variant} | {r.strategy} | {r.t} | {r.tag} | {r.n_with:,} | {r.n_without:,} | {_f(r.delta)} | "
                  f"{_f(r.se)} | {_f(r.p_raw, 4)} |")
+    n_hold = sum(1 for b in B if b["label"].startswith(LAB_HOLD))
+    L += ["", "## 사전 최빈 예측과의 대조(§7)", "",
+          "- 사전 인정(§7): 「있음」은 |δ| ≳ 0.4~1.35%p 에서만 · 「없음」은 공급계약·잠정실적만 가능 · 사전 최빈 결과 = 대부분 태그 판별 보류.",
+          f"- 봉인 뒤·개봉 전 사실: 비대칭 2%p 제한 {sum(1 for b in B if b['restricted'])}/7 태그 발동(sealed_report §1) ⇒ "
+          "「없음」·「있음(+)」 가능 태그는 자기주식취득뿐.",
+          f"- 결과: 판별 보류 {n_hold}/7 · " + " · ".join(f"{b['tag']} {b['label']}" for b in B), "",
+          "## 사전등록 이탈", "",
+          "- 🔒 항목(태그 정규식·순서·정정 규칙·u·W5·표본·m=7·n ≥ 30·0.4%p·2%p·게이트 0.13·시드·재추출·대체 도구·라벨) 이탈 **0**.",
+          "- 문서가 정하지 않은 구현 선택은 봉인 «전»에 `results/sealed_report.md` §4 해석 기록에 적었다"
+          "(정정 포함판 보조 시드 `[20261004,7,t,k]` 포함).",
+          f"- 개봉 실행 HEAD `{R.git_sha()[:10]}` · 개봉 뒤 코드 수정 = 이 보고서 문안 절 추가뿐(통계·판정 경로 0줄).",
+          "- 봉인 값 대조(V5): 아래 n·sd·MDE 는 봉인 단계 체크포인트를 그대로 읽는다(재계산 없음).", "",
+          "| t | 태그 | n | 대조 sd | MDE ① | MDE ② |", "|---|---|---|---|---|---|"]
+    for b, o in zip(B, tags0):
+        L.append(f"| {b['t']} | {b['tag']} | {o['counts']['n_final']:,} | {_f(o['ctrl']['sd'])} | {_f(o['mde1'])} | "
+                 f"{_f(o['mde2'])} |")
     R._atomic_write(BASE / f"RESULTS_{date.today().isoformat()}.md", "\n".join(L) + "\n")
     log(f"[끝] 개봉 {time.perf_counter() - T0:.0f}s")
     return 0
