@@ -1,0 +1,757 @@
+{
+ "prereg": "docs/prereg_2026-09-24_exit_path_diagnosis.md (0bfbe92)",
+ "prereg_blob": "29d8ed86b0685faca2ca80b70ec1babd4bd7df14",
+ "git_sha": "9d252932d4161d75f5733f88897303cb3390f28c",
+ "started": "2026-09-26T12:07:43",
+ "finished": "2026-09-26T12:10:47",
+ "secs_total": 184.2,
+ "secs": {
+  "load": 23.44,
+  "universe": 3.98,
+  "guard": 0.7,
+  "draw": 18.78,
+  "pilot": 0.35,
+  "sim": 5.08,
+  "fake": 96.87,
+  "stats": 108.47
+ },
+ "secs_step3": 31.2,
+ "secs_step3_plus_this": 215.4,
+ "input_md5": {
+  "ledger_worktree": "980e58492a7ac2ed11d25526f4488dbc",
+  "scan_diag_worktree": "c14fb12854845d34e25e0912addfd4d6",
+  "ledger_archive_file": "980e58492a7ac2ed11d25526f4488dbc",
+  "scan_diag_archive_file": "c14fb12854845d34e25e0912addfd4d6",
+  "ledger_archive_md5sums": "980e58492a7ac2ed11d25526f4488dbc",
+  "scan_diag_archive_md5sums": "c14fb12854845d34e25e0912addfd4d6"
+ },
+ "db_fingerprint": {
+  "sha256": "59c14921cde274f00a00aad749cea7b0750bf33022c7f00ac5e3c644eb0f56f6",
+  "md5": "4171112f56dcb159d905b5c54838f152",
+  "n_stocks": 2799,
+  "n_rows": 2176121,
+  "cols": [
+   "stock_code",
+   "date",
+   "open",
+   "high",
+   "low",
+   "close",
+   "volume",
+   "trading_value",
+   "market_cap",
+   "adj_factor"
+  ],
+  "window": "2023-01-02..2026-09-23"
+ },
+ "db_fingerprint_same_as_step3": true,
+ "seeds": {
+  "rep": "default_rng([20261002, 2, r]) r=0..199",
+  "fake": "default_rng([20261002, 3, j]) j=0..99",
+  "board1": "= rep 시드(해석 기록 I9)",
+  "board2": "= rep 시드(해석 기록 I9)",
+  "sample_check": [
+   20261002,
+   9,
+   0
+  ]
+ },
+ "n_rep": 200,
+ "n_fake": 100,
+ "path": "vector",
+ "guard": {
+  "n": 41522,
+  "reason": 0,
+  "date": 0,
+  "ret": 0,
+  "any": 0
+ },
+ "guard_per": {
+  "book_pullback_ma20": {
+   "n": 18016,
+   "reason": 0,
+   "date": 0,
+   "ret": 0,
+   "any": 0
+  },
+  "minervini_volume_dryup": {
+   "n": 8506,
+   "reason": 0,
+   "date": 0,
+   "ret": 0,
+   "any": 0
+  },
+  "daytrading_3methods_breakout": {
+   "n": 15000,
+   "reason": 0,
+   "date": 0,
+   "ret": 0,
+   "any": 0
+  }
+ },
+ "guard_rate": 0.0,
+ "n_cache_lots": 859006,
+ "pilot": {
+  "month": "2025-03",
+  "n": 26415,
+  "secs": 0.35,
+  "ms_per_lot": 0.013,
+  "projected_s": 184.4,
+  "step3_s": 31.2,
+  "over": false
+ },
+ "sample_check": {
+  "n": 3000,
+  "reason": 0,
+  "date": 0,
+  "ret": 0,
+  "any": 0,
+  "secs": 17.1
+ },
+ "n_L": {
+  "book_pullback_ma20": 18016,
+  "minervini_volume_dryup": 8506,
+  "daytrading_3methods_breakout": 15000
+ },
+ "n_eligible_check": {
+  "book_pullback_ma20": {
+   "n": 617,
+   "mismatch": 0
+  },
+  "minervini_volume_dryup": {
+   "n": 617,
+   "mismatch": 0
+  },
+  "daytrading_3methods_breakout": {
+   "n": 617,
+   "mismatch": 0
+  }
+ },
+ "first_rows": {
+  "book_pullback_ma20": 15748,
+  "minervini_volume_dryup": 2645,
+  "daytrading_3methods_breakout": 13238
+ },
+ "n_codes": {
+  "book_pullback_ma20": 2041,
+  "minervini_volume_dryup": 593,
+  "daytrading_3methods_breakout": 2037
+ },
+ "ub_sizes": {
+  "book_pullback_ma20": {
+   "min": 0,
+   "median": 589.0,
+   "max": 1051
+  },
+  "minervini_volume_dryup": {
+   "min": 0,
+   "median": 366.0,
+   "max": 595
+  },
+  "daytrading_3methods_breakout": {
+   "min": 0,
+   "median": 438.0,
+   "max": 803
+  }
+ },
+ "mde_k": 3.2356010333914247,
+ "z_holm1": 2.3939797998185104,
+ "z_power": 0.8416212335729144,
+ "fake": {
+  "n_p": 600,
+  "n_rej": 57,
+  "rate": 0.095,
+  "fail": false,
+  "per": {
+   "book_pullback_ma20|p_up": 4,
+   "book_pullback_ma20|p_down": 19,
+   "minervini_volume_dryup|p_up": 7,
+   "minervini_volume_dryup|p_down": 12,
+   "daytrading_3methods_breakout|p_up": 9,
+   "daytrading_3methods_breakout|p_down": 6
+  },
+  "two_sided": 0.11666666666666667,
+  "p05": 0.058333333333333334
+ },
+ "verdict": {
+  "book_pullback_ma20": {
+   "label": "판별 보류",
+   "holm_up": false,
+   "holm_down": false,
+   "mde_le": false
+  },
+  "minervini_volume_dryup": {
+   "label": "판별 보류",
+   "holm_up": false,
+   "holm_down": false,
+   "mde_le": false
+  },
+  "daytrading_3methods_breakout": {
+   "label": "판별 보류",
+   "holm_up": false,
+   "holm_down": false,
+   "mde_le": false
+  }
+ },
+ "stats": {
+  "book_pullback_ma20": {
+   "T": -0.1176167052553401,
+   "rule_mean": -0.25012344983351437,
+   "rand_median": -0.13250674457817427,
+   "rand_q": [
+    -0.3125912355788661,
+    -0.13250674457817427,
+    0.2558746464422778
+   ],
+   "rule_win": 0.44088587921847244,
+   "rand_win_median": 0.4048164547397296,
+   "rule_net_won": -2439.0147710368556,
+   "rand_net_won_median": -1297.4028063351357,
+   "n_L": 18016,
+   "n_first": 15748,
+   "n_pool": 3130460,
+   "n_open_excl": 22196,
+   "n_open_excl_first": 19140,
+   "delta": -0.08930999448463332,
+   "se": 0.1239827232240639,
+   "p_up": 0.7643428530108016,
+   "p_down": 0.23565714698919846,
+   "G": 2471,
+   "N": 31400.299999999846,
+   "mde": 0.40115862738646413
+  },
+  "minervini_volume_dryup": {
+   "T": -0.2591432761454845,
+   "rule_mean": -0.17502896121596212,
+   "rand_median": 0.08411431492952239,
+   "rand_q": [
+    -0.2491331644676669,
+    0.08411431492952239,
+    0.4695324079496837
+   ],
+   "rule_win": 0.41147425346814015,
+   "rand_win_median": 0.43126252474819937,
+   "rule_net_won": -1457.9930175758288,
+   "rand_net_won_median": 730.4345865926484,
+   "n_L": 8506,
+   "n_first": 2645,
+   "n_pool": 525338,
+   "n_open_excl": 6803,
+   "n_open_excl_first": 3662,
+   "delta": -0.4797044787160257,
+   "se": 0.24623572210714767,
+   "p_up": 0.9743015778716573,
+   "p_down": 0.02569842212834277,
+   "G": 1073,
+   "N": 5271.690000000001,
+   "mde": 0.7967205569077707
+  },
+  "daytrading_3methods_breakout": {
+   "T": 0.17354398026631107,
+   "rule_mean": -0.2813689149603323,
+   "rand_median": -0.45491289522664335,
+   "rand_q": [
+    -0.6019020164123696,
+    -0.45491289522664335,
+    -0.3071014440759621
+   ],
+   "rule_win": 0.4699333333333333,
+   "rand_win_median": 0.4602069157041593,
+   "rule_net_won": -2790.3470131666672,
+   "rand_net_won_median": -4521.106937794177,
+   "n_L": 15000,
+   "n_first": 13238,
+   "n_pool": 2636502,
+   "n_open_excl": 12635,
+   "n_open_excl_first": 11098,
+   "delta": 0.15883369103448042,
+   "se": 0.08476241950141519,
+   "p_up": 0.03047422468679824,
+   "p_down": 0.9695257753132016,
+   "G": 2236,
+   "N": 26420.5099999999,
+   "mde": 0.27425737213153645
+  }
+ },
+ "boards": {
+  "b1": {
+   "book_pullback_ma20": {
+    "T": -0.12776402764629852,
+    "rand_median": -0.12235942218721584,
+    "rand_win_median": 0.40197639630400417,
+    "rand_net_won_median": -1214.4625534233949,
+    "p_up": 0.7674999373523352,
+    "p_down": 0.23250006264766485,
+    "se": 0.135078111124855,
+    "n_open_excl": 24289,
+    "n_dropped": 0
+   },
+   "minervini_volume_dryup": {
+    "T": -0.29914696676627417,
+    "rand_median": 0.12411800555031205,
+    "rand_win_median": 0.4333510384846303,
+    "rand_net_won_median": 1012.5652913734855,
+    "p_up": 0.9684008862460964,
+    "p_down": 0.031599113753903466,
+    "se": 0.258889981945731,
+    "n_open_excl": 6723,
+    "n_dropped": 0
+   },
+   "daytrading_3methods_breakout": {
+    "T": 0.19060186856240158,
+    "rand_median": -0.47197078352273386,
+    "rand_win_median": 0.4594268764157894,
+    "rand_net_won_median": -4695.1262751570175,
+    "p_up": 0.023771871306576445,
+    "p_down": 0.9762281286934236,
+    "se": 0.08996174994817084,
+    "n_open_excl": 13080,
+    "n_dropped": 0
+   }
+  },
+  "b2": {
+   "book_pullback_ma20": {
+    "T": -0.10965810385966646,
+    "rand_median": -0.1404653459738479,
+    "rand_win_median": 0.4033613426907796,
+    "rand_net_won_median": -1374.396964404796,
+    "p_up": 0.735498074860006,
+    "p_down": 0.26450192513999404,
+    "se": 0.12199980464607557,
+    "n_open_excl": 22124,
+    "n_dropped": 0
+   },
+   "minervini_volume_dryup": {
+    "T": -0.1315003331984693,
+    "rand_median": -0.04352862801749283,
+    "rand_win_median": 0.4225028276679951,
+    "rand_net_won_median": -516.0677217307033,
+    "p_up": 0.9144840985723681,
+    "p_down": 0.08551590142763187,
+    "se": 0.24718620072331327,
+    "n_open_excl": 6349,
+    "n_dropped": 0
+   },
+   "daytrading_3methods_breakout": {
+    "T": 0.21226483587132655,
+    "rand_median": -0.49363375083165884,
+    "rand_win_median": 0.45900378141491593,
+    "rand_net_won_median": -4906.0530882359335,
+    "p_up": 0.0065116592965158634,
+    "p_down": 0.9934883407034841,
+    "se": 0.08183684521432862,
+    "n_open_excl": 12445,
+    "n_dropped": 0
+   }
+  }
+ },
+ "draws_summary": {
+  "main": {
+   "book_pullback_ma20": {
+    "n_replaced": {
+     "sum": 1641507,
+     "mean": 8207.535,
+     "min": 7830,
+     "max": 8581
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 195427,
+     "mean": 977.135,
+     "min": 940,
+     "max": 1022
+    },
+    "dup_real": {
+     "sum": 1664908,
+     "mean": 8324.54,
+     "min": 7982,
+     "max": 8694
+    }
+   },
+   "minervini_volume_dryup": {
+    "n_replaced": {
+     "sum": 372831,
+     "mean": 1864.155,
+     "min": 1574,
+     "max": 2199
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 43899,
+     "mean": 219.495,
+     "min": 198,
+     "max": 241
+    },
+    "dup_real": {
+     "sum": 351415,
+     "mean": 1757.075,
+     "min": 1505,
+     "max": 2068
+    }
+   },
+   "daytrading_3methods_breakout": {
+    "n_replaced": {
+     "sum": 1549521,
+     "mean": 7747.605,
+     "min": 7501,
+     "max": 8031
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 205705,
+     "mean": 1028.525,
+     "min": 994,
+     "max": 1066
+    },
+    "dup_real": {
+     "sum": 1598919,
+     "mean": 7994.595,
+     "min": 7736,
+     "max": 8271
+    }
+   }
+  },
+  "fake": {
+   "book_pullback_ma20": {
+    "n_replaced": {
+     "sum": 821267,
+     "mean": 8212.67,
+     "min": 7852,
+     "max": 8576
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 97629,
+     "mean": 976.29,
+     "min": 937,
+     "max": 1006
+    },
+    "dup_real": {
+     "sum": 833265,
+     "mean": 8332.65,
+     "min": 8006,
+     "max": 8662
+    }
+   },
+   "minervini_volume_dryup": {
+    "n_replaced": {
+     "sum": 188731,
+     "mean": 1887.31,
+     "min": 1589,
+     "max": 2297
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 21966,
+     "mean": 219.66,
+     "min": 194,
+     "max": 247
+    },
+    "dup_real": {
+     "sum": 177764,
+     "mean": 1777.64,
+     "min": 1518,
+     "max": 2142
+    }
+   },
+   "daytrading_3methods_breakout": {
+    "n_replaced": {
+     "sum": 775954,
+     "mean": 7759.54,
+     "min": 7493,
+     "max": 8000
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 102787,
+     "mean": 1027.87,
+     "min": 999,
+     "max": 1077
+    },
+    "dup_real": {
+     "sum": 800679,
+     "mean": 8006.79,
+     "min": 7755,
+     "max": 8224
+    }
+   }
+  },
+  "b1": {
+   "book_pullback_ma20": {
+    "n_replaced": {
+     "sum": 1731230,
+     "mean": 8656.15,
+     "min": 8359,
+     "max": 9020
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 196506,
+     "mean": 982.53,
+     "min": 941,
+     "max": 1023
+    },
+    "dup_real": {
+     "sum": 1751748,
+     "mean": 8758.74,
+     "min": 8476,
+     "max": 9075
+    }
+   },
+   "minervini_volume_dryup": {
+    "n_replaced": {
+     "sum": 418750,
+     "mean": 2093.75,
+     "min": 1716,
+     "max": 2401
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 44203,
+     "mean": 221.015,
+     "min": 190,
+     "max": 247
+    },
+    "dup_real": {
+     "sum": 394294,
+     "mean": 1971.47,
+     "min": 1644,
+     "max": 2258
+    }
+   },
+   "daytrading_3methods_breakout": {
+    "n_replaced": {
+     "sum": 1598537,
+     "mean": 7992.685,
+     "min": 7737,
+     "max": 8215
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 209182,
+     "mean": 1045.91,
+     "min": 1006,
+     "max": 1080
+    },
+    "dup_real": {
+     "sum": 1653189,
+     "mean": 8265.945,
+     "min": 8007,
+     "max": 8486
+    }
+   }
+  },
+  "b2": {
+   "book_pullback_ma20": {
+    "n_replaced": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_real": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    }
+   },
+   "minervini_volume_dryup": {
+    "n_replaced": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_real": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    }
+   },
+   "daytrading_3methods_breakout": {
+    "n_replaced": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_dropped": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "n_short": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_pi": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    },
+    "dup_real": {
+     "sum": 0,
+     "mean": 0.0,
+     "min": 0,
+     "max": 0
+    }
+   }
+  }
+ },
+ "cache_reason": {
+  "sl": 337042,
+  "tp": 259345,
+  "trail_ma": 138536,
+  "max_hold": 116297,
+  "open": 7786
+ },
+ "outputs": [
+  "run_random_entry.py",
+  "RESULTS_random_entry.md",
+  "run_meta_random_entry.json",
+  "random_entry_reps.csv",
+  "random_entry_fakes.csv",
+  "run_random_entry.log"
+ ]
+}
