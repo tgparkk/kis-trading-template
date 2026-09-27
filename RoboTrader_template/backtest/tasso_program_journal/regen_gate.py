@@ -542,6 +542,10 @@ MANUAL_DOCS = [
     #    인테이크 3문서는 **이미 있다**(verifier 3패스 APPROVE · 값 계산 «전») ⇒ `PENDING_DOCS` 에 올리지 않는다
     #    · G-1 존재 검사가 «진짜로» 돈다. 산문 `RESULTS_*_POST9.md` 는 판정 «뒤»에 생긴다 — 그때 등재한다.
     "INTAKE_2026-09-24_post9.md", "PREDECISION_2026-09-24_post9.md", "LABELS_2026-09-24_post9.md",
+    # 🔴 2026-09-27 — post9 값 계산 «전» 사전등록(post8 보고서 §4 ①~⑥ 못박기 · fetch 「후」·계산 「전」 동결).
+    #    사람이 쓴 문서라 `MANUAL_DOCS` 자리 · 🔴 등재는 동결 커밋 «앞»이고 «별도 커밋»이다(`PREREG_POST8.md` §0-2 0번 관용)
+    #    · 파일은 등재 시점에 이미 있다(초안 `??`) ⇒ G-1 존재 검사가 «진짜로» 돈다.
+    "PREREG_POST9.md",
     #    (↓ 다시 post8 계열) 산문 **10종**도 등재 «시점»에 이미 있다 ⇒ post7 초판과 달리 `PENDING_DOCS` 를 거치지 않는다.
     "RESULTS_SELECTION_POST8.md", "RESULTS_REGDAY_POST8.md", "RESULTS_EXIT_V2_POST8.md",
     "RESULTS_RECONSTRUCT_POST8.md", "RESULTS_LADDER_TRANCHE_POST8.md", "RESULTS_D1_OOS_POST8.md",
