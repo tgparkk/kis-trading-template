@@ -6,6 +6,7 @@
 - KIS API 키·텔레그램 = `RoboTrader_template/config/key.ini`(`key.ini.example` 복사) — **`.env` 가 아니다**. `.env` 는 선택(DB 기본값 port 5433 / `kis_template` 은 `db/connection.py` 코드에 있음).
 - 루트 `agents/`·`cache/`·`logs/`·`scratchpad/` 는 잔재 디렉토리(미추적·라이브 봇과 무관). 루트 `scripts/`(3파일 = `corp_events` 수동 백필(pykrx) 본체+워커 2 · 멀티버스 스모크 CLI 1)·`docs/superpowers/`(specs 6 · plans 5)는 연구·일회성이며 라이브 봇 코드가 아니다(운영 디렉토리 import 0).
 - 세션 메모리·changelog 는 레포 밖 Claude Code 프로젝트 메모리에 있다(git 에 없음).
+- 🔀 **두 트랙 · 두 세션**(2026-09-26 사장님 결정): ① **가상매매 고도화 = 라이브 트리 `D:/GIT/kis-trading-template`**(main · 메모리 `…\projects\D--GIT-kis-trading-template\memory\`) ② **태쏘블로그 고도화 = 상설 워크트리 `D:/GIT/kis-tasso`**(브랜치 `intake/tasso-postN` · 메모리 `…\projects\D--GIT-kis-tasso\memory\` · 전용 지침 = 그 폴더의 `.claude/CLAUDE.md`). 같은 레포·같은 DB(`kis_template`) · 두 세션 동시 실행 규칙 = **main 체크아웃·`--no-ff` 머지·main push 는 ① 세션만** · ② 는 자기 브랜치 커밋·push 까지(머지는 ① 에 요청) · DB 는 둘 다 SELECT 만 · 상대 메모리는 «삽입»만 · 태쏘 내용은 ② 메모리에만, 가상매매 내용은 ① 메모리에만.
 - 커밋·푸시·추적 파일 삭제는 사장님 확인 후. 커밋 메시지 = `type(scope): 한국어 요약`.
 
-**마지막 업데이트**: 2026-09-17
+**마지막 업데이트**: 2026-09-26
