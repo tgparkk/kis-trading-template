@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -27,8 +28,11 @@ CHECK_BACK_DAYS = 14
 
 def _backfill_module():
     path = S.RT_ROOT / "scripts" / "dart_disclosure_backfill.py"
-    spec = importlib.util.spec_from_file_location("dart_disclosure_backfill", str(path))
+    spec = importlib.util.spec_from_file_location("_llm_shadow_dart_disclosure_backfill", str(path))
     mod = importlib.util.module_from_spec(spec)
+    # exec 전에 등록 — 3.9 dataclasses 가 문자열 주석(`from __future__ import annotations`)을
+    # sys.modules[cls.__module__] 로 푼다. 미등록이면 AttributeError(2026-09-29 적재 중단 원인).
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)          # type: ignore[union-attr]
     return mod
 

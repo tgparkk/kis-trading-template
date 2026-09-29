@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import types
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -547,6 +548,120 @@ def test_dart_load_budget(tmp_path):
     finally:
         DL.CHECK_BACK_DAYS = 14
     assert seen == [(date(2026, 9, 24), date(2026, 9, 25), 2)] and r.calls_before == 58
+
+
+# ── 2026-09-29 운영 결함 회귀 — 실경로 `_backfill_module()`(runner 주입 없이) ────────────
+def _forget_backfill_modules(monkeypatch):
+    for name in ("dart_disclosure_backfill", "_llm_shadow_dart_disclosure_backfill"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+
+
+def test_backfill_module_real_load(monkeypatch):
+    """09-29 `적재 중단: AttributeError` — sys.modules 미등록 + `from __future__ import annotations` + @dataclass."""
+    _forget_backfill_modules(monkeypatch)
+    bf = DL._backfill_module()
+    assert sys.modules[bf.__name__] is bf
+    assert bf.CallBudget(limit=1).used == 0 and bf.Warnings().items == []
+    assert callable(bf.run) and callable(bf.parse_args)
+
+
+class _FakeDart:
+    """가짜 OpenDART list.json(`requests` 자리) + 메모리 dart_disclosures(`psycopg2` 자리) — 네트워크·DB 0."""
+
+    def __init__(self, pages):
+        self.pages, self.rows, self.http = pages, {}, 0          # rows: rcept_no → (rcept_dt, pblntf_ty)
+
+    def get(self, url, params=None, timeout=None):
+        assert params["crtfc_key"] == "TESTKEY"
+        self.http += 1
+        lst = self.pages.get((params["bgn_de"], params["pblntf_ty"]))
+        data = ({"status": "013", "message": "조회된 데이타가 없습니다."} if not lst else
+                {"status": "000", "total_count": sum(map(len, lst)), "total_page": len(lst),
+                 "list": lst[int(params["page_no"]) - 1]})
+        return types.SimpleNamespace(encoding=None, json=lambda: data)
+
+    def execute_values(self, cur, sql, values, page_size=None):
+        cur.rowcount = 0
+        for v in values:
+            if v[0] not in self.rows:
+                self.rows[v[0]] = (str(v[6]), v[7])
+                cur.rowcount += 1
+
+    def conn(self):
+        fk = self
+
+        class Cur:
+            rowcount, one = 0, None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def execute(self, sql, params=None):
+                if "to_regclass" in sql:
+                    self.one = ("dart_disclosures",)
+                elif "rcept_dt = %s" in sql:
+                    self.one = (sum(1 for dt, t in fk.rows.values() if dt == params[0].isoformat() and t == params[1]),)
+                else:
+                    self.one = (sum(1 for r in set(params[0]) if r in fk.rows and fk.rows[r][1] != params[1]),)
+
+            def fetchone(self):
+                return self.one
+
+        return type("Conn", (), {"cursor": lambda s: Cur(), "commit": lambda s: None, "close": lambda s: None})()
+
+
+def _patch_real_backfill(monkeypatch, fk):
+    real, loaded = DL._backfill_module, []
+
+    def patched():
+        bf = real()                                                      # 실제 스크립트 적재(가짜는 호출 경계만)
+        bf.DEFAULT_SLEEP, bf.load_key, bf.requests = 0.0, (lambda: "TESTKEY"), fk
+        bf.psycopg2 = types.SimpleNamespace(connect=lambda **kw: fk.conn(), extras=types.SimpleNamespace(
+            execute_values=fk.execute_values, Json=lambda x: x))
+        loaded.append(bf)
+        return bf
+
+    monkeypatch.setattr(DL, "_backfill_module", patched)
+    return loaded
+
+
+def test_dart_load_forward_real_backfill_completes(tmp_path, monkeypatch):
+    """09-24~09-28(휴장·주말 013 + 09-28 B 1쪽 · I 2쪽 · 유형 간 중복 1) → 완결 · 재실행 호출 0."""
+    _forget_backfill_modules(monkeypatch)
+    monkeypatch.setenv("KIS_LLM_SHADOW_CONFIG_DIR", str(tmp_path / "cfg"))     # 라이브 .env 경로를 쓰지 않는다
+    item = lambda no: {"rcept_no": no, "rcept_dt": "20260928", "report_nm": "x", "corp_code": "c"}  # noqa: E731
+    fk = _FakeDart({("20260928", "B"): [[item(f"B{i}") for i in range(3)]],
+                    ("20260928", "I"): [[item("B1")] + [item(f"I{i}") for i in range(99)],
+                                        [item(f"I{i}") for i in range(99, 149)]]})
+    loaded = _patch_real_backfill(monkeypatch, fk)
+    out, today = tmp_path / "dart_forward", datetime.now().date()
+    r = DL.load_forward(fk.conn(), date(2026, 9, 28), today, out)
+    assert (r.message, r.ok, r.first_incomplete, r.loaded_from) == ("", True, None, date(2026, 9, 24))
+    assert fk.http == 11 and (r.calls_before, r.calls_after) == (0, 11)            # 013 8 + B 1 + I 2
+    assert loaded[0].LIVE_ENV == str(S.dotenv_path()) and not (out / ".lock").exists()
+    assert DL.last_loaded_day(out) == date(2026, 9, 28) and len(fk.rows) == 152
+    r2 = DL.load_forward(fk.conn(), date(2026, 9, 28), today, out)
+    assert (r2.ok, r2.loaded_from, fk.http) == (True, None, 11)
+
+
+def test_dart_load_forward_real_backfill_budget_stop_then_resume(tmp_path, monkeypatch):
+    """합산 60회 중 55회 소진 → 5회 뒤 CallBudget 중단(미완결 · 보류) → 다음 날 이어서 완결."""
+    _forget_backfill_modules(monkeypatch)
+    monkeypatch.setenv("KIS_LLM_SHADOW_CONFIG_DIR", str(tmp_path / "cfg"))
+    fk = _FakeDart({})
+    _patch_real_backfill(monkeypatch, fk)
+    out, today = tmp_path / "dart_forward", datetime.now().date()
+    out.mkdir()
+    with open(out / "call_log.jsonl", "w", encoding="utf-8") as f:
+        for _ in range(55):
+            f.write(json.dumps({"url": "u", "status": "000", "ts": today.isoformat() + "T08:30:00"}) + "\n")
+    r = DL.load_forward(fk.conn(), date(2026, 9, 28), today, out)
+    assert (r.ok, r.first_incomplete, r.message, fk.http) == (False, date(2026, 9, 26), "적재 중단: RuntimeError", 5)
+    r2 = DL.load_forward(fk.conn(), date(2026, 9, 28), today + timedelta(days=1), out)
+    assert (r2.ok, r2.loaded_from, fk.http) == (True, date(2026, 9, 26), 10)
 
 
 def test_ledger_append_only(tmp_path):
