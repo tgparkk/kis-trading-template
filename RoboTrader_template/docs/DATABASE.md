@@ -231,7 +231,7 @@ SQL 함수(public): `fn_sector_map_as_of(date)`(`sector_writer.py`) · `fn_finan
 
 ### 5-4. `minute_candles` — 1분봉
 
-PK **`(stock_code, trade_date, idx)`** + UNIQUE `(stock_code, datetime)` + 인덱스 `(stock_code, trade_date)`. 컬럼 `trade_date`·`date` 둘 다 `'YYYYMMDD'` varchar(같은 값) · `time` `'HHMMSS'` · `idx`(당일 순번) · OHLC/`volume`/`amount` double · `datetime` timestamp. 🔑 **집계는 PK 의 `trade_date` 로** — 비-PK `date` 로 묶으면 없는 중복이 보인다. writer `collectors/minute_writer.replace_minute_day` = `DELETE … WHERE stock_code AND trade_date` 후 `INSERT … ON CONFLICT (stock_code, datetime) DO NOTHING`(휴장일에 돌리면 T-1 을 지우고 부분 재적재할 수 있어 EOD 블록이 `is_holiday` 게이트를 건다). 유니버스 = 거래대금 top300(`collectors/minute_universe.select_top_volume`, KIS 순위 API).
+PK **`(stock_code, trade_date, idx)`** + UNIQUE `(stock_code, datetime)` + 인덱스 `(stock_code, trade_date)`. 컬럼 `trade_date`·`date` 둘 다 `'YYYYMMDD'` varchar(같은 값) · `time` `'HHMMSS'` · `idx`(당일 순번) · OHLC/`volume`/`amount` double · `datetime` timestamp. 🔑 **집계는 PK 의 `trade_date` 로** — 비-PK `date` 로 묶으면 없는 중복이 보인다. writer `collectors/minute_writer.replace_minute_day` = `DELETE … WHERE stock_code AND trade_date` 후 `INSERT … ON CONFLICT (stock_code, datetime) DO NOTHING`(휴장일에 돌리면 T-1 을 지우고 부분 재적재할 수 있어 EOD 블록이 `is_holiday` 게이트를 건다). 유니버스 = 거래대금 top300(`collectors/minute_universe.select_top_volume`, KIS 순위 API) ∪ 태쏘 shadow 후보(`select_tasso_codes` — `tasso_shadow.candidates` SELECT · 후보가 된 날부터 20거래일 · 2026-09-29~). 태쏘 종목은 [첫 후보일, 직전 거래일] 중 분봉 0행인 거래일(거래정지 제외)을 EOD 에 보충한다(`minute_collector._backfill_missing_days` · «종목-일» 하루 60).
 
 ### 5-5. `index_daily` — 지수 일봉 (PK `index_code, date` text)
 

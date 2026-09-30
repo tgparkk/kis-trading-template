@@ -236,7 +236,7 @@ main()
 |------|------|------|
 | 오케스트레이터 | `eod_collection.py` | 위 순서 실행, 단계별 예외 격리 |
 | | `daily_collector.py` | 일봉 — KIS fetch → `daily_prices` UPSERT → 파생 → adj |
-| | `minute_collector.py` | 분봉 — top300 → 당일 분봉 → `minute_candles` |
+| | `minute_collector.py` | 분봉 — top300 ∪ 태쏘 후보 → 당일 분봉 → `minute_candles` · 요청일 아닌 봉 거부 · 태쏘 결손일 보충(`_backfill_missing_days`, FHKST03010230 · «종목-일» 60 상한) · 하루치 불완전 WARNING |
 | | `index_collector.py` | 지수 일봉 — KIS 업종 일봉(기본)/FDR 폴백 → `index_daily` |
 | | `stock_market_collector.py` | 종목→시장(KOSPI/KOSDAQ) — FDR → `stock_market` |
 | | `foreign_flow_collector.py` | 외국인 순매매량 — 네이버 → `foreign_flow` |
@@ -254,7 +254,7 @@ main()
 | | `daily_adj.py` · `adj_factors.py` · `split_factor_infer.py` | `corp_events` 분할 → `adj_factor` 계산·갱신(`adj_factors.py` 만 2026-07-02 `44c0054` scripts 승격 · `daily_adj.py` 2026-06-23 `4b541a9` · `split_factor_infer.py` 2026-07-06 `47b6417` 신규) |
 | | `adj_repair.py` · `corp_action_watch.py` | 기업행위 가격 보정 순수 계산 · 미조정 이력 탐지(큐 적재만) |
 | | `financial_metrics.py` | account_id → 13지표 + as_of 기준 Wide 파생 |
-| | `minute_universe.py` | 분봉 유니버스 — 거래대금 top300, 6가격밴드×2시장 |
+| | `minute_universe.py` | 분봉 유니버스 — 거래대금 top300, 6가격밴드×2시장 + 태쏘 shadow 후보(`select_tasso_codes` · 20거래일 창 · 조회 실패 시 None → top300 만) |
 
 데이터 계층 설명은 [../DATA_MANAGEMENT.md](../DATA_MANAGEMENT.md).
 
