@@ -134,9 +134,9 @@
       "script": "run_anchor_redesign.py --mode post7",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "87bc908003e636f041e21987a2f3c9fe74bd35bc926f27429952c910f12d4ae4",
+        "run_anchor_redesign.py": "81b4e522163b7eeffc6f30a415292d5e5ef5f8271814742a3b97c7b81920f1a2",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_reconstruct_post6.py": "a339a4c99b0d12889bbffe69e39aded54a4b93a0f4aeaff20dc9a106480b4fc9",
@@ -161,9 +161,9 @@
       "script": "run_anchor_redesign.py --mode post7",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "87bc908003e636f041e21987a2f3c9fe74bd35bc926f27429952c910f12d4ae4",
+        "run_anchor_redesign.py": "81b4e522163b7eeffc6f30a415292d5e5ef5f8271814742a3b97c7b81920f1a2",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_reconstruct_post6.py": "a339a4c99b0d12889bbffe69e39aded54a4b93a0f4aeaff20dc9a106480b4fc9",
@@ -188,9 +188,9 @@
       "script": "run_anchor_redesign.py --mode post8",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "87bc908003e636f041e21987a2f3c9fe74bd35bc926f27429952c910f12d4ae4",
+        "run_anchor_redesign.py": "81b4e522163b7eeffc6f30a415292d5e5ef5f8271814742a3b97c7b81920f1a2",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_reconstruct_post6.py": "a339a4c99b0d12889bbffe69e39aded54a4b93a0f4aeaff20dc9a106480b4fc9",
@@ -215,9 +215,9 @@
       "script": "run_anchor_redesign.py --mode post8",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "87bc908003e636f041e21987a2f3c9fe74bd35bc926f27429952c910f12d4ae4",
+        "run_anchor_redesign.py": "81b4e522163b7eeffc6f30a415292d5e5ef5f8271814742a3b97c7b81920f1a2",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_reconstruct_post6.py": "a339a4c99b0d12889bbffe69e39aded54a4b93a0f4aeaff20dc9a106480b4fc9",
@@ -242,9 +242,9 @@
       "script": "run_anchor_redesign.py --mode post9",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "87bc908003e636f041e21987a2f3c9fe74bd35bc926f27429952c910f12d4ae4",
+        "run_anchor_redesign.py": "81b4e522163b7eeffc6f30a415292d5e5ef5f8271814742a3b97c7b81920f1a2",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_reconstruct_post6.py": "a339a4c99b0d12889bbffe69e39aded54a4b93a0f4aeaff20dc9a106480b4fc9",
@@ -257,7 +257,7 @@
         "run_wrc_post8.py": "632d1080fbd3fb46492bdfcf70171cb60609c06a576ec0832db8ef398a91dfdd",
         "run_wrc_post9.py": "31e3262774098b4227bdc79d5a911c4fc5341262ee4d8357e162ac12f98c1453"
       },
-      "results_sha256": "a3672f7d8dbd2f1744657fd61230b7850efd72c1882e472cc13ab34a6cc52d70",
+      "results_sha256": "39d77a440cfdb75ada74ba4f9b260c3f75d5a63f82d9b8d7693b50e9f7def028",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -268,9 +268,9 @@
       "script": "run_anchor_redesign.py --mode post9",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_anchor_redesign.py": "87bc908003e636f041e21987a2f3c9fe74bd35bc926f27429952c910f12d4ae4",
+        "run_anchor_redesign.py": "81b4e522163b7eeffc6f30a415292d5e5ef5f8271814742a3b97c7b81920f1a2",
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_reconstruct_post6.py": "a339a4c99b0d12889bbffe69e39aded54a4b93a0f4aeaff20dc9a106480b4fc9",
@@ -283,7 +283,7 @@
         "run_wrc_post8.py": "632d1080fbd3fb46492bdfcf70171cb60609c06a576ec0832db8ef398a91dfdd",
         "run_wrc_post9.py": "31e3262774098b4227bdc79d5a911c4fc5341262ee4d8357e162ac12f98c1453"
       },
-      "results_sha256": "c2c37cce102463b02f0eb979010bc673a9b6f5fa7c47e204815cec37b6b1c095",
+      "results_sha256": "05988d56b64e6eaa2722ca1be714abda29aa108ca57ac3ed1cba83144e48beb9",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -713,7 +713,7 @@
       "script": "run_ranking.py --stage post6",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
@@ -740,7 +740,7 @@
       "script": "run_ranking.py --stage post7",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
@@ -764,7 +764,7 @@
       "script": "run_ranking.py --stage post8",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
@@ -788,7 +788,7 @@
       "script": "run_ranking.py --stage post9",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
@@ -800,7 +800,7 @@
         "run_wrc_post8.py": "632d1080fbd3fb46492bdfcf70171cb60609c06a576ec0832db8ef398a91dfdd",
         "run_wrc_post9.py": "31e3262774098b4227bdc79d5a911c4fc5341262ee4d8357e162ac12f98c1453"
       },
-      "results_sha256": "c8af09c96889d209fae8e98646d2a5bb9a923aae998d3ea149cdeb697f96f7fc",
+      "results_sha256": "e53d7787251b07871db582e62e3fcc8b42bd9641a6f2180435935779c539d74b",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -811,7 +811,7 @@
       "script": "run_ranking.py --stage train",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
@@ -1099,7 +1099,7 @@
       "script": "run_sector.py --mode dryrun",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
@@ -1125,7 +1125,7 @@
       "script": "run_sector.py --mode post6",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
@@ -1155,7 +1155,7 @@
       "script": "run_sector.py --mode post7",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
@@ -1181,7 +1181,7 @@
       "script": "run_sector.py --mode post8",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",
@@ -1207,7 +1207,7 @@
       "script": "run_sector.py --mode post9",
       "deps": {
         "reconstruct_prices.py": "450ef634030652d8f2a9eb92e02c547e6e9a20d7cb7c1b3da1d112a9a194ece8",
-        "run_ranking.py": "fd37ba85bdcd4cf3fde4806f31b1c23257e4c404c8639ece5726794ec6fa1d8d",
+        "run_ranking.py": "723ffb58ee892b33c51ed6a4f08da7f628b9d252dfdb84230dc08f10c0fbd549",
         "run_reconstruct_post4.py": "84403be5dc6fd1e14f17687e9c43f867ee265140666c65e4d94a21cd535efd35",
         "run_reconstruct_post5.py": "a640d815a70b2283e3b80ed0fb1f23b32173449ce88d663aa755f2723e3586b1",
         "run_regday_post5.py": "7f161736b049bd2518aabbe1ab0323c7dac9ea299fe7b035bf487045e5be4d63",

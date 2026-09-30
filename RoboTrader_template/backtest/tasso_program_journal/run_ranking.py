@@ -3849,6 +3849,22 @@ def post9_main(a):  # noqa: C901, PLR0912, PLR0915
         % (fmt(t["loo"]), fmt(m_med),
            "🔴 ⛔ 「과적합 의심」 — 문턱을 가른다" if (t["loo"] < N2_THRESH) != bool(np.isfinite(m_med) and m_med < N2_THRESH)
            else "🟢 같은 쪽 ⇒ 인쇄 조건 미충족"))
+    # 🆕 정정 1차(09-30) — `PREREG_RANKING.md:594` 「`RNK-A5` 의 LOO 값과 순위를 매회 적는다」 — post8 표(§8)와 같은 인쇄. 판정 입력 아님.
+    say("")
+    say("- 🆕 **`RNK-A5` LOO 값·순위 인쇄**(`PREREG_RANKING.md:594` 매회 의무 · post8 `RESULTS_RANKING_POST8_NUMBERS.md` §8 표와 같은 형식 · 판정 입력 아님):")
+    say("")
+    say("| 규칙 | 훈련 LOO `m_rank` 중앙(post1~5) | **검증 `m_rank` 중앙(post9)** | 훈련 귀무 `p` | **검증 귀무 `p`** | 훈련 커버리지 손실 | **검증 커버리지 손실** |")
+    say("|---|---|---|---|---|---|---|")
+    for r in RULES:
+        t = TRAIN_PUB[r]
+        if r == "RNK-A3":
+            say("| `RNK-A3` | %s | ⛔ **계수 미동결 ⇒ 측정 안 함** | %s | ⛔ | %d/%d | ⛔ |"
+                % (fmt(t["loo"]), fmt(t["null_p"], 5), t["lost"], TRAIN_N))
+            continue
+        L = len(lost[r])
+        say("| `%s`%s | %s | **%s** | %s | **%s** | %d/%d (%.1f%%) | **%d/%d (%.1f%%)** |"
+            % (r, " 🔒" if r == sel else "", fmt(t["loo"]), fmt(p6_median(items, res[r], "m")), fmt(t["null_p"], 5),
+               fmt(nulls[r][1], 5), t["lost"], TRAIN_N, t["lost"] / TRAIN_N * 100, L, n_den, L / n_den * 100))
     say("- `RNK-P2` 부호 누계(기록만 · 검정 아님 · «지지» 부호 아님): " + " · ".join(
         "post%d %s" % (p, "문턱 충족" if verdict(rec[p]["m"], rec[p]["p"]) else "문턱 미달") for p in posts_all if p >= 6))
     say("")

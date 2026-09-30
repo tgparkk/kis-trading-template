@@ -1,7 +1,7 @@
 # 결과 — `RNK-` 후보 랭킹 축 (9번째 글 검증) · **`RNK-A1` 값은 문턱을 넘지만 축 판정은 ⛔ 「새 정보 없음 = `REG-M4` 재진술」**
 
 - **창 종료 2026-09-23 = 발행 당일(수 · 거래일) 봉 «포함» · B-1 · ANC §2-1 `END` · 전 축(`WRC-` 포함) · PD-1**
-- **실행 시 `max(date)` = 2026-09-29 · 그 날짜 행수 2,765 — 기록만(창 아님)**
+- **실행 시 `max(date)` = 2026-09-30 · 그 날짜 행수 2,767 — 기록만(창 아님)**
 - D-9 ① 쿼리 실행 시각 = `ranking_post9/read_stamp.json`(post8 형식 · 지문 같으면 재기록 안 함 · `NUMBERS` §0 표에 인쇄) · 「2026-09-23 봉은 D+1(2026-09-28) sweep 이후 읽음」 = 예
 
 > 🔴 **라이브 채택 금지** — `PREREG_POST9.md` §0-1(`:38-41`) 문언 그대로:
@@ -49,4 +49,5 @@
 
 ## 4. 재현
 
-- `run_ranking.py --stage post9` 재실행 3회 `RESULTS_RANKING_POST9_NUMBERS.md` md5 = `e14a0312f298872a666bfaadd5159c29` ×3 · `test_post9_ranking.py` 3/3 PASS.
+- `run_ranking.py --stage post9` 재실행 3회 `RESULTS_RANKING_POST9_NUMBERS.md` md5 = `5163a7d2a5c62fdd5b17cc773e47dbfb` ×3 · `test_post9_ranking.py` 3/3 PASS.
+- 🆕 **09-30 재생성(정정 1차 · 값 이동 0)** — verifier B T-1(`RNK-A5` LOO 값·순위 인쇄 누락 · `PREREG_RANKING.md:594`)을 NUMBERS §6 에 표로 보충(post8 §8 표와 같은 형식)하려 `--stage post9` 를 다시 돌렸다. DB 지문이 09-30 sweep 뒤로 이동해 `read_stamp.json` 과 D-9 ①②③④·`max(date)` 줄이 09-30 값(D-9 ① 2026-09-30 22:38:57 · 행 2,767)으로 바뀌었다(판정·값 이동 0 · verifier B 가 09-30 스냅샷 재계산으로 확인). 이전 md5 `e14a0312…`(09-29 스냅샷) → 현재 위 md5.
