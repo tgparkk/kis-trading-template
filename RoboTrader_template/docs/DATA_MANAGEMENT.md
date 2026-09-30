@@ -39,7 +39,7 @@
 | # | 키 | 함수 | 하는 일 | 표 |
 |---|---|---|---|---|
 | 1 | `daily` | `daily_collector.collect_daily` | 유니버스 = `stock_market ∪ daily_prices`(`SQL_STOCK_ONLY`) · 종목당 최근 7봉 KIS fetch → `daily_writer.upsert_daily_rows` → `daily_derived.update_returns_volatility` → `split_factor_infer.infer_and_stamp_split_factors`(corp_events.meta 에 배수·권리락일 스탬프) → `daily_adj.update_adj_factors` → `corp_action_watch.scan_and_queue`(미조정 이력 «탐지만») | `daily_prices` · `corp_events.meta` |
-| 2 | `minute` | `minute_collector.collect_minute` | 거래대금 top300(`minute_universe`) 당일 분봉 → `minute_writer.replace_minute_day`(DELETE+INSERT) | `minute_candles` |
+| 2 | `minute` | `minute_collector.collect_minute` | 거래대금 top300 ∪ 태쏘 shadow 후보(`tasso_shadow.candidates` `in_ra OR in_rb` · 후보가 된 날부터 20거래일 · SELECT 만)(`minute_universe`) 당일 분봉 → `minute_writer.replace_minute_day`(DELETE+INSERT · 요청일 아닌 봉은 적재 안 함) + 태쏘 종목의 [첫 후보일, 직전 거래일] 결손일(분봉 0행 · 거래정지일 제외)을 과거 분봉 API 로 보충(«종목-일» 하루 60 상한 · 최근 날짜 먼저 · 못 채운 날은 다음 EOD 가 이어 받음 · 2026-09-29) | `minute_candles` |
 | 3 | `index` | `index_collector.collect_index` | KIS 업종 일봉(FDR 폴백) → `index_writer`(날짜 기준 신선도 판정) | `index_daily` |
 | 4 | `stock_market` | `stock_market_collector.collect_stock_market` | FDR 상장목록 → 시장 라벨(성공 시에만 `market_classifier.reset_cache`) | `stock_market` |
 | 5 | `foreign_flow` | `foreign_flow_collector.collect_foreign_flow` | 네이버 외국인 순매매량 · `rows==0` 은 ERROR 승격 | `foreign_flow` |
