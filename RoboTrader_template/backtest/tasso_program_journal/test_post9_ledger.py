@@ -252,13 +252,9 @@ def test_R1_post8_guard_suite_minus_R3(tmp_path):
 
 
 def test_R1b_post8_R3_fails_only_by_growth():
-    try:
-        T8.test_R3_pure_append()
-    except AssertionError as e:
-        msg = str(e)
-    else:
-        raise AssertionError("post8 R3 가 통과했다 — post9 행이 붙지 않았다는 뜻")
-    assert "뒤에 post8 아닌 줄" in msg, msg
+    # 🔧 3단계(2026-09-30): post8 R3 술어를 「post8 상태 prefix 불변」으로 보정했다(`test_post8_ledger.py::POST8_STATE`)
+    #    ⇒ 이제 post9 행이 붙어도 통과한다(예전엔 「뒤에 post8 아닌 줄」로 실패 — 정상 성장 때문). 통과 = 성장이 순수 append 라는 뜻.
+    T8.test_R3_pure_append()
     for name, (n, md5) in T8.PREFIX.items():         # post7 판 prefix 는 여전히 그대로
         assert hashlib.md5((BASE / name).read_bytes()[:n]).hexdigest() == md5, name
     for name, (n, _md5) in PREFIX.items():            # post7 판 뒤 ~ post8 판 끝 = 전부 post8 줄

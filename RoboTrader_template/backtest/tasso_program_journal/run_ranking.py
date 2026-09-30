@@ -3552,9 +3552,356 @@ def post8_main(a):  # noqa: C901, PLR0912, PLR0915
     return 0
 
 
+# ═══ 🆕 post9 단계(덧붙임) — 위 함수·상수는 한 글자도 고치지 않는다(`test_post9_ranking.py` 가 본문 md5 로 본다) ═══
+# 🔴 창 = `PREDECISION_2026-09-24_post9.md` **PD-1** — 발행 **2026-09-23(수)** 거래일 ⇒ 발행 당일 봉 «포함».
+#    착수 = 09-23 봉 D+1(09-28 · 09-24·25 추석) 15:35 sweep «뒤»(PD-27 (마)). 실행 시 `max(date)` 는 기록만.
+DB_UPTO_POST9 = "2026-09-23"
+POST9_LOG_NO = "224421214462"    # 9번째 글 · 프로그램 버전 표기 «없음»(`missing` · PD-8)
+# `INTAKE_2026-09-24_post9.md` §1 표 그대로(6/6 · PD-11). 우리기술 = post8 #10 후속(`none` · 분모 밖 · PD-2).
+POST9_CODES = {"우리기술": "032820", "삼미금속": "012210", "에스투더블유": "488280", "빛샘전자": "072950",
+               "한국첨단소재": "062970", "한컴위드": "054920"}
+POST9_REENTRY: set = set()        # PD-3 — 재진입 0 · 항목 내 두 사이클 0 ⇒ 재진입 제외 민감도 «항등»
+POST9_FOLLOWUP = ("우리기술",)
+POST9_PUB_A1 = dict(POST8_PUB_A1)
+POST9_PUB_A1[8] = dict(m=4.5, p=0.0, src="`RESULTS_RANKING_POST8_NUMBERS.md` §4")
+POST9_SWEEP_D1 = "2026-09-28 15:35:00"
+POST9_MGR_WIN = ("2026-08-07", "2026-09-23")   # PD-27 (마) 2 (f) 창
+
+
+def post9_main(a):  # noqa: C901, PLR0912, PLR0915
+    """`--stage post9` — post8 단계의 판정 경로(`measure`·`null_pctl`·`p6_median`·`p6_lost`·`a5_calibration`)를
+    그대로 부르고 글·창·빈티지만 바꾼다. 새로 붙는 것 = `PREREG_POST9.md` §1·§4·§5 인쇄 줄(판정 로직 0)."""
+    from collections import Counter
+
+    from run_wrc_post9 import PD27_CROSS9, p9_collect_lines, p9_common_lines, p9_level_lines, p9_live_lines
+
+    conn = psycopg2.connect(**DSN)
+    upto = a.upto or DB_UPTO_POST9
+    snap_max, snap_rows = snapshot_probe(conn)
+    pseudo_all = pseudo_audit(conn)
+    # D-9 ①②④ — post8 `p8_read_stamp` 와 같은 지문 규약(창 상수만 post9) · `P9-스탬프통일` 은 post10 부터
+    cur = conn.cursor()
+    cur.execute("SELECT min(updated_at), max(updated_at) FROM daily_prices WHERE date BETWEEN %s AND %s", POST9_MGR_WIN)
+    mgr_min, mgr_max = cur.fetchone()
+    cur.execute("SELECT min(updated_at), max(updated_at) FROM daily_prices WHERE date BETWEEN %s AND %s", (START, upto))
+    sp_min, sp_max = cur.fetchone()
+    cur.execute("SELECT count(*), max(updated_at) FROM daily_prices WHERE date = %s", (DB_UPTO_POST9,))
+    end_rows, end_max = cur.fetchone()
+    fp = dict(max_date=str(snap_max), max_rows=int(snap_rows), mgr_min_u=str(mgr_min), mgr_max_u=str(mgr_max),
+              span=[START, upto], span_min_u=str(sp_min), span_max_u=str(sp_max), end_rows=int(end_rows),
+              end_max_u=str(end_max))
+    cur.execute("SELECT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'), current_setting('TimeZone')")
+    now_kst, tz = cur.fetchone()
+    sdir = BASE / "ranking_post9"
+    sdir.mkdir(exist_ok=True)
+    sp = sdir / "read_stamp.json"
+    try:
+        prev = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None
+    except Exception:                         # noqa: BLE001
+        prev = None
+    if prev and prev.get("fingerprint") == fp:
+        first = prev["first_read_kst"]
+    else:
+        first = now_kst
+        sp.write_text(json.dumps(dict(fingerprint=fp, first_read_kst=first, timezone=tz), ensure_ascii=False,
+                                 indent=2) + "\n", encoding="utf-8")
+    print("[stdout] 이번 실행 벽시계(DB now) = %s %s · 본문 ① = %s" % (now_kst, tz, first))
+
+    rows = load_ledger("post9")
+    codes, _sr = build_codes8()
+    codes_prior = dict(codes)
+    for nm, cd in POST9_CODES.items():
+        codes[nm] = cd
+    items_all, post_idx = exact_items(rows, codes)
+    if POST9_LOG_NO not in post_idx:
+        print("🔴 원장에 post9(`%s`) 행이 없다 — 원장 append 가 먼저다." % POST9_LOG_NO)
+        return 2
+    P9 = post_idx[POST9_LOG_NO]
+    items = [it for it in items_all if it["post"] == P9]
+    ap_items9 = [it for it in approx_items(rows, codes, post_idx) if it["post"] == P9]
+    p9rows = [r for r in rows if r["post_log_no"] == POST9_LOG_NO]
+    prec9 = Counter(r["reg_date_precision"] for r in p9rows)
+    code_audit = []
+    for nm in sorted(POST9_CODES):
+        cd = POST9_CODES[nm]
+        cur.execute("SELECT count(*) FROM daily_prices WHERE stock_code=%s AND date BETWEEN %s AND %s", (cd, START, upto))
+        code_audit.append((nm, cd, codes_prior.get(nm), int(cur.fetchone()[0])))
+    df = load(conn, upto)
+    dates9 = sorted({it["reg"] for it in items})
+    compose = {}
+    for d in dates9:
+        cur.execute("SELECT count(*), count(*) FILTER (WHERE close > 0), count(*) FILTER (WHERE close > 0 AND "
+                    "market_cap IS NOT NULL AND market_cap > 0) FROM daily_prices WHERE date = %s "
+                    "AND NOT (stock_code = ANY(%s))", (d, list(PSEUDO)))
+        compose[d] = cur.fetchone()
+    cur.execute("SELECT count(DISTINCT date) FILTER (WHERE date < %s), count(DISTINCT date) FILTER (WHERE date >= %s) "
+                "FROM daily_prices WHERE date BETWEEN %s AND %s", (POST8_BOUNDARY, POST8_BOUNDARY, START, upto))
+    load_nb, load_na = (int(x) for x in cur.fetchone())
+    own_cross = p8_cross_counts(conn, [("`RNK-` 판정 창 `[START, D]`", it["name"], it["code"], START, it["reg"])
+                                       for it in items])
+    cross = p8_cross_counts(conn, PD27_CROSS9)
+    conn.close()
+    df = build_features(df)
+
+    rand_rng = stream("a5_scores")
+    rand_by_date = {d: dict(zip(sorted(day_of(df, d).stock_code), rand_rng.random(len(day_of(df, d)))))
+                    for d in dates9}
+    tdates = list(pd.DatetimeIndex(sorted(df.date.unique())))
+    prev_of = {d: tdates[i - 1] for i, d in enumerate(tdates) if i > 0}
+    nup_masks, nup_n = {}, {}
+    for d in dates9:
+        D = pd.Timestamp(d)
+        prev = df[df.date == prev_of[D]]
+        pc = dict(zip(prev.stock_code, prev.close))
+
+        def mask(day, _pc=pc):
+            pcv = day.stock_code.map(_pc).to_numpy(dtype=float)
+            return (np.isfinite(pcv)) & (day.high.to_numpy(dtype=float) >= pcv * NUP_MULT)
+
+        nup_masks[d] = mask
+        nup_n[d] = int(mask(day_of(df, d)).sum())
+
+    def nup_mask_fn(day):
+        if day.empty:
+            return np.zeros(0, dtype=bool)
+        m = nup_masks.get(str(pd.Timestamp(day.date.iloc[0]).date()))
+        return m(day) if m is not None else np.zeros(len(day), dtype=bool)
+
+    RULES_M = [r for r in RULES if r != "RNK-A3"]
+    res = {r: measure(df, items, r, rand_by_date=rand_by_date) for r in RULES_M}
+    res_nup = {r: measure(df, items, r, rand_by_date=rand_by_date, universe_mask=nup_mask_fn) for r in RULES_M}
+    sel = SELECTED_RULE
+    m_med = p6_median(items, res[sel], "m")
+    _o, _n, p_res = null_pctl(items, res[sel], [P9], stream("null_resample"))
+    _o2, _n2, p_ana = null_pctl(items, res[sel], [P9], stream("null_analytic"), analytic=True)
+    lost = {r: p6_lost(items, res[r]) for r in RULES_M}
+    n_den = len(items)
+    g1_rate = len(lost[sel]) / n_den if n_den else np.nan
+    g1_open = g1_rate >= G1_THRESH
+
+    def verdict(mm, pp):
+        return bool(np.isfinite(pp) and pp < P_THRESH and np.isfinite(mm) and mm < N2_THRESH)
+
+    m_med_nup = p6_median(items, res_nup[sel], "m")
+    _on, _nn, p_nup = null_pctl(items, res_nup[sel], [P9], stream("null_resample"))
+    v_main, v_nup, v_ana = verdict(m_med, p_res), verdict(m_med_nup, p_nup), verdict(m_med, p_ana)
+    v_pool = v_main
+    win20 = {it["name"]: min(20, int(((df.stock_code == it["code"]) & (df.date <= pd.Timestamp(it["reg"]))).sum()))
+             for it in items}
+    trunc_names = [nm for nm, nb in win20.items() if nb < 20]
+    items_ex = [it for it in items if it["name"] not in POST9_REENTRY]
+    posts_all = sorted({it["post"] for it in items_all})
+    res_all = measure(df, items_all, sel)
+    rec = {}
+    for p in posts_all:
+        its = [it for it in items_all if it["post"] == p]
+        mm = [res_all[(it["post"], it["item_no"])]["m"] for it in its]
+        n_ok = sum(1 for x in mm if x is not None)
+        pp = null_pctl(its, res_all, [p], stream("null_resample"))[2] if n_ok else np.nan
+        rec[p] = dict(n=len(its), n_ok=n_ok, m=med([x for x in mm if x is not None]) if n_ok else np.nan, p=pp)
+    calib = np.array(a5_calibration(df, items, [P9], A5_CALIB_K))
+    nulls = {r: (null_pctl(items, res[r], [P9], stream("null_resample"))[2],
+                 null_pctl(items, res[r], [P9], stream("null_analytic"), analytic=True)[2]) for r in RULES_M}
+
+    # ═══ 인쇄 ═══════════════════════════════════════════════════════════════
+    say("# `RNK-` 후보 랭킹 — **9번째 글 검증** 수치 원본 (post9 `%s`)\n" % POST9_LOG_NO)
+    say("- **창 종료 %s = 발행 당일(수 · 거래일) 봉 «포함» · B-1 · ANC §2-1 `END` · 전 축(`WRC-` 포함) · PD-1**" % upto)
+    say("- **실행 시 `max(date)` = %s · 그 날짜 행수 %s — 기록만(창 아님)**\n" % (snap_max, "{:,}".format(snap_rows)))
+    for ln in p9_live_lines():
+        say(ln)
+    say("")
+    for b in BANNER:
+        say(b)
+    say("> 🔴🔴 **이 축은 «닫혀 있다»** — 동결 선택이 `RNK-A1`(`f1` 단독) ⇒ `PREREG_RANKING.md` §4-3 (다) **「새 정보 없음 = "
+        "`REG-M4` 재진술」** · ***`RNK-P1` 이 문턱을 넘어도 «지지»로 선언하지 않는다***(`FREEZE_RANKING_2026-08-31.md` §1·§5).")
+    all_loss_new = [it["name"] for it in items if str(it["all_loss"]) == "1"]
+    say("> 🔴 **승/패 대조 6회 연속 미실시**(post4~post9 · 이번 글 `exact` `all_loss = 1` **%d건**) ⇒ 최대치는 「기술」(§0-2 ③)."
+        % len(all_loss_new))
+    say("")
+    say("| 항목 | 값 |")
+    say("|---|---|")
+    say("| 사전등록 · 동결 | `PREREG_RANKING.md` · `FREEZE_RANKING_2026-08-31.md`(🔒 `%s` · 계수 없음) · `PREREG_POST8.md` · "
+        "🆕 `PREREG_POST9.md`(동결 `702f41b`) §1·§4·§5 |" % sel)
+    say("| 인테이크 | `INTAKE_2026-09-24_post9.md` · `PREDECISION_2026-09-24_post9.md` · `LABELS_2026-09-24_post9.md` · "
+        "정오표 `ERRATA_2026-09-29_post9_intake.md` · 원장 `30aed89` |")
+    say("| D-9 ① 쿼리 실행 시각(KST) | **%s** (%s) — 지문 «처음» 읽은 실행(`ranking_post9/read_stamp.json` · post8 형식) |"
+        % (first, tz))
+    say("| D-9 ② 창 구간 `max(updated_at)` | 적재 창 `[%s, %s]` = **%s** · PD-27 (마) 창 `[%s, %s]` = **%s** · %s 봉(행 %s) "
+        "= **%s** |" % (START, upto, sp_max, POST9_MGR_WIN[0], POST9_MGR_WIN[1], mgr_max, DB_UPTO_POST9,
+                        "{:,}".format(int(end_rows)), end_max))
+    say("| D-9 ③ | **「%s 봉은 D+1(2026-09-28) sweep 이후 읽음」** — ① %s ≥ %s : %s |"
+        % (DB_UPTO_POST9, first, POST9_SWEEP_D1[:16], "예" if first >= POST9_SWEEP_D1[:19] else "🔴 아니오"))
+    say("| D-9 ④ (기록 · 통과 조건 아님) | 「창 구간 `min(updated_at)` = %s ≥ 2026-09-28 15:35: %s」 · 적재 창 `min` = %s |"
+        % (mgr_min, "예" if str(mgr_min) >= POST9_SWEEP_D1 else "아니오", sp_min))
+    say("| 시드 · 반복 | `%d` · **%d회** · 문턱 `p` < %.2f · `m_rank` < %d · `G1` %.4f (전부 동결값) |"
+        % (SEED, NREP, P_THRESH, N2_THRESH, G1_THRESH))
+    say("| 의사티커 | 실측 %s · `PSEUDO` %s ⇒ %s |" % (pseudo_all, list(PSEUDO),
+                                                  "🟢 전수" if set(pseudo_all) <= set(PSEUDO) else "🔴 차집합 있음"))
+    say("| 판정 분모 | post9 신규 `exact` **%d건**(원장 %d행 · `exact` %d · `approx` %d · `none` %d = 후속 %s) |"
+        % (n_den, len(p9rows), prec9["exact"], prec9["approx"], prec9["none"], " · ".join(POST9_FOLLOWUP)))
+    say("")
+    say("## 1. 표본 · 종목코드 대조 · 유니버스\n")
+    say("| 종목 | `INTAKE` 코드 | 계열 기존 코드 | `daily_prices` 봉 `[%s, %s]` | 판정 |" % (START, upto))
+    say("|---|---|---|---|---|")
+    for nm, cd, pv, nb in code_audit:
+        say("| %s | `%s` | %s | %d | %s |" % (nm, cd, "—(처음)" if pv is None else "`%s`" % pv, nb,
+                                           "🔴 계열 코드 불일치" if (pv is not None and pv != cd) else
+                                           ("🟢 측정 가능" if nb > 0 else "🔴 0봉")))
+    say("")
+    say("| # | 종목 | 코드 | 등록일 | 유니버스(`market_cap>0 ∧ close>0`) 그날 | `n_up` 그날 | 창 `[D−19, D]` 봉수 |")
+    say("|---|---|---|---|---|---|---|")
+    for it in items:
+        say("| %s | %s | `%s` | %s | %s | %d | %d |" % (it["item_no"], it["name"], it["code"], it["reg"],
+                                                      "{:,}".format(compose[it["reg"]][2]), nup_n[it["reg"]],
+                                                      win20[it["name"]]))
+    say("")
+    say("- 🔴 **첨단 신고 줄(확인 5 · PD-31)** — 한국첨단소재는 08-06 액면병합 변경상장 · 08-26~08-28 거래정지 공시 · "
+        "`adj_factor` NULL 이다. 선택 규칙 `%s`(`f1` = 등록일 당일 거래대금/시총)는 **등록일 09-15 한 봉**만 읽어 그 사건 "
+        "구간에 **닿지 않는다** · 60봉 특징을 쓰는 `RNK-A2`·`A4`(값 기록만)의 입력 창에는 들어간다 — 규칙·갈래 신설 0." % sel)
+    say("")
+    say("## 2. `RNK-G1` 커버리지 가드 — 판정보다 «먼저»\n")
+    say("| 규칙 | 측정 가능 | 측정 불가 | 비율 | 게이트(1/3) | 사유별 |")
+    say("|---|---|---|---|---|---|")
+    for r in RULES_M:
+        L = lost[r]
+        say("| `%s`%s | %d/%d | %d | %.1f%% | %s | %s |"
+            % (r, " 🔒(판정)" if r == sel else "", n_den - len(L), n_den, len(L), len(L) / n_den * 100,
+               "🔴 발동 ⇒ ⛔" if len(L) / n_den >= G1_THRESH else "미발동",
+               ", ".join("%s(%s)" % (nm, rs) for nm, rs in L) if L else "없음"))
+    say("")
+    say("**판정 비율(선택 규칙)** = **%.1f%%** ⇒ %s · `P6-절단가드-A` 분자 **%d**/%d."
+        % (g1_rate * 100, "🔴 ⛔ `RNK-G1` 발동" if g1_open else "🟢 미발동(구성 예고 0/5 와 %s)"
+           % ("같다" if not lost[sel] else "다르다"), len(trunc_names), n_den))
+    say("")
+    say("## 3. 건별 `m_rank`·`pctl`·`N`\n")
+    say("| 종목 | 등록일 | `N`(%s) | " % sel + " | ".join("`%s` `m`" % r for r in RULES_M) + " | `%s` `pctl` |" % sel)
+    say("|---|---|---|" + "---|" * (len(RULES_M) + 1))
+    for it in items:
+        k = (it["post"], it["item_no"])
+        say("| %s | %s | %s | %s | %s |" % (it["name"], it["reg"], res[sel][k]["N"] or "—", " | ".join(
+            ("%d" % int(res[r][k]["m"])) if res[r][k]["m"] is not None else "⛔" for r in RULES_M),
+            fmt(res[sel][k]["pctl"], 2)))
+    say("")
+    say("## 4. `RNK-P1` · `RNK-N1` · `RNK-N2` · `RNK-B1`·`B2` · `RNK-X1`\n")
+    say("| 항목 | 문턱 | **실측** | 문턱 충족 | **판정** |")
+    say("|---|---|---|---|---|")
+    say("| `RNK-P1` | `p` < 5%% AND `m_rank` 중앙 < 30 | `p` **%s** · `m` **%s** | %s | ⛔ **「새 정보 없음 = `REG-M4` 재진술」**"
+        "(§4-3 (다) · 지지 선언 금지) |" % (fmt(p_res, 5), fmt(m_med), "🟢 둘 다" if v_main else "⛔ 미달"))
+    say("| `RNK-N1` | 재추출 귀무 `p` ≥ 5%% ⇒ 불성립 | **%s** | %s | 기록(«바닥 통과»이지 증거 아님 · §4-1) |"
+        % (fmt(p_res, 5), "문턱 쪽 < 5%" if (np.isfinite(p_res) and p_res < P_THRESH) else "⛔ 불성립"))
+    say("| `RNK-N2` | `m_rank` 중앙 ≥ 30 ⇒ 강등 | **%s** | %s | %s |"
+        % (fmt(m_med), "문턱까지 %s" % fmt(N2_THRESH - m_med) if np.isfinite(m_med) else "—",
+           "🟢 강등 안 됨" if (np.isfinite(m_med) and m_med < N2_THRESH) else "🔴 **강등 — 판별력 없음**"))
+    say("| `RNK-B1`·`B2` | 비영 짝 ≥ 5 | 비영 짝 **0**(`Δm ≡ 0` · 선택 = `RNK-A1`) | 🔴 미달 | ⛔ **영구 미개시**(FREEZE §5) |")
+    a5p1, a5p2 = nulls["RNK-A5"]
+    err = float((calib < P_THRESH).mean())
+    say("| `RNK-X1` | 선택 절차 가드 — post9 에 선택 절차 없음 | 대조군 `RNK-A5` 재추출 `p` **%s** · 보정 %d실현 1종오류율 "
+        "**%.1f%%**(%d/%d) · `p` 평균 %.3f | %s | 재판정 대상 아님(구현 생존 인쇄) |"
+        % (fmt(a5p1, 5), len(calib), err * 100, int((calib < P_THRESH).sum()), len(calib), float(calib.mean()),
+           "🟢 명목 5% 와 어긋나지 않음" if 0.01 <= err <= 0.12 else "🔴 귀무 구현 의심"))
+    say("")
+    say("**규칙별 값(의무 인쇄 · 판정은 `%s` 하나)**: " % sel + " · ".join(
+        "`%s` m %s / p %s / MC %s" % (r, fmt(p6_median(items, res[r], "m")), fmt(nulls[r][0], 5), fmt(nulls[r][1], 5))
+        for r in RULES_M))
+    say("")
+    say("🆕 **관측 감시 `RNK-N2`(문턱 30)** — 판정 갈래 `m_rank` 중앙 **%s**(문턱까지 **%s**) · `n_up` 갈래 **%s**(문턱까지 **%s**) "
+        "— 기록만(문턱 불변)." % (fmt(m_med), fmt(N2_THRESH - m_med), fmt(m_med_nup), fmt(N2_THRESH - m_med_nup)))
+    say("")
+    say("## 5. `RNK-V1` 민감도 · `D-5` 갈래 `(이름, n, 답)`\n")
+    n_ok = n_den - len(lost[sel])
+    br = [("유니버스 전체 · 글 단위 · 재추출 · `exact` 만 · 절단 포함(판정)", n_ok, v_main, "판정 갈래", m_med, p_res),
+          ("유니버스 `n_up`", n_den - len(p6_lost(items, res_nup[sel])), v_nup, "민감도", m_med_nup, p_nup),
+          ("집계 건 pooled", n_ok, v_pool, "🔴 항등(글 하나)", m_med, p_res),
+          ("귀무 해석적(MC)", n_ok, v_ana, "민감도", m_med, p_ana),
+          ("등록일 정밀도 `approx` 포함", n_den + len(ap_items9), v_main, "🔴 항등(이번 글 `approx` %d)" % prec9["approx"],
+           m_med, p_res),
+          ("창 절단 제외", n_den - len(trunc_names), v_main, "🔴 항등(절단 %d)" % len(trunc_names), m_med, p_res),
+          ("§1-5 재진입 제외", len(items_ex), v_main, "🔴 항등(재진입 0 · PD-3)", m_med, p_res)]
+    say("| 갈래 | **n** | 최소 n(3) | `m_rank` 중앙 | 귀무 `p` | **답**(`RNK-P1` AND) | 비고 |")
+    say("|---|---|---|---|---|---|---|")
+    counted = []
+    for nm, n, v, nt, mm, pp in br:
+        say("| %s | **%d** | %s | %s | %s | **%s** | %s |" % (nm, n, "충족" if n >= 3 else "🔴 미달", fmt(mm), fmt(pp, 5),
+                                                            "🟢" if v else "⛔", nt))
+        if n >= 3:
+            counted.append(v)
+    say("")
+    say("- ⇒ 최소 n 을 채운 갈래의 답: %s ⇒ %s · 🔴 축 «판정»은 어느 갈래에서도 §4-3 (다) 「새 정보 없음」이다."
+        % (" · ".join("🟢" if v else "⛔" for v in counted),
+           "🟢 **갈리지 않는다** ⇒ `RNK-V1` 미발동" if len(set(counted)) == 1 else "🔴 **갈린다** ⇒ ⛔ `RNK-V1`"))
+    say("")
+    say("## 6. `RNK-O1` · `RNK-P2` — 같은 스냅샷 재계산(글별 `RNK-A1`) ↔ 발표값 (🔬 post2~5 = 훈련 · 합산 금지)\n")
+    say("| 글 | `exact` | 측정 | **`m_rank` 중앙(재계산)** | 재추출 `p` | 발표값(출처) | 일치 | 두 문턱 AND |")
+    say("|---|---|---|---|---|---|---|---|")
+    pub_fold = dict(zip([2, 3, 4, 5], TRAIN_PUB[sel]["per_fold"]))
+    for p in posts_all:
+        rr = rec[p]
+        pub, src = ((pub_fold[p], "`RESULTS_RANKING_TRAIN_NUMBERS.md` `per_fold`") if p in pub_fold else
+                    ((POST9_PUB_A1[p]["m"], POST9_PUB_A1[p]["src"]) if p in POST9_PUB_A1 else (None, "이 회차")))
+        say("| post%d%s | %d | %d | **%s** | %s | %s(%s) | %s | %s |"
+            % (p, " 🔬" if p <= 5 else "", rr["n"], rr["n_ok"], fmt(rr["m"]), fmt(rr["p"], 5),
+               "—" if pub is None else fmt(pub), src,
+               "—" if pub is None else ("🟢" if fmt(pub) == fmt(rr["m"]) else "🔴 다르다(입력 DB 이동 · 동결값 불변)"),
+               "🟢" if verdict(rr["m"], rr["p"]) else "⛔"))
+    say("")
+    t = TRAIN_PUB[sel]
+    say("- `RNK-O1`(30 기준 괴리): 훈련 LOO **%s** ↔ 검증 post9 **%s** ⇒ %s."
+        % (fmt(t["loo"]), fmt(m_med),
+           "🔴 ⛔ 「과적합 의심」 — 문턱을 가른다" if (t["loo"] < N2_THRESH) != bool(np.isfinite(m_med) and m_med < N2_THRESH)
+           else "🟢 같은 쪽 ⇒ 인쇄 조건 미충족"))
+    say("- `RNK-P2` 부호 누계(기록만 · 검정 아님 · «지지» 부호 아님): " + " · ".join(
+        "post%d %s" % (p, "문턱 충족" if verdict(rec[p]["m"], rec[p]["p"]) else "문턱 미달") for p in posts_all if p >= 6))
+    say("")
+    say("## 7. `D-3` · 🆕 `P9-공통독법` · `D-8` · 🆕 `P9-행단위`\n")
+    n_incl = n_den + prec9["approx"]
+    say("**`P8-approx의존신고`**: *「`approx` 포함 시 최소 n 이 차는 축: **없음** · `exact` 분모 **%d** / `approx` 포함 분모 "
+        "**%d**」*(`RNK-D5` `approx` 민감도 = 없음 · PD-21)." % (n_den, n_incl))
+    say("")
+    for ln in p9_common_lines(n_den, n_incl):
+        say(ln)
+    say("")
+    say("| 수준 | 행(건) · **SSOT** | 글(민감도) |")
+    say("|---|---|---|")
+    for lv, nr, npost in p8_prog_levels(rows):
+        say("| `%s` | %d | %d |" % (lv, nr, npost))
+    say("")
+    for ln in p9_level_lines(rows):
+        say(ln)
+    say("")
+    say("## 8. `D-9` · 혼합 빈티지 — 걸침 창마다 한 줄\n")
+    say("- *「창 `[%s, %s]` 은 제도 경계 2026-09-14 를 걸친다 — 경계 전 `%d` 봉 / 후 `%d` 봉 · 혼합 빈티지」*(유니버스 적재 창 · "
+        "DB 거래일 수)" % (START, upto, load_nb, load_na))
+    for axis, nm, s, e, nb, na in own_cross:
+        if nb and na:
+            say(p8_cross_line(axis, nm, s, e, nb, na) + " — 🔴 **이 축이 읽는 창**(등록일 봉이 경계 후)")
+    say("- 🔴 이 축의 통계량은 등록일 `D` «이후» 봉을 읽지 않는다 · 🔴 **등록일 봉 자체가 경계 후인 건 %d**(%s) — `f1` 은 "
+        "연장 제도 아래의 거래대금으로 매겨진다(기록 · 판정 효과 없음 · PD-27 (바))."
+        % (sum(1 for it in items if it["reg"] >= POST8_BOUNDARY),
+           " · ".join(it["name"] for it in items if it["reg"] >= POST8_BOUNDARY) or "—"))
+    for axis, nm, s, e, nb, na in cross:
+        if nb and na:
+            say(p8_cross_line(axis, nm, s, e, nb, na))
+        elif na:
+            say("- 🟡 *「창 `[%s, %s]` 은 전부 제도 경계 후(전 0 / 후 %d)」*(%s · %s · 추가 인쇄 · 판정 효과 0)" % (s, e, na, axis, nm))
+    say("- 한계: `ovtm_vol`·`overtime_daily` 로 시간외분을 뺄 수 없다 · 15:30 분봉 09-14 1/303 · 09-15~09-29 ≤ 1/301"
+        "(`probes_precalc_0929`) ⇒ 「정규장만」 갈래 열지 않음 · `P-3` 판별력 0(통과로 인용 안 함).")
+    say("")
+    say("## 9. 🆕 `P9-수집증거` · 재현 정보\n")
+    for ln in p9_collect_lines("FREEZE_RANKING_2026-08-31.md", "RNK"):
+        say(ln)
+    say("")
+    for f in ("run_selection.py", "run_tests.py", "PREREG_RANKING.md", "FREEZE_RANKING_2026-08-31.md",
+              "RESULTS_RANKING_TRAIN_NUMBERS.md"):
+        say("- `%s` md5 `%s`" % (f, md5(BASE / f)))
+    say("- 🔴 `run_ranking.py` 자신의 md5 는 적지 않는다(모드가 덧붙는 파일) — 기존 단계 불변은 `test_post9_ranking.py` 본문 md5 시험.")
+    (BASE / a.out).write_text("\n".join(OUT) + "\n", encoding="utf-8")
+    print("\n[written] %s" % a.out)
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stage", default="train", choices=["train", "post6", "post7", "post8"])
+    ap.add_argument("--stage", default="train", choices=["train", "post6", "post7", "post8", "post9"])
     ap.add_argument("--upto", default=None,
                     help="유니버스 상한을 손으로 고정한다. 🔴 **스냅샷 불변성 확인 전용**이며 "
                          "산출물을 덮어쓰지 않는다(`--out` 로 따로 받는다).")
@@ -3583,6 +3930,10 @@ def main():
     if a.stage == "post8":
         a.out = a.out or "RESULTS_RANKING_POST8_NUMBERS.md"
         return post8_main(a)
+    # 🔴 **덧붙인 분기**(post9) — 위 분기·train 경로 불변. 순서 증거 = `PREREG_POST9.md` §5 `P9-수집증거`(산출물 인쇄).
+    if a.stage == "post9":
+        a.out = a.out or "RESULTS_RANKING_POST9_NUMBERS.md"
+        return post9_main(a)
     a.out = a.out or "RESULTS_RANKING_TRAIN_NUMBERS.md"
 
     conn = psycopg2.connect(**DSN)

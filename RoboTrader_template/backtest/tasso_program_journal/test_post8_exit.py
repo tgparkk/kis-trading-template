@@ -208,7 +208,8 @@ def test_P6_render_is_byte_identical():
         P8.BASE = real_base
         del P8.OUT[:]
         P8.OUT.extend(real_out)
-    got = (tmp / NUMBERS8.name).read_bytes()
+    # Windows 텍스트 모드 쓰기는 개행을 CRLF 로 바꾼다(실측: 출력 CRLF · 저장소 파일 LF · LF 정규화하면 동일) => 줄바꿈만 정규화해 비교
+    got = (tmp / NUMBERS8.name).read_bytes().replace(b"\r\n", b"\n")
     assert hashlib.md5(got).hexdigest() == hashlib.md5(NUMBERS8.read_bytes()).hexdigest(), \
         "저장소 산출물 = 지금 스크립트의 출력(결정적 · 손 편집 없음)"
     shutil.rmtree(tmp, ignore_errors=True)
@@ -231,9 +232,14 @@ def _blob_md5(rel):
 
 def test_R2_upstream_untouched():
     for rel in ("run_exit_v2_post4.py", "run_exit_v2_post5.py", "run_exit_v2_post6.py", "run_exit_v2_post7.py",
-                "RESULTS_EXIT_V2_POST7_NUMBERS.md", "RESULTS_EXIT_V2_POST6_NUMBERS.md",
-                "ledger_trades.csv", "ledger_legs.csv"):
+                "RESULTS_EXIT_V2_POST7_NUMBERS.md", "RESULTS_EXIT_V2_POST6_NUMBERS.md"):
         assert hashlib.md5((BASE / rel).read_bytes()).hexdigest() == _blob_md5(rel), f"{rel} 가 {BASE_REF} 와 다르다"
+    # 원장은 post9 행이 뒤에 append 됐다(`9d3bbe1`) ⇒ 「post8 상태(= 기준 블롭)가 순수 prefix」 로 본다
+    for rel in ("ledger_trades.csv", "ledger_legs.csv"):
+        blob = subprocess.run(["git", "show", f"{BASE_REF}:RoboTrader_template/backtest/tasso_program_journal/{rel}"],
+                              cwd=BASE, capture_output=True)
+        assert blob.returncode == 0, rel
+        assert (BASE / rel).read_bytes().startswith(blob.stdout), f"{rel}: {BASE_REF} 상태가 prefix 가 아니다"
     # 🔴 대칭 — 기준 ref 에 post8 판은 «없다»(ref 가 post8 이전임을 확인 · 검사력)
     miss = subprocess.run(["git", "cat-file", "-e",
                            f"{BASE_REF}:RoboTrader_template/backtest/tasso_program_journal/run_exit_v2_post8.py"],
