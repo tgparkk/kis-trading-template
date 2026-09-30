@@ -26,8 +26,9 @@ def test_compare_top_n_matches_live_consumption_cap():
     assert gate.COMPARE_TOP_N == MAX_CANDIDATES_PER_STRATEGY
 
 
-def test_reverdict_end_is_0929():
-    assert run.REVERDICT_END == "2026-09-29"
+def test_reverdict_end_is_1019():
+    # 2026-09-30 재판정: 세그먼트 분할(14+3일)로 ⑤ 최솟값 미달 → 새 세그먼트 15거래일 = scan_date 10-19
+    assert run.REVERDICT_END == "2026-10-19"
 
 
 # ── (a2) 세그먼트별 보호 구간 헬퍼(리뷰 2026-09-26 — 마지막 세그먼트만 보던 버그) ──────
