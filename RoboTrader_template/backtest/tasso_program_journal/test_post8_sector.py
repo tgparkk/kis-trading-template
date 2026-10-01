@@ -68,7 +68,7 @@ def test_both_mode_excludes_post8():
     assert 'if mode in ("both", "dryrun"):' in run_src and 'if mode in ("both", "post6"):' in run_src
     assert 'if mode == "post8":' in run_src
     assert not re.search(r'mode in \([^)]*"post8"', run_src)
-    assert 'choices=("dryrun", "post6", "both", "post7", "post8")' in src
+    assert 'choices=("dryrun", "post6", "both", "post7", "post8"' in src      # post9 가 뒤에 덧붙어도 통과(부분 문자열)
 
 
 def test_prior_artifacts_byte_identical_to_head():

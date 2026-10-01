@@ -110,7 +110,7 @@ def test_S1_pure_addition_function_bodies_unchanged():
     added = sorted(k for k in new if k not in old)
     assert "post8_main" in added and "build_codes8" in added
     src = (BASE / "run_ranking.py").read_text(encoding="utf-8")
-    assert 'choices=["train", "post6", "post7", "post8"]' in src
+    assert 'choices=["train", "post6", "post7", "post8"' in src      # post9 가 뒤에 덧붙어도 통과(부분 문자열)
     assert 'if a.stage == "post8":' in src
     # 🔴 대칭 — 기준 ref 에는 post8 판이 «없다»(ref 가 post8 이전임을 확인 · 검사력)
     assert "post8_main" not in old
