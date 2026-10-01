@@ -5,6 +5,10 @@
 2026-09-29: 🔒 사장님 결정 — 분봉 저장 범위 = 「거래대금 top300 + 태쏘 shadow 후보」.
   후보는 `tasso_shadow.candidates` 의 `in_ra OR in_rb`(arm 무관) · `scan_date` 가
   오늘 기준 최근 20거래일 안. 이 표는 태쏘 러너(별도 워크트리)가 쓰고 여기선 SELECT 만 한다.
+
+2026-10-01: 🔒 사전등록 `docs/prereg_2026-10-01_minute_universe_focus3_candidates.md` v1.0 —
+  3전략(ma20·daytrading·minervini) 룰 통과 후보(`screener_snapshots` · SELECT 만)를 21거래일 창으로 추가.
+  수집 루프는 `minute_collector.collect_minute` 의 focus3 전용 루프(보충 없음 · 태쏘와 섞지 않음).
 """
 import time
 from datetime import datetime
@@ -30,6 +34,23 @@ _TASSO_SQL = """
 SELECT stock_code, min(scan_date)
 FROM tasso_shadow.candidates
 WHERE (in_ra OR in_rb) AND scan_date BETWEEN %s AND %s
+GROUP BY stock_code
+ORDER BY max(scan_date) DESC, stock_code
+"""
+
+# 3전략 후보를 분봉 저장에 붙여 두는 기간 — 오늘을 1일째로 센다(tasso_window_start 재사용).
+# 스냅샷 scan_date 는 T−1 이라 21 이면 매수일(scan_date 다음 거래일)부터 20거래일을 덮는다
+# (minervini max_hold_days 20 · 사전등록 §7 결정 1(a)).
+# 🔒 마스터 스위치 — 0 이면 focus3 조회·수집을 통째로 끈다(롤백 = 이 줄 하나 · 사전등록 §6).
+FOCUS3_WINDOW_DAYS = 21
+
+# 창 안에서 한 번이라도 룰 통과 후보였던 3전략 종목 — 첫 후보일과 함께(순서는 태쏘 SQL 과 같다).
+# 3전략만(§7 결정 3(a)) — 나머지 5전략은 «관측만» 결정이라 넣지 않는다.
+_FOCUS3_SQL = """
+SELECT stock_code, min(scan_date)
+FROM screener_snapshots
+WHERE strategy IN ('book_pullback_ma20', 'daytrading_3methods_breakout', 'minervini_volume_dryup')
+  AND scan_date BETWEEN %s AND %s
 GROUP BY stock_code
 ORDER BY max(scan_date) DESC, stock_code
 """
@@ -97,4 +118,32 @@ def select_tasso_codes(conn, today):
         except Exception:  # noqa: BLE001
             pass
         logger.warning(f"[minute] 태쏘 후보 조회 실패 — top300 만 수집: {type(e).__name__}: {e}")
+        return window_from, None
+
+
+def select_focus3_codes(conn, today, n: int = FOCUS3_WINDOW_DAYS):
+    """창 [today 기준 n거래일 첫날, today] 의 3전략 후보 → (window_from, [(stock_code, 첫 후보일), ...]).
+
+    select_tasso_codes 와 같은 계약 — 실패는 WARNING 한 줄 + 목록 자리에 ``None``(호출측은 계속) ·
+    읽기 전용(rollback) · 코드는 거르지 않는다(3전략 스냅샷에도 영숫자 코드 ``0004V0`` 등이 있다).
+    scan_date=오늘 행은 내일 09:00 에야 생기므로 창 끝이 today 여도 0건이라 무해하다.
+    """
+    window_from = None
+    try:
+        window_from = tasso_window_start(today, n)
+        with conn.cursor() as cur:
+            cur.execute(_FOCUS3_SQL, (window_from, today))
+            rows = cur.fetchall()
+        conn.rollback()  # 읽기 전용 — 스냅샷을 쥔 채 수집 루프로 들어가지 않는다
+        out = {}
+        for code, first in rows:
+            code = str(code).strip()
+            out[code] = min(out[code], first) if code in out else first
+        return window_from, list(out.items())
+    except Exception as e:  # noqa: BLE001 — focus3 조회 실패가 top300·태쏘 수집을 막으면 안 된다
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        logger.warning(f"[minute] focus3 후보 조회 실패 — top300·태쏘만 수집: {type(e).__name__}: {e}")
         return window_from, None
