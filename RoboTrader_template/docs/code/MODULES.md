@@ -254,7 +254,7 @@ main()
 | | `daily_adj.py` · `adj_factors.py` · `split_factor_infer.py` | `corp_events` 분할 → `adj_factor` 계산·갱신(`adj_factors.py` 만 2026-07-02 `44c0054` scripts 승격 · `daily_adj.py` 2026-06-23 `4b541a9` · `split_factor_infer.py` 2026-07-06 `47b6417` 신규) |
 | | `adj_repair.py` · `corp_action_watch.py` | 기업행위 가격 보정 순수 계산 · 미조정 이력 탐지(큐 적재만) |
 | | `financial_metrics.py` | account_id → 13지표 + as_of 기준 Wide 파생 |
-| | `minute_universe.py` | 분봉 유니버스 — 거래대금 top300, 6가격밴드×2시장 + 태쏘 shadow 후보(`select_tasso_codes` · 20거래일 창 · 조회 실패 시 None → top300 만) |
+| | `minute_universe.py` | 분봉 유니버스 — 거래대금 top300, 6가격밴드×2시장 + 태쏘 shadow 후보(`select_tasso_codes` · 20거래일 창 · 조회 실패 시 None → top300 만) + 🆕 3전략 후보(`select_focus3_codes` · `screener_snapshots` 3전략 · `FOCUS3_WINDOW_DAYS`=21거래일 창(0 = 마스터 스위치 끔) · 조회 실패 시 None → top300·태쏘만 · 2026-10-01) |
 
 데이터 계층 설명은 [../DATA_MANAGEMENT.md](../DATA_MANAGEMENT.md).
 

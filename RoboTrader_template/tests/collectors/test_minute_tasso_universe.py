@@ -11,6 +11,9 @@
     적게 받으면 미교체 · 부분 수신 거부 · 거래정지일 제외 · «종목-일» 상한(최근 날짜 먼저) ·
     이월·실패일 다음 날 재시도 · 종목-일별 예외 격리
   - 하루치 완전성 WARNING(적재는 그대로)
+  - 🆕(10-01 사전등록 focus3) 3전략 후보: 합집합·dedup(top300·태쏘 밖만) · 21거래일 창 · 3전략만 ·
+    별도 카운터(빈 응답·날짜 거부·불완전·오류) · 종목 1개 예외가 나머지·태쏘 보충을 막지 않음 ·
+    보충과 섞지 않음 · 조회 실패 → 계속 · 마스터 스위치 0 = 비활성 · limit
 """
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
@@ -94,6 +97,10 @@ class FakeCursor:
             if c.tasso_error:
                 raise c.tasso_error
             self._rows = list(c.tasso_rows)
+        elif "screener_snapshots" in sql:
+            if c.focus3_error:
+                raise c.focus3_error
+            self._rows = list(c.focus3_rows)
         elif "JOIN daily_prices" in sql:
             # _MISSING_DAYS_SQL 의미: [start, p_iso] 안 일봉 있는 날 중 분봉 0행
             self._rows = []
@@ -114,9 +121,12 @@ class FakeCursor:
 
 
 class FakeConn:
-    def __init__(self, tasso_rows=(), tasso_error=None, daily=None, minute_days=(), existing=None):
+    def __init__(self, tasso_rows=(), tasso_error=None, daily=None, minute_days=(), existing=None,
+                 focus3_rows=(), focus3_error=None):
         self.tasso_rows = list(tasso_rows)
         self.tasso_error = tasso_error
+        self.focus3_rows = list(focus3_rows)     # screener_snapshots 3전략 후보 [(code, 첫 후보일)]
+        self.focus3_error = focus3_error
         self.daily = daily or {}                 # code -> [(iso, volume)]
         self.minute_days = set(minute_days)      # {(code, 'YYYYMMDD')} — 분봉 있는 날
         self.existing = existing or {}           # (code, ymd) -> 적재 직전 재확인 행수
@@ -153,7 +163,10 @@ def env(monkeypatch):
 
     def _full(code, ymd, sel):
         st["full_calls"].append((code, ymd, sel))
-        return st["full"].get(code, bars(ymd, DAY_TIMES))
+        v = st["full"].get(code, bars(ymd, DAY_TIMES))
+        if isinstance(v, Exception):
+            raise v
+        return v
 
     def _past(div_code="J", stock_code="", input_hour="", input_date="", past_data_yn="Y", **k):
         st["past_calls"].append((stock_code, input_date, input_hour))
@@ -459,3 +472,126 @@ def test_summary_info_line_is_single(env):
     assert len(infos) == 1
     assert "태쏘 후보 창 2026-09-01~2026-09-30 1종목(top300 밖 +1)" in infos[0]
     assert f"결손일 보충(~{P}) 대상 2종목-일(1종목) → 성공 2({2 * FULL_DAY}행)" in infos[0]
+
+
+# ─────────────────────────── focus3(3전략 후보 · 10-01 사전등록 v1.0) ───────────────────────────
+D28, D29 = date(2026, 9, 28), date(2026, 9, 29)
+F3_KEYS = ("focus3_codes", "focus3_rows", "focus3_date_rejected", "focus3_fetch_empty",
+           "focus3_incomplete", "focus3_error")
+
+
+def infos(st):
+    return [m for lvl, m in st["log"].lines if lvl == "info"]
+
+
+def test_focus3_union_excludes_top300_and_tasso_dedups_and_runs_after_main_loop(env):
+    env["top"] = ["000100", "000200"]
+    env["conn"] = FakeConn(tasso_rows=[("000200", D29), ("0039P0", D29)],
+                           focus3_rows=[("000100", D29),      # top300 과 중복 → 본 루프 몫
+                                        ("0039P0", D28),      # 태쏘 extra 와 중복 → 본 루프 몫
+                                        ("0004V0", D29),      # 영숫자 — 걸러지면 안 된다
+                                        ("F00001 ", D29), ("F00001", D28)])   # strip 뒤 중복
+    out = mc.collect_minute(TODAY)
+    assert [c for c, _, _ in env["full_calls"]] == ["000100", "000200", "0039P0", "0004V0", "F00001"]
+    assert out["codes"] == 5 and out["rows"] == 5 * FULL_DAY            # codes·rows 는 값만 커진다
+    assert out["focus3_codes"] == 2 and out["focus3_rows"] == 2 * FULL_DAY
+    assert out["date_rejected"] == 0 and out["tasso"]["codes"] == 2 and out["tasso"]["extra"] == 1
+    assert all(out[k] == 0 for k in F3_KEYS[2:])
+    assert len(infos(env)) == 1
+    assert ("focus3 후보 창 2026-08-31~2026-09-30 4종목(top300·태쏘 밖 +2) → 760행 · 빈 응답 0"
+            " · 날짜 거부 0 · 불완전 0 · 오류 0") in infos(env)[0]
+
+
+def test_select_focus3_codes_window_21_three_strategies_only_and_min_first_date():
+    assert mu.FOCUS3_WINDOW_DAYS == 21                                   # §7 결정 1(a)
+    conn = FakeConn(focus3_rows=[("005930 ", D28), ("0004V0", D29), ("005930", date(2026, 9, 23))])
+    wf, rows = mu.select_focus3_codes(conn, TODAY_D)
+    assert wf == date(2026, 8, 31)                                      # 09-30 을 1일째로 21거래일
+    assert rows == [("005930", date(2026, 9, 23)), ("0004V0", D29)]
+    sql, params = conn.executed[0]
+    assert params == (date(2026, 8, 31), TODAY_D) and conn.rollbacks == 1   # 읽기 전용
+    where = sql.split("WHERE")[1]
+    for name in ("book_pullback_ma20", "daytrading_3methods_breakout", "minervini_volume_dryup"):
+        assert f"'{name}'" in where
+    assert where.count("'") == 6                                        # 3전략만(§7 결정 3(a))
+
+
+def test_focus3_window_on_go_live_day_is_0903_with_real_calendar():
+    # 사전등록 §5-1: 10-06 발효일 창 = scan_date 09-03~ (10-05 대체공휴일·추석·주말 건너뜀)
+    assert mu.tasso_window_start(date(2026, 10, 6), mu.FOCUS3_WINDOW_DAYS) == date(2026, 9, 3)
+
+
+def test_focus3_counters_are_separate_from_main_loop(env):
+    env["top"] = ["000100"]
+    env["conn"] = FakeConn(focus3_rows=[("F00001", D29), ("F00002", D29), ("F00003", D29), ("F00004", D29)])
+    env["full"] = {
+        "000100": bars(TODAY, minutes("0915", 245)),     # 본 루프 불완전 → focus3 카운터에 안 들어간다
+        "F00001": bars(P, minutes("1331", 109)),         # 다른 날 응답(거래정지 모양) → focus3_date_rejected
+        "F00002": pd.DataFrame(),                        # 빈 응답 → focus3_fetch_empty
+        "F00003": bars(TODAY, minutes("0900", 300)),     # 13:59 끝 → focus3_incomplete(적재는 함)
+    }
+    out = mc.collect_minute(TODAY)
+    assert out["date_rejected"] == 0                                    # 기존 키 의미 불변
+    assert (out["focus3_codes"], out["focus3_date_rejected"], out["focus3_fetch_empty"],
+            out["focus3_incomplete"], out["focus3_error"]) == (4, 1, 1, 1, 0)
+    assert out["focus3_rows"] == 300 + FULL_DAY and out["rows"] == 245 + 300 + FULL_DAY
+    assert [(c, d) for c, d, _ in env["replaced"]] == [("000100", TODAY), ("F00003", TODAY), ("F00004", TODAY)]
+    assert any("focus3 F00001 요청일" in m for m in warnings(env))
+
+
+def test_focus3_one_stock_exception_does_not_stop_others_or_tasso_backfill(env):
+    env["conn"] = FakeConn(tasso_rows=[("T00001", D29)], daily={"T00001": daily_rows([P])},
+                           focus3_rows=[("F00001", D29), ("F00002", D29), ("F00003", D29)])
+    env["full"] = {"F00002": RuntimeError("KIS boom")}
+    before = env["conn"].rollbacks
+    out = mc.collect_minute(TODAY)
+    assert out["focus3_error"] == 1 and out["focus3_rows"] == 2 * FULL_DAY
+    assert [c for c, d, _ in env["replaced"] if d == TODAY] == ["T00001", "F00001", "F00003"]
+    assert out["tasso"]["backfill"]["ok"] == 1 and backfilled(env) == [("T00001", P)]
+    assert env["conn"].rollbacks > before + 2            # 태쏘·focus3 조회 각 1 + 예외 1 (+ 보충)
+    assert any("focus3 F00002 수집 오류: RuntimeError: KIS boom" in m for m in warnings(env))
+
+
+def test_focus3_codes_are_not_passed_to_backfill(env):
+    env["conn"] = FakeConn(tasso_rows=[("T00001", D28)], focus3_rows=[("F00001", D28)],
+                           daily={"T00001": daily_rows(["20260928", P]), "F00001": daily_rows(["20260928", P])})
+    out = mc.collect_minute(TODAY)
+    sql, params = next(x for x in env["conn"].executed if "JOIN daily_prices" in x[0])
+    assert params["codes"] == ["T00001"]                                 # 섞지 않는다(§4 · 결정 2(a))
+    assert out["tasso"]["backfill"]["target"] == 2
+    assert sorted(backfilled(env)) == [("T00001", "20260928"), ("T00001", P)]
+    assert [(c, d) for c, d, _ in env["replaced"] if c == "F00001"] == [("F00001", TODAY)]   # 전방 수집만
+
+
+def test_focus3_query_failure_keeps_top300_tasso_and_backfill(env):
+    env["top"] = ["000100"]
+    env["conn"] = FakeConn(tasso_rows=[("T00001", D29)], daily={"T00001": daily_rows([P])},
+                           focus3_error=RuntimeError('relation "screener_snapshots" does not exist'))
+    out = mc.collect_minute(TODAY)
+    assert [c for c, _, _ in env["full_calls"]] == ["000100", "T00001"]
+    assert out["codes"] == 2 and all(out[k] == 0 for k in F3_KEYS)
+    assert out["tasso"]["backfill"]["ok"] == 1
+    w = [m for m in warnings(env) if "focus3 후보 조회 실패" in m]
+    assert len(w) == 1 and "🔴focus3 후보 조회 실패" in infos(env)[0]
+
+
+def test_focus3_master_switch_zero_disables_query_and_loop(env, monkeypatch):
+    monkeypatch.setattr(mc, "FOCUS3_WINDOW_DAYS", 0)
+    env["top"] = ["000100"]
+    env["conn"] = FakeConn(focus3_rows=[("F00001", D29)])
+    out = mc.collect_minute(TODAY)
+    assert not [x for x in env["conn"].executed if "screener_snapshots" in x[0]]
+    assert [c for c, _, _ in env["full_calls"]] == ["000100"]
+    assert out["codes"] == 1 and all(out[k] == 0 for k in F3_KEYS)
+    assert "focus3 꺼짐(FOCUS3_WINDOW_DAYS=0)" in infos(env)[0]
+
+
+def test_focus3_respects_limit_after_main_codes(env):
+    env["top"] = ["000100", "000200"]
+    env["conn"] = FakeConn(tasso_rows=[("T00001", D29)],
+                           focus3_rows=[("F00001", D29), ("F00002", D29), ("F00003", D29)])
+    out = mc.collect_minute(TODAY, limit=4)
+    assert [c for c, _, _ in env["full_calls"]] == ["000100", "000200", "T00001", "F00001"]
+    assert out["codes"] == 4 and out["focus3_codes"] == 1
+    out = mc.collect_minute(TODAY, limit=2)
+    assert out["codes"] == 2 and out["focus3_codes"] == 0

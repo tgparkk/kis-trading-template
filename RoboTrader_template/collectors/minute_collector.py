@@ -1,5 +1,5 @@
 # collectors/minute_collector.py
-"""분봉 수집 오케스트레이터 — top300 + 태쏘 후보 → 당일 분봉 fetch → minute_candles.
+"""분봉 수집 오케스트레이터 — top300 + 태쏘 후보 + 3전략 후보 → 당일 분봉 fetch → minute_candles.
 
 usage:
   python -m collectors.minute_collector --limit 5
@@ -28,6 +28,17 @@ usage:
      부분 재적재한다(system_monitor 휴장일 게이트 주석의 「최대 위험」과 같은 기전).
      top300(당일 거래대금 순위)엔 거래정지 종목이 없지만 태쏘 후보엔 있을 수 있다.
   반환 dict 의 ``codes``(수집 대상 종목 수)·``rows``(당일 적재 행수) 의미는 그대로다.
+
+2026-10-01: 🔒 사전등록 `docs/prereg_2026-10-01_minute_universe_focus3_candidates.md` v1.0 —
+  「3전략 후보」(`screener_snapshots` 의 ma20·daytrading·minervini 룰 통과 · 최근 21거래일 scan_date)를 추가.
+  ① 대상 = 3전략 후보 − top300 − 태쏘 extra. 기존 top300·태쏘 루프 «뒤»의 focus3 전용 루프에서 받는다.
+  ② 보충 없음(전방 수집만) — scan_date D 행은 D+1 09:00 에 써지므로 매수일(D+1) EOD 루프가 바로 받는다.
+     focus3 목록은 `_backfill_missing_days` 에 넘기지 않는다(태쏘 집합·상한 60 과 섞지 않음).
+  ③ 종목 단위 try/except — 한 종목 예외가 나머지 focus3·태쏘 보충을 막지 않는다. 요청일 필터(위 ③)는 같다.
+  ④ 결과 dict 별도 키 ``focus3_codes``(= focus3 루프 대상 M)·``focus3_rows``·``focus3_date_rejected``·
+     ``focus3_fetch_empty``(빈 응답)·``focus3_incomplete``(불완전 봉 WARNING)·``focus3_error``.
+     ``codes``·``rows`` 는 값만 focus3 만큼 커진다 · 기존 ``date_rejected`` 는 top300·태쏘 루프만(의미 불변).
+  ⑤ 마스터 스위치 = `minute_universe.FOCUS3_WINDOW_DAYS`(0 이면 조회·수집 모두 끔).
 """
 import argparse
 import os
@@ -41,7 +52,8 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db.kis_db_connection import KisDbConnection  # noqa: E402
-from collectors.minute_universe import select_tasso_codes, select_top_volume  # noqa: E402
+from collectors.minute_universe import (  # noqa: E402
+    FOCUS3_WINDOW_DAYS, select_focus3_codes, select_tasso_codes, select_top_volume)
 from collectors.minute_writer import df_to_minute_rows, replace_minute_day  # noqa: E402
 from api import kis_chart_api  # noqa: E402
 from utils.korean_holidays import get_previous_trading_day  # noqa: E402
@@ -82,13 +94,15 @@ def _same_day(df, ymd: str):
     return df[df["date"].astype(str) == ymd]
 
 
-def _warn_if_incomplete(code: str, ymd: str, rows: list) -> None:
-    """적재하는 하루치의 첫·마지막 봉이 정상 범위 밖이면 WARNING 1줄(적재는 막지 않는다)."""
+def _warn_if_incomplete(code: str, ymd: str, rows: list) -> bool:
+    """적재하는 하루치의 첫·마지막 봉이 정상 범위 밖이면 WARNING 1줄 + True(적재는 막지 않는다)."""
     times = [str(r["time"]).zfill(6) for r in rows]
     first, last = min(times), max(times)
     if first >= _FULL_DAY_FIRST_BEFORE or last < _FULL_DAY_LAST_FROM:
         logger.warning(f"[minute] {code} {ymd} 하루치 불완전 의심 — 첫 봉 {first} · 마지막 봉 {last}"
                        f" · {len(rows)}봉 (적재는 함)")
+        return True
+    return False
 
 
 def _backfill_one(conn, code: str, ymd: str) -> tuple:
@@ -189,13 +203,20 @@ def collect_minute(target_date: str = None, top_n: int = 300, limit: int = None)
     top = select_top_volume(top_n)
     total = 0
     date_rejected = 0
+    f3 = {"rows": 0, "date_rejected": 0, "fetch_empty": 0, "incomplete": 0, "error": 0}
     with KisDbConnection.get_connection() as conn:
         window_from, tasso = select_tasso_codes(conn, today)
         top_set = set(top)
         extra = [c for c, _ in (tasso or []) if c not in top_set]
         codes = top + extra
+        # focus3 = 3전략 후보 − top300 − 태쏘 extra · 마스터 스위치 0 이면 조회도 안 한다.
+        f3_from, f3_all = (select_focus3_codes(conn, today, FOCUS3_WINDOW_DAYS)
+                           if FOCUS3_WINDOW_DAYS > 0 else (None, []))
+        seen = set(codes)
+        focus3 = [c for c, _ in (f3_all or []) if c not in seen]
         if limit:
             codes = codes[:limit]
+            focus3 = focus3[:max(0, limit - len(codes))]
         for code in codes:
             df = kis_chart_api.get_full_trading_day_data(code, ymd, "153000")
             if df is None or len(df) == 0:
@@ -210,6 +231,33 @@ def collect_minute(target_date: str = None, top_n: int = 300, limit: int = None)
             if rows:
                 _warn_if_incomplete(code, ymd, rows)
                 total += replace_minute_day(conn, code, rows[0]["trade_date"], rows)
+
+        # focus3 전용 루프 — 본 루프와 같은 요청일 필터 · 카운터는 별도 키(본 루프 date_rejected 에 안 섞는다).
+        f3_t0 = time.monotonic()
+        for code in focus3:
+            try:
+                df = kis_chart_api.get_full_trading_day_data(code, ymd, "153000")
+                if df is None or len(df) == 0:
+                    f3["fetch_empty"] += 1
+                    continue
+                same = _same_day(df, ymd)
+                if same.empty:
+                    f3["date_rejected"] += 1
+                    logger.warning(f"[minute] focus3 {code} 요청일 {ymd} 봉 0 — 다른 날 응답이라 적재 안 함"
+                                   f"(폴백/거래정지 · {len(df)}봉)")
+                    continue
+                rows = df_to_minute_rows(code, same)
+                if rows:
+                    f3["incomplete"] += _warn_if_incomplete(code, ymd, rows)
+                    f3["rows"] += replace_minute_day(conn, code, rows[0]["trade_date"], rows)
+            except Exception as e:  # noqa: BLE001 — 한 종목 실패가 나머지 focus3·태쏘 보충을 막지 않게
+                try:
+                    conn.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
+                f3["error"] += 1
+                logger.warning(f"[minute] focus3 {code} 수집 오류: {type(e).__name__}: {e}")
+        f3_sec = time.monotonic() - f3_t0
 
         info = {"window": f"{window_from.isoformat() if window_from else '-'}~{today.isoformat()}",
                 "codes": len(tasso or []), "extra": len(extra)}
@@ -234,8 +282,16 @@ def collect_minute(target_date: str = None, top_n: int = 300, limit: int = None)
         f"({bf.get('rows', 0)}행) · 미적재 {bf.get('skip', {})}"
         + (f" · 🔴{info['error']}" if "error" in info else "")
         + (f" · 🔴보충 실패 {bf['error']}" if "error" in bf else "")
+        + (" · focus3 꺼짐(FOCUS3_WINDOW_DAYS=0)" if FOCUS3_WINDOW_DAYS <= 0 else
+           f" · focus3 후보 창 {f3_from.isoformat() if f3_from else '-'}~{today.isoformat()}"
+           f" {len(f3_all or [])}종목(top300·태쏘 밖 +{len(focus3)}) → {f3['rows']}행 · 빈 응답 {f3['fetch_empty']}"
+           f" · 날짜 거부 {f3['date_rejected']} · 불완전 {f3['incomplete']} · 오류 {f3['error']} · 루프 {f3_sec:.0f}초"
+           + (" · 🔴focus3 후보 조회 실패" if f3_all is None else ""))
     )
-    return {"codes": len(codes), "rows": total, "date_rejected": date_rejected, "tasso": info}
+    return {"codes": len(codes) + len(focus3), "rows": total + f3["rows"], "date_rejected": date_rejected,
+            "tasso": info, "focus3_codes": len(focus3), "focus3_rows": f3["rows"],
+            "focus3_date_rejected": f3["date_rejected"], "focus3_fetch_empty": f3["fetch_empty"],
+            "focus3_incomplete": f3["incomplete"], "focus3_error": f3["error"]}
 
 
 if __name__ == "__main__":
