@@ -550,11 +550,14 @@ def _volume_fallback_bot(folder_key="rs_leader", class_name="RSLeaderStrategy"):
 
 
 class TestI3RealMoneyVolumeFallbackIsLoud:
-    """I3: B2 로 인스턴스가 스냅샷을 «소비만» 하게 된 뒤, 페이퍼 봇이 스냅샷을
-    못 만들면 단일 전략 경로는 거래량 순위 폴백으로 빠진다 — «전략 진입 룰을 거치지
-    않은» 종목을 실탄으로 산다. 다중 전략 경로는 같은 상황을 ERROR 로 올리는데
-    (`[E6]`) 단일 경로에는 그 경고가 없었다. 폴백 «동작» 은 결재 대상이라 그대로 두고,
-    무음만 없앤다."""
+    """I3(2026-09-15): 인스턴스가 단일 전략 경로로 거래량 순위 폴백에 빠지면 «전략 진입 룰을
+    거치지 않은» 종목을 실탄으로 산다 — 당시엔 폴백 «동작» 을 결재 대상으로 남기고 무음만
+    없앴다(`[E6-실전]` ERROR).
+
+    현재(2026-10-02 B-1 · docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md): 사장님 결정으로
+    인스턴스는 거래량 폴백을 «타지 않는다» — 전략 수와 무관하게 페이퍼의 D-1 스냅샷을 기다려
+    읽고, 끝내 없으면 그날 신규 후보 0(fail-closed) + 경보. 인스턴스에서 `[E6-실전]` 줄은
+    도달 불가가 됐다. 페이퍼(default) 단일 경로의 종전 동작은 아래 대칭 테스트가 고정한다."""
 
     @pytest.mark.asyncio
     async def test_instance_never_takes_volume_fallback(self, monkeypatch):

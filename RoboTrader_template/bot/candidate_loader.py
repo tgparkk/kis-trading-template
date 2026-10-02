@@ -30,6 +30,8 @@ class CandidateLoader:
         self._snapshot_wait_deadline: float = 0.0
         self._snapshot_wait_next_at: float = 0.0
         self._snapshot_wait_warned: bool = False
+        # 스냅샷은 «있음» 판정인데 후보 조회 결과가 0건이었던 전략(경보 문구 구분용).
+        self._snapshot_wait_seen_empty: set = set()
 
     @property
     def snapshot_wait_pending(self) -> bool:
@@ -316,6 +318,7 @@ class CandidateLoader:
         self._snapshot_wait_deadline = now + REAL_INSTANCE_SNAPSHOT_WAIT_MAX_SEC
         self._snapshot_wait_next_at = now
         self._snapshot_wait_warned = False
+        self._snapshot_wait_seen_empty = set()
         await self.poll_snapshot_wait()
 
     async def poll_snapshot_wait(self) -> None:
@@ -323,6 +326,11 @@ class CandidateLoader:
 
         main 루프가 매 반복 부른다(대기 중일 때만). 🔑 예외를 밖으로 내지 않는다 —
         같은 반복에서 데이터 수집·보유 감시(손절)가 뒤따른다.
+
+        전략은 «후보가 실제로 등록된 뒤»에만 대기 목록에서 뺀다. 「스냅샷 있음」 판정 직후
+        후보 조회가 0건이면(두 조회 사이 DB 순간 오류는 저장소가 빈 결과로 삼킨다 ·
+        안전필터 예외는 fail-closed 로 []) 그 전략은 대기 목록에 남아 상한까지 재확인되고,
+        상한에 닿으면 같은 경보로 끝난다(그날 룰 통과가 진짜 0건이어도 결과 = 후보 0 · 경보 1회).
         """
         if not self._snapshot_wait_remaining:
             return
@@ -343,37 +351,53 @@ class CandidateLoader:
                     ready = False
                 if not ready:
                     continue
-                self._snapshot_wait_remaining.remove(name)
                 try:
                     # 페이퍼와 같은 함수(1~20위 → 안전필터 → 목표 건수) — 재정렬만 생략.
-                    pool[name] = selector._fetch_candidates_for_strategy(
+                    cands = selector._fetch_candidates_for_strategy(
                         name, self._snapshot_wait_max_candidates, sector_rerank=False
                     )
                 except Exception as e:
-                    self.logger.error(
-                        f"[B1-실전] {name}: 스냅샷 후보 조회 «실패» → 금일 이 전략 신규 매수 0 "
-                        f"(fail-closed): {e}"
+                    self.logger.warning(f"[B1-실전] {name}: 스냅샷 후보 조회 실패 → 대기 유지·재확인: {e}")
+                    cands = []
+                if cands:
+                    pool[name] = cands
+                elif name not in self._snapshot_wait_seen_empty:
+                    # «있음 + 0건» — 대기 목록에 남긴다(상한까지 재확인 → 그래도 0건이면 경보).
+                    self._snapshot_wait_seen_empty.add(name)
+                    self.logger.warning(
+                        f"[B1-실전] {name}: D-1 스냅샷은 있는데 후보 조회 결과 0건 — 대기 유지 "
+                        f"({REAL_INSTANCE_SNAPSHOT_POLL_SEC}초 간격 재확인 · 상한까지)"
                     )
-                    pool[name] = []
             if pool:
                 await self._register_real_instance_pool(pool, waited)
+                for name in pool:
+                    self._snapshot_wait_remaining.remove(name)
         except Exception as e:
-            self.logger.error(f"[B1-실전] 스냅샷 대기 처리 오류(다음 재확인에서 계속): {e}")
+            self.logger.error(
+                f"[B1-실전] 스냅샷 대기 처리 오류 — 미등록 전략은 대기 목록에 남아 "
+                f"상한까지 재확인한다: {e}"
+            )
 
         if not self._snapshot_wait_remaining:
             return
         if now >= self._snapshot_wait_deadline:
             missing = list(self._snapshot_wait_remaining)
+            seen_empty = [n for n in missing if n in self._snapshot_wait_seen_empty]
+            absent = [n for n in missing if n not in self._snapshot_wait_seen_empty]
             self._snapshot_wait_remaining = []
             await self._alert_real_instance_no_candidates(
-                f"[B1-실전] 🔴 D-1 스냅샷 {waited:.0f}초 대기 후에도 없음 → {missing} 금일 신규 후보 0 "
+                f"[B1-실전] 🔴 {waited:.0f}초 대기 후에도 후보 0 → {missing} 금일 신규 후보 0 "
                 f"(fail-closed · 거래량 폴백 없음 · 보유 매도 감시는 계속). "
-                f"페이퍼 봇의 09:00 스냅샷 생성을 확인할 것 — 「그날 룰 통과 0건」도 같은 모습이다."
+                f"D-1 스냅샷 없음 {absent}: 페이퍼 봇의 09:00 스냅샷 생성을 확인할 것 — "
+                f"「그날 룰 통과 0건」도 같은 모습이다. "
+                f"스냅샷은 있으나 조회 결과 0건 {seen_empty}: DB 조회 오류·안전필터 전 종목 제외 의심."
             )
-        elif not self._snapshot_wait_warned:
+        elif not self._snapshot_wait_warned and any(
+                n not in self._snapshot_wait_seen_empty for n in self._snapshot_wait_remaining):
             self._snapshot_wait_warned = True
+            absent = [n for n in self._snapshot_wait_remaining if n not in self._snapshot_wait_seen_empty]
             self.logger.warning(
-                f"[B1-실전] D-1 스냅샷 아직 없음 {self._snapshot_wait_remaining} — "
+                f"[B1-실전] D-1 스냅샷 아직 없음 {absent} — "
                 f"{REAL_INSTANCE_SNAPSHOT_POLL_SEC}초 간격 재확인 · 상한 "
                 f"{REAL_INSTANCE_SNAPSHOT_WAIT_MAX_SEC // 60}분 (그동안 신규 매수 없음 · 보유 감시는 계속)"
             )

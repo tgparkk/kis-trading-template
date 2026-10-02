@@ -238,7 +238,8 @@ class TestB1RealInstanceSnapshotPath:
         assert len(bot.trading_manager.calls) == 2
 
     @pytest.mark.asyncio
-    async def test_fetch_error_is_fail_closed_without_raise(self, monkeypatch, clock):
+    async def test_fetch_error_keeps_waiting_without_raise(self, monkeypatch, clock):
+        """후보 조회 예외 → 예외는 안 새고, 그 전략은 대기 목록에 남는다(리뷰 🟡1)."""
         _set_instance(monkeypatch, "daytrading")
         sel = _FakeSelector({DT_KEY: [True]})
         sel._fetch_candidates_for_strategy = MagicMock(side_effect=RuntimeError("boom"))
@@ -247,8 +248,86 @@ class TestB1RealInstanceSnapshotPath:
 
         await loader._load_screener_candidates()
         assert bot.trading_manager.calls == []
-        assert loader.snapshot_wait_pending is False
+        assert loader.snapshot_wait_pending is True
         _assert_no_fallback(bot, sel)
+        bot.telegram.notify_error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ready_but_empty_keeps_waiting_then_registers(self, monkeypatch, clock):
+        """(a) 「있음」 판정 + 조회 0건(두 조회 사이 DB 순간 오류 → 저장소가 빈 결과로 삼킴) →
+        대기 유지 → 다음 재확인에서 후보가 나오면 정상 등록."""
+        _set_instance(monkeypatch, "daytrading")
+        sel = _FakeSelector({DT_KEY: [True]})
+        results = [[], [_cand("111111"), _cand("222222")]]
+        sel._fetch_candidates_for_strategy = MagicMock(side_effect=lambda *a, **k: results.pop(0))
+        bot = _bot([DT_KEY], sel)
+        loader = _loader(bot)
+
+        await loader._load_screener_candidates()
+        assert loader.snapshot_wait_pending is True
+        assert bot.trading_manager.calls == []
+        warns = [m for m in _msgs(loader.logger.warning) if "후보 조회 결과 0건" in m]
+        assert len(warns) == 1
+
+        clock.t += REAL_INSTANCE_SNAPSHOT_POLL_SEC
+        await loader.poll_snapshot_wait()
+        assert loader.snapshot_wait_pending is False
+        assert [c["stock_code"] for c in bot.trading_manager.calls] == ["111111", "222222"]
+        assert sel._fetch_candidates_for_strategy.call_args_list == [
+            call(DT_KEY, 10, sector_rerank=False)] * 2
+        _assert_no_fallback(bot, sel)
+        bot.telegram.notify_error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ready_but_empty_until_deadline_alerts_once(self, monkeypatch, clock):
+        """(b) 「있음 + 0건」이 상한까지 → 후보 0 · 경보 1회(ERROR + 텔레그램) · 폴백 0."""
+        _set_instance(monkeypatch, "daytrading")
+        sel = _FakeSelector({DT_KEY: [True]})
+        sel._fetch_candidates_for_strategy = MagicMock(return_value=[])
+        bot = _bot([DT_KEY], sel)
+        loader = _loader(bot)
+
+        await loader._load_screener_candidates()
+        polls = 1
+        while loader.snapshot_wait_pending:
+            clock.t += REAL_INSTANCE_SNAPSHOT_POLL_SEC
+            await loader.poll_snapshot_wait()
+            polls += 1
+            assert polls < 1000
+        assert polls == REAL_INSTANCE_SNAPSHOT_WAIT_MAX_SEC // REAL_INSTANCE_SNAPSHOT_POLL_SEC + 1
+
+        assert bot.trading_manager.calls == []
+        _assert_no_fallback(bot, sel)
+        errors = [m for m in _msgs(loader.logger.error) if "[B1-실전]" in m]
+        assert len(errors) == 1 and "fail-closed" in errors[0] and "조회 결과 0건 ['" in errors[0]
+        bot.telegram.notify_error.assert_awaited_once()
+        # 「있음 + 0건」 경고는 한 번, 「아직 없음」 경고는 안 나온다(스냅샷은 있었다)
+        assert len([m for m in _msgs(loader.logger.warning) if "후보 조회 결과 0건" in m]) == 1
+        assert not [m for m in _msgs(loader.logger.warning) if "스냅샷 아직 없음" in m]
+
+    @pytest.mark.asyncio
+    async def test_register_error_keeps_strategy_waiting(self, monkeypatch, clock):
+        """⚪3: 등록 도중 예외 → 그 전략은 대기 목록에 남아 다음 재확인에서 다시 등록된다."""
+        _set_instance(monkeypatch, "daytrading")
+        sel = _FakeSelector({DT_KEY: [True]})
+        bot = _bot([DT_KEY], sel)
+        real_add = bot.trading_manager.add_selected_stock
+        fail = {"left": 1}
+
+        async def flaky_add(**kw):
+            if fail["left"]:
+                fail["left"] -= 1
+                raise RuntimeError("transient")
+            return await real_add(**kw)
+        bot.trading_manager.add_selected_stock = flaky_add
+        loader = _loader(bot)
+
+        await loader._load_screener_candidates()
+        assert loader.snapshot_wait_pending is True
+        clock.t += REAL_INSTANCE_SNAPSHOT_POLL_SEC
+        await loader.poll_snapshot_wait()
+        assert loader.snapshot_wait_pending is False
+        assert [c["stock_code"] for c in bot.trading_manager.calls] == ["111111", "222222"]
 
     @pytest.mark.asyncio
     async def test_two_strategy_instance_also_snapshot_path_per_strategy(self, monkeypatch, clock):
