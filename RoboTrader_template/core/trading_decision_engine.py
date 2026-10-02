@@ -22,6 +22,32 @@ if TYPE_CHECKING:
     from core.fund_manager import FundManager
 
 
+def resolve_strategy_tp_sl(strategy) -> Tuple[Optional[float], Optional[float]]:
+    """소유 전략 `config.yaml` risk_management 의 (익절률, 손절률). 못 찾으면 그 칸은 None.
+
+    해소 규칙은 `execute_virtual_buy` 3순위와 같다 — `_pct` 우선, 레거시 `_ratio` 폴백.
+    실전 매수·실전 복원 전용이다(B-2 · docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md).
+    가상 경로의 같은 블록은 페이퍼 동결 기간이라 이 함수로 바꾸지 않는다.
+    """
+    cfg = getattr(strategy, 'config', None) if strategy is not None else None
+    if not isinstance(cfg, dict):
+        return None, None
+    rm = cfg.get('risk_management') or {}
+    if not isinstance(rm, dict):
+        return None, None
+    tp = rm.get('take_profit_pct')
+    if tp is None:
+        tp = rm.get('take_profit_ratio')
+    sl = rm.get('stop_loss_pct')
+    if sl is None:
+        sl = rm.get('stop_loss_ratio')
+    try:
+        return (float(tp) if tp is not None else None,
+                float(sl) if sl is not None else None)
+    except (TypeError, ValueError):
+        return None, None
+
+
 class TradingDecisionEngine:
     """
     매매 판단 엔진 (템플릿)
@@ -497,6 +523,13 @@ class TradingDecisionEngine:
             if quantity <= 0 or buy_price <= 0: return False
             from core.trading_stock_manager import TradingStockManager
             if isinstance(self.trading_manager, TradingStockManager):
+                # B-2: 실전도 소유 전략 config 의 tp/sl 로 감시한다(종전엔 TradingStock 기본값
+                # +15%/−10%). 주문 «전» 에 심어 어떤 체결 경로(완전·부분·타임아웃)로 POSITIONED 가
+                # 돼도 같은 값이다. 실패해도 매수는 막지 않는다(종전 값 유지 + WARNING).
+                try:
+                    self._apply_owner_tp_sl_for_real_buy(trading_stock)
+                except Exception as e:
+                    self.logger.warning(f"[B2-실전] {trading_stock.stock_code} tp/sl 주입 실패 → 종전 값 유지: {e}")
                 # 소유 전략을 객체에서 직접 읽어 전달(표기-불변) — 다중소유 종목의
                 # 매수 실행 레그 오귀속 차단(execute_real_sell 와 대칭, 2026-07-23).
                 ok = await self.trading_manager.execute_buy_order(
@@ -509,6 +542,39 @@ class TradingDecisionEngine:
         except Exception as e:
             self.logger.error(f"매수오류: {e}")
             return False
+
+    def _apply_owner_tp_sl_for_real_buy(self, trading_stock) -> None:
+        """실전 매수 슬롯에 소유 전략 config 의 tp/sl 을 심는다(B-2). 해소 못 하면 종전 값 유지.
+
+        소유 전략 해소: 폴더키 → 클래스명 → 슬롯의 전략 인스턴스 → (전략 ≤1개일 때만) self.strategy.
+        다전략에서 추측은 오귀속이라 하지 않는다(order_completion_handler._resolve_owner_strategy 와 같은 원칙).
+        """
+        code = trading_stock.stock_code
+        strategies_by_key = getattr(self, 'strategies_by_key', None) or {}
+        owner_key = getattr(trading_stock, 'owner_strategy_name', '') or ''
+        owner = strategies_by_key.get(owner_key) if isinstance(owner_key, str) and owner_key else None
+        if owner is None and isinstance(owner_key, str) and owner_key:
+            owner = next((s for s in strategies_by_key.values()
+                          if getattr(s, 'name', None) == owner_key), None)
+        if owner is None:
+            owner = getattr(trading_stock, 'owner_strategy', None)
+        if owner is None and len(strategies_by_key) <= 1:
+            owner = getattr(self, 'strategy', None)
+
+        tp, sl = resolve_strategy_tp_sl(owner)
+        if tp is not None:
+            trading_stock.target_profit_rate = tp
+        if sl is not None:
+            trading_stock.stop_loss_rate = sl
+        if tp is None or sl is None:
+            self.logger.warning(
+                f"[B2-실전] {code} 소유 전략({owner_key!r}) config tp/sl 해소 실패 → 못 찾은 칸은 종전 값 유지 "
+                f"(tp={tp} sl={sl})"
+            )
+        else:
+            self.logger.info(
+                f"[B2-실전] {code} 익절 {tp * 100:.1f}% 손절 {sl * 100:.1f}% (소유 전략 {owner_key!r} config)"
+            )
 
     async def execute_virtual_buy(self, trading_stock, combined_data,
                                   buy_reason: str, buy_price: float = None,

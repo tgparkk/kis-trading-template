@@ -3,10 +3,15 @@
 스크리너 기반 후보 종목 로딩 및 거래량 순위 폴백 로직을 담당합니다.
 """
 import logging
+import time
 from typing import Dict, List, Optional, TYPE_CHECKING
 
 from utils.logger import setup_logger
-from config.constants import MAX_CANDIDATES_PER_STRATEGY
+from config.constants import (
+    MAX_CANDIDATES_PER_STRATEGY,
+    REAL_INSTANCE_SNAPSHOT_POLL_SEC,
+    REAL_INSTANCE_SNAPSHOT_WAIT_MAX_SEC,
+)
 
 if TYPE_CHECKING:
     from main import DayTradingBot
@@ -18,6 +23,18 @@ class CandidateLoader:
     def __init__(self, bot: 'DayTradingBot') -> None:
         self._bot = bot
         self.logger = setup_logger(__name__)
+        # 실전 인스턴스 D-1 스냅샷 대기 상태(B-1). 페이퍼(default)에서는 늘 비어 있다.
+        self._snapshot_wait_remaining: List[str] = []
+        self._snapshot_wait_max_candidates: int = MAX_CANDIDATES_PER_STRATEGY
+        self._snapshot_wait_started: float = 0.0
+        self._snapshot_wait_deadline: float = 0.0
+        self._snapshot_wait_next_at: float = 0.0
+        self._snapshot_wait_warned: bool = False
+
+    @property
+    def snapshot_wait_pending(self) -> bool:
+        """실전 인스턴스가 D-1 스냅샷을 기다리는 중인가. 페이퍼(default)는 항상 False."""
+        return bool(self._snapshot_wait_remaining)
 
     async def reload_candidates(self) -> None:
         """후보 종목 강제 재로드 (장중 스크리너 파일 갱신 시 사용)
@@ -66,6 +83,14 @@ class CandidateLoader:
                 max_candidates = strategy_config.get('parameters', {}).get('max_candidates', MAX_CANDIDATES_PER_STRATEGY)
             elif hasattr(strategy_config, 'parameters'):
                 max_candidates = strategy_config.parameters.get('max_candidates', MAX_CANDIDATES_PER_STRATEGY)
+
+            # ── 실전 인스턴스 모드 (B-1 · docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md) ──
+            # 전략 수와 무관하게 페이퍼와 같은 D-1 스냅샷 표만 읽는다(대기·재시도 · fail-closed ·
+            # 거래량 폴백 없음). 페이퍼(INSTANCE_ID "default")는 이 분기에 들어오지 않는다.
+            from config import settings as _settings
+            if _settings.INSTANCE_ID != "default":
+                await self._load_candidates_real_instance(max_candidates)
+                return
 
             # ── 다중 전략 모드 ────────────────────────────────────────────────
             if len(self._bot.strategies) > 1:
@@ -256,6 +281,137 @@ class CandidateLoader:
             lines = format_candidate_lines(pool_by_strategy)
             msg = f"후보 종목 등록: {total_registered}종목\n" + "\n".join(lines)
             await self._bot.telegram.notify_system_status(msg)
+        except Exception:
+            pass
+
+    # =========================================================================
+    # 실전 인스턴스 후보 로드 (B-1 · docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md)
+    # =========================================================================
+
+    async def _load_candidates_real_instance(self, max_candidates: int) -> None:
+        """실전 인스턴스: 전략마다 페이퍼와 같은 D-1 스냅샷 경로로 후보를 읽는다.
+
+        - 거래량 순위 폴백·`load_from_screener`(JSON)·`candidate_stocks` 저장·섹터뉴스 재정렬
+          (= `sector_news_rerank_log` 쓰기)을 «부르지 않는다».
+        - 스냅샷이 아직 없으면 기다린다 — 단 메인 루프를 막지 않는다. `_candidates_loaded` 를
+          먼저 True 로 둬 장시작 콜백은 1회만 불리고(daytrading `on_market_open` 이 daily_trades 를
+          0 으로 만든다 — 반복되면 대기 중 체결 카운트가 지워져 페이퍼와 캡이 갈린다),
+          재확인은 main 루프가 `poll_snapshot_wait()` 로 이어 간다. 보유 감시는 매 반복 계속.
+        - 상한(REAL_INSTANCE_SNAPSHOT_WAIT_MAX_SEC)까지 없으면 그 전략은 그날 신규 후보 0
+          (fail-closed) + ERROR + 텔레그램.
+        """
+        self._bot._candidates_loaded = True
+        strategies = getattr(self._bot, 'strategies', None) or {}
+        if not strategies:
+            await self._alert_real_instance_no_candidates(
+                "[B1-실전] 🔴 로드된 전략 0개 — 스냅샷을 읽을 전략이 없다. "
+                "금일 신규 매수 0(fail-closed · 거래량 폴백 없음)."
+            )
+            return
+
+        now = time.monotonic()
+        self._snapshot_wait_remaining = list(strategies.keys())
+        self._snapshot_wait_max_candidates = max_candidates
+        self._snapshot_wait_started = now
+        self._snapshot_wait_deadline = now + REAL_INSTANCE_SNAPSHOT_WAIT_MAX_SEC
+        self._snapshot_wait_next_at = now
+        self._snapshot_wait_warned = False
+        await self.poll_snapshot_wait()
+
+    async def poll_snapshot_wait(self) -> None:
+        """대기 중인 전략의 D-1 스냅샷을 재확인한다(REAL_INSTANCE_SNAPSHOT_POLL_SEC 간격).
+
+        main 루프가 매 반복 부른다(대기 중일 때만). 🔑 예외를 밖으로 내지 않는다 —
+        같은 반복에서 데이터 수집·보유 감시(손절)가 뒤따른다.
+        """
+        if not self._snapshot_wait_remaining:
+            return
+        now = time.monotonic()
+        if now < self._snapshot_wait_next_at:
+            return
+        self._snapshot_wait_next_at = now + REAL_INSTANCE_SNAPSHOT_POLL_SEC
+        waited = now - self._snapshot_wait_started
+
+        try:
+            selector = self._bot.candidate_selector
+            pool: Dict[str, list] = {}
+            for name in list(self._snapshot_wait_remaining):
+                try:
+                    ready = selector.has_prev_day_snapshot(name)
+                except Exception as e:
+                    self.logger.warning(f"[B1-실전] {name}: D-1 스냅샷 확인 실패 → 재시도: {e}")
+                    ready = False
+                if not ready:
+                    continue
+                self._snapshot_wait_remaining.remove(name)
+                try:
+                    # 페이퍼와 같은 함수(1~20위 → 안전필터 → 목표 건수) — 재정렬만 생략.
+                    pool[name] = selector._fetch_candidates_for_strategy(
+                        name, self._snapshot_wait_max_candidates, sector_rerank=False
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        f"[B1-실전] {name}: 스냅샷 후보 조회 «실패» → 금일 이 전략 신규 매수 0 "
+                        f"(fail-closed): {e}"
+                    )
+                    pool[name] = []
+            if pool:
+                await self._register_real_instance_pool(pool, waited)
+        except Exception as e:
+            self.logger.error(f"[B1-실전] 스냅샷 대기 처리 오류(다음 재확인에서 계속): {e}")
+
+        if not self._snapshot_wait_remaining:
+            return
+        if now >= self._snapshot_wait_deadline:
+            missing = list(self._snapshot_wait_remaining)
+            self._snapshot_wait_remaining = []
+            await self._alert_real_instance_no_candidates(
+                f"[B1-실전] 🔴 D-1 스냅샷 {waited:.0f}초 대기 후에도 없음 → {missing} 금일 신규 후보 0 "
+                f"(fail-closed · 거래량 폴백 없음 · 보유 매도 감시는 계속). "
+                f"페이퍼 봇의 09:00 스냅샷 생성을 확인할 것 — 「그날 룰 통과 0건」도 같은 모습이다."
+            )
+        elif not self._snapshot_wait_warned:
+            self._snapshot_wait_warned = True
+            self.logger.warning(
+                f"[B1-실전] D-1 스냅샷 아직 없음 {self._snapshot_wait_remaining} — "
+                f"{REAL_INSTANCE_SNAPSHOT_POLL_SEC}초 간격 재확인 · 상한 "
+                f"{REAL_INSTANCE_SNAPSHOT_WAIT_MAX_SEC // 60}분 (그동안 신규 매수 없음 · 보유 감시는 계속)"
+            )
+
+    async def _register_real_instance_pool(self, pool: Dict[str, list], waited: float) -> None:
+        """실전 인스턴스 후보 등록 — `_load_candidates_multi_strategy` 의 등록 루프와 같은 규약
+        (owner = 폴더키). 페이퍼 경로를 리팩터하지 않으려고 따로 둔다."""
+        registered = 0
+        for strategy_name, candidates in pool.items():
+            for c in candidates:
+                success = await self._bot.trading_manager.add_selected_stock(
+                    stock_code=c.code,
+                    stock_name=c.name,
+                    selection_reason=c.reason,
+                    prev_close=c.prev_close,
+                    owner_strategy=strategy_name,
+                )
+                if success:
+                    ts = self._bot.trading_manager.get_trading_stock(c.code, strategy=strategy_name)
+                    if ts:
+                        ts.strategy_name = strategy_name
+                    registered += 1
+
+        self.logger.info(
+            f"[B1-실전] 스냅샷 후보 등록 완료: {registered}종목 "
+            f"({', '.join(f'{k} {len(v)}' for k, v in pool.items())} · 대기 {waited:.0f}초)"
+        )
+        try:
+            msg = f"후보 종목 등록: {registered}종목\n" + "\n".join(format_candidate_lines(pool))
+            await self._bot.telegram.notify_system_status(msg)
+        except Exception:
+            pass
+
+    async def _alert_real_instance_no_candidates(self, msg: str) -> None:
+        """fail-closed 경보 — ERROR 로그 + 텔레그램(기존 오류 경보 경로)."""
+        self.logger.error(msg)
+        try:
+            await self._bot.telegram.notify_error("후보로드[실전]", msg)
         except Exception:
             pass
 

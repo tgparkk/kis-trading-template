@@ -438,6 +438,9 @@ class DayTradingBot:
                 if not self._candidates_loaded:
                     await self._load_screener_candidates()
                     await self._call_strategy_market_open()
+                elif self.candidate_loader.snapshot_wait_pending:
+                    # 실전 인스턴스 D-1 스냅샷 대기 재확인(B-1) — 페이퍼(default)는 늘 False 라 no-op
+                    await self.candidate_loader.poll_snapshot_wait()
 
                 iteration += 1
 

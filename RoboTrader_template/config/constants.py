@@ -199,6 +199,10 @@ CANDIDATE_MIN_DAILY_DATA = 22        # 전략에 필요한 최소 일봉 수
 CANDIDATE_DAILY_FETCH_DAYS = 120     # 일봉 API 조회 기간 (일, 달력 120 ≈ 영업 85 — Elder 70봉 충족)
 MAX_CANDIDATES_PER_STRATEGY = 20     # 라이브 소비 상한 — E6 는 스냅샷 1~20위만 읽는다. 생성 행 수는 `SCREENER_SNAPSHOT_MAX_ROWS`
 SCREENER_SNAPSHOT_MAX_ROWS = None  # EOD 스냅샷 저장 상한. None = 룰 통과 전부
+# 실전 인스턴스(INSTANCE_ID != "default") 후보 = 페이퍼(default)가 09:00 직후 쓰는 D-1 스냅샷을 «기다려» 읽는다.
+# 근거·수치 = docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md ③ (B-1). 페이퍼는 이 두 값을 읽지 않는다.
+REAL_INSTANCE_SNAPSHOT_POLL_SEC = 10            # 재확인 간격(초) — 전략당 로컬 SELECT 1건, KIS 호출 0
+REAL_INSTANCE_SNAPSHOT_WAIT_MAX_SEC = 15 * 60   # 첫 시도부터 상한(초) — 넘으면 그날 신규 후보 0(fail-closed)
 
 # =============================================================================
 # 트레일링 스톱 설정

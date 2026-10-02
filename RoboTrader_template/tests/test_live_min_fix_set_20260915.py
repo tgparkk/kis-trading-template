@@ -557,18 +557,26 @@ class TestI3RealMoneyVolumeFallbackIsLoud:
     무음만 없앤다."""
 
     @pytest.mark.asyncio
-    async def test_instance_logs_error_on_volume_fallback(self, monkeypatch):
+    async def test_instance_never_takes_volume_fallback(self, monkeypatch):
+        """2026-10-02 사장님 결정(B-1)으로 «폴백 유지»가 «폴백 금지»로 바뀌었다
+        (docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md §④-3 에 미리 적은 예외).
+        인스턴스는 스냅샷 경로만 탄다 — 스냅샷이 없으면 대기(이후 fail-closed)이지
+        거래량 순위·스크리너 JSON 으로 사지 않는다. 상세 = tests/test_real_instance_b1_b2_20261002.py."""
+        from unittest.mock import AsyncMock
         import config.settings as settings
         monkeypatch.setattr(settings, "INSTANCE_ID", "rs_leader", raising=False)
 
         bot = _volume_fallback_bot()
+        bot.candidate_selector.has_prev_day_snapshot = MagicMock(return_value=False)
+        bot.telegram.notify_error = AsyncMock()
         loader = _loader_with_spied_logger(bot)
         await loader._load_screener_candidates()
 
-        errors = [m for m in _msgs(loader.logger.error) if "[E6-실전]" in m]
-        assert len(errors) == 1, f"실전 폴백 ERROR 가 1건이 아니다: {_msgs(loader.logger.error)}"
-        # 폴백 «동작» 은 그대로 — 후보는 여전히 등록된다(결재 전까지 막지 않는다).
-        assert bot.trading_manager.calls, "폴백 동작까지 바뀌었다 — 경고만 추가해야 한다"
+        bot.candidate_selector.load_from_screener.assert_not_called()
+        bot.candidate_selector.select_daily_candidates.assert_not_called()
+        assert not bot.trading_manager.calls, "스냅샷 없이 후보가 등록됐다 — 폴백이 살아 있다"
+        assert loader.snapshot_wait_pending is True
+        assert not [m for m in _msgs(loader.logger.error) if "[E6-실전]" in m]
 
     @pytest.mark.asyncio
     async def test_default_keeps_info_only(self, monkeypatch):
