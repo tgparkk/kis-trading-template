@@ -16,6 +16,7 @@ from config.constants import (
 )
 from db.connection import DatabaseConnection
 from utils.exceptions import LiveStartupAbort
+from core.trading_decision_engine import resolve_strategy_tp_sl
 
 logger = setup_logger(__name__)
 
@@ -845,21 +846,29 @@ class StateRestorer:
         if db_holdings is None or db_holdings.empty:
             return by_owner
         for _, row in db_holdings.iterrows():
+            code = row['stock_code']
+            raw_owner = row.get('strategy', '')
+            owner = raw_owner.strip() if (raw_owner and isinstance(raw_owner, str)) else ""
+            # B-2: 실원장엔 tp/sl 컬럼이 없다(NULL). 소유 전략 config 값(실전 매수와 같은 해소 규칙)을
+            #      쓰고, 그것도 없을 때만 종전 기본값. 기본값이면 _apply_stale_position_check 의
+            #      7거래일+ ±5% 조임이 «실전에만» 걸린다(페이퍼 원장은 tp/sl 을 기록한다).
+            #      (docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md · 이 함수는 실전 복원 전용)
+            cfg_tp, cfg_sl = resolve_strategy_tp_sl(
+                self._resolve_owner_strategy(owner) if owner else None)
+            tp_fallback = cfg_tp if cfg_tp is not None else DEFAULT_TARGET_PROFIT_RATE
+            sl_fallback = cfg_sl if cfg_sl is not None else DEFAULT_STOP_LOSS_RATE
             raw_tp = row.get('target_profit_rate')
             raw_sl = row.get('stop_loss_rate')
             try:
                 tp_val = float(raw_tp) if raw_tp is not None else None
-                tp_rate = tp_val if (tp_val is not None and not math.isnan(tp_val)) else DEFAULT_TARGET_PROFIT_RATE
+                tp_rate = tp_val if (tp_val is not None and not math.isnan(tp_val)) else tp_fallback
             except (ValueError, TypeError, OverflowError):
-                tp_rate = DEFAULT_TARGET_PROFIT_RATE
+                tp_rate = tp_fallback
             try:
                 sl_val = float(raw_sl) if raw_sl is not None else None
-                sl_rate = sl_val if (sl_val is not None and not math.isnan(sl_val)) else DEFAULT_STOP_LOSS_RATE
+                sl_rate = sl_val if (sl_val is not None and not math.isnan(sl_val)) else sl_fallback
             except (ValueError, TypeError, OverflowError):
-                sl_rate = DEFAULT_STOP_LOSS_RATE
-            code = row['stock_code']
-            raw_owner = row.get('strategy', '')
-            owner = raw_owner.strip() if (raw_owner and isinstance(raw_owner, str)) else ""
+                sl_rate = sl_fallback
             # 키는 «인스턴스 기준» 그룹. 표시 라벨(strategy)은 그룹의 첫 행
             # (= ORDER BY timestamp DESC 라 최신 행)의 원문을 그대로 쓴다 —
             # 라벨이 1종뿐인 현행 데이터에서는 종전과 문자 그대로 동일하다.

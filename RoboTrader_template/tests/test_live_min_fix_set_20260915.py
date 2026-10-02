@@ -550,25 +550,36 @@ def _volume_fallback_bot(folder_key="rs_leader", class_name="RSLeaderStrategy"):
 
 
 class TestI3RealMoneyVolumeFallbackIsLoud:
-    """I3: B2 로 인스턴스가 스냅샷을 «소비만» 하게 된 뒤, 페이퍼 봇이 스냅샷을
-    못 만들면 단일 전략 경로는 거래량 순위 폴백으로 빠진다 — «전략 진입 룰을 거치지
-    않은» 종목을 실탄으로 산다. 다중 전략 경로는 같은 상황을 ERROR 로 올리는데
-    (`[E6]`) 단일 경로에는 그 경고가 없었다. 폴백 «동작» 은 결재 대상이라 그대로 두고,
-    무음만 없앤다."""
+    """I3(2026-09-15): 인스턴스가 단일 전략 경로로 거래량 순위 폴백에 빠지면 «전략 진입 룰을
+    거치지 않은» 종목을 실탄으로 산다 — 당시엔 폴백 «동작» 을 결재 대상으로 남기고 무음만
+    없앴다(`[E6-실전]` ERROR).
+
+    현재(2026-10-02 B-1 · docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md): 사장님 결정으로
+    인스턴스는 거래량 폴백을 «타지 않는다» — 전략 수와 무관하게 페이퍼의 D-1 스냅샷을 기다려
+    읽고, 끝내 없으면 그날 신규 후보 0(fail-closed) + 경보. 인스턴스에서 `[E6-실전]` 줄은
+    도달 불가가 됐다. 페이퍼(default) 단일 경로의 종전 동작은 아래 대칭 테스트가 고정한다."""
 
     @pytest.mark.asyncio
-    async def test_instance_logs_error_on_volume_fallback(self, monkeypatch):
+    async def test_instance_never_takes_volume_fallback(self, monkeypatch):
+        """2026-10-02 사장님 결정(B-1)으로 «폴백 유지»가 «폴백 금지»로 바뀌었다
+        (docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md §④-3 에 미리 적은 예외).
+        인스턴스는 스냅샷 경로만 탄다 — 스냅샷이 없으면 대기(이후 fail-closed)이지
+        거래량 순위·스크리너 JSON 으로 사지 않는다. 상세 = tests/test_real_instance_b1_b2_20261002.py."""
+        from unittest.mock import AsyncMock
         import config.settings as settings
         monkeypatch.setattr(settings, "INSTANCE_ID", "rs_leader", raising=False)
 
         bot = _volume_fallback_bot()
+        bot.candidate_selector.has_prev_day_snapshot = MagicMock(return_value=False)
+        bot.telegram.notify_error = AsyncMock()
         loader = _loader_with_spied_logger(bot)
         await loader._load_screener_candidates()
 
-        errors = [m for m in _msgs(loader.logger.error) if "[E6-실전]" in m]
-        assert len(errors) == 1, f"실전 폴백 ERROR 가 1건이 아니다: {_msgs(loader.logger.error)}"
-        # 폴백 «동작» 은 그대로 — 후보는 여전히 등록된다(결재 전까지 막지 않는다).
-        assert bot.trading_manager.calls, "폴백 동작까지 바뀌었다 — 경고만 추가해야 한다"
+        bot.candidate_selector.load_from_screener.assert_not_called()
+        bot.candidate_selector.select_daily_candidates.assert_not_called()
+        assert not bot.trading_manager.calls, "스냅샷 없이 후보가 등록됐다 — 폴백이 살아 있다"
+        assert loader.snapshot_wait_pending is True
+        assert not [m for m in _msgs(loader.logger.error) if "[E6-실전]" in m]
 
     @pytest.mark.asyncio
     async def test_default_keeps_info_only(self, monkeypatch):

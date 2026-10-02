@@ -1042,10 +1042,26 @@ class CandidateSelector:
 
         return result
 
+    def has_prev_day_snapshot(self, strategy_name: str) -> bool:
+        """그 전략의 D-1 `screener_snapshots` 행이 «지금» 있는가 — 실전 인스턴스 대기(B-1) 전용.
+
+        페이퍼(default)는 이 메서드를 부르지 않는다. D-1 은 `_fetch_candidates_for_strategy` 와
+        같은 식이다. 조회 예외는 그대로 올린다(호출자가 «아직 없음»으로 보고 재시도한다).
+
+        ⚠️ 0행은 「페이퍼가 아직 안 썼다/못 썼다」와 「그날 룰 통과 0건」을 가르지 못한다 —
+        0건이면 페이퍼는 행을 쓰지 않는다(`runners/screener_snapshot_collector.py` count==0 분기).
+        (docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md ③)
+        """
+        prev_day_str = get_previous_trading_day(now_kst()).strftime("%Y-%m-%d")
+        from core.screener_snapshot_provider import make_screener_snapshot_provider
+        provider = make_screener_snapshot_provider(strategy_name)
+        return bool(provider(strategy_name, prev_day_str))
+
     def _fetch_candidates_for_strategy(
         self,
         strategy_name: str,
         max_candidates: int,
+        sector_rerank: bool = True,
     ) -> List[CandidateStock]:
         """단일 전략의 후보를 **그 전략의 `screener_snapshots` 에서만** 조회한다.
 
@@ -1107,7 +1123,13 @@ class CandidateSelector:
         codes = codes[:MAX_CANDIDATES_PER_STRATEGY]
 
         # 스펙 B: 섹터 뉴스 재정렬 — 안전필터(limit 절단) «앞». 아래 메서드는 예외를 내지 않는다(fail-open).
-        codes, sector_notes = self._apply_sector_news_rerank(strategy_name, codes, prev_day_str)
+        # sector_rerank=False 는 실전 인스턴스 전용(B-1): 재정렬은 `sector_news_rerank_log` 를
+        # (trade_date, strategy, stock_code) UPSERT 하므로 인스턴스가 돌리면 페이퍼의 그날 행을 덮어쓴다.
+        # 기본값(True)·페이퍼 호출(인자 2개)은 종전과 같다.
+        if sector_rerank:
+            codes, sector_notes = self._apply_sector_news_rerank(strategy_name, codes, prev_day_str)
+        else:
+            sector_notes = {}
 
         # code 리스트 → CandidateStock 변환 (name/score는 미상).
         # ⚠️ 여기서 max_candidates 로 자르지 않는다. 자른 뒤 필터를 걸면
