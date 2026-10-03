@@ -1,0 +1,804 @@
+
+====================================================================================================
+S0. 메타 — 세션 시간대 · 거래일 달력 · K 발효 로그
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+[SQL] S0-a 세션 timezone (timestamp::date 가 KST 날짜인지)
+SHOW timezone;
+-- 출력 --
+TimeZone
+Asia/Seoul
+(1 rows)
+
+----------------------------------------------------------------------------------------------------
+[SQL] S0-b 거래일 달력 (daily_prices 의사티커 'KOSPI' · 사전등록 개정 SQL 과 같은 달력)
+SELECT date::date AS d
+FROM daily_prices
+WHERE stock_code = 'KOSPI'
+  AND date BETWEEN '2026-09-01' AND '2026-10-06'
+ORDER BY 1;
+-- 출력 --
+d
+2026-09-01
+2026-09-02
+2026-09-03
+2026-09-04
+2026-09-07
+2026-09-08
+2026-09-09
+2026-09-10
+2026-09-11
+2026-09-14
+2026-09-15
+2026-09-16
+2026-09-17
+2026-09-18
+2026-09-21
+2026-09-22
+2026-09-23
+2026-09-28
+2026-09-29
+2026-09-30
+2026-10-01
+2026-10-02
+(22 rows)
+
+발효 전 창 2026-09-04~2026-09-17 거래일 10: ['2026-09-04', '2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11', '2026-09-14', '2026-09-15', '2026-09-16', '2026-09-17']
+발효 후 창 2026-09-18~2026-10-05 거래일 9: ['2026-09-18', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02']
+※ 10-05 행 부재 = 휴장(개천절 대체공휴일). 10-06 은 아직 미래(오늘 10-03).
+
+[로그] 기동 38행 계열 `동시 보유 한도 정정(ΣK)` — 일자별 3전략 K
+  robotrader_template_20260916_074007.log:38  ma20=5 minervini=3 daytrading=5  Σ(줄의 모든 K)=58
+  robotrader_template_20260917_074007.log:38  ma20=5 minervini=3 daytrading=5  Σ(줄의 모든 K)=58
+  robotrader_template_20260918_074007.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+  robotrader_template_20260921_074007.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+  robotrader_template_20260922_074007.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+  robotrader_template_20260923_074008.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+  robotrader_template_20260924_074008.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+  robotrader_template_20260925_074008.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+  robotrader_template_20260928_074008.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+  robotrader_template_20260929_074008.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+  robotrader_template_20260930_074008.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+  robotrader_template_20261001_074746.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+  robotrader_template_20261002_074008.log:38  ma20=10 minervini=6 daytrading=10  Σ(줄의 모든 K)=71
+
+====================================================================================================
+S1. P1 — 발효 후 창 EOD 캡 포화율 (3전략 · 새 K 10/6/10 · 문턱 < 50%)
+====================================================================================================
+※ §①-1 의 SQL 은 원문에 「요지」로만 있다(LANE_C_gate_guards.md §3-b: DISTINCT ON (trade_date, strategy) … ORDER BY updated_at DESC 로 2차만 남기고 K 를 VALUES 로 조인해 n_open >= K 인 거래일을 센다). 아래는 그 요지를 그대로 옮긴 재구성이다. 창만 사전등록 P1 의 09-18~10-05.
+
+----------------------------------------------------------------------------------------------------
+[SQL] S1-a P1 주 판정 SQL (EOD 포화일 / 거래일)
+WITH k(strategy, k) AS (
+    VALUES ('book_pullback_ma20', 10),
+           ('minervini_volume_dryup', 6),
+           ('daytrading_3methods_breakout', 10)
+),
+eod AS (
+    SELECT DISTINCT ON (trade_date, strategy) trade_date, strategy, n_open
+    FROM paper_strategy_equity
+    ORDER BY trade_date, strategy, updated_at DESC
+)
+SELECT e.strategy, k.k,
+       COUNT(*)                                             AS n_days,
+       SUM(CASE WHEN e.n_open >= k.k THEN 1 ELSE 0 END)     AS n_sat,
+       ROUND(100.0 * SUM(CASE WHEN e.n_open >= k.k THEN 1 ELSE 0 END) / COUNT(*), 1) AS sat_pct
+FROM eod e
+JOIN k USING (strategy)
+WHERE e.trade_date BETWEEN '2026-09-18' AND '2026-10-05'
+GROUP BY 1, 2
+ORDER BY 1;
+-- 출력 --
+strategy | k | n_days | n_sat | sat_pct
+book_pullback_ma20 | 10 | 9 | 2 | 22.2
+daytrading_3methods_breakout | 10 | 9 | 2 | 22.2
+minervini_volume_dryup | 6 | 9 | 3 | 33.3
+(3 rows)
+
+----------------------------------------------------------------------------------------------------
+[SQL] S1-b 일자별 EOD n_open (3전략 · 09-16~10-02 · 참고: 09-16·17 은 구 K 기준선)
+SELECT trade_date,
+       MAX(CASE WHEN strategy = 'book_pullback_ma20'           THEN n_open END) AS ma20_n_open,
+       MAX(CASE WHEN strategy = 'minervini_volume_dryup'       THEN n_open END) AS minervini_n_open,
+       MAX(CASE WHEN strategy = 'daytrading_3methods_breakout' THEN n_open END) AS daytrading_n_open
+FROM paper_strategy_equity
+WHERE trade_date BETWEEN '2026-09-16' AND '2026-10-05'
+GROUP BY 1 ORDER BY 1;
+-- 출력 --
+trade_date | ma20_n_open | minervini_n_open | daytrading_n_open
+2026-09-16 | 5 | 3 | 5
+2026-09-17 | 5 | 3 | 5
+2026-09-18 | 6 | 4 | 8
+2026-09-21 | 8 | 4 | 8
+2026-09-22 | 7 | 4 | 9
+2026-09-23 | 10 | 4 | 9
+2026-09-28 | 10 | 4 | 9
+2026-09-29 | 8 | 5 | 6
+2026-09-30 | 8 | 6 | 8
+2026-10-01 | 9 | 6 | 10
+2026-10-02 | 9 | 6 | 10
+(11 rows)
+
+----------------------------------------------------------------------------------------------------
+[SQL] S1-c (참고 · 판정 아님) 발효 전 10거래일 EOD 포화 — 구 K 5/3/5 · 같은 재구성 SQL
+WITH k(strategy, k) AS (
+    VALUES ('book_pullback_ma20', 5),
+           ('minervini_volume_dryup', 3),
+           ('daytrading_3methods_breakout', 5)
+),
+eod AS (
+    SELECT DISTINCT ON (trade_date, strategy) trade_date, strategy, n_open
+    FROM paper_strategy_equity
+    ORDER BY trade_date, strategy, updated_at DESC
+)
+SELECT e.strategy, k.k, COUNT(*) AS n_days,
+       SUM(CASE WHEN e.n_open >= k.k THEN 1 ELSE 0 END) AS n_sat,
+       ROUND(100.0 * SUM(CASE WHEN e.n_open >= k.k THEN 1 ELSE 0 END) / COUNT(*), 1) AS sat_pct
+FROM eod e JOIN k USING (strategy)
+WHERE e.trade_date BETWEEN '2026-09-04' AND '2026-09-17'
+GROUP BY 1, 2 ORDER BY 1;
+-- 출력 --
+strategy | k | n_days | n_sat | sat_pct
+book_pullback_ma20 | 5 | 10 | 10 | 100.0
+daytrading_3methods_breakout | 5 | 10 | 9 | 90.0
+minervini_volume_dryup | 3 | 10 | 9 | 90.0
+(3 rows)
+
+[로그] S1-d P1 보조 관측 — 09-16 계기 `[캡] <폴더키> <종목> 평가 스킵 사유=max_positions` 발생 종목-일 (3전략)
+  (같은 (전략·종목·사유)는 거래일당 1회만 찍힌다 · robotrader_template_*.log 상위집합)
+  (보유=n/K = 그 전략 «자기» 보유수/K — strategies/base.py _log_cap_skip. 09-28 07:40 부터 줄 끝 `경로=` 태그(매수루프/매도루프/루프밖) — 09-27 이전 줄은 태그 없음)
+  날짜 | 전략 | max_positions 종목-일 | (그중 경로=매수루프) | 보유=n/K 값들 | 사유별 줄수(timeframe/daily_trades/max_positions)
+  2026-09-16 | book_pullback_ma20 | 47 | 태그없음 | 5/5 | 7/0/47
+  2026-09-16 | minervini_volume_dryup | 51 | 태그없음 | 3/3 | 0/0/51
+  2026-09-16 | daytrading_3methods_breakout | 49 | 태그없음 | 5/5 | 0/0/49
+  2026-09-17 | book_pullback_ma20 | 53 | 태그없음 | 5/5 | 5/0/53
+  2026-09-17 | minervini_volume_dryup | 53 | 태그없음 | 3/3 | 0/0/53
+  2026-09-17 | daytrading_3methods_breakout | 52 | 태그없음 | 5/5 | 0/0/52
+  2026-09-18 | book_pullback_ma20 | 0 | 태그없음 | - | 6/0/0
+  2026-09-18 | minervini_volume_dryup | 0 | 태그없음 | - | 0/0/0
+  2026-09-18 | daytrading_3methods_breakout | 0 | 태그없음 | - | 0/46/0
+  2026-09-21 | book_pullback_ma20 | 0 | 태그없음 | - | 10/44/0
+  2026-09-21 | minervini_volume_dryup | 0 | 태그없음 | - | 0/0/0
+  2026-09-21 | daytrading_3methods_breakout | 0 | 태그없음 | - | 0/0/0
+  2026-09-22 | book_pullback_ma20 | 51 | 태그없음 | 10/10 | 10/49/51
+  2026-09-22 | minervini_volume_dryup | 0 | 태그없음 | - | 0/0/0
+  2026-09-22 | daytrading_3methods_breakout | 0 | 태그없음 | - | 0/53/0
+  2026-09-23 | book_pullback_ma20 | 55 | 태그없음 | 10/10 | 10/0/55
+  2026-09-23 | minervini_volume_dryup | 0 | 태그없음 | - | 0/0/0
+  2026-09-23 | daytrading_3methods_breakout | 59 | 태그없음 | 10/10 | 0/52/59
+  2026-09-28 | book_pullback_ma20 | 64 | 8 | 10/10 | 11/0/64
+  2026-09-28 | minervini_volume_dryup | 0 | 0 | - | 0/0/0
+  2026-09-28 | daytrading_3methods_breakout | 62 | 9 | 10/10 | 0/62/62
+  2026-09-29 | book_pullback_ma20 | 62 | 7 | 10/10 | 11/53/62
+  2026-09-29 | minervini_volume_dryup | 0 | 0 | - | 0/51/0
+  2026-09-29 | daytrading_3methods_breakout | 0 | 0 | - | 0/66/0
+  2026-09-30 | book_pullback_ma20 | 56 | 5 | 10/10 | 10/59/57
+  2026-09-30 | minervini_volume_dryup | 52 | 4 | 6/6 | 0/0/53
+  2026-09-30 | daytrading_3methods_breakout | 60 | 6 | 10/10 | 0/59/60
+  2026-10-01 | book_pullback_ma20 | 0 | 0 | - | 9/59/0
+  2026-10-01 | minervini_volume_dryup | 60 | 5 | 6/6 | 0/0/62
+  2026-10-01 | daytrading_3methods_breakout | 59 | 7 | 10/10 | 0/0/60
+  2026-10-02 | book_pullback_ma20 | 64 | 7 | 10/10 | 12/60/65
+  2026-10-02 | minervini_volume_dryup | 68 | 7 | 6/6 | 0/0/71
+  2026-10-02 | daytrading_3methods_breakout | 71 | 10 | 10/10 | 0/0/71
+  발효 후 창 합계 max_positions 종목-일: book_pullback_ma20=352 · minervini_volume_dryup=180 · daytrading_3methods_breakout=311
+  발효 후 창 max_positions 발생 «거래일» 수: book_pullback_ma20=6/9 · minervini_volume_dryup=3/9 · daytrading_3methods_breakout=5/9
+  (경로 태그 있는 5거래일 2026-09-28~2026-10-02) 경로=매수루프 max_positions 발생 거래일: book_pullback_ma20=4/5 · minervini_volume_dryup=3/5 · daytrading_3methods_breakout=4/5 | 매수루프 종목-일 합: book_pullback_ma20=27 · minervini_volume_dryup=16 · daytrading_3methods_breakout=32
+
+====================================================================================================
+S2. P2 — 새로 닿는 순위대 매수 (ma20·daytrading 6~10위 · minervini 4~6위 · 문턱 ≥1건) — 🔧 2026-09-17 개정 보정 SQL
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+[SQL] S2-a P2 주 판정 SQL (사전등록 :401-426 개정 SQL «원문 그대로»)
+-- 🔧 2026-09-17 개정 — 발효 후 신규 매수의 「스냅샷 순위」 분포
+--    매수일 D ⇒ scan_date = D 의 직전 거래일(거래일 달력 = daily_prices 'KOSPI')
+WITH td AS (
+    SELECT date::date                           AS d,
+           LAG(date::date) OVER (ORDER BY date) AS prev_d
+    FROM daily_prices
+    WHERE stock_code = 'KOSPI'
+      AND date BETWEEN '2026-09-01' AND '2026-10-05'
+)
+SELECT v.strategy,
+       s.rank_in_snapshot AS rk,
+       COUNT(*)           AS n_buy
+FROM virtual_trading_records v
+JOIN td
+  ON td.d = v.timestamp::date
+JOIN screener_snapshots s
+  ON s.strategy   = v.strategy
+ AND s.stock_code = v.stock_code
+ AND s.scan_date  = td.prev_d          -- 원문(결함): s.scan_date = v.timestamp::date
+WHERE v.is_test = true
+  AND v.action  = 'BUY'
+  AND v.timestamp::date BETWEEN '2026-09-18' AND '2026-10-05'
+  AND v.strategy IN ('book_pullback_ma20',
+                     'minervini_volume_dryup',
+                     'daytrading_3methods_breakout')
+GROUP BY 1,2 ORDER BY 1,2;
+-- 출력 --
+strategy | rk | n_buy
+book_pullback_ma20 | 1 | 3
+book_pullback_ma20 | 2 | 3
+book_pullback_ma20 | 3 | 4
+book_pullback_ma20 | 4 | 5
+book_pullback_ma20 | 5 | 3
+book_pullback_ma20 | 6 | 1
+book_pullback_ma20 | 7 | 4
+daytrading_3methods_breakout | 1 | 7
+daytrading_3methods_breakout | 2 | 6
+daytrading_3methods_breakout | 3 | 6
+daytrading_3methods_breakout | 4 | 3
+minervini_volume_dryup | 1 | 3
+minervini_volume_dryup | 2 | 1
+minervini_volume_dryup | 4 | 1
+minervini_volume_dryup | 5 | 1
+minervini_volume_dryup | 6 | 1
+minervini_volume_dryup | 7 | 2
+(17 rows)
+
+  밴드 매수 집계: book_pullback_ma20 [6~10위]=5 · minervini_volume_dryup [4~6위]=3 · daytrading_3methods_breakout [6~10위]=0
+
+----------------------------------------------------------------------------------------------------
+[SQL] S2-b 조인 커버리지 점검 (창 안 3전략 매수 전건 vs 순위가 붙은 건) — 같은 조인을 LEFT 로
+WITH td AS (
+    SELECT date::date AS d, LAG(date::date) OVER (ORDER BY date) AS prev_d
+    FROM daily_prices
+    WHERE stock_code = 'KOSPI' AND date BETWEEN '2026-09-01' AND '2026-10-05'
+)
+SELECT v.strategy,
+       COUNT(DISTINCT v.id)                                         AS n_buy_all,
+       COUNT(DISTINCT v.id) FILTER (WHERE s.id IS NOT NULL)         AS n_buy_ranked,
+       COUNT(*) FILTER (WHERE s.id IS NOT NULL)                     AS n_join_rows
+FROM virtual_trading_records v
+LEFT JOIN td ON td.d = v.timestamp::date
+LEFT JOIN screener_snapshots s
+  ON s.strategy = v.strategy AND s.stock_code = v.stock_code AND s.scan_date = td.prev_d
+WHERE v.is_test = true AND v.action = 'BUY'
+  AND v.timestamp::date BETWEEN '2026-09-18' AND '2026-10-05'
+  AND v.strategy IN ('book_pullback_ma20','minervini_volume_dryup','daytrading_3methods_breakout')
+GROUP BY 1 ORDER BY 1;
+-- 출력 --
+strategy | n_buy_all | n_buy_ranked | n_join_rows
+book_pullback_ma20 | 23 | 23 | 23
+daytrading_3methods_breakout | 22 | 22 | 22
+minervini_volume_dryup | 9 | 9 | 9
+(3 rows)
+
+----------------------------------------------------------------------------------------------------
+[SQL] S2-c 매수 건별 명세 (KST 시각 · 직전 거래일 스냅샷 순위 · 그날 스냅샷 후보 수)
+WITH td AS (
+    SELECT date::date AS d, LAG(date::date) OVER (ORDER BY date) AS prev_d
+    FROM daily_prices
+    WHERE stock_code = 'KOSPI' AND date BETWEEN '2026-09-01' AND '2026-10-05'
+),
+snap_n AS (
+    SELECT strategy, scan_date, COUNT(*) AS n_rows, MAX(rank_in_snapshot) AS max_rk
+    FROM screener_snapshots GROUP BY 1, 2
+)
+SELECT to_char(v.timestamp AT TIME ZONE 'Asia/Seoul', 'MM-DD HH24:MI:SS') AS kst,
+       v.strategy, v.stock_code, v.quantity, v.price::bigint AS price,
+       td.prev_d AS scan_date, s.rank_in_snapshot AS rk,
+       sn.n_rows AS snap_rows
+FROM virtual_trading_records v
+LEFT JOIN td ON td.d = v.timestamp::date
+LEFT JOIN screener_snapshots s
+  ON s.strategy = v.strategy AND s.stock_code = v.stock_code AND s.scan_date = td.prev_d
+LEFT JOIN snap_n sn ON sn.strategy = v.strategy AND sn.scan_date = td.prev_d
+WHERE v.is_test = true AND v.action = 'BUY'
+  AND v.timestamp::date BETWEEN '2026-09-18' AND '2026-10-05'
+  AND v.strategy IN ('book_pullback_ma20','minervini_volume_dryup','daytrading_3methods_breakout')
+ORDER BY v.strategy, v.timestamp;
+-- 출력 --
+kst | strategy | stock_code | quantity | price | scan_date | rk | snap_rows
+09-18 09:03:45 | book_pullback_ma20 | 003280 | 364 | 1830 | 2026-09-17 | 1 | 20
+09-21 09:16:05 | book_pullback_ma20 | 018000 | 697 | 1240 | 2026-09-18 | 2 | 20
+09-21 09:22:32 | book_pullback_ma20 | 006340 | 63 | 13600 | 2026-09-18 | 3 | 20
+09-21 09:28:18 | book_pullback_ma20 | 388050 | 5 | 10400 | 2026-09-18 | 4 | 20
+09-21 09:34:28 | book_pullback_ma20 | 014990 | 1 | 4180 | 2026-09-18 | 7 | 20
+09-22 09:04:16 | book_pullback_ma20 | 232140 | 61 | 14100 | 2026-09-21 | 1 | 20
+09-22 09:11:36 | book_pullback_ma20 | 071090 | 265 | 3265 | 2026-09-21 | 5 | 20
+09-22 09:17:54 | book_pullback_ma20 | 382800 | 162 | 5340 | 2026-09-21 | 7 | 20
+09-23 09:03:38 | book_pullback_ma20 | 024060 | 71 | 12450 | 2026-09-22 | 2 | 20
+09-23 09:09:54 | book_pullback_ma20 | 025980 | 168 | 5280 | 2026-09-22 | 4 | 20
+09-23 09:16:10 | book_pullback_ma20 | 187660 | 113 | 6550 | 2026-09-22 | 5 | 20
+09-28 14:59:41 | book_pullback_ma20 | 413630 | 1 | 4205 | 2026-09-23 | 1 | 24
+09-29 09:13:06 | book_pullback_ma20 | 093370 | 63 | 13950 | 2026-09-28 | 3 | 49
+09-29 09:28:19 | book_pullback_ma20 | 053260 | 127 | 6940 | 2026-09-28 | 4 | 49
+09-30 09:04:25 | book_pullback_ma20 | 187660 | 117 | 7400 | 2026-09-29 | 3 | 21
+09-30 09:19:48 | book_pullback_ma20 | 048410 | 125 | 6890 | 2026-09-29 | 5 | 21
+09-30 09:27:49 | book_pullback_ma20 | 090460 | 41 | 20700 | 2026-09-29 | 7 | 21
+10-01 09:04:35 | book_pullback_ma20 | 041190 | 156 | 5700 | 2026-09-30 | 3 | 22
+10-01 09:12:32 | book_pullback_ma20 | 053260 | 113 | 7900 | 2026-09-30 | 2 | 22
+10-01 09:20:04 | book_pullback_ma20 | 033790 | 101 | 8770 | 2026-09-30 | 4 | 22
+10-02 09:05:53 | book_pullback_ma20 | 125490 | 73 | 12250 | 2026-10-01 | 6 | 53
+10-02 09:35:49 | book_pullback_ma20 | 289080 | 322 | 2800 | 2026-10-01 | 4 | 53
+10-02 11:12:35 | book_pullback_ma20 | 142280 | 271 | 3320 | 2026-10-01 | 7 | 53
+09-18 09:02:13 | daytrading_3methods_breakout | 209640 | 177 | 3695 | 2026-09-17 | 1 | 20
+09-18 09:27:22 | daytrading_3methods_breakout | 072990 | 332 | 3155 | 2026-09-17 | 2 | 20
+09-18 09:33:40 | daytrading_3methods_breakout | 042370 | 94 | 11150 | 2026-09-17 | 3 | 20
+09-18 09:39:49 | daytrading_3methods_breakout | 396270 | 70 | 2360 | 2026-09-17 | 4 | 20
+09-22 09:02:37 | daytrading_3methods_breakout | 099750 | 142 | 7500 | 2026-09-21 | 1 | 20
+09-22 09:09:49 | daytrading_3methods_breakout | 223250 | 313 | 3410 | 2026-09-21 | 2 | 20
+09-22 09:16:19 | daytrading_3methods_breakout | 086960 | 512 | 2090 | 2026-09-21 | 3 | 20
+09-23 09:02:07 | daytrading_3methods_breakout | 303810 | 241 | 3095 | 2026-09-22 | 1 | 20
+09-23 12:19:59 | daytrading_3methods_breakout | 299170 | 521 | 1380 | 2026-09-22 | 3 | 20
+09-23 12:51:46 | daytrading_3methods_breakout | 051370 | 96 | 6980 | 2026-09-22 | 4 | 20
+09-28 09:02:31 | daytrading_3methods_breakout | 393210 | 267 | 3905 | 2026-09-23 | 1 | 36
+09-28 09:29:57 | daytrading_3methods_breakout | 419050 | 536 | 1945 | 2026-09-23 | 2 | 36
+09-28 09:36:57 | daytrading_3methods_breakout | 042000 | 58 | 17950 | 2026-09-23 | 3 | 36
+09-29 09:02:46 | daytrading_3methods_breakout | 052790 | 224 | 4760 | 2026-09-28 | 1 | 39
+09-29 09:11:05 | daytrading_3methods_breakout | 052260 | 250 | 4275 | 2026-09-28 | 2 | 39
+09-30 09:02:37 | daytrading_3methods_breakout | 267320 | 419 | 2585 | 2026-09-29 | 1 | 27
+09-30 09:10:07 | daytrading_3methods_breakout | 145170 | 338 | 3205 | 2026-09-29 | 2 | 27
+09-30 09:17:56 | daytrading_3methods_breakout | 234030 | 293 | 3700 | 2026-09-29 | 4 | 27
+09-30 09:25:50 | daytrading_3methods_breakout | 052260 | 201 | 5370 | 2026-09-29 | 3 | 27
+10-01 09:02:42 | daytrading_3methods_breakout | 900070 | 1007 | 1100 | 2026-09-30 | 1 | 28
+10-01 09:10:37 | daytrading_3methods_breakout | 084990 | 307 | 3605 | 2026-09-30 | 2 | 28
+10-01 09:18:20 | daytrading_3methods_breakout | 010280 | 194 | 5700 | 2026-09-30 | 3 | 28
+09-18 09:02:59 | minervini_volume_dryup | 002990 | 77 | 13750 | 2026-09-17 | 1 | 12
+09-29 09:03:47 | minervini_volume_dryup | 088350 | 289 | 5770 | 2026-09-28 | 1 | 14
+09-29 09:12:06 | minervini_volume_dryup | 317400 | 124 | 9690 | 2026-09-28 | 4 | 14
+09-29 14:50:25 | minervini_volume_dryup | 028670 | 172 | 5680 | 2026-09-28 | 2 | 14
+09-30 14:41:26 | minervini_volume_dryup | 119850 | 28 | 57000 | 2026-09-29 | 6 | 14
+09-30 14:49:14 | minervini_volume_dryup | 078930 | 10 | 106500 | 2026-09-29 | 7 | 14
+10-01 09:11:34 | minervini_volume_dryup | 000370 | 218 | 7290 | 2026-09-30 | 7 | 15
+10-01 14:26:54 | minervini_volume_dryup | 096770 | 11 | 139000 | 2026-09-30 | 5 | 15
+10-02 10:13:35 | minervini_volume_dryup | 088350 | 290 | 5260 | 2026-10-01 | 1 | 10
+(54 rows)
+
+----------------------------------------------------------------------------------------------------
+[SQL] S2-d 기준선 재현 (같은 보정 SQL · 창만 09-04~09-17 — 사전등록 :443-452 병기 의무)
+-- 🔧 2026-09-17 개정 — 발효 후 신규 매수의 「스냅샷 순위」 분포
+--    매수일 D ⇒ scan_date = D 의 직전 거래일(거래일 달력 = daily_prices 'KOSPI')
+WITH td AS (
+    SELECT date::date                           AS d,
+           LAG(date::date) OVER (ORDER BY date) AS prev_d
+    FROM daily_prices
+    WHERE stock_code = 'KOSPI'
+      AND date BETWEEN '2026-09-01' AND '2026-10-05'
+)
+SELECT v.strategy,
+       s.rank_in_snapshot AS rk,
+       COUNT(*)           AS n_buy
+FROM virtual_trading_records v
+JOIN td
+  ON td.d = v.timestamp::date
+JOIN screener_snapshots s
+  ON s.strategy   = v.strategy
+ AND s.stock_code = v.stock_code
+ AND s.scan_date  = td.prev_d          -- 원문(결함): s.scan_date = v.timestamp::date
+WHERE v.is_test = true
+  AND v.action  = 'BUY'
+  AND v.timestamp::date BETWEEN '2026-09-04' AND '2026-09-17'
+  AND v.strategy IN ('book_pullback_ma20',
+                     'minervini_volume_dryup',
+                     'daytrading_3methods_breakout')
+GROUP BY 1,2 ORDER BY 1,2;
+-- 출력 --
+strategy | rk | n_buy
+book_pullback_ma20 | 1 | 3
+book_pullback_ma20 | 4 | 4
+book_pullback_ma20 | 7 | 1
+daytrading_3methods_breakout | 1 | 5
+daytrading_3methods_breakout | 2 | 6
+daytrading_3methods_breakout | 3 | 1
+minervini_volume_dryup | 2 | 2
+minervini_volume_dryup | 4 | 1
+(8 rows)
+
+  기준선 밴드 매수: book_pullback_ma20=1 · minervini_volume_dryup=1 · daytrading_3methods_breakout=0   (사전등록 병기값: ma20 1 · minervini 1 · daytrading 0)
+
+----------------------------------------------------------------------------------------------------
+[SQL] S2-e 스냅샷 저장 규모 (전략×scan_date 행수 · 09-28 발효 「룰 통과 전수 저장」 전후 · 3전략)
+SELECT scan_date,
+       MAX(CASE WHEN strategy='book_pullback_ma20'           THEN cnt END) AS ma20_rows,
+       MAX(CASE WHEN strategy='minervini_volume_dryup'       THEN cnt END) AS minervini_rows,
+       MAX(CASE WHEN strategy='daytrading_3methods_breakout' THEN cnt END) AS daytrading_rows
+FROM (SELECT strategy, scan_date, COUNT(*) AS cnt FROM screener_snapshots
+      WHERE scan_date BETWEEN '2026-09-15' AND '2026-10-02' GROUP BY 1, 2) t
+GROUP BY 1 ORDER BY 1;
+-- 출력 --
+scan_date | ma20_rows | minervini_rows | daytrading_rows
+2026-09-15 | 20 | 9 | 20
+2026-09-16 | 20 | 11 | 20
+2026-09-17 | 20 | 12 | 20
+2026-09-18 | 20 | 9 | 20
+2026-09-21 | 20 | 12 | 20
+2026-09-22 | 20 | 14 | 20
+2026-09-23 | 24 | 12 | 36
+2026-09-28 | 49 | 14 | 39
+2026-09-29 | 21 | 14 | 27
+2026-09-30 | 22 | 15 | 28
+2026-10-01 | 53 | 10 | 46
+(11 rows)
+
+====================================================================================================
+S3. P3 — minervini 2차 equity vs W2′ 기준선(09-17 2차 · 박제 10,263,426.47) · 문턱 −30% (≤ 7,184,398.529)
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+[SQL] S3-a 09-17 행 불변 대조 (DB 현재값 vs 09-17 보고 부록 A-2 박제값)
+SELECT strategy, equity, cash, position_value, n_open
+FROM paper_strategy_equity
+WHERE trade_date = '2026-09-17'
+ORDER BY strategy;
+-- 출력 --
+strategy | equity | cash | position_value | n_open
+book_envelope_200d | 7367427.49 | 2898777.49 | 4468650.00 | 3
+book_pullback_ma20 | 8513505.39 | 666625.39 | 7846880.00 | 5
+book_pullback_ma5 | 8123673.77 | 260493.77 | 7863180.00 | 5
+daytrading_3methods_breakout | 10228221.85 | 655471.85 | 9572750.00 | 5
+deep_mr_dev20 | 6381767.93 | 6381767.93 | 0.00 | 0
+elder_ema_pullback | 8683634.08 | 3408134.08 | 5275500.00 | 15
+minervini_volume_dryup | 10263426.47 | 1059306.47 | 9204120.00 | 3
+rs_leader | 6395270.59 | 232250.59 | 6163020.00 | 10
+(8 rows)
+
+  대조: 전략 | DB equity | 박제 equity | 차
+  book_envelope_200d | 7367427.49 | 7367427.49 | 0.00
+  book_pullback_ma20 | 8513505.39 | 8513505.39 | 0.00
+  book_pullback_ma5 | 8123673.77 | 8123673.77 | 0.00
+  daytrading_3methods_breakout | 10228221.85 | 10228221.85 | 0.00
+  deep_mr_dev20 | 6381767.93 | 6381767.93 | 0.00
+  elder_ema_pullback | 8683634.08 | 8683634.08 | 0.00
+  minervini_volume_dryup | 10263426.47 | 10263426.47 | 0.00
+  rs_leader | 6395270.59 | 6395270.59 | 0.00
+
+----------------------------------------------------------------------------------------------------
+[SQL] S3-b minervini 일자별 2차 equity (09-17~10-02)
+SELECT trade_date, equity, cash, position_value, n_open
+FROM paper_strategy_equity
+WHERE strategy = 'minervini_volume_dryup'
+  AND trade_date BETWEEN '2026-09-17' AND '2026-10-05'
+ORDER BY trade_date;
+-- 출력 --
+trade_date | equity | cash | position_value | n_open
+2026-09-17 | 10263426.47 | 1059306.47 | 9204120.00 | 3
+2026-09-18 | 10262837.65 | 397.65 | 10262440.00 | 4
+2026-09-21 | 10078597.65 | 397.65 | 10078200.00 | 4
+2026-09-22 | 10085227.65 | 397.65 | 10084830.00 | 4
+2026-09-23 | 9762587.65 | 397.65 | 9762190.00 | 4
+2026-09-28 | 9901697.65 | 397.65 | 9901300.00 | 4
+2026-09-29 | 9824615.82 | 65.82 | 9824550.00 | 5
+2026-09-30 | 9355958.07 | 81308.07 | 9274650.00 | 6
+2026-10-01 | 9093218.21 | 1211818.21 | 7881400.00 | 6
+2026-10-02 | 9367928.36 | 1150528.36 | 8217400.00 | 6
+(10 rows)
+
+  기준선 10263426.47 · 문턱(×0.70) 7184398.5290
+  날짜 | equity | 기준선 대비 % | 문턱 도달?
+  2026-09-17 | 10263426 | 0.000% | no
+  2026-09-18 | 10262838 | -0.006% | no
+  2026-09-21 | 10078598 | -1.801% | no
+  2026-09-22 | 10085228 | -1.736% | no
+  2026-09-23 | 9762588 | -4.880% | no
+  2026-09-28 | 9901698 | -3.524% | no
+  2026-09-29 | 9824616 | -4.275% | no
+  2026-09-30 | 9355958 | -8.842% | no
+  2026-10-01 | 9093218 | -11.402% | no
+  2026-10-02 | 9367928 | -8.725% | no
+  창 안 최저 = -11.402%
+  (참고) 창 안 일일 수익률 σ = 2.428% · n=9
+
+====================================================================================================
+S4. P4 · P4′ — 일 «매수» 건수 (action='BUY' 한정)
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+[SQL] S4-a 발효 후 창 2026-09-18~2026-10-05 전략×날짜 매수/총체결 (8전략)
+SELECT strategy, timestamp::date AS d,
+       COUNT(*) FILTER (WHERE action = 'BUY') AS n_buy,
+       COUNT(*)                               AS n_all
+FROM virtual_trading_records
+WHERE is_test = true
+  AND timestamp::date BETWEEN %s AND %s
+GROUP BY 1, 2
+ORDER BY 1, 2;
+-- 출력 --
+strategy | d | n_buy | n_all
+book_envelope_200d | 2026-09-18 | 0 | 1
+book_envelope_200d | 2026-09-21 | 0 | 2
+book_envelope_200d | 2026-09-22 | 3 | 3
+book_envelope_200d | 2026-09-28 | 2 | 2
+book_envelope_200d | 2026-09-29 | 2 | 5
+book_envelope_200d | 2026-09-30 | 2 | 4
+book_envelope_200d | 2026-10-01 | 0 | 1
+book_envelope_200d | 2026-10-02 | 2 | 2
+book_pullback_ma20 | 2026-09-18 | 1 | 1
+book_pullback_ma20 | 2026-09-21 | 4 | 6
+book_pullback_ma20 | 2026-09-22 | 3 | 7
+book_pullback_ma20 | 2026-09-23 | 3 | 3
+book_pullback_ma20 | 2026-09-28 | 1 | 2
+book_pullback_ma20 | 2026-09-29 | 2 | 6
+book_pullback_ma20 | 2026-09-30 | 3 | 6
+book_pullback_ma20 | 2026-10-01 | 3 | 5
+book_pullback_ma20 | 2026-10-02 | 3 | 6
+book_pullback_ma5 | 2026-09-18 | 2 | 5
+book_pullback_ma5 | 2026-09-21 | 2 | 7
+book_pullback_ma5 | 2026-09-22 | 4 | 6
+book_pullback_ma5 | 2026-09-23 | 3 | 7
+book_pullback_ma5 | 2026-09-28 | 3 | 6
+book_pullback_ma5 | 2026-09-29 | 4 | 7
+book_pullback_ma5 | 2026-09-30 | 3 | 6
+book_pullback_ma5 | 2026-10-01 | 3 | 6
+book_pullback_ma5 | 2026-10-02 | 3 | 5
+daytrading_3methods_breakout | 2026-09-18 | 4 | 5
+daytrading_3methods_breakout | 2026-09-22 | 3 | 5
+daytrading_3methods_breakout | 2026-09-23 | 3 | 6
+daytrading_3methods_breakout | 2026-09-28 | 3 | 6
+daytrading_3methods_breakout | 2026-09-29 | 2 | 7
+daytrading_3methods_breakout | 2026-09-30 | 4 | 6
+daytrading_3methods_breakout | 2026-10-01 | 3 | 4
+deep_mr_dev20 | 2026-09-22 | 1 | 2
+deep_mr_dev20 | 2026-09-23 | 2 | 2
+deep_mr_dev20 | 2026-09-29 | 0 | 1
+deep_mr_dev20 | 2026-09-30 | 1 | 1
+deep_mr_dev20 | 2026-10-02 | 1 | 2
+elder_ema_pullback | 2026-09-18 | 1 | 4
+elder_ema_pullback | 2026-09-21 | 0 | 1
+elder_ema_pullback | 2026-09-22 | 2 | 2
+elder_ema_pullback | 2026-09-23 | 2 | 3
+elder_ema_pullback | 2026-09-28 | 3 | 4
+elder_ema_pullback | 2026-09-29 | 0 | 1
+elder_ema_pullback | 2026-09-30 | 0 | 1
+elder_ema_pullback | 2026-10-01 | 1 | 1
+elder_ema_pullback | 2026-10-02 | 3 | 5
+minervini_volume_dryup | 2026-09-18 | 1 | 1
+minervini_volume_dryup | 2026-09-29 | 3 | 5
+minervini_volume_dryup | 2026-09-30 | 2 | 3
+minervini_volume_dryup | 2026-10-01 | 2 | 4
+minervini_volume_dryup | 2026-10-02 | 1 | 2
+rs_leader | 2026-09-18 | 2 | 4
+rs_leader | 2026-09-21 | 2 | 4
+rs_leader | 2026-09-22 | 2 | 9
+rs_leader | 2026-09-23 | 4 | 5
+rs_leader | 2026-09-28 | 2 | 2
+rs_leader | 2026-09-29 | 2 | 6
+rs_leader | 2026-09-30 | 3 | 4
+(59 rows)
+
+----------------------------------------------------------------------------------------------------
+[SQL] S4-b 발효 전 10거래일 2026-09-04~2026-09-17 전략×날짜 매수/총체결 (8전략)
+SELECT strategy, timestamp::date AS d,
+       COUNT(*) FILTER (WHERE action = 'BUY') AS n_buy,
+       COUNT(*)                               AS n_all
+FROM virtual_trading_records
+WHERE is_test = true
+  AND timestamp::date BETWEEN %s AND %s
+GROUP BY 1, 2
+ORDER BY 1, 2;
+-- 출력 --
+strategy | d | n_buy | n_all
+book_envelope_200d | 2026-09-04 | 1 | 2
+book_envelope_200d | 2026-09-07 | 0 | 1
+book_envelope_200d | 2026-09-08 | 1 | 4
+book_envelope_200d | 2026-09-09 | 2 | 3
+book_envelope_200d | 2026-09-10 | 2 | 4
+book_envelope_200d | 2026-09-11 | 1 | 3
+book_envelope_200d | 2026-09-14 | 1 | 1
+book_envelope_200d | 2026-09-15 | 1 | 1
+book_envelope_200d | 2026-09-16 | 1 | 1
+book_pullback_ma20 | 2026-09-04 | 1 | 1
+book_pullback_ma20 | 2026-09-08 | 1 | 2
+book_pullback_ma20 | 2026-09-10 | 1 | 2
+book_pullback_ma20 | 2026-09-11 | 2 | 4
+book_pullback_ma20 | 2026-09-15 | 1 | 2
+book_pullback_ma20 | 2026-09-16 | 2 | 4
+book_pullback_ma5 | 2026-09-04 | 4 | 6
+book_pullback_ma5 | 2026-09-07 | 3 | 6
+book_pullback_ma5 | 2026-09-08 | 3 | 8
+book_pullback_ma5 | 2026-09-09 | 3 | 5
+book_pullback_ma5 | 2026-09-10 | 3 | 6
+book_pullback_ma5 | 2026-09-11 | 2 | 2
+book_pullback_ma5 | 2026-09-14 | 2 | 5
+book_pullback_ma5 | 2026-09-15 | 3 | 8
+book_pullback_ma5 | 2026-09-16 | 4 | 5
+book_pullback_ma5 | 2026-09-17 | 2 | 4
+daytrading_3methods_breakout | 2026-09-04 | 1 | 2
+daytrading_3methods_breakout | 2026-09-08 | 2 | 4
+daytrading_3methods_breakout | 2026-09-10 | 1 | 2
+daytrading_3methods_breakout | 2026-09-11 | 2 | 5
+daytrading_3methods_breakout | 2026-09-14 | 1 | 1
+daytrading_3methods_breakout | 2026-09-15 | 2 | 4
+daytrading_3methods_breakout | 2026-09-16 | 2 | 4
+daytrading_3methods_breakout | 2026-09-17 | 1 | 2
+elder_ema_pullback | 2026-09-04 | 2 | 2
+elder_ema_pullback | 2026-09-07 | 0 | 1
+elder_ema_pullback | 2026-09-08 | 2 | 3
+elder_ema_pullback | 2026-09-09 | 1 | 2
+elder_ema_pullback | 2026-09-10 | 3 | 5
+elder_ema_pullback | 2026-09-14 | 0 | 1
+elder_ema_pullback | 2026-09-15 | 3 | 4
+elder_ema_pullback | 2026-09-16 | 1 | 1
+elder_ema_pullback | 2026-09-17 | 3 | 3
+minervini_volume_dryup | 2026-09-09 | 2 | 5
+minervini_volume_dryup | 2026-09-10 | 1 | 1
+rs_leader | 2026-09-04 | 3 | 7
+rs_leader | 2026-09-07 | 4 | 5
+rs_leader | 2026-09-08 | 3 | 7
+rs_leader | 2026-09-09 | 3 | 7
+rs_leader | 2026-09-10 | 4 | 5
+rs_leader | 2026-09-11 | 2 | 5
+rs_leader | 2026-09-14 | 2 | 7
+rs_leader | 2026-09-15 | 2 | 5
+rs_leader | 2026-09-16 | 4 | 6
+rs_leader | 2026-09-17 | 3 | 3
+(54 rows)
+
+  거래일 아닌 날짜의 체결(있으면 표시): 후 [] · 전 []
+
+  [P4] 발효 후 창 전략별 일 «매수» 최대 (8전략) — 반증 = 어느 전략이든 하루 매수 ≥ 6
+  book_pullback_ma20: 일 매수 최대 4 · (참고·판정 아님) 일 총체결 최대 7
+  minervini_volume_dryup: 일 매수 최대 3 · (참고·판정 아님) 일 총체결 최대 5
+  daytrading_3methods_breakout: 일 매수 최대 4 · (참고·판정 아님) 일 총체결 최대 7
+  book_pullback_ma5: 일 매수 최대 4 · (참고·판정 아님) 일 총체결 최대 7
+  elder_ema_pullback: 일 매수 최대 3 · (참고·판정 아님) 일 총체결 최대 5
+  book_envelope_200d: 일 매수 최대 3 · (참고·판정 아님) 일 총체결 최대 5
+  deep_mr_dev20: 일 매수 최대 2 · (참고·판정 아님) 일 총체결 최대 2
+  rs_leader: 일 매수 최대 4 · (참고·판정 아님) 일 총체결 최대 9
+
+  [P4′] 3전략 합산 일 «매수» — 발효 전 10거래일 vs 발효 후 창
+  날짜 | ma20 | minervini | daytrading | 3전략 합
+  전 2026-09-04 | 1 | 0 | 1 | 2
+  전 2026-09-07 | 0 | 0 | 0 | 0
+  전 2026-09-08 | 1 | 0 | 2 | 3
+  전 2026-09-09 | 0 | 2 | 0 | 2
+  전 2026-09-10 | 1 | 1 | 1 | 3
+  전 2026-09-11 | 2 | 0 | 2 | 4
+  전 2026-09-14 | 0 | 0 | 1 | 1
+  전 2026-09-15 | 1 | 0 | 2 | 3
+  전 2026-09-16 | 2 | 0 | 2 | 4
+  전 2026-09-17 | 0 | 0 | 1 | 1
+  후 2026-09-18 | 1 | 1 | 4 | 6
+  후 2026-09-21 | 4 | 0 | 0 | 4
+  후 2026-09-22 | 3 | 0 | 3 | 6
+  후 2026-09-23 | 3 | 0 | 3 | 6
+  후 2026-09-28 | 1 | 0 | 3 | 4
+  후 2026-09-29 | 2 | 3 | 2 | 7
+  후 2026-09-30 | 3 | 2 | 4 | 9
+  후 2026-10-01 | 3 | 2 | 3 | 8
+  후 2026-10-02 | 3 | 1 | 0 | 4
+
+  발효 전: 합 23 / 10거래일 = 일평균 2.300
+  발효 후: 합 54 / 9거래일 = 일평균 6.000
+  (전략별·서술) book_pullback_ma20: 전 8건 (0.800/일) → 후 23건 (2.556/일) · 후 일 최대 4
+  (전략별·서술) minervini_volume_dryup: 전 3건 (0.300/일) → 후 9건 (1.000/일) · 후 일 최대 3
+  (전략별·서술) daytrading_3methods_breakout: 전 12건 (1.200/일) → 후 22건 (2.444/일) · 후 일 최대 4
+
+====================================================================================================
+S5. P5 — 대조군 5전략(ma5·elder·envelope·deep_mr·rs_leader) 포화율·일 매수 분포 — 발효 전 10거래일 vs 발효 후 창 (서술)
+====================================================================================================
+  전략 | K | 매수 합(전→후) | 일평균(전→후) | 분산(전→후) | 일 최대(전→후) | 매수>0 일수(전→후)
+  book_pullback_ma5 | 5 | 29→27 | 2.900→3.000 | 0.490→0.444 | 4→4 | 10→9
+      일별 전 [4, 3, 3, 3, 3, 2, 2, 3, 4, 2]
+      일별 후 [2, 2, 4, 3, 3, 4, 3, 3, 3]
+  elder_ema_pullback | 20 | 15→12 | 1.500→1.333 | 1.450→1.333 | 3→3 | 7→6
+      일별 전 [2, 0, 2, 1, 3, 0, 0, 3, 1, 3]
+      일별 후 [1, 0, 2, 2, 3, 0, 0, 1, 3]
+  book_envelope_200d | 5 | 10→11 | 1.000→1.222 | 0.400→1.284 | 2→3 | 8→5
+      일별 전 [1, 0, 1, 2, 2, 1, 1, 1, 1, 0]
+      일별 후 [0, 0, 3, 0, 2, 2, 2, 0, 2]
+  deep_mr_dev20 | 5 | 0→5 | 0.000→0.556 | 0.000→0.469 | 0→2 | 0→4
+      일별 전 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      일별 후 [0, 0, 1, 2, 0, 0, 1, 0, 1]
+  rs_leader | 10 | 30→17 | 3.000→1.889 | 0.600→1.432 | 4→4 | 10→7
+      일별 전 [3, 4, 3, 3, 4, 2, 2, 2, 4, 3]
+      일별 후 [2, 2, 2, 4, 2, 2, 3, 0, 0]
+  5전략 합 | — | 84→72 | 8.400→8.000 | 4.440→8.000 | 12→12 | —
+
+----------------------------------------------------------------------------------------------------
+[SQL] S5-b 대조군 EOD 포화일 (n_open >= K 불변) — 전 10거래일 vs 후 창
+WITH k(strategy, k) AS (
+    VALUES ('book_pullback_ma5', 5), ('elder_ema_pullback', 20), ('book_envelope_200d', 5),
+           ('deep_mr_dev20', 5), ('rs_leader', 10)
+),
+eod AS (
+    SELECT DISTINCT ON (trade_date, strategy) trade_date, strategy, n_open
+    FROM paper_strategy_equity
+    ORDER BY trade_date, strategy, updated_at DESC
+)
+SELECT e.strategy, k.k,
+       CASE WHEN e.trade_date <= '2026-09-17' THEN '1_pre(09-04~09-17)' ELSE '2_post(09-18~10-05)' END AS win,
+       COUNT(*) AS n_days,
+       SUM(CASE WHEN e.n_open >= k.k THEN 1 ELSE 0 END) AS n_sat,
+       ROUND(100.0 * SUM(CASE WHEN e.n_open >= k.k THEN 1 ELSE 0 END) / COUNT(*), 1) AS sat_pct,
+       ROUND(AVG(e.n_open), 2) AS avg_n_open
+FROM eod e JOIN k USING (strategy)
+WHERE e.trade_date BETWEEN '2026-09-04' AND '2026-10-05'
+GROUP BY 1, 2, 3 ORDER BY 1, 3;
+-- 출력 --
+strategy | k | win | n_days | n_sat | sat_pct | avg_n_open
+book_envelope_200d | 5 | 1_pre(09-04~09-17) | 10 | 0 | 0.0 | 1.60
+book_envelope_200d | 5 | 2_post(09-18~10-05) | 9 | 2 | 22.2 | 3.22
+book_pullback_ma5 | 5 | 1_pre(09-04~09-17) | 10 | 3 | 30.0 | 3.70
+book_pullback_ma5 | 5 | 2_post(09-18~10-05) | 9 | 0 | 0.0 | 2.78
+deep_mr_dev20 | 5 | 1_pre(09-04~09-17) | 10 | 0 | 0.0 | 0.00
+deep_mr_dev20 | 5 | 2_post(09-18~10-05) | 9 | 0 | 0.0 | 1.22
+elder_ema_pullback | 20 | 1_pre(09-04~09-17) | 10 | 0 | 0.0 | 10.20
+elder_ema_pullback | 20 | 2_post(09-18~10-05) | 9 | 0 | 0.0 | 15.00
+rs_leader | 10 | 1_pre(09-04~09-17) | 10 | 2 | 20.0 | 7.70
+rs_leader | 10 | 2_post(09-18~10-05) | 9 | 6 | 66.7 | 9.00
+(10 rows)
+
+====================================================================================================
+S6. P6 — 8전략 n_open 합 < 100 (매 EOD)
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+[SQL] S6-a 일자별 n_open 합 (8전략)
+SELECT trade_date, SUM(n_open) AS n_open_sum, COUNT(*) AS n_strat
+FROM paper_strategy_equity
+WHERE trade_date BETWEEN '2026-09-17' AND '2026-10-05'
+GROUP BY 1 ORDER BY 1;
+-- 출력 --
+trade_date | n_open_sum | n_strat
+2026-09-17 | 46 | 8
+2026-09-18 | 47 | 8
+2026-09-21 | 43 | 8
+2026-09-22 | 45 | 8
+2026-09-23 | 53 | 8
+2026-09-28 | 59 | 8
+2026-09-29 | 51 | 8
+2026-09-30 | 56 | 8
+2026-10-01 | 59 | 8
+2026-10-02 | 63 | 8
+(10 rows)
+
+  창 안 최대 n_open 합 = 63
+
+====================================================================================================
+S7. P7(강등 · 미측정) 대체 관측 — 3전략 매수 체결가 분포 (사전등록 §④-P7 주 「주가 분포만 인쇄」)
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+[SQL] S7-a 매수 체결가 분포 (전 10거래일 vs 후 창)
+SELECT strategy,
+       CASE WHEN timestamp::date <= '2026-09-17' THEN '1_pre' ELSE '2_post' END AS win,
+       COUNT(*) AS n_buy,
+       MIN(price)::bigint AS p_min,
+       (percentile_cont(0.5) WITHIN GROUP (ORDER BY price))::bigint AS p_median,
+       MAX(price)::bigint AS p_max,
+       COUNT(*) FILTER (WHERE price >= 400000) AS n_ge_400k,
+       ROUND(AVG(quantity * price))::bigint AS avg_amount
+FROM virtual_trading_records
+WHERE is_test = true AND action = 'BUY'
+  AND timestamp::date BETWEEN '2026-09-04' AND '2026-10-05'
+  AND strategy IN ('book_pullback_ma20','minervini_volume_dryup','daytrading_3methods_breakout')
+GROUP BY 1, 2 ORDER BY 1, 2;
+-- 출력 --
+strategy | win | n_buy | p_min | p_median | p_max | n_ge_400k | avg_amount
+book_pullback_ma20 | 1_pre | 8 | 2090 | 10525 | 14050 | 0 | 1605019
+book_pullback_ma20 | 2_post | 23 | 1240 | 6890 | 20700 | 0 | 749928
+daytrading_3methods_breakout | 1_pre | 12 | 1895 | 7370 | 18350 | 0 | 1965462
+daytrading_3methods_breakout | 2_post | 22 | 1100 | 3650 | 17950 | 0 | 961977
+minervini_volume_dryup | 1_pre | 3 | 10600 | 35300 | 124500 | 0 | 2984333
+minervini_volume_dryup | 2_post | 9 | 5260 | 9690 | 139000 | 0 | 1356602
+(6 rows)
+
+====================================================================================================
+S8. 10-06(10번째 거래일) 하루를 더하면 뒤집힐 수 있는 칸 — 산술 (데이터 아님 · 10-06 은 미래)
+====================================================================================================
+  P1 book_pullback_ma20: 현재 2/9=22.2% → 10-06 포화 시 3/10=30.0% · 비포화 시 2/10=20.0% · 10-02 EOD n_open 9/10 (하루 매수 상한 5 로 K 도달 가능? True)
+  P1 minervini_volume_dryup: 현재 3/9=33.3% → 10-06 포화 시 4/10=40.0% · 비포화 시 3/10=30.0% · 10-02 EOD n_open 6/6 (하루 매수 상한 5 로 K 도달 가능? True)
+  P1 daytrading_3methods_breakout: 현재 2/9=22.2% → 10-06 포화 시 3/10=30.0% · 비포화 시 2/10=20.0% · 10-02 EOD n_open 10/10 (하루 매수 상한 5 로 K 도달 가능? True)
+  P2 book_pullback_ma20: 현재 밴드 매수 5 → ≥1 이라 10-06 로 바뀌지 않음
+  P2 minervini_volume_dryup: 현재 밴드 매수 3 → ≥1 이라 10-06 로 바뀌지 않음
+  P2 daytrading_3methods_breakout: 현재 밴드 매수 0 → 0 이라 10-06 밴드 매수 1건이면 뒤집힘
+  P4′: 전 일평균 2.300 · 후 9일 6.000 → 10-06 매수 0건이면 5.400 · 15건(3전략×상한5)이면 6.900
+  P4′: 10-06 매수 0건(최소)이어도 10거래일 평균 5.400 > 전 평균 2.300 → 뒤집히지 않음
+  P6: 10-02 n_open 합 [63] · 이론 상한 ΣK = 71 (n_open ≤ K 캡) → 100 도달 불가 (캡이 지켜지는 한)
+  P3: 창 안 최저 -11.402% · 10-06 하루에 문턱 도달하려면 10-02 equity 대비 -23.31% = 보유 평가액 8217400 의 26.57% 하락 필요 (현금 1150528 불변 가정)
+
+====================================================================================================
+S9. 판정 입력 요약 (숫자만 — 판정 문구는 판정문 §0)
+====================================================================================================
+  P1 sat%: book_pullback_ma20=22.2% (2/9) · minervini_volume_dryup=33.3% (3/9) · daytrading_3methods_breakout=22.2% (2/9)
+  P2 band: book_pullback_ma20=5 · minervini_volume_dryup=3 · daytrading_3methods_breakout=0  | 기준선: book_pullback_ma20=1 · minervini_volume_dryup=1 · daytrading_3methods_breakout=0
+  P3 min ratio: -11.402%
+  P4 max daily BUY: book_pullback_ma20=4 · minervini_volume_dryup=3 · daytrading_3methods_breakout=4 · book_pullback_ma5=4 · elder_ema_pullback=3 · book_envelope_200d=3 · deep_mr_dev20=2 · rs_leader=4
+  P4′ mean: pre 2.300 (23/10) → post 6.000 (54/9)
+     daily totals pre [2, 0, 3, 2, 3, 4, 1, 3, 4, 1] · post [6, 4, 6, 6, 4, 7, 9, 8, 4]
+  P6 max n_open sum: 63
