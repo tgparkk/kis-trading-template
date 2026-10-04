@@ -600,6 +600,10 @@ MANUAL_DOCS = [
     "RESULTS_WRC_POST9.md", "RESULTS_RANKING_POST9.md", "RESULTS_SECTOR_POST9.md",
     "RESULTS_S5_POST9.md",
     "ERRATA_2026-09-29_post9_intake.md",
+    # 🔴 2026-10-04 — post10 사전등록(post9 보고서 §4 결정 반영 · 발행 «후» · fetch «전» 동결).
+    #    사람이 쓴 문서라 `MANUAL_DOCS` 자리 · 🔴 등재는 동결 커밋 «앞»이고 «별도 커밋»이다(`PREREG_POST8.md` §0-2 0번 관용)
+    #    · 파일은 등재 시점에 이미 있다(초안 `??`) ⇒ G-1 존재 검사가 «진짜로» 돈다.
+    "PREREG_POST10.md",
     # 🔴 `verify_ledger_post8.py` 는 post5·post6·post7 판 전례대로 **일부러 등재하지 않는다**
     #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]
