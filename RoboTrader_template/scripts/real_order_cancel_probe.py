@@ -8,14 +8,18 @@
 - 체결 불가 가격(기준가(전일종가) x 0.75 를 호가단위로 «내림») 1주 지정가 매수
   → 미체결 조회 → cancel_order → 재조회 → (남으면 1회만 더 취소 → 재조회) → 당일 주문조회.
 - 판정은 cancel_order 의 success 가 아니라 «재조회 결과 + KIS 원응답(rt_cd)» 으로 한다.
+  NEW-B1 = «1차» 취소 TR 원응답 기준 3분류(재현 / 비재현 / 판정불가).
+- 주문이 미체결 목록에 한 번도 안 보였거나(= cancel_order 가 취소를 안 보냄) 당일조회 원주문이 «잔량>0 ∧ 취소 흔적
+  없음» 이면 CRITICAL + exit 4. 예외·Ctrl+C 중단 시 주문번호를 알면 그 주문 전량 취소를 1회 시도한다.
 
 기본 = dry-run: 인증 → 현재가/기준가/하한가 → 주문가 계산 → 미체결 조회 → 가드 평가 → 계획 출력.
   주문·취소 TR(TTTC0012U·TTTC0011U·TTTC0013U)은 호출하지 않는다 — 코드 경로가 없고, HTTP 게이트도 막는다.
---live 일 때만 주문 1건. 가드(아래 evaluate 목록)가 하나라도 실패하면 주문 없이 종료.
+--live 일 때만 주문 1건. 가드가 하나라도 실패하면 주문 없이 종료. cwd 가 라이브 트리 아래면 무조건 종료.
 
 봇 코드 파일은 수정하지 않는다. 래핑은 이 프로세스 안에서만 한다.
 - api.kis_auth 모듈의 전역 이름 `requests` 를 HttpGate 로 교체 → KIS HTTP 호출 전부를 원응답째 기록(마스킹)하고
   POST 는 허용 목록(토큰 · live 의 hashkey · 계획과 «정확히» 같은 매수 1건 · 이 주문의 전량 취소)만 통과시킨다.
+  KIS 외 호스트는 텔레그램 POST(장애 알림)만 · requests.Session 등 다른 경로는 차단.
 - utils.logger 의 공유 핸들러를 probe 로그 파일로 교체 → 봇 로거 출력도 같은 파일로 간다(cwd 의 logs/ 미사용).
 
 출력: 콘솔 + D:/tmp/real_cancel_probe_out/probe_YYYYMMDD_HHMMSS.log (원응답 JSON 은 파일에만 · 계좌·키·토큰 마스킹)
@@ -24,7 +28,8 @@
   PYTHONPATH="$PWD:$PWD/.." PYTHONIOENCODING=utf-8 \
     D:/GIT/kis-trading-template/RoboTrader_template/venv/Scripts/python.exe \
     scripts/real_order_cancel_probe.py --code 005930            # dry-run
-  ... scripts/real_order_cancel_probe.py --code 005930 --live     # 10-06 08:30~08:58 KST 에만 통과
+  ... scripts/real_order_cancel_probe.py --code 005930 --live     # 10-06 08:30~08:50 KST 에만 통과
+  (선택) --expect-base <원>: dry-run 으로 본 기준가를 넣으면 live 때 조회 기준가가 그 값이어야 진행
 """
 from __future__ import annotations
 
@@ -47,13 +52,15 @@ from urllib.parse import urlparse
 DEFAULT_INSTANCE_DIR = "D:/GIT/kis-trading-template/RoboTrader_template/instances/daytrading"
 EXPECTED_INSTANCE_ID = "daytrading"
 DEFAULT_OUT_DIR = "D:/tmp/real_cancel_probe_out"
+LIVE_TREE_ROOT = "D:/GIT/kis-trading-template"   # 이 아래에서 실행 금지(토큰 캐시·로그가 라이브 트리에 생김)
 
 QTY = 1                       # 수량 고정(인자 없음)
 PRICE_RATIO = 0.75            # 주문가 = 기준가 x 0.75 → 호가 내림
 MAX_PRICE_RATIO = 0.80        # 가드: 주문가 ≤ 기준가 x 0.80 · 현재가 x 0.80
 WINDOW_START = dtime(8, 30, 0)
-WINDOW_END = dtime(8, 58, 0)
+WINDOW_END = dtime(8, 50, 0)  # 취소 재시도 최악 2분+ · 09:00 시가 결정 전 여유
 WAIT_SEC = 2.0
+EXTERNAL_POST_HOSTS = {"api.telegram.org"}   # KIS 외 허용 = kis_auth 장애 알림 POST 뿐
 
 TR_BUY = "TTTC0012U"
 TR_SELL = "TTTC0011U"
@@ -106,7 +113,40 @@ def compute_order_price(base_price: float) -> int:
 def check_time_window(now: datetime) -> Guard:
     t = now.time()
     ok = WINDOW_START <= t <= WINDOW_END
-    return ("시간창 08:30:00~08:58:00 KST", ok, f"지금 {now:%Y-%m-%d %H:%M:%S}")
+    return (f"시간창 {WINDOW_START:%H:%M:%S}~{WINDOW_END:%H:%M:%S} KST", ok, f"지금 {now:%Y-%m-%d %H:%M:%S}")
+
+
+def check_cwd(cwd: Path) -> Guard:
+    """라이브 트리 아래에서 돌면 토큰 캐시(cwd 기준)·로그가 라이브 봇 것을 덮을 수 있다 → 거부."""
+    root = os.path.normcase(os.path.normpath(LIVE_TREE_ROOT))
+    c = os.path.normcase(os.path.normpath(str(cwd)))
+    inside = c == root or c.startswith(root + os.sep)
+    return ("실행 위치 = 라이브 트리 밖", not inside, f"cwd={cwd}")
+
+
+def check_expect_base(expect: Optional[int], base: float) -> Optional[Guard]:
+    """--expect-base 가 주어졌을 때만 가드(조회 기준가 == 기대값). 없으면 None."""
+    if expect is None:
+        return None
+    return ("기준가 = --expect-base", base > 0 and int(round(base)) == int(expect),
+            f"조회 {base:,.0f} vs 기대 {int(expect):,}")
+
+
+def judge_new_b1(c1: Optional[Dict[str, Any]], c1_raw: Optional[Dict[str, Any]],
+                 remain: Optional[bool]) -> Tuple[str, str]:
+    """NEW-B1 판정 — «1차» cancel_order 반환 + 그 호출 중 나간 취소 TR 원응답 + 최종 잔존으로 3분류."""
+    if not c1:
+        return "판정불가", "취소 시도 없음"
+    if not c1_raw:
+        return "판정불가", "1차 cancel_order 가 취소 TR 을 보내지 않음(목록에서 못 찾음·조회 실패 등)"
+    rt = c1_raw.get("rt_cd")
+    if rt != "0":
+        return "판정불가", f"1차 취소 TR 을 KIS 가 거부/무응답(rt_cd={rt})"
+    if c1.get("success") is True:
+        return "비재현", "원응답 rt_cd 0 + success True"
+    if c1.get("message") == "Cancel failed: Unknown error" and remain is False:
+        return "재현", "원응답 rt_cd 0 인데 success False·'Unknown error' · 최종 재조회 0건"
+    return "판정불가", f"rt_cd 0 · success={c1.get('success')} · message={c1.get('message')!r} · 최종 잔존={remain}"
 
 
 def check_trading_day(market_status: str, holiday: bool, kis_closed: Optional[bool]) -> Guard:
@@ -181,6 +221,8 @@ class GateState:
 
 def gate_decision(state: GateState, method: str, path: str, tr_id: str, params: Dict[str, Any]) -> Tuple[bool, str]:
     """KIS 도메인 HTTP 1건의 허용 여부(상태 변경 없음 — 매수 횟수 증가는 호출자가 한다)."""
+    if method.upper() not in ("GET", "POST"):
+        return False, f"허용 밖 메서드 차단({method})"
     if method.upper() == "GET":
         return True, "읽기(GET)"
     if path == PATH_TOKEN:
@@ -256,6 +298,14 @@ class _MaskFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.msg = self._m.text(record.getMessage())
         record.args = ()
+        # log.exception 의 traceback(마지막 줄 = 예외 메시지 포함)도 마스킹 — 포맷된 문자열로 바꿔 끼운다.
+        if record.exc_info:
+            record.exc_text = self._m.text(logging.Formatter().formatException(record.exc_info))
+            record.exc_info = None
+        elif record.exc_text:
+            record.exc_text = self._m.text(record.exc_text)
+        if record.stack_info:
+            record.stack_info = self._m.text(record.stack_info)
         return True
 
 
@@ -273,7 +323,10 @@ class HttpGate:
         self.calls: List[Dict[str, Any]] = []
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self._real, name)
+        # 허용 = get·post·request(아래 정의) + 예외 클래스. Session·put·delete 등 다른 경로는 차단.
+        if name == "exceptions":
+            return self._real.exceptions
+        raise AttributeError(f"[probe gate] requests.{name} 경로 차단(허용: get·post·request·exceptions)")
 
     def get(self, url: str, **kw: Any) -> Any:
         return self._call("GET", url, kw)
@@ -281,11 +334,17 @@ class HttpGate:
     def post(self, url: str, **kw: Any) -> Any:
         return self._call("POST", url, kw)
 
+    def request(self, method: str, url: str, **kw: Any) -> Any:
+        return self._call(str(method).upper(), url, kw)
+
     def _call(self, method: str, url: str, kw: Dict[str, Any]) -> Any:
         u = urlparse(url)
-        if u.netloc != self._kis_host:            # 텔레그램 등 — URL 에 토큰이 있으므로 host 만 기록
-            self._log.info(f"[HTTP] 외부 호출 {method} host={u.netloc} (기록 생략)")
-            return getattr(self._real, method.lower())(url, **kw)
+        if u.netloc != self._kis_host:            # URL 에 토큰이 있을 수 있으므로 host 만 기록
+            if method == "POST" and u.netloc in EXTERNAL_POST_HOSTS:
+                self._log.info(f"[HTTP] 외부 호출 {method} host={u.netloc} (허용 · 기록 생략)")
+                return self._real.post(url, **kw)
+            self._log.warning(f"[HTTP] 🛑 외부 호스트 차단 {method} host={u.netloc}")
+            return _blocked_response(url, f"외부 호스트 차단({u.netloc})")
         headers = kw.get("headers") or {}
         tr_id = str(headers.get("tr_id", ""))
         if method == "GET":
@@ -310,7 +369,7 @@ class HttpGate:
             self._state.buy_calls += 1
         rec.update({"blocked": False, "reason": reason})
         try:
-            resp = getattr(self._real, method.lower())(url, **kw)
+            resp = self._real.get(url, **kw) if method == "GET" else self._real.post(url, **kw)
         except Exception as e:  # 기록 후 원래 흐름(봇 재시도·오류 처리)으로 돌려보낸다
             rec["exception"] = f"{type(e).__name__}: {e}"
             self.calls.append(rec)
@@ -327,14 +386,17 @@ class HttpGate:
         if isinstance(body, dict):
             rec["rt_cd"], rec["msg_cd"], rec["msg1"] = body.get("rt_cd"), body.get("msg_cd"), body.get("msg1")
         self.calls.append(rec)
-        self._log.info(f"[HTTP#{seq}] {method} {tr_id or u.path} status={resp.status_code} "
+        # hashkey 호출엔 주문 tr_id 헤더가 붙어 온다 → 경로로 표기
+        label = "hashkey" if u.path == PATH_HASHKEY else (tr_id or u.path)
+        self._log.info(f"[HTTP#{seq}] {method} {label} status={resp.status_code} "
                        f"rt_cd={rec.get('rt_cd')} msg_cd={rec.get('msg_cd')} msg1={rec.get('msg1')}")
         self._raw.info("RAW_HTTP " + self._m.text(json.dumps(rec, ensure_ascii=False, default=str)))
         return resp
 
-    def last(self, tr_id: str) -> Optional[Dict[str, Any]]:
-        for c in reversed(self.calls):
-            if c.get("tr_id") == tr_id and not c.get("blocked"):
+    def last(self, tr_id: str, since: int = 0) -> Optional[Dict[str, Any]]:
+        """since 번째 기록 이후(= 그 시점 len(calls) 이후) 실제로 보낸 tr_id 호출 중 마지막."""
+        for c in reversed(self.calls[since:]):
+            if c.get("tr_id") == tr_id and not c.get("blocked") and c.get("path") != PATH_HASHKEY:
                 return c
         return None
 
@@ -410,7 +472,8 @@ def _ledger(log: logging.Logger, gate: HttpGate) -> List[Dict[str, Any]]:
     """HTTP 장부 요약 + 실제로 «보내진» 주문·취소 호출 목록 반환."""
     counts: Dict[str, int] = {}
     for c in gate.calls:
-        key = f"{c['method']} {c.get('tr_id') or c['path']}{' (차단)' if c.get('blocked') else ''}"
+        label = "hashkey" if c["path"] == PATH_HASHKEY else (c.get("tr_id") or c["path"])
+        key = f"{c['method']} {label}{' (차단)' if c.get('blocked') else ''}"
         counts[key] = counts.get(key, 0) + 1
     log.info("── HTTP 장부(KIS 도메인): " + " · ".join(f"{k} x{v}" for k, v in counts.items()))
     sent = [c for c in gate.calls if c["path"] in ORDER_PATHS and not c.get("blocked")]
@@ -437,7 +500,8 @@ def run(args: argparse.Namespace, inst_dir: Path, log: logging.Logger, raw: logg
     gate = HttpGate(kis_auth.requests, state, urlparse(settings.KIS_BASE_URL).netloc, log, raw, masker)
     kis_auth.requests = gate
 
-    pre = check_instance(settings.INSTANCE_ID, settings.CONFIG_FILE.exists(), settings.KIS_BASE_URL)
+    pre = [check_cwd(Path.cwd())] + check_instance(settings.INSTANCE_ID, settings.CONFIG_FILE.exists(),
+                                                    settings.KIS_BASE_URL)
     _print_guards(log, "필수 전제(KIS 호출 전)", pre)
     if not all(ok for _, ok, _ in pre):
         log.error("🔴 필수 전제 실패 → KIS 호출 없이 종료")
@@ -484,6 +548,9 @@ def run(args: argparse.Namespace, inst_dir: Path, log: logging.Logger, raw: logg
                                     _read_live_holiday_cache(inst_dir, now)))
     guards.append(check_time_window(now))
     guards += check_price_guards(price, base, cur, llam)
+    eb = check_expect_base(args.expect_base, base)
+    if eb is not None:
+        guards.append(eb)
     guards.append(("수량 = 1 고정", QTY == 1, f"QTY={QTY}"))
     guards.append(check_no_pending(pending0))
     guards += real_mode
@@ -507,6 +574,25 @@ def run(args: argparse.Namespace, inst_dir: Path, log: logging.Logger, raw: logg
     return _run_live(args, broker, gate, state, log, masker, price, now_kst)
 
 
+def _remain_state(pend: Optional[List[dict]], hits: List[dict], ever_visible: bool) -> Optional[bool]:
+    """True = 목록에 남음 · False = 한 번은 보였고 지금은 없음 · None = 미상(조회 실패 또는 한 번도 안 보임)."""
+    if pend is None:
+        return None
+    if hits:
+        return True
+    return False if ever_visible else None
+
+
+def _emergency_cancel(broker: Any, log: logging.Logger, masker: Masker, odno: str, code: str) -> None:
+    """예외·Ctrl+C 중단 시 이 주문 전량 취소 1회 시도(게이트는 target_odno 전량 취소만 허용)."""
+    try:
+        log.critical(f"비상 취소 1회 시도 — 주문번호 {odno} · 종목 {code}")
+        r = broker.cancel_order(odno, code)
+        log.critical(f"비상 취소 반환(성공 여부는 HTS 로 확인): {masker.obj(r)}")
+    except BaseException as e2:  # 두 번째 Ctrl+C 등 — 원래 예외를 살려 보낸다
+        log.critical(f"비상 취소 중 예외 {type(e2).__name__}: {e2}")
+
+
 def _run_live(args: argparse.Namespace, broker: Any, gate: HttpGate, state: GateState,
               log: logging.Logger, masker: Masker, price: int, now_kst: Any) -> int:
     from api import kis_order_api
@@ -518,14 +604,16 @@ def _run_live(args: argparse.Namespace, broker: Any, gate: HttpGate, state: Gate
         return 3
 
     state.planned = {"PDNO": args.code, "ORD_QTY": str(QTY), "ORD_UNPR": str(int(price)), "ORD_DVSN": "00"}
-    res: Dict[str, Any] = {"order": None, "odno": "", "visible": None, "exact_fmt": None, "cancel1": None,
-                           "cancel2": None, "remain": None, "daily_rows": [], "daily_ok": None}
+    res: Dict[str, Any] = {"order": None, "odno": "", "visible": None, "ever_visible": False, "exact_fmt": None,
+                           "cancel1": None, "cancel1_raw": None, "cancel2": None, "remain": None,
+                           "daily_rows": [], "daily_ok": None}
     cleared = False
     try:
         order = broker.place_buy_order(args.code, QTY, int(price))
         res["order"] = order
         odno = str(order.get("order_id") or "")
         res["odno"] = odno
+        state.target_odno = odno           # 비상 취소도 이 주문번호만 게이트를 통과한다
         log.info(f"① 주문 결과: {masker.obj(order)}")
         _time.sleep(WAIT_SEC)
 
@@ -540,34 +628,50 @@ def _run_live(args: argparse.Namespace, broker: Any, gate: HttpGate, state: Gate
             else:
                 cleared = True
         else:
-            state.target_odno = odno
             pend1 = broker.get_pending_orders()
             hit = find_rows(pend1, odno)
             res["visible"] = bool(hit)
+            res["ever_visible"] = bool(hit)
             res["exact_fmt"] = any(str(r.get("odno")) == odno for r in pend1 or [])
             log.info(f"② 미체결 조회: {'조회 실패' if pend1 is None else f'{len(pend1)}건'} · "
                      f"이 주문 보임={bool(hit)} · 주문번호 문자열 완전일치={res['exact_fmt']} · "
                      f"{[masker.obj(_pick(r, PENDING_FIELDS)) for r in hit]}")
 
+            n0 = len(gate.calls)
             c1 = broker.cancel_order(odno, args.code)
             res["cancel1"] = c1
-            log.info(f"③ cancel_order 반환(판정에 쓰지 않음): {masker.obj(c1)}")
+            res["cancel1_raw"] = gate.last(TR_CANCEL, since=n0)   # «1차» 취소 TR 원응답(없으면 None = 안 보냄)
+            if res["cancel1_raw"]:
+                res["ever_visible"] = True     # cancel_order 내부 조회가 찾아서 취소 TR 을 보냈다
+            log.info(f"③ cancel_order 반환(판정에 쓰지 않음): {masker.obj(c1)} · 1차 취소 TR 원응답 rt_cd="
+                     f"{(res['cancel1_raw'] or {}).get('rt_cd', '미전송')}")
             _time.sleep(WAIT_SEC)
             pend2 = broker.get_pending_orders()
-            remain = pend2 is None or bool(find_rows(pend2, odno))
-            log.info(f"④ 재조회: {'조회 실패' if pend2 is None else f'{len(pend2)}건'} · 이 주문 잔존={remain}")
-            if remain:
+            hit2 = find_rows(pend2, odno)
+            res["ever_visible"] = res["ever_visible"] or bool(hit2)
+            remain = _remain_state(pend2, hit2, res["ever_visible"])
+            log.info(f"④ 재조회: {'조회 실패' if pend2 is None else f'{len(pend2)}건'} · 이 주문 잔존="
+                     f"{'미상' if remain is None else remain}")
+            if remain is not False:            # 잔존 또는 미상 → 1회만 더
+                n1 = len(gate.calls)
                 c2 = broker.cancel_order(odno, args.code)
                 res["cancel2"] = c2
+                if gate.last(TR_CANCEL, since=n1):
+                    res["ever_visible"] = True
                 log.info(f"③′ 2차 cancel_order 반환: {masker.obj(c2)}")
                 _time.sleep(WAIT_SEC)
                 pend3 = broker.get_pending_orders()
-                remain = pend3 is None or bool(find_rows(pend3, odno))
+                hit3 = find_rows(pend3, odno)
+                res["ever_visible"] = res["ever_visible"] or bool(hit3)
+                remain = _remain_state(pend3, hit3, res["ever_visible"])
                 log.info(f"④′ 2차 재조회: {'조회 실패' if pend3 is None else f'{len(pend3)}건'} · "
-                         f"이 주문 잔존={remain}")
+                         f"이 주문 잔존={'미상' if remain is None else remain}")
             res["remain"] = remain
-            if remain:
+            if remain is True:
                 log.critical(f"**🔴 HTS 에서 즉시 수동 취소 — 주문번호 {odno} · 종목 {args.code}**")
+            elif remain is None:
+                log.critical(f"**🔴 잔존 미상(미체결 목록에 한 번도 안 보였거나 조회 실패 → cancel_order 가 취소를 "
+                             f"안 보냈을 수 있음) — HTS 에서 즉시 확인·취소 · 주문번호 {odno} · 종목 {args.code}**")
             else:
                 cleared = True
 
@@ -583,8 +687,11 @@ def _run_live(args: argparse.Namespace, broker: Any, gate: HttpGate, state: Gate
         for r in sel:
             log.info(f"   {masker.obj(_pick(r, DAILY_FIELDS))}")
     except BaseException as e:  # KeyboardInterrupt 포함 — 주문이 남았을 수 있다
-        log.critical(f"**🔴 예외로 중단({type(e).__name__}: {e}) — HTS 에서 즉시 미체결 확인·수동 취소 "
-                     f"(주문번호 {res.get('odno') or '없음/미상'} · 종목 {args.code})**")
+        log.critical(f"**🔴 예외로 중단({type(e).__name__}: {e}) · 주문번호 {res.get('odno') or '없음/미상'}**")
+        if state.target_odno and not cleared:
+            _emergency_cancel(broker, log, masker, state.target_odno, args.code)
+        log.critical(f"**🔴 HTS 에서 즉시 미체결 확인·수동 취소 — 주문번호 {res.get('odno') or '없음/미상'} · "
+                     f"종목 {args.code}**")
         _ledger(log, gate)
         raise
     verified = _summary(log, gate, masker, args.code, res, cleared)
@@ -593,23 +700,25 @@ def _run_live(args: argparse.Namespace, broker: Any, gate: HttpGate, state: Gate
 
 def _summary(log: logging.Logger, gate: HttpGate, masker: Masker, code: str,
              res: Dict[str, Any], cleared: bool) -> bool:
-    """판정 요약 출력. 반환 = 「미체결 재조회 0건 + 주문이 처음엔 보였음 + 당일조회에 취소 흔적」 3중 확인."""
+    """판정 요약 출력. 반환 = 재조회 0건 · 한 번은 보였음 · 당일조회 취소 흔적 · 원주문 잔량 미잔존 4중 확인."""
     sent = _ledger(log, gate)
     odno = res["odno"]
     c1 = res["cancel1"] or {}
     c1_data = c1.get("data") or {}
-    raw_cancel = gate.last(TR_CANCEL) or {}
-    raw_out = (raw_cancel.get("body") or {}).get("output")
+    raw1 = res["cancel1_raw"] or {}
+    raw_last = gate.last(TR_CANCEL) or {}
+    raw_out = (raw1.get("body") or {}).get("output")
     raw_out_keys = sorted(raw_out) if isinstance(raw_out, dict) else type(raw_out).__name__
     rows = res["daily_rows"]
     orig = [r for r in rows if normalize_odno(r.get("odno")) == normalize_odno(odno)]
     cancel_rows = [r for r in rows if odno and normalize_odno(r.get("orgn_odno")) == normalize_odno(odno)]
     orig_cancelled = any(str(r.get("cncl_yn", "")).upper() == "Y" or _f(r, "cnc_cfrm_qty") >= 1 for r in orig)
     cancel_evidence = bool(cancel_rows) or orig_cancelled
+    orig_live = any(_f(r, "rmn_qty") > 0 for r in orig) and not cancel_evidence
     filled = sum(_f(r, "tot_ccld_qty") for r in orig)
-    b1 = (bool(c1) and c1.get("success") is False and c1.get("message") == "Cancel failed: Unknown error"
-          and raw_cancel.get("rt_cd") == "0" and res["remain"] is False)
-    verified = bool(odno) and cleared and bool(res["visible"]) and bool(res["daily_ok"]) and cancel_evidence
+    b1, b1_why = judge_new_b1(res["cancel1"], res["cancel1_raw"], res["remain"])
+    verified = (bool(odno) and cleared and bool(res["ever_visible"]) and bool(res["daily_ok"])
+                and cancel_evidence and not orig_live)
 
     def mk(v: Optional[bool]) -> str:
         return "✓" if v else ("?" if v is None else "✗")
@@ -617,32 +726,37 @@ def _summary(log: logging.Logger, gate: HttpGate, masker: Masker, code: str,
     log.info("=" * 78)
     log.info("판정 요약")
     log.info(f" 주문 접수 {mk(bool(odno))} (ODNO={odno or '-'})")
-    log.info(f" 미체결 조회에 보임 {mk(res['visible'])} (주문번호 문자열 완전일치={res['exact_fmt']})")
-    log.info(f" cancel_order 반환: success={c1.get('success')} · message={c1.get('message')!r} · "
+    log.info(f" 미체결 조회에 보임 {mk(res['visible'])} (한 번이라도 보임={res['ever_visible']} · "
+             f"주문번호 문자열 완전일치={res['exact_fmt']})")
+    log.info(f" cancel_order(1차) 반환: success={c1.get('success')} · message={c1.get('message')!r} · "
              f"data 의 ODNO 있음={'ODNO' in c1_data} ({c1_data.get('ODNO', '-')})")
-    log.info(f" 취소 TR 원응답(TTTC0013U 마지막): rt_cd={raw_cancel.get('rt_cd')} · "
-             f"msg_cd={raw_cancel.get('msg_cd')} · msg1={raw_cancel.get('msg1')} · output 키={raw_out_keys}")
+    log.info(f" 1차 취소 TR 원응답: rt_cd={raw1.get('rt_cd', '미전송')} · msg_cd={raw1.get('msg_cd')} · "
+             f"msg1={raw1.get('msg1')} · output 키={raw_out_keys}")
+    if res["cancel2"]:
+        log.info(f" 2차 cancel_order 반환: {masker.obj(res['cancel2'])} · 마지막 취소 TR rt_cd={raw_last.get('rt_cd')}")
     log.info(f" 재조회 잔존 0 {mk(None if res['remain'] is None else not res['remain'])}"
-             f"{' (2차 취소 시도함)' if res['cancel2'] else ''}")
+             f"{' (미상)' if res['remain'] is None and odno else ''}{' (2차 취소 시도함)' if res['cancel2'] else ''}")
     log.info(f" 당일조회 취소 행 {mk(cancel_evidence) if res['daily_ok'] else '? (조회 실패)'} "
              f"(취소주문 행 {len(cancel_rows)} · 원주문 cncl_yn/cnc_cfrm_qty 취소 반영={orig_cancelled} · "
-             f"체결수량 합 {filled:g})")
+             f"원주문 잔량>0·취소흔적 없음={orig_live} · 체결수량 합 {filled:g})")
     for r in orig:
         log.info(f"   원주문: {masker.obj(_pick(r, DAILY_FIELDS))}")
     for r in cancel_rows:
         log.info(f"   취소주문: {masker.obj(_pick(r, DAILY_FIELDS))}")
-    log.info(f" NEW-B1 재현 {mk(b1)} (= success False·'Unknown error' + 원응답 rt_cd '0' + 재조회 0건)")
+    log.info(f" NEW-B1 = {b1} — {b1_why}")
     log.info(f" 주문·취소 경로로 보낸 HTTP {len(sent)}건: {[(c['tr_id'], c.get('rt_cd')) for c in sent]}")
-    log.info(f" 3중 확인(재조회 0 · 처음엔 보임 · 당일조회 취소 흔적) {mk(verified)}")
+    log.info(f" 교차 확인(재조회 0 · 한 번은 보임 · 당일조회 취소 흔적 · 원주문 잔량 미잔존) {mk(verified)}")
     log.info("사람이 할 일")
-    if not cleared:
-        log.critical(f"**🔴 HTS 에서 즉시 수동 취소 — 주문번호 {odno or '미상'} · 종목 {code}**")
-    elif not verified:
+    if res["remain"] is True or (odno and res["remain"] is None) or (not odno and not cleared):
+        log.critical(f"**🔴 HTS 에서 즉시 확인·수동 취소 — 주문번호 {odno or '미상'} · 종목 {code}**")
+    if orig_live:
+        log.critical(f"**🔴 당일조회 원주문 잔량>0 · 취소 흔적 없음 — HTS 에서 즉시 확인·취소 · 주문번호 {odno}**")
+    elif cleared and not verified:
         log.warning(f"**⚠️ 재조회엔 없지만 교차 확인 불충분 — HTS 미체결 화면에서 주문번호 {odno or '미상'} 직접 확인**")
     if filled > 0:
         log.critical(f"**🔴 체결 {filled:g}주 발생 — 10-19 전 계좌 보유 0 으로 되돌릴 것(대사 abort 방지)**")
     log.info(" - HTS 미체결·당일 주문내역 화면으로 위 결과 눈으로 대조(미체결 0 · 체결 0)")
-    log.info(" - 체크리스트 §4-B 에 ODNO · cncl_yn · rmn_qty · cnc_cfrm_qty · NEW-B1 재현 여부 · 이 로그 경로 기록")
+    log.info(" - 체크리스트 §4-B 에 ODNO · cncl_yn · rmn_qty · cnc_cfrm_qty · NEW-B1 판정 · 이 로그 경로 기록")
     log.info("=" * 78)
     return verified
 
@@ -653,6 +767,8 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--live", action="store_true", help="실제 주문 1건(가드 전부 통과 시에만)")
     p.add_argument("--instance-dir", default=DEFAULT_INSTANCE_DIR, help="실전 인스턴스 폴더(읽기만)")
     p.add_argument("--out-dir", default=DEFAULT_OUT_DIR, help="probe 로그 폴더(워크트리·라이브 트리 밖)")
+    p.add_argument("--expect-base", type=int, default=None,
+                   help="(선택) 기대 기준가(원). 주어지면 조회 기준가와 같아야 live 진행")
     a = p.parse_args(argv)
     if not (len(a.code) == 6 and a.code.isdigit()):
         p.error("--code 는 숫자 6자리")
@@ -661,6 +777,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
+    cg = check_cwd(Path.cwd())
+    if not cg[1]:
+        print(f"🔴 라이브 트리 아래에서 실행 금지({cg[2]}) — 워크트리 RoboTrader_template 에서 실행 → 종료",
+              file=sys.stderr)
+        return 2
     # config.settings 는 import 시점에 key.ini 를 읽는다 → 프로젝트 모듈 import «전»에 인스턴스를 고정한다.
     inst_dir = Path(args.instance_dir).resolve()
     prev = os.environ.get("KIS_INSTANCE_DIR")

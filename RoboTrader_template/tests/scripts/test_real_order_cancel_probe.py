@@ -29,10 +29,10 @@ def test_floor_to_tick_never_rounds_up_and_is_aligned():
         assert raw - price < p.tick_size(raw)
 
 
-# ── 시간창 08:30:00~08:58:00 ──────────────────────────────────────────────────
+# ── 시간창 08:30:00~08:50:00 ──────────────────────────────────────────────────
 @pytest.mark.parametrize("hms, ok", [
-    ((8, 29, 59), False), ((8, 30, 0), True), ((8, 45, 0), True),
-    ((8, 58, 0), True), ((8, 58, 1), False), ((9, 0, 0), False), ((7, 30, 0), False),
+    ((8, 29, 59), False), ((8, 30, 0), True), ((8, 45, 0), True), ((8, 50, 0), True),
+    ((8, 50, 1), False), ((8, 58, 0), False), ((9, 0, 0), False), ((7, 30, 0), False),
 ])
 def test_time_window(hms, ok):
     assert p.check_time_window(datetime(2026, 10, 6, *hms))[1] is ok
@@ -208,3 +208,222 @@ def test_masker_masks_keys_and_secret_substrings():
     m.add("ABCDEFGH", "", None, "xy")       # 4자 미만·빈 값은 무시
     out = m.obj({"Cano": "11112222", "nested": [{"msg": "key ABCDEFGH here", "inqr_ip_addr": "1.2.3.4"}]})
     assert out == {"Cano": "***", "nested": [{"msg": "key *** here", "inqr_ip_addr": "***"}]}
+
+
+# ── 실행 위치·기대 기준가·NEW-B1 판정 ────────────────────────────────────────
+def test_cwd_guard_rejects_live_tree_only():
+    from pathlib import Path
+    assert p.check_cwd(Path("D:/GIT/kis-trading-template"))[1] is False
+    assert p.check_cwd(Path("D:/GIT/kis-trading-template/RoboTrader_template"))[1] is False
+    assert p.check_cwd(Path("D:/tmp/kis-wt-real-cancel-probe/RoboTrader_template"))[1] is True
+    assert p.check_cwd(Path("D:/GIT/kis-trading-template2"))[1] is True
+
+
+def test_expect_base_guard_optional():
+    assert p.check_expect_base(None, 276_000) is None
+    assert p.check_expect_base(276_000, 276_000)[1] is True
+    assert p.check_expect_base(276_000, 275_500)[1] is False
+
+
+B1_MSG = "Cancel failed: Unknown error"
+
+
+@pytest.mark.parametrize("c1, raw, remain, verdict", [
+    ({"success": False, "message": B1_MSG}, {"rt_cd": "0"}, False, "재현"),
+    ({"success": True, "message": "Order cancelled"}, {"rt_cd": "0"}, False, "비재현"),
+    ({"success": False, "message": B1_MSG}, {"rt_cd": "0"}, True, "판정불가"),      # KIS 는 OK 인데 남음
+    ({"success": False, "message": "Cancel API returned no response"}, {"rt_cd": "1"}, False, "판정불가"),
+    ({"success": False, "message": "Order 1 not found in cancellable list"}, None, None, "판정불가"),
+    (None, None, None, "판정불가"),
+])
+def test_judge_new_b1_three_way(c1, raw, remain, verdict):
+    assert p.judge_new_b1(c1, raw, remain)[0] == verdict
+
+
+# ── 게이트: 외부 호스트·다른 requests 경로 ───────────────────────────────────
+def test_gate_blocks_external_hosts_and_other_request_paths():
+    import logging
+    fake = _FakeRequests()
+    log = logging.getLogger("probe.test.ext")
+    gate = p.HttpGate(fake, p.GateState(live=True), "kis.example:9443", log, log, p.Masker())
+    r = gate.get("https://evil.example/x", headers={})
+    assert r.json()["msg_cd"] == "PROBE_BLOCKED" and fake.sent == []
+    gate.post("https://api.telegram.org/botTOKEN/sendMessage", json={"text": "x"})   # 장애 알림만 허용
+    assert fake.sent == [("POST", "https://api.telegram.org/botTOKEN/sendMessage")]
+    assert gate.request("PUT", "https://kis.example:9443/uapi/x", headers={}).json()["msg_cd"] == "PROBE_BLOCKED"
+    with pytest.raises(AttributeError):
+        gate.Session()
+    assert gate.exceptions is fake.exceptions
+
+
+def test_mask_filter_masks_exception_traceback():
+    import io
+    import logging
+    m = p.Masker()
+    m.add("SECRETVALUE9")
+    buf = io.StringIO()
+    h = logging.StreamHandler(buf)
+    h.setFormatter(logging.Formatter("%(message)s"))
+    h.addFilter(p._MaskFilter(m))
+    lg = logging.getLogger("probe.test.maskexc")
+    lg.handlers, lg.propagate = [h], False
+    try:
+        raise ValueError("boom SECRETVALUE9")
+    except ValueError:
+        lg.exception("ctx SECRETVALUE9")
+    out = buf.getvalue()
+    assert "SECRETVALUE9" not in out and "ValueError: boom ***" in out and "ctx ***" in out
+
+
+# ── live 경로 시나리오: «진짜» KISBroker·kis_order_api·_url_fetch + 가짜 KIS HTTP(네트워크 0) ──────────
+import io  # noqa: E402
+import logging  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+import requests as _requests  # noqa: E402
+
+OD = "0000012345"
+HOST = "kis.example:9443"
+ROW = {"odno": OD, "orgn_odno": "", "pdno": "005930", "sll_buy_dvsn_cd": "02", "ord_qty": "1",
+       "ord_unpr": "207000", "psbl_qty": "1", "krx_fwdg_ord_orgno": "91252", "ord_gno_brno": "91252"}
+ORIG_CANCELLED = {"odno": OD, "orgn_odno": "", "pdno": "005930", "ord_qty": "1", "cncl_yn": "N",
+                  "rmn_qty": "0", "cnc_cfrm_qty": "1", "tot_ccld_qty": "0"}
+ORIG_LIVE = {**ORIG_CANCELLED, "rmn_qty": "1", "cnc_cfrm_qty": "0"}
+CANCEL_ROW = {"odno": "0000012399", "orgn_odno": OD, "pdno": "005930", "ord_qty": "1", "cncl_yn": "Y",
+              "rmn_qty": "0", "cnc_cfrm_qty": "0", "tot_ccld_qty": "0"}
+CANCEL_OK = {"rt_cd": "0", "msg_cd": "APBK0013", "msg1": "주문 전송 완료 되었습니다.",
+             "output": {"KRX_FWDG_ORD_ORGNO": "91252", "ODNO": "0000012399", "ORD_TMD": "083502"}}
+CANCEL_REJ = {"rt_cd": "1", "msg_cd": "APBK0918", "msg1": "정정/취소할 수량이 없습니다.", "output": {}}
+
+
+class _KisResp:
+    def __init__(self, body):
+        self.status_code = 200
+        self.headers = {"tr_cont": "D"}
+        self._b = body
+        self.text = json.dumps(body, ensure_ascii=False)
+
+    def json(self):
+        return self._b
+
+
+class _FakeKIS:
+    """KIS 서버 흉내 — 미체결(TTTC8036R) 응답은 호출 순서대로 꺼낸다(cancel_order 내부 조회 포함)."""
+    exceptions = _requests.exceptions
+
+    def __init__(self, psbl_seq, cancel_bodies, daily_rows, interrupt_on_psbl=None):
+        self.psbl, self.cancels, self.daily = list(psbl_seq), list(cancel_bodies), daily_rows
+        self.interrupt_on_psbl, self.n_psbl, self.sent = interrupt_on_psbl, 0, []
+
+    def get(self, url, **kw):
+        tr = kw["headers"]["tr_id"]
+        self.sent.append(tr)
+        if tr == "TTTC8036R":
+            self.n_psbl += 1
+            if self.n_psbl == self.interrupt_on_psbl:
+                raise KeyboardInterrupt
+            return _KisResp({"rt_cd": "0", "msg_cd": "KIOK0000", "msg1": "ok", "output": self.psbl.pop(0),
+                             "ctx_area_fk100": "", "ctx_area_nk100": ""})
+        if tr == "TTTC0081R":
+            return _KisResp({"rt_cd": "0", "msg_cd": "KIOK0000", "msg1": "ok", "output1": self.daily,
+                             "output2": {}, "ctx_area_fk100": "", "ctx_area_nk100": ""})
+        raise AssertionError(f"unexpected GET {tr}")
+
+    def post(self, url, **kw):
+        if url.endswith(p.PATH_HASHKEY):
+            self.sent.append("hashkey")
+            return _KisResp({"HASH": "h"})
+        tr = kw["headers"]["tr_id"]
+        self.sent.append(tr)
+        if tr == p.TR_BUY:
+            return _KisResp({"rt_cd": "0", "msg_cd": "APBK0013", "msg1": "주문 전송 완료 되었습니다.",
+                             "output": {"KRX_FWDG_ORD_ORGNO": "91252", "ODNO": OD, "ORD_TMD": "083500"}})
+        if tr == p.TR_CANCEL:
+            return _KisResp(self.cancels.pop(0))
+        raise AssertionError(f"unexpected POST {tr}")
+
+
+@pytest.fixture
+def run_live(monkeypatch):
+    import api.circuit_breaker as cbm
+    import api.kis_auth as ka
+    from config.market_hours import KST
+    from framework.broker import KISBroker
+
+    monkeypatch.setattr(ka, "_TRENV", ka.KISEnv("app", "sec", "12345678", "01", "Bearer t", "https://" + HOST))
+    monkeypatch.setattr(ka, "_autoReAuth", False)
+    cb = SimpleNamespace(can_execute=lambda: True, record_success=lambda: None, record_failure=lambda: None,
+                         record_blocked=lambda: None)
+    monkeypatch.setattr(cbm, "get_circuit_breaker", lambda: cb)
+    monkeypatch.setattr(p._time, "sleep", lambda s: None)
+
+    def _run(fake, name):
+        buf = io.StringIO()
+        h = logging.StreamHandler(buf)
+        h.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+        log = logging.getLogger("probe.test.live." + name)
+        log.handlers, log.propagate = [h], False
+        log.setLevel(logging.INFO)
+        state = p.GateState(live=True)
+        gate = p.HttpGate(fake, state, HOST, log, log, p.Masker())
+        monkeypatch.setattr(ka, "requests", gate)            # 봇 코드의 모든 HTTP 가 게이트 → 가짜 KIS
+        broker = KISBroker()
+        broker._connected = True
+
+        def now():
+            return KST.localize(datetime(2026, 10, 6, 8, 35, 0))
+
+        try:
+            rc = p._run_live(SimpleNamespace(code="005930"), broker, gate, state, log, p.Masker(), 207_000, now)
+        except KeyboardInterrupt:
+            rc = "interrupted"
+        return rc, buf.getvalue(), fake
+
+    return _run
+
+
+def test_live_s1_b1_reproduced_and_verified(run_live):
+    fake = _FakeKIS([[ROW], [ROW], []], [CANCEL_OK], [ORIG_CANCELLED, CANCEL_ROW])
+    rc, out, _ = run_live(fake, "s1")
+    assert rc == 0
+    assert "NEW-B1 = 재현" in out and "CRITICAL" not in out
+    assert fake.sent.count(p.TR_BUY) == 1 and fake.sent.count(p.TR_CANCEL) == 1
+
+
+def test_live_s2_remains_after_two_cancels_is_critical(run_live):
+    fake = _FakeKIS([[ROW]] * 5, [CANCEL_OK, CANCEL_OK], [ORIG_LIVE])
+    rc, out, _ = run_live(fake, "s2")
+    assert rc == 4 and "CRITICAL **🔴 HTS 에서 즉시 수동 취소" in out
+    assert "NEW-B1 = 판정불가" in out and fake.sent.count(p.TR_CANCEL) == 2
+
+
+def test_live_s3_first_cancel_b1_then_list_lag_second_rejected(run_live):
+    # 1차 취소 rt_cd 0(B1 형태) · 목록 반영 지연으로 2차 취소 rt_cd 1 · 결국 0건 → «1차» 기준으로 재현
+    fake = _FakeKIS([[ROW], [ROW], [ROW], [ROW], []], [CANCEL_OK, CANCEL_REJ], [ORIG_CANCELLED, CANCEL_ROW])
+    rc, out, _ = run_live(fake, "s3")
+    assert rc == 0 and "NEW-B1 = 재현" in out
+    assert "2차 cancel_order 반환" in out
+
+
+def test_live_s4_never_visible_is_unknown_and_critical(run_live):
+    # 미체결 목록에 한 번도 안 보임 → cancel_order 는 취소 TR 을 안 보낸다 → 잔존 «미상»
+    fake = _FakeKIS([[]] * 5, [], [ORIG_LIVE])
+    rc, out, _ = run_live(fake, "s4")
+    assert rc == 4 and p.TR_CANCEL not in fake.sent
+    assert "잔존 미상" in out and "원주문 잔량>0" in out and "NEW-B1 = 판정불가" in out
+    assert "재조회 잔존 0 ?" in out
+
+
+def test_live_s5_daily_shows_remaining_qty_is_critical(run_live):
+    fake = _FakeKIS([[ROW], [ROW], []], [CANCEL_OK], [ORIG_LIVE])
+    rc, out, _ = run_live(fake, "s5")
+    assert rc == 4 and "CRITICAL **🔴 당일조회 원주문 잔량>0" in out
+
+
+def test_live_s6_interrupt_triggers_one_emergency_cancel(run_live):
+    # 주문 직후 미체결 조회 중 Ctrl+C → 그 주문 전량 취소 1회 시도 → HTS 안내 → 예외 재전파
+    fake = _FakeKIS([[ROW]], [CANCEL_OK], [], interrupt_on_psbl=1)
+    rc, out, _ = run_live(fake, "s6")
+    assert rc == "interrupted"
+    assert fake.sent.count(p.TR_CANCEL) == 1 and "비상 취소 1회 시도" in out
+    assert "HTS 에서 즉시 미체결 확인·수동 취소" in out
