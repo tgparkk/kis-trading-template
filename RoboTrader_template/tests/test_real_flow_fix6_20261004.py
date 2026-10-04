@@ -657,3 +657,145 @@ class TestC2RealRestoreNoSilentDrop:
             assert pm._execute_sell.await_count == 1
             assert "익절" in pm._execute_sell.call_args.args[2]
         intraday.get_current_price_for_sell.assert_called_with("005930")
+
+
+# =============================================================================
+# NEW-A1 — on_tick 30초 타임아웃이 진행 중인 주문 호출을 취소(고아 주문·슬롯 고착·예약 누수)
+# =============================================================================
+async def _settle(predicate, limit=300):
+    import asyncio
+    for _ in range(limit):
+        if predicate():
+            break
+        await asyncio.sleep(0.01)
+    await asyncio.sleep(0.02)  # done-callback 이 돌 틈
+
+
+class _CB:
+    def is_market_halted(self):
+        return False
+
+    def is_vi_active(self, _code):
+        return False
+
+
+class TestA1OrderCallSurvivesOnTickTimeout:
+
+    @pytest.mark.asyncio
+    async def test_buy_registered_not_orphaned_when_on_tick_times_out(self):
+        """실전 OrderManager 전 구간: KIS 응답이 on_tick 타임아웃보다 늦어도 주문이 추적된다."""
+        import asyncio
+        import threading
+        from config.market_hours import MarketHours
+        from core.fund_manager import FundManager, make_reserve_id
+
+        gate = threading.Event()
+        cancelled_inside = []
+
+        def slow_place(code, qty, price, order_type="00"):
+            gate.wait(5)  # KIS 해시키+주문 응답 지연
+            return {"success": True, "order_id": "0000077777", "message": "", "data": {}}
+
+        broker = Mock()
+        broker.place_buy_order = Mock(side_effect=slow_place)
+        om = _make_om(broker=broker)
+        fm = FundManager(initial_funds=10_000_000)
+        om.set_fund_manager(fm)
+        tsm = _real_tsm(om, {DT_KEY: _daytrading_strategy()})
+        tsm.set_fund_manager(fm)
+        slot = _register_slot(tsm, state=StockState.SELECTED)
+        rid = make_reserve_id("005930", DT_KEY)
+        assert fm.reserve_funds(rid, 700_000)  # trading_analyzer 가 잡는 예약
+
+        with patch.object(MarketHours, "can_place_order", return_value=True), \
+             patch("config.market_hours.get_circuit_breaker_state", return_value=_CB()):
+            try:
+                await asyncio.wait_for(
+                    tsm.execute_buy_order("005930", 10, 70000, "돌파", strategy=DT_KEY), timeout=0.2)
+            except asyncio.TimeoutError:
+                pass
+            except asyncio.CancelledError:  # pragma: no cover - 방어
+                cancelled_inside.append(True)
+            else:
+                pytest.fail("주문이 on_tick 타임아웃보다 먼저 끝났다 — 시나리오가 재현되지 않음")
+            gate.set()  # 그 사이 KIS 가 접수 응답
+            await _settle(lambda: slot.current_order_id is not None)
+
+        broker.place_buy_order.assert_called_once()
+        assert "0000077777" in om.pending_orders, "KIS 접수 주문을 봇이 모른다(고아 주문)"
+        assert fm.has_reservation("0000077777") and not fm.has_reservation(rid), "예약이 주문ID로 이전 안 됨"
+        assert slot.current_order_id == "0000077777"
+        assert slot.state == StockState.BUY_PENDING  # 체결·타임아웃은 주문 모니터가 처리
+        assert not cancelled_inside
+
+    @pytest.mark.asyncio
+    async def test_buy_failure_after_cancel_restores_slot_and_reservation(self):
+        import asyncio
+        from core.fund_manager import FundManager, make_reserve_id
+
+        release = asyncio.Event()
+        om = MagicMock()
+
+        async def place_buy_order(code, qty, price, owner_strategy=""):
+            await release.wait()
+            return None  # 접수 실패(예외 경로처럼 예약을 스스로 안 푼 경우)
+
+        om.place_buy_order = place_buy_order
+        fm = FundManager(initial_funds=10_000_000)
+        tsm = _real_tsm(om)
+        tsm.set_fund_manager(fm)
+        slot = _register_slot(tsm, state=StockState.SELECTED)
+        rid = make_reserve_id("005930", DT_KEY)
+        assert fm.reserve_funds(rid, 700_000)
+
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                tsm.execute_buy_order("005930", 10, 70000, "돌파", strategy=DT_KEY), timeout=0.05)
+        assert slot.state == StockState.BUY_PENDING and slot.is_buying is True  # 아직 결과 대기
+        release.set()
+        await _settle(lambda: slot.state != StockState.BUY_PENDING)
+
+        assert slot.state == StockState.SELECTED and slot.is_buying is False
+        assert not fm.has_reservation(rid), "취소 뒤 실패한 매수의 예약이 남았다(누수)"
+
+    @pytest.mark.asyncio
+    async def test_sell_after_cancel_success_links_order_and_failure_restores_positioned(self):
+        import asyncio
+        for outcome in ("0000088888", None):
+            release = asyncio.Event()
+            om = MagicMock()
+
+            async def place_sell_order(code, qty, price, market=False, force=False,
+                                       owner_strategy="", _out=outcome, _ev=release):
+                await _ev.wait()
+                return _out
+
+            om.place_sell_order = place_sell_order
+            tsm = _real_tsm(om)
+            slot = _register_slot(tsm, state=StockState.POSITIONED)
+            slot.set_position(10, 70000)
+            assert tsm.move_to_sell_candidate("005930", "손절", strategy=DT_KEY)
+
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(
+                    tsm.execute_sell_order("005930", 10, 0, "손절", market=True, strategy=DT_KEY),
+                    timeout=0.05)
+            assert slot.state == StockState.SELL_PENDING
+            release.set()
+            if outcome:
+                await _settle(lambda: slot.current_order_id is not None)
+                assert slot.current_order_id == outcome and slot.state == StockState.SELL_PENDING
+            else:
+                await _settle(lambda: slot.state != StockState.SELL_PENDING)
+                assert slot.state == StockState.POSITIONED and slot.is_selling is False
+
+    @pytest.mark.asyncio
+    async def test_no_cancel_path_unchanged(self):
+        """취소가 없으면 종전과 같다: 결과를 그대로 돌려주고 슬롯에 주문ID 연결."""
+        om = MagicMock()
+        om.place_buy_order = AsyncMock(return_value="0000099999")
+        tsm = _real_tsm(om)
+        slot = _register_slot(tsm, state=StockState.SELECTED)
+        assert await tsm.execute_buy_order("005930", 10, 70000, "돌파", strategy=DT_KEY) is True
+        om.place_buy_order.assert_awaited_once_with("005930", 10, 70000, owner_strategy=DT_KEY)
+        assert slot.current_order_id == "0000099999" and slot.state == StockState.BUY_PENDING
