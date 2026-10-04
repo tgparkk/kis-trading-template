@@ -959,3 +959,80 @@ class TestReview2FillBetweenPrecheckAndCancel:
         assert fm.reserved_funds == pytest.approx(0) and fm.invested_funds == pytest.approx(0)
         assert slot.state == StockState.COMPLETED and strat.daily_trades == 0
 
+
+class TestReview3ShutdownWaitsInflightOrders:
+
+    @pytest.mark.asyncio
+    async def test_wait_returns_after_background_order_registers(self):
+        import asyncio
+        release = asyncio.Event()
+        om = MagicMock()
+
+        async def place_buy_order(code, qty, price, owner_strategy=""):
+            await release.wait()
+            return "0000077777"
+
+        om.place_buy_order = place_buy_order
+        tsm = _real_tsm(om)
+        slot = _register_slot(tsm, state=StockState.SELECTED)
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                tsm.execute_buy_order("005930", 10, 70000, "돌파", strategy=DT_KEY), timeout=0.05)
+        asyncio.get_event_loop().call_later(0.05, release.set)
+        left = await tsm.wait_inflight_orders(timeout=2)
+        assert left == 0
+        await asyncio.sleep(0.01)
+        assert slot.current_order_id == "0000077777"
+        assert await tsm.wait_inflight_orders(timeout=2) == 0      # 빈 집합 즉시 반환(페이퍼와 같은 경로)
+
+    @pytest.mark.asyncio
+    async def test_shutdown_waits_before_cancelling_pending(self):
+        from bot.initializer import BotInitializer
+        calls = []
+        bot = MagicMock()
+        bot.telegram.shutdown = AsyncMock(side_effect=lambda: calls.append("telegram"))
+        bot.trading_manager.wait_inflight_orders = AsyncMock(
+            side_effect=lambda timeout: calls.append(("wait", timeout)) or 0)
+        bot.broker.disconnect = AsyncMock()
+        bot.pid_file.exists.return_value = False
+        init = BotInitializer(bot)
+        init._flush_state_to_db = Mock()
+        init._cancel_pending_orders = AsyncMock(side_effect=lambda: calls.append("cancel"))
+        await init.shutdown()
+        assert calls == ["telegram", ("wait", 40.0), "cancel"]
+
+
+class TestReview4StartupCancelRecheck:
+
+    def _restorer(self, broker):
+        from tests.test_live_p0_restore import _restorer_with
+        db = Mock()
+        db.get_real_open_positions.return_value = pd.DataFrame()
+        return _restorer_with(db, broker, Mock())
+
+    @pytest.mark.asyncio
+    async def test_lagging_remaining_order_then_clear_proceeds(self):
+        from tests.broker_contract import make_account_balance
+        po = {"odno": "0001", "pdno": "005930", "sll_buy_dvsn_cd": "02"}
+        broker = Mock()
+        broker.get_account_balance.return_value = make_account_balance()
+        broker.get_holdings.return_value = []
+        broker.get_pending_orders.side_effect = [[po], [po], None, []]   # 발견 → 지연 잔존 → 조회 실패 → 0건
+        broker.cancel_order.return_value = {"success": True}
+        r = self._restorer(broker)
+        with patch("bot.state_restorer.STARTUP_CANCEL_RECHECK_SEC", 0):
+            await r._restore_holdings_from_real_account()
+        assert broker.get_pending_orders.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_still_remaining_after_rechecks_aborts(self):
+        from utils.exceptions import LiveStartupAbort
+        po = {"odno": "0001", "pdno": "005930", "sll_buy_dvsn_cd": "02"}
+        broker = Mock()
+        broker.get_pending_orders.return_value = [po]
+        broker.cancel_order.return_value = {"success": True}
+        r = self._restorer(broker)
+        with patch("bot.state_restorer.STARTUP_CANCEL_RECHECK_SEC", 0), \
+             pytest.raises(LiveStartupAbort):
+            await r._restore_holdings_from_real_account()
+        assert broker.get_pending_orders.call_count == 1 + 3        # 발견 1 + 재확인 3

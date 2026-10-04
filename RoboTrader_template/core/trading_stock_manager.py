@@ -387,6 +387,10 @@ class TradingStockManager:
         """
         return self._completion_handler._find_owned_stock(stock_code, owner_name)
 
+    async def wait_inflight_orders(self, timeout: float = 40.0) -> int:
+        """진행 중인 실전 주문 호출 완료 대기(종료 시 미체결 취소 전에 호출) — OrderExecution 위임."""
+        return await self._order_execution.wait_inflight_orders(timeout)
+
     def update_current_order(self, stock_code: str, new_order_id: str,
                              strategy: Optional[str] = None) -> None:
         """정정 등으로 새 주문이 생성되었을 때 현재 주문ID를 최신값으로 동기화

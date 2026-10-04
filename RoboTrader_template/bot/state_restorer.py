@@ -26,6 +26,9 @@ logger = setup_logger(__name__)
 # max_hold 백스톱 감시는 받게 하고 ERROR + 텔레그램 경보(조용한 누락 금지).
 REAL_RESTORE_ADD_ATTEMPTS = 3
 REAL_RESTORE_RETRY_SEC = 3.0
+# 기동 시 미체결 전량 취소 뒤 «잔존 0» 재확인 — 조회 횟수(첫 조회 포함)·간격(리뷰 사소4)
+STARTUP_CANCEL_RECHECK_ATTEMPTS = 3
+STARTUP_CANCEL_RECHECK_SEC = 2.0
 
 
 class StateRestorer:
@@ -800,7 +803,18 @@ class StateRestorer:
                     f"미체결 취소 실패: {code} 주문 {odno}",
                     str(result.get('message', '')))
             logger.info(f"🧹 [실전매매] 미체결 취소: {code} 주문 {odno}")
+        # 취소 직후 바로 재조회하면 KIS 반영 지연으로 «잔존» 이 보일 수 있다 — 짧게 기다리며
+        # 몇 번 더 본 뒤 판정한다(리뷰 사소4). 끝내 잔존·조회 실패면 종전대로 abort.
         remain = self.broker.get_pending_orders()
+        for attempt in range(1, STARTUP_CANCEL_RECHECK_ATTEMPTS):
+            if remain == []:
+                break
+            logger.warning(
+                f"⚠️ [실전매매] 취소 후 재조회 {attempt}/{STARTUP_CANCEL_RECHECK_ATTEMPTS} — "
+                f"{'조회 실패' if remain is None else f'{len(remain)}건 잔존'}, "
+                f"{STARTUP_CANCEL_RECHECK_SEC:.0f}초 뒤 다시 확인")
+            await asyncio.sleep(STARTUP_CANCEL_RECHECK_SEC)
+            remain = self.broker.get_pending_orders()
         if remain is None or remain:
             raise LiveStartupAbort(
                 "취소 후 미체결 잔존 확인 실패",

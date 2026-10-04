@@ -54,6 +54,10 @@ class OrderExecution:
         # 재거래 설정
         self.enable_re_trading = True
 
+        # 진행 중인 실전 주문 호출 태스크(NEW-A1 shield) — 종료 시 미체결 취소 «전에»
+        # 끝나기를 기다려, 등록 전 주문을 취소 대상에서 놓치지 않게 한다(리뷰 사소3).
+        self._inflight_order_tasks: set = set()
+
     def set_fund_manager(self, fund_manager: 'FundManager') -> None:
         """FundManager 설정"""
         self.fund_manager = fund_manager
@@ -241,6 +245,7 @@ class OrderExecution:
             place_task = asyncio.ensure_future(self.order_manager.place_buy_order(
                 stock_code, quantity, price, owner_strategy=_owner_for_order
             ))
+            self._track_inflight(place_task)
             try:
                 order_id = await asyncio.shield(place_task)
             except asyncio.CancelledError:
@@ -270,6 +275,27 @@ class OrderExecution:
                         strategy=_ts.owner_strategy_name
                     )
             return False
+
+    def _track_inflight(self, task: 'asyncio.Future') -> None:
+        self._inflight_order_tasks.add(task)
+        task.add_done_callback(self._inflight_order_tasks.discard)
+
+    async def wait_inflight_orders(self, timeout: float = 40.0) -> int:
+        """진행 중인 실전 주문 호출이 끝나기를 최대 timeout 초 기다린다(취소하지 않음).
+
+        Returns: 시간 안에 끝나지 않은 건수(0 이면 전부 등록·실패 확정).
+        """
+        pending = [t for t in self._inflight_order_tasks if not t.done()]
+        if not pending:
+            return 0
+        self.logger.info(f"진행 중인 주문 호출 {len(pending)}건 완료 대기(최대 {timeout:.0f}초)")
+        _, not_done = await asyncio.wait(pending, timeout=timeout)
+        if not_done:
+            self.logger.error(
+                f"🚨 주문 호출 {len(not_done)}건이 {timeout:.0f}초 안에 끝나지 않음 — "
+                f"종료 시 미체결 취소 대상에서 빠질 수 있다 · HTS 미체결 확인 필요"
+            )
+        return len(not_done)
 
     def _apply_buy_order_result(self, stock_code: str, strategy: Optional[str],
                                 reason: str, order_id: Optional[str]) -> bool:
@@ -432,6 +458,7 @@ class OrderExecution:
                 stock_code, quantity, price, market=market, force=force,
                 owner_strategy=_owner_for_order
             ))
+            self._track_inflight(place_task)
             try:
                 order_id = await asyncio.shield(place_task)
             except asyncio.CancelledError:
