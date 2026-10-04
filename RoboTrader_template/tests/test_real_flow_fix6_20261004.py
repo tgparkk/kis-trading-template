@@ -551,3 +551,109 @@ class TestB2SellProceedsWhenBalanceLookupFails:
         oid = await om._execute_real_sell_order("005930", 10, 0, 180, True, DT_KEY)
         assert oid is None
         broker.place_sell_order.assert_not_called()
+
+
+# =============================================================================
+# NEW-C2 — 실전 아침 복원에서 등록 실패 보유가 조용히 빠지던 결함
+# =============================================================================
+def _restore_fixture(intraday_add):
+    """실체 TradingStockManager + StateRestorer(실전) — KIS·DB 는 모의."""
+    from bot.state_restorer import StateRestorer
+    from tests.broker_contract import make_account_balance, make_holding
+
+    intraday = MagicMock()
+    intraday.add_selected_stock = intraday_add
+    data_collector = MagicMock()
+    data_collector.get_stock.return_value = None   # 장중 데이터 미등록 상태
+    om = MagicMock()
+    from core.trading_stock_manager import TradingStockManager
+    tsm = TradingStockManager(intraday, data_collector, om, None)
+
+    db = Mock()
+    db.get_real_open_positions.return_value = pd.DataFrame([{
+        "id": 1, "stock_code": "005930", "stock_name": "삼성전자", "quantity": 10,
+        "buy_price": 100_000.0, "buy_time": now_kst() - timedelta(days=3),
+        "strategy": "stratA", "target_profit_rate": 0.10, "stop_loss_rate": 0.10,
+    }])
+    broker = Mock()
+    broker.get_pending_orders.return_value = []
+    broker.get_account_balance.return_value = make_account_balance(total_stocks=1)
+    broker.get_holdings.return_value = [make_holding(quantity=10, avg_price=100_000.0)]
+    strat = Mock()
+    telegram = Mock()
+    telegram.notify_urgent_signal = AsyncMock()
+    config = Mock()
+    config.paper_trading = False
+    r = StateRestorer(
+        trading_manager=tsm, db_manager=db, telegram_integration=telegram, config=config,
+        get_previous_close_callback=lambda code: 100_000.0, broker=broker, fund_manager=None,
+        virtual_trading_manager=None, strategies={"stratA": strat},
+    )
+    r._sync_fund_manager_for_position = Mock(return_value=1_000_000.0)
+    return r, tsm, intraday, telegram, strat
+
+
+class TestC2RealRestoreNoSilentDrop:
+
+    @pytest.mark.asyncio
+    async def test_intraday_registration_fails_then_slot_positioned_with_alert(self):
+        r, tsm, intraday, telegram, strat = _restore_fixture(AsyncMock(return_value=False))
+        with patch("bot.state_restorer.REAL_RESTORE_RETRY_SEC", 0):
+            await r._restore_holdings_from_real_account()
+
+        assert intraday.add_selected_stock.await_count == 3        # 재시도 3회
+        slot = tsm.get_trading_stock("005930", strategy="stratA")
+        assert slot is not None and slot.state == StockState.POSITIONED
+        assert slot.position.quantity == 10 and slot.position.avg_price == pytest.approx(100_000.0)
+        assert slot.stop_loss_rate == pytest.approx(0.10) and slot.target_profit_rate == pytest.approx(0.10)
+        r._sync_fund_manager_for_position.assert_called_once()     # 자금 장부도 반영
+        (positions,) = strat.sync_positions.call_args[0]
+        assert positions["005930"]["quantity"] == 10                # 전략 포지션 주입
+        telegram.notify_urgent_signal.assert_awaited_once()
+        assert "005930" in telegram.notify_urgent_signal.call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_retry_succeeds_no_alert(self):
+        r, tsm, intraday, telegram, _ = _restore_fixture(AsyncMock(side_effect=[False, True]))
+        with patch("bot.state_restorer.REAL_RESTORE_RETRY_SEC", 0):
+            await r._restore_holdings_from_real_account()
+        assert intraday.add_selected_stock.await_count == 2
+        assert tsm.get_trading_stock("005930", strategy="stratA").state == StockState.POSITIONED
+        telegram.notify_urgent_signal.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_slot_registration_impossible_aborts(self):
+        from utils.exceptions import LiveStartupAbort
+        r, tsm, intraday, telegram, _ = _restore_fixture(AsyncMock(return_value=False))
+        tsm._register_stock = Mock(side_effect=RuntimeError("boom"))
+        with patch("bot.state_restorer.REAL_RESTORE_RETRY_SEC", 0), \
+             pytest.raises(LiveStartupAbort) as ei:
+            await r._restore_holdings_from_real_account()
+        assert "005930" in str(ei.value)
+        tsm._register_stock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_degraded_slot_gets_stop_loss_and_take_profit_from_position_monitor(self):
+        """폴백 슬롯(장중 데이터 미등록)도 현재가 기반 손절·익절 백스톱을 받는다 — 예외 없음."""
+        r, tsm, intraday, _, _ = _restore_fixture(AsyncMock(return_value=False))
+        with patch("bot.state_restorer.REAL_RESTORE_RETRY_SEC", 0):
+            await r._restore_holdings_from_real_account()
+        slot = tsm.get_trading_stock("005930", strategy="stratA")
+
+        pm = tsm._position_monitor
+        pm.set_decision_engine(Mock())
+        pm._execute_sell = AsyncMock()
+        fixed = now_kst().replace(hour=10, minute=30, second=0, microsecond=0)
+        with patch("core.trading.position_monitor.now_kst", return_value=fixed):
+            intraday.get_current_price_for_sell = Mock(return_value={"current_price": 89_000.0})
+            await pm._check_positioned_stocks_for_sell()
+            assert pm._execute_sell.await_count == 1
+            assert pm._execute_sell.call_args.args[0] is slot
+            assert "손절" in pm._execute_sell.call_args.args[2]
+
+            pm._execute_sell.reset_mock()
+            intraday.get_current_price_for_sell = Mock(return_value={"current_price": 111_000.0})
+            await pm._check_positioned_stocks_for_sell()
+            assert pm._execute_sell.await_count == 1
+            assert "익절" in pm._execute_sell.call_args.args[2]
+        intraday.get_current_price_for_sell.assert_called_with("005930")

@@ -2,13 +2,14 @@
 
 시스템 재시작 시 DB에서 오늘의 후보 종목 및 보유 종목을 복원합니다.
 """
+import asyncio
 import math
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from utils.logger import setup_logger
 from utils.korean_time import now_kst, KST
-from core.models import StockState
+from core.models import StockState, TradingStock
 from config.constants import (
     DEFAULT_TARGET_PROFIT_RATE, DEFAULT_STOP_LOSS_RATE,
     STALE_POSITION_DAYS, STALE_DEFAULT_APPLY_DAYS,
@@ -19,6 +20,12 @@ from utils.exceptions import LiveStartupAbort
 from core.trading_decision_engine import resolve_strategy_tp_sl
 
 logger = setup_logger(__name__)
+
+# NEW-C2(2026-10-04): 실전 복원 중 종목 등록(장중 데이터·일봉 수집 포함) 재시도 횟수·간격.
+# 다 실패하면 장중 데이터 없이 슬롯만 POSITIONED 로 등록해 현재가 기반 손절·익절·
+# max_hold 백스톱 감시는 받게 하고 ERROR + 텔레그램 경보(조용한 누락 금지).
+REAL_RESTORE_ADD_ATTEMPTS = 3
+REAL_RESTORE_RETRY_SEC = 3.0
 
 
 class StateRestorer:
@@ -1140,6 +1147,72 @@ class StateRestorer:
                 )
         return anomalies
 
+    async def _add_real_restore_slot_with_retry(self, stock_code: str, stock_name: str,
+                                                selection_reason: str, prev_close: float,
+                                                owner_name: str) -> bool:
+        """실전 복원 종목 등록(장중 데이터·일봉 수집 포함) — 실패 시 소수 회 재시도(NEW-C2)."""
+        for attempt in range(1, REAL_RESTORE_ADD_ATTEMPTS + 1):
+            ok = await self.trading_manager.add_selected_stock(
+                stock_code=stock_code,
+                stock_name=stock_name,
+                selection_reason=selection_reason,
+                prev_close=prev_close,
+                owner_strategy=owner_name,
+            )
+            if ok:
+                return True
+            if attempt < REAL_RESTORE_ADD_ATTEMPTS:
+                logger.warning(
+                    f"⚠️ [실전매매] {stock_code} 복원 등록 실패({attempt}/{REAL_RESTORE_ADD_ATTEMPTS}) "
+                    f"— {REAL_RESTORE_RETRY_SEC:.0f}초 뒤 재시도")
+                await asyncio.sleep(REAL_RESTORE_RETRY_SEC)
+        return False
+
+    def _register_real_restore_slot_without_intraday(self, stock_code: str, stock_name: str,
+                                                     selection_reason: str, prev_close: float,
+                                                     owner_name: str) -> bool:
+        """재시도까지 실패한 보유를 장중 데이터 등록 없이 슬롯만 등록한다(NEW-C2 폴백).
+
+        이 슬롯은 아래 공통 복원 블록에서 다른 보유와 똑같이 포지션·tp/sl·자금·전략
+        포지션 주입을 받고 POSITIONED 가 된다. 감시가 장중 데이터에 기대지 않는 이유:
+        - 손절·익절·max_hold 백스톱(position_monitor._analyze_sell_for_stock)의 현재가는
+          KIS 현재가 직접 조회(intraday_manager.get_current_price_for_sell)가 1순위이고
+          등록 여부를 보지 않는다(캐시·data_collector 폴백은 None 이면 건너뜀).
+        - 전략 on_tick 매도 루프는 POSITIONED 슬롯을 돌며 일봉을 DB(price_repo)에서 읽는다
+          (trading_context.get_daily_data) — 장중 관리 등록과 무관, 없으면 신호 없음.
+        """
+        try:
+            ts = TradingStock(
+                stock_code=stock_code,
+                stock_name=stock_name,
+                state=StockState.SELECTED,
+                selected_time=now_kst(),
+                selection_reason=selection_reason,
+                prev_close=prev_close,
+                owner_strategy_name=owner_name or "",
+            )
+            self.trading_manager._register_stock(ts)
+        except Exception as e:
+            logger.error(f"🚨 [실전매매] {stock_code} 폴백 슬롯 등록 오류: {e}")
+            return False
+        registered = self.trading_manager.get_trading_stock(
+            stock_code, strategy=(owner_name or None))
+        return registered is not None
+
+    async def _alert_degraded_real_restore(self, degraded_legs: List[str]) -> None:
+        """장중 데이터 없이 백스톱 감시로만 복원된 보유 — ERROR + 텔레그램(best-effort)."""
+        msg = (
+            f"🚨 [실전매매] 보유 {len(degraded_legs)}건을 장중 데이터 등록 없이 복원 — "
+            f"현재가 기반 손절·익절·보유기간 백스톱만 적용(분봉·실시간 수집 없음). "
+            f"원인(일봉 조회 실패·관리 상한) 확인 필요: " + " / ".join(degraded_legs[:10])
+        )
+        logger.error(msg)
+        if self.telegram:
+            try:
+                await self.telegram.notify_urgent_signal(msg)
+            except Exception as telegram_err:
+                logger.warning(f"⚠️ [실전매매] 복원 경보 전송 실패(무시): {telegram_err}")
+
     async def _restore_holdings_from_real_account(self) -> None:
         """실전매매 모드: 실제 계좌에서 보유 종목 조회 → DB 동기화 → 메모리 복원"""
         # 함수 어디서든 이 이름을 참조하는 local import 가 하나라도 있으면
@@ -1220,6 +1293,8 @@ class StateRestorer:
             by_owner = {}  # 전략 self.positions 주입용 {owner: {code: {qty, entry_price, entry_time}}}
 
             restore_legs = self._build_restore_legs(real_holdings, db_by_owner)
+            degraded_legs: List[str] = []   # NEW-C2: 장중 데이터 없이 백스톱 감시로만 등록
+            missing_legs: List[str] = []    # NEW-C2: 슬롯 등록조차 실패 → 기동 중단
 
             # 4-1. 미해석 owner: 설명 가능하면 «격리», 아니면 기동 중단.
             #      정책 이력(fail-open → fail-closed → 현행)과 근거는
@@ -1246,90 +1321,108 @@ class StateRestorer:
                 owner_name = leg['owner']
 
                 prev_close = self.get_previous_close(stock_code)
+                selection_reason = f"[실전] 보유 종목 복원 ({quantity}주 @{avg_price:,.0f}원)"
+                leg_label = f"{stock_code}({stock_name}) owner={owner_name!r} {quantity}주"
 
-                success = await self.trading_manager.add_selected_stock(
-                    stock_code=stock_code,
-                    stock_name=stock_name,
-                    selection_reason=f"[실전] 보유 종목 복원 ({quantity}주 @{avg_price:,.0f}원)",
-                    prev_close=prev_close,
-                    owner_strategy=owner_name,
-                )
+                # NEW-C2: 종전엔 이 등록이 실패하면(일봉 조회 실패·장중 관리 상한) else 가
+                # 없어 그 보유가 감시·전략·자금 어디에도 없이 «조용히» 빠졌다.
+                success = await self._add_real_restore_slot_with_retry(
+                    stock_code, stock_name, selection_reason, prev_close, owner_name)
+                if not success:
+                    success = self._register_real_restore_slot_without_intraday(
+                        stock_code, stock_name, selection_reason, prev_close, owner_name)
+                    if success:
+                        degraded_legs.append(leg_label)
 
+                trading_stock = None
                 if success:
                     trading_stock = self.trading_manager.get_trading_stock(
                         stock_code, strategy=(owner_name or None)
                     )
-                    if trading_stock:
-                        trading_stock.set_position(quantity, avg_price)
+                if not trading_stock:
+                    missing_legs.append(leg_label)
+                    continue
 
-                        # DB에서 전략 이름 복원 (이미 add_selected_stock에서 바인딩됨, 멱등 재확인)
-                        if owner_name:
-                            trading_stock.strategy_name = owner_name
+                trading_stock.set_position(quantity, avg_price)
 
-                        # 장기보유 체크: DB에 buy_time이 있으면 사용 (owner 별 값)
-                        buy_time = leg.get('buy_time')
-                        if buy_time is not None:
-                            target_profit_rate, stop_loss_rate = self._apply_stale_position_check(
-                                trading_stock, buy_time,
-                                target_profit_rate, stop_loss_rate,
-                            )
+                # DB에서 전략 이름 복원 (이미 add_selected_stock에서 바인딩됨, 멱등 재확인)
+                if owner_name:
+                    trading_stock.strategy_name = owner_name
 
-                        trading_stock.target_profit_rate = target_profit_rate
-                        trading_stock.stop_loss_rate = stop_loss_rate
+                # 장기보유 체크: DB에 buy_time이 있으면 사용 (owner 별 값)
+                buy_time = leg.get('buy_time')
+                if buy_time is not None:
+                    target_profit_rate, stop_loss_rate = self._apply_stale_position_check(
+                        trading_stock, buy_time,
+                        target_profit_rate, stop_loss_rate,
+                    )
 
-                        # 전략 self.positions 주입용 수집 (owner 있을 때만)
-                        if owner_name:
-                            by_owner.setdefault(owner_name, {})[stock_code] = {
-                                'quantity': quantity,
-                                'entry_price': avg_price,
-                                'entry_time': self._normalize_entry_time(buy_time),
-                            }
+                trading_stock.target_profit_rate = target_profit_rate
+                trading_stock.stop_loss_rate = stop_loss_rate
 
-                        # 기동 시 미체결 전량 취소(위 0단계)로 SELL_PENDING 은
-                        # 발생하지 않는다 — 복원은 항상 POSITIONED.
-                        restore_state = StockState.POSITIONED
-                        state_label = "POSITIONED"
+                # 전략 self.positions 주입용 수집 (owner 있을 때만)
+                if owner_name:
+                    by_owner.setdefault(owner_name, {})[stock_code] = {
+                        'quantity': quantity,
+                        'entry_price': avg_price,
+                        'entry_time': self._normalize_entry_time(buy_time),
+                    }
 
-                        ts_is_stale = getattr(trading_stock, 'is_stale', False) is True
-                        ts_days_held = getattr(trading_stock, 'days_held', 0)
-                        ts_days_held = ts_days_held if isinstance(ts_days_held, int) else 0
+                # 기동 시 미체결 전량 취소(위 0단계)로 SELL_PENDING 은
+                # 발생하지 않는다 — 복원은 항상 POSITIONED.
+                restore_state = StockState.POSITIONED
+                state_label = "POSITIONED"
 
-                        self.trading_manager._change_stock_state(
-                            stock_code,
-                            restore_state,
-                            f"[실전] 계좌 복원: {quantity}주 @{avg_price:,.0f}원 "
-                            f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%) "
-                            f"[{state_label}]"
-                            f"{' [장기보유]' if ts_is_stale else ''}",
-                            strategy=trading_stock.owner_strategy_name,
-                            # 페이퍼 복원과 동일 — 복원 전이는 허용 맵에 없다.
-                            restoring=True,
-                        )
-                        holding_restored += 1
+                ts_is_stale = getattr(trading_stock, 'is_stale', False) is True
+                ts_days_held = getattr(trading_stock, 'days_held', 0)
+                ts_days_held = ts_days_held if isinstance(ts_days_held, int) else 0
 
-                        # FundManager 자금 동기화 (owner 는 슬롯 객체에서 — 표기-불변)
-                        invested = self._sync_fund_manager_for_position(
-                            stock_code, quantity, avg_price,
-                            owner=trading_stock.owner_strategy_name or None,
-                        )
-                        total_invested += invested
+                self.trading_manager._change_stock_state(
+                    stock_code,
+                    restore_state,
+                    f"[실전] 계좌 복원: {quantity}주 @{avg_price:,.0f}원 "
+                    f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%) "
+                    f"[{state_label}]"
+                    f"{' [장기보유]' if ts_is_stale else ''}",
+                    strategy=trading_stock.owner_strategy_name,
+                    # 페이퍼 복원과 동일 — 복원 전이는 허용 맵에 없다.
+                    restoring=True,
+                )
+                holding_restored += 1
 
-                        # 장기보유 종목 정보 수집
-                        if ts_is_stale:
-                            stale_info.append({
-                                'stock_code': stock_code,
-                                'stock_name': stock_name,
-                                'days_held': ts_days_held,
-                                'quantity': quantity,
-                                'buy_price': avg_price,
-                            })
+                # FundManager 자금 동기화 (owner 는 슬롯 객체에서 — 표기-불변)
+                invested = self._sync_fund_manager_for_position(
+                    stock_code, quantity, avg_price,
+                    owner=trading_stock.owner_strategy_name or None,
+                )
+                total_invested += invested
 
-                        logger.info(
-                            f"[실전] {stock_code}({stock_name}) 복원({state_label}): {quantity}주 @{avg_price:,.0f}원, "
-                            f"익절가 {avg_price*(1+target_profit_rate):,.0f}원, "
-                            f"손절가 {avg_price*(1-stop_loss_rate):,.0f}원"
-                            f"{f', 보유 {ts_days_held}일' if ts_days_held > 0 else ''}"
-                        )
+                # 장기보유 종목 정보 수집
+                if ts_is_stale:
+                    stale_info.append({
+                        'stock_code': stock_code,
+                        'stock_name': stock_name,
+                        'days_held': ts_days_held,
+                        'quantity': quantity,
+                        'buy_price': avg_price,
+                    })
+
+                logger.info(
+                    f"[실전] {stock_code}({stock_name}) 복원({state_label}): {quantity}주 @{avg_price:,.0f}원, "
+                    f"익절가 {avg_price*(1+target_profit_rate):,.0f}원, "
+                    f"손절가 {avg_price*(1-stop_loss_rate):,.0f}원"
+                    f"{f', 보유 {ts_days_held}일' if ts_days_held > 0 else ''}"
+                )
+
+            # NEW-C2: 슬롯 등록조차 못 한 보유는 손절 감시가 없다 — 다른 불일치와 같은
+            # fail-closed(LiveStartupAbort · main 이 텔레그램 「실전 기동 중단」 발송).
+            if missing_legs:
+                raise LiveStartupAbort(
+                    f"보유 종목 복원 등록 실패 {len(missing_legs)}건 — "
+                    f"감시 없는 보유 방지, 확인 후 재기동 필요",
+                    " / ".join(missing_legs[:10]))
+            if degraded_legs:
+                await self._alert_degraded_real_restore(degraded_legs)
 
             # 복원 포지션을 전략 self.positions 로 주입 (재시작 시 전략측 청산 복원)
             self._sync_strategy_positions(by_owner)
