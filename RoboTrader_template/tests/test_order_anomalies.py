@@ -552,8 +552,13 @@ class TestEdgeCases:
         assert "ORD-001" in om.pending_orders  # 아직 pending
 
     @pytest.mark.asyncio
-    async def test_status_unknown_over_5min_timeout(self):
-        """상태 불명 5분 이상이면 TIMEOUT 처리"""
+    async def test_status_unknown_over_5min_not_closed_without_cancel(self):
+        """상태 불명 5분 이상이어도 «취소 없이» TIMEOUT 으로 장부만 닫지 않는다.
+
+        2026-10-04 P1-6 수정으로 기대값 변경(종전: 여기서 TIMEOUT 종결). 종결은
+        시간 타임아웃 경로(_handle_timeout: 취소 → 강제 정리 + 슬롯 복구 + 경보)가 맡는다
+        — tests/test_real_flow_fix6_20261004.py TestB3UnknownTimeoutGoesThroughCancel.
+        """
         om = _make_order_manager()
         order = _inject_pending_order(om)
         order.timestamp = now_kst() - timedelta(seconds=400)  # 6분+ 경과
@@ -564,6 +569,6 @@ class TestEdgeCases:
         }
         await om._process_order_status("ORD-001", order, status_data)
 
-        assert "ORD-001" not in om.pending_orders
-        completed = [o for o in om.completed_orders if o.order_id == "ORD-001"]
-        assert completed[0].status == OrderStatus.TIMEOUT
+        assert "ORD-001" in om.pending_orders
+        assert order.status == OrderStatus.PENDING
+        assert not [o for o in om.completed_orders if o.order_id == "ORD-001"]

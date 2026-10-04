@@ -159,6 +159,14 @@ class OrderMonitorMixin:
                 )
 
                 if status_data:
+                    # 「목록 어디에도 없음」(status_unknown)은 미체결 증거가 아니다 — 체결된
+                    # 주문은 원래 정정취소가능 목록에 없다. 체결 수량 칸이 비어 0 으로 읽혀
+                    # 오탐으로 되살리면 다음 성공 조회에서 같은 체결을 한 번 더 처리한다
+                    # (NEW-B3 · P1-5, 2026-10-04). 조회 실패는 broker 가 None 으로 준다.
+                    if status_data.get('status_unknown'):
+                        self.logger.debug(
+                            f"오탐 점검 보류(상태 불명): {order.order_id} ({order.stock_code})")
+                        continue
                     # 실제로는 미체결인지 확인
                     try:
                         filled_qty = int(str(status_data.get('tot_ccld_qty', 0)).replace(',', '').strip() or 0)
@@ -268,12 +276,19 @@ class OrderMonitorMixin:
             self._move_to_completed(order_id)
             self.logger.info(f"주문 취소 확인: {order_id}")
         elif is_status_unknown:
-            # 상태 불명이 5분 이상 지속되면 타임아웃 처리
+            # 상태 불명은 «판정 유보» 만 한다 — 여기서 장부를 닫지 않는다.
+            # P1-6(2026-10-04): 종전엔 5분 초과 시 «취소 없이» TIMEOUT 으로 장부만 닫아
+            # (handle_order_timeout 미호출) 슬롯이 BUY/SELL_PENDING 에 고착되고, KIS 에
+            # 살아 있던 주문이 나중에 체결되면 손절 감시 없는 고아 보유가 됐다.
+            # 종결은 시간 타임아웃 경로(_monitor_pending_orders → _handle_timeout)가 맡는다:
+            # 취소 재시도 → 실패면 재확인 → 강제 정리(슬롯 복구 handle_order_timeout) +
+            # 텔레그램 「주문 취소 실패 - 수동 확인 필요」. 모든 실전 주문은 접수 시
+            # order_timeouts 가 잡히므로(매수 300초·매도 180초) 그 경로는 반드시 온다.
             elapsed_time = (now_kst() - order.timestamp).total_seconds()
             if elapsed_time > 300:  # 5분 = 300초
-                self.logger.warning(f"주문 상태 불명 5분 초과로 타임아웃 처리: {order_id} - 경과: {elapsed_time:.0f}초")
-                order.status = OrderStatus.TIMEOUT
-                self._move_to_completed(order_id)
+                self.logger.warning(
+                    f"주문 상태 불명 5분 초과: {order_id} - 경과: {elapsed_time:.0f}초 "
+                    f"— 장부 종결 안 함(취소 경로=시간 타임아웃에 위임)")
             else:
                 # 5분 미만이면 판정 유보
                 self.logger.debug(f"주문 상태 불명, 판정 유보: {order_id} - 경과: {elapsed_time:.0f}초")

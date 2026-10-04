@@ -764,7 +764,16 @@ class KISBroker(BaseBroker):
             order_id: Order ID to check
 
         Returns:
-            Dict with order status info, or None if not found
+            dict  = 목록에서 찾은 행(_status pending/executed), 또는 두 조회가 «모두
+                    성공»했는데 어디에도 없으면 status_unknown 표식.
+            None  = 조회 실패(어느 한쪽 목록 조회가 실패해 «없음» 을 판정할 수 없음)
+                    또는 미연결. 호출자는 None 을 «미체결» 로 읽으면 안 된다.
+
+        NEW-B3(2026-10-04): 종전엔 목록 조회 «실패» 도 «목록에 없음» 으로 흘러
+        status_unknown 이 됐다. 체결된 주문은 원래 정정취소가능(8036R) 목록에 없으므로,
+        체결조회(0081R) 1회 실패(서킷브레이커 OPEN 포함)만으로 «미체결» 오탐 →
+        오탐 복구 → 다음 성공 조회에서 같은 체결을 한 번 더 처리(원장 이중 기록·
+        매도대금 이중 회수)했다.
         """
         if not self._connected:
             self.logger.error("Broker not connected")
@@ -793,7 +802,16 @@ class KISBroker(BaseBroker):
                     row["_status"] = "executed"
                     return row
 
-            # Not found anywhere — do not assume cancelled
+            # 어느 한쪽 조회라도 실패했으면 «없음» 을 단정할 수 없다 → 조회 실패(None).
+            if pending is None or daily is None:
+                failed = "정정취소가능조회" if pending is None else "체결조회"
+                if pending is None and daily is None:
+                    failed = "정정취소가능조회·체결조회"
+                self.logger.warning(
+                    f"주문 상태 조회 실패 {order_id} — {failed} 실패, 판정 보류(미체결로 보지 않음)")
+                return None
+
+            # 두 조회 모두 성공했는데 어디에도 없음 — 취소로 단정하지 않는다
             return {"odno": order_id, "_status": "unknown", "status_unknown": True, "cncl_yn": "N"}
 
         except Exception as e:

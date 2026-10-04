@@ -377,3 +377,113 @@ class TestC1RunDailyCycleReachesShutdown:
 
         bot.bot_initializer.shutdown.assert_awaited_once()
         bot.telegram.notifier.application.updater.start_polling.assert_awaited_once()
+
+
+# =============================================================================
+# NEW-B3 + P1-6 — 조회 «실패» 와 «목록에 없음» 구분 · 상태 불명을 취소 없이 닫지 않음
+# =============================================================================
+def _daily_row(odno="0000012345", qty="10", ccld="10", rmn="0", cncl="N", avg="70000"):
+    return pd.DataFrame([{"odno": odno, "pdno": "005930", "ord_qty": qty, "tot_ccld_qty": ccld,
+                          "rmn_qty": rmn, "cncl_yn": cncl, "avg_prvs": avg}])
+
+
+class TestB3OrderStatusFailureVsAbsent:
+
+    def _status(self, pending, daily):
+        broker = _connected_broker()
+        fake = _fake_order_api(
+            get_inquire_psbl_rvsecncl_lst=Mock(return_value=pending),
+            get_inquire_daily_ccld_lst=Mock(return_value=daily),
+        )
+        with patch.object(_api_pkg(), "kis_order_api", fake, create=True):
+            result = broker.get_order_status("0000012345")
+        fake.get_inquire_psbl_rvsecncl_lst.assert_called_once()
+        fake.get_inquire_daily_ccld_lst.assert_called_once()
+        return result
+
+    def test_daily_query_failure_is_none_not_unknown(self):
+        # 체결된 주문: 정정취소가능 목록(성공·빈 목록)에 없음 + 체결조회 실패(CB OPEN 등)
+        assert self._status(pd.DataFrame(), None) is None
+
+    def test_pending_query_failure_and_daily_absent_is_none(self):
+        assert self._status(None, pd.DataFrame()) is None
+
+    def test_both_ok_and_absent_is_status_unknown(self):
+        res = self._status(pd.DataFrame(), pd.DataFrame())
+        assert res["status_unknown"] is True
+
+    def test_pending_failure_but_daily_has_row_returns_executed(self):
+        res = self._status(None, _daily_row())
+        assert res["_status"] == "executed" and res["tot_ccld_qty"] == "10"
+
+
+class TestB3NoFalsePositiveRestoreOnQueryFailure:
+    """감사 예시 ③: 매도 체결 뒤 체결조회 1회 실패 → «미체결» 오탐 부활 → 같은 매도 이중 처리."""
+
+    @pytest.mark.asyncio
+    async def test_filled_sell_not_revived_by_failed_or_unknown_lookup(self):
+        broker = _connected_broker()
+        om = _make_om(broker=broker)
+        order = _inject(om, otype=OrderType.SELL, price=0, qty=10)
+        order.status = OrderStatus.FILLED
+        order.filled_price = 71000.0
+        om._move_to_completed(order.order_id)
+        assert order in om.completed_orders
+
+        lst = Mock(return_value=pd.DataFrame())     # 체결 주문은 정정취소가능 목록에 없다
+        daily = Mock(return_value=None)             # 체결조회 실패(CB 30초 차단 등)
+        fake = _fake_order_api(get_inquire_psbl_rvsecncl_lst=lst, get_inquire_daily_ccld_lst=daily)
+        with patch.object(_api_pkg(), "kis_order_api", fake, create=True):
+            await om._check_false_positive_filled_orders(now_kst())
+            om._last_false_positive_check = None
+            daily.return_value = pd.DataFrame()     # 두 조회 성공 + 어디에도 없음 = 상태 불명
+            await om._check_false_positive_filled_orders(now_kst())
+        assert daily.call_count == 2                 # 실제로 두 번 다 조회했다(공허 통과 방지)
+
+        assert order.order_id not in om.pending_orders, "조회 실패·상태 불명으로 체결 주문을 되살렸다"
+        assert order.status == OrderStatus.FILLED
+        om.telegram.notify_system_status.assert_not_awaited()  # 「오탐 복구」 경보 없음
+
+    @pytest.mark.asyncio
+    async def test_genuinely_unfilled_still_restored(self):
+        """대칭 단언: 체결조회가 «미체결» 을 명시하면 오탐 복구는 종전대로 동작한다."""
+        broker = _connected_broker()
+        om = _make_om(broker=broker)
+        order = _inject(om, otype=OrderType.BUY, qty=10)
+        order.status = OrderStatus.FILLED
+        om._move_to_completed(order.order_id)
+
+        fake = _fake_order_api(
+            get_inquire_psbl_rvsecncl_lst=Mock(return_value=pd.DataFrame()),
+            get_inquire_daily_ccld_lst=Mock(return_value=_daily_row(ccld="0", rmn="10")),
+        )
+        with patch.object(_api_pkg(), "kis_order_api", fake, create=True):
+            await om._check_false_positive_filled_orders(now_kst())
+        assert order.order_id in om.pending_orders
+
+
+class TestB3UnknownTimeoutGoesThroughCancel:
+    """P1-6: 상태 불명 5분 초과를 «취소 없이 장부만 TIMEOUT» 하지 않는다 → 취소 경로 + 슬롯 복구 + 경보."""
+
+    @pytest.mark.asyncio
+    async def test_unknown_over_timeout_attempts_cancel_then_force_cleanup_with_alert(self):
+        broker = Mock()
+        broker.get_order_status.return_value = {
+            "odno": "0000012345", "_status": "unknown", "status_unknown": True, "cncl_yn": "N"}
+        broker.cancel_order.return_value = {
+            "success": False, "order_id": "0000012345",
+            "message": "Order 0000012345 not found in cancellable list", "data": None}
+        telegram = AsyncMock()
+        om = _make_om(broker=broker, telegram=telegram)
+        om.trading_manager = AsyncMock()
+        order = _inject(om, age_sec=400, timeout_sec=300)  # 접수 400초 전 · 타임아웃 100초 지남
+
+        with patch("core.orders.order_timeout.ORDER_CANCEL_RETRY_INTERVAL", 0):
+            await om._monitor_pending_orders()
+
+        assert broker.cancel_order.call_count >= 1, "취소를 한 번도 시도하지 않고 닫았다"
+        assert order.order_id not in om.pending_orders
+        assert order.status == OrderStatus.TIMEOUT
+        om.trading_manager.handle_order_timeout.assert_awaited()       # 슬롯 BUY_PENDING 고착 방지
+        msgs = " ".join(str(c.args[0]) for c in telegram.notify_system_status.call_args_list)
+        assert "수동 확인 필요" in msgs
