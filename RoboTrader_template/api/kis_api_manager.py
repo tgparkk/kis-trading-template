@@ -619,12 +619,16 @@ class KISAPIManager:
                     message="주문 취소 API 응답 없음"
                 )
             
-            # 🔥 취소 결과 상세 확인
+            # 🔥 취소 결과 상세 확인 — 성공 = 응답 행에 ODNO(취소 주문 새 번호)가 있음.
+            # rt_cd·msg1 은 body(겉봉투)에 있고 get_order_rvsecncl 이 isOK() 로 이미
+            # 검사했다 — output 행에서 읽으면 늘 빈 값이라 정상 취소가 «실패» 로 읽힌다
+            # (NEW-B1 같은 계열, 2026-10-04 · 운영 호출자 0 이지만 같은 함정이라 함께 정리).
             cancel_result = result.iloc[0]
-            rt_cd = cancel_result.get('rt_cd', '')
-            msg1 = cancel_result.get('msg1', '')
-            
-            if rt_cd == '0':  # 성공
+            new_odno = str(cancel_result.get('ODNO', '') or '').strip()
+            rt_cd = '0' if new_odno else ''
+            msg1 = '' if new_odno else '취소 응답에 ODNO 없음'
+
+            if new_odno:  # 성공
                 self.logger.info(f"✅ 주문 취소 성공: {order_id}")
                 return OrderResult(
                     success=True,

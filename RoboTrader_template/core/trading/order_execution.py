@@ -528,7 +528,7 @@ class OrderExecution:
             )
 
     async def on_partial_fill_timeout(self, order, filled_qty: int, filled_price: float,
-                                      strategy: Optional[str] = None) -> None:
+                                      strategy: Optional[str] = None) -> Optional[TradingStock]:
         """
         부분 체결 타임아웃 처리 - 체결된 수량으로 포지션 설정
 
@@ -538,6 +538,10 @@ class OrderExecution:
             filled_price: 체결 가격
             strategy: 소유 전략명. 지정 시 해당 전략 소유 인스턴스만 조회/변경
                       (다중소유 오귀속 방지). 미지정(None) 시 기존 폴백 동작 보존.
+
+        Returns:
+            POSITIONED 로 등록한 슬롯(전략 통보용 — facade 가 소유 전략에 체결을
+            알린다, F5). 슬롯을 못 찾으면 None.
         """
         stock_code = order.stock_code
 
@@ -545,7 +549,7 @@ class OrderExecution:
             trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
             if trading_stock is None:
                 self.logger.warning(f"부분 체결 포지션 등록 실패: {stock_code} 종목 없음")
-                return
+                return None
 
             trading_stock.is_buying = False
             trading_stock.set_position(filled_qty, filled_price)
@@ -559,6 +563,7 @@ class OrderExecution:
             )
 
         self.logger.info(f"부분 체결 포지션 등록 완료: {stock_code} {filled_qty}주 @{filled_price:,.0f}원")
+        return trading_stock
 
     async def on_sell_partial_fill_timeout(self, order, filled_qty: int, filled_price: float,
                                            strategy: Optional[str] = None) -> None:

@@ -729,10 +729,15 @@ class KISBroker(BaseBroker):
                     "data": None,
                 }
 
+            # 성공 판정 = «응답 행이 있고 ODNO(취소 주문의 새 주문번호)가 있다».
+            # 🔴 rt_cd 를 여기서 읽지 말 것(NEW-B1, 2026-10-04): rt_cd·msg1 은 응답
+            # «겉봉투»(body)에 있고 get_order_rvsecncl 이 isOK() 로 이미 검사했다
+            # (api/kis_order_api.py:159). 이 DataFrame 은 body.output 만 담아 rt_cd 가
+            # 늘 비어 있었고, 그래서 KIS 가 정상 취소해도 «Cancel failed» 로 읽혔다.
             cancel_data = result.iloc[0]
-            rt_cd = cancel_data.get("rt_cd", "")
+            new_odno = str(cancel_data.get("ODNO", "") or "").strip()
 
-            if rt_cd == "0":
+            if new_odno:
                 return {
                     "success": True,
                     "order_id": order_id,
@@ -740,11 +745,10 @@ class KISBroker(BaseBroker):
                     "data": cancel_data.to_dict(),
                 }
             else:
-                msg = cancel_data.get("msg1", "Unknown error")
                 return {
                     "success": False,
                     "order_id": order_id,
-                    "message": f"Cancel failed: {msg}",
+                    "message": "Cancel failed: no ODNO in cancel response",
                     "data": cancel_data.to_dict(),
                 }
 

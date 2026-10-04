@@ -284,14 +284,21 @@ class OrderTimeoutMixin:
             await self._save_real_trade_to_db(order, filled_price)
             return
 
+        # 보유 레지스트리·슬롯 갱신에 쓸 owner — 완전 체결 경로(order_monitor
+        # _handle_full_fill)와 같은 원천(«체결 시점 소유 슬롯»의 owner_strategy_name).
+        # 종전엔 owner 없이 add_position 해 (code, None) 엔트리가 생겼고, 이후 매도의
+        # owner 지정 제거와 짝이 안 맞아 엔트리가 잔류했다(NEW-B1 동반 · F5, 2026-10-04).
+        # B1(취소 성공 오판) 때문에 이 분기는 지금까지 도달 0 이었다 — B1 수정으로 처음 산다.
+        _owner_slot = self._get_owned_trading_stock(order)
+        order_owner = (
+            getattr(_owner_slot, 'owner_strategy_name', '') or ''
+        ).strip() or None
+
         if self.fund_manager:
             try:
                 actual_amount = filled_price * filled_qty
                 self.fund_manager.confirm_order(order_id, actual_amount)
-                # owner 미지정(레거시 엔트리) — order_monitor 매수 경로와 동일 이유:
-                # Order 에 소유 전략 필드가 없고, owner 없는 슬롯 조회를 새로 만들지
-                # 않는다. 매도 회수(:226)도 owner=None 이라 표기가 대칭이다.
-                self.fund_manager.add_position(order.stock_code)
+                self.fund_manager.add_position(order.stock_code, order_owner)
                 self.logger.info(f"FundManager 매수 부분 체결 확정: {order_id} - {actual_amount:,.0f}원 ({filled_qty}주)")
             except Exception as e:
                 # 자금 확정 실패: 루프 중단을 막기 위해 raise 하지 않고 CRITICAL 알림
@@ -307,7 +314,9 @@ class OrderTimeoutMixin:
 
         if self.trading_manager and hasattr(self.trading_manager, 'on_partial_fill_timeout'):
             try:
-                await self.trading_manager.on_partial_fill_timeout(order, filled_qty, filled_price)
+                # strategy=슬롯 owner — 종목코드 단독 조회로 남의 슬롯을 집지 않게(F5).
+                await self.trading_manager.on_partial_fill_timeout(
+                    order, filled_qty, filled_price, strategy=order_owner)
             except Exception as e:
                 self.logger.error(f"부분 체결 포지션 등록 실패: {e}")
 
