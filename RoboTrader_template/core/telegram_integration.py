@@ -3,6 +3,7 @@
 """
 import asyncio
 import configparser
+import time
 from typing import Any, Dict, Optional
 from pathlib import Path
 
@@ -342,15 +343,31 @@ class TelegramIntegration:
                 return
                 
             interval = self.notification_settings.get('interval_minutes', 30)
-            
-            while True:
-                await asyncio.sleep(interval * 60)  # 분 단위를 초로 변환
-                
+
+            # NEW-C1(2026-10-04): 종전 `while True` 는 종료 신호(is_running=False) 뒤에도
+            # 영원히 돌아 main.run_daily_cycle 의 gather 가 끝나지 않았고, 그래서
+            # finally: shutdown() 에 도달하지 못했다(Ctrl+C·/stop 모두). 대기를 1초
+            # 단위로 쪼개 봇 실행 플래그를 본다. 텔레그램 disabled(페이퍼)는 위
+            # `if not self.is_enabled: return` 에서 이미 끝나므로 이 루프에 오지 않는다.
+            while self._bot_is_running():
+                deadline = time.monotonic() + interval * 60  # 분 단위를 초로 변환
+                while self._bot_is_running() and time.monotonic() < deadline:
+                    await asyncio.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+                if not self._bot_is_running():
+                    break
+
                 # 주기적 상태 알림
                 await self.notify_system_status()
-                
+
         except Exception as e:
             self.logger.error(f"주기적 상태 알림 태스크 오류: {e}")
+
+    def _bot_is_running(self) -> bool:
+        """거래 봇이 아직 실행 중인지 — 봇 참조가 없으면 종전처럼 계속 돈다."""
+        bot = self.trading_bot
+        if bot is None:
+            return True
+        return bool(getattr(bot, 'is_running', True))
     
     def get_stats_summary(self) -> Dict[str, Any]:
         """통계 요약 반환"""

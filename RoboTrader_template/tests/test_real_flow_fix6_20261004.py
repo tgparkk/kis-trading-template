@@ -216,3 +216,164 @@ class TestB1PartialFillTimeoutLedger:
         # 「잔여취소 실패 - 수동 확인 필요」 분기로 가지 않았다
         msgs = " ".join(str(c.args[0]) for c in telegram.notify_system_status.call_args_list)
         assert "수동 확인 필요" not in msgs
+
+
+# =============================================================================
+# NEW-C1 — Ctrl+C(is_running=False) 뒤 텔레그램 태스크가 안 끝나 shutdown() 미도달
+# =============================================================================
+def _telegram_integration(bot, enabled=True, interval_minutes=30):
+    from core.telegram_integration import TelegramIntegration
+    ti = TelegramIntegration.__new__(TelegramIntegration)
+    ti.logger = MagicMock()
+    ti.trading_bot = bot
+    ti.is_enabled = enabled
+    ti.notifier = _polling_notifier(bot) if enabled else None
+    ti.notification_settings = {"periodic_status": True, "interval_minutes": interval_minutes}
+    ti.notify_system_status = AsyncMock()
+    return ti
+
+
+def _polling_notifier(bot):
+    """start_polling 본체를 그대로 돌리되 PTB Application 은 모의 객체."""
+    from utils.telegram.telegram_notifier import TelegramNotifier
+    n = TelegramNotifier.__new__(TelegramNotifier)
+    n.logger = MagicMock()
+    n.is_initialized = True
+    n.is_polling = False
+    n.trading_bot_ref = bot
+    n.bot = MagicMock()
+    n.bot.delete_webhook = AsyncMock()
+    app = MagicMock()
+    app.initialize = AsyncMock()
+    app.start = AsyncMock()
+    app.stop = AsyncMock()
+    app.shutdown = AsyncMock()
+    app.updater.start_polling = AsyncMock()
+    app.updater.stop = AsyncMock()
+    app.updater.running = False
+    n.application = app
+    return n
+
+
+class _FastSleep:
+    """모듈이 참조하는 asyncio 를 «짧게 자는» 대역으로 — 2초·1초 대기를 테스트에서 줄인다."""
+
+    def __init__(self):
+        import asyncio as _real
+        self._real = _real
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    async def sleep(self, _seconds):
+        await self._real.sleep(0.01)
+
+
+class TestC1TelegramTasksStopOnShutdownSignal:
+
+    @pytest.mark.asyncio
+    async def test_periodic_status_task_ends_after_is_running_false(self):
+        import asyncio
+        bot = types.SimpleNamespace(is_running=True)
+        ti = _telegram_integration(bot, enabled=True, interval_minutes=30)
+        with patch("core.telegram_integration.asyncio", _FastSleep()):
+            task = asyncio.ensure_future(ti.periodic_status_task())
+            await asyncio.sleep(0.05)
+            assert not task.done(), "실행 중에는 계속 돌아야 한다(조기 종료 아님)"
+            bot.is_running = False
+            await asyncio.wait_for(task, timeout=2)
+        ti.notify_system_status.assert_not_awaited()  # 30분 주기 전 종료
+
+    @pytest.mark.asyncio
+    async def test_periodic_status_task_still_notifies_while_running(self):
+        """대기 쪼개기가 주기 알림 자체를 죽이지 않았음(공허 통과 방지)."""
+        import asyncio
+        bot = types.SimpleNamespace(is_running=True)
+        ti = _telegram_integration(bot, enabled=True, interval_minutes=0.001)  # 0.06초
+        task = asyncio.ensure_future(ti.periodic_status_task())
+        await asyncio.sleep(0.3)
+        bot.is_running = False
+        await asyncio.wait_for(task, timeout=3)
+        assert ti.notify_system_status.await_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_polling_loop_ends_after_is_running_false(self):
+        import asyncio
+        bot = types.SimpleNamespace(is_running=True)
+        n = _polling_notifier(bot)
+        with patch("utils.telegram.telegram_notifier.asyncio", _FastSleep()):
+            task = asyncio.ensure_future(n.start_polling())
+            await asyncio.sleep(0.1)
+            assert not task.done()
+            n.application.updater.start_polling.assert_awaited_once()  # 폴링까지 실제 진입
+            bot.is_running = False
+            await asyncio.wait_for(task, timeout=2)
+        assert n.is_polling is False
+        n.application.stop.assert_awaited_once()      # finally 정리 경로
+        n.application.shutdown.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_notifier_shutdown_skips_stop_when_already_stopped(self):
+        """폴링 finally 가 먼저 멈춘 뒤의 shutdown() — stop() 의 not-running 오류 줄을 안 낸다."""
+        n = _polling_notifier(types.SimpleNamespace(is_running=False))
+        n.send_system_stop = AsyncMock()
+        n.application.running = False
+        await n.shutdown()
+        n.application.stop.assert_not_awaited()
+        n.application.shutdown.assert_awaited_once()
+        n.logger.error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_paper_disabled_telegram_returns_immediately_unchanged(self):
+        """페이퍼(텔레그램 disabled): 두 태스크는 루프에 들어가기 전에 끝난다 — 종전과 동일."""
+        import asyncio
+        bot = types.SimpleNamespace(is_running=True)
+        ti = _telegram_integration(bot, enabled=False)
+        await asyncio.wait_for(ti.periodic_status_task(), timeout=0.5)
+        await asyncio.wait_for(ti.start_telegram_bot(), timeout=0.5)
+        ti.notify_system_status.assert_not_awaited()
+
+
+@pytest.fixture
+def daytrading_bot():
+    """DayTradingBot 을 외부 의존성 Mock 으로 생성(tests/test_main_loop.py 와 같은 방식)."""
+    with patch("main.KISBroker") as mock_broker_cls, \
+         patch("main.DatabaseManager") as mock_db_cls, \
+         patch("main.TelegramIntegration"), \
+         patch("main.check_duplicate_process"), \
+         patch("main.load_config") as mock_load_config, \
+         patch("main.StrategyLoader") as mock_loader:
+        mock_load_config.return_value = MagicMock(
+            rebalancing_mode=False,
+            strategy={"name": "sample", "enabled": False},
+            paper_trading=True,
+        )
+        mock_db_cls.return_value.db_path = ":memory:"
+        mock_broker_cls.return_value.connect = AsyncMock(return_value=True)
+        mock_loader.load_strategy.side_effect = FileNotFoundError("test")
+        from main import DayTradingBot
+        yield DayTradingBot()
+
+
+class TestC1RunDailyCycleReachesShutdown:
+
+    @pytest.mark.asyncio
+    async def test_sigint_with_enabled_telegram_reaches_shutdown(self, daytrading_bot):
+        """종료 신호 → 메인 루프 종료 → 텔레그램 두 태스크 종료 → finally: shutdown() 1회."""
+        import asyncio
+        bot = daytrading_bot
+        bot.telegram = _telegram_integration(bot, enabled=True, interval_minutes=30)
+        bot.system_monitor.run_system_monitoring_task = AsyncMock()
+        bot.bot_initializer.shutdown = AsyncMock()
+
+        async def fake_main_loop():
+            await asyncio.sleep(0.05)
+            bot._signal_handler(2, None)  # Ctrl+C 와 같은 효과(is_running=False 만)
+
+        bot._main_trading_loop = fake_main_loop
+        with patch("core.telegram_integration.asyncio", _FastSleep()), \
+             patch("utils.telegram.telegram_notifier.asyncio", _FastSleep()):
+            await asyncio.wait_for(bot.run_daily_cycle(), timeout=5)
+
+        bot.bot_initializer.shutdown.assert_awaited_once()
+        bot.telegram.notifier.application.updater.start_polling.assert_awaited_once()

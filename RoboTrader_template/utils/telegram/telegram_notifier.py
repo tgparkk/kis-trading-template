@@ -140,8 +140,10 @@ class TelegramNotifier:
                 drop_pending_updates=True
             )
             
-            # 폴링이 계속 실행되도록 대기
-            while self.is_polling:
+            # 폴링이 계속 실행되도록 대기 — 봇 종료 신호(is_running=False)도 본다.
+            # NEW-C1(2026-10-04): 종전엔 is_polling 만 봐서(False 는 shutdown() 안에서만)
+            # Ctrl+C·/stop 뒤에도 이 루프가 안 끝났고, 그래서 shutdown() 자체에 도달 못 했다.
+            while self.is_polling and self._bot_is_running():
                 await asyncio.sleep(1)
                 
         except Exception as e:
@@ -162,6 +164,13 @@ class TelegramNotifier:
             except Exception as shutdown_error:
                 self.logger.error(f"봇 종료 중 오류: {shutdown_error}")
     
+    def _bot_is_running(self) -> bool:
+        """거래 봇이 아직 실행 중인지 — 봇 참조가 없으면 종전처럼 is_polling 만 따른다."""
+        bot = getattr(self, 'trading_bot_ref', None)
+        if bot is None:
+            return True
+        return bool(getattr(bot, 'is_running', True))
+
     def _escape_markdown(self, text: str) -> str:
         """마크다운 특수문자 이스케이프"""
         # 마크다운 특수문자들
@@ -544,12 +553,14 @@ class TelegramNotifier:
             except Exception as msg_error:
                 self.logger.error(f"종료 메시지 전송 실패: {msg_error}")
             
-            # Application 종료
+            # Application 종료 — 폴링 루프 finally 가 이미 멈췄으면(NEW-C1 정상 경로)
+            # stop() 은 «not running» RuntimeError 를 낸다. 돌고 있을 때만 멈춘다.
             if self.application:
                 try:
                     if hasattr(self.application, 'updater') and self.application.updater.running:
                         await self.application.updater.stop()
-                    await self.application.stop()
+                    if getattr(self.application, 'running', False):
+                        await self.application.stop()
                     await self.application.shutdown()
                 except Exception as app_error:
                     self.logger.error(f"Application 종료 중 오류: {app_error}")
