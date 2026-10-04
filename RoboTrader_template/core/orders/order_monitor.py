@@ -230,11 +230,20 @@ class OrderMonitorMixin:
         except Exception as e:
             self.logger.error(f"오탐지 주문 복구 실패 {order.order_id}: {e}")
 
-    async def _check_order_status(self: 'OrderManagerBase', order_id: str) -> None:
-        """주문 상태 확인"""
+    async def _check_order_status(self: 'OrderManagerBase', order_id: str) -> bool:
+        """주문 상태 확인.
+
+        Returns:
+            False = 조회 «실패»(broker None·타임아웃·예외) — 호출자는 이를 «미체결» 로
+                    읽으면 안 된다(타임아웃 종결 연기 판단에 쓴다 · 2026-10-04 리뷰 중요1).
+            True  = 조회 성공(상태 반영함) 또는 더 볼 것 없음(이미 pending 아님 ·
+                    취소 접수 확인된 주문 — 체결수량 판정은 _resolve_cancel_confirmed 가 한다).
+        """
         try:
             if order_id not in self.pending_orders:
-                return
+                return True
+            if order_id in getattr(self, '_cancel_confirmed_ids', ()):
+                return True
 
             order = self.pending_orders[order_id]
 
@@ -248,9 +257,12 @@ class OrderMonitorMixin:
 
             if status_data:
                 await self._process_order_status(order_id, order, status_data)
+                return True
+            return False
 
         except Exception as e:
             self.logger.error(f"주문 상태 확인 실패 {order_id}: {e}")
+            return False
 
     async def _process_order_status(self: 'OrderManagerBase', order_id: str, order, status_data: dict) -> None:
         """주문 상태 데이터 처리"""

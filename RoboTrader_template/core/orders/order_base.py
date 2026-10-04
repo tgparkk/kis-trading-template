@@ -43,6 +43,11 @@ class OrderManagerBase:
         # 종목코드 단독 키는 두 전략의 동일종목 주문이 서로의 예약을 덮는다.
         self._temp_reserve_ids: Dict[str, str] = {}
 
+        # 타임아웃 종결 연기(체결 재조회 실패 시) 횟수 · «취소는 접수됐지만 체결수량 미확인» 주문
+        # (2026-10-04 리뷰 중요1·2 — order_timeout._defer_timeout_close / _resolve_cancel_confirmed)
+        self._timeout_defer_counts: Dict[str, int] = {}
+        self._cancel_confirmed_ids: Set[str] = set()
+
         # 모니터링 상태
         self.is_monitoring = False
         self.executor = ThreadPoolExecutor(max_workers=2)
@@ -159,6 +164,10 @@ class OrderManagerBase:
 
             # 중복 주문 방지 맵에서 해제
             self._unregister_active_order(order.stock_code, order.order_type)
+
+            # 종결 연기 표식 정리
+            getattr(self, '_timeout_defer_counts', {}).pop(order_id, None)
+            getattr(self, '_cancel_confirmed_ids', set()).discard(order_id)
 
             # FundManager 연동: 취소/타임아웃 시 예약 해제
             from ..models import OrderStatus

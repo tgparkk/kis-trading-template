@@ -6,6 +6,7 @@
 - 취소 재시도
 """
 import asyncio
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from ..models import OrderType, OrderStatus
@@ -13,6 +14,7 @@ from utils.korean_time import now_kst
 from utils.async_helpers import run_with_timeout
 from config.constants import (
     ORDER_CANCEL_MAX_RETRIES, ORDER_CANCEL_RETRY_INTERVAL,
+    ORDER_TIMEOUT_DEFER_SECONDS, ORDER_TIMEOUT_DEFER_MAX,
     COMMISSION_RATE, SECURITIES_TAX_RATE,
 )
 from .order_executor import coerce_order_result
@@ -31,10 +33,17 @@ class OrderTimeoutMixin:
                 self.logger.warning(f"타임아웃 처리할 주문이 없음: {order_id}")
                 return
 
+            # 취소는 접수됐지만 체결수량을 못 본 주문(리뷰 중요2) — 재조회로만 종결한다
+            if order_id in self._cancel_confirmed_ids:
+                await self._resolve_cancel_confirmed(order_id)
+                return
+
             order = self.pending_orders[order_id]
             elapsed_time = (now_kst() - order.timestamp).total_seconds()
+            deferred_before = self._timeout_defer_counts.get(order_id, 0) > 0
             self.logger.warning(f"5분 타임아웃 처리: {order_id} ({order.stock_code}) "
-                              f"- 경과시간: {elapsed_time:.0f}초")
+                              f"- 경과시간: {elapsed_time:.0f}초"
+                              f"{' (종결 연기 뒤 재처리)' if deferred_before else ''}")
 
             # 취소 전 최종 상태 확인 (부분 체결 확인)
             await self._check_order_status(order_id)
@@ -53,8 +62,8 @@ class OrderTimeoutMixin:
                 await self._handle_partial_fill_timeout(order_id, order, filled_qty)
                 return
 
-            # 타임아웃 텔레그램 알림
-            if self.telegram:
+            # 타임아웃 텔레그램 알림 (종결 연기 뒤 재처리면 반복 발송하지 않음)
+            if self.telegram and not deferred_before:
                 order_type_str = "매수" if order.order_type == OrderType.BUY else "매도"
                 await self.telegram.notify_system_status(
                     f"주문 타임아웃: {order.stock_code} {order_type_str} {order.quantity}주 @{order.price:,.0f}원 ({elapsed_time:.0f}초 경과)"
@@ -68,14 +77,18 @@ class OrderTimeoutMixin:
 
             if cancel_success:
                 self.logger.info(f"타임아웃 취소 성공: {order_id}")
+                # 사전 조회~취소 사이 일부 체결(B5 경합)·재조회 실패 처리(리뷰 중요2)
+                if await self._account_fill_after_cancel(saved_order):
+                    return
             else:
                 self.logger.error(f"타임아웃 취소 최종 실패: {order_id}")
                 # 취소 최종 실패 시 API 재확인
                 await self._check_order_status(order_id)
                 if order_id in self.pending_orders:
-                    # 여전히 미체결이면 강제 정리 + 수동 확인 알림
-                    await self._force_timeout_cleanup(order_id)
-                    if self.telegram:
+                    # 여전히 미체결이면 강제 정리 + 수동 확인 알림.
+                    # 재확인 조회가 «실패»면 강제 정리는 닫지 않고 연기한다(리뷰 중요1) → 경보는 닫을 때만.
+                    closed = await self._force_timeout_cleanup(order_id)
+                    if closed and self.telegram:
                         await self.telegram.notify_system_status(
                             f"주문 취소 실패 - 수동 확인 필요: {saved_order.stock_code} 주문 {order_id}"
                         )
@@ -93,6 +106,10 @@ class OrderTimeoutMixin:
         """3분봉 기준 타임아웃 처리 (매수 주문 후 4봉 지나면 취소)"""
         try:
             if order_id not in self.pending_orders:
+                return
+            # 종결 연기 중·취소 접수 확인 주문은 시간 타임아웃 경로가 맡는다(4봉 조건은 계속
+            # 참이라 여기서 매 루프 취소를 다시 시도하지 않게 — 리뷰 중요1·2)
+            if order_id in self._cancel_confirmed_ids or self._timeout_defer_counts.get(order_id):
                 return
 
             order = self.pending_orders[order_id]
@@ -126,6 +143,9 @@ class OrderTimeoutMixin:
             cancel_success = await self._cancel_with_retry(order_id)
 
             if cancel_success:
+                # 사전 조회~취소 사이 일부 체결(B5 경합)·재조회 실패 처리(리뷰 중요2)
+                if await self._account_fill_after_cancel(saved_order):
+                    return
                 # 텔레그램 알림 (기존 cancel_order에서 이미 알림이 발송되므로 추가 정보만 포함)
                 if self.telegram:
                     await self.telegram.notify_order_cancelled({
@@ -138,8 +158,8 @@ class OrderTimeoutMixin:
                 self.logger.error(f"4봉 타임아웃 취소 최종 실패: {order_id}")
                 await self._check_order_status(order_id)
                 if order_id in self.pending_orders:
-                    await self._force_4candle_timeout_cleanup(order_id)
-                    if self.telegram:
+                    closed = await self._force_4candle_timeout_cleanup(order_id)
+                    if closed and self.telegram:
                         await self.telegram.notify_system_status(
                             f"주문 취소 실패 - 수동 확인 필요: {saved_order.stock_code} 주문 {order_id}"
                         )
@@ -155,6 +175,8 @@ class OrderTimeoutMixin:
 
     async def _cancel_with_retry(self: 'OrderManagerBase', order_id: str, max_retries: int = ORDER_CANCEL_MAX_RETRIES) -> bool:
         """재시도가 포함된 주문 취소"""
+        if order_id in getattr(self, '_cancel_confirmed_ids', ()):
+            return True  # 이미 KIS 가 취소를 접수한 주문(체결수량 재조회 대기 중)
         for attempt in range(max_retries):
             cancel_success = await self.cancel_order(order_id)
             if cancel_success:
@@ -196,13 +218,18 @@ class OrderTimeoutMixin:
                 await asyncio.sleep(ORDER_CANCEL_RETRY_INTERVAL)
         return False
 
-    async def _handle_partial_fill_timeout(self: 'OrderManagerBase', order_id: str, order, filled_qty: int) -> None:
-        """부분 체결 상태에서 타임아웃 처리"""
+    async def _handle_partial_fill_timeout(self: 'OrderManagerBase', order_id: str, order, filled_qty: int,
+                                           cancel_done: bool = False) -> None:
+        """부분 체결 상태에서 타임아웃 처리
+
+        cancel_done: 잔량 취소가 이미 KIS 에 접수된 경우(취소 성공 뒤 재조회로 체결분을
+            발견 — 리뷰 중요2). 취소 API 를 다시 부르지 않고 «취소 성공» 으로 회계한다.
+        """
         # 1. 잔여 주문 취소 (pending_orders 상태 변경 없이 API만 호출, 재시도 포함)
         # _cancel_with_retry 대신 _cancel_remaining_only 사용:
         # _cancel_with_retry → cancel_order → _move_to_completed 로 pending_orders에서 제거되어
         # 이후 _move_to_completed 재호출 시 order가 없어지는 이중 호출 버그 방지
-        cancel_success = await self._cancel_remaining_only(order_id)
+        cancel_success = True if cancel_done else await self._cancel_remaining_only(order_id)
 
         filled_price = getattr(order, 'filled_price', None) or order.price
 
@@ -336,18 +363,25 @@ class OrderTimeoutMixin:
                 f"{filled_qty}/{original_qty}주 체결, 잔여 취소"
             )
 
-    async def _force_timeout_cleanup(self: 'OrderManagerBase', order_id: str) -> None:
-        """타임아웃 시 강제 상태 정리 (체결 재확인 후 처리)"""
+    async def _force_timeout_cleanup(self: 'OrderManagerBase', order_id: str) -> bool:
+        """타임아웃 시 강제 상태 정리 (체결 재확인 후 처리).
+
+        Returns:
+            True = TIMEOUT 으로 닫았다(호출자가 「수동 확인 필요」 경보) ·
+            False = 닫지 않았다(그새 체결 확인 · 또는 재확인 조회 실패로 종결 연기).
+        """
         if order_id in self.pending_orders:
             order = self.pending_orders[order_id]
 
             # C2 fix: TIMEOUT 처리 전 체결 여부 한 번 더 확인
+            checked = True
             try:
-                await self._check_order_status(order_id)
+                checked = await self._check_order_status(order_id)
                 if order_id not in self.pending_orders:
                     self.logger.info(f"강제정리 전 체결 확인됨: {order_id} ({order.stock_code})")
-                    return
+                    return False
             except Exception as check_err:
+                checked = False
                 self.logger.warning(
                     f"⚠️ 강제정리 전 체결 재확인 실패: {order_id} ({order.stock_code}) - {check_err}. "
                     f"증권사에서 실제 체결되었을 수 있음! "
@@ -355,6 +389,13 @@ class OrderTimeoutMixin:
                     f"유형={'매수' if order.order_type == OrderType.BUY else '매도'} "
                     f"→ 다음 장 시작 시 잔고 동기화로 확인 필요"
                 )
+
+            # 리뷰 중요1(2026-10-04): 재확인 조회가 «실패»(CB OPEN 중 체결조회 차단 등)면
+            # 체결 여부를 모르는 채 닫지 않는다 — 닫으면 체결된 주문이 손절 없는 고아가 된다.
+            if checked is False and self._defer_timeout_close(order_id, "강제정리 전 체결 재확인 조회 실패"):
+                return False
+            if checked is False:
+                self._log_defer_exhausted(order_id, order)
 
             order.status = OrderStatus.TIMEOUT  # 타임아웃 상태로 변경
             self._move_to_completed(order_id)
@@ -370,19 +411,23 @@ class OrderTimeoutMixin:
                     self.logger.info(f"TradingStockManager 타임아웃 처리 완료: {order_id}")
                 except Exception as notify_error:
                     self.logger.error(f"TradingStockManager 타임아웃 처리 실패: {notify_error}")
+            return True
+        return False
 
-    async def _force_4candle_timeout_cleanup(self: 'OrderManagerBase', order_id: str) -> None:
-        """3분봉 타임아웃 시 강제 상태 정리 (체결 재확인 후 처리)"""
+    async def _force_4candle_timeout_cleanup(self: 'OrderManagerBase', order_id: str) -> bool:
+        """3분봉 타임아웃 시 강제 상태 정리 (체결 재확인 후 처리) — 반환값은 _force_timeout_cleanup 과 같다."""
         if order_id in self.pending_orders:
             order = self.pending_orders[order_id]
 
             # C2 fix: TIMEOUT 처리 전 체결 여부 한 번 더 확인
+            checked = True
             try:
-                await self._check_order_status(order_id)
+                checked = await self._check_order_status(order_id)
                 if order_id not in self.pending_orders:
                     self.logger.info(f"3분봉 강제정리 전 체결 확인됨: {order_id} ({order.stock_code})")
-                    return
+                    return False
             except Exception as check_err:
+                checked = False
                 self.logger.warning(
                     f"⚠️ 3분봉 강제정리 전 체결 재확인 실패: {order_id} ({order.stock_code}) - {check_err}. "
                     f"증권사에서 실제 체결되었을 수 있음! "
@@ -390,6 +435,12 @@ class OrderTimeoutMixin:
                     f"유형={'매수' if order.order_type == OrderType.BUY else '매도'} "
                     f"→ 다음 장 시작 시 잔고 동기화로 확인 필요"
                 )
+
+            # 리뷰 중요1: 재확인 조회 실패면 닫지 않고 연기(이후는 시간 타임아웃 경로가 맡는다)
+            if checked is False and self._defer_timeout_close(order_id, "3분봉 강제정리 전 체결 재확인 조회 실패"):
+                return False
+            if checked is False:
+                self._log_defer_exhausted(order_id, order)
 
             order.status = OrderStatus.TIMEOUT
             self._move_to_completed(order_id)
@@ -405,6 +456,140 @@ class OrderTimeoutMixin:
                     self.logger.info(f"TradingStockManager 3분봉 타임아웃 처리 완료: {order_id}")
                 except Exception as notify_error:
                     self.logger.error(f"TradingStockManager 3분봉 타임아웃 처리 실패: {notify_error}")
+            return True
+        return False
+
+    # ==================== 종결 연기 · 취소 후 체결 재조회 (2026-10-04 리뷰 중요1·2) ====================
+
+    def _defer_timeout_close(self: 'OrderManagerBase', order_id: str, reason: str) -> bool:
+        """체결 여부를 모르는 주문의 종결을 연기한다. 연기했으면 True, 상한을 넘었으면 False."""
+        count = self._timeout_defer_counts.get(order_id, 0)
+        if count >= ORDER_TIMEOUT_DEFER_MAX:
+            return False
+        self._timeout_defer_counts[order_id] = count + 1
+        self.order_timeouts[order_id] = now_kst() + timedelta(seconds=ORDER_TIMEOUT_DEFER_SECONDS)
+        self.logger.warning(
+            f"⏸ 주문 종결 연기 {count + 1}/{ORDER_TIMEOUT_DEFER_MAX}: {order_id} — {reason} · "
+            f"{ORDER_TIMEOUT_DEFER_SECONDS}초 뒤 재확인(체결 여부를 모르는 채 닫지 않음)"
+        )
+        return True
+
+    def _log_defer_exhausted(self: 'OrderManagerBase', order_id: str, order) -> None:
+        self.logger.error(
+            f"🚨 주문 종결 연기 {ORDER_TIMEOUT_DEFER_MAX}회 소진 — 체결 여부 확인 불가 상태로 종결: "
+            f"{order_id} ({order.stock_code} {order.quantity}주) · HTS 수동 확인 필요"
+        )
+
+    @staticmethod
+    def _parse_int(value) -> int:
+        try:
+            return int(str(value).replace(',', '').strip() or 0)
+        except (ValueError, TypeError):
+            return 0
+
+    async def _query_order_status_once(self: 'OrderManagerBase', order_id: str):
+        """체결 재조회 1회 — dict(조회 성공) 또는 None(조회 실패·타임아웃·예외)."""
+        try:
+            return await run_with_timeout(
+                self.executor, self.broker.get_order_status, order_id,
+                timeout_seconds=10, default=None
+            )
+        except Exception as e:
+            self.logger.warning(f"취소 후 체결 재조회 예외 {order_id}: {e}")
+            return None
+
+    def _reopen_after_cancel(self: 'OrderManagerBase', order) -> None:
+        """cancel_order 가 CANCELLED 로 닫은 주문을 pending 으로 되돌린다(예약도 복원).
+
+        취소 직후 재조회에서 체결분을 발견했거나(→ 부분체결 회계) 재조회가 실패했을 때
+        (→ 종결 연기) 쓴다. 매수 예약은 cancel_order 의 _move_to_completed 가 이미 풀었으므로
+        같은 금액(주문가×주문수량)으로 다시 잡는다 — 이후 confirm_order 가 체결분만 투자로 옮긴다.
+        """
+        order_id = order.order_id
+        if order_id not in self.pending_orders:
+            if order in self.completed_orders:
+                self.completed_orders.remove(order)
+            order.status = OrderStatus.PENDING
+            self.pending_orders[order_id] = order
+            self._register_active_order(order.stock_code, order_id, order.order_type)
+            if (order.order_type == OrderType.BUY and self.fund_manager
+                    and not self.fund_manager.has_reservation(order_id)):
+                if not self.fund_manager.reserve_funds(order_id, order.price * order.quantity):
+                    self.logger.critical(
+                        f"🚨 취소 후 재개 주문 예약 복원 실패: {order_id} ({order.stock_code}) — "
+                        f"자금 장부 수동 확인 필요"
+                    )
+        self.order_timeouts[order_id] = now_kst() + timedelta(seconds=ORDER_TIMEOUT_DEFER_SECONDS)
+
+    async def _account_fill_after_cancel(self: 'OrderManagerBase', order) -> bool:
+        """취소 «성공» 직후 1회 재조회(리뷰 중요2 · B1 수정으로 생긴 «경보 없는 고아» 차단).
+
+        사전 조회(체결 0)~취소 사이 1~2초에 일부가 체결되면, 종전엔 CANCELLED·예약 전액
+        해제·슬롯 COMPLETED 로 닫혀 체결 주식이 장부·손절 밖에 남았다.
+
+        Returns:
+            True  = 이 함수가 주문을 맡았다(체결분 회계로 전환 · 또는 재조회 실패로 종결 연기)
+                    → 호출자는 «미체결 취소» 후처리(슬롯 COMPLETED)를 하지 않는다.
+            False = 체결 0 확인(또는 판단 재료 없음) → 종전 취소 후처리 그대로.
+        """
+        order_id = order.order_id
+        status = await self._query_order_status_once(order_id)
+        if status is None:
+            self._reopen_after_cancel(order)
+            self._cancel_confirmed_ids.add(order_id)
+            self._defer_timeout_close(order_id, "취소 성공 후 체결수량 재조회 실패")
+            return True
+        if not isinstance(status, dict):
+            return False
+        filled = self._parse_int(status.get('tot_ccld_qty', 0))
+        if filled <= 0:
+            return False
+        self.logger.warning(
+            f"⚠️ 취소 직전 일부 체결 감지: {order_id} ({order.stock_code}) {filled}/{order.quantity}주 "
+            f"— 체결분 회계로 전환"
+        )
+        self._reopen_after_cancel(order)
+        await self._account_cancelled_fill(order, filled, status)
+        return True
+
+    async def _account_cancelled_fill(self: 'OrderManagerBase', order, filled: int, status: dict) -> None:
+        """취소가 접수된 주문의 체결분을 부분체결 타임아웃 회계로 처리한다(취소 API 재호출 없음)."""
+        order.filled_quantity = filled
+        try:
+            avg = float(str(status.get('avg_prvs', '') or 0).replace(',', '').strip() or 0)
+        except (ValueError, TypeError, AttributeError):
+            avg = 0.0
+        if avg > 0:
+            order.filled_price = avg
+        await self._handle_partial_fill_timeout(order.order_id, order, filled, cancel_done=True)
+
+    async def _resolve_cancel_confirmed(self: 'OrderManagerBase', order_id: str) -> None:
+        """취소는 접수됐지만 체결수량을 못 본 주문 — 재조회로 종결(실패면 연기, 상한 소진 시 경보 후 종결)."""
+        order = self.pending_orders.get(order_id)
+        if order is None:
+            self._cancel_confirmed_ids.discard(order_id)
+            return
+        status = await self._query_order_status_once(order_id)
+        if status is None:
+            if self._defer_timeout_close(order_id, "취소 접수 후 체결수량 재조회 실패"):
+                return
+            self._log_defer_exhausted(order_id, order)
+            if self.telegram:
+                try:
+                    await self.telegram.notify_system_status(
+                        f"주문 취소 후 체결수량 확인 불가 - 수동 확인 필요: {order.stock_code} 주문 {order_id}"
+                    )
+                except Exception:
+                    pass
+        self._cancel_confirmed_ids.discard(order_id)
+        filled = self._parse_int(status.get('tot_ccld_qty', 0)) if isinstance(status, dict) else 0
+        if filled > 0:
+            await self._account_cancelled_fill(order, filled, status)
+            return
+        order.status = OrderStatus.CANCELLED
+        self._move_to_completed(order_id)
+        self.logger.info(f"취소 접수 주문 종결(체결 0): {order_id} ({order.stock_code})")
+        await self._notify_trading_manager_timeout_with_order(order)
 
     async def _force_timeout_cleanup_safe(self: 'OrderManagerBase', order_id: str) -> None:
         """예외 발생 시 안전한 강제 상태 정리"""
