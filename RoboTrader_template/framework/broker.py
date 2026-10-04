@@ -439,8 +439,17 @@ class KISBroker(BaseBroker):
             return None
 
         try:
-            holdings = self.get_holdings()
-            for h in holdings or []:
+            # NEW-B2(2026-10-04): get_holdings() 는 조회 실패를 빈 리스트로 삼켜(→ 0주)
+            # 손절 매도를 «매도가능 0» 으로 막았다(서킷브레이커 OPEN 중 TTTC8434R 차단
+            # 포함 — 09-15 P1-8 «매도 TR 우회» 가 실질 무효). get_holdings/
+            # get_existing_holdings 는 다른 소비자가 있어 그대로 두고, 여기서는 잔고
+            # 요약을 직접 읽어 «실패(None)» 와 «보유 없음(0)» 을 가른다.
+            balance = self._kis_market_api.get_account_balance()
+            if balance is None:
+                self.logger.warning(
+                    f"매도가능수량 조회 실패({stock_code}) — 잔고 조회 실패, None 반환")
+                return None
+            for h in balance.get('stocks') or []:
                 if str(h.get('stock_code', '')) == str(stock_code):
                     return int(h.get('quantity', 0))
             return 0  # 보유 종목 목록에 없음 → 매도가능 0

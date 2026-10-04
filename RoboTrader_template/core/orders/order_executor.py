@@ -396,8 +396,13 @@ class OrderExecutorMixin:
             try:
                 sellable = self.broker.get_sellable_quantity(stock_code)
             except Exception as e:
-                self.logger.warning(f"매도가능수량 조회 실패({stock_code}): {e}")
+                self.logger.warning(f"매도가능수량 조회 예외({stock_code}): {e}")
                 sellable = None
+            if sellable is None:
+                # NEW-B2: 조회 실패 = «모름» — 대조를 건너뛰고 매도를 진행한다.
+                # 초과 매도면 KIS 가 거부하므로 무해, 막으면 손절이 안 나간다.
+                self.logger.warning(
+                    f"매도가능수량 조회 실패({stock_code}) — 대조 생략, 매도 진행 (내부 {quantity}주)")
         if isinstance(sellable, int) and not isinstance(sellable, bool):
             if sellable <= 0:
                 self.logger.error(

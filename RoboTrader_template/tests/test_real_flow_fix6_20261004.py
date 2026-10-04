@@ -487,3 +487,67 @@ class TestB3UnknownTimeoutGoesThroughCancel:
         om.trading_manager.handle_order_timeout.assert_awaited()       # 슬롯 BUY_PENDING 고착 방지
         msgs = " ".join(str(c.args[0]) for c in telegram.notify_system_status.call_args_list)
         assert "수동 확인 필요" in msgs
+
+
+# =============================================================================
+# NEW-B2 — 잔고 조회 실패를 «매도가능 0주» 로 읽어 손절이 안 나가던 결함
+# =============================================================================
+class TestB2SellableQuantityFailureIsNone:
+
+    def _broker(self, balance):
+        b = _connected_broker()
+        b._kis_market_api = Mock()
+        b._kis_market_api.get_account_balance = Mock(return_value=balance)
+        return b
+
+    def test_balance_failure_returns_none(self):
+        b = self._broker(None)
+        assert b.get_sellable_quantity("005930") is None
+        b._kis_market_api.get_account_balance.assert_called_once()
+
+    def test_held_returns_quantity(self):
+        b = self._broker({"total_stocks": 1, "stocks": [{"stock_code": "005930", "quantity": 7}]})
+        assert b.get_sellable_quantity("005930") == 7
+
+    def test_not_held_returns_zero(self):
+        b = self._broker({"total_stocks": 0, "stocks": []})
+        assert b.get_sellable_quantity("005930") == 0
+
+    def test_get_holdings_contract_unchanged(self):
+        """다른 소비자가 있는 get_holdings 는 종전대로 실패를 [] 로 준다(바꾸지 않음)."""
+        b = _connected_broker()
+        b._kis_market_api = Mock()
+        b._kis_market_api.get_existing_holdings = Mock(return_value=None)
+        assert b.get_holdings() == []
+
+
+class TestB2SellProceedsWhenBalanceLookupFails:
+
+    @pytest.mark.asyncio
+    async def test_stop_loss_sell_sent_with_internal_quantity(self):
+        broker = _connected_broker()
+        broker._kis_market_api = Mock()
+        broker._kis_market_api.get_account_balance = Mock(return_value=None)  # 조회 실패(CB 차단 등)
+        broker.place_sell_order = Mock(return_value={
+            "success": True, "order_id": "0000055555", "message": "", "data": {}})
+        om = _make_om(broker=broker)
+
+        oid = await om._execute_real_sell_order("005930", 10, 0, 180, True, DT_KEY)
+
+        broker._kis_market_api.get_account_balance.assert_called_once()
+        broker.place_sell_order.assert_called_once()
+        assert broker.place_sell_order.call_args.args[1] == 10   # 내부 수량 그대로
+        assert oid == "0000055555" and oid in om.pending_orders
+
+    @pytest.mark.asyncio
+    async def test_zero_holding_still_blocks(self):
+        """대칭 단언: 조회 «성공» + 실보유 0 이면 종전대로 미발송."""
+        broker = _connected_broker()
+        broker._kis_market_api = Mock()
+        broker._kis_market_api.get_account_balance = Mock(return_value={"total_stocks": 0, "stocks": []})
+        broker.place_sell_order = Mock()
+        om = _make_om(broker=broker)
+
+        oid = await om._execute_real_sell_order("005930", 10, 0, 180, True, DT_KEY)
+        assert oid is None
+        broker.place_sell_order.assert_not_called()
