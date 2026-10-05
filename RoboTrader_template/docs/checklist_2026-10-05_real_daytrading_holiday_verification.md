@@ -6,6 +6,7 @@
 > **실행 위치**: 기동은 **라이브 트리** `D:/GIT/kis-trading-template/RoboTrader_template` 에서만 한다(워크트리엔 venv 가 없다). 라이브 트리는 `main` 그대로 — 브랜치 전환 금지.
 > **개정 2026-10-02(밤)**: B-1·B-2 수정(사장님 결정 · 사전등록 `docs/prereg_2026-10-02_real_daytrading_b1_b2_fix.md` · 브랜치 `fix/real-daytrading-b1-b2` `09c95c3` · 리뷰 반영 `581cff2`)에 맞춰 §0·§1·§4·§5·§6·§10 을 고쳤다. ⚠️ 아래 «수정 후» 문구는 **그 브랜치가 main 에 머지돼 라이브 트리가 재기동된 뒤**에만 맞다 — 기동 전 §1-10 으로 머지 여부부터 확인.
 > **개정 2026-10-04**: 실매매 과정 코드 점검(`docs/audit_2026-10-04_real_daytrading_flow.md`)에서 확인된 결함 중 **NEW-B1**(취소가 성공해도 `cancel_order` 가 «실패»를 돌려준다)과 **NEW-C1**(텔레그램이 켜진 인스턴스는 Ctrl+C 뒤 종료 처리까지 가지 못한다)이 이 체크리스트의 기대값을 바꾼다. 🔒 사장님 결정(10-04): **10-05·10-06 시험은 지금 코드로 하고, 아래 «미수정 기대값»으로 판정한다**(버그가 실제로 재현되는지 확인). 6건 수정은 10-07 부터 진행하고, 반영 뒤 10-19 전에 장전 접수·취소 시험(§4-B)을 한 번 더 한다. 고친 곳 = §1-6 · §4-A·B · §4 결정 · §5-5 · §5 «멈출 줄» 표 · §7-1.
+> **개정 2026-10-05(밤) — 10-05 실측 반영**: 실제 실행(§1·§2·§3·§7)에서 확인된 정정 6곳(§1-7 · §2-1/§9 · §2-3 · §3-10 · §3-11 · §7-2)과 실측 결과(§7-4 아래 «10-05 실측 결과» 블록)를 덧붙였다. 근거 = 관리자 메모리 changelog 2026-10-05. 봇 코드 0줄.
 
 ---
 
@@ -45,8 +46,8 @@
 | 1-4 | `key.ini` 형식(값 미출력) | 아래 §1-A 명령 | `sections ['KIS','ANTHROPIC','TELEGRAM']` · 계좌 10자리 숫자(하이픈 없음) True · 실전 도메인 True · 텔레그램 enabled true | 하나라도 False → **중단**(하이픈 입력 시 인증은 되고 주문·잔고만 실패 — 감사 P3-33) |
 | 1-5 | 🔴 앱키·계좌가 **다른 가동 봇과 겹치지 않는지** | §1-B 명령(SAME/DIFFERENT 만 출력) — 대상: 페이퍼 `config/key.ini` · 매일 07:40 같이 뜨는 `D:/GIT/RoboTrader_quant_mom/config/key.ini` | 전부 `APP_KEY DIFFERENT` · `ACCOUNT DIFFERENT` | **계좌 SAME = 즉시 중단**(다른 봇이 같은 계좌를 매매하면 아침 대사가 매일 abort 하거나 남의 포지션을 판다) · 앱키 SAME = 중단(전역 락이 프로세스 안에만 있어 두 봇 합산 20건/초 초과 위험 — `api/kis_auth.py:50`) |
 | 1-6 | 🔴 실계좌 현황(HTS) | HTS 에서 예수금·총평가·보유 종목·미체결·예약주문 확인 | **보유 0 종목** · 미체결 0 | 보유가 있으면 → DB 원장(`real_trading_daytrading`)엔 0 이라 **계좌-DB 불일치 → `LiveStartupAbort`**(설계상 fail-closed, `bot/state_restorer.py:1197-1205`). 처리 방침(정리 매도 or 원장 수기 입력)을 사장님이 먼저 정할 것. 미체결이 있으면 기동이 **전량 취소**한다(`:776-800`, 감사 P2-20). ⚠️ (10-04) NEW-B1 미수정 동안은 취소가 실제로 성공해도 `cancel_order` 가 실패를 돌려줘 `🚨 실전 기동 중단: 미체결 취소 실패: <종목> 주문 <번호>` 로 **멈춘다**(`bot/state_restorer.py:787-794` · 점검 N-1) — 그때는 HTS 에서 미체결 0 을 확인한 뒤 다시 기동하면 통과한다 |
-| 1-7 | PID 파일 | 라이브 트리에 `robotrader_daytrading.pid` 가 있는지 | 없음(또는 죽은 PID) | 살아 있는 `python main.py` PID 를 가리키면 기동이 «이미 실행 중» 으로 exit(1) — 그 프로세스를 먼저 확인 |
-| 1-8 | DB | `kis_template`(5433) 접속 · `select to_regclass('real_trading_daytrading');` | `NULL`(아직 없음 — 첫 기동이 만든다) | 접속 불가면 중단 |
+| 1-7 | PID 파일 | 라이브 트리에 `robotrader_daytrading.pid` 가 있는지 | 없음(또는 죽은 PID) | 살아 있는 `python main.py` PID 를 가리키면 기동이 «이미 실행 중» 으로 exit(1) — 그 프로세스를 먼저 확인 · 🆕(10-05 실측) §2 의 cap null 중단 경로(`LiveStartupAbort` · `sys.exit(2)`)는 003a75a 코드에서 **PID 파일을 지우지 않아 죽은 PID 가 남는다**(관측 110160). 무해 — `utils/price_utils.py` 가 `psutil.pid_exists` + 프로세스 이름·cmdline 을 같이 검사해 걸러낸다(다음 기동 정상). 단 PID 재사용 시 오판 가능. 수정 = 브랜치 `fix/abort-pid-dup-start`(`83d23ba` · 리뷰 반영 `daabe7d` · 수정 뒤 중단 로그에 «기동 중단: PID 파일 정리 완료»). 또 정상 Ctrl+C 경로도 NEW-C1 미수정 동안은 PID 삭제에 도달하지 못해 강제 종료 뒤 파일이 남는다 → 다음 기동 전 손으로 삭제 |
+| 1-8 | DB | `kis_template`(5433) 접속 · `select to_regclass('real_trading_daytrading');` | `NULL`(아직 없음 — 표는 «가장 첫 기동»(§2 · cap null 중단 «전»)에서 이미 생기므로 NULL 은 그 첫 기동 전에만 맞다) | 접속 불가면 중단 |
 | 1-9 | 텔레그램 혼입 | 페이퍼 `config/key.ini` `[TELEGRAM] enabled` | `false`(현재 값) ⇒ 받는 메시지는 전부 실전 인스턴스 것 | 페이퍼가 true 면 메시지에 인스턴스 표기가 없어 구분 불가 |
 | 1-10 | B-1·B-2 수정이 라이브 트리에 들어왔는가 | `git -C D:/GIT/kis-trading-template log --oneline -1 --grep="B-1" -- RoboTrader_template/bot/candidate_loader.py` · `grep -c "_load_candidates_real_instance" D:/GIT/kis-trading-template/RoboTrader_template/bot/candidate_loader.py` | 커밋 1줄 · 카운트 ≥ 1 | 0 이면 **수정 전 코드** — §5 의 «수정 후» 줄 대신 거래량 순위 폴백이 돈다. 10-19 전이면 머지 요청, 머지 전 실매매 가동 금지 |
 | 1-11 | 🟡 인스턴스 텔레그램 경보 경로(리뷰 🟡2) | §1-A 명령의 `telegram enabled` · `telegram token set` · `telegram chat_id set` 3줄(값 미출력) | `true` · True · True | 하나라도 아니면 **중단** — B-1 fail-closed 경보(`후보로드[실전]`)·기동 중단 경보가 무음이 된다(`core/telegram_integration.py:69-88` `_is_config_valid` = enabled·token·chat_id 셋 다 필요) |
@@ -111,11 +112,19 @@ EOF
 
 | # | 할 일 | 성공 판정 | 실패 시 |
 |---|---|---|---|
-| 2-1 | 라이브 트리에서 `run_instance.bat daytrading` | 콘솔에 `[실전 인스턴스] daytrading 시작 중... (KIS_INSTANCE_DIR=instances\daytrading)` · `logs\daytrading\` 폴더 생성 | venv/key.ini 오류 문구 → 그 문구대로 조치 |
+| 2-1 | 라이브 트리에서 `run_instance.bat daytrading` | 콘솔에 `[실전 인스턴스] daytrading 시작 중... (KIS_INSTANCE_DIR=instances\daytrading)` · `logs\daytrading\` 폴더 생성 | venv/key.ini 오류 문구 → 그 문구대로 조치 · 🔴(10-05 실측) 003a75a 의 `run_instance.bat` 은 **LF 줄바꿈이라 cmd.exe 가 파싱하지 못한다**(exit 255 · `'ho' is not recognized` 류 쓰레기 명령 · 파이썬 미실행 · `logs/daytrading/` 미생성). 수정 = 브랜치 `fix/run-instance-crlf`(`f9103a7` CRLF + `.gitattributes` `RoboTrader_template/*.bat -text` · 리뷰 반영 `b31632a` 가드 테스트 `tests/test_bat_files_crlf.py`) — **머지 전엔 아래 «수동 기동» 으로 대신한다** |
 | 2-2 | 로그 확인: `logs/daytrading/trading_20261005.log` | ① `프로세스 PID 등록: <pid>` ② `다중 전략 로드: ['daytrading_3methods_breakout']` ③ `✅ 토큰 발급 완료` · `✅ KIS API 인증 헤더 설정 완료` ④ `현재 시장 상태: holiday` ⑤ `텔레그램 설정 로드: enabled=True` · `✅ 텔레그램 통합 초기화 완료` ⑥ `🚨 실전 기동 중단: 실전 총자금 상한 미설정 \| trading_config.json 에 real_total_funds_cap(원)을 설정해야 실전 기동이 가능합니다` | ③ 실패 = 앱키/시크릿/도메인 오류 → **중단**. ⑤ `enabled=False` = 텔레그램이 다른 파일을 읽음 → **중단**(P1-1 재발) |
-| 2-3 | 텔레그램 수신 | 시작 메시지 1건 + `🚨 실전 기동 중단` 경보 1건 | 경보 미수신 = 10-19 이후 모든 사고가 무음 → **중단**(텔레그램부터 해결) |
+| 2-3 | 텔레그램 수신 | 시작 메시지 1건 + `🚨 실전 기동 중단` 경보 1건 · 🆕(10-05 실측) 003a75a 에선 `🚀 거래 시스템 시작` 이 **같은 초에 2건 중복**(16:10:38) — 원인 `utils/telegram/telegram_notifier.py` `initialize()` + `core/telegram_integration.py` `notify_system_start()` 이중 호출 · 수정 `fix/abort-pid-dup-start`(`c00edda`) 머지 전엔 **시작 2건 + 🚨 1건**이 정상 | 경보 미수신 = 10-19 이후 모든 사고가 무음 → **중단**(텔레그램부터 해결) |
 | 2-4 | 프로세스 종료 확인 | 콘솔이 `[실전 인스턴스] daytrading 종료됨` 후 `pause` 대기 · `token_info_daytrading.json` 생성됨 | 프로세스가 계속 돌면 cap 가드가 안 걸린 것 → **중단** |
 
+> 🔴 **수동 기동(배치와 동등 · `fix/run-instance-crlf` 머지 전)**: `RoboTrader_template/` 에서(venv 활성화 뒤)
+> ```
+> set KIS_INSTANCE_DIR=instances\daytrading
+> set PYTHONIOENCODING=utf-8
+> set SCREENER_SNAPSHOT_ENABLED=false
+> python -X utf8 main.py 1>> logs\daytradingobotrader_daytrading_<YYYYMMDD_HHMMSS>.log 2>&1
+> ```
+> (`logs\daytrading\` 폴더가 없으면 먼저 만든다.) 이 경우 콘솔 문구 `[실전 인스턴스] … 시작 중...` · `종료됨` · `pause` 는 나오지 않는다 — 판정은 로그 파일로.
 > ⓘ 오프라인 재현(10-02): 워크트리 실사용본으로 `BotInitializer._initialize_fund_manager()` 를 broker 스텁(호출되면 실패)과 돌려 **broker 호출 «전»** 에 위 ⑥ 문구로 `LiveStartupAbort` 가 나는 것을 확인했다. ⚠️ 단 실제 기동에서는 그 앞의 `broker.connect()`(토큰 발급)는 실행된다 — 읽기 전용.
 > ⓘ 기동 초기에 `Broker not connected` · `⚠️ 실제 잔고 조회 실패 - 기본값 사용` · `⚠️ 기본 잔고 사용: 10,000,000원` WARNING 이 찍힐 수 있다 — `VirtualTradingManager` 가 broker 연결 «전»(`main.py:104`)에 만들어지며 실전 사이징엔 쓰이지 않는다(추정·무해). **중단 기준 아님.**
 
@@ -134,8 +143,8 @@ EOF
 | 3-7 | 시장 매핑(auto) | `[시장매핑] ... 매핑이 0종목이다` WARNING 이 **없을 것** | 있으면 급락게이트가 전 종목 both 로 동작(보호 과잉) — 기록 |
 | 3-8 | 전략 초기화 | `전략 초기화 완료: DayTrading3MethodsBreakoutStrategy` · `시스템 초기화 완료` | 실패면 중단 |
 | 3-9 | ⚠️ 예상된 오표기 | `⚠️ Paper Trading 모드 활성화` 1줄 — 전략 `config.yaml` 의 `paper_trading: true` 라벨일 뿐 주문을 막지 않는다(`metadata["paper_only"]` 를 읽는 코드 0곳 · 감사 P2-31). 실전 매수·매도 시그널 로그에도 `🧾 [PAPER]` 접두가 붙는다 | **중단 기준 아님** — EOD grep 때 `[PAPER]` 로 실전을 걸러내지 말 것 |
-| 3-10 | 휴장일 동기화 | `휴장일 동기화 완료: 2026-10-05 휴장 N건 (누적 M건)` | 실패 WARNING 은 무해(캐시 유지) |
-| 3-11 | 원장 표 — DB: `select to_regclass('real_trading_daytrading'), (select count(*) from real_trading_daytrading);` | 표 존재 · 0행 | 없으면 `실거래 테이블 생성 실패` 로그 확인 → 중단 |
+| 3-10 | 휴장일 동기화 | `휴장일 동기화 완료: 2026-10-05 휴장 N건 (누적 M건)` | 실패 WARNING 은 무해(캐시 유지) · 🆕(10-05 실측) 이 줄은 **없을 수 있다** — `utils/holiday_kis_sync.py` 에 하루 1회 캐시 가드가 있다(10-05 는 페이퍼 봇·인스턴스 모두 미출력 · 실패 WARNING 도 0). **줄의 유무가 아니라 «실패 WARNING 0» 으로 판정** |
+| 3-11 | 원장 표 — DB: `select to_regclass('real_trading_daytrading'), (select count(*) from real_trading_daytrading);` | 표 존재 · 0행 · 🆕(10-05 실측) 표는 §3 이 아니라 **§2(cap null 중단 «전»)에서 이미 생성**된다 — §2 직후 0행 · `real_trading_daytrading_pkey` 1개 | 없으면 `실거래 테이블 생성 실패` 로그 확인 → 중단 |
 | 3-12 | 실원장 제약(감사 잔여 「UNIQUE 0」) — `select conname, contype from pg_constraint where conrelid='real_trading_daytrading'::regclass;` | **PK(id) 1개뿐**이 정상(= 「UNIQUE 0」 재확인 · `LIKE real_trading_records INCLUDING ALL` 이 FK 는 안 복사 — 기존 `real_trading_rs_leader` 도 PK 1개(10-02 SELECT) · id 시퀀스는 `real_trading_records_id_seq` 공유 — 감사 P3-40). 주문번호 컬럼 자체가 없어 **중복 행을 DB 가 못 막는다** ⇒ §8 일일 중복 점검 SQL 로 대신한다 | — (정보) |
 | 3-13 | 메인 루프 | `[메인트레이딩루프] 태스크 시작` · `메인 트레이딩 루프 시작` 이후 **주문·후보 관련 줄 0** | 휴장일에 `매수 주문 시도`·`후보 종목` 줄이 보이면 휴장 판정 실패 → **즉시 Ctrl+C** |
 | 3-14 | 30분 상태 로그 | `시스템 상태 [...]` · `- 시장 상태: holiday` · `- API 통계: 총 N회 호출, ... 속도제한 0회` | 속도제한 > 0 이면 앱키 공유 의심(§1-5) |
@@ -220,9 +229,21 @@ EOF
 | # | 할 일 | 성공 판정 | 주의 |
 |---|---|---|---|
 | 7-1 | 콘솔에서 **Ctrl+C** · 배치가 「일괄 작업을 끝내시겠습니까 (Y/N)?」 를 물으면 **N**(파이썬 종료 처리가 끝나게 둔다 — 추정) | (수정 뒤 기대값) `종료 신호 수신: 2` → `시스템 종료 시작` → `미체결 주문 없음 - 취소 스킵` → `PID 파일 삭제 완료` → `시스템 종료 완료`. **(10-04 · NEW-C1 미수정 기대값)** `종료 신호 수신: 2` → (최대 30초) `메인 트레이딩 루프 종료` → `[메인트레이딩루프]`·`[시스템모니터링] 태스크 정상 종료` 까지만 찍히고 **그 뒤 무출력 · 창이 안 닫힌다**(`시스템 종료 시작` 없음 — 텔레그램 상태알림·폴링 루프가 끝나지 않아 종료 처리 미도달). 이렇게 나오면 = «NEW-C1 재현»(성공 판정). 이어서 ① 1~2분 기다려도 그대로면 ② 작업관리자/`tasklist` 에서 그 python 프로세스 확인 ③ **창 X**(또는 Ctrl+Break)로 닫기 ④ 프로세스 0 확인 ⑤ HTS 미체결 0 확인 | 창 X·`kill` 은 종료 경로를 안 타 미체결 취소가 **안 돈다**(감사 P2-21) — NEW-C1 미수정 동안은 Ctrl+C 도 같다 ⇒ 장중 종료는 HTS 미체결 확인이 필수. 남은 PID 파일은 프로세스가 죽어 있으면 다음 기동이 덮어쓰므로 무해. 두 번째 Ctrl+C 도 효과 없음. 킬스위치는 따로 없다(P2-22) |
-| 7-2 | 남는 파일 | `token_info_daytrading.json`(유지) · `logs/daytrading/*` · ⚠️ `logs/state/fund_state_2026-10-05.json` 은 **페이퍼와 같은 경로**(인스턴스 미분리 · 덮어씀 · 읽는 코드 0 = 무해) | — |
+| 7-2 | 남는 파일 | `token_info_daytrading.json`(유지) · `logs/daytrading/*` · ⚠️ `logs/state/fund_state_2026-10-05.json` 은 **페이퍼와 같은 경로**(인스턴스 미분리 · 덮어씀 · 읽는 코드 0 = 무해) · 🆕(10-05 실측) **휴장일엔 생성되지 않는다**(EOD 스킵) — «덮어씀» 은 거래일에만 해당 | — |
 | 7-3 | 🔴 밤새 띄워 두지 말 것 | 프로세스 0 | 일일 리셋 경로가 없다(감사 P2-25): 전날 프로세스가 살아 있으면 다음날 07:45 기동이 `이미 봇이 실행 중` 으로 exit(1) 하고, 살아남은 프로세스는 **어제 후보·어제 대사**로 계속 돈다 |
 | 7-4 | 결과 기록 | §3-3 의 Y 값 vs HTS · §3-4 휴장일 TR 결과 · §1-5 SAME/DIFFERENT · §4 선택 | 관리자 메모리(changelog) |
+
+**10-05 실측 결과**(기록 = 관리자 메모리 changelog 2026-10-05 · 코드 = main `003a75a`):
+
+| 구간 | 결과 |
+|---|---|
+| §1 | **12/12 통과**(§1-5 = DIFFERENT · 10-02 확인분) |
+| §2 | **통과** — 16:10:36 → 16:10:39 · exit 2 · ①~⑥ 전부 · 🚨 경보 수신(시작 메시지 2건 중복 · §2-3) |
+| §3 | cap 5,000,000 · `min(상한 5,000,000, 총평가 9,514,124) = 5,000,000원` · HTS 총평가 동일(사장님) · 휴장일 `TTTC8036R` 정상 → `✅ [실전매매] 미체결 주문 없음`(감사 §8 Q3 해소) · 대사 0=0 · 게이트 설정 대조 결함 0 · 비활성 7 · 시장 매핑 2,781종목 · 토큰은 §2 발급분 캐시 재사용 |
+| §3-14 | 16:46:56 `holiday` · 미체결 0 · API 10회 · 속도제한 0 |
+| §3-15 | Conflict 0 |
+| §7-1 | Ctrl+C 16:50:11 → `종료 신호 수신: 2` → `[시스템모니터링] 태스크 정상 종료` → 16:50:20 `메인 트레이딩 루프 종료`·`[메인트레이딩루프] 태스크 정상 종료` → 이후 무출력 · 프로세스 생존 70초 = **NEW-C1 미수정 기대값 재현** → taskkill → 프로세스 0 |
+| 페이퍼 봇 | 07:40 기동 · holiday · 15:35 EOD 스킵 — 영향 0 |
 
 ---
 
@@ -261,6 +282,8 @@ FROM real_trading_daytrading a JOIN real_trading_daytrading b
 
 ## 9. 작업 스케줄러 ④ 등록 (사장님이 직접 · 10-05 검증 통과 후)
 
+> 🔴 **(10-05 실측) 등록은 `fix/run-instance-crlf`(`f9103a7` · `b31632a`)가 main 에 머지된 «뒤»에 한다.** 003a75a 의 `run_instance.bat` 은 LF 줄바꿈이라 cmd.exe 가 파싱하지 못해(§2-1) 아래 작업을 지금 등록하면 10-19 에 기동 실패한다. 머지 전 대체 = §2-1 의 수동 기동.
+
 현재 페이퍼: 작업 `RoboTrader_AutoStart` = 월~금 07:40 · `cmd /c D:\GIT\run_all_robotraders.bat` · Interactive · `IgnoreNew` · 실행 제한 72시간 · `StartWhenAvailable=False`(10-02 조회).
 실전은 **별도 작업**으로 둘 것을 권한다 — 끄고 켜기(`Disable-ScheduledTask`)가 실전만의 «매수 중단 스위치» 역할을 한다(코드 킬스위치 없음 · 감사 P2-22).
 
@@ -290,6 +313,7 @@ Register-ScheduledTask -TaskName 'KisTemplate_RealDaytrading' -Action $action -T
 - 🟢 **B-1 후보 출처 — 수정**(머지 전이면 미적용 · §1-10): 실전은 페이퍼의 D-1 스냅샷을 페이퍼와 같은 함수로 읽는다(10초 간격 · 상한 15분 대기 → 없으면 그날 신규 0 + 경보 · 거래량 폴백 없음 · 설계 = 사전등록 §②). 남는 것: ⓐ 페이퍼가 그날 안 뜨면 실전 신규 매수도 0(의도된 fail-closed) ⓑ 그날 룰 통과가 진짜 0건이면 15분 뒤 경보가 «오경보»(결과는 페이퍼와 같은 후보 0) ⓒ `SECTOR_NEWS_BOOST_MODE=live` 로 바꾸면 실전(재정렬 생략)과 페이퍼 후보 순서가 갈린다(현행 shadow = 같음) ⓓ 안전필터(KIS 조회) 시각·키가 페이퍼와 달라 VI·정지가 그 사이 바뀐 종목은 갈릴 수 있다. (수정 전: 09:00 거래량 순위 · 페이퍼 daytrading 매수 56.9% 가 5,000원 미만이라 구조적으로 후보에 못 들었다 — `SETUP_REPORT.md` §5.)
 - 🟢 **B-2 익절선 — 수정**(머지 전이면 미적용): 실전 매수·아침 복원 모두 소유 전략 config +10%/−10% · 7거래일+ ±5% 조임 미적용. (수정 전: +15%(기본값) · 재기동 후 7거래일+ ±5% — 감사 P1-4 의 실원장 tp/sl 컬럼 부재는 그대로지만 복원이 전략 config 로 메운다.)
 - 감사 P1-5/6/7(오탐 복구·상태불명 5분·매도 부분체결) **미해결** — 소액 cap + §8 매일 대조로 노출을 억제한다는 감사 C 절 방침 그대로.
+- 🆕(10-05) `main.py` 의 다른 기동 실패 경로(`initialize()` False → exit 1 · 최상위 except → exit 1)도 **PID 파일을 지우지 않는다**(페이퍼·실전 공통 · `fix/abort-pid-dup-start` 는 `LiveStartupAbort` 분기만 고침) — 기록된 후속 과제 · 미수정.
 - 감사 P2-19 쿨다운 미무장 재주문 · P2-20 기동 시 미체결 «전량» 취소(HTS 수동 주문 포함) · P2-21/22 종료·킬스위치 · P2-25 일일 리셋 부재.
 - `config/constants.py:58` 주석 「다가오는 추석 9/24~28」 은 틀렸다(9/28 은 거래일) — **주석뿐, 동작 영향 0**. 휴장 판정은 `holidays` 라이브러리 + KIS 동기화가 한다(10-05 는 오프라인에서 휴장 판정 확인).
 - **수능일**(감사 P2-23 기준 2026-11-19 · 날짜는 감사 문서 인용) `config/market_hours.py:207-219` `special_days` 에 2025-11-13 만 있다 — 실전 가동 중 맞는 첫 특수일. 그날 ① 09:00~10:00 개장 전 주문 ② 15:20~16:30 주문 차단 ③ 15:30 이후 손절 감시 정지. **11-19 전 등록 필요**(코드·설정 변경 = 별도 결재).
