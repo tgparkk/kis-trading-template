@@ -25,6 +25,8 @@ def _run_main_with_abort(monkeypatch, pid_file, telegram):
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
 
+    import pytest
+
     import main as main_mod
 
     bot = MagicMock()
@@ -33,12 +35,12 @@ def _run_main_with_abort(monkeypatch, pid_file, telegram):
     bot.initialize = AsyncMock(side_effect=LiveStartupAbort("잔고 조회 실패", "x"))
     monkeypatch.setattr(main_mod, "DayTradingBot", lambda: bot)
     monkeypatch.setattr("bot.env_guard.assert_correct_environment", lambda *_a, **_k: None)
-    with __import__("pytest").raises(SystemExit) as ei:
+    with pytest.raises(SystemExit) as ei:
         asyncio.run(main_mod.main())
     return ei.value.code
 
 
-def test_abort_removes_own_pid_file_and_still_exits_2_with_alert(monkeypatch, tmp_path):
+def test_abort_removes_own_pid_file_and_still_exits_2_with_alert(monkeypatch, tmp_path, caplog):
     import os
     from unittest.mock import AsyncMock, MagicMock
 
@@ -47,10 +49,18 @@ def test_abort_removes_own_pid_file_and_still_exits_2_with_alert(monkeypatch, tm
     tg = MagicMock()
     tg.notify_urgent_signal = AsyncMock()
 
-    code = _run_main_with_abort(monkeypatch, pid_file, tg)
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        code = _run_main_with_abort(monkeypatch, pid_file, tg)
 
     assert code == 2
     assert not pid_file.exists()
+    crit = [r for r in caplog.records if r.levelno == logging.CRITICAL]
+    expected = f"🚨 실전 기동 중단: {LiveStartupAbort('잔고 조회 실패', 'x')}"
+    assert [r.getMessage() for r in crit] == [expected]
+    assert any("기동 중단: PID 파일 정리 완료" in r.getMessage() for r in caplog.records)
+    assert not any("PID 파일 삭제 완료" in r.getMessage() for r in caplog.records)
     tg.notify_urgent_signal.assert_awaited_once()
     assert "실전 기동 중단" in tg.notify_urgent_signal.await_args.args[0]
 
@@ -68,7 +78,7 @@ def test_abort_keeps_pid_file_of_other_process_and_exits_2(monkeypatch, tmp_path
     assert pid_file.exists()
 
 
-def test_abort_pid_cleanup_failure_does_not_mask_exit(monkeypatch, tmp_path):
+def test_abort_pid_cleanup_failure_does_not_mask_exit(monkeypatch, tmp_path, caplog):
     from unittest.mock import AsyncMock, MagicMock
 
     pid_file = MagicMock()
@@ -77,3 +87,5 @@ def test_abort_pid_cleanup_failure_does_not_mask_exit(monkeypatch, tmp_path):
     tg.notify_urgent_signal = AsyncMock()
 
     assert _run_main_with_abort(monkeypatch, pid_file, tg) == 2
+    assert any("PID 파일 정리 실패(기동 중단)" in r.getMessage() for r in caplog.records)
+    tg.notify_urgent_signal.assert_awaited_once()

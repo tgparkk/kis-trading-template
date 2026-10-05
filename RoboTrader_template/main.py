@@ -707,20 +707,21 @@ async def main() -> None:
             sys.exit(1)
     except LiveStartupAbort as e:
         logging.getLogger(__name__).critical(f"🚨 실전 기동 중단: {e}")
-        try:
-            if getattr(bot, 'telegram', None):
-                await bot.telegram.notify_urgent_signal(f"🚨 실전 기동 중단\n{e}")
-        except Exception:
-            pass  # 경보 실패가 exit 를 막지 않는다
-        # 기동 중단 시에도 PID 파일 정리 — 죽은 PID 가 남으면 PID 재사용 시 중복 실행 오판
+        # 기동 중단 시에도 PID 파일 정리 — 죽은 PID 가 남으면 PID 재사용 시 중복 실행 오판.
+        # 텔레그램 경보(HTTPX 타임아웃 최대 30초) «앞»에서 처리 — 대기 중 창이 닫혀도 남지 않게.
         try:
             pid_file = getattr(bot, 'pid_file', None)
             if pid_file is not None and pid_file.exists():
                 if pid_file.read_text().strip() == str(os.getpid()):
                     pid_file.unlink(missing_ok=True)
-                    logging.getLogger(__name__).info("PID 파일 삭제 완료(기동 중단)")
+                    logging.getLogger(__name__).info("기동 중단: PID 파일 정리 완료")
+        except Exception as pid_err:
+            logging.getLogger(__name__).warning(f"PID 파일 정리 실패(기동 중단): {pid_err}")
+        try:
+            if getattr(bot, 'telegram', None):
+                await bot.telegram.notify_urgent_signal(f"🚨 실전 기동 중단\n{e}")
         except Exception:
-            pass  # PID 정리 실패가 exit 를 막지 않는다
+            pass  # 경보 실패가 exit 를 막지 않는다
         sys.exit(2)
 
     # KIS chk-holiday 휴장일 동기화 (auth 완료 후 1회, 캐시 가드로 하루 1회만 API 호출)
