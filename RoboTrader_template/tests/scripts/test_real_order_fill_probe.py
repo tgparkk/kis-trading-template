@@ -242,7 +242,20 @@ class FakeExchange:
 
     def __init__(self, price="9990", buy_fill_at=1, sell_fill_at=1, sell_avg_seq=("9980",), race_fill_on_cancel=False,
                  extra_holdings=(), extra_pending=(), quote_over=None, price_seq=None, interrupt=None,
-                 interrupt_after_sell=False, sell_reject=False, balance_fail_from=None):
+                 interrupt_after_sell=False, sell_reject=False, balance_fail_from=None, cancel_mode="confirm",
+                 unconf_rmn="1", late_fill_after=None, drop_rmn=False, pending_fail_after_cancel=False,
+                 daily_fail_after_cancel=False, buy_timeout=False, buy_reject=False, pending_after_sell=False,
+                 vi_after_buy=False, hold_lag=0):
+        # cancel_mode: "confirm" = 취소 확정(원주문 cnc_cfrm_qty 1) · "unconfirmed" = 취소 접수만(8036R 에선 사라짐 ·
+        #   0081R 원주문 체결 0·잔량 unconf_rmn · 취소 행 cncl_yn Y·확인 0) · late_fill_after = 취소 뒤 N 번째 0081R 에
+        #   «사실은 체결됐었다»가 반영(보유 1) · 응답 유실 = buy_timeout(매수 POST 타임아웃 · 접수 안 됨)
+        self.cancel_mode, self.unconf_rmn = cancel_mode, unconf_rmn
+        self.late_fill_after, self.drop_rmn = late_fill_after, drop_rmn
+        self.pending_fail_after_cancel = pending_fail_after_cancel
+        self.daily_fail_after_cancel = daily_fail_after_cancel
+        self.buy_timeout, self.buy_reject, self.pending_after_sell = buy_timeout, buy_reject, pending_after_sell
+        self.vi_after_buy, self.hold_lag = vi_after_buy, hold_lag
+        self.cancel_posted, self.reads_after_cancel = False, 0
         self.price, self.price_seq, self.quote_over = price, list(price_seq or []), quote_over or {}
         self.buy_fill_at, self.sell_fill_at, self.sell_avg_seq = buy_fill_at, sell_fill_at, list(sell_avg_seq)
         self.race, self.sell_reject, self.balance_fail_from = race_fill_on_cancel, sell_reject, balance_fail_from
@@ -261,7 +274,11 @@ class FakeExchange:
 
     def _advance(self):
         b, s = self.buy, self.sell
-        if b and not b["filled"] and not b["cancelled"]:
+        if b and b.get("cancel_pending") and not b["filled"]:
+            self.reads_after_cancel += 1
+            if self.late_fill_after is not None and self.reads_after_cancel >= self.late_fill_after:
+                self._fill_buy()
+        elif b and not b["filled"] and not b["cancelled"]:
             b["age"] += 1
             if self.buy_fill_at is not None and b["age"] >= self.buy_fill_at:
                 self._fill_buy()
@@ -279,6 +296,8 @@ class FakeExchange:
         q = _q(stck_prpr=price, stck_mxpr=str(int(int(price) * 1.3)), stck_llam=str(int(int(price) * 0.7)),
                hts_kor_isnm="테스트종목", stck_sdpr=price)
         q.update(self.quote_over)
+        if self.vi_after_buy and self.buy:
+            q["vi_cls_code"] = "Y"
         return q
 
     def _daily(self):
@@ -289,8 +308,14 @@ class FakeExchange:
             if b["filled"]:
                 rows.append(_drow(B_OD, "02", "1", self.price, self.price, "0", self.price, "지정가"))
             elif b["cancelled"]:
-                rows.append(_drow(B_OD, "02", "0", "0", "0", "0", self.price, "지정가", cnc="1"))
+                orig = _drow(B_OD, "02", "0", "0", "0", "0", self.price, "지정가", cnc="1")
+                if self.drop_rmn:
+                    orig.pop("rmn_qty")
+                rows.append(orig)
                 rows.append(_drow(C_OD, "02", "0", "0", "0", "0", "0", "지정가", orgn=B_OD, cncl="Y"))
+            elif b.get("cancel_pending"):
+                rows.append(_drow(B_OD, "02", "0", "0", "0", self.unconf_rmn, self.price, "지정가"))
+                rows.append(_drow(C_OD, "02", "0", "0", "0", "0", "0", "지정가", orgn=B_OD, cncl="Y", cnc="0"))
             else:
                 rows.append(_drow(B_OD, "02", "0", "0", "0", "1", self.price, "지정가"))
         if s:
@@ -303,8 +328,11 @@ class FakeExchange:
 
     def _pending(self):
         rows = list(self.extra_pending)
+        if self.pending_after_sell and self.sell and self.sell["filled"]:
+            rows.append({"odno": "0000099999", "orgn_odno": "", "pdno": "005930", "sll_buy_dvsn_cd": "02",
+                         "ord_qty": "1", "ord_unpr": "1000", "psbl_qty": "1"})
         for o, od, side, unpr in ((self.buy, B_OD, "02", self.price), (self.sell, S_OD, "01", "0")):
-            if o and not o["filled"] and not o.get("cancelled"):
+            if o and not o["filled"] and not o.get("cancelled") and not o.get("cancel_pending"):
                 rows.append({"ord_gno_brno": "91252", "odno": od, "orgn_odno": "", "pdno": CODE, "sll_buy_dvsn_cd": side,
                              "ord_qty": "1", "ord_unpr": unpr, "psbl_qty": "1", "tot_ccld_qty": "0",
                              "tot_ccld_amt": "0", "krx_fwdg_ord_orgno": "91252", "ord_tmd": "100001"})
@@ -312,6 +340,9 @@ class FakeExchange:
 
     def _holdings(self):
         rows = list(self.extra_holdings)
+        if self.buy and self.buy["filled"] and self.hold_lag > 0:
+            self.hold_lag -= 1                                   # 체결 뒤 잔고 반영 지연
+            return rows
         if self.buy and self.buy["filled"]:
             rows.append({"pdno": CODE, "prdt_name": "테스트종목", "hldg_qty": str(self.held),
                          "ord_psbl_qty": str(self.held), "pchs_avg_pric": self.price, "prpr": self.price,
@@ -333,8 +364,12 @@ class FakeExchange:
         if tr == "FHKST01010100":
             return _Resp(_ok(output=self._quote()))
         if tr == "TTTC8036R":
+            if self.pending_fail_after_cancel and self.cancel_posted:
+                return _Resp({"rt_cd": "1", "msg_cd": "EGW00500", "msg1": "미체결 조회 실패"})
             return _Resp(_ok(output=self._pending(), ctx_area_fk100="", ctx_area_nk100=""))
         if tr == "TTTC0081R":
+            if self.daily_fail_after_cancel and self.cancel_posted:
+                return _Resp({"rt_cd": "1", "msg_cd": "EGW00500", "msg1": "당일체결 조회 실패"})
             self._advance()
             return _Resp(_ok(output1=self._daily(), output2={"tot_ord_qty": "4", "tot_ccld_qty": "4",
                                                             "tot_ccld_amt": "39780", "prsm_tlex_smtl": "17"},
@@ -364,6 +399,10 @@ class FakeExchange:
         self.posts.append((tr, params))
         self.calls[tr] += 1
         if tr == p.cp.TR_BUY:
+            if self.buy_timeout:                                 # 응답 유실(접수 안 됨) — 봇은 무응답으로 본다
+                raise _requests.exceptions.ReadTimeout("read timeout")
+            if self.buy_reject:
+                return _Resp({"rt_cd": "1", "msg_cd": "APBK0952", "msg1": "주문가능금액을 초과했습니다"})
             self.buy = {"filled": False, "cancelled": False, "age": 0}
             return _Resp(_ok(msg_cd="APBK0013", msg1="주문 전송 완료 되었습니다.",
                              output={"KRX_FWDG_ORD_ORGNO": "91252", "ODNO": B_OD, "ORD_TMD": "100001"}))
@@ -375,10 +414,15 @@ class FakeExchange:
                              output={"KRX_FWDG_ORD_ORGNO": "91252", "ODNO": S_OD, "ORD_TMD": "100031"}))
         if tr == p.cp.TR_CANCEL:
             b = self.buy
-            if b and not b["filled"] and not b["cancelled"]:
+            if b and not b["filled"] and not b["cancelled"] and not b.get("cancel_pending"):
+                self.cancel_posted = True
                 if self.race:
                     self._fill_buy()
                     return _Resp(REJ)
+                if self.cancel_mode == "unconfirmed":
+                    b["cancel_pending"] = True
+                    return _Resp(_ok(msg_cd="APBK0013", msg1="주문 전송 완료 되었습니다.",
+                                     output={"KRX_FWDG_ORD_ORGNO": "91252", "ODNO": C_OD, "ORD_TMD": "100105"}))
                 b["cancelled"] = True
                 return _Resp(_ok(msg_cd="APBK0013", msg1="주문 전송 완료 되었습니다.",
                                  output={"KRX_FWDG_ORD_ORGNO": "91252", "ODNO": C_OD, "ORD_TMD": "100105"}))
@@ -415,7 +459,8 @@ def probe(monkeypatch, tmp_path):
     monkeypatch.setattr(p, "_time", clock)
     handlers = []
 
-    def _run(fake, name, *, live=True, hms=(10, 0, 0), max_price=30_000, fill_wait=60, fn=None):
+    def _run(fake, name, *, live=True, hms=(10, 0, 0), max_price=30_000, fill_wait=60, fn=None,
+             deadline=p.DEFAULT_DEADLINE):
         out = tmp_path / name
         out.mkdir()
         paths = p._paths(out, "20261008_100000")
@@ -439,7 +484,7 @@ def probe(monkeypatch, tmp_path):
         monkeypatch.setattr(ka, "requests", gate)            # 봇 코드의 모든 HTTP → 게이트 → 가짜 거래소
         broker = KISBroker()
         broker._connected = True
-        args = SimpleNamespace(code=CODE, live=live, max_price=max_price, fill_wait=fill_wait)
+        args = SimpleNamespace(code=CODE, live=live, max_price=max_price, fill_wait=fill_wait, deadline=deadline)
         base, t0 = KST.localize(datetime(2026, 10, 8, *hms)), clock.t
         ctx = p.Ctx(args, tmp_path / "instances" / "daytrading", log, raw, masker,
                     lambda: base + timedelta(seconds=clock.t - t0), paths)
@@ -698,3 +743,272 @@ def test_main_precondition_fail_writes_result_and_restores(monkeypatch, tmp_path
     assert ka.requests is nonet                                    # 게이트 원복
     assert len(logging.getLogger().handlers) == root_n and ulog._shared_file_handler is shared
     assert next((tmp_path / "out").glob("fill_probe_*_summary.md")).exists()
+
+
+# ── 리뷰 반영(B1·I1·I2·I3·I4·m1~m9) ──────────────────────────────────────────
+def _snap(**kw):
+    s = {"pending_ok": True, "in_pending": False, "pending_count": 0, "daily_ok": True,
+         "daily_row": {"tot_ccld_qty": "0", "rmn_qty": "0", "cnc_cfrm_qty": "1", "cncl_yn": "N"}, "cancel_rows": []}
+    s.update(kw)
+    return s
+
+
+def test_settle_issues_requires_strong_evidence():
+    assert p.settle_issues(_snap(), 0, 0, True, False) == []
+    # 취소 «접수» 흔적(취소 행 cncl_yn Y · 확인 0)만으로는 부족
+    unconf = _snap(daily_row={"tot_ccld_qty": "0", "rmn_qty": "0", "cnc_cfrm_qty": "0"},
+                   cancel_rows=[{"cncl_yn": "Y", "cnc_cfrm_qty": "0"}])
+    assert any("취소 확인 수량 0" in x for x in p.settle_issues(unconf, 0, 0, True, False))
+    # 취소 행의 확인 수량 ≥1 이면 근거
+    conf = _snap(daily_row={"tot_ccld_qty": "0", "rmn_qty": "0", "cnc_cfrm_qty": "0"},
+                 cancel_rows=[{"cncl_yn": "Y", "cnc_cfrm_qty": "1"}])
+    assert p.settle_issues(conf, 0, 0, True, False) == []
+    for row, frag in (({"tot_ccld_qty": "0", "cnc_cfrm_qty": "1"}, "잔량 미상"),            # 잔량 필드 없음
+                      ({"tot_ccld_qty": "0", "rmn_qty": "", "cnc_cfrm_qty": "1"}, "잔량 미상"),
+                      ({"tot_ccld_qty": "0", "rmn_qty": "1", "cnc_cfrm_qty": "1"}, "잔량 1"),
+                      ({"tot_ccld_qty": "x", "rmn_qty": "0", "cnc_cfrm_qty": "1"}, "체결수량 미상"),
+                      ({"tot_ccld_qty": "1", "rmn_qty": "0", "cnc_cfrm_qty": "1"}, "체결수량 1")):
+        assert any(frag in x for x in p.settle_issues(_snap(daily_row=row), 0, 0, True, False)), row
+    assert p.settle_issues(_snap(daily_row=None), 0, 0, True, False) == ["0081R 에 원주문 행 없음"]
+    assert any("8036R" in x for x in p.settle_issues(_snap(pending_ok=False), 0, 0, True, False))
+    assert any("미체결 목록에 남음" in x for x in p.settle_issues(_snap(in_pending=True), 0, 0, True, False))
+    assert any("계좌 미체결 1" in x for x in p.settle_issues(_snap(pending_count=1), 0, 0, True, False))
+    assert any("0081R" in x for x in p.settle_issues(_snap(daily_ok=False), 0, 0, True, False))
+    assert any("보유 미상" in x for x in p.settle_issues(_snap(), None, None, True, False))
+    assert any("계좌 전체 보유 2" in x for x in p.settle_issues(_snap(), 0, 2, True, False))
+    # 주문번호 미상: 명시적 거부일 때만 «행 없음 = 체결 0»
+    assert p.settle_issues(_snap(daily_row=None), 0, 0, False, True) == []
+    assert any("명시적 거부" in x for x in p.settle_issues(_snap(daily_row=None), 0, 0, False, False))
+
+
+def test_buy_explicit_reject_classification():
+    assert p.buy_explicit_reject({"status": 200, "rt_cd": "1"}) is True
+    assert p.buy_explicit_reject({"status": 200, "rt_cd": "0"}) is False
+    assert p.buy_explicit_reject({"status": 200, "rt_cd": None}) is False
+    assert p.buy_explicit_reject({"status": 500, "rt_cd": "1"}) is False
+    assert p.buy_explicit_reject({"exception": "ReadTimeout: x"}) is False
+    assert p.buy_explicit_reject(None) is False
+
+
+def test_b1_cancel_unconfirmed_then_late_fill_goes_to_sell_not_exit3(probe):
+    f = FakeExchange(buy_fill_at=None, cancel_mode="unconfirmed", late_fill_after=3)
+    r = probe(f, "b1late")
+    assert r.rc == 0, r.out                                     # 늦게 반영된 체결 → 보유 1 확인 → 매도
+    assert f.count("TTTC0011U") == 1 and f.held == 0 and r.res["buy"]["filled"] is True
+    _files_ok(r, 0)
+
+
+def test_b1_cancel_unconfirmed_never_reflected_exit4(probe):
+    f = FakeExchange(buy_fill_at=None, cancel_mode="unconfirmed")
+    r = probe(f, "b1never")
+    assert r.rc == 4, r.out
+    assert f.count("TTTC0011U") == 0
+    assert any("강한 증거로 확인 못 함" in m for m in r.res["critical"])
+    assert len(r.res["buy"]["settle_rounds"]) == p.SETTLE_MAX_ROUNDS
+    _files_ok(r, 4)
+
+
+def test_b1_cancel_unconfirmed_even_with_zero_remain_exit4(probe):
+    # 원주문 체결 0·잔량 0 이어도 취소 «확인» 수량이 0 이면 exit 3 금지(변이 ① cancel_evidence 항상 True 를 잡는다)
+    r = probe(FakeExchange(buy_fill_at=None, cancel_mode="unconfirmed", unconf_rmn="0"), "b1rmn0")
+    assert r.rc == 4, r.out
+    assert all(any("취소 확인 수량 0" in x for x in rd["issues"]) for rd in r.res["buy"]["settle_rounds"])
+    _files_ok(r, 4)
+
+
+def test_b1_remain_field_missing_exit4(probe):
+    r = probe(FakeExchange(buy_fill_at=None, drop_rmn=True), "b1norm")
+    assert r.rc == 4, r.out
+    assert any("잔량 미상" in x for x in r.res["buy"]["settle_rounds"][-1]["issues"])
+    _files_ok(r, 4)
+
+
+def test_b1_pending_query_fails_after_cancel_exit4(probe):
+    r = probe(FakeExchange(buy_fill_at=None, pending_fail_after_cancel=True), "b1pfail")
+    assert r.rc == 4, r.out
+    assert r.res["end_pending_count"] is None and r.fake.count("TTTC0011U") == 0
+    _files_ok(r, 4)
+
+
+def test_b1_daily_query_fails_after_cancel_with_zero_holding_exit4(probe):
+    r = probe(FakeExchange(buy_fill_at=None, daily_fail_after_cancel=True), "b1dfail")
+    assert r.rc == 4, r.out
+    assert r.res["end_holding_qty"] == 0                       # 보유 0 이어도 체결 0 을 확인 못 했으니 4
+    _files_ok(r, 4)
+
+
+def test_b1_confirmed_cancel_needs_two_clean_rounds_5s_apart(probe):
+    r = probe(FakeExchange(buy_fill_at=None), "b1two")
+    assert r.rc == 3, r.out
+    rounds = r.res["buy"]["settle_rounds"]
+    assert len(rounds) == 2 and all(rd["issues"] == [] for rd in rounds)
+    assert rounds[1]["t"] - rounds[0]["t"] >= p.SETTLE_GAP_SEC
+    _files_ok(r, 3)
+
+
+def test_i1_buy_timeout_unknown_odno_exit4(probe):
+    f = FakeExchange(buy_timeout=True)
+    r = probe(f, "i1to")
+    assert r.rc == 4, r.out
+    assert r.res["buy"]["explicit_reject"] is False and r.res["buy"]["odno"] == ""
+    assert f.count("TTTC0012U") == 1 and f.count("TTTC0013U") == 0 and f.count("TTTC0011U") == 0
+    assert any("명시적 거부" in x for x in r.res["buy"]["settle_rounds"][-1]["issues"])
+    _files_ok(r, 4)
+
+
+def test_i1_m2_explicit_reject_settles_without_wait_exit3(probe):
+    f = FakeExchange(buy_reject=True)
+    r = probe(f, "i1rej")
+    assert r.rc == 3, r.out
+    assert r.res["buy"]["explicit_reject"] is True
+    assert {p_["phase"] for p_ in r.ctx.polls} == {"settle"} and len(r.ctx.polls) == 2   # 60초 대기 없음
+    assert f.count("TTTC0013U") == 0 and f.count("TTTC0011U") == 0
+    _files_ok(r, 3)
+
+
+def test_m1_holding_reflection_lag_still_sells(probe):
+    f = FakeExchange(hold_lag=5)
+    r = probe(f, "m1lag")
+    assert r.rc == 0, r.out
+    assert f.count("TTTC0011U") == 1 and r.res["holding_after_buy"] == 1
+    _files_ok(r, 0)
+
+
+def test_m3_vi_extends_sell_wait(probe):
+    f = FakeExchange(vi_after_buy=True, sell_fill_at=30)            # 30회째(약 75초) 체결 — 60초면 놓침
+    r = probe(f, "m3vi")
+    assert r.rc == 0, r.out
+    assert r.res["sell"]["vi_extended"] is True and r.res["sell"]["filled"] is True
+    assert f.count("TTTC0011U") == 1
+    _files_ok(r, 0)
+
+
+def test_m9_final_pending_nonzero_with_zero_holding_exit4(probe):
+    r = probe(FakeExchange(pending_after_sell=True), "m9pend")
+    assert r.rc == 4, r.out
+    assert r.res["end_holding_qty"] == 0 and r.res["end_pending_count"] == 1
+    _files_ok(r, 4)
+
+
+@pytest.mark.parametrize("kw", [{"extra_holdings": [{"pdno": "005930", "hldg_qty": "3"}]},
+                                {"extra_pending": [{"odno": "0000000999", "pdno": "005930",
+                                                    "sll_buy_dvsn_cd": "02"}]}])
+def test_i4_account_not_clean_flag_and_critical(probe, kw):
+    r = probe(FakeExchange(**kw), "i4_" + next(iter(kw)))
+    assert r.rc == 2 and r.res["account_not_clean"] is True
+    assert any("깨끗하지 않음" in m for m in r.res["critical"])
+    _no_order_trs(r.fake)
+    _files_ok(r, 2)
+
+
+def test_i4_clean_account_flag_false(probe):
+    r = probe(FakeExchange(), "i4clean", live=False)
+    assert r.rc == 0 and r.res["account_not_clean"] is False
+
+
+def test_i3_deadline_cuts_buy_wait(probe, monkeypatch):
+    from datetime import time as dtime
+    monkeypatch.setattr(p, "DEADLINE_MARGIN", timedelta(0))
+    r = probe(FakeExchange(buy_fill_at=None), "i3buy", deadline=dtime(10, 0, 20), fill_wait=180)
+    assert r.res["deadline_hit"] is True
+    assert len([x for x in r.ctx.polls if x["phase"] == "wait"]) <= 9      # 180초(72회)가 아니라 마감에서 끊김
+    assert r.rc == 3, r.out                                                 # 정리는 강한 증거로 확인됨
+    _files_ok(r, 3)
+
+
+def test_i3_deadline_cuts_sell_wait_exit4(probe, monkeypatch):
+    from datetime import time as dtime
+    monkeypatch.setattr(p, "DEADLINE_MARGIN", timedelta(0))
+    f = FakeExchange(sell_fill_at=None)
+    r = probe(f, "i3sell", deadline=dtime(10, 0, 30))
+    assert r.rc == 4 and r.res["deadline_hit"] is True and f.count("TTTC0011U") == 1
+    assert len([x for x in r.ctx.polls if x["side"] == "sell"]) < 24
+    _files_ok(r, 4)
+
+
+def test_i3_no_market_sell_after_cutoff(probe, monkeypatch):
+    from datetime import time as dtime
+    monkeypatch.setattr(p, "SELL_CUTOFF", dtime(10, 0, 3))
+    f = FakeExchange()
+    r = probe(f, "i3cut")
+    assert r.rc == 4 and f.count("TTTC0011U") == 0
+    assert r.res["sell"].get("blocked_by_cutoff") is True
+    assert any("시장가 매도 안 함" in m for m in r.res["critical"])
+    _files_ok(r, 4)
+
+
+def test_i3_emergency_sell_also_respects_cutoff(probe, monkeypatch):
+    from datetime import time as dtime
+    monkeypatch.setattr(p, "SELL_CUTOFF", dtime(10, 0, 3))
+    f = FakeExchange(interrupt=("TTTC8434R", 2))
+    r = probe(f, "i3cutem")
+    assert r.rc == 4 and f.count("TTTC0011U") == 0 and r.res["emergency_sell_tried"] is False
+    _files_ok(r, 4)
+
+
+def test_i3_result_json_fallback_when_out_dir_unusable(monkeypatch, tmp_path):
+    fb = tmp_path / "fb"
+    monkeypatch.setattr(p, "_fallback_dirs", lambda: [fb])
+    blocker = tmp_path / "not_a_dir"
+    blocker.write_text("x", encoding="utf-8")
+    inst = tmp_path / "instances" / "daytrading"
+    monkeypatch.setenv("KIS_INSTANCE_DIR", str(inst.resolve()))
+    rc = p.main(["--code", CODE, "--instance-dir", str(inst), "--out-dir", str(blocker / "out")])
+    assert rc == 2
+    res = json.loads(next(fb.glob("result_*.json")).read_text(encoding="utf-8"))
+    assert res["exit_code"] == 2 and "출력 폴더·로깅 설정 실패" in res["verdict"]
+    assert res["files"]["result_fallback"].startswith(str(fb))
+
+
+def test_write_result_any_falls_back(monkeypatch, tmp_path):
+    fb = tmp_path / "fb"
+    monkeypatch.setattr(p, "_fallback_dirs", lambda: [fb])
+    blocker = tmp_path / "f"
+    blocker.write_text("x", encoding="utf-8")
+    where = p.write_result_any(str(blocker / "result_x.json"), {"exit_code": 4})
+    assert where == str(fb / "result_x.json") and json.loads(Path(where).read_text(encoding="utf-8"))["exit_code"] == 4
+
+
+@pytest.mark.parametrize("argv", [["--code", CODE, "--deadline", "9:00"], ["--code", CODE, "--deadline", "15:30"],
+                                  ["--code", CODE, "--deadline", "x"]])
+def test_deadline_arg_validation(tmp_path, argv):
+    assert p.main(argv + ["--out-dir", str(tmp_path)]) == 2
+
+
+def test_deadline_arg_parsed():
+    from datetime import time as dtime
+    assert p.parse_args(["--code", CODE, "--deadline", "14:30"]).deadline == dtime(14, 30)
+    assert p.parse_args(["--code", CODE]).deadline == p.DEFAULT_DEADLINE
+
+
+def test_m6_telegram_secrets_masked(tmp_path):
+    ini = tmp_path / "key.ini"
+    ini.write_text("[TELEGRAM]\nenabled = true\ntoken = 123456789:AAFakeBotTokenValue\nchat_id = 987654321\n",
+                   encoding="utf-8")
+    secs = p.telegram_secrets(ini)
+    assert secs == ["123456789:AAFakeBotTokenValue", "987654321"]
+    m = p.cp.Masker()
+    m.add(*secs)
+    assert m.text("https://api.telegram.org/bot123456789:AAFakeBotTokenValue/send chat=987654321") == \
+        "https://api.telegram.org/bot***/send chat=***"
+    assert p.telegram_secrets(tmp_path / "missing.ini") == []
+
+
+@pytest.mark.parametrize("code, name, extra, ok", [
+    ("099990", "테스트종목", {}, True),
+    ("035420", "NHN", {}, True),                     # 브랜드 접두는 «브랜드+공백»만
+    ("195940", "HK이노엔", {}, True),
+    ("005935", "삼성전자우", {}, False),               # 코드 끝자리 ≠ 0 + 이름
+    ("069500", "KODEX 200", {}, False),
+    ("123450", "어떤 ETN 상품", {}, False),
+    ("123450", "", {"rprs_mrkt_kor_name": "ETF"}, False),
+    ("123450", "", {}, True),                         # 이름 없음 → 코드·시장명만
+])
+def test_m4_instrument_guard(code, name, extra, ok):
+    assert p.check_instrument(code, {"hts_kor_isnm": name, **extra})[1] is ok
+
+
+def test_m4_etf_rejected_in_live_guard(probe):
+    r = probe(FakeExchange(quote_over={"hts_kor_isnm": "TIGER 미국S&P500"}), "m4etf")
+    assert r.rc == 2 and "보통주(ETF·ETN·우선주 아님)" in r.res["guards_failed"]
+    _no_order_trs(r.fake)

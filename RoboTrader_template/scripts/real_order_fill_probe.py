@@ -4,10 +4,13 @@
   0  정상. live = 매수 체결 → 시장가 매도 체결 → 종료 확인(계좌 보유 0 · 미체결 0 · 당일 새 주문 매수 체결 1 · 매도 체결 1).
      dry-run = 주문·취소 TR 전송 0건(live 가드 통과 여부는 result json 의 guards_all_pass).
   1  예외 종료 — 주문·취소 TR 을 «하나도» 보내지 않은 상태(계좌 영향 없음 · 원인 확인 뒤 재실행 가능).
-  2  필수 전제·사전 가드 FAIL(인자 오류·라이브 트리 실행 포함) → 주문 0건.
-  3  매수가 체결 없이 끝남(시간 초과 → 취소, 또는 접수 거부) + 보유 0 · 미체결 0 확인 → 재시도 가능.
+  2  필수 전제·사전 가드 FAIL(인자 오류·라이브 트리 실행·출력 폴더 실패 포함) → 주문 0건.
+     시작 시 계좌에 보유·미체결이 «있어서» FAIL 이면 result json account_not_clean=true + CRITICAL(실행기 경보).
+  3  매수가 체결 없이 끝남(시간 초과 → 취소 확인, 또는 KIS 명시적 거부 rt_cd≠0) — «강한 증거»만: ≥5초 간격 2라운드
+     연속으로 8036R 에 없음·계좌 미체결 0 · 0081R 원주문 체결 0 ∧ 잔량 0 ∧ 취소 확인 수량 ≥1 · 잔고 0/0 → 재시도 가능.
   4  CRITICAL «HTS 즉시 확인» — 보유가 남았거나 «남았는지 모름» · 미체결이 남았거나 모름 · 비상 처리(예외·Ctrl+C) 경로 ·
-     종료 확인 불일치 · dry-run 인데 주문 TR 이 나감. «보유가 남았는지 모름»은 언제나 4 다.
+     종료 확인 불일치 · 내부 마감(--deadline) 뒤 미해결 · 15:15 이후라 매도 안 함 · dry-run 인데 주문 TR 이 나감.
+     «보유가 남았는지 모름»은 언제나 4 다. 결과 json 을 못 찾으면 실행기는 4 로 취급할 것.
   (이 밖의 값은 쓰지 않는다. argparse --help 만 0 으로 끝나고 결과 파일을 쓰지 않는다.)
 
 근거
@@ -18,9 +21,11 @@
 흐름 (live)
   사전 가드 전부 PASS → 주문 직전 현재가 재조회·재검사 → ① 현재가 지정가 매수 1주(KISBroker.place_buy_order)
   → ② 체결 대기(--fill-wait 초 · 2.5초 간격 TTTC8036R 미체결 + TTTC0081R 당일 주문체결 폴링 · 원주문 행 전 필드 기록)
-  → (미체결) 취소 → 재조회 → 보유 0 이면 exit 3 / 경합으로 보유 1 이면 매도로
-  → ③ 잔고(TTTC8434R) 재조회로 보유 1 확인 → 시장가 매도 1주(KISBroker.place_sell_order(code, 1, 0, "01") = 봇 실전 시장가 매도와 같은 경로)
-  → ④ 매도 체결 대기(60초 · avg_prvs 가 채워질 때까지 관측) → ⑤ 종료 확인 → 요약 md · 결과 json.
+  → (미체결) 취소 → 정리 확인 라운드(≥5초 간격 · 최대 4) → 연속 2회 깨끗하면 exit 3 / 보유 1 이면 매도로 / 그 밖 exit 4
+  → ③ 잔고(TTTC8434R) 재조회(≈20초까지)로 보유 1 확인 → 시장가 매도 1주
+     (KISBroker.place_sell_order(code, 1, 0, "01") = 봇 실전 시장가 매도와 같은 경로 · 15:15 이후면 매도 안 함)
+  → ④ 매도 체결 대기(60초 · VI 표식이면 150초 · avg_prvs 관측) → ⑤ 종료 확인 → 요약 md · 결과 json.
+  모든 대기는 내부 마감(--deadline · 기본 15:10)에서 끊고 종료 확인으로 간다.
 
 안전장치
 - 기본 dry-run(읽기 TR 만). --live 일 때만 주문. 매수 HTTP 는 프로세스당 1회 · 매도 HTTP 도 프로세스당 1회(정상 또는 비상 중 하나).
@@ -40,7 +45,7 @@
     D:/GIT/kis-trading-template/RoboTrader_template/venv/Scripts/python.exe \
     scripts/real_order_fill_probe.py --code XXXXXX            # dry-run
   ... scripts/real_order_fill_probe.py --code XXXXXX --live     # 거래일 09:30~14:50 KST 에만 통과
-  (선택) --max-price <원>(기본 30,000 · 상한 100,000) · --fill-wait <초>(기본 60 · 10~180)
+  (선택) --max-price <원>(기본 30,000 · 상한 100,000) · --fill-wait <초>(기본 60 · 10~180) · --deadline HH:MM(기본 15:10)
 
 봇 코드 파일은 수정하지 않는다. 공용 헬퍼(마스킹·게이트 골격·가드 일부)는 scripts/real_order_cancel_probe.py 에서 import 한다.
 """
@@ -54,7 +59,8 @@ import math
 import os
 import sys
 import time as _time
-from datetime import datetime, time as dtime
+import tempfile
+from datetime import datetime, time as dtime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -73,12 +79,19 @@ LIVE_RT_ROOT = cp.LIVE_TREE_ROOT + "/RoboTrader_template"
 QTY = 1                                 # 수량 고정(인자 없음)
 WINDOW_START = dtime(9, 30, 0)          # 시가 변동 회피
 WINDOW_END = dtime(14, 50, 0)           # 매도가 15:10 전에 끝나도록(15:20 종가 동시호가 회피)
-BUY_HARD_STOP = dtime(15, 0, 0)         # 매수 체결 대기 중 이 시각을 넘으면 대기 중단 → 취소 경로
+DEFAULT_DEADLINE = dtime(15, 10, 0)     # 내부 마감(--deadline) — 지나면 대기를 끊고 종료 확인 → 미해결이면 exit 4
+SELL_CUTOFF = dtime(15, 15, 0)          # 이 시각부터는 시장가 매도를 내지 않는다(사람 처리 · exit 4)
+DEADLINE_MARGIN = timedelta(minutes=5)  # 시작(주문)은 내부 마감 5분 전까지
 DEFAULT_MAX_PRICE = 30_000
 MAX_PRICE_CEILING = 100_000             # --max-price 오타 방지 상한
 DEFAULT_FILL_WAIT = 60
 SELL_WAIT = 60                          # 매도 체결·avg_prvs 관측 최대(초)
+SELL_WAIT_VI = 150                      # 매도 미체결 + VI·임시정지 표식이면 한 번 연장(VI 단일가 2분 + 여유)
 EMERGENCY_SELL_WAIT = 20                # 비상 매도 뒤 짧은 관측(초)
+SETTLE_GAP_SEC = 5.0                    # 매수 정리 확인 라운드 간격(≥ 5초)
+SETTLE_MAX_ROUNDS = 4                   # 정리 확인 최대 라운드 — «연속 2회 깨끗»이어야 exit 3
+MAX_SETTLE_CANCELS = 3                  # 정리 중 매수 취소 시도 상한(HTTP 상한은 게이트 MAX_CANCEL_HTTP)
+PRESELL_HOLD_TRIES = 10                 # 매도 전 잔고 재조회 횟수(2초 간격 · 약 20초 · 잔고 반영 지연 대비)
 POLL_SEC = 2.5                          # 폴링 간격(초) — 1회 = 8036R + 0081R 2건
 WAIT_SEC = 2.0                          # 취소·매도 뒤 재조회 전 대기
 EXTRA_POLLS_AFTER_FILL = 4              # 매수 체결 뒤 avg_prvs 를 기다리는 추가 폴링 수
@@ -87,6 +100,21 @@ MIN_TURNOVER = 1_000_000_000            # 누적 거래대금 ≥ 10억(유동�
 LIMIT_GAP = 0.05                        # 현재가가 상·하한가에서 5% 이상 떨어져 있어야
 MAX_CANCEL_HTTP = 8                     # 취소 HTTP 상한(봇 _url_fetch 재시도 포함 여유)
 SIDE_CD = {"buy": "02", "sell": "01"}   # sll_buy_dvsn_cd
+
+# ── 10-08 실측 전 추정 ── §4-B 접수·취소 시험(10-08) 원응답(TTTC0081R output1)으로 확정할 것.
+# 필드명·의미가 다르면 이 블록만 고친다. exit 3(«매수 미체결로 끝남») 근거 = 원주문 행
+# 체결수량 0 ∧ 잔량 0(필드 없음·해석 불가 = 미상) ∧ 취소 «확인» 수량 ≥ 1(원주문 행 또는 취소 행).
+# cncl_yn='Y' 는 취소 «접수» 표시일 수 있어 근거로 쓰지 않는다(리뷰 B1).
+DAILY_FILLED_QTY = "tot_ccld_qty"
+DAILY_REMAIN_QTY = "rmn_qty"
+CANCEL_CONFIRM_FIELDS = ("cnc_cfrm_qty",)
+
+# ETF·ETN·우선주 거부(대표성 · 리뷰 m4). 확정 필드가 없어 «하나라도 걸리면 FAIL» 휴리스틱:
+# 코드 끝자리 ≠ 0(우선주 등) · 종목명 «브랜드+공백» 접두(ETF) · 이름에 ETF/ETN · 이름 끝 «우/우B/우C» · 시장·업종명에 ETF/ETN/ELW.
+ETF_BRANDS = ("KODEX", "TIGER", "KBSTAR", "RISE", "ARIRANG", "HANARO", "KOSEF", "ACE", "SOL", "PLUS", "TIMEFOLIO",
+              "KIWOOM", "WOORI", "BNK", "FOCUS", "TREX", "MASTER", "TRUSTON", "UNICORN", "VITA", "WON", "1Q", "HK",
+              "KCGI", "ITF", "DAISHIN343", "마이다스", "에셋플러스", "히어로즈", "마이티", "파워")
+MARKET_NAME_FIELDS = ("rprs_mrkt_kor_name", "bstp_kor_isnm")
 
 TRACK_FIELDS = ("tot_ccld_qty", "avg_prvs", "tot_ccld_amt", "rmn_qty", "cncl_yn", "cnc_cfrm_qty", "rjct_qty",
                 "ccld_unpr", "ord_qty", "ord_unpr", "ord_tmd", "ord_dvsn_name")
@@ -175,11 +203,55 @@ def fill_price(row: Optional[Dict[str, Any]]) -> Tuple[Optional[float], Optional
 
 
 def cancel_evidence(row: Optional[Dict[str, Any]], cancel_rows: List[Dict[str, Any]]) -> bool:
-    if cancel_rows:
-        return True
-    if row is None:
-        return False
-    return _s(row.get("cncl_yn")).upper() == "Y" or (num(row.get("cnc_cfrm_qty")) or 0) >= 1
+    """취소 «확인» 수량(CANCEL_CONFIRM_FIELDS · 10-08 실측 전 추정) ≥ 1 이 원주문 행 또는 취소 행에 있는가.
+    취소 행이 «있다»·cncl_yn='Y' 만으로는 True 가 아니다(접수뿐일 수 있음 — 리뷰 B1)."""
+    for r in ([row] if row is not None else []) + list(cancel_rows or []):
+        for f in CANCEL_CONFIRM_FIELDS:
+            v = num(r.get(f))
+            if v is not None and v >= 1:
+                return True
+    return False
+
+
+def settle_issues(snap: Dict[str, Any], held: Optional[int], total: Optional[int], has_odno: bool,
+                  explicit_reject: bool) -> List[str]:
+    """매수 정리 확인 1라운드의 «깨끗하지 않은 점» 목록(빈 목록 = 이 라운드는 «미체결로 끝남» 근거 충분).
+    미상(조회 실패·필드 없음·해석 불가)은 전부 문제로 센다 — 0 으로 대체하지 않는다."""
+    out: List[str] = []
+    if not snap.get("pending_ok"):
+        out.append("미체결(8036R) 조회 실패")
+    elif snap.get("in_pending"):
+        out.append("매수 주문이 미체결 목록에 남음")
+    elif snap.get("pending_count") != 0:
+        out.append(f"계좌 미체결 {snap.get('pending_count')}건")
+    if not snap.get("daily_ok"):
+        out.append("당일체결(0081R) 조회 실패")
+    elif has_odno:
+        dr = snap.get("daily_row")
+        if dr is None:
+            out.append("0081R 에 원주문 행 없음")
+        else:
+            f, r = num(dr.get(DAILY_FILLED_QTY)), num(dr.get(DAILY_REMAIN_QTY))
+            if f is None:
+                out.append(f"체결수량 미상({DAILY_FILLED_QTY}={dr.get(DAILY_FILLED_QTY)!r})")
+            elif f != 0:
+                out.append(f"체결수량 {f:g}")
+            if r is None:
+                out.append(f"잔량 미상({DAILY_REMAIN_QTY} 없음·해석 불가: {dr.get(DAILY_REMAIN_QTY)!r})")
+            elif r != 0:
+                out.append(f"잔량 {r:g}")
+            if not cancel_evidence(dr, snap.get("cancel_rows") or []):
+                out.append(f"취소 확인 수량 0(미확인 · {'/'.join(CANCEL_CONFIRM_FIELDS)})")
+    elif not explicit_reject:
+        out.append("주문번호 미상 · 명시적 거부(rt_cd≠0) 아님 → «행 없음 = 체결 0» 추론 불가")
+    if held is None or total is None:
+        out.append("잔고 조회 실패(보유 미상)")
+    else:
+        if held != 0:
+            out.append(f"이 종목 보유 {held}")
+        if total != held and total != 0:
+            out.append(f"계좌 전체 보유 {total}")
+    return out
 
 
 def new_rows(rows: Optional[List[Dict[str, Any]]], start_odnos: set, code: str, side_cd: str) -> List[Dict[str, Any]]:
@@ -326,6 +398,34 @@ def check_quote(q: Dict[str, Any], max_price: int) -> List[Guard]:
         ("이상 표식 없음(거래정지·임시정지·VI·관리·정리매매·시장경고·단기과열·투자유의)", not flags,
          "; ".join(flags) or "정상"),
     ]
+
+
+def check_instrument(code: str, q: Dict[str, Any]) -> Guard:
+    """보통주만(ETF·ETN·우선주 거부 · 휴리스틱 — ETF_BRANDS 주석)."""
+    name = _s(q.get("hts_kor_isnm"))
+    bad: List[str] = []
+    if not code.endswith("0"):
+        bad.append(f"코드 끝자리 {code[-1]} ≠ 0(우선주 등)")
+    up = name.upper()
+    if any(up.startswith(b.upper() + " ") for b in ETF_BRANDS):
+        bad.append(f"ETF 브랜드 접두({name})")
+    if "ETF" in up or "ETN" in up:
+        bad.append(f"이름에 ETF/ETN({name})")
+    if name.endswith(("우", "우B", "우C")):
+        bad.append(f"우선주 이름({name})")
+    for k in MARKET_NAME_FIELDS:
+        v = _s(q.get(k)).upper()
+        if any(x in v for x in ("ETF", "ETN", "ELW")):
+            bad.append(f"{k}={q.get(k)!r}")
+    detail = "; ".join(bad) or (f"보통주로 판정(종목명 {name!r} · " +
+                                " · ".join(f"{k}={q.get(k)!r}" for k in MARKET_NAME_FIELDS) +
+                                ("" if name else " · 종목명 없음 → 코드 끝자리·시장명만 확인") + ")")
+    return ("보통주(ETF·ETN·우선주 아님)", not bad, detail)
+
+
+def check_deadline_margin(now: datetime, deadline: dtime) -> Guard:
+    limit = (datetime.combine(now.date(), deadline) - DEADLINE_MARGIN).time()
+    return (f"내부 마감 {deadline:%H:%M} 5분 전 이전", now.time() <= limit, f"지금 {now:%H:%M:%S} ≤ {limit:%H:%M:%S}")
 
 
 def check_cash(bot_avail: Optional[float], nrcvb: Optional[float], price: float) -> Guard:
@@ -519,9 +619,12 @@ def new_result(args: argparse.Namespace, paths: Dict[str, str]) -> Dict[str, Any
         "started_at": datetime.now().isoformat(timespec="seconds"), "ended_at": None,
         "mode": "live" if getattr(args, "live", False) else "dry-run", "code": getattr(args, "code", None),
         "stock_name": None, "exit_code": None, "verdict": None,
-        "guards_all_pass": None, "guards_failed": [],
-        "buy": {**side, "order_dvsn": "00", "cancel_tried": False, "cancels": []},
-        "sell": {**side, "order_dvsn": "01", "order_price": 0, "p2_14_condition": None, "p2_14_polls": 0},
+        "guards_all_pass": None, "guards_failed": [], "account_not_clean": None,
+        "deadline": str(getattr(args, "deadline", DEFAULT_DEADLINE)), "deadline_hit": False,
+        "buy": {**side, "order_dvsn": "00", "cancel_tried": False, "cancels": [], "explicit_reject": False,
+                "settle_rounds": []},
+        "sell": {**side, "order_dvsn": "01", "order_price": 0, "p2_14_condition": None, "p2_14_polls": 0,
+                 "vi_extended": False},
         "holding_after_buy": None, "end_holding_qty": None, "end_holding_total": None, "end_pending_count": None,
         "end_daily_new_buy_filled": None, "end_daily_new_sell_filled": None,
         "emergency_sell_tried": False, "emergency": None,
@@ -533,6 +636,9 @@ class Ctx:
     def __init__(self, args: argparse.Namespace, inst_dir: Path, log: logging.Logger, raw: logging.Logger,
                  masker: Any, now_fn: Callable[[], datetime], paths: Dict[str, str]):
         self.args, self.code, self.inst_dir = args, args.code, Path(inst_dir)
+        self.deadline: dtime = getattr(args, "deadline", DEFAULT_DEADLINE)
+        self.start_held: Optional[Dict[str, int]] = None
+        self.start_pending: Optional[List[dict]] = None
         self.log, self.raw, self.masker, self.now = log, raw, masker, now_fn
         self.paths = paths
         self.res = new_result(args, paths)
@@ -728,12 +834,13 @@ def poll_once(ctx: Ctx, side: str, phase: str) -> Dict[str, Any]:
 
 def _wait_fill(ctx: Ctx, side: str, wait: float, phase: str = "wait") -> bool:
     """체결 대기. 끝 = 전량 체결 + avg_prvs 유효 + 봇 판정(get_order_status 흉내) «체결 확정».
-    매수: 체결 뒤 위 조건이 안 되면 추가 4회까지 · 미체결은 wait 초 또는 15:00 에 중단.
-    매도: wait 초까지 계속 관측(체결돼도 avg_prvs 가 빌 때 언제 채워지는지 = P2-14 실측)."""
+    매수: 체결 뒤 위 조건이 안 되면 추가 4회까지 · 미체결은 wait 초에 중단.
+    매도: wait 초까지 계속 관측(체결돼도 avg_prvs 가 빌 때 언제 채워지는지 = P2-14 실측) ·
+          wait 초에 미체결이고 현재가에 VI·임시정지 표식이면 SELL_WAIT_VI 로 한 번 연장(리뷰 m3).
+    공통: 내부 마감(ctx.deadline)이 지나면 즉시 중단 → 호출자가 종료 확인(리뷰 I3)."""
     r = ctx.rt[side]
-    max_polls = int(math.ceil(wait / POLL_SEC)) + EXTRA_POLLS_AFTER_FILL + 1
     n = post = 0
-    filled = False
+    filled = extended = False
     while True:
         _time.sleep(POLL_SEC)
         snap = poll_once(ctx, side, phase)
@@ -746,10 +853,20 @@ def _wait_fill(ctx: Ctx, side: str, wait: float, phase: str = "wait") -> bool:
             post += 1
             if side == "buy" and post > EXTRA_POLLS_AFTER_FILL:
                 break
-        elapsed = _time.monotonic() - r["t0"]
-        if side == "buy" and not filled and ctx.now().time() >= BUY_HARD_STOP:
-            ctx.log.warning(f"매수 체결 대기 중 {BUY_HARD_STOP:%H:%M} 도달 → 대기 중단(취소 경로)")
+        if ctx.now().time() >= ctx.deadline:
+            ctx.res["deadline_hit"] = True
+            ctx.log.warning(f"[{side}] 내부 마감 {ctx.deadline:%H:%M} 도달 → 대기 중단(종료 확인으로)")
             break
+        elapsed = _time.monotonic() - r["t0"]
+        if side == "sell" and not filled and not extended and elapsed >= wait:
+            q = _quote(ctx)
+            fl = [x for x in quote_flags(q or {}) if x.startswith(("VI", "임시정지", "거래정지"))]
+            if fl:
+                extended, wait = True, max(wait, SELL_WAIT_VI)
+                ctx.res["sell"]["vi_extended"] = True
+                ctx.log.warning(f"[sell] 미체결 + {fl} → 매도 관측을 {wait:.0f}초로 연장(VI 단일가 대비)")
+                continue
+        max_polls = int(math.ceil(wait / POLL_SEC)) + EXTRA_POLLS_AFTER_FILL + 1
         if (elapsed >= wait and (side == "sell" or not filled)) or n >= max_polls:
             break
     return filled
@@ -765,7 +882,10 @@ def _final_snapshot(ctx: Ctx, tries: int = 1) -> Tuple[Optional[int], Optional[i
     def _sum(side: str) -> Optional[float]:
         if rows is None:
             return None
-        tot = sum(num(x.get("tot_ccld_qty")) or 0 for x in new_rows(rows, ctx.start_odnos, ctx.code, SIDE_CD[side]))
+        vals = [num(x.get(DAILY_FILLED_QTY)) for x in new_rows(rows, ctx.start_odnos, ctx.code, SIDE_CD[side])]
+        if any(v is None for v in vals):
+            return None                                   # 해석 불가 = 미상(0 으로 대체하지 않는다)
+        tot = sum(vals)
         return int(tot) if float(tot).is_integer() else tot
 
     buys, sells = _sum("buy"), _sum("sell")
@@ -806,8 +926,10 @@ def _preflight(ctx: Ctx) -> List[Guard]:
     cur = num(q.get("stck_prpr")) or 0.0
     ctx.log.info(f"── 시세 {ctx.code}({ctx.res['stock_name']}): {cp._pick(q, QUOTE_FIELDS)}")
     pending0 = ctx.broker.get_pending_orders()
+    ctx.start_pending = pending0
     ctx.log.info(f"── 시작 시 미체결: {'조회 실패(None)' if pending0 is None else f'{len(pending0)}건'}")
     held, summary = read_holdings(ctx)
+    ctx.start_held = held
     bot_avail = num((summary or {}).get("prvs_rcdl_excc_amt")) if summary else None
     nrcvb = _psbl_cash(ctx, cur)
     ctx.cash = (bot_avail, nrcvb)
@@ -818,7 +940,9 @@ def _preflight(ctx: Ctx) -> List[Guard]:
                                          cp._read_live_holiday_cache(ctx.inst_dir, now),
                                          MarketHours.can_place_order(ctx.code, "KRX", now)))
     guards.append(check_time_window(now))
+    guards.append(check_deadline_margin(now, ctx.deadline))
     guards += check_quote(q, ctx.args.max_price)
+    guards.append(check_instrument(ctx.code, q))
     guards.append(check_cash(bot_avail, nrcvb, cur))
     guards.append(("수량 = 1 고정", QTY == 1, f"QTY={QTY}"))
     guards.append(cp.check_no_pending(pending0))
@@ -830,6 +954,7 @@ def _preflight(ctx: Ctx) -> List[Guard]:
 def _after_connect(ctx: Ctx) -> int:
     ok = _record_guards(ctx, "live 가드", _preflight(ctx))
     ctx.res["guards_all_pass"] = not ctx.res["guards_failed"]
+    _mark_account_clean(ctx)
     cur = num(ctx.quote.get("stck_prpr")) or 0
     ctx.log.info(f"── 계획: {ctx.code}({ctx.res['stock_name']}) 현재가 지정가 매수 {QTY}주 @ 주문 직전 현재가(지금 {cur:,.0f}) "
                  f"→ 최대 {ctx.args.fill_wait}초 체결 대기 → (미체결이면 취소) → 시장가 매도 {QTY}주 → 종료 확인")
@@ -846,6 +971,19 @@ def _after_connect(ctx: Ctx) -> int:
         ctx.res["verdict"] = f"가드 FAIL — 주문 0건: {ctx.res['guards_failed']}"
         return 2
     return _run_live(ctx)
+
+
+def _mark_account_clean(ctx: Ctx) -> None:
+    """시작 시 보유·미체결이 «있음»이 확인되면 account_not_clean=True + CRITICAL(리뷰 I4 · 무인 실행기 경보용).
+    둘 다 0 이 확인되면 False · 조회 실패가 있으면 None(미상)."""
+    pos = {k: v for k, v in (ctx.start_held or {}).items() if v > 0}
+    npend = None if ctx.start_pending is None else len(ctx.start_pending)
+    if pos or (npend or 0) > 0:
+        ctx.res["account_not_clean"] = True
+        ctx.crit(f"**🔴 시작 시 계좌가 깨끗하지 않음 — 보유 {pos or 0} · 미체결 {npend}건 → 시험 안 함 · "
+                 f"HTS 에서 확인·정리(10-19 기동 대사 abort 위험)**")
+    elif ctx.start_held is not None and ctx.start_pending is not None:
+        ctx.res["account_not_clean"] = False
 
 
 def _sent_orders(ctx: Ctx) -> List[Dict[str, Any]]:
@@ -865,10 +1003,12 @@ def _run_live(ctx: Ctx) -> int:
 
 def _live_flow(ctx: Ctx) -> int:
     log, st, code = ctx.log, ctx.state, ctx.code
-    # 0) 주문 직전 재확인(시간창 · 현재가 재조회 · 가격/표식/현금)
-    w = check_time_window(ctx.now())
+    # 0) 주문 직전 재확인(시간창 · 내부 마감 여유 · 현재가 재조회 · 가격/표식/종목 종류/현금)
+    now = ctx.now()
     q2 = _quote(ctx)
-    g2 = [w] + (check_quote(q2, ctx.args.max_price) if q2 else [("주문 직전 현재가 재조회", False, "조회 실패")])
+    g2 = [check_time_window(now), check_deadline_margin(now, ctx.deadline)]
+    g2 += (check_quote(q2, ctx.args.max_price) + [check_instrument(code, q2)] if q2
+           else [("주문 직전 현재가 재조회", False, "조회 실패")])
     price = int(num((q2 or {}).get("stck_prpr")) or 0)
     g2.append(check_cash(ctx.cash[0], ctx.cash[1], price))
     if not _record_guards(ctx, "주문 직전 재확인", g2):
@@ -891,11 +1031,16 @@ def _live_flow(ctx: Ctx) -> int:
         ctx.res["verdict"] = "매수 TR 미전송(봇 함수가 HTTP 전에 거부했거나 게이트 차단) — 주문 0건"
         log.error(ctx.res["verdict"])
         return 2
-    # ② 체결 대기
-    if not _wait_fill(ctx, "buy", ctx.args.fill_wait):
-        out = _cancel_buy_and_settle(ctx)
+    # ② 체결 대기 — 명시적 거부(rt_cd≠0 · 번호 없음)면 대기 없이 바로 정리(리뷰 m2)
+    explicit = not b["odno"] and buy_explicit_reject(ctx.gate.last(cp.TR_BUY))
+    ctx.res["buy"]["explicit_reject"] = explicit
+    if explicit:
+        log.warning("① 매수가 KIS 에서 명시적으로 거부됨(rt_cd≠0) → 대기 없이 정리 확인")
+    if explicit or not _wait_fill(ctx, "buy", ctx.args.fill_wait):
+        out = _cancel_buy_and_settle(ctx, explicit_reject=explicit)
         if out == "unfilled_clear":
-            ctx.res["verdict"] = "매수 미체결로 끝남(취소 또는 접수 거부) · 보유 0 · 미체결 0 확인 — 재시도 가능"
+            ctx.res["verdict"] = ("매수 미체결로 끝남(" + ("접수 거부" if explicit else "취소 확인") +
+                                  ") · 보유 0 · 미체결 0 연속 확인 — 재시도 가능")
             return 3
         if out != "held":
             ctx.res["verdict"] = f"CRITICAL — 매수 정리 확인 실패({out}) · HTS 즉시 확인"
@@ -906,80 +1051,90 @@ def _live_flow(ctx: Ctx) -> int:
     return _sell_and_verify(ctx)
 
 
-def _cancel_buy_and_settle(ctx: Ctx) -> str:
-    """미체결 매수 취소 → 재조회. 반환: unfilled_clear(보유 0·미체결 0) · held(경합 체결 → 매도로) ·
-    remain(매수 잔존) · unknown(미상) · unexpected(보유 > 1)."""
-    b, rb, log = ctx.rt["buy"], ctx.res["buy"], ctx.log
-    snap: Optional[Dict[str, Any]] = None
-    for attempt in (1, 2):
-        if not b["odno"]:
-            _time.sleep(WAIT_SEC)
-            snap = poll_once(ctx, "buy", "cancel")           # 번호 채택 기회
-            if not b["odno"]:
-                log.warning("매수 주문번호 없음 · 조회에도 새 매수 주문 없음 → 취소 생략")
-                break
-        n0 = len(ctx.gate.calls)
-        c = ctx.broker.cancel_order(b["odno"], ctx.code)
-        raw = ctx.gate.last(cp.TR_CANCEL, since=n0)
-        rb["cancel_tried"] = True
-        rb["cancels"].append({"attempt": attempt, "success": c.get("success"), "message": c.get("message"),
-                              "raw_rt_cd": raw.get("rt_cd") if raw else "미전송",
-                              "raw_msg1": raw.get("msg1") if raw else None})
-        log.info(f"③ {attempt}차 cancel_order 반환(판정에 쓰지 않음 · NEW-B1): {ctx.masker.obj(c)} · 취소 TR 원응답 "
+def buy_explicit_reject(rec: Optional[Dict[str, Any]]) -> bool:
+    """매수 HTTP 원응답이 «KIS 가 받아서 거부»(HTTP 200 · rt_cd 있음 · ≠ '0' · 예외 없음)인가. 무응답·예외·5xx 는 아님."""
+    if not rec or rec.get("exception") or rec.get("blocked"):
+        return False
+    rt = rec.get("rt_cd")
+    return rec.get("status") == 200 and rt is not None and str(rt) != "0"
+
+
+def _cancel_buy(ctx: Ctx, attempt: Any) -> None:
+    b, rb = ctx.rt["buy"], ctx.res["buy"]
+    n0 = len(ctx.gate.calls)
+    c = ctx.broker.cancel_order(b["odno"], ctx.code)
+    raw = ctx.gate.last(cp.TR_CANCEL, since=n0)
+    rb["cancel_tried"] = True
+    rb["cancels"].append({"attempt": attempt, "success": c.get("success"), "message": c.get("message"),
+                          "raw_rt_cd": raw.get("rt_cd") if raw else "미전송",
+                          "raw_msg1": raw.get("msg1") if raw else None})
+    ctx.log.info(f"③ 취소 {attempt}: cancel_order 반환(판정에 쓰지 않음 · NEW-B1) {ctx.masker.obj(c)} · 취소 TR 원응답 "
                  f"rt_cd={(raw or {}).get('rt_cd', '미전송')}")
-        _time.sleep(WAIT_SEC)
-        snap = poll_once(ctx, "buy", "cancel")
-        if snap["in_pending"] is False:
-            break
-    remain = snap["in_pending"] if snap else None
-    dr = snap["daily_row"] if snap else None
-    if dr is not None:
-        filled: Optional[bool] = is_filled(dr)
-    elif snap and snap["daily_ok"] and not b["odno"]:
-        filled = False                                       # 접수 자체가 안 됨(새 주문 행 없음)
-    else:
-        filled = None
-    held, total = held_qty(ctx, tries=3, until=(lambda q, t: q >= 1) if filled else None)
-    pcount = snap["pending_count"] if snap else None
-    ctx.res.update({"end_holding_qty": held, "end_holding_total": total, "end_pending_count": pcount})
-    log.info(f"④ 취소 뒤: 매수 잔존={remain} · 당일조회 체결={filled} · 보유 {held}(전체 {total}) · 미체결 {pcount}")
-    if held is None:
-        ctx.crit(f"**🔴 잔고 조회 실패 — 매수 체결·보유 미상 · HTS 즉시 확인 · 종목 {ctx.code} · ODNO {b['odno'] or '미상'}**")
-        return "unknown"
-    if held >= 1:
-        if held > QTY:
-            ctx.crit(f"**🔴 보유 {held}주 > {QTY} — 이 시험 밖 보유 · 손대지 않음 · HTS 즉시 확인**")
-            return "unexpected"
-        log.warning("취소와 체결이 경합 — 결국 보유 1주 → 시장가 매도로 진행")
-        rb["filled"] = True
-        return "held"
-    if remain is True:
-        ctx.crit(f"**🔴 매수 미체결 잔존(취소 2회 뒤) — HTS 에서 즉시 수동 취소 · ODNO {b['odno']} · 종목 {ctx.code}**")
-        return "remain"
-    if remain is None:
-        ctx.crit(f"**🔴 미체결 조회 실패 — 매수 잔존 미상 · HTS 즉시 확인 · ODNO {b['odno'] or '미상'}**")
-        return "unknown"
-    if filled is None:
-        ctx.crit(f"**🔴 당일 주문체결조회로 «체결 0» 을 확인 못 함(미상) — HTS 즉시 확인 · ODNO {b['odno'] or '미상'}**")
-        return "unknown"
-    if filled:
-        ctx.crit("**🔴 당일조회는 체결인데 잔고는 0 — 불일치 · HTS 즉시 확인**")
-        return "unknown"
-    if dr is not None and (num(dr.get("rmn_qty")) or 0) > 0 and not cancel_evidence(dr, snap["cancel_rows"]):
-        ctx.crit(f"**🔴 당일조회 원주문 잔량>0 · 취소 흔적 없음 — HTS 즉시 확인·취소 · ODNO {b['odno']}**")
-        return "remain"
-    if pcount != 0 or total != 0:
-        ctx.crit(f"**🔴 매수는 정리됐지만 계좌 미체결 {pcount} · 전체 보유 {total} — HTS 즉시 확인**")
-        return "unknown"
-    rb["filled"] = False
-    ctx.buy_closed = True
-    return "unfilled_clear"
+
+
+def _cancel_buy_and_settle(ctx: Ctx, explicit_reject: bool = False) -> str:
+    """미체결 매수 취소 → «강한 증거»로만 미체결 종료 판정(리뷰 B1·I1).
+    unfilled_clear = SETTLE_GAP_SEC(≥5초) 간격 라운드가 «연속 2회» 깨끗(settle_issues 빈 목록: 8036R 에 없음·계좌
+    미체결 0 · 0081R 원주문 체결 0 ∧ 잔량 0 ∧ 취소 확인 ≥1 · 잔고 이 종목 0 ∧ 전체 0).
+    held = 어느 라운드든 잔고에 보유 1 확인 → 매도 경로 · unexpected = 보유 > 1 · unknown = 그 밖(→ exit 4)."""
+    b, rb, log = ctx.rt["buy"], ctx.res["buy"], ctx.log
+    cancels = 0
+    if not explicit_reject:
+        for attempt in (1, 2):
+            if not b["odno"]:
+                _time.sleep(WAIT_SEC)
+                poll_once(ctx, "buy", "cancel")              # 번호 채택 기회
+                if not b["odno"]:
+                    log.warning("매수 주문번호 없음 · 조회에도 새 매수 주문 없음 → 취소 생략(정리 확인에서 미상 처리)")
+                    break
+            _cancel_buy(ctx, attempt)
+            cancels += 1
+            _time.sleep(WAIT_SEC)
+            if poll_once(ctx, "buy", "cancel")["in_pending"] is False:
+                break
+    streak, issues = 0, ["정리 확인 전"]
+    for i in range(SETTLE_MAX_ROUNDS):
+        _time.sleep(SETTLE_GAP_SEC if i else WAIT_SEC)
+        snap = poll_once(ctx, "buy", "settle")
+        if b["odno"] and snap["in_pending"] and cancels < MAX_SETTLE_CANCELS:
+            _cancel_buy(ctx, f"정리 {i + 1}")             # 늦게 채택된 번호 · 아직 미체결 → 다시 취소
+            cancels += 1
+            streak = 0
+            continue
+        held, total = held_qty(ctx, tries=1)
+        issues = settle_issues(snap, held, total, bool(b["odno"]), explicit_reject)
+        rb["settle_rounds"].append({"round": i + 1, "t": snap["t"], "held": held, "held_total": total,
+                                    "pending_count": snap["pending_count"], "issues": issues})
+        ctx.res.update({"end_holding_qty": held, "end_holding_total": total,
+                        "end_pending_count": snap["pending_count"]})
+        log.info(f"④ 정리 확인 {i + 1}/{SETTLE_MAX_ROUNDS}: 보유 {held}(전체 {total}) · 미체결 {snap['pending_count']} · "
+                 f"문제 {issues or '없음'}")
+        if held is not None and held >= 1:
+            if held > QTY:
+                ctx.crit(f"**🔴 보유 {held}주 > {QTY} — 이 시험 밖 보유 · 손대지 않음 · HTS 즉시 확인**")
+                return "unexpected"
+            log.warning("취소 미확인·경합 — 잔고에 보유 1주 확인 → 시장가 매도로 진행")
+            rb["filled"] = True
+            return "held"
+        streak = 0 if issues else streak + 1
+        if streak >= 2:
+            rb["filled"] = False
+            ctx.buy_closed = True
+            return "unfilled_clear"
+    ctx.crit(f"**🔴 매수가 «미체결로 끝남»을 강한 증거로 확인 못 함 — {issues} · HTS 즉시 확인 "
+             f"(보유·미체결) · 종목 {ctx.code} · ODNO {b['odno'] or '미상'}**")
+    return "unknown"
 
 
 def _place_market_sell(ctx: Ctx, qty: int, emergency: bool) -> bool:
     """봇 실전 시장가 매도와 같은 경로: KISBroker.place_sell_order(code, qty, 0, "01") → TTTC0011U ORD_DVSN 01 · 0원.
-    반환 = 매도 HTTP 가 실제로 나갔는가(응답 성공 여부와 무관)."""
+    반환 = 매도 HTTP 가 실제로 나갔는가(응답 성공 여부와 무관). SELL_CUTOFF(15:15) 이후면 내지 않는다(리뷰 I3)."""
     s = ctx.rt["sell"]
+    if ctx.now().time() >= SELL_CUTOFF:
+        ctx.res["sell"]["blocked_by_cutoff"] = True
+        ctx.crit(f"**🔴 {SELL_CUTOFF:%H:%M} 이후 → 시장가 매도 안 함(장 마감 직전·종가 동시호가) · HTS 에서 사람이 "
+                 f"{ctx.code} {qty}주 처리**")
+        return False
     ctx.state.planned_sell = {"PDNO": ctx.code, "ORD_QTY": str(qty), "ORD_UNPR": "0", "ORD_DVSN": "01"}
     s["t0"], s["sent_at"], s["bot_price"] = _time.monotonic(), _ts(ctx), 0.0
     if emergency:
@@ -993,7 +1148,7 @@ def _place_market_sell(ctx: Ctx, qty: int, emergency: bool) -> bool:
 
 
 def _sell_and_verify(ctx: Ctx) -> int:
-    held, total = held_qty(ctx, tries=3, until=lambda q, t: q >= 1)
+    held, total = held_qty(ctx, tries=PRESELL_HOLD_TRIES, until=lambda q, t: q >= 1)   # 잔고 반영 지연 ≈20초(m1)
     ctx.res["holding_after_buy"] = held
     ctx.log.info(f"── 매수 체결 뒤 잔고(TTTC8434R): 이 종목 {held} · 전체 {total}")
     if held is None:
@@ -1123,7 +1278,8 @@ def _fill_side_result(ctx: Ctx, side: str) -> None:
 
 
 def finish(ctx: Ctx, rc: int) -> None:
-    """모든 종결 경로에서 호출(execute 의 finally). 결과 json 은 반드시 쓴다 — 실패해도 예외를 밖으로 내지 않는다."""
+    """모든 종결 경로에서 호출(execute 의 finally). 결과 json 을 «먼저» 쓰고(요약 md 실패·Ctrl+C 에도 남게),
+    출력 폴더에 못 쓰면 대체 경로(RESULT_FALLBACK_DIRS)에 쓴다. 예외를 밖으로 내지 않는다(리뷰 I3)."""
     res = ctx.res
     res["exit_code"] = rc
     res["verdict"] = res["verdict"] or DEFAULT_VERDICT.get(rc, "?")
@@ -1134,18 +1290,19 @@ def finish(ctx: Ctx, rc: int) -> None:
         res["order_http"] = [{"seq": c["seq"], "ts": c["ts"], "tr_id": c["tr_id"], "rt_cd": c.get("rt_cd"),
                               "msg_cd": c.get("msg_cd"), "msg1": c.get("msg1"), "exception": c.get("exception")}
                              for c in _sent_orders(ctx)]
-    except Exception as e:
+    except BaseException as e:
         res["result_build_error"] = f"{type(e).__name__}: {e}"
+    where = write_result_any(ctx.paths["result"], ctx.masker.obj(res))
     try:
         Path(ctx.paths["summary_md"]).write_text(ctx.masker.text(build_summary_md(ctx)), encoding="utf-8")
-    except Exception as e:
+    except BaseException as e:
         res["summary_md_error"] = f"{type(e).__name__}: {e}"
+        where = write_result_any(ctx.paths["result"], ctx.masker.obj(res)) or where
     try:
-        write_result(ctx.paths["result"], ctx.masker.obj(res))
-    except Exception as e:
-        ctx.log.error(f"결과 json 쓰기 실패 {type(e).__name__}: {e}")
-    lvl = logging.CRITICAL if rc == 4 else logging.INFO
-    ctx.log.log(lvl, f"===== 종료 exit={rc} · {res['verdict']} · 결과 {ctx.paths['result']} =====")
+        lvl = logging.CRITICAL if rc == 4 else logging.INFO
+        ctx.log.log(lvl, f"===== 종료 exit={rc} · {res['verdict']} · 결과 {where or '쓰기 실패(전 경로)'} =====")
+    except BaseException:
+        pass
 
 
 def write_result(path: str, payload: Dict[str, Any]) -> None:
@@ -1154,6 +1311,27 @@ def write_result(path: str, payload: Dict[str, Any]) -> None:
     tmp = p.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     os.replace(tmp, p)
+
+
+def _fallback_dirs() -> List[Path]:
+    """결과 json 대체 경로: OS 임시 폴더 → 스크립트 폴더 옆(RoboTrader_template/fill_probe_out_fallback)."""
+    return [Path(tempfile.gettempdir()) / "real_fill_probe_out", _RT_ROOT / "fill_probe_out_fallback"]
+
+
+def write_result_any(path: str, payload: Dict[str, Any]) -> Optional[str]:
+    """path 에 쓰고, 실패하면 같은 파일명으로 대체 경로에 쓴다. 반환 = 실제로 쓴 경로(전부 실패면 None)."""
+    for cand in [Path(path)] + [d / Path(path).name for d in _fallback_dirs()]:
+        try:
+            if str(cand) != str(path):
+                payload.setdefault("files", {})["result_fallback"] = str(cand)
+            write_result(str(cand), payload)
+            if str(cand) != str(path):
+                print(f"⚠️ 결과 json 을 대체 경로에 씀: {cand}", file=sys.stderr)
+            return str(cand)
+        except BaseException:
+            continue
+    print(f"🔴 결과 json 쓰기 실패(전 경로) — {path}", file=sys.stderr)
+    return None
 
 
 def _cell(v: Any) -> str:
@@ -1198,6 +1376,13 @@ def build_summary_md(ctx: Ctx) -> str:
                  f"{o['avg_prvs_first_valid_sec']}s · 마지막 봇 판정 {(o['bot_view_last'] or {}).get('text')}")
     if b.get("cancels"):
         L.append(f"- 매수 취소: {b['cancels']}")
+    if b.get("explicit_reject"):
+        L.append("- 매수: KIS 명시적 거부(rt_cd≠0) → 대기 없이 정리 확인")
+    for rd in b.get("settle_rounds") or []:
+        L.append(f"- 매수 정리 확인 {rd['round']}(+{rd['t']}s): 보유 {rd['held']}(전체 {rd['held_total']}) · "
+                 f"미체결 {rd['pending_count']} · 문제 {rd['issues'] or '없음'}")
+    L.append(f"- 시작 계좌 account_not_clean={res['account_not_clean']} · 내부 마감 {res['deadline']} 도달={res['deadline_hit']} · "
+             f"매도 VI 연장={s.get('vi_extended')} · 15:15 매도 차단={s.get('blocked_by_cutoff', False)}")
     L.append(f"- 매수 체결 뒤 보유(TTTC8434R) {res['holding_after_buy']} · 종료 보유 {res['end_holding_qty']}"
              f"(전체 {res['end_holding_total']}) · 미체결 {res['end_pending_count']} · 당일 새 주문 체결 매수 "
              f"{res['end_daily_new_buy_filled']} · 매도 {res['end_daily_new_sell_filled']}")
@@ -1243,11 +1428,11 @@ def build_summary_md(ctx: Ctx) -> str:
 def run(ctx: Ctx) -> int:
     from config import settings
     ctx.masker.add(settings.APP_KEY, settings.SECRET_KEY, settings.ACCOUNT_NUMBER,
-                   (settings.ACCOUNT_NUMBER or "")[:8], settings.HTS_ID)
+                   (settings.ACCOUNT_NUMBER or "")[:8], settings.HTS_ID, *telegram_secrets(settings.CONFIG_FILE))
     import api.kis_auth as kis_auth
     log = ctx.log
     log.info(f"===== real_order_fill_probe [{'LIVE' if ctx.args.live else 'DRY-RUN'}] code={ctx.code} qty={QTY} "
-             f"max_price={ctx.args.max_price:,} fill_wait={ctx.args.fill_wait}s =====")
+             f"max_price={ctx.args.max_price:,} fill_wait={ctx.args.fill_wait}s deadline={ctx.deadline:%H:%M} =====")
     log.info(f"cwd={_cwd()} · KIS_INSTANCE_DIR={ctx.inst_dir} · INSTANCE_ID={settings.INSTANCE_ID}")
     tok = Path(kis_auth.TOKEN_FILE_PATH)
     log.info(f"토큰 캐시 = {tok} (이미 있음={tok.exists()}) — 없거나 만료면 auth() 가 새로 발급해 이 경로에 저장")
@@ -1281,6 +1466,18 @@ def run(ctx: Ctx) -> int:
     if env is not None:
         ctx.masker.add(env.my_token, str(env.my_token).replace("Bearer ", ""), env.my_acct)
     return _after_connect(ctx)
+
+
+def telegram_secrets(config_file: Any) -> List[str]:
+    """key.ini [TELEGRAM] token·chat_id — 마스킹 목록용(봇 kis_auth 장애 알림이 이 값으로 텔레그램 POST · 리뷰 m6)."""
+    import configparser
+    try:
+        cfg = configparser.ConfigParser()
+        cfg.read(str(config_file), encoding="utf-8")
+        sec = cfg["TELEGRAM"]
+        return [v for v in (sec.get("token", "").strip(), sec.get("chat_id", "").strip()) if v]
+    except Exception:
+        return []
 
 
 def execute(ctx: Ctx, fn: Callable[[Ctx], int]) -> int:
@@ -1366,6 +1563,9 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--max-price", type=int, default=DEFAULT_MAX_PRICE,
                    help=f"현재가 상한(원 · 기본 {DEFAULT_MAX_PRICE:,} · 최대 {MAX_PRICE_CEILING:,})")
     p.add_argument("--fill-wait", type=int, default=DEFAULT_FILL_WAIT, help="매수 체결 대기(초 · 기본 60 · 10~180)")
+    p.add_argument("--deadline", default=f"{DEFAULT_DEADLINE:%H:%M}",
+                   help=f"내부 마감 HH:MM(기본 {DEFAULT_DEADLINE:%H:%M} · 09:40~{SELL_CUTOFF:%H:%M}) — 지나면 대기를 끊고 "
+                        "종료 확인 → 미해결이면 exit 4")
     p.add_argument("--instance-dir", default=cp.DEFAULT_INSTANCE_DIR, help="실전 인스턴스 폴더(읽기만)")
     p.add_argument("--out-dir", default=DEFAULT_OUT_DIR, help="출력 폴더(워크트리·라이브 트리 밖)")
     a = p.parse_args(argv)
@@ -1375,20 +1575,24 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         p.error(f"--max-price 는 1~{MAX_PRICE_CEILING:,}")
     if not (10 <= a.fill_wait <= 180):
         p.error("--fill-wait 는 10~180 초")
+    try:
+        a.deadline = datetime.strptime(a.deadline, "%H:%M").time()
+    except ValueError:
+        p.error("--deadline 은 HH:MM")
+    if not (dtime(9, 40) <= a.deadline <= SELL_CUTOFF):
+        p.error(f"--deadline 은 09:40~{SELL_CUTOFF:%H:%M}")
     return a
 
 
 def _early_exit(out_dir: Path, stamp: str, args: Any, verdict: str) -> int:
-    """프로젝트 모듈 import 전 종료(인자 오류·라이브 트리·인스턴스 불일치)도 결과 json 을 남긴다."""
+    """프로젝트 모듈 import 전·로깅 설정 전 종료(인자 오류·라이브 트리·인스턴스 불일치·출력 폴더/로깅 실패)도
+    결과 json 을 남긴다(출력 폴더에 못 쓰면 대체 경로)."""
     paths = _paths(out_dir, stamp)
     res = new_result(args or argparse.Namespace(), paths)
     res.update({"exit_code": 2, "verdict": verdict, "guards_all_pass": False,
                 "ended_at": datetime.now().isoformat(timespec="seconds")})
-    try:
-        write_result(paths["result"], res)
-    except OSError as e:
-        print(f"결과 파일 쓰기 실패: {e}", file=sys.stderr)
-    print(f"🔴 {verdict} → exit 2 · 결과 {paths['result']}", file=sys.stderr)
+    where = write_result_any(paths["result"], res)
+    print(f"🔴 {verdict} → exit 2 · 결과 {where}", file=sys.stderr)
     return 2
 
 
@@ -1414,10 +1618,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
     except (AttributeError, ValueError):
         pass
-    out_dir.mkdir(parents=True, exist_ok=True)
     paths = _paths(out_dir, stamp)
     masker = cp.Masker()
-    log, raw, teardown = _setup_logging(paths, masker)
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        log, raw, teardown = _setup_logging(paths, masker)
+    except Exception as e:
+        return _early_exit(out_dir, stamp, args, f"출력 폴더·로깅 설정 실패({type(e).__name__}: {e}) — 주문 0건")
     from config.market_hours import now_kst
     ctx = Ctx(args, inst_dir, log, raw, masker, now_kst, paths)
     try:
