@@ -76,6 +76,17 @@ def pid_file_name(instance_id: str) -> str:
     return f"robotrader_{instance_id}.pid"
 
 
+def _remove_own_pid_file(pid_file, reason: str) -> None:
+    """기동 실패 경로의 PID 파일 정리 — 내용이 내 PID 일 때만 삭제 · 실패는 warning 만(exit 를 막지 않음)."""
+    try:
+        if pid_file is not None and pid_file.exists():
+            if pid_file.read_text().strip() == str(os.getpid()):
+                pid_file.unlink(missing_ok=True)
+                logging.getLogger(__name__).info(f"{reason}: PID 파일 정리 완료")
+    except Exception as pid_err:
+        logging.getLogger(__name__).warning(f"PID 파일 정리 실패({reason}): {pid_err}")
+
+
 class DayTradingBot:
     """주식 자동매매 봇"""
 
@@ -704,19 +715,13 @@ async def main() -> None:
     # 시스템 초기화 — LiveStartupAbort 는 실전 기동 중단(스펙 2026-08-14 P0)
     try:
         if not await bot.initialize():
+            _remove_own_pid_file(getattr(bot, 'pid_file', None), "초기화 실패")
             sys.exit(1)
     except LiveStartupAbort as e:
         logging.getLogger(__name__).critical(f"🚨 실전 기동 중단: {e}")
         # 기동 중단 시에도 PID 파일 정리 — 죽은 PID 가 남으면 PID 재사용 시 중복 실행 오판.
         # 텔레그램 경보(HTTPX 타임아웃 최대 30초) «앞»에서 처리 — 대기 중 창이 닫혀도 남지 않게.
-        try:
-            pid_file = getattr(bot, 'pid_file', None)
-            if pid_file is not None and pid_file.exists():
-                if pid_file.read_text().strip() == str(os.getpid()):
-                    pid_file.unlink(missing_ok=True)
-                    logging.getLogger(__name__).info("기동 중단: PID 파일 정리 완료")
-        except Exception as pid_err:
-            logging.getLogger(__name__).warning(f"PID 파일 정리 실패(기동 중단): {pid_err}")
+        _remove_own_pid_file(getattr(bot, 'pid_file', None), "기동 중단")
         try:
             if getattr(bot, 'telegram', None):
                 await bot.telegram.notify_urgent_signal(f"🚨 실전 기동 중단\n{e}")
@@ -747,4 +752,9 @@ if __name__ == "__main__":
         logging.getLogger(__name__).info("사용자에 의해 중단되었습니다.")
     except Exception as e:
         logging.getLogger(__name__).critical(f"시스템 오류: {e}", exc_info=True)
+        try:
+            from config.settings import INSTANCE_ID
+            _remove_own_pid_file(Path(pid_file_name(INSTANCE_ID)), "시스템 오류")
+        except Exception as pid_err:
+            logging.getLogger(__name__).warning(f"PID 파일 정리 실패(시스템 오류): {pid_err}")
         sys.exit(1)

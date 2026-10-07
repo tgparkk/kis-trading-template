@@ -89,3 +89,108 @@ def test_abort_pid_cleanup_failure_does_not_mask_exit(monkeypatch, tmp_path, cap
     assert _run_main_with_abort(monkeypatch, pid_file, tg) == 2
     assert any("PID 파일 정리 실패(기동 중단)" in r.getMessage() for r in caplog.records)
     tg.notify_urgent_signal.assert_awaited_once()
+
+
+def _run_main_with_init_false(monkeypatch, pid_file):
+    """main() 을 initialize()=False 인 가짜 봇으로 실행 → SystemExit code 반환."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    import pytest
+
+    import main as main_mod
+
+    bot = MagicMock()
+    bot.pid_file = pid_file
+    bot.initialize = AsyncMock(return_value=False)
+    monkeypatch.setattr(main_mod, "DayTradingBot", lambda: bot)
+    monkeypatch.setattr("bot.env_guard.assert_correct_environment", lambda *_a, **_k: None)
+    with pytest.raises(SystemExit) as ei:
+        asyncio.run(main_mod.main())
+    return ei.value.code
+
+
+def test_init_false_removes_own_pid_file_and_exits_1(monkeypatch, tmp_path):
+    import os
+
+    pid_file = tmp_path / "robotrader.pid"
+    pid_file.write_text(str(os.getpid()))
+
+    assert _run_main_with_init_false(monkeypatch, pid_file) == 1
+    assert not pid_file.exists()
+
+
+def test_init_false_keeps_pid_file_of_other_process(monkeypatch, tmp_path):
+    import os
+
+    pid_file = tmp_path / "robotrader.pid"
+    pid_file.write_text(str(os.getpid() + 1))
+
+    assert _run_main_with_init_false(monkeypatch, pid_file) == 1
+    assert pid_file.exists()
+
+
+def test_init_false_pid_cleanup_failure_does_not_mask_exit(monkeypatch, tmp_path, caplog):
+    from unittest.mock import MagicMock
+
+    pid_file = MagicMock()
+    pid_file.exists.side_effect = OSError("boom")
+
+    assert _run_main_with_init_false(monkeypatch, pid_file) == 1
+    assert any("PID 파일 정리 실패(초기화 실패)" in r.getMessage() for r in caplog.records)
+
+
+def _run_main_script_with_crash(monkeypatch, tmp_path, pid_text):
+    """`python main.py` 의 최상위 except Exception 경로 — asyncio.run 이 터지는 상태로 __main__ 실행."""
+    import asyncio
+    import runpy
+    from pathlib import Path
+
+    import pytest
+
+    from config.settings import INSTANCE_ID
+    from main import pid_file_name
+
+    def _boom(_coro):
+        _coro.close()
+        raise RuntimeError("crash")
+
+    monkeypatch.chdir(tmp_path)
+    pid_file = Path(pid_file_name(INSTANCE_ID))
+    if pid_text is not None:
+        pid_file.write_text(pid_text)
+    monkeypatch.setattr(asyncio, "run", _boom)
+    main_path = Path(__file__).resolve().parent.parent / "main.py"
+    with pytest.raises(SystemExit) as ei:
+        runpy.run_path(str(main_path), run_name="__main__")
+    return ei.value.code, tmp_path / pid_file
+
+
+def test_toplevel_crash_removes_own_pid_file_and_exits_1(monkeypatch, tmp_path):
+    import os
+
+    code, pid_file = _run_main_script_with_crash(monkeypatch, tmp_path, str(os.getpid()))
+    assert code == 1
+    assert not pid_file.exists()
+
+
+def test_toplevel_crash_keeps_pid_file_of_other_process(monkeypatch, tmp_path):
+    import os
+
+    code, pid_file = _run_main_script_with_crash(monkeypatch, tmp_path, str(os.getpid() + 1))
+    assert code == 1
+    assert pid_file.exists()
+
+
+def test_toplevel_crash_pid_cleanup_failure_does_not_mask_exit(monkeypatch, tmp_path, caplog):
+    import os
+    from pathlib import Path
+
+    def _fail(*_a, **_k):
+        raise OSError("boom")
+
+    monkeypatch.setattr(Path, "read_text", _fail)
+    code, pid_file = _run_main_script_with_crash(monkeypatch, tmp_path, str(os.getpid()))
+    assert code == 1
+    assert pid_file.exists()
+    assert any("PID 파일 정리 실패(시스템 오류)" in r.getMessage() for r in caplog.records)
