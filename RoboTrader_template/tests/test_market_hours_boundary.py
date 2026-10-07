@@ -383,3 +383,30 @@ class TestSuneung2026SpecialDay:
         assert hours['is_special_day'] is False
         assert hours['market_open'] == time(9, 0)
         assert hours['market_close'] == time(15, 30)
+
+
+class TestSuneungAuctionKeys:
+    """수능일(2025-11-13 · 2026-11-19) 동시호가·보호 키 — 기본값 통째 대체로 15:20 폴백되던 결함(D-17 B)"""
+
+    @pytest.mark.parametrize("y,m,d", [(2025, 11, 13), (2026, 11, 19)])
+    def test_four_keys(self, y, m, d):
+        hours = MarketHours.get_market_hours('KRX', kst_dt(y, m, d, 0, 0))
+        assert hours['pre_auction_start'] == time(9, 30)
+        assert hours['opening_protection_end'] == time(10, 5)
+        assert hours['closing_auction_start'] == time(16, 20)
+        assert hours['new_buy_cutoff'] == time(16, 20)
+
+    @pytest.mark.parametrize("y,m,d", [(2025, 11, 13), (2026, 11, 19)])
+    def test_order_gate(self, y, m, d):
+        assert MarketHours.can_place_order(None, 'KRX', kst_dt(y, m, d, 16, 0))
+        assert MarketHours.can_place_order(None, 'KRX', kst_dt(y, m, d, 16, 19))
+        assert not MarketHours.can_place_order(None, 'KRX', kst_dt(y, m, d, 16, 21))
+        assert not MarketHours.can_place_order(None, 'KRX', kst_dt(y, m, d, 9, 45))  # 개장 전
+        assert MarketHours.get_market_phase('KRX', kst_dt(y, m, d, 10, 2)) == MarketPhase.OPENING_PROTECTION
+
+    def test_weekday_default_unchanged(self):
+        hours = MarketHours.get_market_hours('KRX', kst_dt(2026, 11, 18, 0, 0))
+        assert hours['pre_auction_start'] == time(8, 30)
+        assert hours['opening_protection_end'] == time(9, 5)
+        assert hours['closing_auction_start'] == time(15, 20)
+        assert hours['new_buy_cutoff'] == time(15, 20)
