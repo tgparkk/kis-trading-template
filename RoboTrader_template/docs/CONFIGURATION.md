@@ -108,7 +108,7 @@ target_stocks: []
 | `paper_trading` | 각 전략 `strategy.py`(`self._paper_trading`) | `[PAPER]` 로그 접두사 + 시그널 metadata `paper_only`. **모드 스위치가 아니다** — 실주문 여부는 §2-1 `paper_trading` 이 정한다 |
 | `parameters.*` | 전략 클래스 `get_param()` | 전략 고유 파라미터 |
 | `risk_management.max_positions` | 전략 `strategy.py`(K) · `bot/initializer._allocate_strategy_capital()` | **동시보유 한도 K**. 기동 시 `VIRTUAL_CAPITAL_PER_STRATEGY / K` 가 종목당 기본 예산(`core/virtual_trading_manager.py`) |
-| `risk_management.max_daily_trades` | 전략 `strategy.py` | 일일 체결 상한(매수·매도 합산 카운트) |
+| `risk_management.max_daily_trades` | 전략 `strategy.py` | 하루 매수 체결 수 상한(매도는 세지 않음 · 2026-10-08 발효) |
 | `risk_management.take_profit_pct` / `stop_loss_pct` | `core/trading_decision_engine.py` | 손절/익절 **3순위**(`_ratio` 접미도 허용). 사슬 = 1순위 호출자 명시값 → 3순위 이 값 → 4순위 `trading_config.json risk_management` → `constants.DEFAULT_*` |
 | `risk_management.max_per_stock_amount` | `bot/initializer.py` → `VirtualTradingManager` | 종목당 매수 상한(원) |
 | `risk_management.max_hold_days` / `trail_ma` | 전략 `strategy.py` | 전략별 청산 룰 |

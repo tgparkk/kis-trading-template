@@ -145,8 +145,9 @@ class BookPullbackMa5Strategy(BaseStrategy):
         return self._check_buy(stock_code, data)
 
     def on_order_filled(self, order: OrderInfo) -> None:
-        self.daily_trades += 1
         if order.is_buy:
+            # 일일 한도 = 하루 매수 체결 수(매도는 세지 않는다 · 2026-10-08 발효)
+            self.daily_trades += 1
             self.positions[order.stock_code] = {
                 "quantity": order.quantity,
                 "entry_price": order.price,
@@ -168,7 +169,7 @@ class BookPullbackMa5Strategy(BaseStrategy):
 
     def on_market_close(self) -> None:
         self.logger.info(
-            f"장 마감 — 거래 {self.daily_trades}건, 보유 {len(self.positions)}종목"
+            f"장 마감 — 매수 {self.daily_trades}건, 보유 {len(self.positions)}종목"
         )
 
     # ========================================================================
