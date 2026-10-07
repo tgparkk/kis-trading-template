@@ -214,6 +214,15 @@ class MarketHours:
                     'eod_liquidation_minute': 0,    # 16:00 정각
                     'reason': '수능일 (1시간 지연)'
                 },
+                # 수능일 (2026년 · 2027학년도 수능 11-19 목)
+                '2026-11-19': {
+                    'market_open': time(10, 0),     # 10:00
+                    'market_close': time(16, 30),   # 16:30
+                    'buy_cutoff_hour': 13,          # 13시 이후 매수 중단
+                    'eod_liquidation_hour': 16,     # 16시 시장가 일괄매도
+                    'eod_liquidation_minute': 0,    # 16:00 정각
+                    'reason': '수능일 (1시간 지연)'
+                },
                 # 향후 특수일 추가 가능
                 # '2025-12-31': { ... },  # 연말 단축거래
             }

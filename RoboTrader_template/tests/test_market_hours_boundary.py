@@ -366,3 +366,20 @@ class TestBackwardCompatibility:
         info = MarketHours.get_today_info('KRX')
         assert '장 시작' in info
         assert '장 마감' in info
+
+
+class TestSuneung2026SpecialDay:
+    """2027학년도 수능일(2026-11-19 목) 특수일 등록 — 2025-11-13 항목 미러"""
+
+    def test_suneung_2026_hours(self):
+        hours = MarketHours.get_market_hours('KRX', kst_dt(2026, 11, 19, 0, 0))
+        assert hours['is_special_day'] is True
+        assert hours['market_open'] == time(10, 0)
+        assert hours['market_close'] == time(16, 30)
+        assert hours['eod_liquidation_hour'] == 16
+
+    def test_day_before_suneung_is_default(self):
+        hours = MarketHours.get_market_hours('KRX', kst_dt(2026, 11, 18, 0, 0))
+        assert hours['is_special_day'] is False
+        assert hours['market_open'] == time(9, 0)
+        assert hours['market_close'] == time(15, 30)
