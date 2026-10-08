@@ -287,10 +287,10 @@ HOST = "kis.example:9443"
 ROW = {"odno": OD, "orgn_odno": "", "pdno": "005930", "sll_buy_dvsn_cd": "02", "ord_qty": "1",
        "ord_unpr": "207000", "psbl_qty": "1", "krx_fwdg_ord_orgno": "91252", "ord_gno_brno": "91252"}
 ORIG_CANCELLED = {"odno": OD, "orgn_odno": "", "pdno": "005930", "ord_qty": "1", "cncl_yn": "N",
-                  "rmn_qty": "0", "cnc_cfrm_qty": "1", "tot_ccld_qty": "0"}
-ORIG_LIVE = {**ORIG_CANCELLED, "rmn_qty": "1", "cnc_cfrm_qty": "0"}
+                  "rmn_qty": "0", "cncl_cfrm_qty": "1", "tot_ccld_qty": "0"}
+ORIG_LIVE = {**ORIG_CANCELLED, "rmn_qty": "1", "cncl_cfrm_qty": "0"}
 CANCEL_ROW = {"odno": "0000012399", "orgn_odno": OD, "pdno": "005930", "ord_qty": "1", "cncl_yn": "Y",
-              "rmn_qty": "0", "cnc_cfrm_qty": "0", "tot_ccld_qty": "0"}
+              "rmn_qty": "0", "cncl_cfrm_qty": "0", "tot_ccld_qty": "0"}
 CANCEL_OK = {"rt_cd": "0", "msg_cd": "APBK0013", "msg1": "주문 전송 완료 되었습니다.",
              "output": {"KRX_FWDG_ORD_ORGNO": "91252", "ODNO": "0000012399", "ORD_TMD": "083502"}}
 CANCEL_REJ = {"rt_cd": "1", "msg_cd": "APBK0918", "msg1": "정정/취소할 수량이 없습니다.", "output": {}}
