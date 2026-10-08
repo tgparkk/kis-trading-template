@@ -1,1 +1,2 @@
 *.sql -text
+RoboTrader_template/*.bat -text
