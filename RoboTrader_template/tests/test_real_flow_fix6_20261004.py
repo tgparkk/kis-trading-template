@@ -175,9 +175,15 @@ class TestB1PartialFillTimeoutLedger:
         from core.fund_manager import FundManager
 
         broker = _connected_broker()
+        cancelled = []
         fake = _fake_order_api(
-            get_inquire_psbl_rvsecncl_lst=Mock(return_value=_pending_df()),
-            get_order_rvsecncl=Mock(return_value=_cancel_ok_df()),
+            # 잔량 취소 접수 뒤에는 8036R 에서 사라지고 0081R 원주문 행(잔량 0)만 남는다(10-08 실측형)
+            get_inquire_psbl_rvsecncl_lst=Mock(
+                side_effect=lambda *a, **k: pd.DataFrame() if cancelled else _pending_df()),
+            get_order_rvsecncl=Mock(side_effect=lambda *a, **k: cancelled.append(1) or _cancel_ok_df()),
+            get_inquire_daily_ccld_lst=Mock(return_value=pd.DataFrame([{
+                "odno": "0000012345", "ord_qty": "10", "tot_ccld_qty": "3", "rmn_qty": "0",
+                "cncl_yn": "", "cncl_cfrm_qty": "0", "avg_prvs": "70000"}])),
         )
         telegram = AsyncMock()
         om = _make_om(broker=broker, telegram=telegram)
@@ -193,9 +199,10 @@ class TestB1PartialFillTimeoutLedger:
         order = _inject(om)
         order.filled_quantity = 3
 
-        with patch.object(_api_pkg(), "kis_order_api", fake, create=True):
+        with patch.object(_api_pkg(), "kis_order_api", fake, create=True), _no_settle_wait():
             await om._handle_partial_fill_timeout("0000012345", order, 3)
         fake.get_order_rvsecncl.assert_called_once()
+        assert fake.get_inquire_daily_ccld_lst.call_count == 2      # 확정 재조회 연속 2회(N1·N2)
 
         # 자금 장부: 체결분만 투자, 나머지 예약 환불, 보유 레지스트리는 (code, owner)
         assert fm.invested_funds == pytest.approx(210_000)
@@ -912,11 +919,13 @@ class TestReview2FillBetweenPrecheckAndCancel:
     async def test_late_partial_fill_after_cancel_is_accounted(self):
         om, broker, fm, strat, slot, order = self._setup([
             self._pending_row(0),                         # 사전 조회: 체결 0
-            _executed_row(ccld=3, rmn=0, avg="70100"),    # 취소 직후 재조회: 3주 체결돼 있었다
+            _executed_row(ccld=3, rmn=0, avg="70100"),    # 취소 뒤 재조회: 3주 체결돼 있었다
+            _executed_row(ccld=3, rmn=0, avg="70100"),    # 연속 2회 같은 체결수 = 확정(N2)
         ])
-        await om._handle_timeout(order.order_id)
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
 
-        assert broker.get_order_status.call_count == 2 and broker.cancel_order.call_count == 1
+        assert broker.get_order_status.call_count == 3 and broker.cancel_order.call_count == 1
         assert order.status == OrderStatus.FILLED and order.quantity == 3
         assert order.order_id not in om.pending_orders
         assert [o.order_id for o in om.completed_orders].count(order.order_id) == 1
@@ -933,8 +942,10 @@ class TestReview2FillBetweenPrecheckAndCancel:
             self._pending_row(0),                         # 사전 조회
             None,                                         # 취소 직후 재조회 실패(CB OPEN)
             _executed_row(ccld=3, rmn=0, avg="70000"),    # 연기 뒤 재조회 성공
+            _executed_row(ccld=3, rmn=0, avg="70000"),    # 연속 2회 같은 체결수 = 확정(N2)
         ])
-        await om._handle_timeout(order.order_id)
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
         # 닫지 않고 되살려 연기 — 예약 복원·슬롯 BUY_PENDING 유지
         assert order.order_id in om.pending_orders and order.order_id in om._cancel_confirmed_ids
         assert fm.has_reservation(order.order_id) and fm.reserved_funds == pytest.approx(700_000)
@@ -943,7 +954,8 @@ class TestReview2FillBetweenPrecheckAndCancel:
         assert await om._check_order_status(order.order_id) is True
         assert broker.get_order_status.call_count == 2
 
-        await om._handle_timeout(order.order_id)          # 연기 시한 도래
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)      # 연기 시한 도래
         assert broker.cancel_order.call_count == 1        # 취소 API 재호출 없음
         assert order.status == OrderStatus.FILLED and order.quantity == 3
         assert fm.invested_funds == pytest.approx(210_000) and fm.reserved_funds == pytest.approx(0)
@@ -953,8 +965,9 @@ class TestReview2FillBetweenPrecheckAndCancel:
     @pytest.mark.asyncio
     async def test_zero_fill_after_cancel_keeps_previous_behaviour(self):
         om, broker, fm, strat, slot, order = self._setup([
-            self._pending_row(0), _executed_row(ccld=0, rmn=0)])
-        await om._handle_timeout(order.order_id)
+            self._pending_row(0), _executed_row(ccld=0, rmn=0), _executed_row(ccld=0, rmn=0)])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
         assert order.status == OrderStatus.CANCELLED
         assert fm.reserved_funds == pytest.approx(0) and fm.invested_funds == pytest.approx(0)
         assert slot.state == StockState.COMPLETED and strat.daily_trades == 0
@@ -1036,3 +1049,250 @@ class TestReview4StartupCancelRecheck:
              pytest.raises(LiveStartupAbort):
             await r._restore_holdings_from_real_account()
         assert broker.get_pending_orders.call_count == 1 + 3        # 발견 1 + 재확인 3
+
+
+# =============================================================================
+# N1 묶음(2026-10-08) — DELTA_REVIEW_1007 N1·N2·N3·N4·N6 + 10-08 실측(PROBE_RESULT_1008)
+# =============================================================================
+def _gone_row(ccld=0, rmn=0, avg="0"):
+    """10-08 실측형 0081R 원주문 행(취소 접수 +2초): cncl_yn 빈 문자열 · cncl_cfrm_qty "0"."""
+    return {"odno": "0000012345", "_status": "executed", "ord_qty": "10",
+            "tot_ccld_qty": str(ccld), "rmn_qty": str(rmn), "cncl_yn": "",
+            "cncl_cfrm_qty": "0", "rjct_qty": "0", "avg_prvs": avg}
+
+
+def _live_row(ccld=0):
+    """8036R(정정취소가능) 행 — 취소가 아직 반영되지 않은 주문."""
+    return {"odno": "0000012345", "_status": "pending", "ord_qty": "10",
+            "tot_ccld_qty": str(ccld), "psbl_qty": str(10 - ccld)}
+
+
+_UNKNOWN_ROW = {"odno": "0000012345", "_status": "unknown", "status_unknown": True, "cncl_yn": "N"}
+
+
+def _no_settle_wait():
+    return patch("core.orders.order_timeout.ORDER_CANCEL_SETTLE_WAIT_SECONDS", 0)
+
+
+def _ledger_setup(statuses):
+    """실 FundManager·TSM·전략 + 순서대로 응답하는 get_order_status(목록 소진 뒤 None = 조회 실패)."""
+    from core.fund_manager import FundManager
+    seq = list(statuses)
+    broker = Mock()
+    broker.get_order_status.side_effect = lambda oid: seq.pop(0) if seq else None
+    broker.cancel_order.return_value = _CANCEL_OK
+    telegram = AsyncMock()
+    om = _make_om(broker=broker, telegram=telegram)
+    fm = FundManager(initial_funds=10_000_000)
+    om.set_fund_manager(fm)
+    assert fm.reserve_funds("0000012345", 700_000)
+    strat = _daytrading_strategy()
+    tsm = _real_tsm(om, {DT_KEY: strat})
+    slot = _register_slot(tsm)
+    slot.is_buying = True
+    order = _inject(om, age_sec=400, timeout_sec=300)
+    return om, broker, telegram, fm, strat, slot, order
+
+
+def _alerts(telegram, text):
+    return [c for c in telegram.notify_system_status.call_args_list if text in str(c.args[0])]
+
+
+class TestN1PartialCancelRequery:
+    """N1: 사전조회 부분체결 → 잔량 취소 성공 → 재조회 없이 사전조회 수량으로 회계하던 경합."""
+
+    @pytest.mark.asyncio
+    async def test_fill_between_precheck_and_partial_cancel_is_accounted(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([
+            _live_row(3),                                            # 사전조회: 3/10 체결
+            _gone_row(5, avg="70100"), _gone_row(5, avg="70100"),    # 잔량 취소 뒤 연속 2회: 5주
+        ])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+
+        assert broker.cancel_order.call_count == 1 and broker.get_order_status.call_count == 3
+        assert order.status == OrderStatus.FILLED and order.quantity == 5, "추가 체결 2주가 장부 밖"
+        assert order.order_id not in om.pending_orders
+        assert fm.invested_funds == pytest.approx(5 * 70100) and fm.reserved_funds == pytest.approx(0)
+        assert slot.state == StockState.POSITIONED and slot.position.quantity == 5
+        assert strat.daily_trades == 1 and strat.positions["005930"]["quantity"] == 5
+        assert om.db_manager.save_real_buy.call_args.kwargs["quantity"] == 5
+
+    @pytest.mark.asyncio
+    async def test_requery_failure_marks_confirmed_defers_and_keeps_precheck_floor(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([
+            _live_row(3), None,                  # 잔량 취소 뒤 재조회 실패(CB OPEN 등)
+            _gone_row(2), _gone_row(2),          # 연기 뒤 0081R 이 사전조회보다 작게 보임
+        ])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+            assert order.order_id in om.pending_orders and order.order_id in om._cancel_confirmed_ids
+            assert om._timeout_defer_counts[order.order_id] == 1
+            assert fm.reserved_funds == pytest.approx(700_000) and fm.invested_funds == pytest.approx(0)
+            om.db_manager.save_real_buy.assert_not_called()
+            await om._handle_timeout(order.order_id)                 # 연기 시한 → _resolve_cancel_confirmed
+
+        assert broker.cancel_order.call_count == 1                   # 잔량 취소 재호출 없음
+        assert order.status == OrderStatus.FILLED and order.quantity == 3   # max(사전 3, 재조회 2)
+        assert fm.invested_funds == pytest.approx(3 * 70000) and fm.reserved_funds == pytest.approx(0)
+        assert slot.position.quantity == 3 and order.order_id not in om._cancel_confirmed_ids
+
+
+class TestN2CancelAcceptedIsNotFinal:
+    """N2(10-08 실측): 취소 접수 직후 조회는 «최종»이 아니다.
+
+    대기 ≥2초 · 8036R 잔존/불명/rmn_qty>0 이면 연기 · «8036R 부재 ∧ 0081R rmn_qty==0» 이 연속 2회
+    같은 체결수일 때만 확정 · cncl_yn·cncl_cfrm_qty 는 판정에 쓰지 않는다(실측 '' · '0').
+    """
+
+    @pytest.mark.asyncio
+    async def test_waits_before_requery_and_needs_two_matching_reads(self):
+        from config.constants import ORDER_CANCEL_SETTLE_WAIT_SECONDS
+        assert ORDER_CANCEL_SETTLE_WAIT_SECONDS >= 2
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup(
+            [_live_row(0), _gone_row(0), _gone_row(0)])
+        events = []
+        status_fn = broker.get_order_status.side_effect
+        broker.get_order_status.side_effect = lambda oid: events.append("조회") or status_fn(oid)
+        broker.cancel_order.side_effect = lambda *a, **k: events.append("취소") or _CANCEL_OK
+
+        async def fake_sleep(sec, *a, **k):
+            events.append(("대기", sec))
+
+        with patch("core.orders.order_timeout.asyncio.sleep", fake_sleep):
+            await om._handle_timeout(order.order_id)
+
+        w = ("대기", ORDER_CANCEL_SETTLE_WAIT_SECONDS)
+        assert events == ["조회", "취소", w, "조회", w, "조회"]
+        assert order.status == OrderStatus.CANCELLED and order.order_id not in om.pending_orders
+        assert fm.reserved_funds == pytest.approx(0) and slot.state == StockState.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_still_in_cancellable_list_after_cancel_defers(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([_live_row(0), _live_row(0)])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+        assert order.status != OrderStatus.CANCELLED, "8036R 에 살아 있는 주문을 체결 0 으로 닫았다"
+        assert order.order_id in om.pending_orders and order.order_id in om._cancel_confirmed_ids
+        assert om._timeout_defer_counts[order.order_id] == 1
+        assert fm.reserved_funds == pytest.approx(700_000)           # 예약 복원
+        assert slot.state == StockState.BUY_PENDING
+        assert broker.get_order_status.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_single_zero_read_is_not_final_and_failure_breaks_the_chain(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([
+            _live_row(0), _gone_row(0), None,      # 후보 1회 뒤 조회 실패 → 미확정
+            _gone_row(0), _gone_row(0),            # 연기 뒤 새로 연속 2회
+        ])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+            assert order.order_id in om.pending_orders and order.status != OrderStatus.CANCELLED
+            await om._handle_timeout(order.order_id)
+        assert broker.get_order_status.call_count == 5
+        assert order.status == OrderStatus.CANCELLED and fm.reserved_funds == pytest.approx(0)
+        assert slot.state == StockState.COMPLETED and strat.daily_trades == 0
+
+    @pytest.mark.asyncio
+    async def test_reads_must_agree_on_fill_count(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([
+            _live_row(0), _gone_row(0), _gone_row(2, avg="70050"),   # 0 → 2 불일치 = 미확정
+            _gone_row(2, avg="70050"),                               # 연기 뒤: 직전 후보 2 와 일치 → 확정
+        ])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+            assert order.order_id in om.pending_orders and order.status != OrderStatus.CANCELLED
+            await om._handle_timeout(order.order_id)
+        assert broker.get_order_status.call_count == 4
+        assert order.status == OrderStatus.FILLED and order.quantity == 2
+        assert fm.invested_funds == pytest.approx(2 * 70050) and fm.reserved_funds == pytest.approx(0)
+
+    @pytest.mark.asyncio
+    async def test_remaining_qty_still_shown_after_partial_cancel_defers(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup(
+            [_live_row(3), _gone_row(3, rmn=7), _gone_row(3, rmn=7)])   # 같은 값 2회여도 잔량>0 이면 미확정
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+        assert broker.get_order_status.call_count == 2                  # 후보 아님 → 곧바로 연기
+        assert order.order_id in om.pending_orders and order.order_id in om._cancel_confirmed_ids
+        assert order.status != OrderStatus.FILLED and fm.invested_funds == pytest.approx(0)
+        om.db_manager.save_real_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_defer_exhausted_closes_with_single_manual_alert(self):
+        from config.constants import ORDER_TIMEOUT_DEFER_MAX
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([_live_row(0)] * 20)
+        with _no_settle_wait():
+            for _ in range(ORDER_TIMEOUT_DEFER_MAX):
+                await om._handle_timeout(order.order_id)
+                assert order.order_id in om.pending_orders
+            assert not _alerts(telegram, "수동 확인 필요")
+            await om._handle_timeout(order.order_id)
+        assert order.order_id not in om.pending_orders and order.status == OrderStatus.CANCELLED
+        assert len(_alerts(telegram, "수동 확인 필요")) == 1
+        assert broker.cancel_order.call_count == 1
+        assert fm.reserved_funds == pytest.approx(0) and slot.state == StockState.COMPLETED
+
+
+class TestN3DeferCountNotResetByCancel:
+    """N3: 경로 A(조회 실패 연기) 도중 취소가 성공해도 연기 횟수를 처음부터 다시 세지 않는다(합산 ≤5)."""
+
+    @pytest.mark.asyncio
+    async def test_path_a_count_carries_into_path_b(self):
+        from config.constants import ORDER_TIMEOUT_DEFER_MAX
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([None, None, None, _live_row(0)])
+        broker.cancel_order.side_effect = [_NOT_FOUND] * 3 + [_CANCEL_OK]
+        with patch("core.orders.order_timeout.ORDER_CANCEL_RETRY_INTERVAL", 0), _no_settle_wait():
+            await om._handle_timeout(order.order_id)        # 경로 A: 취소 실패 + 재확인 실패 → 연기 1
+            assert om._timeout_defer_counts[order.order_id] == 1
+            await om._handle_timeout(order.order_id)        # 취소 성공 → 재조회 실패 → 경로 B 연기
+            assert order.order_id in om._cancel_confirmed_ids
+            assert om._timeout_defer_counts[order.order_id] == 2, "취소 성공이 연기 횟수를 지웠다"
+            calls = 2
+            while order.order_id in om.pending_orders and calls < 20:
+                await om._handle_timeout(order.order_id)
+                calls += 1
+        assert calls == ORDER_TIMEOUT_DEFER_MAX + 1          # 합산 연기 5회 + 종결 1회
+        assert len(_alerts(telegram, "수동 확인 필요")) == 1
+
+
+class TestN4ViGuardSkipsCancelConfirmed:
+    """N4: 확인 표식 주문에 VI 가 걸려도 매 루프 「[종목 VI] … 취소」 경보 + 종결 지연을 만들지 않는다."""
+
+    @pytest.mark.asyncio
+    async def test_vi_on_confirmed_order_alerts_once_and_still_resolves(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([_live_row(0), None])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)        # 취소 접수 · 재조회 실패 → 확인 표식 + 연기
+        assert order.order_id in om._cancel_confirmed_ids
+        cb = Mock()
+        cb.is_market_halted.return_value = False
+        cb.is_vi_active.return_value = True
+        with patch("config.market_hours.get_circuit_breaker_state", return_value=cb), _no_settle_wait():
+            for _ in range(5):
+                await om._monitor_pending_orders()
+            assert len(_alerts(telegram, "[종목 VI]")) == 1
+            assert broker.cancel_order.call_count == 1
+            # 연기 시한 도래 → VI 가 켜져 있어도 종결 경로(_resolve_cancel_confirmed)가 돈다
+            broker.get_order_status.side_effect = lambda oid: _gone_row(0)
+            om.order_timeouts[order.order_id] = now_kst() - timedelta(seconds=1)
+            await om._monitor_pending_orders()
+        assert order.order_id not in om.pending_orders and order.status == OrderStatus.CANCELLED
+        assert len(_alerts(telegram, "[종목 VI]")) == 1
+
+
+class TestN6StatusUnknownAfterCancelDefers:
+    """N6: 취소 뒤 «두 조회 성공 · 어디에도 없음»(status_unknown)을 체결 0 으로 닫지 않는다(B3)."""
+
+    @pytest.mark.asyncio
+    async def test_unknown_after_cancel_is_not_zero_fill(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup(
+            [_live_row(0), _UNKNOWN_ROW, _UNKNOWN_ROW])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+            assert order.status != OrderStatus.CANCELLED and order.order_id in om.pending_orders
+            assert order.order_id in om._cancel_confirmed_ids
+            assert fm.reserved_funds == pytest.approx(700_000)
+            await om._handle_timeout(order.order_id)        # 연기 뒤에도 불명 → 다시 연기
+        assert order.order_id in om.pending_orders and om._timeout_defer_counts[order.order_id] == 2
+        assert slot.state == StockState.BUY_PENDING and not _alerts(telegram, "수동 확인 필요")

@@ -14,7 +14,7 @@ from utils.korean_time import now_kst
 from utils.async_helpers import run_with_timeout
 from config.constants import (
     ORDER_CANCEL_MAX_RETRIES, ORDER_CANCEL_RETRY_INTERVAL,
-    ORDER_TIMEOUT_DEFER_SECONDS, ORDER_TIMEOUT_DEFER_MAX,
+    ORDER_TIMEOUT_DEFER_SECONDS, ORDER_TIMEOUT_DEFER_MAX, ORDER_CANCEL_SETTLE_WAIT_SECONDS,
     COMMISSION_RATE, SECURITIES_TAX_RATE,
 )
 from .order_executor import coerce_order_result
@@ -40,7 +40,9 @@ class OrderTimeoutMixin:
 
             order = self.pending_orders[order_id]
             elapsed_time = (now_kst() - order.timestamp).total_seconds()
-            deferred_before = self._timeout_defer_counts.get(order_id, 0) > 0
+            # 취소 성공 시 cancel_order 의 _move_to_completed 가 연기 횟수를 지우므로 미리 잡아 둔다(N3)
+            prior_defers = self._timeout_defer_counts.get(order_id, 0)
+            deferred_before = prior_defers > 0
             self.logger.warning(f"5분 타임아웃 처리: {order_id} ({order.stock_code}) "
                               f"- 경과시간: {elapsed_time:.0f}초"
                               f"{' (종결 연기 뒤 재처리)' if deferred_before else ''}")
@@ -78,7 +80,7 @@ class OrderTimeoutMixin:
             if cancel_success:
                 self.logger.info(f"타임아웃 취소 성공: {order_id}")
                 # 사전 조회~취소 사이 일부 체결(B5 경합)·재조회 실패 처리(리뷰 중요2)
-                if await self._account_fill_after_cancel(saved_order):
+                if await self._account_fill_after_cancel(saved_order, prior_defers):
                     return
             else:
                 self.logger.error(f"타임아웃 취소 최종 실패: {order_id}")
@@ -230,6 +232,24 @@ class OrderTimeoutMixin:
         # _cancel_with_retry → cancel_order → _move_to_completed 로 pending_orders에서 제거되어
         # 이후 _move_to_completed 재호출 시 order가 없어지는 이중 호출 버그 방지
         cancel_success = True if cancel_done else await self._cancel_remaining_only(order_id)
+
+        if cancel_success and not cancel_done:
+            # N1·N2(2026-10-08): 잔량 취소 접수 직후 수량은 «최종»이 아니다 — 사전조회~취소 사이 추가
+            # 체결분까지 확정 재조회로 보고 max(사전조회, 확정 체결수)로 회계한다. 확정 전이면 확인 표식 +
+            # 연기(이후 _resolve_cancel_confirmed 가 취소 API 재호출 없이 이어받는다).
+            self._cancel_confirmed_ids.add(order_id)
+            settled, status = await self._settle_after_cancel(order_id, just_cancelled=True)
+            if settled is None:
+                await self._defer_or_close_unsettled(order, status, "잔량 취소 접수 뒤 체결수량 미확정")
+                return
+            self._cancel_confirmed_ids.discard(order_id)
+            if settled > filled_qty:
+                self.logger.warning(
+                    f"⚠️ 잔량 취소 직전 추가 체결 감지: {order_id} ({order.stock_code}) "
+                    f"사전조회 {filled_qty}주 → 확정 {settled}주"
+                )
+            await self._close_cancelled_with_fill(order, max(filled_qty, settled), status)
+            return
 
         filled_price = getattr(order, 'filled_price', None) or order.price
 
@@ -498,12 +518,14 @@ class OrderTimeoutMixin:
             self.logger.warning(f"취소 후 체결 재조회 예외 {order_id}: {e}")
             return None
 
-    def _reopen_after_cancel(self: 'OrderManagerBase', order) -> None:
+    def _reopen_after_cancel(self: 'OrderManagerBase', order, prior_defers: int = 0) -> None:
         """cancel_order 가 CANCELLED 로 닫은 주문을 pending 으로 되돌린다(예약도 복원).
 
-        취소 직후 재조회에서 체결분을 발견했거나(→ 부분체결 회계) 재조회가 실패했을 때
+        취소 직후 재조회에서 체결분을 발견했거나(→ 부분체결 회계) 체결수량이 확정되지 않았을 때
         (→ 종결 연기) 쓴다. 매수 예약은 cancel_order 의 _move_to_completed 가 이미 풀었으므로
         같은 금액(주문가×주문수량)으로 다시 잡는다 — 이후 confirm_order 가 체결분만 투자로 옮긴다.
+        prior_defers: 취소 전 경로 A(조회 실패) 연기 횟수 — _move_to_completed 가 지운 것을
+            이어받아 합산 상한(ORDER_TIMEOUT_DEFER_MAX)을 지킨다(N3 · 2026-10-08).
         """
         order_id = order.order_id
         if order_id not in self.pending_orders:
@@ -519,77 +541,136 @@ class OrderTimeoutMixin:
                         f"🚨 취소 후 재개 주문 예약 복원 실패: {order_id} ({order.stock_code}) — "
                         f"자금 장부 수동 확인 필요"
                     )
+        # N3: 경로 A 연기 횟수를 이어받는다(취소 성공이 횟수를 1부터 다시 세게 만들지 않게)
+        if prior_defers > self._timeout_defer_counts.get(order_id, 0):
+            self._timeout_defer_counts[order_id] = prior_defers
         self.order_timeouts[order_id] = now_kst() + timedelta(seconds=ORDER_TIMEOUT_DEFER_SECONDS)
 
-    async def _account_fill_after_cancel(self: 'OrderManagerBase', order) -> bool:
-        """취소 «성공» 직후 1회 재조회(리뷰 중요2 · B1 수정으로 생긴 «경보 없는 고아» 차단).
+    def _settled_fill_candidate(self: 'OrderManagerBase', status):
+        """취소 접수 뒤 조회 1회가 «확정 후보»면 그 체결수(tot_ccld_qty), 아니면 None (N2·N6 · 2026-10-08).
+
+        후보 = 8036R(정정취소가능)에 없음 ∧ 0081R 원주문 행 rmn_qty == 0 — broker 가 _status='executed'
+        로 준 행. 조회 실패(None)·불명(status_unknown, B3: 불명 ≠ 미체결)·8036R 잔존(_status='pending',
+        취소 미반영)·rmn_qty>0(잔량이 남아 보임 · 중요3 꼴)은 후보가 아니다.
+        cncl_yn·cncl_cfrm_qty 는 보지 않는다 — 10-08 실측: 취소 접수 +2초에 ''·'0'(채워지는 시점 모름).
+        """
+        if not isinstance(status, dict) or status.get('status_unknown'):
+            return None
+        if status.get('_status') != 'executed':
+            return None
+        if self._parse_int(status.get('rmn_qty', 0)) > 0:
+            return None
+        return self._parse_int(status.get('tot_ccld_qty', 0))
+
+    async def _settle_after_cancel(self: 'OrderManagerBase', order_id: str, just_cancelled: bool):
+        """취소 접수 뒤 체결수량 «확정» 판정 (N2 · 2026-10-08).
+
+        확정 = 확정 후보(_settled_fill_candidate)가 연속 2회(간격 ≥ ORDER_CANCEL_SETTLE_WAIT_SECONDS)
+        같은 체결수를 줄 때. 취소 직후(just_cancelled)면 첫 조회 전에도 기다린다(실측: 0~2초 미관측).
+        직전 연기 때 본 후보가 있으면 그것을 첫 회로 센다(연기 폭 45초 ≥ 대기). 후보가 아닌 조회가
+        끼면 연속이 끊긴다.
+
+        Returns:
+            (확정 체결수 | None, 마지막 조회 결과) — None 이면 미확정(호출자가 연기).
+        """
+        prev = self._cancel_settle_obs.pop(order_id, None)
+        status = None
+        for i in range(1 if prev is not None else 2):
+            if just_cancelled or i > 0:
+                await asyncio.sleep(ORDER_CANCEL_SETTLE_WAIT_SECONDS)
+            status = await self._query_order_status_once(order_id)
+            seen = self._settled_fill_candidate(status)
+            if seen is None:
+                return None, status
+            if prev is not None and seen == prev:
+                return seen, status
+            prev = seen
+        self._cancel_settle_obs[order_id] = prev
+        return None, status
+
+    async def _account_fill_after_cancel(self: 'OrderManagerBase', order, prior_defers: int = 0) -> bool:
+        """취소 «성공» 직후 체결수량 확정 재조회(리뷰 중요2 · N2 · B1 수정으로 생긴 «경보 없는 고아» 차단).
 
         사전 조회(체결 0)~취소 사이 1~2초에 일부가 체결되면, 종전엔 CANCELLED·예약 전액
         해제·슬롯 COMPLETED 로 닫혀 체결 주식이 장부·손절 밖에 남았다.
 
         Returns:
-            True  = 이 함수가 주문을 맡았다(체결분 회계로 전환 · 또는 재조회 실패로 종결 연기)
+            True  = 이 함수가 주문을 맡았다(체결분 회계로 전환 · 또는 체결수량 미확정으로 종결 연기)
                     → 호출자는 «미체결 취소» 후처리(슬롯 COMPLETED)를 하지 않는다.
-            False = 체결 0 확인(또는 판단 재료 없음) → 종전 취소 후처리 그대로.
+            False = 체결 0 확정(연속 2회) → 종전 취소 후처리 그대로.
         """
         order_id = order.order_id
-        status = await self._query_order_status_once(order_id)
-        if status is None:
-            self._reopen_after_cancel(order)
-            self._cancel_confirmed_ids.add(order_id)
-            self._defer_timeout_close(order_id, "취소 성공 후 체결수량 재조회 실패")
+        settled, status = await self._settle_after_cancel(order_id, just_cancelled=True)
+        if settled == 0:
+            return False
+        self._reopen_after_cancel(order, prior_defers)
+        if settled is None:
+            await self._defer_or_close_unsettled(order, status, "취소 접수 뒤 체결수량 미확정")
             return True
-        if not isinstance(status, dict):
-            return False
-        filled = self._parse_int(status.get('tot_ccld_qty', 0))
-        if filled <= 0:
-            return False
         self.logger.warning(
-            f"⚠️ 취소 직전 일부 체결 감지: {order_id} ({order.stock_code}) {filled}/{order.quantity}주 "
+            f"⚠️ 취소 직전 일부 체결 감지: {order_id} ({order.stock_code}) {settled}/{order.quantity}주 "
             f"— 체결분 회계로 전환"
         )
-        self._reopen_after_cancel(order)
-        await self._account_cancelled_fill(order, filled, status)
+        await self._account_cancelled_fill(order, settled, status)
         return True
 
-    async def _account_cancelled_fill(self: 'OrderManagerBase', order, filled: int, status: dict) -> None:
+    async def _account_cancelled_fill(self: 'OrderManagerBase', order, filled: int, status) -> None:
         """취소가 접수된 주문의 체결분을 부분체결 타임아웃 회계로 처리한다(취소 API 재호출 없음)."""
         order.filled_quantity = filled
+        raw_avg = status.get('avg_prvs', '') if isinstance(status, dict) else ''
         try:
-            avg = float(str(status.get('avg_prvs', '') or 0).replace(',', '').strip() or 0)
+            avg = float(str(raw_avg or 0).replace(',', '').strip() or 0)
         except (ValueError, TypeError, AttributeError):
             avg = 0.0
         if avg > 0:
             order.filled_price = avg
         await self._handle_partial_fill_timeout(order.order_id, order, filled, cancel_done=True)
 
-    async def _resolve_cancel_confirmed(self: 'OrderManagerBase', order_id: str) -> None:
-        """취소는 접수됐지만 체결수량을 못 본 주문 — 재조회로 종결(실패면 연기, 상한 소진 시 경보 후 종결)."""
-        order = self.pending_orders.get(order_id)
-        if order is None:
-            self._cancel_confirmed_ids.discard(order_id)
-            return
-        status = await self._query_order_status_once(order_id)
-        if status is None:
-            if self._defer_timeout_close(order_id, "취소 접수 후 체결수량 재조회 실패"):
-                return
-            self._log_defer_exhausted(order_id, order)
-            if self.telegram:
-                try:
-                    await self.telegram.notify_system_status(
-                        f"주문 취소 후 체결수량 확인 불가 - 수동 확인 필요: {order.stock_code} 주문 {order_id}"
-                    )
-                except Exception:
-                    pass
-        self._cancel_confirmed_ids.discard(order_id)
-        filled = self._parse_int(status.get('tot_ccld_qty', 0)) if isinstance(status, dict) else 0
+    async def _close_cancelled_with_fill(self: 'OrderManagerBase', order, filled: int, status) -> None:
+        """취소 접수 주문을 종결한다 — 체결분이 있으면 부분체결 회계, 없으면 CANCELLED + 슬롯 통보."""
         if filled > 0:
             await self._account_cancelled_fill(order, filled, status)
             return
         order.status = OrderStatus.CANCELLED
-        self._move_to_completed(order_id)
-        self.logger.info(f"취소 접수 주문 종결(체결 0): {order_id} ({order.stock_code})")
+        self._move_to_completed(order.order_id)
+        self.logger.info(f"취소 접수 주문 종결(체결 0): {order.order_id} ({order.stock_code})")
         await self._notify_trading_manager_timeout_with_order(order)
+
+    async def _defer_or_close_unsettled(self: 'OrderManagerBase', order, status, reason: str) -> None:
+        """체결수량 미확정 — 확인 표식 + 연기. 상한 소진이면 「수동 확인」 경보와 함께 아는 만큼으로 종결
+        (B3: 불명 ≠ 미체결 — 경보 없이 체결 0 으로 닫지 않는다)."""
+        order_id = order.order_id
+        self._cancel_confirmed_ids.add(order_id)
+        if self._defer_timeout_close(order_id, reason):
+            return
+        self._log_defer_exhausted(order_id, order)
+        if self.telegram:
+            try:
+                await self.telegram.notify_system_status(
+                    f"주문 취소 후 체결수량 확인 불가 - 수동 확인 필요: {order.stock_code} 주문 {order_id}"
+                )
+            except Exception:
+                pass
+        self._cancel_confirmed_ids.discard(order_id)
+        seen = self._parse_int(status.get('tot_ccld_qty', 0)) if isinstance(status, dict) else 0
+        known = max(getattr(order, 'filled_quantity', 0) or 0, seen,
+                    self._cancel_settle_obs.pop(order_id, 0))
+        await self._close_cancelled_with_fill(order, known, status)
+
+    async def _resolve_cancel_confirmed(self: 'OrderManagerBase', order_id: str) -> None:
+        """취소는 접수됐지만 체결수량이 확정되지 않은 주문 — 확정 재조회로 종결(미확정이면 연기,
+        상한 소진 시 경보 후 종결). 체결수 = max(사전조회 체결수, 확정 체결수)(N1)."""
+        order = self.pending_orders.get(order_id)
+        if order is None:
+            self._cancel_confirmed_ids.discard(order_id)
+            return
+        settled, status = await self._settle_after_cancel(order_id, just_cancelled=False)
+        if settled is None:
+            await self._defer_or_close_unsettled(order, status, "취소 접수 뒤 체결수량 미확정")
+            return
+        self._cancel_confirmed_ids.discard(order_id)
+        await self._close_cancelled_with_fill(
+            order, max(getattr(order, 'filled_quantity', 0) or 0, settled), status)
 
     async def _force_timeout_cleanup_safe(self: 'OrderManagerBase', order_id: str) -> None:
         """예외 발생 시 안전한 강제 상태 정리"""

@@ -499,9 +499,13 @@ class TestSellPartialTimeoutFees:
         )
         om.pending_orders["ORD-PT"] = order
         om._cancel_remaining_only = AsyncMock(return_value=True)
+        # 잔량 취소 뒤 확정 재조회(N1·N2 · 2026-10-08): 0081R 원주문 행 6주 체결 · 잔량 0
+        broker.get_order_status.return_value = {
+            '_status': 'executed', 'tot_ccld_qty': '6', 'rmn_qty': '0', 'cncl_yn': ''}
 
         # 매수원가=매도가=10,000 → gross 손익 0. 수수료/세금 차감 시 음수가 되어야 한다.
-        await om._handle_partial_fill_timeout("ORD-PT", order, filled_qty=6)
+        with patch('core.orders.order_timeout.ORDER_CANCEL_SETTLE_WAIT_SECONDS', 0):
+            await om._handle_partial_fill_timeout("ORD-PT", order, filled_qty=6)
 
         fm.adjust_pnl.assert_called_once()
         pnl_arg = fm.adjust_pnl.call_args[0][0]

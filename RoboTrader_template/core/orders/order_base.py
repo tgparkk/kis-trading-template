@@ -47,6 +47,10 @@ class OrderManagerBase:
         # (2026-10-04 리뷰 중요1·2 — order_timeout._defer_timeout_close / _resolve_cancel_confirmed)
         self._timeout_defer_counts: Dict[str, int] = {}
         self._cancel_confirmed_ids: Set[str] = set()
+        # 취소 접수 뒤 직전 «확정 후보» 체결수(연속 2회 판정) · VI 경보를 이미 보낸 확인 표식 주문
+        # (2026-10-08 N2·N4 — order_timeout._settle_after_cancel / order_monitor VI 가드)
+        self._cancel_settle_obs: Dict[str, int] = {}
+        self._vi_notified_ids: Set[str] = set()
 
         # 모니터링 상태
         self.is_monitoring = False
@@ -168,6 +172,8 @@ class OrderManagerBase:
             # 종결 연기 표식 정리
             getattr(self, '_timeout_defer_counts', {}).pop(order_id, None)
             getattr(self, '_cancel_confirmed_ids', set()).discard(order_id)
+            getattr(self, '_cancel_settle_obs', {}).pop(order_id, None)
+            getattr(self, '_vi_notified_ids', set()).discard(order_id)
 
             # FundManager 연동: 취소/타임아웃 시 예약 해제
             from ..models import OrderStatus

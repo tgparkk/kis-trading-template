@@ -778,12 +778,12 @@ class KISAPIManager:
                 for idx, record in all_filled_records.iterrows():
                     # 🔧 개선: 다양한 체결량 필드명 확인 및 안전한 변환
                     # KIS API는 응답 시점에 따라 다른 필드명 사용 가능 (API 문서 기준)
-                    possible_qty_fields = ['tot_ccld_qty', 'ord_qty', 'rmn_qty', 'cnc_cfrm_qty']
+                    possible_qty_fields = ['tot_ccld_qty', 'ord_qty', 'rmn_qty', 'cncl_cfrm_qty']
                     ccld_qty_str = '0'
                     ord_qty_str = '0'
                     
                     # 체결량 필드 찾기 (API 문서 기준 우선순위 순으로)
-                    for field in ['tot_ccld_qty', 'ccld_qty', 'cnc_cfrm_qty']:
+                    for field in ['tot_ccld_qty', 'ccld_qty', 'cncl_cfrm_qty']:
                         if field in record and record[field] not in ['', '-', 'None', 'nan', None]:
                             ccld_qty_str = str(record[field]).strip()
                             break

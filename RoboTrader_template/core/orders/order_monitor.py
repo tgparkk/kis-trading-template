@@ -78,7 +78,25 @@ class OrderMonitorMixin:
                         vi_active = cb_state.is_vi_active(order.stock_code)
                     except Exception:
                         pass
-                    if market_halted or vi_active:
+                    if (market_halted or vi_active) and order_id in getattr(self, '_cancel_confirmed_ids', ()):
+                        # N4(2026-10-08): 취소가 이미 접수된 주문(체결수량 확정 대기)은 다시 취소하지
+                        # 않는다 — 경보는 한 번만, 종결은 시간 타임아웃 경로(_resolve_cancel_confirmed)가 맡는다.
+                        reason = "시장 CB" if market_halted else "종목 VI"
+                        if order_id in self._vi_notified_ids:
+                            self.logger.debug(f"{reason} 발동 중 - 취소 접수 확인 대기 주문: {order_id} ({order.stock_code})")
+                        else:
+                            self._vi_notified_ids.add(order_id)
+                            self.logger.warning(
+                                f"{reason} 발동 - 취소 접수 확인 대기 주문(재취소 생략): {order_id} ({order.stock_code})"
+                            )
+                            if self.telegram:
+                                try:
+                                    await self.telegram.notify_system_status(
+                                        f"[{reason}] 진행 중 매수 주문 취소: {order.stock_code} 주문 {order_id}"
+                                    )
+                                except Exception:
+                                    pass
+                    elif market_halted or vi_active:
                         reason = "시장 CB" if market_halted else "종목 VI"
                         self.logger.warning(
                             f"{reason} 발동 - 매수 주문 즉시 취소: {order_id} ({order.stock_code})"
