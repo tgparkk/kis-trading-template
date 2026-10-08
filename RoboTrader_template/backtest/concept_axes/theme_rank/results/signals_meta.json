@@ -1,5 +1,5 @@
 {
- "git_sha": "7db62065e9f73e91da399d6c873f9fe497e54a15",
+ "git_sha": "93ce2bfdd22789dfdcf3933289417dd44cca369b",
  "n_cut": 547,
  "patterns": [
   "밸류업",
@@ -14,5 +14,5 @@
  "n_eligible_themes": 224,
  "n_rows": 10945,
  "ledger_md5": "980e58492a7ac2ed11d25526f4488dbc",
- "signals_md5": "03947a8c325f40315b5b618d273eecfe"
+ "signals_md5": "3e7d3a8fc9d2c3333fa1a9554b532e3d"
 }
