@@ -1,15 +1,15 @@
 # 사전등록 — 테마 순위 층(daytrading) 과거 검정
 
-- 상태: **초안** · 10-17 사장님 승인 시 동결(동결 커밋 sha 를 여기 적고 `run.py` `PREREG_FROZEN_BLOB` 설정)
+- 상태: **초안** · 10-17 사장님 승인 시 동결 — 동결 커밋은 이 상태 줄만 바꾼다. 동결본 PREREG.md 의 `git hash-object` 값은 `run.py` `PREREG_FROZEN_BLOB` 에(`N_CUT` = §2 N_cut), 동결 커밋 sha 는 `backtest/concept_axes/REGISTRY.md` 에 적는다(이 문서에는 적지 않는다 — 적으면 blob 이 바뀐다)
 - 규범 스펙: `docs/superpowers/specs/2026-10-08-theme-rank-layer-daytrading-design.md`(main `6078e33`) — 이 문서와 어긋나면 이 문서가 우선(더 구체적)
 - 🔒 규칙 면제: 후보 특성 연구 사전등록 §4-6(같은 원장 재시도 금지)을 이 건에 한해 면제 — 사장님 2026-10-08 「면제 + 수정판 과거 검정」. 동결 때 `backtest/concept_axes/REGISTRY.md` 등재.
 
 ## 1. 입력(동결)
 - 원장 `candidate_ledger/results/ledger.csv` md5 `980e58492a7ac2ed11d25526f4488dbc` · daytrading · rank ≤ 20
 - 소속표 스냅샷 2026-10-08(run_id 4) 전 구간 고정
-- arena.csv md5: 7a55eb1063649708d1ce26a35852f960
-- signals.csv md5: 6cd950ac5d0715c7a72f2fff4914a10e
-- calib.json md5: 7835688f481b0fabfa7439cae2c37ec8
+- arena.csv md5: 635956a3a6c1f203d09108a14935e98b
+- signals.csv md5: 7d11782fecce6edcd4befbd518664fac
+- calib.json md5: cc56843711cf0f85ec8e5d7b0cb24b1f
 
 ## 2. 신호(스펙 §4 그대로 + 구체화)
 - 튄 종목 e ≥ +0.05 · k ≥ 2 · p0 하한 1/(2|U_D|) · S = −log10(min(1, m·min p_T)) · 적격 테마 없음 → S=0(단독 재료)
@@ -41,9 +41,10 @@
 | NEG | p < 0.05 ∧ IC < 0 ∧ 창 E·C 부호 = 전체 부호 |
 | FAIL | 그 밖 |
 - 판정 입력(p · IC 평균 · 창 E·C 평균) 중 하나라도 유한하지 않으면 FAIL. PASS 는 Δ_theme · IC − b 도 유한해야 한다.
-- 실행 전 확인: run.py N_CUT = calib.json n_cut = signals_meta.json n_cut, S 결측 0 — 어긋나면 실행 중단.
+- 실행 전 확인: PREREG N_cut = run.py N_CUT = calib.json n_cut = signals_meta.json n_cut · theme_rank 미커밋 변경 0 · calib.json arena_md5 = arena.csv md5 · ledger.csv md5 · S 결측 0 · DB 재계산 S = signals.csv S(차 ≤ 1e-12) — 어긋나면 실행 중단.
 - 창 E 2024-03-13~2025-06-30 · C 2025-07-01~2026-09-23 · b = 차수 보존 셔플 200회 평균 IC(seed 20261017)
 - Δ_theme = 빈 자리 고정 짝 비교(K=10 · 하루 5 · 기준선 = 원장 rank) R_theme − R_arena
+- R_base·R_arena·R_theme = 날별 평균을 f_D(그날 기준선 매수 수)로 가중한 로트 가중 평균(R_arena 의 날별 평균은 그날 보유 중이 아닌 체결 후보 전체) · 테마 쪽 선택의 S 동점은 현재 순위(원장 rank)가 작은 쪽 우선
 
 ## 6. 인쇄(판정 불변)
 같은 테마 최대 2개 변형 · s_full · 인쇄 항목 IC · 에피소드 첫 행 IC · MDE · S=0 비율 · 3종목 이상 같은 테마 날 비율 · 경기장 체결 크기 분포(일별 중앙·최소·최대) · 「같은 테마 최대 2개」 변형 전체 숫자(R_base·R_arena·R_theme·Δ_cur·Δ_theme)

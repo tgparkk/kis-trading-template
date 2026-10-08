@@ -5,4 +5,4 @@
 - lag 22: p<0.10 거부율 0.110
 - lag 33: p<0.10 거부율 0.128
 - 선택: mode=hac · lag=11
-- calib.json md5: 7835688f481b0fabfa7439cae2c37ec8
+- calib.json md5: cc56843711cf0f85ec8e5d7b0cb24b1f

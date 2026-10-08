@@ -1,5 +1,5 @@
 {
- "git_sha": "97bd0a3f56ed3d43145a79763142b6a3137557da",
+ "git_sha": "3240ce662f67c2a1adcc1016a4e1198b738666c2",
  "ledger_md5": "980e58492a7ac2ed11d25526f4488dbc",
  "n_rows": 10945,
  "fill_counts": {
@@ -9,5 +9,5 @@
   "no_bar": 20
  },
  "n_days": 617,
- "arena_md5": "7a55eb1063649708d1ce26a35852f960"
+ "arena_md5": "635956a3a6c1f203d09108a14935e98b"
 }
