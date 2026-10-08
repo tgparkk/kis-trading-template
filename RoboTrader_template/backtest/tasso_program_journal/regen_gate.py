@@ -649,6 +649,9 @@ MANUAL_DOCS = [
     "RESULTS_RANKING_POST10.md",
     # 🔴 2026-10-08 — post10 verifier 1패스 정정 1차 정오표(사람이 쓴 것 · 값 계산 0). 등재 «시점»에 이미 있다.
     "ERRATA_2026-10-08_post10_values.md",
+    # 🔴 2026-10-08 — post11 사전등록(🔒 감시 모드 · 발행 «후» · fetch «전» 동결). 사람이 쓴 문서라 `MANUAL_DOCS` 자리 ·
+    #    등재는 동결 커밋 «앞»이고 «별도 커밋»이다(`PREREG_POST10.md` 선례 `3c3ab14`) · 파일은 등재 시점에 이미 있다(초안 `??`).
+    "PREREG_POST11.md",
     # 🔴 `verify_ledger_post8.py` 는 post5·post6·post7 판 전례대로 **일부러 등재하지 않는다**
     #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]
