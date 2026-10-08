@@ -55,3 +55,12 @@ def test_lots_from_release_rules():
     a, b = by[1]
     assert (a.release, b.release) == (3, 4)                   # 청산 다음 날 / open = 창 끝
     assert a.main_theme == 7 and b.main_theme is None
+
+
+def test_release_boundary_frees_slot_on_release_day():
+    lots = {0: [L(0, "A", 1, 1.0, 1, 0.0)], 1: [L(1, "B", 5, 2.0, 1, 0.0)]}
+    buys, _ = SL.baseline_path(lots, 2, n_cap=5, k_cap=1)
+    assert [l.code for l in buys[1]] == ["B"]
+    lots[0] = [L(0, "A", 2, 1.0, 1, 0.0)]
+    buys, _ = SL.baseline_path(lots, 2, n_cap=5, k_cap=1)
+    assert buys[1] == []

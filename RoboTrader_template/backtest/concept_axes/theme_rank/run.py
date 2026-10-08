@@ -56,9 +56,13 @@ def guard(blob_of: Callable[[], str], prereg_text: str, md5_of: Callable[[str], 
 
 
 def verdict(p: float, mean_ic: float, mean_e: float, mean_c: float, d_theme: float, ic_minus_bias: float) -> str:
+    if not all(math.isfinite(x) for x in (p, mean_ic, mean_e, mean_c)):
+        return "FAIL"                                                   # NaN 은 닫힌 쪽(FAIL)으로
     if not (p < ALPHA) or mean_e * mean_c <= 0 or mean_e * mean_ic <= 0:
         return "FAIL"
     if mean_ic > 0:
+        if not (math.isfinite(d_theme) and math.isfinite(ic_minus_bias)):
+            return "FAIL"
         return "PASS" if (d_theme >= EPS and ic_minus_bias > 0) else "FAIL"
     return "NEG"
 
@@ -73,17 +77,22 @@ def main() -> int:
     from backtest.concept_axes.theme_rank import build_signals as BS
     from backtest.concept_axes.theme_rank import membership as MB
     from backtest.concept_axes.theme_rank import snapshot as SN
-    rel = PREREG.relative_to(HERE.parents[3]).as_posix()
-    blob = lambda: subprocess.run(["git", "rev-parse", f"HEAD:{rel}"], capture_output=True,  # noqa: E731
-                                  text=True, cwd=HERE.parents[3]).stdout.strip()
+    blob = lambda: subprocess.run(["git", "hash-object", str(PREREG)], capture_output=True,  # noqa: E731
+                                  text=True, cwd=HERE.parents[3]).stdout.strip()   # 읽는 파일 = 해시하는 파일
     text = PREREG.read_text(encoding="utf-8") if PREREG.exists() else ""        # 없어도 가드가 먼저 막는다
     guard(blob, text, lambda n: BA.md5(FILES[n]) if FILES[n].exists() else None)
     calib = json.loads(FILES["calib.json"].read_text(encoding="utf-8"))
+    meta_path = BA.OUT / "signals_meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    if calib.get("n_cut") != N_CUT or meta.get("n_cut") != N_CUT:
+        raise SystemExit("N_cut 불일치(run.py · calib.json · signals_meta.json) — 중단")
 
     arena = BF.filled(pd.read_csv(FILES["arena.csv"], dtype={"stock_code": str, "scan_date": str}))
     sig = pd.read_csv(FILES["signals.csv"], dtype={"stock_code": str, "scan_date": str})
     df = arena.merge(sig, on=["scan_date", "stock_code"], how="left", validate="one_to_one")
     df["s"] = pd.to_numeric(df["s"], errors="coerce")
+    if df["s"].isna().any():
+        raise SystemExit("S 결측 행이 있다 — 중단")
 
     ic, skipped = ST.daily_ic(df, "s", "ret_net")
     h = ST.hac_t(ic, int(calib["lag"]))
@@ -112,6 +121,9 @@ def main() -> int:
     eco = SL.summarize(SL.paired(lots, buys, held))
     eco2 = SL.summarize(SL.paired(lots, buys, held, cap_per_theme=2))
     v = verdict(p, h["mean_ic"], mean_e, mean_c, eco["d_theme"], h["mean_ic"] - bias)
+    p22 = CA.calibrated_p(h22["t_hac"], calib, LAG_ROBUST)
+    v22 = verdict(p22, h22["mean_ic"], mean_e, mean_c, eco["d_theme"], h22["mean_ic"] - bias)
+    sz = df.groupby("scan_date").size()
 
     extra = []
     for col in ["s_full", "a_mean_excess", "c_same_theme", "b_rank_in_theme", "b_limit_up", "a2_streak"]:
@@ -128,12 +140,16 @@ def main() -> int:
     lines = [
         "# 판정 결과 — 테마 순위 층(daytrading)", "", f"## 판정: **{v}**", "",
         f"- 1차 IC 평균 {h['mean_ic']:+.4f} · HAC t(lag {calib['lag']}) {h['t_hac']:+.2f} · 교정 p {p:.4f}"
-        f"({calib['mode']}) · lag 22 t {h22['t_hac']:+.2f} p {h22['p_hac']:.4f}",
+        f"({calib['mode']})",
+        f"- lag 22 판정 {v22}(교정 p {p22:.4f}) · 1차 판정과 {'일치' if v22 == v else '불일치'}",
         f"- 유효일 {h['n_days']} · 제외일 {skipped} · 창 E {mean_e:+.4f} · 창 C {mean_c:+.4f}",
-        f"- 플라시보 평균 편향 b {bias:+.4f}(200회) · IC − b {h['mean_ic'] - bias:+.4f}",
+        f"- 플라시보 평균 편향 b {bias:+.4f}({N_PLACEBO}회) · IC − b {h['mean_ic'] - bias:+.4f}",
         f"- 돈: R_base {eco['R_base']:+.3f} · R_arena {eco['R_arena']:+.3f} · R_theme {eco['R_theme']:+.3f} %p · "
         f"Δ_cur {eco['d_cur']:+.3f} · **Δ_theme {eco['d_theme']:+.3f}** · 날 {eco['n_days']} · 로트 {eco['n_lots']}",
-        f"- 같은 테마 최대 2개 변형: Δ_theme {eco2['d_theme']:+.3f} · 3종목 이상 날 비율(무제한) {eco['share_same_theme3']:.3f}",
+        f"- 같은 테마 최대 2개 변형: R_base {eco2['R_base']:+.3f} · R_arena {eco2['R_arena']:+.3f} · "
+        f"R_theme {eco2['R_theme']:+.3f} %p · Δ_cur {eco2['d_cur']:+.3f} · **Δ_theme {eco2['d_theme']:+.3f}** · "
+        f"날 {eco2['n_days']} · 로트 {eco2['n_lots']} · 3종목 이상 날 비율(무제한) {eco['share_same_theme3']:.3f}",
+        f"- 경기장 체결 크기(일별) 중앙 {sz.median():.1f} · 최소 {sz.min()} · 최대 {sz.max()} · {sz.size}일",
         f"- MDE(80%·양측 5%) ≈ {mde:.4f} · 에피소드 첫 행 IC {eic.mean():+.4f}({eic.size}일)",
         f"- S=0 비율 {(df['s'] == 0).mean():.3f} · 경기장 체결 행 {len(df):,}", "",
         "## 인쇄 항목(판정 불변)", "", "| 항목 | IC 평균 | HAC t | 일수 |", "|---|---|---|---|", *extra, "",

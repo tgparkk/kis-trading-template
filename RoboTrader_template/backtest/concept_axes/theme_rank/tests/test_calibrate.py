@@ -44,3 +44,21 @@ def test_fake_t_stats_rejection_rate_near_nominal_on_null_data():
     t = CA.fake_t_stats(arena, th, members, days, lags=(11,), n_fakes=60, seed=7)
     rate = sum(abs(x) >= 1.6448536269514722 for x in t[11]) / len(t[11])
     assert len(t[11]) == 60 and rate <= 0.30
+
+
+def test_calibrated_p_nan_t_is_nan():
+    assert math.isnan(CA.calibrated_p(float("nan"), {"mode": "hac", "lag": 11}))
+    calib = {"mode": "empirical", "lag": 11, "t_fakes": {"11": [0.5, -2.5]}}
+    assert math.isnan(CA.calibrated_p(float("nan"), calib))
+
+
+def test_calibrated_p_empirical_uses_requested_lag():
+    calib = {"mode": "empirical", "lag": 11, "t_fakes": {"11": [0.5, -2.5, 3.0, 1.0], "22": [0.1, 0.2, 0.3, 0.4]}}
+    assert CA.calibrated_p(2.0, calib) == pytest.approx(3 / 5)
+    assert CA.calibrated_p(2.0, calib, 22) == pytest.approx(1 / 5)
+
+
+def test_choose_escalates_to_lag_22():
+    t = {11: [3.0] * 30 + [0.0] * 70, 22: [3.0] * 10 + [0.0] * 90, 33: [0.0] * 100}
+    c = CA.choose(t)
+    assert c["mode"] == "hac" and c["lag"] == 22

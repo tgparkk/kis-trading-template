@@ -42,6 +42,13 @@ def test_guard_refuses_without_n_cut(monkeypatch):
     ((0.20, 0.03, 0.02, 0.04, 0.6, 0.02), "FAIL"),     # 유의 아님
     ((0.01, -0.03, -0.02, -0.04, -0.6, -0.02), "NEG"),
     ((0.01, -0.03, 0.02, -0.04, -0.6, -0.02), "FAIL"),
+    ((float("nan"), 0.03, 0.02, 0.04, 0.6, 0.02), "FAIL"),
+    ((0.01, float("nan"), 0.02, 0.04, 0.6, 0.02), "FAIL"),
+    ((0.01, 0.03, float("nan"), 0.04, 0.6, 0.02), "FAIL"),
+    ((0.01, 0.03, float("nan"), float("nan"), 0.6, 0.02), "FAIL"),
+    ((0.01, -0.03, float("nan"), -0.02, -0.6, -0.02), "FAIL"),
+    ((0.01, 0.03, 0.02, 0.04, float("nan"), 0.02), "FAIL"),
+    ((0.01, 0.03, 0.02, 0.04, 0.6, float("nan")), "FAIL"),
 ])
 def test_verdict_table(args, expected):
     assert RN.verdict(*args) == expected

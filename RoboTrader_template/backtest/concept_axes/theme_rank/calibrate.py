@@ -7,18 +7,20 @@ lag 11 → 22 → 33 순으로 첫 합격 lag 를 쓰고, 모두 불합격이면
 """
 from __future__ import annotations
 
-import argparse
-import json
-import math
-from pathlib import Path
-from typing import Dict, FrozenSet, List, Mapping, Optional, Sequence
+from backtest.concept_axes.minervini.cap_skip_ledger import bootstrap  # noqa: F401  안전 설정 먼저
 
-import numpy as np
-import pandas as pd
+import argparse                                                        # noqa: E402
+import json                                                            # noqa: E402
+import math                                                            # noqa: E402
+from pathlib import Path                                               # noqa: E402
+from typing import Dict, FrozenSet, List, Mapping, Optional, Sequence  # noqa: E402
 
-from backtest.concept_axes.theme_rank import bandfill as BF
-from backtest.concept_axes.theme_rank import build_arena as BA
-from backtest.concept_axes.theme_rank import stats as ST
+import numpy as np                                                     # noqa: E402
+import pandas as pd                                                    # noqa: E402
+
+from backtest.concept_axes.theme_rank import bandfill as BF            # noqa: E402
+from backtest.concept_axes.theme_rank import build_arena as BA         # noqa: E402
+from backtest.concept_axes.theme_rank import stats as ST               # noqa: E402
 
 N_FAKES = 400
 PHI = 0.9
@@ -52,10 +54,12 @@ def choose(t_by_lag: Mapping[int, Sequence[float]]) -> Dict[str, object]:
     return {"mode": "empirical", "lag": min(t_by_lag), "rates": rates}
 
 
-def calibrated_p(t: float, calib: Mapping[str, object]) -> float:
+def calibrated_p(t: float, calib: Mapping[str, object], lag: Optional[int] = None) -> float:
+    if not math.isfinite(t):
+        return float("nan")
     if calib["mode"] == "hac":
         return math.erfc(abs(t) / math.sqrt(2))
-    fakes = [x for x in calib["t_fakes"][str(calib["lag"])] if math.isfinite(x)]
+    fakes = [x for x in calib["t_fakes"][str(calib["lag"] if lag is None else lag)] if math.isfinite(x)]
     return (1 + sum(1 for x in fakes if abs(x) >= abs(t))) / (len(fakes) + 1)
 
 
@@ -81,7 +85,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     lines = ["# 도구 교정 결과(가짜 테마 신호)", "",
              f"- 가짜 {N_FAKES}개 · AR(1) φ={PHI} · 합격 [{ACCEPT[0]}, {ACCEPT[1]}] · N_cut {a.n_cut}",
              *[f"- lag {L}: p<0.10 거부율 {r:.3f}" for L, r in c["rates"].items()],
-             f"- 선택: mode={c['mode']} · lag={c['lag']}", f"- calib.json md5 {BA.md5(OUT / 'calib.json')}"]
+             f"- 선택: mode={c['mode']} · lag={c['lag']}", f"- calib.json md5: {BA.md5(OUT / 'calib.json')}"]
     (OUT / "RESULTS.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
     return 0
