@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from backtest.concept_axes.theme_rank import run as RN
 
-TXT = ("…\n- arena.csv md5: " + "a" * 32 + "\n- signals.csv md5: " + "b" * 32 +
+TXT = ("…\n- N_cut = 547 — 근거: …\n- arena.csv md5: " + "a" * 32 + "\n- signals.csv md5: " + "b" * 32 +
        "\n- calib.json md5: " + "c" * 32 + "\n")
 
 
@@ -25,6 +27,31 @@ def test_guard_refuses_when_not_frozen_or_mismatch(monkeypatch):
         RN.guard(lambda: "f" * 40, TXT, md5s.get)                             # calib md5 불일치
     md5s["calib.json"] = "c" * 32
     RN.guard(lambda: "f" * 40, TXT, md5s.get)                                 # 통과
+
+
+def test_guard_refuses_when_prereg_n_cut_differs_or_missing(monkeypatch):
+    monkeypatch.setattr(RN, "PREREG_FROZEN_BLOB", "f" * 40)
+    monkeypatch.setattr(RN, "N_CUT", 547)
+    md5s = {"arena.csv": "a" * 32, "signals.csv": "b" * 32, "calib.json": "c" * 32}
+    with pytest.raises(SystemExit, match="N_cut"):
+        RN.guard(lambda: "f" * 40, TXT.replace("N_cut = 547", "N_cut = 564"), md5s.get)
+    with pytest.raises(SystemExit, match="N_cut"):
+        RN.guard(lambda: "f" * 40, TXT.replace("- N_cut = 547 — 근거: …\n", ""), md5s.get)
+
+
+def test_prereg_blob_refuses_on_git_failure(monkeypatch):
+    monkeypatch.setattr(RN, "_git", lambda *a: subprocess.CompletedProcess(a, 128, "", "fatal"))
+    with pytest.raises(SystemExit, match="hash-object 실패"):
+        RN.prereg_blob()
+
+
+def test_head_if_clean_refuses_dirty_tree(monkeypatch):
+    out = {"status": " M run.py\n", "rev-parse": "1" * 40 + "\n"}
+    monkeypatch.setattr(RN, "_git", lambda *a: subprocess.CompletedProcess(a, 0, out[a[0]], ""))
+    with pytest.raises(SystemExit, match="커밋 안 된 변경"):
+        RN.head_if_clean()
+    out["status"] = ""
+    assert RN.head_if_clean() == "1" * 40
 
 
 def test_guard_refuses_without_n_cut(monkeypatch):

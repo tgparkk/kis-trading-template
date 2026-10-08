@@ -1,7 +1,8 @@
 """판정(스펙 §5-6) — 🔒 동결 가드 통과 시에만 실행(Task 13 · 10-17 동결 뒤).
 
-가드: PREREG.md 의 git blob = PREREG_FROZEN_BLOB(비어 있으면 거부) ∧ N_CUT 설정 ∧ arena.csv·signals.csv·calib.json
-md5 = PREREG.md 에 적힌 값. 실제 S 와 결과를 처음 합치는 곳이 여기다.
+가드: PREREG.md 의 git blob = PREREG_FROZEN_BLOB(비어 있으면 거부) ∧ N_CUT 설정 ∧ PREREG 의 N_cut = N_CUT ∧
+arena.csv·signals.csv·calib.json md5 = PREREG.md 에 적힌 값. 이어서 theme_rank 미커밋 변경 0 · calib.arena_md5 ·
+ledger md5 · DB 재계산 S = 고정 S 를 확인한다. 실제 S 와 결과를 처음 합치는 곳이 여기다.
 
     python -X utf8 -m backtest.concept_axes.theme_rank.run
 """
@@ -26,8 +27,9 @@ from backtest.concept_axes.theme_rank import slots as SL               # noqa: E
 from backtest.concept_axes.theme_rank import stats as ST               # noqa: E402
 
 N_CUT: Optional[int] = None          # 🔒 Task 13 동결 때 PREREG 값으로 설정
-PREREG_FROZEN_BLOB = ""              # 🔒 Task 13 동결 커밋의 `git rev-parse HEAD:<PREREG.md 경로>`
+PREREG_FROZEN_BLOB = ""              # 🔒 Task 13 동결본 PREREG.md(작업 트리 파일)의 `git hash-object` 값
 ALPHA, EPS = 0.05, 0.5
+S_TOL = 1e-12                        # DB 재계산 S 와 고정 signals.csv S 의 허용 차(R13)
 LAG_ROBUST = 22
 N_PLACEBO = 200
 SEED = 20261017
@@ -39,6 +41,29 @@ FILES = {"arena.csv": BA.OUT / "arena.csv", "signals.csv": BA.OUT / "signals.csv
          "calib.json": CA.OUT / "calib.json"}
 
 
+def _git(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], capture_output=True, text=True, cwd=HERE.parents[3])
+
+
+def prereg_blob() -> str:
+    """작업 트리 PREREG.md 의 `git hash-object`(읽는 파일 = 해시하는 파일)."""
+    r = _git("hash-object", str(PREREG))
+    if r.returncode != 0 or not r.stdout.strip():
+        raise SystemExit("git hash-object 실패 — 중단")
+    return r.stdout.strip()
+
+
+def head_if_clean() -> str:
+    """theme_rank 아래 커밋 안 된 변경(코드·데이터)이 있으면 거부 — 깨끗하면 HEAD sha."""
+    st = _git("status", "--porcelain", "--", str(HERE))
+    if st.returncode != 0 or st.stdout.strip():
+        raise SystemExit("theme_rank 에 커밋 안 된 변경이 있다(git status --porcelain) — 중단")
+    head = _git("rev-parse", "HEAD")
+    if head.returncode != 0 or not head.stdout.strip():
+        raise SystemExit("git rev-parse HEAD 실패 — 중단")
+    return head.stdout.strip()
+
+
 def read_frozen_md5(text: str) -> Dict[str, str]:
     return {m.group(1): m.group(2)
             for m in re.finditer(r"^- (arena\.csv|signals\.csv|calib\.json) md5: ([0-9a-f]{32})$", text, re.M)}
@@ -47,6 +72,9 @@ def read_frozen_md5(text: str) -> Dict[str, str]:
 def guard(blob_of: Callable[[], str], prereg_text: str, md5_of: Callable[[str], Optional[str]]) -> None:
     if not PREREG_FROZEN_BLOB or N_CUT is None:
         raise SystemExit("🔒 동결 전 — PREREG_FROZEN_BLOB·N_CUT 미설정. run.py 는 Task 13 에서만 돈다.")
+    m = re.search(r"N_cut = (\d+)", prereg_text)
+    if m is None or int(m.group(1)) != N_CUT:
+        raise SystemExit(f"PREREG 의 N_cut({m.group(1) if m else '없음'}) ≠ run.py N_CUT({N_CUT}) — 중단")
     if blob_of() != PREREG_FROZEN_BLOB:
         raise SystemExit("PREREG.md 가 동결본과 다르다 — 중단")
     want = read_frozen_md5(prereg_text)
@@ -77,15 +105,18 @@ def main() -> int:
     from backtest.concept_axes.theme_rank import build_signals as BS
     from backtest.concept_axes.theme_rank import membership as MB
     from backtest.concept_axes.theme_rank import snapshot as SN
-    blob = lambda: subprocess.run(["git", "hash-object", str(PREREG)], capture_output=True,  # noqa: E731
-                                  text=True, cwd=HERE.parents[3]).stdout.strip()   # 읽는 파일 = 해시하는 파일
     text = PREREG.read_text(encoding="utf-8") if PREREG.exists() else ""        # 없어도 가드가 먼저 막는다
-    guard(blob, text, lambda n: BA.md5(FILES[n]) if FILES[n].exists() else None)
+    guard(prereg_blob, text, lambda n: BA.md5(FILES[n]) if FILES[n].exists() else None)
+    head = head_if_clean()                                              # 입력을 읽기 전에(RESULTS.md 는 뒤에 쓴다)
     calib = json.loads(FILES["calib.json"].read_text(encoding="utf-8"))
     meta_path = BA.OUT / "signals_meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
     if calib.get("n_cut") != N_CUT or meta.get("n_cut") != N_CUT:
         raise SystemExit("N_cut 불일치(run.py · calib.json · signals_meta.json) — 중단")
+    if calib.get("arena_md5") != BA.md5(FILES["arena.csv"]):
+        raise SystemExit("calib.json 의 arena_md5 ≠ arena.csv md5 — 중단")
+    if BA.md5(BA.LEDGER_CSV) != BA.LEDGER_MD5:
+        raise SystemExit("ledger.csv md5 불일치(거래일 달력) — 중단")
 
     arena = BF.filled(pd.read_csv(FILES["arena.csv"], dtype={"stock_code": str, "scan_date": str}))
     sig = pd.read_csv(FILES["signals.csv"], dtype={"stock_code": str, "scan_date": str})
@@ -94,18 +125,23 @@ def main() -> int:
     if df["s"].isna().any():
         raise SystemExit("S 결측 행이 있다 — 중단")
 
-    ic, skipped = ST.daily_ic(df, "s", "ret_net")
-    h = ST.hac_t(ic, int(calib["lag"]))
-    h22 = ST.hac_t(ic, LAG_ROBUST)
-    p = CA.calibrated_p(h["t_hac"], calib)
-    mean_e, mean_c = _window(ic, WIN_E), _window(ic, WIN_C)
-
     conn = CL._connect()
     snap = SN.load_snapshot(conn, MB.SNAP_DATE, MB.SNAP_RUN_ID)
     states, _, _, _ = BS.load_day_states(conn)
     conn.close()
     members = MB.restrict(snap.members, MB.eligible_themes(snap.theme_name, N_CUT))
     keys = [(pd.Timestamp(d).date(), c) for d, c in zip(df["scan_date"], df["stock_code"])]
+    s_now = np.asarray(BS.primary_s(keys, states, SN.invert(members), members), dtype=float)
+    gap = np.abs(s_now - df["s"].to_numpy(dtype=float))                 # 플라시보 입력 = 고정 S 의 입력(R13)
+    if gap.size == 0 or not np.isfinite(gap).all() or gap.max() > S_TOL:
+        raise SystemExit("DB 상태가 동결 신호와 다르다 — 중단")
+
+    ic, skipped = ST.daily_ic(df, "s", "ret_net")
+    h = ST.hac_t(ic, int(calib["lag"]))
+    h22 = ST.hac_t(ic, LAG_ROBUST)
+    p = CA.calibrated_p(h["t_hac"], calib)
+    mean_e, mean_c = _window(ic, WIN_E), _window(ic, WIN_C)
+
     rng = np.random.default_rng(SEED)
     pl: List[float] = []
     for _ in range(N_PLACEBO):
@@ -138,7 +174,8 @@ def main() -> int:
     eic, _ = ST.daily_ic(epi, "s", "ret_net")
     mde = (1.959963984540054 + 0.8416212335729143) * h["se_hac"]
     lines = [
-        "# 판정 결과 — 테마 순위 층(daytrading)", "", f"## 판정: **{v}**", "",
+        "# 판정 결과 — 테마 순위 층(daytrading)", "", f"- 코드 HEAD {head} · dirty=no", "",
+        f"## 판정: **{v}**", "",
         f"- 1차 IC 평균 {h['mean_ic']:+.4f} · HAC t(lag {calib['lag']}) {h['t_hac']:+.2f} · 교정 p {p:.4f}"
         f"({calib['mode']})",
         f"- lag 22 판정 {v22}(교정 p {p22:.4f}) · 1차 판정과 {'일치' if v22 == v else '불일치'}",
