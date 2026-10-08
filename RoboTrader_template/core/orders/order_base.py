@@ -53,6 +53,10 @@ class OrderManagerBase:
         self._vi_notified_ids: Set[str] = set()
         # 연기 재처리에서 8036R 잔존으로 취소를 재전송한 주문(주문당 1회 · 2026-10-08 리뷰 I1)
         self._cancel_resent_ids: Set[str] = set()
+        # 취소 접수 뒤 8036R 행을 본 적 있는 주문 · 연기 상한 예외(재전송 1회분)를 쓴 주문(주문당 1회)
+        # (2026-10-08 델타 리뷰 N-1 — 소진 회차 조회가 실패해도 «8036R 잔존»으로 취급)
+        self._cancel_lingering_seen_ids: Set[str] = set()
+        self._defer_extra_used_ids: Set[str] = set()
 
         # 모니터링 상태
         self.is_monitoring = False
@@ -177,6 +181,8 @@ class OrderManagerBase:
             getattr(self, '_cancel_settle_obs', {}).pop(order_id, None)
             getattr(self, '_vi_notified_ids', set()).discard(order_id)
             getattr(self, '_cancel_resent_ids', set()).discard(order_id)
+            getattr(self, '_cancel_lingering_seen_ids', set()).discard(order_id)
+            getattr(self, '_defer_extra_used_ids', set()).discard(order_id)
 
             # FundManager 연동: 취소/타임아웃 시 예약 해제
             from ..models import OrderStatus
