@@ -6,11 +6,14 @@
   1  예외 종료 — 주문·취소 TR 을 «하나도» 보내지 않은 상태(계좌 영향 없음 · 원인 확인 뒤 재실행 가능).
   2  필수 전제·사전 가드 FAIL(인자 오류·라이브 트리 실행·출력 폴더 실패 포함) → 주문 0건.
      시작 시 계좌에 보유·미체결이 «있어서» FAIL 이면 result json account_not_clean=true + CRITICAL(실행기 경보).
-  3  매수가 체결 없이 끝남(시간 초과 → 취소 확인, 또는 KIS 명시적 거부 rt_cd≠0) — «강한 증거»만: ≥5초 간격 2라운드
-     연속으로 8036R 에 없음·계좌 미체결 0 · 0081R 원주문 체결 0 ∧ 잔량 0 ∧ 취소 확인 수량 ≥1 · 잔고 0/0 → 재시도 가능.
+  3  매수가 체결 없이 끝남(시간 초과 → 취소, 또는 KIS 명시적 거부 rt_cd≠0) — «강한 증거»만: ≥5초 간격 2라운드
+     연속으로 8036R 에 없음·계좌 미체결 0 · 0081R 원주문 체결 0 ∧ 잔량 0 · 잔고 0/0 → 재시도 가능.
+     (cncl_cfrm_qty·cncl_yn 은 기록만 — 10-08 §4-B 실측: 취소 접수 +2초에 원·취소 행 모두 '0'·'' 이라 판정에 못 쓴다.)
   4  CRITICAL «HTS 즉시 확인» — 보유가 남았거나 «남았는지 모름» · 미체결이 남았거나 모름 · 비상 처리(예외·Ctrl+C) 경로 ·
      종료 확인 불일치 · 내부 마감(--deadline) 뒤 미해결 · 15:15 이후라 매도 안 함 · dry-run 인데 주문 TR 이 나감.
      «보유가 남았는지 모름»은 언제나 4 다. 결과 json 을 못 찾으면 실행기는 4 로 취급할 것.
+  5  매수가 접수(ODNO) 뒤 거래소에서 거부됨 — exit 3 과 같은 2라운드 확인 + 0081R 원주문 rjct_qty ≥1(체결 0·잔량 0)
+     → 계좌 영향 없음 · CRITICAL 아님 · 재시도 전 거부 사유(원응답·HTS) 확인(리뷰 N3).
   (이 밖의 값은 쓰지 않는다. argparse --help 만 0 으로 끝나고 결과 파일을 쓰지 않는다.)
 
 근거
@@ -45,7 +48,7 @@
     D:/GIT/kis-trading-template/RoboTrader_template/venv/Scripts/python.exe \
     scripts/real_order_fill_probe.py --code XXXXXX            # dry-run
   ... scripts/real_order_fill_probe.py --code XXXXXX --live     # 거래일 09:30~14:50 KST 에만 통과
-  (선택) --max-price <원>(기본 30,000 · 상한 100,000) · --fill-wait <초>(기본 60 · 10~180) · --deadline HH:MM(기본 15:10)
+  (선택) --max-price <원>(기본 30,000 · 상한 100,000) · --fill-wait <초>(기본 60 · 10~180) · --deadline HH:MM(기본·상한 15:10)
 
 봇 코드 파일은 수정하지 않는다. 공용 헬퍼(마스킹·게이트 골격·가드 일부)는 scripts/real_order_cancel_probe.py 에서 import 한다.
 """
@@ -80,7 +83,9 @@ QTY = 1                                 # 수량 고정(인자 없음)
 WINDOW_START = dtime(9, 30, 0)          # 시가 변동 회피
 WINDOW_END = dtime(14, 50, 0)           # 매도가 15:10 전에 끝나도록(15:20 종가 동시호가 회피)
 DEFAULT_DEADLINE = dtime(15, 10, 0)     # 내부 마감(--deadline) — 지나면 대기를 끊고 종료 확인 → 미해결이면 exit 4
+DEADLINE_MAX = dtime(15, 10, 0)         # --deadline 상한 — 정리(≈20초)+잔고(≈20초) 뒤에도 매도 차단(15:15) 전이게(리뷰 N1)
 SELL_CUTOFF = dtime(15, 15, 0)          # 이 시각부터는 시장가 매도를 내지 않는다(사람 처리 · exit 4)
+EXIT_EXCHANGE_REJECT = 5                # 접수 뒤 거래소 거부로 끝남(CRITICAL 아님 · 리뷰 N3)
 DEADLINE_MARGIN = timedelta(minutes=5)  # 시작(주문)은 내부 마감 5분 전까지
 DEFAULT_MAX_PRICE = 30_000
 MAX_PRICE_CEILING = 100_000             # --max-price 오타 방지 상한
@@ -101,13 +106,13 @@ LIMIT_GAP = 0.05                        # 현재가가 상·하한가에서 5% �
 MAX_CANCEL_HTTP = 8                     # 취소 HTTP 상한(봇 _url_fetch 재시도 포함 여유)
 SIDE_CD = {"buy": "02", "sell": "01"}   # sll_buy_dvsn_cd
 
-# ── 10-08 실측 전 추정 ── §4-B 접수·취소 시험(10-08) 원응답(TTTC0081R output1)으로 확정할 것.
-# 필드명·의미가 다르면 이 블록만 고친다. exit 3(«매수 미체결로 끝남») 근거 = 원주문 행
-# 체결수량 0 ∧ 잔량 0(필드 없음·해석 불가 = 미상) ∧ 취소 «확인» 수량 ≥ 1(원주문 행 또는 취소 행).
-# cncl_yn='Y' 는 취소 «접수» 표시일 수 있어 근거로 쓰지 않는다(리뷰 B1).
+# ── 10-08 §4-B 실측 반영(D:/tmp/session_1008/PROBE_RESULT_1008.md) ── TTTC0081R output1 원주문 행.
+# exit 3(«매수 미체결로 끝남») 근거 = 8036R 부재(5초 간격 2라운드) ∧ 원주문 행 체결수량 0 ∧ 잔량 0
+# (필드 없음·해석 불가 = 미상) ∧ 잔고 0/0. 취소 확인 수량의 실제 이름은 cncl_cfrm_qty(종전 코드의 «cnc_» 표기 = 오기)
+# 이지만 취소 접수 +2초에 원·취소 행 모두 "0" · cncl_yn 도 "" 였다 → 둘 다 «기록만»(TRACK_FIELDS) · 판정에 안 쓴다.
 DAILY_FILLED_QTY = "tot_ccld_qty"
 DAILY_REMAIN_QTY = "rmn_qty"
-CANCEL_CONFIRM_FIELDS = ("cnc_cfrm_qty",)
+DAILY_REJECT_QTY = "rjct_qty"           # 거래소 거부 수량(N3 · 10-08 미관측 — 의미는 KIS 필드명 기준 추정)
 
 # ETF·ETN·우선주 거부(대표성 · 리뷰 m4). 확정 필드가 없어 «하나라도 걸리면 FAIL» 휴리스틱:
 # 코드 끝자리 ≠ 0(우선주 등) · 종목명 «브랜드+공백» 접두(ETF) · 이름에 ETF/ETN · 이름 끝 «우/우B/우C» · 시장·업종명에 ETF/ETN/ELW.
@@ -116,7 +121,7 @@ ETF_BRANDS = ("KODEX", "TIGER", "KBSTAR", "RISE", "ARIRANG", "HANARO", "KOSEF", 
               "KCGI", "ITF", "DAISHIN343", "마이다스", "에셋플러스", "히어로즈", "마이티", "파워")
 MARKET_NAME_FIELDS = ("rprs_mrkt_kor_name", "bstp_kor_isnm")
 
-TRACK_FIELDS = ("tot_ccld_qty", "avg_prvs", "tot_ccld_amt", "rmn_qty", "cncl_yn", "cnc_cfrm_qty", "rjct_qty",
+TRACK_FIELDS = ("tot_ccld_qty", "avg_prvs", "tot_ccld_amt", "rmn_qty", "cncl_yn", "cncl_cfrm_qty", "rjct_qty",
                 "ccld_unpr", "ord_qty", "ord_unpr", "ord_tmd", "ord_dvsn_name")
 PENDING_TRACK = ("ord_qty", "ord_unpr", "psbl_qty", "tot_ccld_qty", "tot_ccld_amt", "ord_tmd")
 QUOTE_FIELDS = ("stck_prpr", "stck_sdpr", "stck_mxpr", "stck_llam", "prdy_vrss", "prdy_ctrt", "acml_vol",
@@ -202,15 +207,12 @@ def fill_price(row: Optional[Dict[str, Any]]) -> Tuple[Optional[float], Optional
     return None, None
 
 
-def cancel_evidence(row: Optional[Dict[str, Any]], cancel_rows: List[Dict[str, Any]]) -> bool:
-    """취소 «확인» 수량(CANCEL_CONFIRM_FIELDS · 10-08 실측 전 추정) ≥ 1 이 원주문 행 또는 취소 행에 있는가.
-    취소 행이 «있다»·cncl_yn='Y' 만으로는 True 가 아니다(접수뿐일 수 있음 — 리뷰 B1)."""
-    for r in ([row] if row is not None else []) + list(cancel_rows or []):
-        for f in CANCEL_CONFIRM_FIELDS:
-            v = num(r.get(f))
-            if v is not None and v >= 1:
-                return True
-    return False
+def exchange_rejected(row: Optional[Dict[str, Any]]) -> bool:
+    """0081R 원주문 행이 «거래소 거부»로 끝났는가: rjct_qty ≥ 1 ∧ 체결 0 ∧ 잔량 0(리뷰 N3). 미상이면 False."""
+    if row is None:
+        return False
+    rj, f, r = num(row.get(DAILY_REJECT_QTY)), num(row.get(DAILY_FILLED_QTY)), num(row.get(DAILY_REMAIN_QTY))
+    return rj is not None and rj >= 1 and f == 0 and r == 0
 
 
 def settle_issues(snap: Dict[str, Any], held: Optional[int], total: Optional[int], has_odno: bool,
@@ -240,8 +242,6 @@ def settle_issues(snap: Dict[str, Any], held: Optional[int], total: Optional[int
                 out.append(f"잔량 미상({DAILY_REMAIN_QTY} 없음·해석 불가: {dr.get(DAILY_REMAIN_QTY)!r})")
             elif r != 0:
                 out.append(f"잔량 {r:g}")
-            if not cancel_evidence(dr, snap.get("cancel_rows") or []):
-                out.append(f"취소 확인 수량 0(미확인 · {'/'.join(CANCEL_CONFIRM_FIELDS)})")
     elif not explicit_reject:
         out.append("주문번호 미상 · 명시적 거부(rt_cd≠0) 아님 → «행 없음 = 체결 0» 추론 불가")
     if held is None or total is None:
@@ -622,7 +622,7 @@ def new_result(args: argparse.Namespace, paths: Dict[str, str]) -> Dict[str, Any
         "guards_all_pass": None, "guards_failed": [], "account_not_clean": None,
         "deadline": str(getattr(args, "deadline", DEFAULT_DEADLINE)), "deadline_hit": False,
         "buy": {**side, "order_dvsn": "00", "cancel_tried": False, "cancels": [], "explicit_reject": False,
-                "settle_rounds": []},
+                "exchange_reject": False, "settle_rounds": []},
         "sell": {**side, "order_dvsn": "01", "order_price": 0, "p2_14_condition": None, "p2_14_polls": 0,
                  "vi_extended": False},
         "holding_after_buy": None, "end_holding_qty": None, "end_holding_total": None, "end_pending_count": None,
@@ -1038,6 +1038,10 @@ def _live_flow(ctx: Ctx) -> int:
         log.warning("① 매수가 KIS 에서 명시적으로 거부됨(rt_cd≠0) → 대기 없이 정리 확인")
     if explicit or not _wait_fill(ctx, "buy", ctx.args.fill_wait):
         out = _cancel_buy_and_settle(ctx, explicit_reject=explicit)
+        if out == "rejected_clear":
+            ctx.res["verdict"] = ("매수 접수 뒤 거래소 거부로 끝남(0081R rjct_qty ≥1 · 체결 0 · 잔량 0) · 보유 0 · "
+                                  "미체결 0 연속 확인 — 계좌 영향 없음 · 재시도 전 거부 사유 확인")
+            return EXIT_EXCHANGE_REJECT
         if out == "unfilled_clear":
             ctx.res["verdict"] = ("매수 미체결로 끝남(" + ("접수 거부" if explicit else "취소 확인") +
                                   ") · 보유 0 · 미체결 0 연속 확인 — 재시도 가능")
@@ -1075,7 +1079,8 @@ def _cancel_buy(ctx: Ctx, attempt: Any) -> None:
 def _cancel_buy_and_settle(ctx: Ctx, explicit_reject: bool = False) -> str:
     """미체결 매수 취소 → «강한 증거»로만 미체결 종료 판정(리뷰 B1·I1).
     unfilled_clear = SETTLE_GAP_SEC(≥5초) 간격 라운드가 «연속 2회» 깨끗(settle_issues 빈 목록: 8036R 에 없음·계좌
-    미체결 0 · 0081R 원주문 체결 0 ∧ 잔량 0 ∧ 취소 확인 ≥1 · 잔고 이 종목 0 ∧ 전체 0).
+    미체결 0 · 0081R 원주문 체결 0 ∧ 잔량 0 · 잔고 이 종목 0 ∧ 전체 0 — 취소 확인 필드는 10-08 실측상 판정 불가).
+    rejected_clear = 위와 같고 원주문 행이 거래소 거부(rjct_qty ≥1 · 리뷰 N3).
     held = 어느 라운드든 잔고에 보유 1 확인 → 매도 경로 · unexpected = 보유 > 1 · unknown = 그 밖(→ exit 4)."""
     b, rb, log = ctx.rt["buy"], ctx.res["buy"], ctx.log
     cancels = 0
@@ -1120,6 +1125,9 @@ def _cancel_buy_and_settle(ctx: Ctx, explicit_reject: bool = False) -> str:
         if streak >= 2:
             rb["filled"] = False
             ctx.buy_closed = True
+            if b["odno"] and exchange_rejected(snap.get("daily_row")):
+                rb["exchange_reject"] = True
+                return "rejected_clear"
             return "unfilled_clear"
     ctx.crit(f"**🔴 매수가 «미체결로 끝남»을 강한 증거로 확인 못 함 — {issues} · HTS 즉시 확인 "
              f"(보유·미체결) · 종목 {ctx.code} · ODNO {b['odno'] or '미상'}**")
@@ -1248,7 +1256,8 @@ def _emergency_unwind(ctx: Ctx, exc: BaseException) -> int:
 # 종결 — 결과 json · 요약 md
 # ---------------------------------------------------------------------------
 DEFAULT_VERDICT = {0: "정상", 1: "예외 종료 — 주문·취소 TR 0건(계좌 영향 없음)", 2: "필수 전제·가드 FAIL — 주문 0건",
-                   3: "매수 미체결로 끝남 — 재시도 가능", 4: "CRITICAL — HTS 즉시 확인"}
+                   3: "매수 미체결로 끝남 — 재시도 가능", 4: "CRITICAL — HTS 즉시 확인",
+                   EXIT_EXCHANGE_REJECT: "매수 접수 뒤 거래소 거부 — 계좌 영향 없음 · 거부 사유 확인"}
 
 
 def _fill_side_result(ctx: Ctx, side: str) -> None:
@@ -1279,7 +1288,7 @@ def _fill_side_result(ctx: Ctx, side: str) -> None:
 
 def finish(ctx: Ctx, rc: int) -> None:
     """모든 종결 경로에서 호출(execute 의 finally). 결과 json 을 «먼저» 쓰고(요약 md 실패·Ctrl+C 에도 남게),
-    출력 폴더에 못 쓰면 대체 경로(RESULT_FALLBACK_DIRS)에 쓴다. 예외를 밖으로 내지 않는다(리뷰 I3)."""
+    출력 폴더에 못 쓰면 대체 경로(_fallback_dirs)에 쓴다. 예외를 밖으로 내지 않는다(리뷰 I3)."""
     res = ctx.res
     res["exit_code"] = rc
     res["verdict"] = res["verdict"] or DEFAULT_VERDICT.get(rc, "?")
@@ -1314,8 +1323,10 @@ def write_result(path: str, payload: Dict[str, Any]) -> None:
 
 
 def _fallback_dirs() -> List[Path]:
-    """결과 json 대체 경로: OS 임시 폴더 → 스크립트 폴더 옆(RoboTrader_template/fill_probe_out_fallback)."""
-    return [Path(tempfile.gettempdir()) / "real_fill_probe_out", _RT_ROOT / "fill_probe_out_fallback"]
+    """결과 json 대체 경로: OS 임시 폴더 → %LOCALAPPDATA%/kis-fill-probe(없으면 홈). 둘 다 스크립트·라이브 트리 밖
+    (main 머지 뒤 라이브 트리에서 돌려도 트리에 파일이 생기지 않게 — 리뷰 N4)."""
+    return [Path(tempfile.gettempdir()) / "real_fill_probe_out",
+            Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "kis-fill-probe"]
 
 
 def write_result_any(path: str, payload: Dict[str, Any]) -> Optional[str]:
@@ -1418,6 +1429,8 @@ def build_summary_md(ctx: Ctx) -> str:
     L.append("## 사람이 할 일")
     if res["exit_code"] == 4:
         L.append(f"- 🔴 **HTS 에서 즉시 {res['code']} 보유·미체결 확인 → 보유 있으면 매도 · 미체결 있으면 취소** (10-19 기동 대사 abort 방지)")
+    if res["exit_code"] == EXIT_EXCHANGE_REJECT:
+        L.append("- 거부 사유 확인(이 폴더 JSONL 의 0081R 원주문 행 rjct_qty · HTS 주문내역) 뒤 재시도 여부 결정")
     L.append("- HTS 체결내역과 위 체결가·수량 대조 · 체크리스트 §4-C 에 avg_prvs 규칙 · P2-14 판정 · 이 파일 경로 기록")
     return "\n".join(L) + "\n"
 
@@ -1564,7 +1577,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
                    help=f"현재가 상한(원 · 기본 {DEFAULT_MAX_PRICE:,} · 최대 {MAX_PRICE_CEILING:,})")
     p.add_argument("--fill-wait", type=int, default=DEFAULT_FILL_WAIT, help="매수 체결 대기(초 · 기본 60 · 10~180)")
     p.add_argument("--deadline", default=f"{DEFAULT_DEADLINE:%H:%M}",
-                   help=f"내부 마감 HH:MM(기본 {DEFAULT_DEADLINE:%H:%M} · 09:40~{SELL_CUTOFF:%H:%M}) — 지나면 대기를 끊고 "
+                   help=f"내부 마감 HH:MM(기본 {DEFAULT_DEADLINE:%H:%M} · 09:40~{DEADLINE_MAX:%H:%M}) — 지나면 대기를 끊고 "
                         "종료 확인 → 미해결이면 exit 4")
     p.add_argument("--instance-dir", default=cp.DEFAULT_INSTANCE_DIR, help="실전 인스턴스 폴더(읽기만)")
     p.add_argument("--out-dir", default=DEFAULT_OUT_DIR, help="출력 폴더(워크트리·라이브 트리 밖)")
@@ -1579,8 +1592,8 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         a.deadline = datetime.strptime(a.deadline, "%H:%M").time()
     except ValueError:
         p.error("--deadline 은 HH:MM")
-    if not (dtime(9, 40) <= a.deadline <= SELL_CUTOFF):
-        p.error(f"--deadline 은 09:40~{SELL_CUTOFF:%H:%M}")
+    if not (dtime(9, 40) <= a.deadline <= DEADLINE_MAX):
+        p.error(f"--deadline 은 09:40~{DEADLINE_MAX:%H:%M}(매도 차단 {SELL_CUTOFF:%H:%M} 전 여유)")
     return a
 
 
