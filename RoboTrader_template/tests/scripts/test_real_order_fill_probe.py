@@ -591,7 +591,9 @@ def test_s2_buy_unfilled_cancel_exit3(probe):
     assert r.fake.count("TTTC0013U") == 1 and r.fake.count("TTTC0011U") == 0
     res = r.res
     assert res["buy"]["filled"] is False and res["buy"]["cancel_tried"] is True
-    assert res["buy"]["cancels"][0]["message"] == "Cancel failed: Unknown error"   # NEW-B1 모양 그대로 기록만
+    # fix/real-flow-6(NEW-B1 수정) 뒤 반환 = 성공 모양 · 반환은 기록만(판정은 재조회로)
+    assert res["buy"]["cancels"][0]["success"] is True
+    assert res["buy"]["cancels"][0]["message"] == "Order cancelled"
     assert res["buy"]["cancels"][0]["raw_rt_cd"] == "0"
     assert res["end_holding_qty"] == 0 and res["end_pending_count"] == 0 and res["critical"] == []
     _files_ok(r, 3)

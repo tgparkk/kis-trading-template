@@ -382,27 +382,49 @@ def run_live(monkeypatch):
     return _run
 
 
-def test_live_s1_b1_reproduced_and_verified(run_live):
+def test_live_s1_b1_not_reproduced_and_verified(run_live):
+    # fix/real-flow-6(NEW-B1 수정) 뒤 = 취소 TR rt_cd 0 → cancel_order success True·'Order cancelled' → 비재현
     fake = _FakeKIS([[ROW], [ROW], []], [CANCEL_OK], [ORIG_CANCELLED, CANCEL_ROW])
     rc, out, _ = run_live(fake, "s1")
+    assert rc == 0
+    assert "NEW-B1 = 비재현" in out and "CRITICAL" not in out
+    assert "success=True · message='Order cancelled'" in out
+    assert fake.sent.count(p.TR_BUY) == 1 and fake.sent.count(p.TR_CANCEL) == 1
+
+
+def test_live_s1b_old_b1_return_shape_still_classified_reproduced(run_live, monkeypatch):
+    # 수정 전 반환 모양(취소 TR 은 나가 rt_cd 0 인데 success False·'Unknown error')을 cancel_order 를 감싸
+    # 흉내 → 스크립트 3분류의 «재현» 분기 보전
+    from framework.broker import KISBroker
+    real_cancel = KISBroker.cancel_order
+
+    def old_b1_cancel(self, order_id, stock_code="", order_type="00"):
+        r = real_cancel(self, order_id, stock_code, order_type)
+        return {**r, "success": False, "message": B1_MSG}
+
+    monkeypatch.setattr(KISBroker, "cancel_order", old_b1_cancel)
+    fake = _FakeKIS([[ROW], [ROW], []], [CANCEL_OK], [ORIG_CANCELLED, CANCEL_ROW])
+    rc, out, _ = run_live(fake, "s1b")
     assert rc == 0
     assert "NEW-B1 = 재현" in out and "CRITICAL" not in out
     assert fake.sent.count(p.TR_BUY) == 1 and fake.sent.count(p.TR_CANCEL) == 1
 
 
 def test_live_s2_remains_after_two_cancels_is_critical(run_live):
+    # 1차 취소 rt_cd 0 · success True(비재현)인데도 재조회에 계속 남음 → 판정은 재조회 기준 CRITICAL
     fake = _FakeKIS([[ROW]] * 5, [CANCEL_OK, CANCEL_OK], [ORIG_LIVE])
     rc, out, _ = run_live(fake, "s2")
     assert rc == 4 and "CRITICAL **🔴 HTS 에서 즉시 수동 취소" in out
-    assert "NEW-B1 = 판정불가" in out and fake.sent.count(p.TR_CANCEL) == 2
+    assert "NEW-B1 = 비재현" in out and fake.sent.count(p.TR_CANCEL) == 2
 
 
-def test_live_s3_first_cancel_b1_then_list_lag_second_rejected(run_live):
-    # 1차 취소 rt_cd 0(B1 형태) · 목록 반영 지연으로 2차 취소 rt_cd 1 · 결국 0건 → «1차» 기준으로 재현
+def test_live_s3_first_cancel_ok_then_list_lag_second_rejected(run_live):
+    # 1차 취소 rt_cd 0(success True) · 목록 반영 지연으로 2차 취소 rt_cd 1 · 결국 0건 → «1차» 기준으로 비재현
     fake = _FakeKIS([[ROW], [ROW], [ROW], [ROW], []], [CANCEL_OK, CANCEL_REJ], [ORIG_CANCELLED, CANCEL_ROW])
     rc, out, _ = run_live(fake, "s3")
-    assert rc == 0 and "NEW-B1 = 재현" in out
+    assert rc == 0 and "NEW-B1 = 비재현" in out
     assert "2차 cancel_order 반환" in out
+    assert fake.sent.count(p.TR_CANCEL) == 2
 
 
 def test_live_s4_never_visible_is_unknown_and_critical(run_live):
