@@ -46,9 +46,11 @@ def test_theme_columns_zero_shared_falls_back_to_smallest_theme_and_unthemed_is_
 class _Cur:
     def __init__(self):
         self._sql = ""
+        self.calls = []
 
     def execute(self, sql, args=None):
         self._sql = sql
+        self.calls.append((sql, args))
 
     def fetchall(self):
         if "FROM theme_daily WHERE" in self._sql:
@@ -71,6 +73,16 @@ def test_load_snapshot_normalizes_codes_and_dates_list():
     assert s.members[1] == frozenset({"005930", "000660"})
     assert s.theme_name == {1: "큰테마"}
     assert SN.load_snap_dates(_Conn()) == [date(2026, 10, 5), date(2026, 10, 8)]
+
+
+def test_load_snapshot_run_id_filters_both_tables():
+    plain, pinned = _Conn(), _Conn()
+    SN.load_snapshot(plain, date(2026, 10, 8))
+    SN.load_snapshot(pinned, date(2026, 10, 8), 4)
+    assert [a for _, a in plain.c.calls] == [(date(2026, 10, 8),)] * 2
+    assert all("run_id" not in s for s, _ in plain.c.calls)
+    assert [a for _, a in pinned.c.calls] == [(date(2026, 10, 8), 4)] * 2
+    assert all(s.endswith("WHERE snap_date = %s AND run_id = %s") for s, _ in pinned.c.calls)
 
 
 def test_snapshot_module_loads_standalone_by_path():

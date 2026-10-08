@@ -46,13 +46,16 @@ def load_snap_dates(conn) -> List[date]:
     return [r[0] for r in cur.fetchall()]
 
 
-def load_snapshot(conn, snap_date: date) -> Snapshot:
+def load_snapshot(conn, snap_date: date, run_id: Optional[int] = None) -> Snapshot:
+    """run_id 를 주면 두 표 모두 그 수집 회차로 고정한다(판정 입력 · R13). EOD 표시는 run_id 없이 부른다."""
+    where, args = ("snap_date = %s", (snap_date,)) if run_id is None else \
+        ("snap_date = %s AND run_id = %s", (snap_date, run_id))
     cur = conn.cursor()
-    cur.execute("SELECT theme_no, theme_name FROM theme_daily WHERE snap_date = %s", (snap_date,))
+    cur.execute("SELECT theme_no, theme_name FROM theme_daily WHERE " + where, args)
     names = {int(t): str(n) for t, n in cur.fetchall()}
     if not names:
-        raise LookupError(f"theme_daily 에 snap_date={snap_date} 행이 없다")
-    cur.execute("SELECT theme_no, stock_code FROM theme_member_daily WHERE snap_date = %s", (snap_date,))
+        raise LookupError(f"theme_daily 에 snap_date={snap_date} run_id={run_id} 행이 없다")
+    cur.execute("SELECT theme_no, stock_code FROM theme_member_daily WHERE " + where, args)
     mem: Dict[int, Set[str]] = {}
     for t, c in cur.fetchall():
         mem.setdefault(int(t), set()).add(norm_code(c))

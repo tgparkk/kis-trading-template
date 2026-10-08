@@ -113,7 +113,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     a = ap.parse_args(argv)
     keys, day_codes = load_keys()
     conn = CL._connect()
-    snap = SN.load_snapshot(conn, MB.SNAP_DATE)
+    snap = SN.load_snapshot(conn, MB.SNAP_DATE, MB.SNAP_RUN_ID)
     states, excess, raw_r, cal = load_day_states(conn)
     conn.close()
     elig = MB.eligible_themes(snap.theme_name, a.n_cut)

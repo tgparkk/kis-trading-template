@@ -101,7 +101,7 @@ def main() -> int:
     mean_e, mean_c = _window(ic, WIN_E), _window(ic, WIN_C)
 
     conn = CL._connect()
-    snap = SN.load_snapshot(conn, MB.SNAP_DATE)
+    snap = SN.load_snapshot(conn, MB.SNAP_DATE, MB.SNAP_RUN_ID)
     states, _, _, _ = BS.load_day_states(conn)
     conn.close()
     members = MB.restrict(snap.members, MB.eligible_themes(snap.theme_name, N_CUT))

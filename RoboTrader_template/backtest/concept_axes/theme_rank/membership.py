@@ -8,7 +8,8 @@ import re
 from datetime import date
 from typing import Dict, FrozenSet, Iterable, Mapping, Optional, Set, Tuple
 
-SNAP_DATE = date(2026, 10, 8)        # 🔒 과거 검정 전 구간 고정 소속표(run_id 4 · 스펙 §4-3)
+SNAP_DATE = date(2026, 10, 8)        # 🔒 과거 검정 전 구간 고정 소속표(스펙 §4-3)
+SNAP_RUN_ID = 4                      # 🔒 그 스냅샷의 수집 회차 — 같은 날 재수집이 생겨도 입력 고정(R13)
 
 # 🔒 사건·분류형 테마 — 이름만 보고 정한다(결과 보기 전 · 스펙 §4-2 후보 목록 그대로).
 EXCLUDED_NAME_PATTERNS: Tuple[str, ...] = (r"밸류업", r"지주사", r"SPAC|스팩", r"신규상장", r"여름", r"겨울", r"코로나")

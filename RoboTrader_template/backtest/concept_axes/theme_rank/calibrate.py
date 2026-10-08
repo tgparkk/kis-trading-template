@@ -72,7 +72,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     a = ap.parse_args(argv)
     arena = BF.filled(pd.read_csv(BA.OUT / "arena.csv", dtype={"stock_code": str, "scan_date": str}))
     conn = CL._connect()
-    snap = SN.load_snapshot(conn, MB.SNAP_DATE)
+    snap = SN.load_snapshot(conn, MB.SNAP_DATE, MB.SNAP_RUN_ID)
     conn.close()
     members = MB.restrict(snap.members, MB.eligible_themes(snap.theme_name, a.n_cut))
     days = sorted(arena["scan_date"].unique())
