@@ -384,6 +384,11 @@ def main() -> int:      # noqa: C901, PLR0912, PLR0915
         ctrl8 = [cc8.get(d) for _n, _c, d in S8.EXACT4]
     news10 = [(nm, code, d, S7.news_hits(cur, code, d)) for nm, code, d in EXACT9]
     corp = {nm: corp_day(cur, code, d) for nm, code, d in EXACT9}
+    corp_rows = {}      # 정정 1차(verifier B-1) — 창 `[D, D]` 안 `corp_events` 전 행(기록 줄 · 분류 효과 0)
+    for nm, code, d in EXACT9:
+        cur.execute("SELECT event_date, event_type, coalesce(meta->>'report_nm', '') FROM corp_events "
+                    "WHERE stock_code=%s AND event_date=%s ORDER BY event_date, event_type", (code, d))
+        corp_rows[nm] = [(str(d_), t, nm_.strip()) for d_, t, nm_ in cur.fetchall()]
     cur.close()
     conn.close()
 
@@ -595,6 +600,15 @@ def main() -> int:      # noqa: C901, PLR0912, PLR0915
         + (" · ".join(f"{nm}: " + (f"ⓐ split {corp[nm][0]}건 " if corp[nm][0] else "") + (f"ⓑ `volume=0` {corp[nm][1]}봉 " if corp[nm][1] else "")
                       + f"· {dict((n_, d_) for n_, _c, d_ in EXACT9)[nm]}" for nm in sorted(corp_set)) if corp_set else "건 없음(ⓐ 0 · ⓑ 0)")
         + " · `adj_factor` 산술 0 · 처리 = (나) (`F-3` · 창 = 등록일 단면 `D` 한 날 · ⓒ dart 거래정지 공시 제목은 신고 줄에만 — 이 축은 읽지 않았다)")
+    say("- 창 안 `corp_events` 전 행(기록 줄 · 분류 효과 0):")
+    _code_of = {n_: c_ for n_, c_, _d in EXACT9}
+    _any_ev = False
+    for nm, _c, _d in EXACT9:
+        for d_, tp, rn in corp_rows[nm]:
+            _any_ev = True
+            say("  - %s `%s` %s `%s` *「%s」*" % (nm, _code_of[nm], d_, tp, rn))
+    if not _any_ev:
+        say("  - 없음.")
     say("")
     say("**`P10-S5기호` 단서 각주(축자 · (가) 열 · PD-38 · `PREREG_POST10.md` §1 (나) 2·2′)**\n")
     say(f"- 2번 — *「{FOOT_OK}」*")

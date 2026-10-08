@@ -644,6 +644,8 @@ MANUAL_DOCS = [
     #    나머지 산문 7본(EXIT·LAD·REC·S5·D1_OOS·WRC·RNK)은 아직 없다 ⇒ 판정 뒤 작성 · 그때 등재(없는 파일을 미리 등재하지 않는다).
     "INTAKE_2026-10-04_post10.md", "PREDECISION_2026-10-04_post10.md", "LABELS_2026-10-04_post10.md",
     "RESULTS_SELECTION_POST10.md", "RESULTS_REGDAY_POST10.md", "RESULTS_SECTOR_POST10.md",
+    # 🔴 2026-10-08 — post10 verifier 1패스 정정 1차 정오표(사람이 쓴 것 · 값 계산 0). 등재 «시점»에 이미 있다.
+    "ERRATA_2026-10-08_post10_values.md",
     # 🔴 `verify_ledger_post8.py` 는 post5·post6·post7 판 전례대로 **일부러 등재하지 않는다**
     #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]

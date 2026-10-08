@@ -107,7 +107,8 @@
     "LABELS_2026-10-04_post10.md",
     "RESULTS_SELECTION_POST10.md",
     "RESULTS_REGDAY_POST10.md",
-    "RESULTS_SECTOR_POST10.md"
+    "RESULTS_SECTOR_POST10.md",
+    "ERRATA_2026-10-08_post10_values.md"
   ],
   "db_fingerprint": {
     "daily_prices[>=2026-04-01]": [
@@ -374,7 +375,7 @@
     "RESULTS_D1_OOS_POST10_NUMBERS.md": {
       "script": "run_d1_oos_post10.py",
       "deps": {
-        "run_d1_oos_post10.py": "fbad9dc509426740425aac9e39ec7dbdc08a371f50a25b530e7f09993c92e0b5",
+        "run_d1_oos_post10.py": "184f205214c9c0d1910731f826bfab388fcc460ade6a7bd936aa7763de5d7b61",
         "run_d1_oos_post7.py": "6fe2dd87d6e869ebbc4085685a1b6f49e35b6cc938b8667fb8f0fd4dc3b04f0d",
         "run_d1_oos_post8.py": "83500811baae83404934896d2719ba20e961478b52056969b4eece2cfb8fc108",
         "run_d1_oos_post9.py": "bd097ce6d2efa7d6170cf5ceeea84d4018f29e425a8e1df42c46289c52e10e35",
@@ -384,7 +385,7 @@
         "run_selection_post8.py": "4333bde5267c674b557966b8b5a30deac490cb3be7b160a8c7d2943877d26b3e",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "6e096fe63e1ae7fdf937b0ec881574692aa33c6bf680ff8c903d022c912f3c34",
+      "results_sha256": "a9c88b3cb4c226cd6ce6b89fa5645177ee236351976cf99dff42724534b6e470",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -642,14 +643,14 @@
       "script": "run_ladder_tranche_post10.py",
       "deps": {
         "run_ladder_tranche.py": "dec8030032107b5068aa5eb5cbb48cb7823082fc2147df13116accc8a886ba96",
-        "run_ladder_tranche_post10.py": "10954cfec10d4633050f972eec97e57b0d42931e37df28f623164c7173274110",
+        "run_ladder_tranche_post10.py": "1bfb347c77b5bb2a5a944195881686f5486251308ac15a008dd8f0cb0709bdb3",
         "run_ladder_tranche_post6.py": "118d47cb87b165bef6abbcfce5c589e70d6def35a54e1dc704a64de58cab225d",
         "run_ladder_tranche_post7.py": "77a265985c502053da9b2d3aae967397be7eac3c35f7b3365408707a3099d138",
         "run_ladder_tranche_post8.py": "e3d59ce26c90700cb8196e806e2a3bbb461318dd941a16f79f9f3e2686f1c913",
         "run_ladder_tranche_post9.py": "51b89ef56c0eae4385ed46b8b274ae7c6990a059f2c6a01c660310eb4720bb77",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "67066759c7874d7ea8ae5e1a702ae96b6185b650c0361fd07a45ef83e4bd651a",
+      "results_sha256": "5d0d2bb760167f82c23d46cd2b177dea5eb33703c76c857c0d385fee3e2bb48a",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -1080,7 +1081,7 @@
     "RESULTS_REGDAY_POST10_NUMBERS.md": {
       "script": "run_regday_post10.py",
       "deps": {
-        "run_regday_post10.py": "58d10d7ecd265efcf21320a36d5ce384910614cdf690bdd50dff07a30903f76b",
+        "run_regday_post10.py": "9306f9d37a2eb952f0de72eac5c66b4016ca6579c84f4d5674354350befa1e09",
         "run_regday_post6.py": "04fea8f9c0a1ee818883a2b70b90208d8713115e891047f12e85ed7a5c88228a",
         "run_regday_post7.py": "72ff151408d47df08d5818b9853c9f9d0bdb367d539826d178a9f69239188c32",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
@@ -1090,7 +1091,7 @@
         "run_selection_post8.py": "4333bde5267c674b557966b8b5a30deac490cb3be7b160a8c7d2943877d26b3e",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "38a1a8fed7a0af3d77cd5a1d7d01af51fd3b0947c729dedd87f348c343632705",
+      "results_sha256": "279e3ce7305104f374a083880c4af89c3f32f3d1ca1a57896c7b72dec057a32d",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],
@@ -1174,14 +1175,14 @@
     "RESULTS_S5_POST10_NUMBERS.md": {
       "script": "run_s5_post10.py",
       "deps": {
-        "run_s5_post10.py": "d1e2c8aaee7443cfbe9a259cb09062322c8873cee924cd7cfc6f6b09d9d6cf2a",
+        "run_s5_post10.py": "645702d2d491f2cd6071323fcf4c7a0c5580a27f54fdc61412736ae7b17b900e",
         "run_s5_post7.py": "a83fd1b0d92bb9584cfc77a359769182808b84c433e45449c4bc603902c66a24",
         "run_s5_post8.py": "689928a9e9d24223cf919ed3c2d5484ab95290009ce1f295e6c8ca07578d1b34",
         "run_s5_post9.py": "7439ef6dd58abb37fd53c4c311ac468ae93357dca7c2caac8c1a117c2d32263d",
         "run_selection.py": "abcbe6ad72a08f2db6fb59931c72a7557ab8ce80dd864162ac471480e33d89f2",
         "run_tests.py": "8e56c7c9e39865ef48a45428e245d77c300165d94f907e717c981009ed0dcdf2"
       },
-      "results_sha256": "1d78c1ffc16be54542ce8a08ffa84ee3a12d7db598455a80ae9466774f2a91bd",
+      "results_sha256": "83474b568cadfcfeaee815a7fd558ab9633dc0ed2bf05a8210ed9fece47ae5af",
       "absorbed_stale": {
         "why": "이전 매니페스트에 «없었다» — 이번 재기준선에서 처음 등재. 재현 확인(`--rerun`)을 거치지 않았다.",
         "deps_changed": [],

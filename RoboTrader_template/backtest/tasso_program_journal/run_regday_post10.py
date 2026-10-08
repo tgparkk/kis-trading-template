@@ -783,7 +783,12 @@ def _main():  # noqa: C901
     m2_main, m2_re, m2_sa, m2_co = m2_for(ok10), m2_for(sub_re), m2_for(sub_sa), m2_for(sub_co)
     m3_main, m3_re, m3_sa, m3_co = m3_for(ok10), m3_for(sub_re), m3_for(sub_sa), m3_for(sub_co)
     m4_main, m4_re, m4_sa, m4_co = m4_for(ok10), m4_for(sub_re), m4_for(sub_sa), m4_for(sub_co)
-    m2_split, m3_split, m4_split = m2_main[0] != m2_re[0], m3_main[0] != m3_re[0], m4_main[0] != m4_re[0]
+    m2_split, m4_split = m2_main[0] != m2_re[0], m4_main[0] != m4_re[0]
+    # 정정 1차(verifier B-2) — `P6-M3′` 은 최소 n(되밀림형 3) 미달 갈래의 값을 「갈렸다」의 근거로 쓰지 않는다(P8-갈래계수 `PREREG_POST8.md:337-343` · `REG-` 포함)
+    m3_diff = m3_main[0] != m3_re[0]
+    m3_split = m3_diff and m3_main[1] >= MIN_PULL and m3_re[1] >= MIN_PULL
+    m3_below = m3_diff and not m3_split
+    NMIN_NOTE = "최소 n 미달 — 갈림 근거 아님(P8-갈래계수 `PREREG_POST8.md:337-343`)"
     sr = sens["§1-5 재진입 제외"]
     q1_dir = (obs10 >= R2_RATIO) != (sr[0] >= R2_RATIO)
     dep_tag = " · 🔴 **재진입 의존**(§1-5 2 · 9↔5 두 값이 판정을 가름)"
@@ -830,7 +835,7 @@ def _main():  # noqa: C901
     say(f"| `P6-M2′` | 🔀 「기업행위 건 제외」 | {co[3]} | 답(참고) · 세지 않는다 — 상한가형 {m2_co[1]} · 되밀림형 {m2_co[2]}"
         + ("" if corp_k else " · 항등(k=0)") + " | ❌(계수 아님 · `F-3` (나)) | — |")
     say(f"| `P6-M3′` | 주(`exact` 되밀림형) | {len(pull10)} | {m3_verdict} · 꼬리표 {tag_state} | ✅ | — |")
-    say(f"| `P6-M3′` | §1-5 재진입 포함↔제외 | {len(ok10)} ↔ {len(sub_re)} | 되밀림형 {m3_re[1]}건 ⇒ {m3_re[0]} — {gap_txt(m3_split)} | "
+    say(f"| `P6-M3′` | §1-5 재진입 포함↔제외 | {len(ok10)} ↔ {len(sub_re)} | 되밀림형 {m3_re[1]}건 ⇒ {m3_re[0]} — {NMIN_NOTE if m3_below else gap_txt(m3_split)} | "
         "✅(계수 갈래) | — |")
     say(f"| `P6-M3′` | 🔀 「샌즈 제외」 | {sa[3]} | 되밀림형 {m3_sa[1]}건 ⇒ {m3_sa[0]} — 인쇄만 | ❌(🔒 #1 ⓐ 인쇄만) | — |")
     say(f"| `P6-M3′` | 🔀 「기업행위 건 제외」 | {co[3]} | 답(참고) · 세지 않는다 — 되밀림형 {m3_co[1]}건 · 중앙 "
@@ -845,7 +850,9 @@ def _main():  # noqa: C901
     say("")
     dep_list = [n_ for n_, f_ in (("`P6-M1′`", split_reentry), ("`P6-M2′`", m2_split),
                                   ("`P6-M3′`", m3_split), ("`REG-M4`", m4_split)) if f_]
-    say("⇒ **계수 결과**: 최소 n 을 채운 갈래(재진입 제외 n 5)에서 «판정» 답이 갈린 예측 = **"
+    say("⇒ **계수 결과**: " + ("`P6-M3′` 은 최소 n(되밀림형 3)을 채운 갈래 = 주 갈래 1개(재진입 제외 갈래는 되밀림형 "
+                              f"{m3_re[1]} < 3 · 갈림 근거 아님) · " if m3_below else "")
+        + "«판정» 답이 갈린 예측 = **"
         + (" · ".join(dep_list) if dep_list else "없음") + "**"
         + (f" · #7 비율 항목은 「비율 기록」이라 판정이 없고 문턱 방향만 {'다르다' if q1_dir else '같다'}(기록)") + ".")
     say("")
@@ -958,7 +965,8 @@ def _main():  # noqa: C901
         ("`P6-M3′` 최소 n", "충족" if len(pull10) >= MIN_PULL else "미달", "#10",
          (len(pull10) >= MIN_PULL) or m3_verdict.startswith("⛔")),
         ("`drop_rate ≥ 1%`", "발동" if drop_flag_days else "미발동", "§6-0 비교 금지 문구", True),
-        ("§1-5 재진입 의존(9↔5)", "발동 — " + " · ".join(dep_list) if dep_list else "미발동(두 값이 판정을 가르지 않음)", "#8~#11",
+        ("§1-5 재진입 의존(9↔5)", "발동 — " + " · ".join(dep_list) if dep_list
+         else "미발동(두 값이 판정을 가르지 않음" + (" · `P6-M3′` 재진입 제외 갈래는 최소 n 미달 — 갈림 근거 아님" if m3_below else "") + ")", "#8~#11",
          ((not split_reentry) or "재진입 의존" in m1_verdict) and ("재진입 의존" in c9) == m2_split
          and ("재진입 의존" in c10) == m3_split and ("재진입 의존" in c11) == m4_split),
         ("「샌즈 제외」·「기업행위 건 제외」", "인쇄만", "없음(판정 효과 없음)", True),
