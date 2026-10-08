@@ -92,7 +92,7 @@ class OrderMonitorMixin:
                             if self.telegram:
                                 try:
                                     await self.telegram.notify_system_status(
-                                        f"[{reason}] 진행 중 매수 주문 취소: {order.stock_code} 주문 {order_id}"
+                                        f"[{reason}] 취소 접수 주문에 VI — 확정 대기: {order.stock_code} 주문 {order_id}"
                                     )
                                 except Exception:
                                     pass

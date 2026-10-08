@@ -51,6 +51,8 @@ class OrderManagerBase:
         # (2026-10-08 N2·N4 — order_timeout._settle_after_cancel / order_monitor VI 가드)
         self._cancel_settle_obs: Dict[str, int] = {}
         self._vi_notified_ids: Set[str] = set()
+        # 연기 재처리에서 8036R 잔존으로 취소를 재전송한 주문(주문당 1회 · 2026-10-08 리뷰 I1)
+        self._cancel_resent_ids: Set[str] = set()
 
         # 모니터링 상태
         self.is_monitoring = False
@@ -174,6 +176,7 @@ class OrderManagerBase:
             getattr(self, '_cancel_confirmed_ids', set()).discard(order_id)
             getattr(self, '_cancel_settle_obs', {}).pop(order_id, None)
             getattr(self, '_vi_notified_ids', set()).discard(order_id)
+            getattr(self, '_cancel_resent_ids', set()).discard(order_id)
 
             # FundManager 연동: 취소/타임아웃 시 예약 해제
             from ..models import OrderStatus
