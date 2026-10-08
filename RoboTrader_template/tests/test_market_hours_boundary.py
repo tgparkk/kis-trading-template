@@ -400,6 +400,7 @@ class TestSuneungAuctionKeys:
     def test_order_gate(self, y, m, d):
         assert MarketHours.can_place_order(None, 'KRX', kst_dt(y, m, d, 16, 0))
         assert MarketHours.can_place_order(None, 'KRX', kst_dt(y, m, d, 16, 19))
+        assert not MarketHours.can_place_order(None, 'KRX', kst_dt(y, m, d, 16, 20))  # 경계: 마감 동시호가 시작부터 차단
         assert not MarketHours.can_place_order(None, 'KRX', kst_dt(y, m, d, 16, 21))
         assert not MarketHours.can_place_order(None, 'KRX', kst_dt(y, m, d, 9, 45))  # 개장 전
         assert MarketHours.get_market_phase('KRX', kst_dt(y, m, d, 10, 2)) == MarketPhase.OPENING_PROTECTION
