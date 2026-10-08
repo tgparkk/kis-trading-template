@@ -3,7 +3,7 @@
 작성 2026-10-08(목) · 브랜치 `intake/tasso-post10`(기준 HEAD `e8ddfdd`) · 정정 1차(executor · 🔴 관리자 검수 전)
 · 대상 = post10 값 계산 산출물(`RESULTS_*_POST10_NUMBERS.md` 10본 · 산문 3본 `RESULTS_{SELECTION,REGDAY,SECTOR}_POST10.md` · 스탬프 `*_post10/read_stamp.json`)
 · 근거 = verifier 1패스(2026-10-08 · 블로커 2 · 사실 3 · 표기 10 · 결정 후보 2 · **판정값 재계산 불일치 0**)
-· 정정 커밋 = (관리자가 채움)
+· 정정 커밋 = `448123e`
 · 🔴 **이 파일은 값을 계산하지 않는다** — 판정값·판정 낱말 변경 0 · 새 규칙 0 · 새 숫자 0(아래 수는 전부 git·diff·파일 md5·`파일:줄` 인용).
 · 🔴 **라이브 채택 아님** — `PREREG_POST10.md:56`·`:58`.
 

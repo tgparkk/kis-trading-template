@@ -640,10 +640,13 @@ MANUAL_DOCS = [
     #    사람이 쓴 문서라 `MANUAL_DOCS` 자리 · 🔴 등재는 동결 커밋 «앞»이고 «별도 커밋»이다(`PREREG_POST8.md` §0-2 0번 관용)
     #    · 파일은 등재 시점에 이미 있다(초안 `??`) ⇒ G-1 존재 검사가 «진짜로» 돈다.
     "PREREG_POST10.md",
-    # 🔴 2026-10-08 — post10 인테이크 3문서 + 지금 «있는» 값 계산 산문 3본(SEL·REG·SEC · 사람이 쓴 것).
-    #    나머지 산문 7본(EXIT·LAD·REC·S5·D1_OOS·WRC·RNK)은 아직 없다 ⇒ 판정 뒤 작성 · 그때 등재(없는 파일을 미리 등재하지 않는다).
+    # 🔴 2026-10-08 — post10 인테이크 3문서 + 값 계산 산문 3본(SEL·REG·SEC · 사람이 쓴 것).
     "INTAKE_2026-10-04_post10.md", "PREDECISION_2026-10-04_post10.md", "LABELS_2026-10-04_post10.md",
     "RESULTS_SELECTION_POST10.md", "RESULTS_REGDAY_POST10.md", "RESULTS_SECTOR_POST10.md",
+    # 🔴 2026-10-08 — post10 산문 7본(EXIT·LAD·REC·S5·D1_OOS·WRC·RNK · 사람이 쓴 것 · 판정 뒤 작성 · 등재 «시점»에 이미 있다).
+    "RESULTS_EXIT_V2_POST10.md", "RESULTS_LADDER_TRANCHE_POST10.md", "RESULTS_RECONSTRUCT_POST10.md",
+    "RESULTS_S5_POST10.md", "RESULTS_D1_OOS_POST10.md", "RESULTS_WRC_POST10.md",
+    "RESULTS_RANKING_POST10.md",
     # 🔴 2026-10-08 — post10 verifier 1패스 정정 1차 정오표(사람이 쓴 것 · 값 계산 0). 등재 «시점»에 이미 있다.
     "ERRATA_2026-10-08_post10_values.md",
     # 🔴 `verify_ledger_post8.py` 는 post5·post6·post7 판 전례대로 **일부러 등재하지 않는다**
