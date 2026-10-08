@@ -81,12 +81,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     calib = dict(c, t_fakes={str(L): v for L, v in t.items()}, n_fakes=N_FAKES, phi=PHI, accept=list(ACCEPT),
                  n_cut=a.n_cut, arena_md5=BA.md5(BA.OUT / "arena.csv"))
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "calib.json").write_text(json.dumps(calib, ensure_ascii=False, indent=1), encoding="utf-8")
+    BA.write_lf(OUT / "calib.json", json.dumps(calib, ensure_ascii=False, indent=1))
     lines = ["# 도구 교정 결과(가짜 테마 신호)", "",
              f"- 가짜 {N_FAKES}개 · AR(1) φ={PHI} · 합격 [{ACCEPT[0]}, {ACCEPT[1]}] · N_cut {a.n_cut}",
              *[f"- lag {L}: p<0.10 거부율 {r:.3f}" for L, r in c["rates"].items()],
              f"- 선택: mode={c['mode']} · lag={c['lag']}", f"- calib.json md5: {BA.md5(OUT / 'calib.json')}"]
-    (OUT / "RESULTS.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    BA.write_lf(OUT / "RESULTS.md", "\n".join(lines) + "\n")
     print("\n".join(lines))
     return 0
 

@@ -44,3 +44,19 @@ def test_primary_s_matches_compute_rows():
     inp = _inputs()
     assert BS.primary_s([(D1, "000009"), (D0, "000009")], inp.states, inp.themes_of, inp.members) == [
         pytest.approx(BS.compute_rows([(D1, "000009")], inp)[0]["s"]), 0.0]
+
+
+def test_writers_emit_lf_only(tmp_path):
+    """R11 — Windows 기본 CRLF 면 고정 md5 ≠ git 저장 바이트. 모든 writer 는 LF 로 쓴다."""
+    from pathlib import Path
+
+    from backtest.concept_axes.theme_rank import build_arena as BA
+    p = tmp_path / "x.md"
+    BA.write_lf(p, "가\n나\n")
+    assert p.read_bytes() == "가\n나\n".encode("utf-8")
+    pkg = Path(BA.__file__).resolve().parent
+    for src in sorted(pkg.glob("*.py")):
+        text = src.read_text(encoding="utf-8")
+        assert ".write_text(" not in text, src.name
+        for chunk in text.split(".to_csv(")[1:]:
+            assert r'lineterminator="\n"' in chunk.split("\n\n")[0], src.name

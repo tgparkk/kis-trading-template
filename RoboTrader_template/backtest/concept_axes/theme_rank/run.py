@@ -154,7 +154,7 @@ def main() -> int:
         f"- S=0 비율 {(df['s'] == 0).mean():.3f} · 경기장 체결 행 {len(df):,}", "",
         "## 인쇄 항목(판정 불변)", "", "| 항목 | IC 평균 | HAC t | 일수 |", "|---|---|---|---|", *extra, "",
         "🔴 기각 전용 — 통과해도 소속표 미래 참조·생존 편향 때문에 상한이다(스펙 §5-7)."]
-    (BA.OUT / "RESULTS.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    BA.write_lf(BA.OUT / "RESULTS.md", "\n".join(lines) + "\n")
     print("\n".join(lines))
     return 0
 

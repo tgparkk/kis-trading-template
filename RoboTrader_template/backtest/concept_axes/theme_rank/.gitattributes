@@ -1,0 +1,4 @@
+# 고정 md5 = git 저장 바이트(R11) — 줄바꿈 변환 금지(core.autocrlf 무관)
+*.csv -text
+*.json -text
+*.md -text

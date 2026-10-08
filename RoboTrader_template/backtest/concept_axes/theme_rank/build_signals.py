@@ -124,11 +124,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     rows = compute_rows(keys, inp)
     BA.OUT.mkdir(parents=True, exist_ok=True)
     path = BA.OUT / "signals.csv"
-    pd.DataFrame(rows, columns=SIG_COLS).to_csv(path, index=False, encoding="utf-8")
+    pd.DataFrame(rows, columns=SIG_COLS).to_csv(path, index=False, encoding="utf-8", lineterminator="\n")
     sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     meta = dict(git_sha=sha, n_cut=a.n_cut, patterns=list(MB.EXCLUDED_NAME_PATTERNS), snap_date=str(MB.SNAP_DATE),
                 n_eligible_themes=len(elig), n_rows=len(rows), ledger_md5=BA.LEDGER_MD5, signals_md5=BA.md5(path))
-    (BA.OUT / "signals_meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    BA.write_lf(BA.OUT / "signals_meta.json", json.dumps(meta, ensure_ascii=False, indent=1))
     print(f"신호 {len(rows):,}행 · 적격 테마 {len(elig)} · md5 {meta['signals_md5']}")
     return 0
 

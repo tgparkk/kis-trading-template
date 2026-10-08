@@ -26,7 +26,7 @@ def main() -> int:
              f"- 하루 안 Spearman(S, 현재 순위) 평균 {corr.mean():+.3f}(유효 {corr.notna().sum()}일)",
              f"- S 상위 3 안 같은 주 테마 2종목 이상인 날 {days_dup}/{n_day.size}",
              f"- 주 테마 상위 10: {sig['main_theme'].dropna().astype(int).value_counts().head(10).to_dict()}"]
-    (BA.OUT / "DESCRIBE.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    BA.write_lf(BA.OUT / "DESCRIBE.md", "\n".join(lines) + "\n")
     print("\n".join(lines))
     return 0
 

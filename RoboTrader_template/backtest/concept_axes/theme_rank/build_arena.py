@@ -36,6 +36,12 @@ def md5(path: Path) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
 
 
+def write_lf(path: Path, text: str) -> None:
+    """LF 고정 쓰기 — Windows 기본(CRLF)이면 고정 md5 ≠ git 저장 바이트(R11)."""
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+
+
 def load_ledger() -> pd.DataFrame:
     got = md5(LEDGER_CSV)
     if got != LEDGER_MD5:
@@ -119,12 +125,13 @@ def main() -> int:
     rows = arena_rows(led, low_of, lambda code, d1, px: BF.resim_band_touch(code, d1, px, env, rules, probe))
     conn.close()
     OUT.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows, columns=ARENA_COLS).to_csv(OUT / "arena.csv", index=False, encoding="utf-8")
+    pd.DataFrame(rows, columns=ARENA_COLS).to_csv(OUT / "arena.csv", index=False, encoding="utf-8",
+                                                    lineterminator="\n")
     cnt = Counter(r["fill"] for r in rows)
     sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     meta = dict(git_sha=sha, ledger_md5=LEDGER_MD5, n_rows=len(rows), fill_counts=dict(cnt),
                 n_days=len({r["scan_date"] for r in rows}), arena_md5=md5(OUT / "arena.csv"))
-    (OUT / "arena_meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_lf(OUT / "arena_meta.json", json.dumps(meta, ensure_ascii=False, indent=1))
     print(f"경기장 {len(rows):,}행 · {meta['n_days']}일 · 체결 {dict(cnt)} · md5 {meta['arena_md5']}")
     return 0
 

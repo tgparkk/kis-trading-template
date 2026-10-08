@@ -13,6 +13,7 @@ import re                                                              # noqa: E
 from pathlib import Path                                               # noqa: E402
 
 from backtest.concept_axes.candidate_ledger import run as CL           # noqa: E402
+from backtest.concept_axes.theme_rank import build_arena as BA         # noqa: E402
 from backtest.concept_axes.theme_rank import membership as MB          # noqa: E402
 from backtest.concept_axes.theme_rank import snapshot as SN            # noqa: E402
 
@@ -37,7 +38,7 @@ def main() -> int:
     lines += ["", f"## 사건·분류형 제외({len(ex)}개 · 패턴 {MB.EXCLUDED_NAME_PATTERNS})", ""]
     lines += [f"- {t} {snap.theme_name[t]} ({len(snap.members[t])})" for t in ex]
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    BA.write_lf(OUT, "\n".join(lines) + "\n")
     print(f"출력 → {OUT} · 테마 {len(snap.theme_name)} · 표 {sum(1 for x in snap.theme_name if x >= FROM_NO)}행 · 제외 {len(ex)}")
     return 0
 
