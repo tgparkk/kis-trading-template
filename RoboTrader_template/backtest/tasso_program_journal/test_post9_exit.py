@@ -139,8 +139,11 @@ def _blob(rel):
 def test_R2_upstream_untouched():
     for rel in ("run_exit_v2_post4.py", "run_exit_v2_post5.py", "run_exit_v2_post6.py", "run_exit_v2_post7.py",
                 "run_exit_v2_post8.py", "RESULTS_EXIT_V2_POST7_NUMBERS.md", "RESULTS_EXIT_V2_POST8_NUMBERS.md",
-                "RESULTS_EXIT_V2_POST8.md", "ledger_trades.csv", "ledger_legs.csv"):
+                "RESULTS_EXIT_V2_POST8.md"):
         assert hashlib.md5((BASE / rel).read_bytes()).hexdigest() == hashlib.md5(_blob(rel)).hexdigest(), rel
+    # 원장은 post10 행이 뒤에 append 됐다(`0cc2e5e`) ⇒ 「post9 상태(= 기준 블롭)가 순수 prefix」 로 본다
+    for rel in ("ledger_trades.csv", "ledger_legs.csv"):
+        assert (BASE / rel).read_bytes().startswith(_blob(rel)), f"{rel}: {BASE_REF} 상태가 prefix 가 아니다"
     miss = subprocess.run(["git", "cat-file", "-e",
                            f"{BASE_REF}:RoboTrader_template/backtest/tasso_program_journal/run_exit_v2_post9.py"],
                           cwd=BASE, capture_output=True)
