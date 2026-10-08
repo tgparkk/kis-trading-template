@@ -126,3 +126,21 @@ def test_history_lookups():
     assert R.LOGGER_TO_FOLDER["strategy.RSLeaderStrategy"] == "rs_leader"
     with pytest.raises(KeyError):
         R.spec("no_such_strategy")
+
+
+def _daily_trades_inc_rule(fn) -> str:
+    """`on_order_filled` 안 `self.daily_trades += 1` 위치 → 규칙. `if order.is_buy:` 본문 안이면 매수만, 함수 본문 바로 아래면 매수+매도."""
+    def _is_inc(st) -> bool:
+        return isinstance(st, ast.AugAssign) and ast.unparse(st.target) == "self.daily_trades"
+    top = any(_is_inc(st) for st in fn.body)
+    in_buy = any(_is_inc(st) for node in fn.body if isinstance(node, ast.If) and ast.unparse(node.test) == "order.is_buy"
+                 for st in node.body)
+    assert top != in_buy, "daily_trades += 1 이 함수 본문·is_buy 분기 둘 다(또는 어디에도) 없다"
+    return R.CAP_COUNTS_BUY_ONLY if in_buy else R.CAP_COUNTS_BUY_SELL
+
+
+@pytest.mark.parametrize("folder", R.ALL_FOLDERS)
+def test_latest_daily_cap_rule_matches_on_order_filled(folder):
+    """이력표 최신 규칙(2026-10-08~ 매수만 · 1e62298) = 지금 라이브 `on_order_filled` 의 `daily_trades += 1` 위치."""
+    latest = max(h[0] for h in R.DAILY_CAP_RULE_HISTORY)
+    assert _daily_trades_inc_rule(_method(_class(folder), "on_order_filled")) == R.daily_cap_rule_for(latest)[0]

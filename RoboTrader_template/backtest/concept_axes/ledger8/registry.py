@@ -41,8 +41,13 @@
 `_log_cap_skip` 계기는 3전략(ma20 · daytrading · minervini)에만 있다 ⇒ 나머지 5전략의 `[캡]` 칸은 언제나 NA.
 「[캡] 줄이 없다」를 「막히지 않았다」로 읽지 말 것.
 
-`max_daily_trades` 는 «일일 체결»(매수+매도) 한도다 — 8전략 `on_order_filled` 첫 줄이 매수·매도 모두
-`daily_trades += 1`(예: book_pullback_ma20/strategy.py:151)이고 매도도 통보된다(core/trading_decision_engine.py:935).
+`max_daily_trades`(값 5 · `mdt_history`)가 «무엇을 세나»는 날짜별 이력 `DAILY_CAP_RULE_HISTORY`(8전략 공통 ·
+`cap_skip_ledger/classify.py` 의 표 하나를 여기서 다시 내보낸다 · `daily_cap_rule_for(d)`):
+    | 발효일 | 규칙 | 근거 |
+    |---|---|---|
+    | ~2026-10-07 | 매수+매도 체결 | `on_order_filled` 첫 줄 `daily_trades += 1`(is_buy 분기 앞) · 매도도 통보(core/trading_decision_engine.py:935) |
+    | 2026-10-08~ | **매수 체결만** | main 1e62298 — `daily_trades += 1` 이 `if order.is_buy:` 안 · 한도 5·검사 위치·사유 문자열 불변 |
+`tests/test_registry_gate_order.py` 가 최신 규칙을 8전략 `on_order_filled` AST 와 대조한다.
 
 금액 값(`max_per_stock_amount` · deep_mr `paper_investment_per_stock` · 복리 per_stock)은 여기 적지 않는다 —
 라이브 인스턴스·config·로그(`종목당 투자금액 재산정`)에서 실행 때 읽는다(복제본이 어긋날 위험 제거).
@@ -52,6 +57,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Dict, Optional, Sequence, Tuple
+
+from backtest.concept_axes.minervini.cap_skip_ledger.classify import (  # noqa: F401  (재노출 — 표는 하나)
+    CAP_COUNTS_BUY_ONLY, CAP_COUNTS_BUY_SELL, DAILY_CAP_RULE_HISTORY, counts_toward_daily_cap, daily_cap_rule_for)
 
 # 게이트 토큰 — 테스트가 소스에서 찾아내는 표지와 같은 이름
 G_MIN_LEN = "min_len"
@@ -100,7 +108,7 @@ class StrategySpec:
         return PATTERN_NAME.get(self.gate_order, "?")
 
 
-_MDT5: Hist = ((date(2026, 6, 1), 5, "8전략 공통 max_daily_trades=5(일일 «체결») · 변경 이력 없음"),)
+_MDT5: Hist = ((date(2026, 6, 1), 5, "8전략 공통 max_daily_trades=5 · 값 변경 이력 없음(세는 대상 = DAILY_CAP_RULE_HISTORY)"),)
 _KOSPI: Hist = ((date(2026, 6, 2), "KOSPI",
                  "trading_config.json regime_index · 창 안 변경 없음(git log -G regime_index)"),)
 
@@ -213,7 +221,7 @@ def k_for(folder: str, d: date) -> Tuple[int, str]:
 
 
 def mdt_for(folder: str, d: date) -> Tuple[int, str]:
-    """날짜 d 에 유효한 (max_daily_trades — 일일 «체결», 근거)."""
+    """날짜 d 에 유효한 (max_daily_trades 값, 근거). 무엇을 세는지는 `daily_cap_rule_for(d)`."""
     v, why = _at(spec(folder).mdt_history, d, f"{folder} max_daily_trades")
     return int(v), why
 

@@ -5,7 +5,8 @@
   held            이미 보유       — 그날 09:00 에 minervini 가 이미 들고 있었다
                                     (라이브 `generate_signal` 은 보유 종목이면 `_check_sell` 로 간다 · strategy.py:152-153)
   no_slot         자리 없음       — 장 전체(09:00~15:30) 동안 minervini 보유 수 ≥ K
-                                    (또는 체결 수 ≥ max_daily_trades) — 캡 체크가 매수 판단 «앞»에서 None 을 돌려준다
+                                    (또는 일일 한도 수 ≥ max_daily_trades — 무엇을 세는지는 날짜별
+                                    `DAILY_CAP_RULE_HISTORY`) — 캡 체크가 매수 판단 «앞»에서 None 을 돌려준다
                                     (strategy.py:155-160)
   slot_available  자리 있었음     — 장중 한 번이라도 보유 수 < K 인 구간이 있었다
 
@@ -37,6 +38,38 @@ K_HISTORY: Tuple[Tuple[date, int, str], ...] = (
     (date(2026, 6, 2), 3, "821fb80 Minervini K=3 집중"),
     (date(2026, 9, 18), 6, "bc7df66/c565256 K 3→6 · docs/prereg_2026-09-15_focus3_K_raise.md"),
 )
+
+# ── 일일 한도(max_daily_trades)가 «무엇을 세나» 이력 — 8전략 공통 · 이 표 하나만 읽는다 ─────────
+#   (발효일, 규칙, 근거). 발효일 = 봇이 그 코드로 기동한 첫 거래일. 한도 값(5)·검사 위치·사유 문자열은 별개(불변).
+#   🔴 세는 대상이 또 바뀌면 여기에 한 줄 추가한다(ledger8 `registry` 가 이 표를 다시 내보내고
+#      `ledger8/tests/test_registry_gate_order.py` 가 최신 규칙을 8전략 `on_order_filled` AST 와 대조한다).
+CAP_COUNTS_BUY_SELL = "buy+sell"   # 매수·매도 체결 모두 daily_trades += 1
+CAP_COUNTS_BUY_ONLY = "buy_only"   # 매수 체결만 daily_trades += 1
+DAILY_CAP_RULE_HISTORY: Tuple[Tuple[date, str, str], ...] = (
+    (date(2026, 6, 1), CAP_COUNTS_BUY_SELL,
+     "8전략 on_order_filled 첫 줄 daily_trades += 1 — 매수·매도 모두(is_buy 분기 앞 · 1e62298 이전)"),
+    (date(2026, 10, 8), CAP_COUNTS_BUY_ONLY,
+     "main 1e62298(10-07 머지) — daily_trades += 1 을 is_buy 분기 안으로(8전략 · 매도 미집계) · 10-08 07:40 발효"),
+)
+
+
+def daily_cap_rule_for(d: date, history: Sequence[Tuple[date, str, str]] = DAILY_CAP_RULE_HISTORY
+                       ) -> Tuple[str, str]:
+    """날짜 d 에 유효한 (일일 한도 집계 규칙, 근거). 이력보다 이르면 ValueError."""
+    best = None
+    for eff, rule, why in sorted(history):
+        if eff <= d:
+            best = (rule, why)
+    if best is None:
+        raise ValueError(f"일일 한도 규칙 이력에 {d} 이전 항목이 없다")
+    return best
+
+
+def counts_toward_daily_cap(d: date, is_buy: bool) -> bool:
+    """날짜 d 의 체결 1건이 그날 일일 한도 카운터(daily_trades)를 올리나."""
+    rule, _ = daily_cap_rule_for(d)
+    return is_buy or rule == CAP_COUNTS_BUY_SELL
+
 
 # `[캡]` 계기(`BaseStrategy._log_cap_skip`) 발효일 — 커밋 e597c33(머지 36fe61c) · 09-16 07:40.
 CAP_LOG_SINCE = date(2026, 9, 16)
@@ -106,9 +139,10 @@ def slot_windows_detail(trades: Sequence[Trade], d: date, k: int, max_daily_trad
                         ) -> Tuple[int, List[Tuple[time, time, str]]]:
     """(09:00 보유 수, [(시작, 끝, 닫힌 원인)]).
 
-    자리 있음 = 보유 수 < K ∧ 그날 체결 수(매수+매도) < max_daily_trades
-    (라이브 `on_order_filled` 는 매수·매도 모두 `daily_trades += 1` · strategy.py:170).
-    닫힌 원인: `buy:CODE`(minervini 매수로 참) · `daily_cap`(체결 수 한도) · `session_end`.
+    자리 있음 = 보유 수 < K ∧ 그날 일일 한도 수 < max_daily_trades
+    일일 한도 수 = `counts_toward_daily_cap(d, ·)` 가 참인 체결 수 — 2026-10-07 까지 매수+매도(라이브 `on_order_filled`
+    가 매수·매도 모두 `daily_trades += 1`) · 2026-10-08 부터 매수만(1e62298). 규칙 = `DAILY_CAP_RULE_HISTORY`.
+    닫힌 원인: `buy:CODE`(minervini 매수로 참) · `daily_cap`(일일 한도) · `session_end`.
     """
     t_open = datetime.combine(d, SESSION_OPEN)
     t_close = datetime.combine(d, SESSION_CLOSE)
@@ -132,7 +166,8 @@ def slot_windows_detail(trades: Sequence[Trade], d: date, k: int, max_daily_trad
         cur_start = t_open
     for ts, delta, code in events:
         n += delta
-        fills += 1
+        if counts_toward_daily_cap(d, is_buy=delta > 0):
+            fills += 1
         now_free = _free()
         if cur_start is not None and not now_free:
             cause = f"buy:{code}" if (delta > 0 and n >= k) else "daily_cap"

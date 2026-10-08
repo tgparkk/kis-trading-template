@@ -84,7 +84,7 @@ BaseStrategy.on_tick                                   strategies/base.py:661-70
 |---|---|
 | `bought` 실제 매수됨 | 그날 `virtual_trading_records` minervini BUY |
 | `held` 이미 보유 | 09:00 에 minervini 가 보유 중(라이브는 `_check_sell` 로 간다 · strategy.py:152) |
-| `no_slot` 자리 없음 | 체결 원장 시간선으로 장 전체 보유수 ≥ K(또는 체결수 ≥ max_daily_trades) · **또는** 모든 빈자리가 목록상 «앞 순위» minervini 매수로 닫힘 |
+| `no_slot` 자리 없음 | 체결 원장 시간선으로 장 전체 보유수 ≥ K(또는 일일 한도 수 ≥ max_daily_trades — ~10-07 매수+매도 · 10-08~ 매수만 · `classify.DAILY_CAP_RULE_HISTORY`) · **또는** 모든 빈자리가 목록상 «앞 순위» minervini 매수로 닫힘 |
 | `slot_available` 자리 있었음 | 그 밖 — 빈자리가 있었는데 안 샀다(밴드·쿨다운·타전략 보유 등 다른 사유) |
 
 - K 는 날짜별 `K_HISTORY`(2026-06-02~ 3 · 2026-09-18~ 6). `[캡]` 로그(2026-09-16~)는 `cap_log`·`evidence` 칸에 교차 증거로만 쓴다.

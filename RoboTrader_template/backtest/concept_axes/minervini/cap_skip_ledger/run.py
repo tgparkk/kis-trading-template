@@ -271,9 +271,10 @@ def predict_buys(ctx: Ctx, diag: Dict[str, Any]) -> List[str]:
             return False
         return (ent.basis == "D_open") if need_open else True
 
+    sell_counts = C.counts_toward_daily_cap(d, is_buy=False)   # 10-08 부터 매도는 일일 한도에 안 센다(1e62298)
     for ts in [x for x in sells if x <= first]:
         n -= 1
-        fills += 1
+        fills += int(sell_counts)
     for code in order:
         if n >= k or fills >= s._max_daily_trades:
             break
@@ -283,7 +284,7 @@ def predict_buys(ctx: Ctx, diag: Dict[str, Any]) -> List[str]:
             fills += 1
     for ts in [x for x in sells if x > first]:
         n -= 1
-        fills += 1
+        fills += int(sell_counts)
         for code in order:
             if n >= k or fills >= s._max_daily_trades:
                 break
