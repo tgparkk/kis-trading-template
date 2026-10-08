@@ -48,6 +48,11 @@ def _make_order_manager(paper_trading=False, api_manager=None, telegram=None, db
     return OrderManager(config, api_manager, telegram, db_manager)
 
 
+def _settled_row(ccld='0', qty='10'):
+    """취소 접수 뒤 0081R 원주문 행(8036R 부재 · 잔량 0) — 연속 2회 같으면 체결수량 확정(N2 · 2026-10-08)."""
+    return {'_status': 'executed', 'tot_ccld_qty': ccld, 'rmn_qty': '0', 'ord_qty': qty, 'cncl_yn': ''}
+
+
 def _make_order_result(success=True, order_id="ORD-001", message=""):
     """OrderResult Mock"""
     r = Mock()
@@ -126,13 +131,8 @@ class TestPartialFill:
         api = Mock()
         cancel_result = _make_order_result(success=True, order_id="ORD-001")
         api.cancel_order.return_value = cancel_result
-        # get_order_status 반환: 부분 체결 상태
-        api.get_order_status.return_value = {
-            'tot_ccld_qty': '4',
-            'rmn_qty': '6',
-            'ord_qty': '10',
-            'cncl_yn': 'N',
-        }
+        # get_order_status 반환: 잔량 취소 접수 뒤 0081R 원주문 행(4주 체결 · 잔량 0 — N1·N2 확정 재조회)
+        api.get_order_status.return_value = _settled_row('4')
 
         om = _make_order_manager(api_manager=api)
         order = _inject_pending_order(om, quantity=10, timeout_seconds=0)
@@ -145,7 +145,8 @@ class TestPartialFill:
         tm.on_partial_fill_timeout = AsyncMock()
         om.trading_manager = tm
 
-        await om._handle_partial_fill_timeout("ORD-001", order, 4)
+        with patch('core.orders.order_timeout.ORDER_CANCEL_SETTLE_WAIT_SECONDS', 0):
+            await om._handle_partial_fill_timeout("ORD-001", order, 4)
 
         # 체결된 수량으로 완료 처리
         assert order.quantity == 4
@@ -311,11 +312,14 @@ class TestTimeoutAutoCancelFundRelease:
             'cncl_yn': 'N',
             'actual_unfilled': True,
         }
+        # 사전 조회 = 미체결 · 취소 뒤 확정 재조회 연속 2회 = 체결 0(N2)
+        api.get_order_status.side_effect = [api.get_order_status.return_value, _settled_row(), _settled_row()]
 
         om = _make_order_manager(api_manager=api)
         order = _inject_pending_order(om, timeout_seconds=-1)  # 이미 만료
 
-        with patch('core.orders.order_executor.run_with_timeout', return_value=cancel_result):
+        with patch('core.orders.order_executor.run_with_timeout', return_value=cancel_result), \
+                patch('core.orders.order_timeout.ORDER_CANCEL_SETTLE_WAIT_SECONDS', 0):
             await om._handle_timeout("ORD-001")
 
         # pending에서 제거되어야 함
@@ -331,11 +335,13 @@ class TestTimeoutAutoCancelFundRelease:
             'tot_ccld_qty': '0', 'rmn_qty': '10', 'ord_qty': '10',
             'cncl_yn': 'N', 'actual_unfilled': True,
         }
+        api.get_order_status.side_effect = [api.get_order_status.return_value, _settled_row(), _settled_row()]
 
         om = _make_order_manager(api_manager=api)
         _inject_pending_order(om, timeout_seconds=-1)
 
-        with patch('core.orders.order_executor.run_with_timeout', return_value=cancel_result):
+        with patch('core.orders.order_executor.run_with_timeout', return_value=cancel_result), \
+                patch('core.orders.order_timeout.ORDER_CANCEL_SETTLE_WAIT_SECONDS', 0):
             await om._handle_timeout("ORD-001")
 
         completed_ids = [o.order_id for o in om.completed_orders]
@@ -396,8 +402,10 @@ class TestTimeoutAutoCancelFundRelease:
         om = _make_order_manager(api_manager=api)
         order = _inject_pending_order(om, timeout_seconds=600)
         order.order_3min_candle_time = now_kst() - timedelta(minutes=15)  # 4봉 이상 경과
+        api.get_order_status.side_effect = [api.get_order_status.return_value, _settled_row(), _settled_row()]
 
-        with patch('core.orders.order_executor.run_with_timeout', return_value=cancel_result):
+        with patch('core.orders.order_executor.run_with_timeout', return_value=cancel_result), \
+                patch('core.orders.order_timeout.ORDER_CANCEL_SETTLE_WAIT_SECONDS', 0):
             await om._handle_4candle_timeout("ORD-001")
 
         assert "ORD-001" not in om.pending_orders
@@ -552,8 +560,13 @@ class TestEdgeCases:
         assert "ORD-001" in om.pending_orders  # 아직 pending
 
     @pytest.mark.asyncio
-    async def test_status_unknown_over_5min_timeout(self):
-        """상태 불명 5분 이상이면 TIMEOUT 처리"""
+    async def test_status_unknown_over_5min_not_closed_without_cancel(self):
+        """상태 불명 5분 이상이어도 «취소 없이» TIMEOUT 으로 장부만 닫지 않는다.
+
+        2026-10-04 P1-6 수정으로 기대값 변경(종전: 여기서 TIMEOUT 종결). 종결은
+        시간 타임아웃 경로(_handle_timeout: 취소 → 강제 정리 + 슬롯 복구 + 경보)가 맡는다
+        — tests/test_real_flow_fix6_20261004.py TestB3UnknownTimeoutGoesThroughCancel.
+        """
         om = _make_order_manager()
         order = _inject_pending_order(om)
         order.timestamp = now_kst() - timedelta(seconds=400)  # 6분+ 경과
@@ -564,6 +577,6 @@ class TestEdgeCases:
         }
         await om._process_order_status("ORD-001", order, status_data)
 
-        assert "ORD-001" not in om.pending_orders
-        completed = [o for o in om.completed_orders if o.order_id == "ORD-001"]
-        assert completed[0].status == OrderStatus.TIMEOUT
+        assert "ORD-001" in om.pending_orders
+        assert order.status == OrderStatus.PENDING
+        assert not [o for o in om.completed_orders if o.order_id == "ORD-001"]

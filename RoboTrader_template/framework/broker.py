@@ -439,8 +439,17 @@ class KISBroker(BaseBroker):
             return None
 
         try:
-            holdings = self.get_holdings()
-            for h in holdings or []:
+            # NEW-B2(2026-10-04): get_holdings() 는 조회 실패를 빈 리스트로 삼켜(→ 0주)
+            # 손절 매도를 «매도가능 0» 으로 막았다(서킷브레이커 OPEN 중 TTTC8434R 차단
+            # 포함 — 09-15 P1-8 «매도 TR 우회» 가 실질 무효). get_holdings/
+            # get_existing_holdings 는 다른 소비자가 있어 그대로 두고, 여기서는 잔고
+            # 요약을 직접 읽어 «실패(None)» 와 «보유 없음(0)» 을 가른다.
+            balance = self._kis_market_api.get_account_balance()
+            if balance is None:
+                self.logger.warning(
+                    f"매도가능수량 조회 실패({stock_code}) — 잔고 조회 실패, None 반환")
+                return None
+            for h in balance.get('stocks') or []:
                 if str(h.get('stock_code', '')) == str(stock_code):
                     return int(h.get('quantity', 0))
             return 0  # 보유 종목 목록에 없음 → 매도가능 0
@@ -729,10 +738,15 @@ class KISBroker(BaseBroker):
                     "data": None,
                 }
 
+            # 성공 판정 = «응답 행이 있고 ODNO(취소 주문의 새 주문번호)가 있다».
+            # 🔴 rt_cd 를 여기서 읽지 말 것(NEW-B1, 2026-10-04): rt_cd·msg1 은 응답
+            # «겉봉투»(body)에 있고 get_order_rvsecncl 이 isOK() 로 이미 검사했다
+            # (api/kis_order_api.py:159). 이 DataFrame 은 body.output 만 담아 rt_cd 가
+            # 늘 비어 있었고, 그래서 KIS 가 정상 취소해도 «Cancel failed» 로 읽혔다.
             cancel_data = result.iloc[0]
-            rt_cd = cancel_data.get("rt_cd", "")
+            new_odno = str(cancel_data.get("ODNO", "") or "").strip()
 
-            if rt_cd == "0":
+            if new_odno:
                 return {
                     "success": True,
                     "order_id": order_id,
@@ -740,11 +754,10 @@ class KISBroker(BaseBroker):
                     "data": cancel_data.to_dict(),
                 }
             else:
-                msg = cancel_data.get("msg1", "Unknown error")
                 return {
                     "success": False,
                     "order_id": order_id,
-                    "message": f"Cancel failed: {msg}",
+                    "message": "Cancel failed: no ODNO in cancel response",
                     "data": cancel_data.to_dict(),
                 }
 
@@ -760,7 +773,16 @@ class KISBroker(BaseBroker):
             order_id: Order ID to check
 
         Returns:
-            Dict with order status info, or None if not found
+            dict  = 목록에서 찾은 행(_status pending/executed), 또는 두 조회가 «모두
+                    성공»했는데 어디에도 없으면 status_unknown 표식.
+            None  = 조회 실패(어느 한쪽 목록 조회가 실패해 «없음» 을 판정할 수 없음)
+                    또는 미연결. 호출자는 None 을 «미체결» 로 읽으면 안 된다.
+
+        NEW-B3(2026-10-04): 종전엔 목록 조회 «실패» 도 «목록에 없음» 으로 흘러
+        status_unknown 이 됐다. 체결된 주문은 원래 정정취소가능(8036R) 목록에 없으므로,
+        체결조회(0081R) 1회 실패(서킷브레이커 OPEN 포함)만으로 «미체결» 오탐 →
+        오탐 복구 → 다음 성공 조회에서 같은 체결을 한 번 더 처리(원장 이중 기록·
+        매도대금 이중 회수)했다.
         """
         if not self._connected:
             self.logger.error("Broker not connected")
@@ -789,7 +811,16 @@ class KISBroker(BaseBroker):
                     row["_status"] = "executed"
                     return row
 
-            # Not found anywhere — do not assume cancelled
+            # 어느 한쪽 조회라도 실패했으면 «없음» 을 단정할 수 없다 → 조회 실패(None).
+            if pending is None or daily is None:
+                failed = "정정취소가능조회" if pending is None else "체결조회"
+                if pending is None and daily is None:
+                    failed = "정정취소가능조회·체결조회"
+                self.logger.warning(
+                    f"주문 상태 조회 실패 {order_id} — {failed} 실패, 판정 보류(미체결로 보지 않음)")
+                return None
+
+            # 두 조회 모두 성공했는데 어디에도 없음 — 취소로 단정하지 않는다
             return {"odno": order_id, "_status": "unknown", "status_unknown": True, "cncl_yn": "N"}
 
         except Exception as e:

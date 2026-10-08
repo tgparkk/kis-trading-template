@@ -51,6 +51,13 @@ def _make_order_manager(paper_trading=False):
     return om
 
 
+def _settle_confirmed(om, filled):
+    """잔량 취소 접수 뒤 확정 재조회(N1·N2 · 2026-10-08)가 볼 0081R 원주문 행(8036R 부재 · 잔량 0) + 대기 0."""
+    om.broker.get_order_status.return_value = {
+        '_status': 'executed', 'tot_ccld_qty': str(filled), 'rmn_qty': '0', 'cncl_yn': ''}
+    return patch('core.orders.order_timeout.ORDER_CANCEL_SETTLE_WAIT_SECONDS', 0)
+
+
 def _make_pending_order(order_id: str, stock_code: str, order_type: OrderType,
                         quantity: int, filled_qty: int, price: float = 70000,
                         minutes_ago: int = 6) -> Order:
@@ -246,7 +253,7 @@ class TestScenario3PartialFillTimeout:
         om.trading_manager = mock_trading_manager
 
         with patch.object(om, '_cancel_with_retry', new_callable=AsyncMock, return_value=True):
-            with patch.object(om, '_save_real_trade_to_db', new_callable=AsyncMock):
+            with patch.object(om, '_save_real_trade_to_db', new_callable=AsyncMock), _settle_confirmed(om, 6):
                 await om._handle_partial_fill_timeout("ORD-PARTIAL-006", order, 6)
 
         # 포지션 등록 콜백 확인
@@ -317,7 +324,7 @@ class TestScenario3PartialFillTimeout:
         # Step 4, 5: 타임아웃 처리 (취소 시도 및 성공)
         with patch.object(om, '_check_order_status', new_callable=AsyncMock):
             with patch.object(om, '_cancel_with_retry', new_callable=AsyncMock, return_value=True):
-                with patch.object(om, '_save_real_trade_to_db', new_callable=AsyncMock):
+                with patch.object(om, '_save_real_trade_to_db', new_callable=AsyncMock), _settle_confirmed(om, 6):
                     await om._handle_timeout("ORD-INTEGRATED")
 
         # Step 6: 포지션 확인 (6주 체결됨)
@@ -469,7 +476,7 @@ class TestPartialFillEdgeCases:
         om.order_timeouts["ORD-ONE"] = now_kst() - timedelta(minutes=1)
 
         with patch.object(om, '_cancel_with_retry', new_callable=AsyncMock, return_value=True):
-            with patch.object(om, '_save_real_trade_to_db', new_callable=AsyncMock):
+            with patch.object(om, '_save_real_trade_to_db', new_callable=AsyncMock), _settle_confirmed(om, 1):
                 await om._handle_partial_fill_timeout("ORD-ONE", order, 1)
 
         # 1주도 포지션으로 등록
@@ -520,7 +527,7 @@ class TestPartialFillEdgeCases:
         om.order_timeouts["ORD-TELEGRAM"] = now_kst() - timedelta(minutes=1)
 
         with patch.object(om, '_cancel_with_retry', new_callable=AsyncMock, return_value=True):
-            with patch.object(om, '_save_real_trade_to_db', new_callable=AsyncMock):
+            with patch.object(om, '_save_real_trade_to_db', new_callable=AsyncMock), _settle_confirmed(om, 6):
                 await om._handle_partial_fill_timeout("ORD-TELEGRAM", order, 6)
 
         # 텔레그램 알림 호출 확인

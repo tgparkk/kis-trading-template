@@ -3,6 +3,7 @@
 
 매수/매도 주문 실행 및 종목 선정 관리
 """
+import asyncio
 from typing import TYPE_CHECKING, Optional
 
 from ..models import TradingStock, StockState
@@ -52,6 +53,10 @@ class OrderExecution:
 
         # 재거래 설정
         self.enable_re_trading = True
+
+        # 진행 중인 실전 주문 호출 태스크(NEW-A1 shield) — 종료 시 미체결 취소 «전에»
+        # 끝나기를 기다려, 등록 전 주문을 취소 대상에서 놓치지 않게 한다(리뷰 사소3).
+        self._inflight_order_tasks: set = set()
 
     def set_fund_manager(self, fund_manager: 'FundManager') -> None:
         """FundManager 설정"""
@@ -230,36 +235,30 @@ class OrderExecution:
                 # 데이터 수집기에 후보 종목으로 추가 (실시간 모니터링)
                 self.data_collector.add_candidate_stock(stock_code, trading_stock.stock_name)
 
-            # 매수 주문 실행
-            order_id = await self.order_manager.place_buy_order(
+            # 매수 주문 실행 — NEW-A1(2026-10-04): 주문 호출(KIS 접수 → pending 등록 →
+            # 예약 이전 → 접수 알림)을 별도 태스크로 돌리고 shield 로 기다린다. 바깥이
+            # 취소돼도(on_tick 30초 타임아웃 등) 주문 호출은 끝까지 가서 스스로 등록되고,
+            # 슬롯·예약 정리는 결과를 보고 콜백이 한다(_finish_buy_order_after_cancel).
+            # 종전엔 취소가 KIS 응답 대기 중에 떨어져 «KIS 엔 접수됐는데 봇은 모르는 주문»
+            # (손절 감시 없는 보유) · BUY_PENDING 고착 · 예약 누수가 생겼다.
+            # 이 메서드는 실전 전용이다(호출자 = execute_real_buy · 페이퍼는 가상 매수 경로).
+            place_task = asyncio.ensure_future(self.order_manager.place_buy_order(
                 stock_code, quantity, price, owner_strategy=_owner_for_order
-            )
+            ))
+            self._track_inflight(place_task)
+            try:
+                order_id = await asyncio.shield(place_task)
+            except asyncio.CancelledError:
+                self.logger.error(
+                    f"🚨 {stock_code} 매수 주문 대기 중 취소됨 — 주문 호출은 끝까지 진행하고 "
+                    f"결과로 슬롯·예약을 정리한다(NEW-A1)"
+                )
+                place_task.add_done_callback(
+                    lambda t: self._finish_buy_order_after_cancel(
+                        t, stock_code, strategy, reason, _owner_for_order))
+                raise
 
-            if order_id:
-                with self.state_manager.lock:
-                    trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
-                    if trading_stock is not None:
-                        trading_stock.add_order(order_id)
-
-                self.logger.debug(f"{stock_code} 매수 주문 성공: {order_id}")
-                return True
-            else:
-                # 주문 실패 시 원래 상태로 되돌림 (SELECTED 또는 COMPLETED)
-                with self.state_manager.lock:
-                    trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
-                    if trading_stock is not None:
-                        # 매수 진행 플래그 리셋
-                        trading_stock.is_buying = False
-
-                        # 원래 상태 추정: 재거래면 COMPLETED, 신규면 SELECTED
-                        original_state = (
-                            StockState.COMPLETED if "재거래" in reason else StockState.SELECTED
-                        )
-                        self.state_manager.change_stock_state(
-                            stock_code, original_state, "매수 주문 실패",
-                            strategy=trading_stock.owner_strategy_name
-                        )
-                return False
+            return self._apply_buy_order_result(stock_code, strategy, reason, order_id)
 
         except Exception as e:
             self.logger.error(f"{stock_code} 매수 주문 오류: {e}")
@@ -276,6 +275,87 @@ class OrderExecution:
                         strategy=_ts.owner_strategy_name
                     )
             return False
+
+    def _track_inflight(self, task: 'asyncio.Future') -> None:
+        self._inflight_order_tasks.add(task)
+        task.add_done_callback(self._inflight_order_tasks.discard)
+
+    async def wait_inflight_orders(self, timeout: float = 40.0) -> int:
+        """진행 중인 실전 주문 호출이 끝나기를 최대 timeout 초 기다린다(취소하지 않음).
+
+        Returns: 시간 안에 끝나지 않은 건수(0 이면 전부 등록·실패 확정).
+        """
+        pending = [t for t in self._inflight_order_tasks if not t.done()]
+        if not pending:
+            return 0
+        self.logger.info(f"진행 중인 주문 호출 {len(pending)}건 완료 대기(최대 {timeout:.0f}초)")
+        _, not_done = await asyncio.wait(pending, timeout=timeout)
+        if not_done:
+            self.logger.error(
+                f"🚨 주문 호출 {len(not_done)}건이 {timeout:.0f}초 안에 끝나지 않음 — "
+                f"종료 시 미체결 취소 대상에서 빠질 수 있다 · HTS 미체결 확인 필요"
+            )
+        return len(not_done)
+
+    def _apply_buy_order_result(self, stock_code: str, strategy: Optional[str],
+                                reason: str, order_id: Optional[str]) -> bool:
+        """매수 주문 호출 결과를 슬롯에 반영 — 성공=주문ID 연결, 실패=원래 상태 복귀."""
+        if order_id:
+            with self.state_manager.lock:
+                trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
+                if trading_stock is not None:
+                    trading_stock.add_order(order_id)
+
+            self.logger.debug(f"{stock_code} 매수 주문 성공: {order_id}")
+            return True
+        else:
+            # 주문 실패 시 원래 상태로 되돌림 (SELECTED 또는 COMPLETED)
+            with self.state_manager.lock:
+                trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
+                if trading_stock is not None:
+                    # 매수 진행 플래그 리셋
+                    trading_stock.is_buying = False
+
+                    # 원래 상태 추정: 재거래면 COMPLETED, 신규면 SELECTED
+                    original_state = (
+                        StockState.COMPLETED if "재거래" in reason else StockState.SELECTED
+                    )
+                    self.state_manager.change_stock_state(
+                        stock_code, original_state, "매수 주문 실패",
+                        strategy=trading_stock.owner_strategy_name
+                    )
+            return False
+
+    def _finish_buy_order_after_cancel(self, task: 'asyncio.Future', stock_code: str,
+                                       strategy: Optional[str], reason: str,
+                                       owner_for_order: str) -> None:
+        """(NEW-A1) 호출자가 취소된 뒤 끝난 매수 주문 호출의 결과로 슬롯·예약을 정리한다.
+
+        성공 → 정상 경로와 같이 주문ID 연결(체결·타임아웃은 주문 모니터가 처리).
+        실패 → 슬롯 원복 + 호출자(trading_analyzer)가 하던 예약 해제를 대신 한다.
+        호출 자체가 취소됐으면(종료 중) 결과를 알 수 없으므로 BUY_PENDING 을 둔다 —
+        섣불리 SELECTED 로 돌리면 이미 접수된 주문 위에 재매수가 날 수 있다.
+        """
+        try:
+            if task.cancelled():
+                self.logger.error(
+                    f"🚨 {stock_code} 매수 주문 호출 자체가 취소됨 — 접수 여부 불명, "
+                    f"슬롯 BUY_PENDING 유지(HTS·다음 기동 대사로 확인)"
+                )
+                return
+            order_id = None if task.exception() is not None else task.result()
+            ok = self._apply_buy_order_result(stock_code, strategy, reason, order_id)
+            if not ok and self.fund_manager is not None:
+                from ..fund_manager import make_reserve_id
+                reserve_id = make_reserve_id(stock_code, owner_for_order)
+                if self.fund_manager.has_reservation(reserve_id):
+                    self.fund_manager.cancel_order(reserve_id)
+            self.logger.warning(
+                f"{stock_code} 취소 뒤 매수 주문 결과 반영: "
+                f"{f'접수 {order_id} (체결은 주문 모니터가 추적)' if ok else '실패 → 슬롯·예약 복구'}"
+            )
+        except Exception as e:
+            self.logger.error(f"{stock_code} 취소 뒤 매수 주문 정리 오류: {e}")
 
     def move_to_sell_candidate(self, stock_code: str, reason: str = "",
                                strategy: Optional[str] = None) -> bool:
@@ -372,31 +452,25 @@ class OrderExecution:
                     strategy=trading_stock.owner_strategy_name
                 )
 
-            # 매도 주문 실행
-            order_id = await self.order_manager.place_sell_order(
+            # 매도 주문 실행 — NEW-A1: 매수와 같이 주문 호출은 shield 로 보호한다
+            # (취소돼도 끝까지 가서 등록 · 결과 정리는 _finish_sell_order_after_cancel).
+            place_task = asyncio.ensure_future(self.order_manager.place_sell_order(
                 stock_code, quantity, price, market=market, force=force,
                 owner_strategy=_owner_for_order
-            )
+            ))
+            self._track_inflight(place_task)
+            try:
+                order_id = await asyncio.shield(place_task)
+            except asyncio.CancelledError:
+                self.logger.error(
+                    f"🚨 {stock_code} 매도 주문 대기 중 취소됨 — 주문 호출은 끝까지 진행하고 "
+                    f"결과로 슬롯을 정리한다(NEW-A1)"
+                )
+                place_task.add_done_callback(
+                    lambda t: self._finish_sell_order_after_cancel(t, stock_code, strategy))
+                raise
 
-            if order_id:
-                with self.state_manager.lock:
-                    trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
-                    if trading_stock is not None:
-                        trading_stock.add_order(order_id)
-
-                self.logger.info(f"{stock_code} 매도 주문 성공: {order_id}")
-                return True
-            else:
-                # 주문 실패 시 매도 후보로 되돌림 + is_selling 즉시 해제
-                with self.state_manager.lock:
-                    _ts = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
-                    if _ts is not None:
-                        _ts.is_selling = False
-                    self.state_manager.change_stock_state(
-                        stock_code, StockState.SELL_CANDIDATE, "매도 주문 실패",
-                        strategy=_ts.owner_strategy_name if _ts is not None else None
-                    )
-                return False
+            return self._apply_sell_order_result(stock_code, strategy, order_id)
 
         except Exception as e:
             self.logger.error(f"{stock_code} 매도 주문 오류: {e}")
@@ -410,6 +484,61 @@ class OrderExecution:
                         strategy=_ts.owner_strategy_name
                     )
             return False
+
+    def _apply_sell_order_result(self, stock_code: str, strategy: Optional[str],
+                                 order_id: Optional[str]) -> bool:
+        """매도 주문 호출 결과를 슬롯에 반영 — 성공=주문ID 연결, 실패=매도 후보 복귀·is_selling 해제."""
+        if order_id:
+            with self.state_manager.lock:
+                trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
+                if trading_stock is not None:
+                    trading_stock.add_order(order_id)
+
+            self.logger.info(f"{stock_code} 매도 주문 성공: {order_id}")
+            return True
+        else:
+            # 주문 실패 시 매도 후보로 되돌림 + is_selling 즉시 해제
+            with self.state_manager.lock:
+                _ts = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
+                if _ts is not None:
+                    _ts.is_selling = False
+                self.state_manager.change_stock_state(
+                    stock_code, StockState.SELL_CANDIDATE, "매도 주문 실패",
+                    strategy=_ts.owner_strategy_name if _ts is not None else None
+                )
+            return False
+
+    def _finish_sell_order_after_cancel(self, task: 'asyncio.Future', stock_code: str,
+                                        strategy: Optional[str]) -> None:
+        """(NEW-A1) 호출자가 취소된 뒤 끝난 매도 주문 호출의 결과로 슬롯을 정리한다.
+
+        실패면 호출자(execute_real_sell)가 하던 POSITIONED 복원까지 대신 해서 손절
+        감시(position_monitor 는 POSITIONED 만 본다)가 다시 잡게 한다. 호출 자체가
+        취소됐으면(종료 중) 접수 여부를 모르므로 SELL_PENDING 을 둔다.
+        """
+        try:
+            if task.cancelled():
+                self.logger.error(
+                    f"🚨 {stock_code} 매도 주문 호출 자체가 취소됨 — 접수 여부 불명, "
+                    f"슬롯 SELL_PENDING 유지(HTS·다음 기동 대사로 확인)"
+                )
+                return
+            order_id = None if task.exception() is not None else task.result()
+            ok = self._apply_sell_order_result(stock_code, strategy, order_id)
+            if not ok:
+                with self.state_manager.lock:
+                    _ts = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
+                    if _ts is not None and _ts.state == StockState.SELL_CANDIDATE:
+                        self.state_manager.change_stock_state(
+                            stock_code, StockState.POSITIONED, "매도 주문 실패(취소 뒤 정리)",
+                            strategy=_ts.owner_strategy_name
+                        )
+            self.logger.warning(
+                f"{stock_code} 취소 뒤 매도 주문 결과 반영: "
+                f"{f'접수 {order_id} (체결은 주문 모니터가 추적)' if ok else '실패 → POSITIONED 복원'}"
+            )
+        except Exception as e:
+            self.logger.error(f"{stock_code} 취소 뒤 매도 주문 정리 오류: {e}")
 
     def remove_stock(self, stock_code: str, reason: str = "",
                      strategy: Optional[str] = None) -> bool:
@@ -528,7 +657,7 @@ class OrderExecution:
             )
 
     async def on_partial_fill_timeout(self, order, filled_qty: int, filled_price: float,
-                                      strategy: Optional[str] = None) -> None:
+                                      strategy: Optional[str] = None) -> Optional[TradingStock]:
         """
         부분 체결 타임아웃 처리 - 체결된 수량으로 포지션 설정
 
@@ -538,6 +667,10 @@ class OrderExecution:
             filled_price: 체결 가격
             strategy: 소유 전략명. 지정 시 해당 전략 소유 인스턴스만 조회/변경
                       (다중소유 오귀속 방지). 미지정(None) 시 기존 폴백 동작 보존.
+
+        Returns:
+            POSITIONED 로 등록한 슬롯(전략 통보용 — facade 가 소유 전략에 체결을
+            알린다, F5). 슬롯을 못 찾으면 None.
         """
         stock_code = order.stock_code
 
@@ -545,7 +678,7 @@ class OrderExecution:
             trading_stock = self.state_manager.get_trading_stock(stock_code, strategy=strategy)
             if trading_stock is None:
                 self.logger.warning(f"부분 체결 포지션 등록 실패: {stock_code} 종목 없음")
-                return
+                return None
 
             trading_stock.is_buying = False
             trading_stock.set_position(filled_qty, filled_price)
@@ -559,6 +692,7 @@ class OrderExecution:
             )
 
         self.logger.info(f"부분 체결 포지션 등록 완료: {stock_code} {filled_qty}주 @{filled_price:,.0f}원")
+        return trading_stock
 
     async def on_sell_partial_fill_timeout(self, order, filled_qty: int, filled_price: float,
                                            strategy: Optional[str] = None) -> None:

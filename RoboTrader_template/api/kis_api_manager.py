@@ -619,12 +619,16 @@ class KISAPIManager:
                     message="주문 취소 API 응답 없음"
                 )
             
-            # 🔥 취소 결과 상세 확인
+            # 🔥 취소 결과 상세 확인 — 성공 = 응답 행에 ODNO(취소 주문 새 번호)가 있음.
+            # rt_cd·msg1 은 body(겉봉투)에 있고 get_order_rvsecncl 이 isOK() 로 이미
+            # 검사했다 — output 행에서 읽으면 늘 빈 값이라 정상 취소가 «실패» 로 읽힌다
+            # (NEW-B1 같은 계열, 2026-10-04 · 운영 호출자 0 이지만 같은 함정이라 함께 정리).
             cancel_result = result.iloc[0]
-            rt_cd = cancel_result.get('rt_cd', '')
-            msg1 = cancel_result.get('msg1', '')
-            
-            if rt_cd == '0':  # 성공
+            new_odno = str(cancel_result.get('ODNO', '') or '').strip()
+            rt_cd = '0' if new_odno else ''
+            msg1 = '' if new_odno else '취소 응답에 ODNO 없음'
+
+            if new_odno:  # 성공
                 self.logger.info(f"✅ 주문 취소 성공: {order_id}")
                 return OrderResult(
                     success=True,
@@ -774,12 +778,11 @@ class KISAPIManager:
                 for idx, record in all_filled_records.iterrows():
                     # 🔧 개선: 다양한 체결량 필드명 확인 및 안전한 변환
                     # KIS API는 응답 시점에 따라 다른 필드명 사용 가능 (API 문서 기준)
-                    possible_qty_fields = ['tot_ccld_qty', 'ord_qty', 'rmn_qty', 'cnc_cfrm_qty']
                     ccld_qty_str = '0'
                     ord_qty_str = '0'
                     
                     # 체결량 필드 찾기 (API 문서 기준 우선순위 순으로)
-                    for field in ['tot_ccld_qty', 'ccld_qty', 'cnc_cfrm_qty']:
+                    for field in ['tot_ccld_qty', 'ccld_qty']:
                         if field in record and record[field] not in ['', '-', 'None', 'nan', None]:
                             ccld_qty_str = str(record[field]).strip()
                             break

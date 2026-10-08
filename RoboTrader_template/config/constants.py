@@ -115,6 +115,13 @@ TASK_SUPERVISOR_MAX_DELAY = 300  # 최대 백오프 (초, 5분)
 # =============================================================================
 ORDER_CANCEL_MAX_RETRIES = 3  # 주문 취소 최대 재시도
 ORDER_CANCEL_RETRY_INTERVAL = 2  # 주문 취소 재시도 간격 (초)
+# 타임아웃 종결 직전 체결 재조회가 «실패»(CB OPEN 등)면 닫지 않고 연기한다 — 체결된 주문을
+# TIMEOUT 으로 닫아 손절 없는 고아를 만들지 않게(2026-10-04 리뷰 중요1·2, 실전 OrderManager 전용).
+ORDER_TIMEOUT_DEFER_SECONDS = 45  # 1회 연기 폭 (초) — 서킷브레이커 OPEN 30초보다 길게
+ORDER_TIMEOUT_DEFER_MAX = 5       # 연기 상한 — 넘으면 ERROR + 텔레그램 「수동 확인 필요」 와 함께 종결
+# 취소 접수(ODNO) 뒤 체결수량 재조회 전 대기·연속 2회 조회 간격 (초) — 10-08 실측: 취소 +2초에
+# 8036R 에서 사라짐(0~2초 미관측) · 0081R cncl_yn·cncl_cfrm_qty 는 그 시점 ''·0 (N2 · 2026-10-08)
+ORDER_CANCEL_SETTLE_WAIT_SECONDS = 2
 ORDER_MONITOR_INTERVAL = 3  # 주문 모니터링 주기 (초)
 ORDER_MONITOR_ERROR_INTERVAL = 10  # 모니터링 오류 시 대기 (초)
 SCREENING_RETRY_DELAY = 5  # 스크리닝 재시도 대기 (초)

@@ -43,6 +43,21 @@ class OrderManagerBase:
         # 종목코드 단독 키는 두 전략의 동일종목 주문이 서로의 예약을 덮는다.
         self._temp_reserve_ids: Dict[str, str] = {}
 
+        # 타임아웃 종결 연기(체결 재조회 실패 시) 횟수 · «취소는 접수됐지만 체결수량 미확인» 주문
+        # (2026-10-04 리뷰 중요1·2 — order_timeout._defer_timeout_close / _resolve_cancel_confirmed)
+        self._timeout_defer_counts: Dict[str, int] = {}
+        self._cancel_confirmed_ids: Set[str] = set()
+        # 취소 접수 뒤 직전 «확정 후보» 체결수(연속 2회 판정) · VI 경보를 이미 보낸 확인 표식 주문
+        # (2026-10-08 N2·N4 — order_timeout._settle_after_cancel / order_monitor VI 가드)
+        self._cancel_settle_obs: Dict[str, int] = {}
+        self._vi_notified_ids: Set[str] = set()
+        # 연기 재처리에서 8036R 잔존으로 취소를 재전송한 주문(주문당 1회 · 2026-10-08 리뷰 I1)
+        self._cancel_resent_ids: Set[str] = set()
+        # 취소 접수 뒤 8036R 행을 본 적 있는 주문 · 연기 상한 예외(재전송 1회분)를 쓴 주문(주문당 1회)
+        # (2026-10-08 델타 리뷰 N-1 — 소진 회차 조회가 실패해도 «8036R 잔존»으로 취급)
+        self._cancel_lingering_seen_ids: Set[str] = set()
+        self._defer_extra_used_ids: Set[str] = set()
+
         # 모니터링 상태
         self.is_monitoring = False
         self.executor = ThreadPoolExecutor(max_workers=2)
@@ -159,6 +174,15 @@ class OrderManagerBase:
 
             # 중복 주문 방지 맵에서 해제
             self._unregister_active_order(order.stock_code, order.order_type)
+
+            # 종결 연기 표식 정리
+            getattr(self, '_timeout_defer_counts', {}).pop(order_id, None)
+            getattr(self, '_cancel_confirmed_ids', set()).discard(order_id)
+            getattr(self, '_cancel_settle_obs', {}).pop(order_id, None)
+            getattr(self, '_vi_notified_ids', set()).discard(order_id)
+            getattr(self, '_cancel_resent_ids', set()).discard(order_id)
+            getattr(self, '_cancel_lingering_seen_ids', set()).discard(order_id)
+            getattr(self, '_defer_extra_used_ids', set()).discard(order_id)
 
             # FundManager 연동: 취소/타임아웃 시 예약 해제
             from ..models import OrderStatus

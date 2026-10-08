@@ -750,6 +750,14 @@ class BotInitializer:
             # 텔레그램 통합 종료
             await self.bot.telegram.shutdown()
 
+            # 진행 중인 실전 주문 호출(NEW-A1 shield)이 등록을 마치길 기다린다 — 등록 전
+            # 주문은 아래 미체결 취소(메모리 pending 기준)에서 빠진다(리뷰 사소3).
+            # 페이퍼는 실전 주문 호출이 없어 즉시 0 반환.
+            try:
+                await self.bot.trading_manager.wait_inflight_orders(timeout=40.0)
+            except Exception as e:
+                self.logger.warning(f"진행 중 주문 호출 대기 실패(종료 계속): {e}")
+
             # 미체결 주문 취소
             await self._cancel_pending_orders()
 

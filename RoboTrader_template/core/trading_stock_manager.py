@@ -10,6 +10,7 @@
 - trading/order_completion_handler.py: 주문 체결 확인
 - trading/position_monitor.py: 포지션 모니터링
 """
+import copy
 from typing import Any, Dict, List, Optional
 
 from .models import TradingStock, StockState
@@ -289,9 +290,24 @@ class TradingStockManager:
 
     async def on_partial_fill_timeout(self, order, filled_qty: int, filled_price: float,
                                       strategy: Optional[str] = None) -> None:
-        """매수 부분 체결 타임아웃 처리"""
-        await self._order_execution.on_partial_fill_timeout(
+        """매수 부분 체결 타임아웃 처리 — 체결분 POSITIONED + 소유 전략 통보.
+
+        F5(2026-10-04 · NEW-B1 동반): 종전엔 슬롯만 POSITIONED 로 바꾸고 전략
+        on_order_filled 를 부르지 않아, 전략은 보유 사실을 모르고(전략 고유 청산
+        미발동) 일일 거래 캡도 세지 않았다. 완전 체결 콜백과 같은 라우팅
+        (_notify_strategy_order_filled)으로 «체결분 수량·가격» 을 통보한다.
+        """
+        trading_stock = await self._order_execution.on_partial_fill_timeout(
             order, filled_qty, filled_price, strategy=strategy
+        )
+        if trading_stock is None:
+            return
+        filled_view = copy.copy(order)  # 원 주문 객체는 호출자가 이어서 쓰므로 건드리지 않는다
+        filled_view.quantity = int(filled_qty)
+        filled_view.filled_price = float(filled_price)
+        self._completion_handler._notify_strategy_order_filled(
+            filled_view, trading_stock.owner_strategy_name,
+            owner_strategy=trading_stock.owner_strategy,
         )
 
     async def on_sell_partial_fill_timeout(self, order, filled_qty: int, filled_price: float,
@@ -370,6 +386,10 @@ class TradingStockManager:
         — 규칙을 복제하면 둘이 갈린다.
         """
         return self._completion_handler._find_owned_stock(stock_code, owner_name)
+
+    async def wait_inflight_orders(self, timeout: float = 40.0) -> int:
+        """진행 중인 실전 주문 호출 완료 대기(종료 시 미체결 취소 전에 호출) — OrderExecution 위임."""
+        return await self._order_execution.wait_inflight_orders(timeout)
 
     def update_current_order(self, stock_code: str, new_order_id: str,
                              strategy: Optional[str] = None) -> None:
