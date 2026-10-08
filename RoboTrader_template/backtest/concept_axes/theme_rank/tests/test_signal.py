@@ -87,3 +87,10 @@ def test_print_items():
     assert SG.rank_in_theme("000009", 1, members, excess) == 2
     assert SG.streak([-3.0, -1.0, -2.5, -2.1]) == 2
     assert SG.streak([-1.0]) == 0
+
+
+def test_mean_excess_max_sum_order_is_sorted_by_code():
+    excess = {"000003": 0.3, "000001": 0.1, "000002": 0.2, "000009": 0.0}
+    members = {1: frozenset({"000009", "000003", "000001", "000002"})}
+    got = SG.mean_excess_max("000009", {"000009": frozenset({1})}, members, excess)
+    assert got == ((0.1 + 0.2) + 0.3) / 3          # 정확히 같은 float(코드 오름차순 합산)

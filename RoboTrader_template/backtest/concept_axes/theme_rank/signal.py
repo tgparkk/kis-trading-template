@@ -80,8 +80,8 @@ def mean_excess_max(code: str, themes_of: Mapping[str, FrozenSet[int]], members:
                     excess: Mapping[str, float]) -> Optional[float]:
     """인쇄 A — 테마별 동료(자기 제외 · 그날 수익률 있는 종목) 동일가중 초과수익의 최댓값."""
     vals = []
-    for t in themes_of.get(code, ()):
-        xs = [excess[c] for c in members[t] if c != code and c in excess]
+    for t in sorted(themes_of.get(code, ())):  # 합산 순서 고정(frozenset 순회 = 해시 무작위 → 재실행 md5 재현)
+        xs = [excess[c] for c in sorted(members[t]) if c != code and c in excess]
         if xs:
             vals.append(sum(xs) / len(xs))
     return max(vals) if vals else None
