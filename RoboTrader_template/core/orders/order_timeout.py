@@ -647,9 +647,12 @@ class OrderTimeoutMixin:
         """체결수량 미확정 — 확인 표식 + 연기. 상한 소진이면 「수동 확인」 경보와 함께 아는 만큼으로 종결
         (B3: 불명 ≠ 미체결 — 경보 없이 체결 0 으로 닫지 않는다).
 
-        I1(2026-10-08): 소진 때 아는 체결 0 인데 마지막 조회가 여전히 8036R 행이면 CANCELLED 로 닫지 않는다 —
+        I1(2026-10-08): 소진 때 아는 체결 0 인데 마지막 조회가 여전히 8036R 행이면 매수는 CANCELLED 로 닫지 않는다 —
         예약·슬롯·확인 표식을 둔 채 자동 처리를 멈추고(시한 제거 · 재취소·재조회 없음 · 종료 시 미체결 일괄
         취소 대상으로 남음) 「수동 확인」 경보 1회. 아는 체결분이 있으면 회계는 종전 그대로.
+        델타 리뷰 A: 보류는 매수만 — 매도는 종전처럼 닫아 슬롯을 «보유 중»으로 돌린다(손절·장마감 청산 대상
+        유지) + 「매도 취소 미반영」 경보 1회. m-a: 취소 재전송 전이면 곧장 보류·종결하지 않고 상한 예외로
+        연기 1회 더 — 다음 재처리(_resolve_cancel_confirmed)가 재전송 1회를 보낸다(재전송 표식이 1회로 묶음).
         """
         order_id = order.order_id
         self._cancel_confirmed_ids.add(order_id)
@@ -658,7 +661,15 @@ class OrderTimeoutMixin:
         seen = self._parse_int(status.get('tot_ccld_qty', 0)) if isinstance(status, dict) else 0
         known = max(getattr(order, 'filled_quantity', 0) or 0, seen,
                     self._cancel_settle_obs.pop(order_id, 0))
-        hold = known == 0 and self._still_cancellable(status)
+        lingering = known == 0 and self._still_cancellable(status)
+        if lingering and order_id not in self._cancel_resent_ids:
+            self.order_timeouts[order_id] = now_kst() + timedelta(seconds=ORDER_TIMEOUT_DEFER_SECONDS)
+            self.logger.warning(
+                f"⏸ 주문 종결 연기 상한 예외 1회: {order_id} ({order.stock_code}) — 8036R 잔존 · 취소 재전송 전 · "
+                f"{ORDER_TIMEOUT_DEFER_SECONDS}초 뒤 재처리에서 재전송 1회"
+            )
+            return
+        hold = lingering and order.order_type == OrderType.BUY
         if hold:
             self.order_timeouts.pop(order_id, None)
             self.logger.error(
@@ -667,6 +678,12 @@ class OrderTimeoutMixin:
             )
             alert = (f"주문 취소 미반영(정정취소가능 목록 잔존) - 수동 확인 필요 · 예약 유지: "
                      f"{order.stock_code} 주문 {order_id}")
+        elif lingering:
+            self.logger.error(
+                f"🚨 주문 종결 연기 {ORDER_TIMEOUT_DEFER_MAX}회 소진 — 매도 취소 미반영(8036R 잔존): {order_id} "
+                f"({order.stock_code} {order.quantity}주) · 종결하고 슬롯 «보유 중» 복귀 · HTS 확인 필요"
+            )
+            alert = f"매도 취소 미반영(8036R 잔존) — HTS 확인: {order.stock_code} 주문 {order_id}"
         else:
             self._log_defer_exhausted(order_id, order)
             alert = f"주문 취소 후 체결수량 확인 불가 - 수동 확인 필요: {order.stock_code} 주문 {order_id}"
