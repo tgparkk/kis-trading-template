@@ -80,7 +80,7 @@ MASK_KEYS = {
 
 DAILY_FIELDS = (
     "ord_dt", "ord_tmd", "odno", "orgn_odno", "sll_buy_dvsn_cd", "ord_dvsn_name", "pdno",
-    "ord_qty", "ord_unpr", "tot_ccld_qty", "avg_prvs", "cncl_yn", "cnc_cfrm_qty", "rmn_qty",
+    "ord_qty", "ord_unpr", "tot_ccld_qty", "avg_prvs", "cncl_yn", "cncl_cfrm_qty", "rmn_qty",
     "rjct_qty", "excg_dvsn_cd",
 )
 PENDING_FIELDS = ("odno", "orgn_odno", "pdno", "sll_buy_dvsn_cd", "ord_qty", "ord_unpr", "psbl_qty", "ord_tmd")
@@ -712,7 +712,7 @@ def _summary(log: logging.Logger, gate: HttpGate, masker: Masker, code: str,
     rows = res["daily_rows"]
     orig = [r for r in rows if normalize_odno(r.get("odno")) == normalize_odno(odno)]
     cancel_rows = [r for r in rows if odno and normalize_odno(r.get("orgn_odno")) == normalize_odno(odno)]
-    orig_cancelled = any(str(r.get("cncl_yn", "")).upper() == "Y" or _f(r, "cnc_cfrm_qty") >= 1 for r in orig)
+    orig_cancelled = any(str(r.get("cncl_yn", "")).upper() == "Y" or _f(r, "cncl_cfrm_qty") >= 1 for r in orig)
     cancel_evidence = bool(cancel_rows) or orig_cancelled
     orig_live = any(_f(r, "rmn_qty") > 0 for r in orig) and not cancel_evidence
     filled = sum(_f(r, "tot_ccld_qty") for r in orig)
@@ -737,7 +737,7 @@ def _summary(log: logging.Logger, gate: HttpGate, masker: Masker, code: str,
     log.info(f" 재조회 잔존 0 {mk(None if res['remain'] is None else not res['remain'])}"
              f"{' (미상)' if res['remain'] is None and odno else ''}{' (2차 취소 시도함)' if res['cancel2'] else ''}")
     log.info(f" 당일조회 취소 행 {mk(cancel_evidence) if res['daily_ok'] else '? (조회 실패)'} "
-             f"(취소주문 행 {len(cancel_rows)} · 원주문 cncl_yn/cnc_cfrm_qty 취소 반영={orig_cancelled} · "
+             f"(취소주문 행 {len(cancel_rows)} · 원주문 cncl_yn/cncl_cfrm_qty 취소 반영={orig_cancelled} · "
              f"원주문 잔량>0·취소흔적 없음={orig_live} · 체결수량 합 {filled:g})")
     for r in orig:
         log.info(f"   원주문: {masker.obj(_pick(r, DAILY_FIELDS))}")
@@ -756,7 +756,7 @@ def _summary(log: logging.Logger, gate: HttpGate, masker: Masker, code: str,
     if filled > 0:
         log.critical(f"**🔴 체결 {filled:g}주 발생 — 10-19 전 계좌 보유 0 으로 되돌릴 것(대사 abort 방지)**")
     log.info(" - HTS 미체결·당일 주문내역 화면으로 위 결과 눈으로 대조(미체결 0 · 체결 0)")
-    log.info(" - 체크리스트 §4-B 에 ODNO · cncl_yn · rmn_qty · cnc_cfrm_qty · NEW-B1 판정 · 이 로그 경로 기록")
+    log.info(" - 체크리스트 §4-B 에 ODNO · cncl_yn · rmn_qty · cncl_cfrm_qty · NEW-B1 판정 · 이 로그 경로 기록")
     log.info("=" * 78)
     return verified
 
