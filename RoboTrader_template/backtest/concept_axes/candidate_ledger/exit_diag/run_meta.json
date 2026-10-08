@@ -1,0 +1,204 @@
+{
+ "prereg": "docs/prereg_2026-09-24_exit_path_diagnosis.md (0bfbe92)",
+ "prereg_blob": "29d8ed86b0685faca2ca80b70ec1babd4bd7df14",
+ "git_sha": "266e0b0b3cdcd0dec46fc5a73bc84d17b49e0d31",
+ "started": "2026-09-26T11:13:13",
+ "finished": "2026-09-26T11:13:44",
+ "secs_total": 31.2,
+ "secs_load": 28.5,
+ "secs_lots": 1.07,
+ "secs_minute": 0.09,
+ "secs_boot": 0.2,
+ "input_md5": {
+  "ledger_worktree": "980e58492a7ac2ed11d25526f4488dbc",
+  "scan_diag_worktree": "c14fb12854845d34e25e0912addfd4d6",
+  "ledger_archive_file": "980e58492a7ac2ed11d25526f4488dbc",
+  "scan_diag_archive_file": "c14fb12854845d34e25e0912addfd4d6",
+  "ledger_archive_md5sums": "980e58492a7ac2ed11d25526f4488dbc",
+  "scan_diag_archive_md5sums": "c14fb12854845d34e25e0912addfd4d6"
+ },
+ "db_fingerprint": {
+  "sha256": "59c14921cde274f00a00aad749cea7b0750bf33022c7f00ac5e3c644eb0f56f6",
+  "md5": "4171112f56dcb159d905b5c54838f152",
+  "n_stocks": 2799,
+  "n_rows": 2176121,
+  "window": "2023-01-02..2026-09-23",
+  "cols": [
+   "stock_code",
+   "date",
+   "open",
+   "high",
+   "low",
+   "close",
+   "volume",
+   "trading_value",
+   "market_cap",
+   "adj_factor"
+  ]
+ },
+ "db_fingerprint_same_as_ledger_run": true,
+ "db_fingerprint_n_stock_diff": 0,
+ "ledger_run_git_sha": "e11fc7539eef5e116db62401436575fd12f22ed7",
+ "W": 10,
+ "X_pp": 2.0,
+ "n_boot": 2000,
+ "min_den": 200,
+ "seeds": {
+  "ma20": [
+   20261002,
+   1,
+   0
+  ],
+  "minervini": [
+   20261002,
+   1,
+   1
+  ],
+  "daytrading": [
+   20261002,
+   1,
+   2
+  ]
+ },
+ "seed_s_meaning": "s = 전략 인덱스(ma20=0, minervini=1, daytrading=2) · 해석 기록 H1",
+ "brackets": {
+  "ma20": {
+   "tp": 0.1,
+   "sl": 0.08
+  },
+  "minervini": {
+   "tp": 0.12,
+   "sl": 0.08
+  },
+  "daytrading": {
+   "tp": 0.1,
+   "sl": 0.1
+  }
+ },
+ "n_L": {
+  "book_pullback_ma20": 18016,
+  "minervini_volume_dryup": 8506,
+  "daytrading_3methods_breakout": 15000
+ },
+ "n_L_expected": {
+  "book_pullback_ma20": 18016,
+  "minervini_volume_dryup": 8506,
+  "daytrading_3methods_breakout": 15000
+ },
+ "calendar": [
+  "2023-01-02",
+  "2026-09-23",
+  910
+ ],
+ "n_offcal_bars_dropped": 1,
+ "summary": {
+  "ma20": {
+   "label": "비대칭 → 짝 비교 사전등록으로 넘어감",
+   "b": 16.97105628537862,
+   "bp": 21.047151569239922,
+   "c": 11.596419517519147,
+   "cp": 9.334917315296433,
+   "diff_b": -4.076095283861303,
+   "ci_b": [
+    -5.622578085111182,
+    -2.563998841144116
+   ],
+   "verdict_b": "비대칭",
+   "diff_c": 2.2615022022227134,
+   "ci_c": [
+    1.7598492961950603,
+    2.7279646212142032
+   ],
+   "verdict_c": "비대칭",
+   "n_codes": 2007,
+   "den": {
+    "b_den": 9363,
+    "bp_den": 6723,
+    "c_den": 6723,
+    "cp_den": 9363
+   },
+   "win_rate": 44.08858792184724,
+   "breakeven": 44.44444444444444,
+   "breakeven_cost": 45.83333333333333,
+   "gross": 554187,
+   "cost": 44495477,
+   "net": -43941290,
+   "net_per_lot": -2439,
+   "ret_net_mean": -0.25012344983351437
+  },
+  "minervini": {
+   "label": "비대칭 → 짝 비교 사전등록으로 넘어감",
+   "b": 18.14720812182741,
+   "bp": 21.86222082415854,
+   "c": 14.566899990325815,
+   "cp": 10.96457604863076,
+   "diff_b": -3.7150127023311303,
+   "ci_b": [
+    -7.298560911899521,
+    -0.18508256383702934
+   ],
+   "verdict_b": "비대칭",
+   "diff_c": 3.6023239416950554,
+   "ci_c": [
+    2.255817978390972,
+    4.927544804678156
+   ],
+   "verdict_c": "비대칭",
+   "n_codes": 579,
+   "den": {
+    "b_den": 4728,
+    "bp_den": 3179,
+    "c_den": 3179,
+    "cp_den": 4728
+   },
+   "win_rate": 41.14742534681402,
+   "breakeven": 40.0,
+   "breakeven_cost": 41.25,
+   "gross": 8114928,
+   "cost": 20516617,
+   "net": -12401689,
+   "net_per_lot": -1458,
+   "ret_net_mean": -0.1750289612159619
+  },
+  "daytrading": {
+   "label": "비대칭 → 짝 비교 사전등록으로 넘어감",
+   "b": 20.075456711675933,
+   "bp": 26.77536231884058,
+   "c": 12.910776320617293,
+   "cp": 11.066982927821217,
+   "diff_b": -6.699905607164647,
+   "ci_b": [
+    -8.420580398314987,
+    -4.953562284635428
+   ],
+   "verdict_b": "비대칭",
+   "diff_c": 1.8437933927960768,
+   "ci_c": [
+    1.256687381645986,
+    2.4408467508690825
+   ],
+   "verdict_c": "기준 미달",
+   "n_codes": 1928,
+   "den": {
+    "b_den": 5036,
+    "bp_den": 5520,
+    "c_den": 5520,
+    "cp_den": 5036
+   },
+   "win_rate": 46.99333333333333,
+   "breakeven": 50.0,
+   "breakeven_cost": 51.24999999999999,
+   "gross": -4560544,
+   "cost": 37294661,
+   "net": -41855205,
+   "net_per_lot": -2790,
+   "ret_net_mean": -0.2813689149603323
+  }
+ },
+ "outputs": [
+  "RESULTS_exit_diag.md",
+  "exit_diag_lots.csv",
+  "same_bar_minute.csv",
+  "run_meta.json"
+ ]
+}

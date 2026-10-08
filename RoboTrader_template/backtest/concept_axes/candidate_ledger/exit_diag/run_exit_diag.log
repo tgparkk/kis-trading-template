@@ -1,0 +1,14 @@
+���� ������ ã�� �� �����ϴ�: D:\tmp\kis-wt-cand-ledger\RoboTrader_template\config\key.ini
+key.ini.example�� �����Ͽ� key.ini ������ �������ּ���.
+[가드] md5 6항목 ✓ · 사전등록 blob = 0bfbe92 ✓ · 브래킷 = 원장 PREREG §6 ✓ · sha 266e0b0b3c
+[L] 원장 52,540행 → L 41,522 · ma20 18,016(기대 18,016 ✓) · minervini 8,506(기대 8,506 ✓) · daytrading 15,000(기대 15,000 ✓)
+[로드] 달력 910일(2023-01-02~2026-09-23) · DB 지문 59c14921cde2 (= 원장 실행 지문 ✓)
+[로드] px 2,176,121행 · 불가능봉 56,193 · corp_event 종목 549 · L 종목 2,413 · 달력 밖 봉 1(창에서 제외) · 28s
+[ma20] 짝 대상 sl·tp 로트 16,618 · 제외 532
+[minervini] 짝 대상 sl·tp 로트 8,120 · 제외 213
+[daytrading] 짝 대상 sl·tp 로트 10,943 · 제외 387
+[a] 같은 봉 동시 189 · 분봉 조회 쌍 127 · 행 있음 37 · 분봉 13,622행(정규장 밖 0) · 0.1s
+[끝] 31s → D:\tmp\kis-wt-cand-ledger\RoboTrader_template\backtest\concept_axes\candidate_ledger\exit_diag
+  ma20: 비대칭 → 짝 비교 사전등록으로 넘어감
+  minervini: 비대칭 → 짝 비교 사전등록으로 넘어감
+  daytrading: 비대칭 → 짝 비교 사전등록으로 넘어감

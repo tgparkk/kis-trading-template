@@ -1,0 +1,18 @@
+{
+ "git_sha": "3240ce662f67c2a1adcc1016a4e1198b738666c2",
+ "n_cut": 547,
+ "patterns": [
+  "밸류업",
+  "지주사",
+  "SPAC|스팩",
+  "신규상장",
+  "여름",
+  "겨울",
+  "코로나"
+ ],
+ "snap_date": "2026-10-08",
+ "n_eligible_themes": 224,
+ "n_rows": 10945,
+ "ledger_md5": "980e58492a7ac2ed11d25526f4488dbc",
+ "signals_md5": "7d11782fecce6edcd4befbd518664fac"
+}
