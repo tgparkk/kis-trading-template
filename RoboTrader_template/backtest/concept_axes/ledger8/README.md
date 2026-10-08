@@ -42,6 +42,8 @@ $PY -m pytest backtest/concept_axes/ledger8/tests -q -p no:cacheprovider
 - 첫 줄의 `key.ini 파일을 찾을 수 없습니다` 경고는 `config.settings` import 부수효과(워크트리엔 key.ini 없음) — 무해, KIS API 호출 0.
 - 콘솔에 섞이는 `strategy.RSLeaderStrategy | WARNING | [신호없음] … 진입 제외 «안 함»(mode=shadow)` 줄은 라이브 `_check_buy` 가 찍는 WARNING 이다(부트스트랩은 INFO 이하만 끈다) — 라이브 로그 파일로는 가지 않는다(NullHandler) · 무해.
 - K·max_daily_trades·regime_index·rs 모드가 바뀌면 `registry.py` 이력표에 (발효일, 값, 근거) 한 줄을 넣는다 — `tests/test_registry_gate_order.py` 가 최신값을 config 와 대조한다.
+- **일일 한도가 «무엇을 세나»도 날짜별 이력**(`DAILY_CAP_RULE_HISTORY` · 표는 `../minervini/cap_skip_ledger/classify.py` 하나 · `registry.py` 가 재노출 · 🔒 사장님 10-08 밤): **~2026-10-07 = 매수+매도 체결 합** · **2026-10-08~ = 매수 체결만**(main `1e62298` — 8전략 `on_order_filled` 의 `daily_trades += 1` 이 `is_buy` 분기 안 · 한도 5·검사 위치·사유 문자열 불변). 시간선 «빈자리»(`classify.slot_windows_detail` → `fidelity8.slot_verdict` → A 단계 `cap`·신호 로그 N/NA)가 이 표로 센다. 테스트가 최신 규칙을 8전략 AST 와 대조한다.
+- 매일 실행: `run_daily.py <YYYY-MM-DD>` — 그날(창 안 거래일 전부) 로그 복사 → 창 = 최근 5거래일(당일 포함) `run --stage all` → 3전략(focus3) B1 요약 `summary_daily.md`(§9).
 
 ## 3. 무엇을 어떻게 재현하나 (라이브 코드 근거 · 브랜치 시작 커밋 14a9b7a — 라이브 코드 자체는 이후 무변경)
 
@@ -185,5 +187,18 @@ CSV 는 어느 파일도 머리에 배너 문장을 두지 않는다(기계 판�
 | `arms.py` | A_actual · A_sim · B1 · B2 엔진(순수) |
 | `fidelity8.py` | 충실도 판정·집계 · «평가 가능» 규칙 `slot_verdict`(v3 시작 경계 포함) · 빈티지 표시(순수) |
 | `sources8.py` · `context8.py` | DB SELECT · 실행 문맥 |
+| `run_daily.py` | 매일 실행 — 로그 복사 → 최근 N거래일 `run --stage all` → 3전략 B1 `summary_daily.md`(§9) |
 | `run.py` · `report.py` | CLI · 요약 MD(`report.py` 는 브리프의 ~340줄 초안에 시나리오 분리·D5 세 갈래·A3/A4/A5 표시·재추적 배너를 더해 커졌다) |
-| 재사용(수정 금지) | `../minervini/cap_skip_ledger/{bootstrap,sources,sim,tradecal,classify}.py` |
+| 재사용(수정 금지) | `../minervini/cap_skip_ledger/{bootstrap,sources,sim,tradecal,classify}.py` — 예외: `classify.py` 의 일일 한도 규칙 이력 `DAILY_CAP_RULE_HISTORY`(🔒 사장님 10-08 밤 · 8전략 공통 표 하나) |
+
+## 9. 매일 실행 (`run_daily.py` · 2026-10-08~)
+
+```bash
+cd <worktree>/RoboTrader_template
+PYTHONPATH=$PWD:$PWD/.. PYTHONIOENCODING=utf-8 D:/GIT/kis-trading-template/RoboTrader_template/venv/Scripts/python.exe -m backtest.concept_axes.ledger8.run_daily 2026-10-08   # [--n-days 5] [--skip-run] [--log-dir …] [--out-root …]
+```
+
+1. 창 = DB 달력(KOSPI 일봉)에서 그 날짜까지 최근 5거래일(당일 포함 · 휴장·일봉 미수집이면 거절).
+2. 창 안 거래일의 `RoboTrader_template/logs/robotrader_template_<YYYYMMDD>_*.log` → `D:/tmp/kis-wt-ledger-weekly-logs/`(같은 크기면 건너뜀 · 가동 중 복사본은 그 시각까지).
+3. `run --stage all` → `D:/tmp/kis-wt-ledger-weekly-out/daily_<날짜>/`(원장 전부) + `summary_daily.md` — 3전략(daytrading · minervini · ma20) B1(tier=main) 전략별 건수 · 손익 합(원 정수 · 미청산 = 마지막 종가) · 명목가중% · 청산(승)/미청산 · 당일 진입분 표 따로 · 날짜별 진입 건수.
+- 쓰기는 로그·출력 폴더뿐(라이브 트리 아래 경로면 거절) · DB SELECT 만 · KIS 호출 0. 장 마감 뒤 데이터는 다음날 07:40~08:00 창(사장님 PC 저녁 OFF)에서 돌리면 된다.
