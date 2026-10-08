@@ -212,6 +212,27 @@ class MarketHours:
                     'buy_cutoff_hour': 13,          # 13시 이후 매수 중단
                     'eod_liquidation_hour': 16,     # 16시 시장가 일괄매도
                     'eod_liquidation_minute': 0,    # 16:00 정각
+                    # 기본값 통째 대체 방지 — 1시간 지연 미러. 없으면 15:20 폴백으로 주문이 차단됨
+                    # (KRX 2026 수능일 공지 확인 전 · 관행(1시간 지연) 기준)
+                    'pre_auction_start': time(9, 30),
+                    'opening_protection_end': time(10, 5),
+                    'closing_auction_start': time(16, 20),
+                    'new_buy_cutoff': time(16, 20),
+                    'reason': '수능일 (1시간 지연)'
+                },
+                # 수능일 (2026년 · 2027학년도 수능 11-19 목)
+                '2026-11-19': {
+                    'market_open': time(10, 0),     # 10:00
+                    'market_close': time(16, 30),   # 16:30
+                    'buy_cutoff_hour': 13,          # 13시 이후 매수 중단
+                    'eod_liquidation_hour': 16,     # 16시 시장가 일괄매도
+                    'eod_liquidation_minute': 0,    # 16:00 정각
+                    # 기본값 통째 대체 방지 — 1시간 지연 미러. 없으면 15:20 폴백으로 주문이 차단됨
+                    # (KRX 2026 수능일 공지 확인 전 · 관행(1시간 지연) 기준)
+                    'pre_auction_start': time(9, 30),
+                    'opening_protection_end': time(10, 5),
+                    'closing_auction_start': time(16, 20),
+                    'new_buy_cutoff': time(16, 20),
                     'reason': '수능일 (1시간 지연)'
                 },
                 # 향후 특수일 추가 가능

@@ -86,9 +86,8 @@ class TelegramNotifier:
             self.is_initialized = True
             self.logger.info("✅ 텔레그램 봇 초기화 완료")
             
-            # 초기화 메시지 전송
-            await self.send_system_start()
-            
+            # 시작 알림은 TelegramIntegration.notify_system_start() 가 단독 발송(중복 방지)
+
             return True
             
         except Exception as e:

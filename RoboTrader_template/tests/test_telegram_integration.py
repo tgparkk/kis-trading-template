@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
+from contextlib import ExitStack
 
 
 @pytest.fixture
@@ -114,3 +115,42 @@ class TestDailySummaryReturnRate:
         await ti.notify_daily_summary()
 
         ti.notifier.send_daily_summary.assert_not_called()
+
+
+class TestSystemStartMessageSentOnce:
+    """시작 메시지는 notifier.initialize() + integration.initialize() 전체에서 정확히 1회."""
+
+    @pytest.mark.asyncio
+    async def test_start_message_sent_exactly_once(self, mock_telegram_config):
+        from utils.telegram import telegram_notifier as tn
+        from core.telegram_integration import TelegramIntegration
+
+        sent = []
+
+        async def fake_send_message(self, message, *a, **k):
+            sent.append(message)
+            return True
+
+        fake_bot = MagicMock()
+        fake_bot.get_me = AsyncMock(return_value=MagicMock(username='x'))
+        fake_bot.delete_webhook = AsyncMock()
+        fake_app = MagicMock()
+        builder = MagicMock()
+        builder.token.return_value = builder
+        builder.request.return_value = builder
+        builder.build.return_value = fake_app
+
+        with ExitStack() as stack:
+            stack.enter_context(patch(
+                'core.telegram_integration.TelegramIntegration._load_telegram_config',
+                return_value=mock_telegram_config))
+            stack.enter_context(patch.object(tn.TelegramNotifier, 'send_message', fake_send_message))
+            stack.enter_context(patch.object(tn.TelegramNotifier, '_register_commands', lambda self: None))
+            stack.enter_context(patch.object(
+                tn, 'Application', MagicMock(builder=MagicMock(return_value=builder))))
+            stack.enter_context(patch.object(tn, 'Bot', return_value=fake_bot))
+            ti = TelegramIntegration()
+            assert await ti.initialize() is True
+
+        assert len(sent) == 1
+        assert "거래 시스템 시작" in sent[0]

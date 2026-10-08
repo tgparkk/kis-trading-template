@@ -112,8 +112,9 @@ class TestBannerMatchesOrderGate:
     def test_special_day_suneung(self):
         """특수일(수능일)에도 배너가 실제 게이트를 따라가는지.
 
-        수능일은 개장/마감이 1시간 밀리지만 `closing_auction_start` 는 특수일 설정에
-        없어 기본값(15:20)이 적용된다 — 배너는 그 **실제 동작**을 말해야 한다.
+        수능일은 개장/마감이 1시간 밀리고 `closing_auction_start` 도 특수일 설정에
+        16:20 으로 들어 있다(D-17 B · 907c213 — 종전엔 키가 없어 기본값 15:20 이 적용됐다)
+        — 배너는 그 **실제 동작**(16:20 부터 주문 차단)을 말해야 한다.
         """
         _assert_banner_matches_gate(kst_dt(2025, 11, 13, 0, 0), "수능일(2025-11-13)")
 
