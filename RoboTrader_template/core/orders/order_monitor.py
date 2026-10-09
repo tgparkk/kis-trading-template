@@ -111,6 +111,12 @@ class OrderMonitorMixin:
                                 pass
                         continue
 
+                # B(2026-10-09): 보류 주문(취소 미반영 · 예약·슬롯 유지)은 취소 없이 «상태 조회만» 해 체결·소멸을
+                # 발견하면 종결한다(_recheck_held_order). 시간·4봉 타임아웃 대상이 아니다.
+                if order_id in getattr(self, '_cancel_held_ids', ()):
+                    await self._recheck_held_order(order_id)
+                    continue
+
                 # 1. 체결 상태 확인
                 await self._check_order_status(order_id)
 

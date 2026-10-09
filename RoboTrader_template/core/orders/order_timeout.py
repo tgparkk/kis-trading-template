@@ -666,8 +666,9 @@ class OrderTimeoutMixin:
         (B3: 불명 ≠ 미체결 — 경보 없이 체결 0 으로 닫지 않는다).
 
         I1(2026-10-08): 소진 때 아는 체결 0 인데 마지막 조회가 여전히 8036R 행이면 매수는 CANCELLED 로 닫지 않는다 —
-        예약·슬롯·확인 표식을 둔 채 자동 처리를 멈추고(시한 제거 · 재취소·재조회 없음 · 종료 시 미체결 일괄
+        예약·슬롯·확인 표식을 둔 채 자동 처리를 멈추고(시한 제거 · 재취소 없음 · 종료 시 미체결 일괄
         취소 대상으로 남음) 「수동 확인」 경보 1회. 아는 체결분이 있으면 회계는 종전 그대로.
+        B(2026-10-09): 보류 주문은 «상태 조회만» 계속한다(_cancel_held_ids → _recheck_held_order).
         델타 리뷰 A: 보류는 매수만 — 매도는 종전처럼 닫아 슬롯을 «보유 중»으로 돌린다(손절·장마감 청산 대상
         유지) + 「매도 취소 미반영」 경보 1회. m-a: 취소 재전송 전이면 곧장 보류·종결하지 않고 상한 예외로
         연기 1회 더 — 다음 재처리(_resolve_cancel_confirmed)가 재전송 1회를 보낸다(예외는 별도 표식으로 주문당 1회).
@@ -706,9 +707,12 @@ class OrderTimeoutMixin:
             "(+예외 1)" if order_id in self._defer_extra_used_ids else "")
         if hold:
             self.order_timeouts.pop(order_id, None)
+            # B(2026-10-09): 보류 주문은 취소·연기 없이 «상태 조회만» 계속한다 → 체결·소멸 발견 시 종결
+            self._cancel_held_ids.add(order_id)
             self.logger.error(
                 f"🚨 주문 종결 {spent} — 취소 미반영({basis}): {order_id} "
-                f"({order.stock_code} {order.quantity}주) · 종결하지 않고 예약·슬롯 유지 · HTS 수동 확인 필요"
+                f"({order.stock_code} {order.quantity}주) · 종결하지 않고 예약·슬롯 유지 · "
+                f"상태 재조회 계속(체결·소멸 발견 시 종결) · HTS 수동 확인 필요"
             )
             # s-1: 텔레그램에도 근거(8036R 잔존 | 관측 뒤 조회 실패 | 관측 뒤 0081R 잔량 잔존)를 싣는다
             alert = (f"주문 취소 미반영({basis}) - 수동 확인 필요 · 예약 유지: "
@@ -767,6 +771,59 @@ class OrderTimeoutMixin:
         self._cancel_confirmed_ids.discard(order_id)
         await self._close_cancelled_with_fill(
             order, max(getattr(order, 'filled_quantity', 0) or 0, settled), status)
+
+    async def _recheck_held_order(self: 'OrderManagerBase', order_id: str) -> None:
+        """보류 주문(취소 미반영으로 예약·슬롯을 둔 매수) 상태 재조회 — 델타 리뷰 B(2026-10-09).
+
+        보류 = 취소·재전송·연기를 멈춘 상태다. 여기서도 취소는 다시 보내지 않고 «상태 조회만» 한다
+        (메인 루프 1회당 조회 1회 · 확정 후보가 보이면 연속 2회 규칙 = _settle_after_cancel).
+        - 확정(8036R 부재 ∧ 0081R 잔량 0 이 연속 2회 같은 체결수) → 종결 + 「보류 주문 해소」 텔레그램 1회:
+          전량 체결 = 정상 완전 체결 경로(_handle_full_fill: 예약→투자 · 보유 등록 · 전략 콜백 · 손절/익절 감시 ·
+          DB · 체결 알림) · 일부 체결 = 부분체결 회계(체결분 포지션 · 나머지 예약 해제) · 체결 0 = CANCELLED ·
+          예약 해제 · 슬롯 COMPLETED.
+        - 미확정(8036R 잔존 · 조회 실패 · 불명 · 잔량>0 · 불일치) → 보류 유지. 그 사이 체결이 보이면
+          「보류 주문에 체결」 경보 1회(주문이 끝나지 않아 회계하지 않는다 — 체결분은 아직 장부·손절 밖).
+        """
+        order = self.pending_orders.get(order_id)
+        if order is None:
+            self._cancel_held_ids.discard(order_id)
+            return
+        settled, status = await self._settle_after_cancel(order_id, just_cancelled=False)
+        if settled is None:
+            live_fill = self._cancel_seen_fill.get(order_id, 0)
+            if live_fill > 0 and order_id not in self._held_fill_alerted_ids:
+                self._held_fill_alerted_ids.add(order_id)
+                msg = (f"보류 주문에 체결 {live_fill}/{order.quantity}주 보임(미확정) — 체결분 장부·손절 밖 · "
+                       f"HTS 확인: {order.stock_code} 주문 {order_id}")
+                self.logger.error(f"🚨 {msg}")
+                if self.telegram:
+                    try:
+                        await self.telegram.notify_system_status(msg)
+                    except Exception:
+                        pass
+            return
+        filled = max(getattr(order, 'filled_quantity', 0) or 0, settled)
+        self._cancel_held_ids.discard(order_id)
+        self._cancel_confirmed_ids.discard(order_id)
+        if filled >= order.quantity:
+            await self._handle_full_fill(order_id, order, status, order.quantity)
+            if order_id in self.pending_orders:
+                # 완전 체결 판정 보류(체결가 0 등) — 보류로 되돌려 다음 루프에 다시 본다(시간·4봉 타임아웃의
+                # 재취소 경로로 빠지지 않게)
+                self._cancel_held_ids.add(order_id)
+                self._cancel_confirmed_ids.add(order_id)
+                return
+            outcome = f"전량 체결 {order.quantity}주 회계"
+        else:
+            await self._close_cancelled_with_fill(order, filled, status)
+            outcome = f"체결 {filled}주 회계 · 나머지 예약 해제" if filled else "체결 0 · 예약 해제"
+        msg = f"보류 주문 해소({outcome}): {order.stock_code} 주문 {order_id}"
+        self.logger.warning(f"✅ {msg}")
+        if self.telegram:
+            try:
+                await self.telegram.notify_system_status(msg)
+            except Exception:
+                pass
 
     async def _force_timeout_cleanup_safe(self: 'OrderManagerBase', order_id: str) -> None:
         """예외 발생 시 안전한 강제 상태 정리"""

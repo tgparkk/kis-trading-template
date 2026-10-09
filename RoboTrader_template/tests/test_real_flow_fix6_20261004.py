@@ -1349,16 +1349,16 @@ class TestI1ResendCancelOnceWhenStillCancellable:
         alerts = _alerts(telegram, "수동 확인 필요")
         assert len(alerts) == 1 and "예약 유지" in str(alerts[0].args[0])
         assert "주문 취소 미반영(8036R 잔존)" in str(alerts[0].args[0])   # s-1
-        # 자동 처리 정지 — 연기 폭(45초)이 몇 번 지나도 재취소·재조회·경보 반복 없음
-        # (종료 시 미체결 일괄 취소 대상으로 남는다)
+        # 자동 취소 정지 — 연기 폭(45초)이 몇 번 지나도 재취소·경보 반복 없음(종료 시 미체결 일괄 취소 대상).
+        # B(10-09): 단 «상태 조회만» 매 루프 1회 계속한다(8036R 잔존이면 보류 유지 — 체결·소멸은 TestB…)
         queries = broker.get_order_status.call_count
         later = now_kst() + timedelta(minutes=10)
         with patch("core.orders.order_monitor.now_kst", return_value=later), _no_settle_wait():
             for _ in range(3):
                 await om._monitor_pending_orders()
-        assert broker.cancel_order.call_count == 2 and broker.get_order_status.call_count == queries
+        assert broker.cancel_order.call_count == 2 and broker.get_order_status.call_count == queries + 3
         assert len(_alerts(telegram, "수동 확인 필요")) == 1
-        assert order.order_id in om.pending_orders
+        assert order.order_id in om.pending_orders and order.order_id in om._cancel_held_ids
 
     @pytest.mark.asyncio
     async def test_known_partial_fill_still_accounted_when_remainder_stays_cancellable(self):
@@ -1671,3 +1671,118 @@ class TestS2RememberFillSeenAfterCancel:
         assert len(_alerts(telegram, "잔량 취소 미반영(8036R 관측 뒤 조회 실패) - 수동 확인 필요 · 체결 3주 회계")) == 1
         assert not _alerts(telegram, "예약 유지") and not _alerts(telegram, "체결수량 확인 불가")
         assert order.order_id not in om._cancel_seen_fill                  # 종결 때 정리
+
+
+# =============================================================================
+# 델타 리뷰 bc7f569..9ccf51c B — 보류 주문 «상태 조회만» 재조회(2026-10-09)
+# =============================================================================
+def _held_setup():
+    """8036R 잔존으로 보류된 매수 주문(취소 1 + 재전송 1 · 예약 700,000 · BUY_PENDING · 경보 1) — 조회 응답은
+    이후 _feed 로 바꿔 끼운다(목록 소진 뒤 None)."""
+    from config.constants import ORDER_TIMEOUT_DEFER_MAX
+    om, broker, telegram, fm, strat, slot, order = _ledger_setup([_live_row(0)] * 8)
+    return om, broker, telegram, fm, strat, slot, order, ORDER_TIMEOUT_DEFER_MAX
+
+
+async def _hold(om, order, rounds):
+    with _no_settle_wait():
+        for _ in range(rounds + 1):
+            await om._handle_timeout(order.order_id)
+    assert order.order_id in om._cancel_held_ids and order.order_id not in om.order_timeouts
+
+
+def _feed(broker, rows):
+    seq = list(rows)
+    broker.get_order_status.side_effect = lambda oid: seq.pop(0) if seq else None
+
+
+class TestBHeldOrderRechecksStatusOnly:
+    """B: 보류 주문은 재취소 없이 매 루프 «상태 조회만» — 나중에 체결되면 정상 체결 회계(포지션·전략 콜백·손절/익절),
+    사라졌고 체결 0 이면 예약 해제. 확정은 N2 규칙(연속 2회). 「보류 주문 해소」 경보 1회."""
+
+    @pytest.mark.asyncio
+    async def test_held_order_full_fill_later_goes_through_normal_fill_path(self):
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        assert fm.reserved_funds == pytest.approx(700_000) and slot.state == StockState.BUY_PENDING
+        _feed(broker, [_live_row(0), _gone_row(10, avg="70100"), _gone_row(10, avg="70100")])
+        with _no_settle_wait():
+            await om._monitor_pending_orders()               # 아직 8036R → 보류 유지
+            assert order.order_id in om.pending_orders and order.order_id in om._cancel_held_ids
+            await om._monitor_pending_orders()               # 0081R 전량 체결 연속 2회 → 확정
+        assert broker.cancel_order.call_count == 2, "보류 주문에 취소를 다시 보냈다"
+        assert order.status == OrderStatus.FILLED and order.order_id not in om.pending_orders
+        assert order.filled_price == pytest.approx(70100)
+        assert fm.invested_funds == pytest.approx(10 * 70100) and fm.reserved_funds == pytest.approx(0)
+        assert slot.state == StockState.POSITIONED and slot.position.quantity == 10
+        assert strat.daily_trades == 1 and strat.positions["005930"]["quantity"] == 10
+        assert om.db_manager.save_real_buy.call_args.kwargs["quantity"] == 10
+        assert telegram.notify_order_filled.call_count == 1           # 정상 완전 체결 경로(부분체결 경로 아님)
+        assert not _alerts(telegram, "매수 부분 체결 타임아웃")
+        assert len(_alerts(telegram, "보류 주문 해소(전량 체결 10주 회계)")) == 1
+        assert order.order_id not in om._cancel_held_ids and order.order_id not in om._cancel_confirmed_ids
+
+    @pytest.mark.asyncio
+    async def test_held_order_gone_with_zero_fill_releases_reservation(self):
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(0), None,                  # 후보 1회 뒤 조회 실패 → 미확정(보류 유지)
+                       _gone_row(0), _gone_row(0)])         # 연속 2회 → 확정(체결 0)
+        with _no_settle_wait():
+            await om._monitor_pending_orders()
+            assert order.order_id in om._cancel_held_ids and fm.reserved_funds == pytest.approx(700_000)
+            await om._monitor_pending_orders()
+        assert broker.cancel_order.call_count == 2
+        assert order.status == OrderStatus.CANCELLED and order.order_id not in om.pending_orders
+        assert fm.reserved_funds == pytest.approx(0) and not fm.has_reservation(order.order_id)
+        assert slot.state == StockState.COMPLETED and strat.daily_trades == 0
+        assert len(_alerts(telegram, "보류 주문 해소(체결 0 · 예약 해제)")) == 1
+
+    @pytest.mark.asyncio
+    async def test_fill_seen_while_held_alerts_once_then_partial_settles(self):
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_live_row(4), _live_row(4), _live_row(4),   # 살아 있는 주문에 4주 체결 → 경보 1회 · 회계 없음
+                       _gone_row(4), _gone_row(4)])                 # 사라짐 + 잔량 0 연속 2회 → 4주 회계
+        with _no_settle_wait():
+            for _ in range(3):
+                await om._monitor_pending_orders()
+            assert order.order_id in om.pending_orders and fm.invested_funds == pytest.approx(0)
+            assert len(_alerts(telegram, "보류 주문에 체결 4/10주 보임(미확정)")) == 1
+            await om._monitor_pending_orders()
+        assert broker.cancel_order.call_count == 2
+        assert order.status == OrderStatus.FILLED and order.quantity == 4
+        assert fm.invested_funds == pytest.approx(4 * 70000) and fm.reserved_funds == pytest.approx(0)
+        assert slot.state == StockState.POSITIONED and slot.position.quantity == 4
+        assert strat.daily_trades == 1
+        assert len(_alerts(telegram, "보류 주문에 체결")) == 1
+        assert len(_alerts(telegram, "보류 주문 해소(체결 4주 회계 · 나머지 예약 해제)")) == 1
+
+    @pytest.mark.asyncio
+    async def test_full_fill_with_zero_price_stays_held_and_never_recancels(self):
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(10, avg="0"), _gone_row(10, avg="0"),        # 체결가 0 → 완전 체결 판정 보류
+                       _gone_row(10, avg="70200"), _gone_row(10, avg="70200")])
+        later = now_kst() + timedelta(minutes=30)          # 4봉·시간 타임아웃이 지났어도 재취소 경로로 빠지지 않는다
+        order.order_3min_candle_time = now_kst() - timedelta(minutes=20)
+        with patch("core.orders.order_monitor.now_kst", return_value=later), _no_settle_wait():
+            await om._monitor_pending_orders()
+            assert order.order_id in om.pending_orders
+            assert order.order_id in om._cancel_held_ids and order.order_id in om._cancel_confirmed_ids
+            await om._monitor_pending_orders()
+        assert broker.cancel_order.call_count == 2, "체결가 0 보류 뒤 4봉/시간 타임아웃 재취소로 빠졌다"
+        assert order.status == OrderStatus.FILLED and fm.invested_funds == pytest.approx(10 * 70200)
+        assert slot.state == StockState.POSITIONED
+
+    def test_move_to_completed_clears_held_marks(self):
+        om = _make_om()
+        order = _inject(om)
+        om._cancel_held_ids.add(order.order_id)
+        om._held_fill_alerted_ids.add(order.order_id)
+        om._cancel_seen_fill[order.order_id] = 4
+        order.status = OrderStatus.CANCELLED
+        om._move_to_completed(order.order_id)
+        assert order.order_id not in om._cancel_held_ids
+        assert order.order_id not in om._held_fill_alerted_ids
+        assert order.order_id not in om._cancel_seen_fill
