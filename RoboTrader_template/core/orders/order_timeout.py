@@ -242,6 +242,18 @@ class OrderTimeoutMixin:
             settled, status = await self._settle_after_cancel(order_id, just_cancelled=True)
             if settled is None:
                 await self._defer_or_close_unsettled(order, status, "잔량 취소 접수 뒤 체결수량 미확정")
+                if order_id in self.pending_orders and order_id not in self._cancel_held_ids:
+                    # I2 작은 보호책(REVIEW_RF7 · 2026-10-09): 확정 대기(연기) 동안 아는 체결분은 장부·손절 밖이다 —
+                    # 회계는 건드리지 않고 사람이 그 창을 알게 텔레그램 1회(이 분기는 주문당 1번만 온다)
+                    known = max(filled_qty, self._cancel_seen_fill.get(order_id, 0))
+                    msg = (f"부분체결 {known}/{order.quantity}주 확정 대기(최대 약 4분) — 그동안 장부·손절 밖 · "
+                           f"급변 시 HTS: {order.stock_code} 주문 {order_id}")
+                    self.logger.warning(f"⏸ {msg}")
+                    if self.telegram:
+                        try:
+                            await self.telegram.notify_system_status(msg)
+                        except Exception:
+                            pass
                 return
             self._cancel_confirmed_ids.discard(order_id)
             if settled > filled_qty:

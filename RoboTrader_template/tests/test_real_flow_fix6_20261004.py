@@ -2075,3 +2075,47 @@ class TestF7HeldFillAfterEodNote:
     async def test_no_note_before_eod_or_for_zero_fill(self):
         assert self._NOTE not in await self._resolve([_gone_row(10, avg="70100")] * 2, after_eod=False)
         assert self._NOTE not in await self._resolve([_gone_row(0)] * 2, after_eod=True)
+
+
+class TestI2PartialFillWaitAlert:
+    """I2 작은 보호책: 부분체결 잔량 취소 뒤 첫 연기 때 「부분체결 N/Q주 확정 대기 — 그동안 장부·손절 밖」 텔레그램 1회.
+    회계는 그대로(확정 뒤) · 바로 확정되면(정상망) 경보 없음 · 연기 재처리에서 반복 없음."""
+
+    _MSG = "확정 대기(최대 약 4분) — 그동안 장부·손절 밖"
+
+    @pytest.mark.asyncio
+    async def test_first_defer_alerts_once_and_accounting_is_unchanged(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([
+            _live_row(3), None,                    # 사전조회 3/10 · 잔량 취소 뒤 재조회 실패 → 연기
+            None, _gone_row(5), _gone_row(5),      # 연기 재처리: 실패 → 다시 연기 · 그다음 연속 2회 5주
+        ])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+            alerts = _alerts(telegram, self._MSG)
+            assert len(alerts) == 1 and "부분체결 3/10주" in str(alerts[0].args[0])
+            assert fm.invested_funds == pytest.approx(0) and slot.state == StockState.BUY_PENDING
+            await om._handle_timeout(order.order_id)
+            await om._handle_timeout(order.order_id)
+        assert len(_alerts(telegram, self._MSG)) == 1, "연기 재처리마다 경보가 반복됐다"
+        assert order.status == OrderStatus.FILLED and order.quantity == 5
+
+    @pytest.mark.asyncio
+    async def test_settled_right_away_sends_no_wait_alert(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([
+            _live_row(3), _gone_row(3, avg="70000"), _gone_row(3, avg="70000")])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+        assert order.status == OrderStatus.FILLED and order.quantity == 3
+        assert not _alerts(telegram, self._MSG)
+
+    @pytest.mark.asyncio
+    async def test_no_wait_alert_when_defer_budget_is_already_spent(self):
+        """연기 상한을 이미 다 쓴 주문은 그 자리에서 아는 만큼으로 종결 — «확정 대기» 경보는 내지 않는다."""
+        from config.constants import ORDER_TIMEOUT_DEFER_MAX
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([_live_row(3), None])
+        om._timeout_defer_counts[order.order_id] = ORDER_TIMEOUT_DEFER_MAX
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+        assert order.status == OrderStatus.FILLED and order.quantity == 3
+        assert len(_alerts(telegram, "체결수량 확인 불가")) == 1
+        assert not _alerts(telegram, self._MSG)
