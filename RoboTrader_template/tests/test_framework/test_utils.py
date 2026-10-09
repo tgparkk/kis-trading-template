@@ -170,43 +170,57 @@ class TestRoundToTick:
         assert round_to_tick(999) == 999
         assert round_to_tick(1) == 1
 
-    def test_round_to_tick_1000_to_5000(self):
-        """Test tick size of 5 won for prices 1000-4999."""
+    def test_round_to_tick_1000_to_2000(self):
+        """Test tick size of 1 won for prices 1000-2000 (KRX 2023-01-25 table)."""
         assert round_to_tick(1000) == 1000
-        assert round_to_tick(1002) == 1000
-        assert round_to_tick(1003) == 1005
-        assert round_to_tick(1005) == 1005
+        assert round_to_tick(1002) == 1002
+        assert round_to_tick(1003.4) == 1003
+        assert round_to_tick(1999) == 1999
+        assert round_to_tick(1999.6) == 2000
+
+    def test_round_to_tick_2000_to_5000(self):
+        """Test tick size of 5 won for prices 2000-5000."""
+        assert round_to_tick(2000) == 2000
+        assert round_to_tick(2002) == 2000
+        assert round_to_tick(2003) == 2005
+        assert round_to_tick(2005) == 2005
         assert round_to_tick(4997) == 4995
         assert round_to_tick(4998) == 5000
 
-    def test_round_to_tick_5000_to_10000(self):
-        """Test tick size of 10 won for prices 5000-9999."""
+    def test_round_to_tick_5000_to_20000(self):
+        """Test tick size of 10 won for prices 5000-20000."""
         assert round_to_tick(5000) == 5000
         assert round_to_tick(5004) == 5000
         assert round_to_tick(5005) == 5010
         assert round_to_tick(9995) == 10000
         assert round_to_tick(9990) == 9990
+        assert round_to_tick(10024) == 10020
+        assert round_to_tick(10025) == 10030
+        assert round_to_tick(19995) == 20000
 
-    def test_round_to_tick_10000_to_50000(self):
-        """Test tick size of 50 won for prices 10000-49999."""
-        assert round_to_tick(10000) == 10000
-        assert round_to_tick(10024) == 10000
-        assert round_to_tick(10025) == 10050
-        assert round_to_tick(10050) == 10050
+    def test_round_to_tick_20000_to_50000(self):
+        """Test tick size of 50 won for prices 20000-50000."""
+        assert round_to_tick(20000) == 20000
+        assert round_to_tick(20024) == 20000
+        assert round_to_tick(20025) == 20050
+        assert round_to_tick(20050) == 20050
         assert round_to_tick(49975) == 50000
 
-    def test_round_to_tick_50000_to_100000(self):
-        """Test tick size of 100 won for prices 50000-99999."""
+    def test_round_to_tick_50000_to_200000(self):
+        """Test tick size of 100 won for prices 50000-200000."""
         assert round_to_tick(50000) == 50000
         assert round_to_tick(50049) == 50000
         assert round_to_tick(50050) == 50100
         assert round_to_tick(99950) == 100000
+        assert round_to_tick(100249) == 100200
+        assert round_to_tick(100250) == 100300
+        assert round_to_tick(199950) == 200000
 
-    def test_round_to_tick_100000_to_500000(self):
-        """Test tick size of 500 won for prices 100000-499999."""
-        assert round_to_tick(100000) == 100000
-        assert round_to_tick(100249) == 100000
-        assert round_to_tick(100250) == 100500
+    def test_round_to_tick_200000_to_500000(self):
+        """Test tick size of 500 won for prices 200000-500000."""
+        assert round_to_tick(200000) == 200000
+        assert round_to_tick(200249) == 200000
+        assert round_to_tick(200250) == 200500
         assert round_to_tick(499750) == 500000
 
     def test_round_to_tick_over_500000(self):
@@ -228,28 +242,36 @@ class TestRoundToTick:
     def test_get_tick_size_function(self):
         """Test get_tick_size returns correct tick sizes."""
         assert get_tick_size(500) == 1
-        assert get_tick_size(1500) == 5
+        assert get_tick_size(1500) == 1
+        assert get_tick_size(3000) == 5
         assert get_tick_size(7000) == 10
+        assert get_tick_size(15000) == 10
         assert get_tick_size(25000) == 50
         assert get_tick_size(75000) == 100
+        assert get_tick_size(150000) == 100
         assert get_tick_size(200000) == 500
         assert get_tick_size(600000) == 1000
 
     def test_validate_tick_valid(self):
         """Test validate_tick for valid prices aligned to tick size."""
         assert validate_tick(1000) is True
-        assert validate_tick(1005) is True
+        assert validate_tick(1003) is True
+        assert validate_tick(2005) is True
         assert validate_tick(5010) is True
+        assert validate_tick(10030) is True
         assert validate_tick(50100) is True
-        assert validate_tick(100500) is True
+        assert validate_tick(100100) is True
+        assert validate_tick(200500) is True
         assert validate_tick(501000) is True
 
     def test_validate_tick_invalid(self):
         """Test validate_tick for invalid prices not aligned to tick size."""
-        assert validate_tick(1001) is False  # Should be 1000 or 1005
+        assert validate_tick(2001) is False  # Should be multiple of 5
         assert validate_tick(5003) is False  # Should be multiple of 10
-        assert validate_tick(10025) is False  # Should be multiple of 50
+        assert validate_tick(10025) is False  # Should be multiple of 10
+        assert validate_tick(20025) is False  # Should be multiple of 50
         assert validate_tick(50050) is False  # Should be multiple of 100
+        assert validate_tick(200100) is False  # Should be multiple of 500
 
 
 # ============================================================================

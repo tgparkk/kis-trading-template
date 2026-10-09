@@ -787,35 +787,45 @@ class TestKisOrderApiTickSize:
         assert _round_to_krx_tick(500) == 500
         assert _round_to_krx_tick(999) == 999
 
-    def test_round_to_krx_tick_1000_5000(self):
-        """1,000~5,000원 호가단위 (5원)"""
+    def test_round_to_krx_tick_1000_2000(self):
+        """1,000~2,000원 호가단위 (1원 · 2023-01-25 개편)"""
         from api.kis_order_api import _round_to_krx_tick
-        assert _round_to_krx_tick(1003) == 1005
+        assert _round_to_krx_tick(1003) == 1003
+        assert _round_to_krx_tick(1999) == 1999
+
+    def test_round_to_krx_tick_2000_5000(self):
+        """2,000~5,000원 호가단위 (5원)"""
+        from api.kis_order_api import _round_to_krx_tick
+        assert _round_to_krx_tick(2003) == 2005
         assert _round_to_krx_tick(4998) == 5000
 
-    def test_round_to_krx_tick_5000_10000(self):
-        """5,000~10,000원 호가단위 (10원)"""
+    def test_round_to_krx_tick_5000_20000(self):
+        """5,000~20,000원 호가단위 (10원)"""
         from api.kis_order_api import _round_to_krx_tick
         assert _round_to_krx_tick(5003) == 5000
         assert _round_to_krx_tick(5008) == 5010
+        assert _round_to_krx_tick(10020) == 10020
+        assert _round_to_krx_tick(10034) == 10030
 
-    def test_round_to_krx_tick_10000_50000(self):
-        """10,000~50,000원 호가단위 (50원)"""
+    def test_round_to_krx_tick_20000_50000(self):
+        """20,000~50,000원 호가단위 (50원)"""
         from api.kis_order_api import _round_to_krx_tick
-        assert _round_to_krx_tick(10020) == 10000
-        assert _round_to_krx_tick(10030) == 10050
+        assert _round_to_krx_tick(20020) == 20000
+        assert _round_to_krx_tick(20030) == 20050
 
-    def test_round_to_krx_tick_50000_100000(self):
-        """50,000~100,000원 호가단위 (100원)"""
+    def test_round_to_krx_tick_50000_200000(self):
+        """50,000~200,000원 호가단위 (100원)"""
         from api.kis_order_api import _round_to_krx_tick
         assert _round_to_krx_tick(50051) == 50100
         assert _round_to_krx_tick(50049) == 50000
+        assert _round_to_krx_tick(100200) == 100200
+        assert _round_to_krx_tick(100340) == 100300
 
-    def test_round_to_krx_tick_100000_500000(self):
-        """100,000~500,000원 호가단위 (500원)"""
+    def test_round_to_krx_tick_200000_500000(self):
+        """200,000~500,000원 호가단위 (500원)"""
         from api.kis_order_api import _round_to_krx_tick
-        assert _round_to_krx_tick(100200) == 100000
-        assert _round_to_krx_tick(100300) == 100500
+        assert _round_to_krx_tick(200200) == 200000
+        assert _round_to_krx_tick(200300) == 200500
 
     def test_round_to_krx_tick_over_500000(self):
         """500,000원 이상 호가단위 (1,000원)"""
@@ -834,12 +844,13 @@ class TestKisOrderApiTickSize:
         assert _validate_tick_size(50000) is True
         assert _validate_tick_size(70100) is True
         assert _validate_tick_size(1005) is True
+        assert _validate_tick_size(1003) is True      # 2023-01-25 개편: 2,000 미만 1원
 
     def test_validate_tick_size_invalid(self):
         """유효하지 않은 호가단위"""
         from api.kis_order_api import _validate_tick_size
         assert _validate_tick_size(70001) is False
-        assert _validate_tick_size(1003) is False
+        assert _validate_tick_size(2003) is False
         assert _validate_tick_size(0) is False
         assert _validate_tick_size(-100) is False
 

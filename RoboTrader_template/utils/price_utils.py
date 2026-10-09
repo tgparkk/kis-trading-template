@@ -16,16 +16,22 @@ logger = setup_logger(__name__)
 
 
 def _get_tick_size(price: float) -> int:
-    """KRX 호가단위 조회"""
-    if price < 1000:
+    """KRX 주식 호가가격단위 — 2023-01-25 개편 표(유가증권·코스닥 통일).
+
+    2,000 미만 1 · 5,000 미만 5 · 20,000 미만 10 · 50,000 미만 50 · 200,000 미만 100 ·
+    500,000 미만 500 · 이상 1,000. 출처: 한국거래소 「호가가격단위(Tick Size)」 안내 regulation.krx.co.kr/contents/RGL/03/03010100/RGL03010100T3.jsp (2026-10-09 확인).
+    framework/utils.get_tick_size 와 같은 표여야 한다(tests/test_tick_size_krx_2023.py 가 고정).
+    ETF·ETN(2,000 미만 1 · 이상 5)은 따로 두지 않는다 — 이 표의 값은 늘 그 단위의 배수라 정렬 위반이 없다.
+    """
+    if price < 2000:
         return 1
     elif price < 5000:
         return 5
-    elif price < 10000:
+    elif price < 20000:
         return 10
     elif price < 50000:
         return 50
-    elif price < 100000:
+    elif price < 200000:
         return 100
     elif price < 500000:
         return 500
