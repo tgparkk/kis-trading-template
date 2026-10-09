@@ -278,6 +278,22 @@ PAIRS = {
     #      폐포 «밖»이다 ⇒ 사다리 산출물만 바뀌면 아래 두 항목은 「낡았다」로 잡히지 «않는다»(해시 검사의 사각 · `--rerun` byte-diff 로만 보인다).
     "RESULTS_ANCHOR_POST9.md": "run_anchor_redesign.py --mode post9",
     "RESULTS_ANCHOR_POST9_NUMBERS.md": "run_anchor_redesign.py --mode post9",
+    # 🔴 2026-10-08 10번째 글(`224429747319`) 값 계산 산출물 — post9 판을 승계한 «별도 파일»(`run_*_post9.py` → `run_*_post10.py`).
+    #    🟢 등재 «시점»에 이미 전부 있다(산출 2026-10-08 · 판정 «미확정» · verifier 전) ⇒ `PENDING` 을 거치지 않는다.
+    #    🔑 `run_regday_post10.py`·`run_d1_oos_post10.py` 의 `run_selection_post10` import 폐포는 post9 선례와 같다(`local_deps()` 가 따라간다).
+    "RESULTS_SELECTION_POST10_NUMBERS.md": "run_selection_post10.py",
+    "RESULTS_REGDAY_POST10_NUMBERS.md": "run_regday_post10.py",
+    "RESULTS_EXIT_V2_POST10_NUMBERS.md": "run_exit_v2_post10.py",
+    "RESULTS_RECONSTRUCT_POST10_NUMBERS.md": "run_reconstruct_post10.py",
+    "RESULTS_LADDER_TRANCHE_POST10_NUMBERS.md": "run_ladder_tranche_post10.py",
+    "RESULTS_D1_OOS_POST10_NUMBERS.md": "run_d1_oos_post10.py",
+    "RESULTS_WRC_POST10_NUMBERS.md": "run_wrc_post10.py",
+    "RESULTS_S5_POST10_NUMBERS.md": "run_s5_post10.py",
+    # 🔴 C-23 승계 — 인자를 반드시 적는다(post6~9 모드 등재와 같은 형식). `both` 에 post10 을 넣지 «않았다».
+    "RESULTS_RANKING_POST10_NUMBERS.md": "run_ranking.py --stage post10",
+    "RESULTS_SECTOR_POST10_NUMBERS.md": "run_sector.py --mode post10",
+    # 🔴 `ANC-` post10 은 «없다» — `PREREG_POST10.md` `F-5` (ㄱ) 앵커 축 종결 ⇒ 산출물 자체가 없어 등재 대상 없음
+    #    (`run_anchor_redesign.py --mode post10` 은 만들지도 등재하지도 않았다).
 }
 
 # 🔴 C-23 — 산출물이 «파일 하나»가 아닌 것들. `--rerun` 이 이 디렉토리까지 스냅샷·대조하고,
@@ -326,6 +342,16 @@ ART_DIRS = {
     "RESULTS_SECTOR_POST9_NUMBERS.md": ("sector_post9",),
     "RESULTS_ANCHOR_POST9.md": ("anchor_post9",),
     "RESULTS_ANCHOR_POST9_NUMBERS.md": ("anchor_post9",),
+    # 🔴 2026-10-08 post10 — post9 의 디렉토리 산출물 자리에 대응(EXIT 는 디렉토리가 없다 — post9 도 `ART_DIRS` 에 EXIT 없음 · ANC 는 산출물 없음).
+    "RESULTS_SELECTION_POST10_NUMBERS.md": ("selection_post10",),
+    "RESULTS_REGDAY_POST10_NUMBERS.md": ("regday_post10",),
+    "RESULTS_LADDER_TRANCHE_POST10_NUMBERS.md": ("ladder_post10",),
+    "RESULTS_RECONSTRUCT_POST10_NUMBERS.md": ("reconstruct_post10",),
+    "RESULTS_D1_OOS_POST10_NUMBERS.md": ("d1_oos_post10",),
+    "RESULTS_S5_POST10_NUMBERS.md": ("s5_post10",),
+    "RESULTS_WRC_POST10_NUMBERS.md": ("wrc_post10",),
+    "RESULTS_RANKING_POST10_NUMBERS.md": ("ranking_post10",),
+    "RESULTS_SECTOR_POST10_NUMBERS.md": ("sector_post10",),
 }
 
 
@@ -425,7 +451,7 @@ FROZEN_STALE = {
         "`post6_main`·`post7_main` 포함 · 새 정의는 `build_codes8()` 등 따로 뒀다)이고 `main` 의 변경은 "
         "`--stage` choices 에 `post8` 추가 + post8 분기 3줄뿐이다(AST 실측 · git diff 제거 줄 1 = 그 choices 줄) "
         "· 기본값 `train` 불변 ⇒ 훈련 수치 0줄 영향. "
-        "🔴 재측정 금지 · 선택 규칙 RNK-A1 은 이 동결본에서 왔다(홀드아웃의 근거) 🆕 2026-09-30: post9 모드(`--stage post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지",
+        "🔴 재측정 금지 · 선택 규칙 RNK-A1 은 이 동결본에서 왔다(홀드아웃의 근거) 🆕 2026-09-30: post9 모드(`--stage post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     "RESULTS_WRC_EXPLORE.md":
         "동결(FREEZE_WRC_2026-09-02) — run_wrc_explore.py 에 post6 제외 필터 +11줄 · 입력 DB 이동. "
         "원장 유래 값은 전건 동일함을 실증했다. 🔴 재측정 금지(탐색값이 post6 판정 문턱의 근거)",
@@ -438,14 +464,14 @@ FROZEN_STALE = {
         "post6 경로 함수 본문 md5 는 전건 불변(제거 줄 0)이다. "
         "🆕 2026-09-24: post8 모드(`--stage post8`)를 더해 sha 가 다시 움직였으나 `post6_main` 을 포함한 "
         "`main` 외 최상위 정의 본문 md5 는 전건 불변이고 `main` 의 변경은 choices 추가 + post8 분기 3줄뿐이다"
-        "(AST 실측). 🔴 재측정 금지(post6 판정 불변 의무) 🆕 2026-09-30: post9 모드(`--stage post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지",
+        "(AST 실측). 🔴 재측정 금지(post6 판정 불변 의무) 🆕 2026-09-30: post9 모드(`--stage post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     "RESULTS_SECTOR_POST6_NUMBERS.md":
         "post6 판정 동결 — run_sector.py 에 post7 모드(`--mode post7`)를 더해 sha 가 움직였으나 "
         "`main_post6`·`db_context` 함수 본문 md5 는 불변이고 `both` 에 post7 을 넣지 않았다. "
         "🆕 2026-09-24: post8 모드(`--mode post8`)를 더해 sha 가 다시 움직였으나 `main_post6`·`db_context` "
         "본문 md5 는 여전히 불변이고 `run()` 의 변경은 post8 분기 3줄뿐이며 `both` 에 post8 도 넣지 않았다"
         "(의존 run_ranking.py 도 `main` 외 불변). "
-        "🔴 재측정 금지 · **--rerun 금지**(sector_post6/ 디렉토리 동반 산출물) 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지",
+        "🔴 재측정 금지 · **--rerun 금지**(sector_post6/ 디렉토리 동반 산출물) 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     "RESULTS_SECTOR_DRYRUN_NUMBERS.md":
         "동결(FREEZE_SECTOR_2026-09-03) — run_sector.py 에 모드 분기가 들어갔고 DB 가 이동했으나 "
         "이동분은 조인 «전» 부기 열에만 닿아 측정값 0줄 불변임을 실증했다. "
@@ -456,7 +482,7 @@ FROZEN_STALE = {
         "🆕 2026-09-24: **post8 모드(`--mode post8`)를 더했다** — `main`·`main_post6`·`main_post7`·`db_context`·"
         "`post7_context` 함수 본문 md5 **전건 불변**(`post8_context()`·`main_post8()` 을 따로 뒀다) · "
         "`run()` 은 파일 끝으로 옮겨지며 post8 분기 3줄만 더해졌다(AST 실측 · git diff 제거 18줄은 그 이동분) · "
-        "🔴 **`both` 에는 post8 도 넣지 «않았다»** 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지",
+        "🔴 **`both` 에는 post8 도 넣지 «않았다»** 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     # 🆕 2026-09-24 — post8 모드 추가로 **생성 스크립트의 sha 가 움직였다**(post7 때 post6 두 판정본에
     #    한 것과 같은 처리). 아래 넷은 post7 «판정»본이라 재측정하지 않는다(`PREREG_POST6.md` §5-1-5
     #    *「과거 산출물을 다시 재지 않는다」* · §5-4-2 *「과거 발표값을 조용히 갱신하지 않는다」*).
@@ -470,30 +496,40 @@ FROZEN_STALE = {
     "RESULTS_RANKING_POST7_NUMBERS.md":
         "post7 판정 동결 — run_ranking.py 에 post8 모드(`--stage post8`)를 더해 sha 가 움직였으나 "
         "`post7_main`·`build_codes7` 을 포함한 `main` 외 최상위 정의 본문 md5 는 전건 불변이고 `main` 의 변경은 "
-        "choices 추가 + post8 분기 3줄뿐이다(AST 실측 · 기본값 `train` 불변). 🔴 재측정 금지(post7 판정 불변 의무) 🆕 2026-09-30: post9 모드(`--stage post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지",
+        "choices 추가 + post8 분기 3줄뿐이다(AST 실측 · 기본값 `train` 불변). 🔴 재측정 금지(post7 판정 불변 의무) 🆕 2026-09-30: post9 모드(`--stage post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     "RESULTS_SECTOR_POST7_NUMBERS.md":
         "post7 판정 동결 — run_sector.py 에 post8 모드(`--mode post8`)를 더해 sha 가 움직였으나 "
         "`main_post7`·`post7_context`·`db_context` 함수 본문 md5 는 불변이고 `run()` 의 변경은 post8 분기 3줄뿐이며 "
         "`both` 에 post8 을 넣지 않았다(의존 run_ranking.py 도 `main` 외 불변). "
-        "🔴 재측정 금지 · **--rerun 금지**(sector_post7/ 디렉토리 동반 산출물) 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지",
+        "🔴 재측정 금지 · **--rerun 금지**(sector_post7/ 디렉토리 동반 산출물) 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     "RESULTS_ANCHOR_POST7.md":
         "post7 판정 동결 — run_anchor_redesign.py 에 post8 모드를 더해 sha 가 움직였으나 `main` 을 포함한 "
         "HEAD 최상위 정의 본문 md5 는 전건 불변이고(변경 = `__main__` 의 `main()` → `cli()` 1줄) `cli()` 가 "
         "post7 을 `main(['--mode', 'post7'])` 에 그대로 넘긴다(의존 run_ranking.py 도 `main` 외 불변). "
-        "🔴 재측정 금지(post7 판정 불변 의무) · `_NUMBERS` 와 같은 argv 라 **둘 다** 동결 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지",
+        "🔴 재측정 금지(post7 판정 불변 의무) · `_NUMBERS` 와 같은 argv 라 **둘 다** 동결 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     "RESULTS_ANCHOR_POST7_NUMBERS.md":
         "post7 판정 동결 — run_anchor_redesign.py 에 post8 모드를 더해 sha 가 움직였으나 `main` 을 포함한 "
         "HEAD 최상위 정의 본문 md5 는 전건 불변이고(변경 = `__main__` 의 `main()` → `cli()` 1줄) `cli()` 가 "
         "post7 을 `main(['--mode', 'post7'])` 에 그대로 넘긴다(의존 run_ranking.py 도 `main` 외 불변). "
-        "🔴 재측정 금지(post7 판정 불변 의무) · `RESULTS_ANCHOR_POST7.md` 와 같은 argv 라 **둘 다** 동결 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지",
+        "🔴 재측정 금지(post7 판정 불변 의무) · `RESULTS_ANCHOR_POST7.md` 와 같은 argv 라 **둘 다** 동결 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 본문 md5 시험) · 스냅샷 전진. 🔴 재측정 금지 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     "RESULTS_RANKING_POST8_NUMBERS.md":
-        "post8 판정 동결 — 🆕 2026-09-30: post9 모드(`--stage post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post8 이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 가 본문 md5 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무)",
+        "post8 판정 동결 — 🆕 2026-09-30: post9 모드(`--stage post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post8 이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 가 본문 md5 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무) 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     "RESULTS_ANCHOR_POST8.md":
-        "post8 판정 동결 — 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post8 이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 가 본문 md5 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무)",
+        "post8 판정 동결 — 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post8 이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 가 본문 md5 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무) 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     "RESULTS_SECTOR_POST8_NUMBERS.md":
-        "post8 판정 동결 — 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post8 이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 가 본문 md5 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무)",
+        "post8 판정 동결 — 🆕 2026-09-30: post9 모드(`--mode post9`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post8 이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 가 본문 md5 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무) 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
     "RESULTS_ANCHOR_POST8_NUMBERS.md":
-        "post8 판정 동결 — 🆕 2026-09-30: post9 모드(`--mode post9` · `RESULTS_ANCHOR_POST8.md` 와 같은 argv 라 **둘 다** 동결)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post8 이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 가 본문 md5 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무)",
+        "post8 판정 동결 — 🆕 2026-09-30: post9 모드(`--mode post9` · `RESULTS_ANCHOR_POST8.md` 와 같은 argv 라 **둘 다** 동결)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post8 이하 경로 함수 본문 불변 · 값 불변은 각 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post9_*` 가 본문 md5 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무) 🆕 2026-10-08: post10 모드(`--stage post10`/`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 본문 md5/difflib 시험) · 스냅샷 전진. 🔴 재측정 금지",
+    # 🆕 2026-10-08 — post10 모드 추가로 **생성 스크립트(`run_ranking.py`·`run_sector.py` + import 폐포 `run_wrc_post10.py`)의 sha 가 움직였다**
+    #    (post9 때 post8 판정본에 한 것과 같은 처리). 아래 넷은 post9 «판정» 계열이라 재측정하지 않는다.
+    "RESULTS_RANKING_POST9_NUMBERS.md":
+        "post9 판정 동결 — 🆕 2026-10-08: post10 모드(`--stage post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post9 이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 가 본문 md5/difflib 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무)",
+    "RESULTS_ANCHOR_POST9.md":
+        "post9 판정 동결 — 🆕 2026-10-08: post10 모드(`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post9 이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 가 본문 md5/difflib 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무)",
+    "RESULTS_SECTOR_POST9_NUMBERS.md":
+        "post9 판정 동결 — 🆕 2026-10-08: post10 모드(`--mode post10`)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post9 이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 가 본문 md5/difflib 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무)",
+    "RESULTS_ANCHOR_POST9_NUMBERS.md":
+        "post9 판정 동결 — 🆕 2026-10-08: post10 모드(`--mode post10` · `RESULTS_ANCHOR_POST9.md` 와 같은 argv 라 **둘 다** 동결)를 더해 sha 가 다시 움직였다 — 순수 «덧붙임»(post9 이하 경로 함수 본문 불변 · 값 불변은 레인이 HEAD 판 ↔ 새 판 md5 로 증명 · `test_post10_ranking.py`·`test_post10_sector.py` 가 본문 md5/difflib 로 본다) · 스냅샷 전진 · 🔴 재측정 금지(동결 판정 불변 의무)",
 }
 
 # 스크립트가 만들지 않는 문서 — 사람이 쓴 것. 게이트 대상 아님을 명시해 둔다.
@@ -600,6 +636,19 @@ MANUAL_DOCS = [
     "RESULTS_WRC_POST9.md", "RESULTS_RANKING_POST9.md", "RESULTS_SECTOR_POST9.md",
     "RESULTS_S5_POST9.md",
     "ERRATA_2026-09-29_post9_intake.md",
+    # 🔴 2026-10-04 — post10 사전등록(post9 보고서 §4 결정 반영 · 발행 «후» · fetch «전» 동결).
+    #    사람이 쓴 문서라 `MANUAL_DOCS` 자리 · 🔴 등재는 동결 커밋 «앞»이고 «별도 커밋»이다(`PREREG_POST8.md` §0-2 0번 관용)
+    #    · 파일은 등재 시점에 이미 있다(초안 `??`) ⇒ G-1 존재 검사가 «진짜로» 돈다.
+    "PREREG_POST10.md",
+    # 🔴 2026-10-08 — post10 인테이크 3문서 + 값 계산 산문 3본(SEL·REG·SEC · 사람이 쓴 것).
+    "INTAKE_2026-10-04_post10.md", "PREDECISION_2026-10-04_post10.md", "LABELS_2026-10-04_post10.md",
+    "RESULTS_SELECTION_POST10.md", "RESULTS_REGDAY_POST10.md", "RESULTS_SECTOR_POST10.md",
+    # 🔴 2026-10-08 — post10 산문 7본(EXIT·LAD·REC·S5·D1_OOS·WRC·RNK · 사람이 쓴 것 · 판정 뒤 작성 · 등재 «시점»에 이미 있다).
+    "RESULTS_EXIT_V2_POST10.md", "RESULTS_LADDER_TRANCHE_POST10.md", "RESULTS_RECONSTRUCT_POST10.md",
+    "RESULTS_S5_POST10.md", "RESULTS_D1_OOS_POST10.md", "RESULTS_WRC_POST10.md",
+    "RESULTS_RANKING_POST10.md",
+    # 🔴 2026-10-08 — post10 verifier 1패스 정정 1차 정오표(사람이 쓴 것 · 값 계산 0). 등재 «시점»에 이미 있다.
+    "ERRATA_2026-10-08_post10_values.md",
     # 🔴 `verify_ledger_post8.py` 는 post5·post6·post7 판 전례대로 **일부러 등재하지 않는다**
     #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]
