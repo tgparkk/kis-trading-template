@@ -2119,3 +2119,25 @@ class TestI2PartialFillWaitAlert:
         assert order.status == OrderStatus.FILLED and order.quantity == 3
         assert len(_alerts(telegram, "체결수량 확인 불가")) == 1
         assert not _alerts(telegram, self._MSG)
+
+
+# =============================================================================
+# REVIEW_RF7_DELTA D1·D2·D3·D4·D7 (2026-10-09 저녁)
+# =============================================================================
+class TestD1HeldPartialFillSeenAsCandidateWhileF1Fails:
+    """D1: 보류 주문의 부분 체결이 «확정 후보 2회»로 처음 보이고 F1(8036R 단독) 확인이 실패하면 — 종전엔 경보 0
+    (체결 3주가 장부·손절 밖인데 사람이 모름 · 리뷰어 탐침 pc2). 이제 「보류 주문에 체결」 1회."""
+
+    @pytest.mark.asyncio
+    async def test_candidate_partial_fill_with_f1_failure_alerts_once(self):
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(3, avg="70000")] * 40)
+        broker.get_pending_orders.return_value = None
+        with _no_settle_wait():
+            for _ in range(10):
+                await om._monitor_pending_orders()
+        assert order.order_id in om._cancel_held_ids and fm.invested_funds == pytest.approx(0)
+        assert slot.state == StockState.BUY_PENDING
+        alerts = _alerts(telegram, "보류 주문에 체결")
+        assert len(alerts) == 1 and "보류 주문에 체결 3/10주 보임(미확정)" in str(alerts[0].args[0])

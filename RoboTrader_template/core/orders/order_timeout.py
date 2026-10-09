@@ -851,6 +851,22 @@ class OrderTimeoutMixin:
                 return False, row
         return True, None
 
+    async def _alert_held_fill_once(self: 'OrderManagerBase', order) -> None:
+        """보류 주문에 체결이 보이는데(취소 뒤 본 체결수 > 0) 아직 회계하지 못할 때 「보류 주문에 체결」 경보 — 주문당 1회."""
+        order_id = order.order_id
+        live_fill = self._cancel_seen_fill.get(order_id, 0)
+        if live_fill <= 0 or order_id in self._held_fill_alerted_ids:
+            return
+        self._held_fill_alerted_ids.add(order_id)
+        msg = (f"보류 주문에 체결 {live_fill}/{order.quantity}주 보임(미확정) — 체결분 장부·손절 밖 · "
+               f"HTS 확인: {order.stock_code} 주문 {order_id}")
+        self.logger.error(f"🚨 {msg}")
+        if self.telegram:
+            try:
+                await self.telegram.notify_system_status(msg)
+            except Exception:
+                pass
+
     async def _recheck_held_order(self: 'OrderManagerBase', order_id: str) -> None:
         """보류 주문(취소 미반영으로 예약·슬롯을 둔 매수) 상태 재조회 — 델타 리뷰 B(2026-10-09).
 
@@ -860,8 +876,9 @@ class OrderTimeoutMixin:
           전량 체결 = 정상 완전 체결 경로(_handle_full_fill: 예약→투자 · 보유 등록 · 전략 콜백 · 손절/익절 감시 ·
           DB · 체결 알림) · 일부 체결 = 부분체결 회계(체결분 포지션 · 나머지 예약 해제) · 체결 0 = CANCELLED ·
           예약 해제 · 슬롯 COMPLETED.
-        - 미확정(8036R 잔존 · 조회 실패 · 불명 · 잔량>0 · 불일치) → 보류 유지. 그 사이 체결이 보이면
-          「보류 주문에 체결」 경보 1회(주문이 끝나지 않아 회계하지 않는다 — 체결분은 아직 장부·손절 밖).
+        - 미확정(8036R 잔존 · 조회 실패 · 불명 · 잔량>0 · 불일치 · 확정 후보지만 8036R 부재 미확인) → 보류 유지.
+          그 사이 체결이 보이면 「보류 주문에 체결」 경보 1회(주문이 끝나지 않아 회계하지 않는다 — 체결분은 아직
+          장부·손절 밖).
         - F1: 전량 체결이 아닌 종결(예약 해제가 따르는 것)은 8036R 단독 조회로 부재를 확인한 뒤에만.
         """
         order = self.pending_orders.get(order_id)
@@ -870,17 +887,7 @@ class OrderTimeoutMixin:
             return
         settled, status = await self._settle_after_cancel(order_id, just_cancelled=False)
         if settled is None:
-            live_fill = self._cancel_seen_fill.get(order_id, 0)
-            if live_fill > 0 and order_id not in self._held_fill_alerted_ids:
-                self._held_fill_alerted_ids.add(order_id)
-                msg = (f"보류 주문에 체결 {live_fill}/{order.quantity}주 보임(미확정) — 체결분 장부·손절 밖 · "
-                       f"HTS 확인: {order.stock_code} 주문 {order_id}")
-                self.logger.error(f"🚨 {msg}")
-                if self.telegram:
-                    try:
-                        await self.telegram.notify_system_status(msg)
-                    except Exception:
-                        pass
+            await self._alert_held_fill_once(order)
             return
         filled = max(getattr(order, 'filled_quantity', 0) or 0, settled)
         if filled < order.quantity:
@@ -894,6 +901,8 @@ class OrderTimeoutMixin:
                         self._cancel_seen_fill[order_id] = fill
                 # F2: 이번 확정 후보를 남겨 다음 루프는 조회 1회·대기 0 으로 다시 본다(매 루프 2초 정지 반복 방지)
                 self._cancel_settle_obs[order_id] = settled
+                # D1: 확정 후보로 처음 보인 부분 체결도 8036R 부재 미확인이면 아직 장부·손절 밖 — 같은 경보 1회
+                await self._alert_held_fill_once(order)
                 return
         self._cancel_held_ids.discard(order_id)
         self._cancel_confirmed_ids.discard(order_id)
