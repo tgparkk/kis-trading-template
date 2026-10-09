@@ -249,8 +249,13 @@ class OrderTimeoutMixin:
                     # I2 작은 보호책(REVIEW_RF7 · 2026-10-09): 확정 대기(연기) 동안 아는 체결분은 장부·손절 밖이다 —
                     # 회계는 건드리지 않고 사람이 그 창을 알게 텔레그램 1회(이 분기는 주문당 1번만 온다)
                     known = max(filled_qty, self._cancel_seen_fill.get(order_id, 0))
-                    msg = (f"부분체결 {known}/{order.quantity}주 확정 대기(최대 약 4분) — 그동안 장부·손절 밖 · "
-                           f"급변 시 HTS: {order.stock_code} 주문 {order_id}")
+                    if order.order_type == OrderType.SELL:   # D4: 매도는 «팔린 몫이 장부에 아직 보유로 남음»
+                        msg = (f"매도 부분체결 {known}/{order.quantity}주 확정 대기(최대 약 4분) — 그동안 팔린 "
+                               f"{known}주가 장부엔 아직 보유로 남음(매도 주문 중) · 급변 시 HTS: "
+                               f"{order.stock_code} 주문 {order_id}")
+                    else:
+                        msg = (f"매수 부분체결 {known}/{order.quantity}주 확정 대기(최대 약 4분) — 그동안 장부·손절 밖 · "
+                               f"급변 시 HTS: {order.stock_code} 주문 {order_id}")
                     self.logger.warning(f"⏸ {msg}")
                     if self.telegram:
                         try:

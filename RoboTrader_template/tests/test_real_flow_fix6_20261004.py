@@ -2234,3 +2234,31 @@ class TestD3F1FailurePersistsEscalation:
                 await om._monitor_pending_orders()
         assert order.status == OrderStatus.FILLED                       # 전량 체결 = F1 확인 없이 종결
         assert order.order_id not in om._f1_fail_counts
+
+
+
+class TestD4PartialWaitAlertMatchesOrderSide:
+    """D4: I2 「확정 대기」 경보가 매도 부분체결에도 매수 문구(«장부·손절 밖»)로 나가던 것 — 매도는 «팔린 N주가 장부엔
+    아직 보유로 남음» · 매수는 «매수 부분체결 … 장부·손절 밖»(리뷰어 탐침 probe3 꼴)."""
+
+    @pytest.mark.asyncio
+    async def test_sell_partial_wait_alert_uses_sell_wording(self):
+        seq = [_live_row(3), None]
+        om, broker, telegram, slot, order = _sell_setup(lambda oid: seq.pop(0) if seq else None)
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+        alerts = _alerts(telegram, "확정 대기(최대 약 4분)")
+        assert len(alerts) == 1
+        msg = str(alerts[0].args[0])
+        assert "매도 부분체결 3/10주 확정 대기" in msg and "팔린 3주가 장부엔 아직 보유로 남음" in msg
+        assert "장부·손절 밖" not in msg
+        assert slot.state == StockState.SELL_PENDING and slot.position.quantity == 10   # 회계 불변(확정 대기)
+
+    @pytest.mark.asyncio
+    async def test_buy_partial_wait_alert_says_buy(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([_live_row(3), None])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+        alerts = _alerts(telegram, "확정 대기(최대 약 4분)")
+        assert len(alerts) == 1 and "매수 부분체결 3/10주 확정 대기(최대 약 4분) — 그동안 장부·손절 밖" in str(
+            alerts[0].args[0])
