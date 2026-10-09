@@ -2048,3 +2048,30 @@ class TestF4ReviewerSurvivingMutants:
         assert not _alerts(telegram, "진행 중 매수 주문 취소")
         assert order.status == OrderStatus.CANCELLED and fm.reserved_funds == pytest.approx(0)
         assert len(_alerts(telegram, "보류 주문 해소(체결 0 · 예약 해제)")) == 1
+
+
+class TestF7HeldFillAfterEodNote:
+    """F7: 보류가 장마감 일괄청산 시각 뒤에 «체결»로 풀리면 해소 경보에 «밤을 넘길 수 있음 · 다음 날 장 시작 매도·손절
+    확인» 한 줄. 체결 0 해소나 청산 시각 전엔 붙이지 않는다."""
+
+    _NOTE = "장마감 일괄청산 시각 뒤 체결 — 이 보유는 밤을 넘길 수 있음 · 다음 날 장 시작 매도·손절 확인"
+
+    async def _resolve(self, rows, after_eod):
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, rows)
+        with patch("config.market_hours.MarketHours.is_eod_liquidation_time", return_value=after_eod),                 _no_settle_wait():
+            await om._monitor_pending_orders()
+        resolved = _alerts(telegram, "보류 주문 해소")
+        assert len(resolved) == 1
+        return str(resolved[0].args[0])
+
+    @pytest.mark.asyncio
+    async def test_fill_after_eod_gets_overnight_note(self):
+        msg = await self._resolve([_gone_row(10, avg="70100")] * 2, after_eod=True)
+        assert "전량 체결 10주 회계" in msg and self._NOTE in msg
+
+    @pytest.mark.asyncio
+    async def test_no_note_before_eod_or_for_zero_fill(self):
+        assert self._NOTE not in await self._resolve([_gone_row(10, avg="70100")] * 2, after_eod=False)
+        assert self._NOTE not in await self._resolve([_gone_row(0)] * 2, after_eod=True)

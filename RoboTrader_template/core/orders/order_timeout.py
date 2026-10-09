@@ -898,7 +898,17 @@ class OrderTimeoutMixin:
         else:
             await self._close_cancelled_with_fill(order, filled, status)
             outcome = f"체결 {filled}주 회계 · 나머지 예약 해제" if filled else "체결 0 · 예약 해제"
-        msg = f"보류 주문 해소({outcome}): {order.stock_code} 주문 {order_id}"
+        note = ""
+        if filled > 0:
+            # F7(2026-10-09): 장마감 일괄청산 시각 뒤에 체결로 풀리면 그날 청산을 지나 밤을 넘길 수 있다 — 경보에 적는다
+            try:
+                from config.market_hours import MarketHours
+                if MarketHours.is_eod_liquidation_time('KRX', now_kst()):
+                    note = (" · ⚠️ 장마감 일괄청산 시각 뒤 체결 — 이 보유는 밤을 넘길 수 있음 · "
+                            "다음 날 장 시작 매도·손절 확인")
+            except Exception:
+                pass
+        msg = f"보류 주문 해소({outcome}): {order.stock_code} 주문 {order_id}{note}"
         self.logger.warning(f"✅ {msg}")
         if self.telegram:
             try:
