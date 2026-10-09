@@ -1926,3 +1926,47 @@ class TestF1HeldOrderNeedsPositiveAbsenceFrom8036R:
             await om_s._handle_timeout(order_s.order_id)
         assert broker_s.get_pending_orders.call_count == 0                   # 매도는 보류·확인 대상 아님(A)
         assert order_s.status == OrderStatus.CANCELLED and slot_s.state == StockState.POSITIONED
+
+
+class TestF2ReHoldDoesNotRepeatSettleWait:
+    """F2: 보류 주문이 확정 후보를 봤지만 종결하지 못하고 보류로 돌아갈 때(체결가 0 등 완전 체결 판정 보류 ·
+    F1 8036R 확인 실패) 그 후보를 남겨, 다음 루프는 조회 1회·대기 0 으로 다시 본다 — 메인 루프(손절 감시 포함)
+    매 루프 2초 정지·조회 2회 반복 방지."""
+
+    @staticmethod
+    async def _loops(om, n):
+        sleeps = []
+
+        async def fake_sleep(sec, *a, **k):
+            sleeps.append(sec)
+
+        with patch("core.orders.order_timeout.asyncio.sleep", fake_sleep):
+            for _ in range(n):
+                await om._monitor_pending_orders()
+        return sleeps
+
+    @pytest.mark.asyncio
+    async def test_rejected_full_fill_rehold_costs_one_query_and_no_wait_after_first_loop(self):
+        from config.constants import ORDER_CANCEL_SETTLE_WAIT_SECONDS
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(10, avg="0")] * 20)
+        q0 = broker.get_order_status.call_count
+        sleeps = await self._loops(om, 3)
+        assert broker.get_order_status.call_count - q0 == 2 + 1 + 1, "재보류 뒤에도 루프마다 조회 2회"
+        assert sleeps == [ORDER_CANCEL_SETTLE_WAIT_SECONDS], "재보류 뒤에도 루프마다 대기"
+        assert order.order_id in om._cancel_held_ids and broker.cancel_order.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_f1_rehold_costs_one_query_and_no_wait_after_first_loop(self):
+        from config.constants import ORDER_CANCEL_SETTLE_WAIT_SECONDS
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(0)] * 20)
+        broker.get_pending_orders.return_value = None
+        q0 = broker.get_order_status.call_count
+        sleeps = await self._loops(om, 3)
+        assert broker.get_order_status.call_count - q0 == 2 + 1 + 1
+        assert sleeps == [ORDER_CANCEL_SETTLE_WAIT_SECONDS]
+        assert broker.get_pending_orders.call_count == 3
+        assert order.order_id in om._cancel_held_ids and fm.reserved_funds == pytest.approx(700_000)

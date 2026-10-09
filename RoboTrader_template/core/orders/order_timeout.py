@@ -879,6 +879,8 @@ class OrderTimeoutMixin:
                     fill = self._parse_int(row.get('tot_ccld_qty', 0))
                     if fill > self._cancel_seen_fill.get(order_id, 0):
                         self._cancel_seen_fill[order_id] = fill
+                # F2: 이번 확정 후보를 남겨 다음 루프는 조회 1회·대기 0 으로 다시 본다(매 루프 2초 정지 반복 방지)
+                self._cancel_settle_obs[order_id] = settled
                 return
         self._cancel_held_ids.discard(order_id)
         self._cancel_confirmed_ids.discard(order_id)
@@ -889,6 +891,7 @@ class OrderTimeoutMixin:
                 # 재취소 경로로 빠지지 않게)
                 self._cancel_held_ids.add(order_id)
                 self._cancel_confirmed_ids.add(order_id)
+                self._cancel_settle_obs[order_id] = settled   # F2: 다음 루프 조회 1회·대기 0
                 return
             outcome = f"전량 체결 {order.quantity}주 회계"
         else:
