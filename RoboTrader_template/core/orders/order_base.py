@@ -57,6 +57,8 @@ class OrderManagerBase:
         # (2026-10-08 델타 리뷰 N-1 — 소진 회차 조회가 실패해도 «8036R 잔존»으로 취급)
         self._cancel_lingering_seen_ids: Set[str] = set()
         self._defer_extra_used_ids: Set[str] = set()
+        # 취소 접수 뒤 조회(8036R·0081R 행)에서 본 최대 체결수(2026-10-09 델타 리뷰 s-2 — 마지막 조회가 실패해도 기억)
+        self._cancel_seen_fill: Dict[str, int] = {}
 
         # 모니터링 상태
         self.is_monitoring = False
@@ -183,6 +185,7 @@ class OrderManagerBase:
             getattr(self, '_cancel_resent_ids', set()).discard(order_id)
             getattr(self, '_cancel_lingering_seen_ids', set()).discard(order_id)
             getattr(self, '_defer_extra_used_ids', set()).discard(order_id)
+            getattr(self, '_cancel_seen_fill', {}).pop(order_id, None)
 
             # FundManager 연동: 취소/타임아웃 시 예약 해제
             from ..models import OrderStatus

@@ -582,6 +582,10 @@ class OrderTimeoutMixin:
             status = await self._query_order_status_once(order_id)
             if self._still_cancellable(status):
                 self._cancel_lingering_seen_ids.add(order_id)   # N-1: 취소 접수 뒤 8036R 관측
+            if isinstance(status, dict) and not status.get('status_unknown'):
+                fill = self._parse_int(status.get('tot_ccld_qty', 0))   # s-2: 8036R·0081R 행 체결수 기억
+                if fill > self._cancel_seen_fill.get(order_id, 0):
+                    self._cancel_seen_fill[order_id] = fill
             seen = self._settled_fill_candidate(status)
             if seen is None:
                 return None, status
@@ -676,11 +680,15 @@ class OrderTimeoutMixin:
         if self._defer_timeout_close(order_id, reason):
             return
         seen = self._parse_int(status.get('tot_ccld_qty', 0)) if isinstance(status, dict) else 0
+        # s-2(2026-10-09): 취소 뒤 조회에서 본 최대 체결수(8036R 행 포함)도 «아는 체결»이다 — 마지막 조회가
+        # 실패(None)여도 잊지 않는다.
         known = max(getattr(order, 'filled_quantity', 0) or 0, seen,
-                    self._cancel_settle_obs.pop(order_id, 0))
+                    self._cancel_settle_obs.pop(order_id, 0),
+                    self._cancel_seen_fill.get(order_id, 0))
         seen_lingering = order_id in self._cancel_lingering_seen_ids
-        lingering = known == 0 and (self._still_cancellable(status) or (seen_lingering and (
-            status is None or self._executed_row_still_open(status))))
+        remainder_open = self._still_cancellable(status) or (seen_lingering and (
+            status is None or self._executed_row_still_open(status)))
+        lingering = known == 0 and remainder_open
         basis = ("8036R 잔존" if self._still_cancellable(status)
                  else "8036R 관측 뒤 조회 실패" if status is None
                  else "8036R 관측 뒤 0081R 잔량 잔존")
@@ -702,14 +710,23 @@ class OrderTimeoutMixin:
                 f"🚨 주문 종결 {spent} — 취소 미반영({basis}): {order_id} "
                 f"({order.stock_code} {order.quantity}주) · 종결하지 않고 예약·슬롯 유지 · HTS 수동 확인 필요"
             )
-            alert = (f"주문 취소 미반영(정정취소가능 목록 잔존) - 수동 확인 필요 · 예약 유지: "
+            # s-1: 텔레그램에도 근거(8036R 잔존 | 관측 뒤 조회 실패 | 관측 뒤 0081R 잔량 잔존)를 싣는다
+            alert = (f"주문 취소 미반영({basis}) - 수동 확인 필요 · 예약 유지: "
                      f"{order.stock_code} 주문 {order_id}")
         elif lingering:
             self.logger.error(
                 f"🚨 주문 종결 {spent} — 매도 취소 미반영({basis}): {order_id} "
                 f"({order.stock_code} {order.quantity}주) · 종결하고 슬롯 «보유 중» 복귀 · HTS 확인 필요"
             )
-            alert = f"매도 취소 미반영(8036R 잔존) — HTS 확인: {order.stock_code} 주문 {order_id}"
+            alert = f"매도 취소 미반영({basis}) — HTS 확인: {order.stock_code} 주문 {order_id}"
+        elif remainder_open:
+            # m-c: 아는 체결분은 회계하지만 잔량 취소가 반영되지 않은 꼴 — 일반 「확인 불가」 문구와 가른다
+            self.logger.error(
+                f"🚨 주문 종결 {spent} — 잔량 취소 미반영({basis}): {order_id} "
+                f"({order.stock_code} 체결 {known}/{order.quantity}주) · 아는 체결분 회계 · HTS 수동 확인 필요"
+            )
+            alert = (f"잔량 취소 미반영({basis}) - 수동 확인 필요 · 체결 {known}주 회계: "
+                     f"{order.stock_code} 주문 {order_id}")
         else:
             self._log_defer_exhausted(order_id, order)
             alert = f"주문 취소 후 체결수량 확인 불가 - 수동 확인 필요: {order.stock_code} 주문 {order_id}"

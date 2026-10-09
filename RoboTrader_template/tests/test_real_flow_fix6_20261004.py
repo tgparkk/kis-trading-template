@@ -1348,6 +1348,7 @@ class TestI1ResendCancelOnceWhenStillCancellable:
         assert slot.state == StockState.BUY_PENDING and strat.daily_trades == 0
         alerts = _alerts(telegram, "수동 확인 필요")
         assert len(alerts) == 1 and "예약 유지" in str(alerts[0].args[0])
+        assert "주문 취소 미반영(8036R 잔존)" in str(alerts[0].args[0])   # s-1
         # 자동 처리 정지 — 연기 폭(45초)이 몇 번 지나도 재취소·재조회·경보 반복 없음
         # (종료 시 미체결 일괄 취소 대상으로 남는다)
         queries = broker.get_order_status.call_count
@@ -1372,6 +1373,9 @@ class TestI1ResendCancelOnceWhenStillCancellable:
         assert slot.state == StockState.POSITIONED and slot.position.quantity == 3
         assert strat.daily_trades == 1
         assert len(_alerts(telegram, "수동 확인 필요")) == 1
+        # m-c(10-09): 일반 「확인 불가」가 아니라 잔량 취소 미반영 문구 + 근거
+        assert len(_alerts(telegram, "잔량 취소 미반영(8036R 잔존) - 수동 확인 필요 · 체결 3주 회계")) == 1
+        assert not _alerts(telegram, "체결수량 확인 불가")
 
 
 class TestM2CancelConfirmQtyIsNotFillQty:
@@ -1513,6 +1517,7 @@ class TestDeltaReviewN1LingeringSeenThenQueryFails:
         assert slot.state == StockState.BUY_PENDING and strat.daily_trades == 0
         alerts = _alerts(telegram, "수동 확인 필요")
         assert len(alerts) == 1 and "예약 유지" in str(alerts[0].args[0])
+        assert "주문 취소 미반영(8036R 관측 뒤 조회 실패)" in str(alerts[0].args[0])   # s-1
         assert not _alerts(telegram, "체결수량 확인 불가")
 
     @pytest.mark.asyncio
@@ -1550,7 +1555,9 @@ class TestDeltaReviewN1LingeringSeenThenQueryFails:
         assert order.status == OrderStatus.CANCELLED and order.order_id not in om.pending_orders
         assert slot.state == StockState.POSITIONED and slot.is_selling is False
         assert slot.position.quantity == 10
-        assert len(_alerts(telegram, "매도 취소 미반영(8036R 잔존) — HTS 확인")) == 1
+        # s-1(10-09): 텔레그램 문구에 근거 — 소진 회차는 «8036R 잔존»이 아니라 «관측 뒤 조회 실패»
+        assert len(_alerts(telegram, "매도 취소 미반영(8036R 관측 뒤 조회 실패) — HTS 확인")) == 1
+        assert not _alerts(telegram, "매도 취소 미반영(8036R 잔존)")
         assert not _alerts(telegram, "체결수량 확인 불가") and not _alerts(telegram, "예약 유지")
         assert order.order_id not in om._cancel_lingering_seen_ids     # 종결 때 표식 정리
 
@@ -1613,6 +1620,7 @@ class TestW1PendingQueryFailsButDailyRowShowsOpen:
         assert slot.state == StockState.BUY_PENDING and strat.daily_trades == 0
         alerts = _alerts(telegram, "수동 확인 필요")
         assert len(alerts) == 1 and "예약 유지" in str(alerts[0].args[0])
+        assert "주문 취소 미반영(8036R 관측 뒤 0081R 잔량 잔존)" in str(alerts[0].args[0])   # s-1
         assert not _alerts(telegram, "체결수량 확인 불가")
 
     @pytest.mark.asyncio
@@ -1637,3 +1645,29 @@ class TestW1PendingQueryFailsButDailyRowShowsOpen:
         assert M._executed_row_still_open(_live_row(0)) is False          # 8036R 행은 _still_cancellable 이 본다
         assert M._executed_row_still_open(_UNKNOWN_ROW) is False
         assert M._executed_row_still_open(None) is False
+
+
+class TestS2RememberFillSeenAfterCancel:
+    """s-2: 취소 접수 뒤 8036R 행에서 본 체결수(3주)를 기억 — 이후 조회가 전부 실패(None)여도 소진 때
+    known=3 으로 회계(부분체결 3주 POSITIONED) + m-c 문구(근거 «관측 뒤 조회 실패»). 종전엔 known=0 →
+    체결 3주를 모른 채 매수 보류(예약 700,000 유지 · 3주 장부·손절 밖)."""
+
+    @pytest.mark.asyncio
+    async def test_8036r_fill_seen_then_query_failures_accounts_known_fill(self):
+        from config.constants import ORDER_TIMEOUT_DEFER_MAX
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup(
+            [_live_row(0), _live_row(3)])                     # 사전조회 0 · 취소 +2초 8036R 3주 → 이후 None
+        with _no_settle_wait():
+            for _ in range(ORDER_TIMEOUT_DEFER_MAX):
+                await om._handle_timeout(order.order_id)
+                assert order.order_id in om.pending_orders
+            assert om._cancel_seen_fill[order.order_id] == 3
+            await om._handle_timeout(order.order_id)          # 소진 회차: 조회 실패
+        assert broker.cancel_order.call_count == 1                   # None 이면 재전송 없음(m-b)
+        assert order.status == OrderStatus.FILLED and order.quantity == 3, "8036R 에서 본 체결 3주를 잊었다"
+        assert fm.invested_funds == pytest.approx(3 * 70000) and fm.reserved_funds == pytest.approx(0)
+        assert slot.state == StockState.POSITIONED and slot.position.quantity == 3
+        assert strat.daily_trades == 1
+        assert len(_alerts(telegram, "잔량 취소 미반영(8036R 관측 뒤 조회 실패) - 수동 확인 필요 · 체결 3주 회계")) == 1
+        assert not _alerts(telegram, "예약 유지") and not _alerts(telegram, "체결수량 확인 불가")
+        assert order.order_id not in om._cancel_seen_fill                  # 종결 때 정리
