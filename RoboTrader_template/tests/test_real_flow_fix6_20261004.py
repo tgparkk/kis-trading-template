@@ -2262,3 +2262,43 @@ class TestD4PartialWaitAlertMatchesOrderSide:
         alerts = _alerts(telegram, "확정 대기(최대 약 4분)")
         assert len(alerts) == 1 and "매수 부분체결 3/10주 확정 대기(최대 약 4분) — 그동안 장부·손절 밖" in str(
             alerts[0].args[0])
+
+
+class TestD7ReviewerSurvivingMutantsRound2:
+    """D7: 델타 재리뷰 생존 변이 F1i·F1g·I2b 를 잡는 시험(봇 코드 0)."""
+
+    @pytest.mark.asyncio
+    async def test_f1i_list_query_exception_keeps_hold(self):
+        """8036R 단독 조회가 «예외»(실행기 오류 등)면 부재로 보지 않는다 — 보류 유지."""
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(0)] * 4)
+        broker.get_pending_orders.side_effect = RuntimeError("executor down")
+        with _no_settle_wait():
+            await om._monitor_pending_orders()
+        assert broker.get_pending_orders.call_count == 1
+        assert order.order_id in om._cancel_held_ids and order.status != OrderStatus.CANCELLED
+        assert fm.reserved_funds == pytest.approx(700_000) and not _alerts(telegram, "보류 주문 해소")
+
+    @pytest.mark.asyncio
+    async def test_f1g_fill_on_8036r_list_row_is_remembered_and_alerted(self):
+        """F1 확인에서 목록 행에 체결 4주가 보이면 기억(s-2)에 넣는다 → 「보류 주문에 체결 4/10주」."""
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(0)] * 4)
+        row = dict(_8036r_list_row(), tot_ccld_qty="4", psbl_qty="6")
+        broker.get_pending_orders.return_value = [row]
+        with _no_settle_wait():
+            await om._monitor_pending_orders()
+        assert om._cancel_seen_fill.get(order.order_id) == 4
+        assert len(_alerts(telegram, "보류 주문에 체결 4/10주 보임(미확정)")) == 1
+        assert order.order_id in om._cancel_held_ids
+
+    @pytest.mark.asyncio
+    async def test_i2b_wait_alert_counts_fill_seen_after_cancel(self):
+        """확정 대기 경보의 N 은 max(사전조회 3, 취소 뒤 8036R 행 5) = 5."""
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([_live_row(3), _live_row(5)])
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+        alerts = _alerts(telegram, "확정 대기(최대 약 4분)")
+        assert len(alerts) == 1 and "매수 부분체결 5/10주" in str(alerts[0].args[0])
