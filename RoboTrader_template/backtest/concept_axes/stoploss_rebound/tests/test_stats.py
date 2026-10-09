@@ -134,9 +134,14 @@ def _pn(tool=ST.TOOL_CR1, B=6, mean=0.0, p=0.5, hi=0.3):
     return ST.T3Panel(B, [], tool, None if tool == ST.TOOL_FAIL else dict(mean=mean, p=p, ci_hi=hi, ci_lo=-1, se=0.1))
 
 
-def test_decide_gate_failure_beats_everything():
-    v = ST.decide({"L": _pn(ST.TOOL_FAIL), "M": _pn(mean=1.0, p=0.001, hi=1.5)}, False, 10, 3)
+def test_decide_gate_failure_beats_n_g_and_panels():
+    v = ST.decide({"L": _pn(ST.TOOL_FAIL), "M": _pn(mean=1.0, p=0.001, hi=1.5)}, True, 10, 3)
     assert v.label == ST.LAB_NA and v.reason.startswith("①")
+
+
+def test_decide_all_fidelity_fail_reports_reason_two_not_b0():
+    v = ST.decide({"L": _pn(ST.TOOL_FAIL, B=0), "M": _pn(ST.TOOL_FAIL, B=0)}, False, 0, 0)    # 부록 A10
+    assert v.label == ST.LAB_NA and v.reason.startswith("②")
     v = ST.decide({"L": _pn(B=4), "M": _pn(B=4)}, True, 200, 50)
     assert v.label == ST.LAB_NA and "B=4" in v.reason
 

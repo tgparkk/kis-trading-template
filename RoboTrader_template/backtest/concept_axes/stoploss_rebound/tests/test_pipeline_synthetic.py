@@ -60,6 +60,12 @@ def test_sealed_stage_never_computes_author_exit_or_event_extremes(env, monkeypa
     assert all(e.stop_px is None for e in D.events)
     md = (tmp / "sealed_report.md").read_text(encoding="utf-8")
     assert "T3 n =" in md and "충실도 게이트" in md and "MDE" in md
+    assert "해석 부록" in md and R.AMENDMENT_FROZEN_BLOB in md and "X4 해석 차이" in md and "진입 당일 데이터 청산" in md
+    assert "이벤트 자신의 C_t 없음" in md
+    for h in R.HS:
+        for u in P["units"][h]:
+            assert u.base_t is None                                  # 봉인: 이벤트 자신의 C_t 값도 담지 않는다
+    assert any(u.base_ok for u in P["units"][R.H_MAIN])
     meta = json.loads((tmp / "run_meta.json").read_text(encoding="utf-8"))
     assert "sealed" in meta and "open" not in meta and meta["sealed"]["fp"] == FP
 
@@ -180,3 +186,58 @@ def test_sealed_refuses_after_open(env):
     with pytest.raises(R.Refuse) as e:
         R.run_sealed(None)
     assert e.value.code == R.EXIT_ORDER
+
+
+
+def test_fidelity_denominator_uses_capped_lots_only(env):
+    D, _ = env
+    n0 = sum(g["n"] for g in R.lot_stage(D)["fid"].values())
+    extra = R.LT.LotIn(77777, "book_pullback_ma20", D.lots[0].code, datetime.combine(D.cal[D.i_asof - 3], datetime.min.time()),
+                       100.0, 10)
+    D.lots_full = list(D.lots_full) + [extra]                 # 진입일 상한 밖 로트(인쇄 전용 판에만)
+    assert sum(g["n"] for g in R.lot_stage(D)["fid"].values()) == n0
+
+
+def _crash_after_mark(monkeypatch, with_t3_line):
+    def boom(D, LS, logf):
+        if with_t3_line:
+            R.say("[T3] 판 L: tool CR1 · p 0.5", logf)
+        raise RuntimeError("가짜 중단")
+    monkeypatch.setattr(R, "t3_open", boom)
+
+
+def test_reopen_once_after_crash_without_t3_line(env, monkeypatch):
+    D, tmp = env
+    assert R.run_sealed(None) == R.EXIT_OK
+    real = R.t3_open
+    _crash_after_mark(monkeypatch, with_t3_line=False)
+    with pytest.raises(RuntimeError):
+        R.run_open(None)
+    assert "open" in json.loads((tmp / "run_meta.json").read_text(encoding="utf-8"))
+    monkeypatch.setattr(R, "t3_open", real)
+    with pytest.raises(R.Refuse) as e:
+        R.run_open(None)                                       # 사유 없음
+    assert e.value.code == R.EXIT_ORDER
+    with pytest.raises(R.Refuse):
+        R.run_open(None, "버그 수정")                           # 수정 커밋 없음(HEAD 같음)
+    monkeypatch.setattr(R, "head_sha", lambda: "e" * 40)       # 수정 커밋 뒤
+    assert R.run_open(None, "버그 수정") == R.EXIT_OK
+    res = sorted(tmp.glob("RESULTS_*.md"))[0].read_text(encoding="utf-8")
+    assert "이탈: 재개봉" in res and "버그 수정" in res
+    meta = json.loads((tmp / "run_meta.json").read_text(encoding="utf-8"))
+    assert meta["open"]["reopen"]["fix_sha"] == "e" * 40 and meta["open"]["reopen"]["interrupted_head"] == "f" * 40
+    monkeypatch.setattr(R, "head_sha", lambda: "c" * 40)
+    with pytest.raises(R.Refuse):
+        R.run_open(None, "또")                                  # 완료 뒤 · 1회 사용 뒤
+
+
+def test_no_reopen_after_t3_line(env, monkeypatch):
+    D, tmp = env
+    assert R.run_sealed(None) == R.EXIT_OK
+    _crash_after_mark(monkeypatch, with_t3_line=True)
+    with pytest.raises(RuntimeError):
+        R.run_open(None)
+    monkeypatch.setattr(R, "head_sha", lambda: "e" * 40)
+    with pytest.raises(R.Refuse) as e:
+        R.run_open(None, "버그 수정")
+    assert e.value.code == R.EXIT_ORDER and "결과 줄" in e.value.reason

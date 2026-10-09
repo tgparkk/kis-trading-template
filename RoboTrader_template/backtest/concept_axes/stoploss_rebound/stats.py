@@ -233,13 +233,14 @@ def panel_outcome(pn: T3Panel) -> Tuple[str, str]:
 
 
 def decide(panels: Dict[str, T3Panel], fidelity_any_pass: bool, n: int, G: int) -> Verdict:
-    """판정 순서 ① 도구 게이트(B≥5 · 자기 표본) ② 충실도 ③ n·G ④ 판 L/M ⑤ p·CI·θ₃ — 앞 단계 탈락 = 판정 불가."""
+    """판정 순서 ① 도구 게이트(B≥5 · 자기 표본) ② 충실도 ③ n·G ④ 판 L/M ⑤ p·CI·θ₃ — 앞 단계 탈락 = 판정 불가.
+    전 전략 충실도 미달이면 표본이 비므로 사유는 «②»(부록 A10)."""
+    if not fidelity_any_pass:                # 부록 A10 — 표본이 비어 ①(B=0)이 평가 대상이 없다 → 사유는 ②
+        return Verdict(LAB_NA, "② 충실도 전 전략 미달")
     outs = {k: panel_outcome(p) for k, p in panels.items()}
     tool_fail = [f"판 {k}: {r}" for k, (lab, r) in outs.items() if r.startswith("도구")]
     if tool_fail:
         return Verdict(LAB_NA, "① " + " · ".join(tool_fail))
-    if not fidelity_any_pass:
-        return Verdict(LAB_NA, "② 충실도 전 전략 미달")
     if n < N_MIN or G < G_MIN:
         return Verdict(LAB_NA, f"③ T3 n={n} · G={G} (기준 n ≥ {N_MIN} ∧ G ≥ {G_MIN})")
     labs = {lab for lab, _ in outs.values()}

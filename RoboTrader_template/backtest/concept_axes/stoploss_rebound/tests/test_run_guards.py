@@ -38,6 +38,13 @@ def test_frozen_doc_blob_and_md5():
     assert hashlib.md5(R.PREREG.read_bytes()).hexdigest() == R.PREREG_FROZEN_MD5
 
 
+def test_amendment_blob_md5_and_guard_path():
+    assert R.git_blob(R.AMENDMENT) == R.AMENDMENT_FROZEN_BLOB
+    assert hashlib.md5(R.AMENDMENT.read_bytes()).hexdigest() == R.AMENDMENT_FROZEN_MD5
+    assert b"\r" not in R.AMENDMENT.read_bytes()
+    assert R.AMENDMENT in R.GUARD_PATHS and R.PREREG in R.GUARD_PATHS
+
+
 def test_sql_wrappers_keep_original_text():
     assert R.inner(R.EVENT_SQL) == R.EVENT_SQL[:-1]
     assert R.inner(R.EVENT_SQL) in R.wrap(R.EVENT_SQL, "count(*)")
@@ -55,8 +62,11 @@ def test_named_params_keep_casts_and_escape_percent():
 
 
 # ── 정적 가드 ───────────────────────────────────────────────────────────
+BLOBS = {R.PREREG: R.PREREG_FROZEN_BLOB, R.AMENDMENT: R.AMENDMENT_FROZEN_BLOB}
+
+
 def _checks(**kw):
-    base = dict(blob_of=lambda: R.PREREG_FROZEN_BLOB, dirty_of=lambda: [], d_asof=date(2026, 10, 16), unresolved=())
+    base = dict(blob_of=BLOBS.__getitem__, dirty_of=lambda: [], d_asof=date(2026, 10, 16), unresolved=())
     base.update(kw)
     return R.static_checks("sealed", **base)
 
@@ -66,7 +76,8 @@ def test_static_checks_pass_when_all_good():
 
 
 @pytest.mark.parametrize("kw,needle", [
-    (dict(blob_of=lambda: "0" * 40), "동결 blob"),
+    (dict(blob_of=lambda p: "0" * 40 if p == R.PREREG else BLOBS[p]), "동결 blob"),
+    (dict(blob_of=lambda p: "0" * 40 if p == R.AMENDMENT else BLOBS[p]), "부록 blob"),
     (dict(dirty_of=lambda: [" M backtest/concept_axes/stoploss_rebound/run.py"]), "미커밋"),
     (dict(dirty_of=lambda: ["?? backtest/concept_axes/stoploss_rebound/results/x.md"]), "미커밋"),
     (dict(d_asof=date(2026, 10, 15)), "D_asof"),
@@ -84,10 +95,9 @@ def test_static_checks_git_failure_is_refusal(monkeypatch):
         R.enforce(R.static_checks("sealed", unresolved=()))
 
 
-def test_unresolved_questions_block_sealed_now():
-    assert R.UNRESOLVED                                  # 확정 전에는 실제 봉인·개봉이 막혀 있어야 한다
-    with pytest.raises(R.Refuse):
-        R.enforce(R.static_checks("sealed", blob_of=lambda: R.PREREG_FROZEN_BLOB, dirty_of=lambda: []))
+def test_unresolved_questions_resolved_by_amendment():
+    assert R.UNRESOLVED == ()                            # 부록(ceeff59)으로 Q1~Q11 확정
+    R.enforce(R.static_checks("sealed", blob_of=BLOBS.__getitem__, dirty_of=lambda: []))
 
 
 def test_check_rules_mismatch_refuses():
@@ -147,10 +157,14 @@ def test_guarded_fetch_refuses_forbidden_columns_before_fetch():
     assert R.guarded_fetch(conn, "SELECT …") == [("x", 1)]
 
 
-def _preflight_answer(kospi_rows: int, have_codes):
+def _preflight_answer(kospi_rows: int, have_codes, n_asof: int = 2700, n_prev: int = 2700):
     def answer(sql, args):
+        if "max(date) AS d" in sql and "date < %s" in sql:
+            return ["d"], [("2026-10-15",)]
         if "max(date) AS d" in sql:
             return ["d"], [("2026-10-08",)]
+        if sql.startswith("SELECT count(DISTINCT stock_code) AS n FROM daily_prices WHERE date = %s") and "ANY" not in sql:
+            return ["n"], [(n_asof if args[0] == R.D_ASOF.isoformat() else n_prev,)]
         if sql.startswith("SELECT strategy, count(*) AS n") and "손절 이벤트" in sql:
             return ["strategy", "n"], [("book_pullback_ma20", 2)]
         if sql.startswith("SELECT count(*) AS n, count(DISTINCT id)"):
@@ -178,12 +192,16 @@ def _outer_select(sql: str) -> str:
     return sql.split(" FROM", 1)[0]
 
 
-@pytest.mark.parametrize("kospi,codes,code", [(0, [], R.EXIT_DATA), (1, ["000001"], R.EXIT_DATA),
-                                             (1, ["000001", "000002"], R.EXIT_OK)])
-def test_preflight_counts_only_and_refusal_codes(monkeypatch, kospi, codes, code):
+@pytest.mark.parametrize("kospi,codes,n_asof,code", [
+    (0, [], 2700, R.EXIT_DATA),                          # KOSPI 행 없음
+    (1, ["000001", "000002"], 2645, R.EXIT_DATA),        # 2645 < 0.98 × 2700 = 2646 → 적재 미완료
+    (1, ["000001", "000002"], 2646, R.EXIT_OK),          # 정확히 98% = 충족
+    (1, ["000001"], 2700, R.EXIT_OK),                    # 대상 1개 행 없음 = «영구 끊김»(거부 아님 · 부록 B2)
+])
+def test_preflight_counts_only_and_refusal_codes(monkeypatch, kospi, codes, n_asof, code):
     monkeypatch.setattr(R, "static_checks", lambda stage: [("동결 blob", True, "ok")])
     monkeypatch.setattr(R, "fetch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("preflight 에서 fetch 금지")))
-    conn = FakeConn(_preflight_answer(kospi, codes))
+    conn = FakeConn(_preflight_answer(kospi, codes, n_asof))
     assert R.run_preflight(conn) == code
     for sql in conn.sqls:
         assert not FORBID_RE.search(_outer_select(sql)), sql[:120]
@@ -203,14 +221,20 @@ def test_preconditions_static_refusal_happens_before_any_db(monkeypatch):
     assert e.value.code == R.EXIT_STATIC and conn.sqls == []
 
 
-@pytest.mark.parametrize("kospi,codes", [(0, ["000001", "000002"]), (1, ["000001"])])
-def test_preconditions_require_d_asof_rows(monkeypatch, kospi, codes):
+@pytest.mark.parametrize("kospi,n_asof", [(0, 2700), (1, 2600)])
+def test_preconditions_require_kospi_row_and_load_ratio(monkeypatch, kospi, n_asof):
     monkeypatch.setattr(R, "static_checks", lambda stage: [])
-    conn = FakeConn(_preflight_answer(kospi, codes))
     with pytest.raises(R.Refuse) as e:
-        R.preconditions(conn, "open")
+        R.preconditions(FakeConn(_preflight_answer(kospi, ["000001", "000002"], n_asof)), "open")
     assert e.value.code == R.EXIT_DATA
-    R.preconditions(FakeConn(_preflight_answer(1, ["000001", "000002"])), "open")
+
+
+def test_preconditions_missing_target_is_permanent_cut_not_refusal(monkeypatch):
+    monkeypatch.setattr(R, "static_checks", lambda stage: [])
+    rq = R.preconditions(FakeConn(_preflight_answer(1, ["000001"])), "open")
+    assert rq["ok"] and rq["missing"] == ["000002"] and "영구 끊김" in R.asof_line(rq)
+    rq = R.preconditions(FakeConn(_preflight_answer(1, ["000001", "000002"])), "open")
+    assert rq["ok"] and rq["missing"] == [] and "영구 끊김" not in R.asof_line(rq)
 
 
 # ── 적재 가드 ───────────────────────────────────────────────────────────
@@ -280,10 +304,11 @@ def test_open_guard_marker_and_fingerprint(opened):
         R.open_guard(None, D, dict(codes=[]))                      # 지문 다름 = 소급 수정
     assert e.value.code == R.EXIT_FINGERPRINT
     (tmp / "run_meta.json").write_text(json.dumps({"sealed": {"fp": {"vtr": "x"}}}), encoding="utf-8")
-    m = R.open_guard(None, D, dict(codes=[]))
+    m, reopen = R.open_guard(None, D, dict(codes=[]))
+    assert reopen is None
     R.mark_open(m)
     with pytest.raises(R.Refuse) as e:
-        R.open_guard(None, D, dict(codes=[]))                      # 두 번째 개봉
+        R.open_guard(None, D, dict(codes=[]))                      # 두 번째 개봉(사유 없음)
     assert e.value.code == R.EXIT_ORDER and "1회 실행" in e.value.reason
 
 
@@ -328,3 +353,42 @@ def _units_for_asym(ev_x, ev_n, c_x, c_n):
 def test_asymmetry_warning_is_strictly_above_two_points(ev_x, c_x, warn):
     s = R.exclusion_summary(_units_for_asym(ev_x, 100, c_x, 100))
     assert s["ev_den"] == 100 and s["c_den"] == 100 and s["warn"] is warn
+
+
+# ── 부록 B3 재개봉 ───────────────────────────────────────────────────────
+def _meta_open(**o):
+    return {"sealed": {"fp": {}}, "open": dict(dict(started_at="t0", head="a" * 40), **o)}
+
+
+def test_reopen_check_rules():
+    ok = R.reopen_check(_meta_open(), "x [게이트] 판 L ...\n", "b" * 40, "버그 수정")
+    assert ok["interrupted_head"] == "a" * 40 and ok["fix_sha"] == "b" * 40 and ok["reason"] == "버그 수정"
+    cases = [
+        (_meta_open(finished_at="t1"), "", "b" * 40, "r", "개봉 완료"),
+        (_meta_open(reopen={"at": "t1"}), "", "b" * 40, "r", "이미 사용"),
+        (_meta_open(), "2026 [T3] 판 L: tool CR1 · p 0.3\n", "b" * 40, "r", "결과 줄"),
+        (_meta_open(), "2026 [T3] 판 L: 도구 탈락 · 검정 없음\n", "b" * 40, "r", "결과 줄"),
+        (_meta_open(), "", "b" * 40, None, "--reopen-reason"),
+        (_meta_open(), "", "a" * 40, "r", "수정 커밋"),
+    ]
+    for m, log, head, reason, needle in cases:
+        with pytest.raises(R.Refuse) as e:
+            R.reopen_check(m, log, head, reason)
+        assert e.value.code == R.EXIT_ORDER and needle in e.value.reason and "1회 실행" in e.value.reason
+
+
+def test_open_guard_reopen_reason_without_interrupted_open_refuses(opened):
+    tmp, D = opened
+    (tmp / "sealed_report.md").write_text("x", encoding="utf-8")
+    (tmp / "run_meta.json").write_text(json.dumps({"sealed": {"fp": {"vtr": "x"}}}), encoding="utf-8")
+    with pytest.raises(R.Refuse) as e:
+        R.open_guard(None, D, dict(codes=[]), reopen_reason="r")
+    assert e.value.code == R.EXIT_ORDER
+
+
+def test_mark_open_reopen_keeps_original_marker(opened):
+    tmp, _ = opened
+    m = _meta_open()
+    R.mark_open(m, dict(reason="r", interrupted_head="a" * 40, fix_sha="b" * 40, at="t2"))
+    saved = json.loads((tmp / "run_meta.json").read_text(encoding="utf-8"))
+    assert saved["open"]["started_at"] == "t0" and saved["open"]["reopen"]["fix_sha"] == "b" * 40

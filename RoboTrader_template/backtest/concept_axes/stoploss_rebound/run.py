@@ -1,15 +1,18 @@
-"""손절 뒤 급반등 측정 러너 — 사전등록 `docs/prereg_2026-10-09_stoploss_rebound.md`(🔒 동결 e4d9ee2 · REGISTRY SR1).
+"""손절 뒤 급반등 측정 러너 — 사전등록 `docs/prereg_2026-10-09_stoploss_rebound.md`(🔒 동결 e4d9ee2 · REGISTRY SR1)
++ 해석 부록 `docs/prereg_2026-10-09_stoploss_rebound_amendment_2026-10-09.md`(🔒 ceeff59 · §A 해석 · §B 개정 B1~B3).
 
     cd <worktree>/RoboTrader_template
     PY=D:/GIT/kis-trading-template/RoboTrader_template/venv/Scripts/python.exe
     $PY -X utf8 -m backtest.concept_axes.stoploss_rebound.run --stage preflight   # 개수·존재만(가격·손익 열 0)
     $PY -X utf8 -m backtest.concept_axes.stoploss_rebound.run --stage sealed      # §12-4 ③ → results/sealed_report.md
     $PY -X utf8 -m backtest.concept_axes.stoploss_rebound.run --stage open        # §12-4 ④ → results/RESULTS_<날짜>.md
+    $PY -X utf8 -m backtest.concept_axes.stoploss_rebound.run --stage open --reopen-reason "<사유>"   # 부록 B3 1회
 
-실행 전 확인(§12-4 ②) — 하나라도 아니면 «통계 계산 전에» 거부(종료 코드·사유):
-  동결 문서 blob = `PREREG_FROZEN_BLOB` · 가드 경로 미커밋 변경 0 · D_asof = 2026-10-16 · 미해결 해석 질문 0 ·
-  tp/sl/보유기간 = 문서 §6-3 값 · KOSPI 와 모든 대상 이벤트·로트 종목의 D_asof `daily_prices` 행 존재 ·
-  표본 N = 동결 SQL count(*) · 로트 id 중복 0. 개봉은 여기에 더해 봉인 산출물 커밋 · DB 지문 = 봉인 때 지문 · 1회 실행 표식.
+실행 전 확인(§12-4 ② · 부록 B2) — 하나라도 아니면 «통계 계산 전에» 거부(종료 코드·사유):
+  동결 문서·부록 blob = 상수 · 가드 경로 미커밋 변경 0 · D_asof = 2026-10-16 · 미해결 해석 질문 0 ·
+  tp/sl/보유기간 = 문서 §6-3 값 · KOSPI D_asof 행 ∧ D_asof 행 종목 수 ≥ 직전 거래일의 98%(적재 완료 · 대상 종목 중 행 없는
+  것은 «영구 끊김» 목록) · 표본 N = 동결 SQL count(*) · 로트 id 중복 0. 개봉은 여기에 더해 봉인 산출물 커밋 · DB 지문 =
+  봉인 때 지문 · 1회 실행 표식(부록 B3 — `[T3]` 줄 없이 중단됐을 때만 수정 커밋 뒤 1회 재개봉).
 🔴 봉인 단계는 `stop_fill_price` 를 조인하지 않고(SQL 원문을 부분질의로 두고 바깥에서 열을 뺀다) · 이벤트 팔 R′/D′ ·
    ⓐ(`author_exit`)를 계산하지 않는다(대조 팔 p̂₀ · ⓑ 로트 수익률 집계 sd 만).
 🔴 preflight 는 `guarded_fetch` 만 쓴다 — 결과 열에 가격·손익 열이 있으면 행을 받기 전에 중단.
@@ -46,6 +49,7 @@ from backtest.concept_axes.stoploss_rebound import stats as ST         # noqa: E
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]                                   # …/RoboTrader_template
 PREREG = ROOT / "docs" / "prereg_2026-10-09_stoploss_rebound.md"
+AMENDMENT = ROOT / "docs" / "prereg_2026-10-09_stoploss_rebound_amendment_2026-10-09.md"
 RESULTS = HERE / "results"
 SEALED_MD = RESULTS / "sealed_report.md"
 META = RESULTS / "run_meta.json"
@@ -54,11 +58,13 @@ OPEN_LOG = RESULTS / "open_log.txt"
 # ── 🔒 사전등록 값 ────────────────────────────────────────────────────────────
 PREREG_FROZEN_BLOB = "c5f7c346285217898ca4060c703be6758aa6d82a"   # §12-2 동결본 `git hash-object`
 PREREG_FROZEN_MD5 = "f981bd8664aae3228e62fae0e0f3f03c"            # 기록용(커밋 메시지·REGISTRY)
+AMENDMENT_FROZEN_BLOB = "24514a0ddb7fd54aeed105b29d7fc657f98956df"  # 부록(ceeff59) `git hash-object`
+AMENDMENT_FROZEN_MD5 = "aa3f8fb2ca9d6482588e4530f54b6232"         # 기록용
 D_ASOF = date(2026, 10, 16)
 START = date(2026, 8, 7)
 SPLIT_DAY = date(2026, 8, 26)          # §3·§6-8 — 1810cd2 경계(분할 인쇄 · 충실도 분모)
 INTEG_END = date(2026, 8, 16)          # §12-3·§12-4 ③ 원장 정합성 구간 08-07~08-16
-CAL_START = date(2026, 3, 2)           # 달력·봉 읽기 시작(진입 − 60봉 · 데이터 청산 창 120 달력일을 덮는다)
+CAL_START = date(2026, 1, 2)           # 달력·봉 읽기 시작(진입 − 60봉 · 정지 종목 SMA60 창(부록 A5) · 데이터 청산 창 120일)
 STRATS = ("book_pullback_ma20", "minervini_volume_dryup", "daytrading_3methods_breakout", "book_pullback_ma5")
 EXPECT_RULES = {"book_pullback_ma20": (0.10, 0.08, 50), "minervini_volume_dryup": (0.12, 0.08, 20),
                 "daytrading_3methods_breakout": (0.10, 0.10, 10), "book_pullback_ma5": (0.15, 0.03, 30)}
@@ -68,14 +74,15 @@ COST = 0.25                             # §6-6 비용 차감 인쇄(%p)
 ASYM_MAX = Fraction(2, 100)             # §3 비대칭 경고(> 2%p)
 FID_DATE_MIN = 0.70                     # §6-8 청산일 일치율
 FID_DATE_TOL = 1                        # §6-8 ±1 KOSPI 거래일
+LOAD_RATIO = Fraction(98, 100)          # 부록 B2 — D_asof 행 종목 수 ≥ 직전 거래일의 98% = 적재 완료
+T3_TAG = "[T3]"                         # 부록 B3 — open_log 의 진짜 결과 줄 표지
 REBUY_N = 5                             # §2 ⑨ N = 5 KOSPI 거래일
 KST = timezone(timedelta(hours=9))
 
-# 🔒 해석 질문(IMPL_REPORT_runner_stoploss.md §3) — 사장님·관리자 확정 전에는 sealed/open 을 거부한다.
-#    확정되면 그 결정대로 코드를 맞추고(또는 그대로 두고) 여기서 지운 뒤 커밋한다.
-UNRESOLVED: Tuple[str, ...] = ("Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10")
+# 🔒 해석 질문 — 비어 있지 않으면 sealed/open 을 거부한다. Q1~Q11 은 부록(ceeff59) §A·§B 로 확정 → 비움.
+UNRESOLVED: Tuple[str, ...] = ()
 
-GUARD_PATHS = (HERE, PREREG, ROOT / "backtest" / "concept_axes" / "ledger8",
+GUARD_PATHS = (HERE, PREREG, AMENDMENT, ROOT / "backtest" / "concept_axes" / "ledger8",
                ROOT / "backtest" / "concept_axes" / "minervini" / "cap_skip_ledger",
                ROOT / "backtest" / "concept_axes" / "candidate_ledger" / "exit_diag" / "run_random_entry.py")
 
@@ -180,11 +187,15 @@ def _git(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], capture_output=True, text=True, cwd=str(ROOT), encoding="utf-8")
 
 
-def prereg_blob() -> str:
-    r = _git("hash-object", str(PREREG))
+def git_blob(path: Path) -> str:
+    r = _git("hash-object", str(path))
     if r.returncode != 0 or not r.stdout.strip():
-        raise Refuse(EXIT_STATIC, "git hash-object 실패(동결 문서)")
+        raise Refuse(EXIT_STATIC, f"git hash-object 실패({path.name})")
     return r.stdout.strip()
+
+
+def prereg_blob() -> str:
+    return git_blob(PREREG)
 
 
 def dirty_paths() -> List[str]:
@@ -199,19 +210,20 @@ def head_sha() -> str:
     return r.stdout.strip() if r.returncode == 0 else "unknown"
 
 
-def static_checks(stage: str, blob_of: Callable[[], str] = None, dirty_of: Callable[[], List[str]] = None,
+def static_checks(stage: str, blob_of: Callable[[Path], str] = None, dirty_of: Callable[[], List[str]] = None,
                   d_asof: date = None, unresolved: Sequence[str] = None) -> List[Tuple[str, bool, str]]:
     """(항목, 통과, 설명) 목록 — preflight 는 인쇄만, sealed/open 은 하나라도 실패면 거부."""
-    blob_of = blob_of or prereg_blob
+    blob_of = blob_of or git_blob
     dirty_of = dirty_of or dirty_paths
     d_asof = D_ASOF if d_asof is None else d_asof
     unresolved = UNRESOLVED if unresolved is None else unresolved
     out: List[Tuple[str, bool, str]] = []
-    try:
-        b = blob_of()
-        out.append(("동결 blob", b == PREREG_FROZEN_BLOB, f"{b} vs 상수 {PREREG_FROZEN_BLOB}"))
-    except Refuse as e:
-        out.append(("동결 blob", False, e.reason))
+    for name, path, want in (("동결 blob", PREREG, PREREG_FROZEN_BLOB), ("부록 blob", AMENDMENT, AMENDMENT_FROZEN_BLOB)):
+        try:
+            b = blob_of(path)
+            out.append((name, b == want, f"{b} vs 상수 {want}"))
+        except Refuse as e:
+            out.append((name, False, e.reason))
     try:
         dp = dirty_of()
         out.append(("미커밋 변경 0", not dp, "없음" if not dp else " | ".join(dp[:8])))
@@ -414,14 +426,29 @@ def load_all(conn, stage: str) -> Tuple[Data, Dict[str, Any]]:
 
 
 def require_asof_rows(conn, codes: Sequence[str]) -> Dict[str, Any]:
-    """§12-4 ② — KOSPI 와 모든 대상 이벤트·로트 종목의 D_asof 행."""
+    """부록 B2(§12-4 ② 대체) — KOSPI D_asof 행 ∧ D_asof 행 종목 수 ≥ 직전 KOSPI 거래일의 98%(적재 완료).
+    대상 종목 중 D_asof 행이 없는 것은 «영구 끊김» 목록(거부 사유 아님). 개수·종목코드만 읽는다(`guarded_fetch`)."""
     k = guarded_fetch(conn, "SELECT count(*) AS n FROM daily_prices WHERE stock_code = 'KOSPI' AND date = %s",
                       (D_ASOF.isoformat(),))[0][0]
+    prev = guarded_fetch(conn, "SELECT max(date) AS d FROM daily_prices WHERE stock_code = 'KOSPI' AND date < %s",
+                         (D_ASOF.isoformat(),))[0][0]
+    n_asof = int(guarded_fetch(conn, "SELECT count(DISTINCT stock_code) AS n FROM daily_prices WHERE date = %s",
+                               (D_ASOF.isoformat(),))[0][0])
+    n_prev = int(guarded_fetch(conn, "SELECT count(DISTINCT stock_code) AS n FROM daily_prices WHERE date = %s",
+                               (str(prev),))[0][0]) if prev is not None else 0
     have = {str(r[0]) for r in guarded_fetch(
         conn, "SELECT DISTINCT stock_code FROM daily_prices WHERE date = %s AND stock_code = ANY(%s)",
         (D_ASOF.isoformat(), list(codes)))}
     missing = sorted(set(codes) - have)
-    return dict(kospi=int(k) > 0, n_codes=len(set(codes)), missing=missing)
+    loaded = n_prev > 0 and Fraction(n_asof, n_prev) >= LOAD_RATIO
+    return dict(kospi=int(k) > 0, prev=str(prev) if prev is not None else None, n_asof=n_asof, n_prev=n_prev,
+                loaded=loaded, ok=bool(int(k) > 0 and loaded), n_codes=len(set(codes)), missing=missing)
+
+
+def asof_line(rq: Dict[str, Any]) -> str:
+    return (f"D_asof {D_ASOF}: KOSPI 행 {'있음' if rq['kospi'] else '없음'} · 전체 종목 {rq['n_asof']} / 직전 거래일 "
+            f"{rq['prev']} {rq['n_prev']}(≥98% {'충족' if rq['loaded'] else '미충족'}) · 대상 {rq['n_codes']} 중 D_asof 행 "
+            f"없음 {len(rq['missing'])}" + (f" = «영구 끊김» {rq['missing']}" if rq['ok'] and rq['missing'] else ""))
 
 
 def fingerprint(conn, codes: Sequence[str], minute_keys: Sequence[Tuple[str, date]]) -> Dict[str, str]:
@@ -466,7 +493,8 @@ class EvUnit:
     cwins: Dict[str, LT.Win]
     usable: List[str]
     c_excl: Dict[str, str]
-    base_t: Optional[float]
+    base_t: Optional[float]                    # 이벤트 자신의 C_t — 봉인 단계(extremes=False)에서는 값을 담지 않는다
+    base_ok: bool = False                      # 이벤트 자신의 C_t 존재(부록 A8 개수 인쇄)
 
 
 def _row(D: Data, code: str, d: date) -> Optional[LT.DayRow]:
@@ -507,9 +535,10 @@ def event_units(D: Data, h: int, extremes_event: bool) -> List[EvUnit]:
                 else:
                     usable.append(c)
         r_e = _row(D, e.code, e.d)
-        base_t = float(r_e.close) if r_e is not None and r_e.close is not None else None
+        base_ok = r_e is not None and r_e.close is not None
+        base_t = float(r_e.close) if (base_ok and extremes_event) else None
         code = "X1" if not w.complete else "X2" if w.x2 else "X3" if w.x3 else ""
-        out.append(EvUnit(e, h, code, w, cs, cw, usable, cx, base_t))
+        out.append(EvUnit(e, h, code, w, cs, cw, usable, cx, base_t, base_ok))
     return out
 
 
@@ -528,11 +557,13 @@ def exclusion_summary(units: Sequence[EvUnit]) -> Dict[str, Any]:
     rights_ev = sum(1 for u in units if u.win is not None and u.win.complete and u.win.rights)
     rights_c = sum(1 for u, c in pairs if u.cwins.get(c) is not None and u.cwins[c].rights)
     no_base_c = sum(1 for u, c in pairs if u.c_excl.get(c) == "no_base")
+    no_base_ev = sum(1 for u in units if u.code == "" and u.usable and not u.base_ok)
     diff = ev_rate - c_rate if ev_den and pairs else float("nan")
     warn = bool(ev_den and pairs and Fraction(ev_x, ev_den) - Fraction(c_x, len(pairs)) > ASYM_MAX)   # 경계 정확 비교
     return dict(counts=dict(cnt), ev_den=ev_den, ev_x=ev_x, ev_rate=ev_rate, c_den=len(pairs), c_x=c_x,
                 c_rate=c_rate, diff=diff, warn=warn, x5=x5, x5_sql=x5_sql,
                 ev_jump=ev_jump, ev_corp=ev_corp, rights_ev=rights_ev, rights_c=rights_c, no_base_c=no_base_c,
+                no_base_ev=no_base_ev,
                 n_t12=sum(1 for u in units if u.code == "" and u.usable))
 
 
@@ -640,7 +671,8 @@ def lot_prep(D: Data, lot: LT.LotIn, horizon: Optional[int] = LT.H) -> LotPrep:
     path = LT.build_path(rows, D.cal, i0, D.i_asof)
     basis, touch = LT.day0_basis(lot, D.minutes.get((lot.code, lot.d0), []))
     i_end = D.i_asof if horizon is None else min(i0 + horizon, D.i_asof)
-    excl, rights = LT.lot_exclusion(rows, D.cal, i0, i_end, D.splits.get(lot.code, []), D.rights.get(lot.code, []))
+    excl, rights = LT.lot_exclusion(rows, D.cal, i0, i_end, D.splits.get(lot.code, []), D.rights.get(lot.code, []),
+                                    LT.sma_first_date(rows, lot.d0))
     cb = LT.pre_closes(rows, lot.d0)
     bar0 = path[0][2]
     return LotPrep(lot, i0, path, basis, touch, excl, rights, cb,
@@ -659,7 +691,8 @@ def run_a(D: Data, p: LotPrep, b: LT.ArmOut, horizon: int = LT.H, no_react_k: in
 
 
 def fidelity(D: Data, preps: Sequence[LotPrep], since: date, until: date) -> Tuple[List[Dict[str, Any]], Dict]:
-    """§6-8 — ⓑ(H 로 자르지 않은 경로) vs DB 실제 SELL · 분모 = 매수일 범위 ∧ 진입 당일 실제 청산(①) 제외 ·
+    """§6-8 · 부록 B1 — T3 와 같은 ⓑ(H 로 자르지 않은 경로 · `exit_fidelity_rows` 미사용) vs DB 실제 SELL ·
+    분모 = 원문 SQL L(진입일 상한) 로트 중 매수일 범위 ∧ 진입 당일 실제 청산(①) 제외 ·
     사유 매핑 `fidelity8.actual_reason`·`exit_outcome`·`exit_table` 그대로 · 청산일 일치 = |KOSPI 거래일 차| ≤ 1."""
     rows: List[Dict[str, Any]] = []
     for p in preps:
@@ -768,33 +801,33 @@ def run_preflight(conn) -> int:
     codes = sorted({str(r[0]) for r in guarded_fetch(conn, wrap(EVENT_SQL, "DISTINCT stock_code"))}
                    | {str(r[0]) for r in guarded_fetch(conn, wrap(LOT_SQL, "DISTINCT stock_code"))})
     rq = require_asof_rows(conn, codes)
-    say(f"D_asof {D_ASOF} 행: KOSPI {'있음' if rq['kospi'] else '없음'} · 대상 종목 {rq['n_codes']} 중 없음 "
-        f"{len(rq['missing'])}")
+    say(asof_line(rq))
     if last is not None:
         have_last = guarded_fetch(conn, "SELECT count(DISTINCT stock_code) AS n FROM daily_prices WHERE date = %s "
                                         "AND stock_code = ANY(%s)", (str(last), codes))[0][0]
         say(f"(참고) KOSPI 마지막 행 {last} 에 행이 있는 대상 종목 {have_last}/{len(codes)}")
     bad = [n for n, ok, _ in checks if not ok]
-    if not rq["kospi"] or rq["missing"]:
-        bad.append("D_asof 행 없음")
+    if not rq["ok"]:
+        bad.append("D_asof 적재 미완료(KOSPI 행 또는 98%)")
     if bad:
-        say(f"→ 개봉 전제 미충족 — 거부(종료 코드 {EXIT_DATA if not rq['kospi'] or rq['missing'] else EXIT_STATIC}): "
-            + " · ".join(bad))
-        return EXIT_DATA if (not rq["kospi"] or rq["missing"]) else EXIT_STATIC
+        code = EXIT_DATA if not rq["ok"] else EXIT_STATIC
+        say(f"→ 개봉 전제 미충족 — 거부(종료 코드 {code}): " + " · ".join(bad))
+        return code
     say("→ 실행 전 확인 통과(개수·존재)")
     return EXIT_OK
 
 
-def preconditions(conn, stage: str) -> None:
-    """§12-4 ② — sealed/open 공통. 통계 계산 «전»."""
+def preconditions(conn, stage: str) -> Dict[str, Any]:
+    """§12-4 ② · 부록 B2 — sealed/open 공통. 통계 계산 «전». 통과 시 D_asof 상태(«영구 끊김» 목록 포함)를 돌려준다."""
     enforce(static_checks(stage))
     codes = sorted({str(r[0]) for r in fetch(conn, wrap(EVENT_SQL, "DISTINCT stock_code"))}
                    | {str(r[0]) for r in fetch(conn, wrap(LOT_SQL, "DISTINCT stock_code"))})
     rq = require_asof_rows(conn, codes)
     if not rq["kospi"]:
         raise Refuse(EXIT_DATA, f"KOSPI {D_ASOF} 행 없음 — 적재 지연이면 보류(표본 규칙 불변)")
-    if rq["missing"]:
-        raise Refuse(EXIT_DATA, f"대상 종목 {len(rq['missing'])}개에 {D_ASOF} 행 없음: {rq['missing'][:20]}")
+    if not rq["loaded"]:
+        raise Refuse(EXIT_DATA, f"D_asof 적재 미완료 — 종목 {rq['n_asof']} < 직전 거래일 {rq['n_prev']} × 98% · 보류")
+    return rq
 
 
 def sealed_payload(conn, D: Data, LS: Dict[str, Any]) -> Dict[str, Any]:
@@ -836,11 +869,14 @@ def sealed_payload(conn, D: Data, LS: Dict[str, Any]) -> Dict[str, Any]:
     sd_b = b_sd(LS)
     cut_b = sum(1 for p in LS["sample"] if LS["b"][p.lot.buy_id].cut)
     day0 = Counter(p.day0 for p in preps)
+    k0_data_b = sum(1 for p in LS["sample"] if X.FLAG_K0_DATA in LS["b"][p.lot.buy_id].flags)
+    base = [(e.id, e.strategy, e.code, e.ts) for e in D.events if e.brid is not None]
+    chain_diff = len(LT.episode_keep(base, D.pos) ^ LT.episode_keep_chain(base, D.pos))
     day0_stop = sum(1 for p in preps if LT.is_day0_live(p.lot) and F.actual_reason(p.lot.sell_reason) == X.EXIT_SL)
     return dict(
         units=units, exs=exs, gates=gates, p0=p0, rebuy=rebuy_count(conn, D), integrity=integrity_counts(conn),
         side=side_counts(conn, D), shape=shape, sd_b=sd_b, cut_b=cut_b, mde=ST.mde_t3(sd_b, shape["n"]),
-        day0=dict(day0), day0_stop=day0_stop,
+        day0=dict(day0), day0_stop=day0_stop, k0_data_b=k0_data_b, chain_diff=chain_diff,
         excl=Counter("+".join(p.excl) for p in preps if p.excl), rights_lots=sum(1 for p in preps if p.rights),
         below=sum(1 for p in preps if p.below), below_na=sum(1 for p in preps if p.below is None),
         below_sample=sum(1 for p in LS["sample"] if p.below),
@@ -852,6 +888,9 @@ def render_sealed(meta: Dict[str, Any], D: Data, LS: Dict[str, Any], P: Dict[str
     L: List[str] = ["# 봉인 산출물 — 손절 뒤 급반등 측정(SR1)", "",
                     f"- 사전등록 `docs/prereg_2026-10-09_stoploss_rebound.md` · 동결 blob `{PREREG_FROZEN_BLOB}` · "
                     f"md5 `{PREREG_FROZEN_MD5}`",
+                    f"- 해석 부록 `docs/prereg_2026-10-09_stoploss_rebound_amendment_2026-10-09.md` · blob "
+                    f"`{AMENDMENT_FROZEN_BLOB}` · md5 `{AMENDMENT_FROZEN_MD5}`",
+                    f"- 개봉 전제(부록 B2): {asof_line(meta['asof']) if meta.get('asof') else '-'}",
                     f"- 코드 HEAD `{meta['head']}` · 실행 {meta['run_ts']} · D_asof {D_ASOF} · KOSPI 달력 "
                     f"{D.cal[0]}~{D.cal[-1]}",
                     "- 🔴 이 보고서에는 결과 열이 없다: `stop_fill_price` · 이벤트 팔 R′/D′ · ⓐ 결과 0 (대조 팔 p̂₀ · ⓑ 집계 sd 만).",
@@ -877,7 +916,9 @@ def render_sealed(meta: Dict[str, Any], D: Data, LS: Dict[str, Any], P: Dict[str
     L += table(["h", "X0", "X4", "X1", "X2", "X3", "X5(대조 없음)", "T1/T2 n₁", "이벤트 X2+X3 율", "대조 X2+X3 율",
                 "차(이벤트−대조)", "유상증자 이벤트/대조"], rows)
     L += ["", f"- X5 중 SQL 대조 후보 자체가 0 인 이벤트(h=10): {P['exs'][H_MAIN]['x5_sql']} · 대조 C_t 없음으로 뺀 대조 쌍: "
-              f"{P['exs'][H_MAIN]['no_base_c']}", ""]
+              f"{P['exs'][H_MAIN]['no_base_c']} · 이벤트 자신의 C_t 없음(T1/T2 C_t 표에서 빠짐 · 부록 A8): "
+              + " · ".join(f"h={h} {P['exs'][h]['no_base_ev']}" for h in HS),
+          f"- X4 해석 차이(부록 A4 — «남긴 이벤트부터» vs «직전 이벤트부터 연쇄»)로 갈리는 이벤트: {P['chain_diff']}", ""]
     L += ["### 이벤트 목록 · 대조 집합(h=10 처리)", ""]
     L += table(["id", "전략", "종목", "손절일", "buy_record_id", "처리(h=10)", "대조(SQL)", "대조(사용)"],
                [[u.ev.id, u.ev.strategy, u.ev.code, u.ev.d, u.ev.brid if u.ev.brid is not None else "NULL",
@@ -892,7 +933,8 @@ def render_sealed(meta: Dict[str, Any], D: Data, LS: Dict[str, Any], P: Dict[str
     d0 = P["day0"]
     L += ["", f"- 진입 당일 기준(§6-2): ① 진입 당일 실제 청산 {d0.get(LT.DAY0_LIVE, 0)}(그중 손절 {P['day0_stop']}) · "
               f"② ≤09:05 `D_open` {d0.get(X.BASIS_D_OPEN, 0)} · ③ 분봉 `touch_bar` {d0.get(LT.BASIS_TOUCH, 0)} · "
-              f"③ 분봉 없음 `actual`+플래그 {d0.get(X.BASIS_ACTUAL, 0)}",
+              f"③ 분봉 없음 `actual`+플래그 {d0.get(X.BASIS_ACTUAL, 0)} · T3 표본 ⓑ 진입 당일 데이터 청산 "
+              f"{P['k0_data_b']}(부록 A3 · ⓐ 는 개봉에서)",
           "- 데이터 처리(§6-7 · [진입−60봉, 진입+H]) 제외: " + (" · ".join(f"{k} {v}" for k, v in P["excl"].items())
                                                          or "0") + f" · 유상증자 있음(제외 안 함) {P['rights_lots']}",
           f"- 진입 시 SMA60 아래 로트: {P['below']}(L 전체 · 모름 {P['below_na']}) · T3 표본 안 {P['below_sample']}", ""]
@@ -949,40 +991,67 @@ def sealed_numbers(LS: Dict[str, Any], P: Dict[str, Any]) -> Dict[str, Any]:
 def run_sealed(conn) -> int:
     if "open" in read_meta():
         raise Refuse(EXIT_ORDER, "이미 개봉됨(run_meta.json open) — 봉인 단계를 다시 돌리지 않는다")
-    preconditions(conn, "sealed")
+    rq = preconditions(conn, "sealed")
     D, cnt = load_all(conn, "sealed")
     fp = fingerprint(conn, cnt["codes"], list(D.minutes))
     LS = lot_stage(D)
     P = sealed_payload(conn, D, LS)
-    meta = dict(head=head_sha(), run_ts=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), fp=fp)
+    meta = dict(head=head_sha(), run_ts=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), fp=fp, asof=rq)
     write_lf(SEALED_MD, render_sealed(meta, D, LS, P))
     m = read_meta()
     m["sealed"] = dict(meta, numbers=sealed_numbers(LS, P), n_events=cnt["n_events"], n_lots=cnt["n_lots"],
-                       prereg_blob=PREREG_FROZEN_BLOB)
+                       prereg_blob=PREREG_FROZEN_BLOB, amendment_blob=AMENDMENT_FROZEN_BLOB)
     write_lf(META, json.dumps(m, ensure_ascii=False, indent=2, default=str) + "\n")
     print(f"봉인 산출물 → {SEALED_MD} (커밋 뒤 개봉)")
     return EXIT_OK
 
 
 # ── 개봉 ──────────────────────────────────────────────────────────────────
-def open_guard(conn, D: Data, cnt: Dict[str, Any]) -> Dict[str, Any]:
-    """개봉 전용 확인 — 봉인 산출물 커밋 · 1회 실행 표식 · DB 지문 = 봉인 지문."""
+def reopen_check(m: Dict[str, Any], log_text: str, head: str, reason: Optional[str]) -> Dict[str, Any]:
+    """부록 B3 — 표식 뒤 중단된 개봉의 1회 재개봉 허용 조건. 허용이면 기록(dict), 아니면 Refuse."""
+    o = m["open"]
+    base = f"1회 실행 표식 있음(run_meta.json open = {o.get('started_at')})"
+    if o.get("finished_at"):
+        raise Refuse(EXIT_ORDER, f"{base} · 개봉 완료 — 두 번째 개봉 거부")
+    if o.get("reopen"):
+        raise Refuse(EXIT_ORDER, f"{base} · 재개봉 1회 이미 사용({o['reopen'].get('at')}) — 거부")
+    if any(T3_TAG in ln for ln in log_text.splitlines()):
+        raise Refuse(EXIT_ORDER, f"{base} · open_log 에 {T3_TAG} 결과 줄이 있다 — 결과를 본 뒤라 재개봉 금지(부록 B3)")
+    if not reason:
+        raise Refuse(EXIT_ORDER, f"{base} · {T3_TAG} 줄 없이 중단 — 수정 커밋 뒤 --reopen-reason 으로 1회 재개봉 가능(부록 B3)")
+    if head == o.get("head"):
+        raise Refuse(EXIT_ORDER, f"{base} · 수정 커밋이 없다(HEAD = 중단 때 {head[:10]}) — 재개봉 거부")
+    return dict(reason=reason, interrupted_head=o.get("head"), fix_sha=head,
+                at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def open_guard(conn, D: Data, cnt: Dict[str, Any], reopen_reason: Optional[str] = None
+               ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    """개봉 전용 확인 — 봉인 산출물 커밋 · 1회 실행 표식(부록 B3 재개봉 조건) · DB 지문 = 봉인 지문."""
     if not SEALED_MD.exists() or _git("ls-files", "--error-unmatch", str(SEALED_MD)).returncode != 0:
         raise Refuse(EXIT_ORDER, "results/sealed_report.md 가 없거나 커밋되지 않았다 — 봉인 단계와 그 커밋이 먼저(§12-4 ③)")
     m = read_meta()
+    reopen: Optional[Dict[str, Any]] = None
     if "open" in m:
-        raise Refuse(EXIT_ORDER, f"1회 실행 표식 있음(run_meta.json open = {m['open'].get('started_at')}) — 두 번째 개봉 거부")
+        log_text = OPEN_LOG.read_text(encoding="utf-8") if OPEN_LOG.exists() else ""
+        reopen = reopen_check(m, log_text, head_sha(), reopen_reason)
+    elif reopen_reason:
+        raise Refuse(EXIT_ORDER, "중단된 개봉이 없다 — --reopen-reason 은 쓰지 않는다")
     if "sealed" not in m:
         raise Refuse(EXIT_ORDER, "run_meta.json 에 봉인 기록이 없다")
     fp = fingerprint(conn, cnt["codes"], list(D.minutes))
     if fp != m["sealed"]["fp"]:
         diff = [k for k in fp if fp[k] != m["sealed"]["fp"].get(k)]
         raise Refuse(EXIT_FINGERPRINT, f"DB 지문이 봉인 때와 다르다({diff}) — 데이터 소급 수정 · 통계 전 중단")
-    return m
+    return m, reopen
 
 
-def mark_open(m: Dict[str, Any]) -> None:
-    m["open"] = dict(started_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), head=head_sha())
+def mark_open(m: Dict[str, Any], reopen: Optional[Dict[str, Any]] = None) -> None:
+    """1회 실행 표식 — 첫 개봉이면 새로 · 부록 B3 재개봉이면 원 표식에 재개봉 기록(사유·중단 HEAD·수정 SHA)을 더한다."""
+    if reopen is not None:
+        m["open"]["reopen"] = reopen
+    else:
+        m["open"] = dict(started_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), head=head_sha())
     write_lf(META, json.dumps(m, ensure_ascii=False, indent=2, default=str) + "\n")
 
 
@@ -1045,7 +1114,9 @@ def render_t3_prints(D: Data, LS: Dict[str, Any], T: Dict[str, Any], extra: Dict
           f"- ⓐ 가 더 오래 든 일수(평균 hold_a − hold_b): "
           f"{f4(_mean([(A[p.lot.buy_id].hold or 0) - (B[p.lot.buy_id].hold or 0) for p in sample]))}",
           "- ⓐ 트리거: " + " · ".join(f"{k} {v}" for k, v in sorted(Counter(
-              t for p in sample for t in A[p.lot.buy_id].triggers).items())), ""]
+              t for p in sample for t in A[p.lot.buy_id].triggers).items())),
+          f"- 진입 당일 데이터 청산(부록 A3) ⓐ {sum(1 for p in sample if X.FLAG_K0_DATA in A[p.lot.buy_id].flags)} · "
+          f"ⓑ {sum(1 for p in sample if X.FLAG_K0_DATA in B[p.lot.buy_id].flags)}", ""]
     for title, key in (("전략별", lambda p: p.lot.strategy), ("구간별(08-26 경계)", lambda p: period(p.lot.d0)),
                        ("진입일 블록별", lambda p: p.block), ("ⓑ 청산 사유별", lambda p: B[p.lot.buy_id].reason),
                        ("ⓐ 청산 사유별", lambda p: A[p.lot.buy_id].reason)):
@@ -1147,6 +1218,8 @@ def t12_open(D: Data, gates_sealed: Dict[str, str], rebuy_ids: Sequence[int], as
                                   [x for x in (LT.fall(u.win, u.ev.stop_px) for u in us) if x is not None]))
         L += table(DIST_HEAD, rows) + [""]
         t12 = [u for u in inc if u.usable and u.base_t]
+        L += [f"- 이벤트 자신의 C_t 없어 아래 C_t 표에서 빠진 이벤트(부록 A8): "
+              f"{sum(1 for u in inc if u.usable and not u.base_ok)}", ""]
         er = [LT.rise(u.win, u.base_t) for u in t12 if u.win.hi is not None]
         ed = [LT.fall(u.win, u.base_t) for u in t12 if u.win.lo is not None]
         cr = [(control_value(D, u, c, "R"), control_value(D, u, c, "D"), 1.0 / len(u.usable)) for u in t12
@@ -1201,9 +1274,16 @@ def t12_open(D: Data, gates_sealed: Dict[str, str], rebuy_ids: Sequence[int], as
 def render_results(meta: Dict[str, Any], T: Dict[str, Any], prints: List[str], t12: List[str]) -> str:
     v = T["verdict"]
     sh = T["shape"]
+    ro = meta.get("reopen")
     L = ["# RESULTS — 손절 뒤 급반등 측정(SR1 · T3 단독 주 검정)", "",
-         f"- 사전등록 blob `{PREREG_FROZEN_BLOB}` · 코드 HEAD `{meta['head']}` · 개봉 {meta['run_ts']} · D_asof {D_ASOF}",
-         "- 로그 순서(게이트 → 진짜 p) = `results/open_log.txt`", "",
+         f"- 사전등록 blob `{PREREG_FROZEN_BLOB}` · 부록 blob `{AMENDMENT_FROZEN_BLOB}` · 코드 HEAD `{meta['head']}` · "
+         f"개봉 {meta['run_ts']} · D_asof {D_ASOF}",
+         "- 로그 순서(게이트 → 진짜 p) = `results/open_log.txt`",
+         f"- 개봉 전제(부록 B2): {asof_line(meta['asof']) if meta.get('asof') else '-'}"]
+    if ro:
+        L.append(f"- ⚠ **이탈: 재개봉**(부록 B3) — 사유 「{ro['reason']}」 · 중단 때 HEAD `{ro['interrupted_head']}` · "
+                 f"수정 커밋 `{ro['fix_sha']}` · {ro['at']}")
+    L += ["",
          "## 1. 자기 표본 게이트(§7 · 진짜 p 보다 먼저)", ""]
     for k, pn in T["panels"].items():
         L.append(f"- 판 {k}: B = {pn.B} · " + (" · ".join(
@@ -1221,25 +1301,26 @@ def render_results(meta: Dict[str, Any], T: Dict[str, Any], prints: List[str], t
     return "\n".join(L + prints + [""] + t12) + "\n"
 
 
-def run_open(conn) -> int:
-    preconditions(conn, "open")
+def run_open(conn, reopen_reason: Optional[str] = None) -> int:
+    rq = preconditions(conn, "open")
     D, cnt = load_all(conn, "open")
-    m = open_guard(conn, D, cnt)
+    m, reopen = open_guard(conn, D, cnt, reopen_reason)
     LS = lot_stage(D)
     sealed = m["sealed"]["numbers"]
     now = check_numbers(LS)
     for k in now:
         if now[k] != sealed.get(k):
             raise Refuse(EXIT_FINGERPRINT, f"봉인 값 {k} 가 개봉 재계산과 다르다 — 중단(표식 전)")
-    mark_open(m)                                                      # 1회 실행 표식 — ⓐ·통계 «전»
+    mark_open(m, reopen)                                              # 1회 실행 표식 — ⓐ·통계 «전»
     logf = OPEN_LOG
-    say(f"[개봉] 시작 · HEAD {head_sha()} · 봉인 지문 일치 · 봉인 값(n·G·B·충실도·ⓑ sd) 재계산 일치", logf)
+    say(f"[개봉] {'재개봉(부록 B3)' if reopen else '시작'} · HEAD {head_sha()} · 봉인 지문 일치 · "
+        "봉인 값(n·G·B·충실도·ⓑ sd) 재계산 일치", logf)
     T = t3_open(D, LS, logf)
     extra = t3_variants(D, LS)
     prints = render_t3_prints(D, LS, T, extra)
     asym = {h: exclusion_summary(event_units(D, h, extremes_event=False))["warn"] for h in HS}
     t12 = t12_open(D, sealed.get("gates", {}), rebuy_count(conn, D)["stop_ids"], asym)
-    meta = dict(head=head_sha(), run_ts=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    meta = dict(head=head_sha(), run_ts=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), asof=rq, reopen=reopen)
     out = RESULTS / f"RESULTS_{datetime.now():%Y-%m-%d}.md"
     write_lf(out, render_results(meta, T, prints, t12))
     m = read_meta()
@@ -1252,6 +1333,7 @@ def run_open(conn) -> int:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="손절 뒤 급반등 측정(SR1) 러너")
     ap.add_argument("--stage", choices=("preflight", "sealed", "open"), required=True)
+    ap.add_argument("--reopen-reason", default=None, help="부록 B3 — [T3] 줄 없이 중단된 개봉의 1회 재개봉 사유")
     a = ap.parse_args(argv)
     try:
         conn = connect()
@@ -1263,7 +1345,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return run_preflight(conn)
         if a.stage == "sealed":
             return run_sealed(conn)
-        return run_open(conn)
+        return run_open(conn, a.reopen_reason)
     except Refuse as r:
         print(f"[거부 · 종료 코드 {r.code}] {r.reason}", file=sys.stderr)
         return r.code

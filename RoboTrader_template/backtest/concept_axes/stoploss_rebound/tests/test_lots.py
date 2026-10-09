@@ -248,3 +248,35 @@ def test_author_entry_below_sma_helper():
     assert AE.entry_below_sma([100.0] * 59, 101.0) is False
     assert AE.entry_below_sma([100.0] * 58, 99.0) is None
     assert AE.entry_below_sma([100.0] * 59, None) is None
+
+
+
+# ── 부록 A5 · A4 ─────────────────────────────────────────────────────────
+def test_sma_first_date_and_exclusion_window_start():
+    rows = flat_rows()
+    for i in range(30, 70):                               # 진입(i 70) 전 40거래일 정지(거래량 0)
+        rows[CAL[i]] = row(100, v=0)
+    assert LT.sma_first_date(rows, CAL[70]) == CAL[0]     # 유효 봉 i 0..29 + 70 = 31개 < 60 → 가용 첫 유효 봉
+    for i in range(0, 5):
+        rows[CAL[i]] = row(50)                            # i 4→5 종가 50→100(비율 2.0) — 진입−60(i 10) 보다 앞
+    assert LT.lot_exclusion(rows, CAL, 70, 90, [], [])[0] == ()
+    assert LT.lot_exclusion(rows, CAL, 70, 90, [], [], LT.sma_first_date(rows, CAL[70]))[0] == ("jump",)
+    rows2 = flat_rows()
+    for i in range(80, 100):                              # 진입(i 100) 전 20거래일 정지
+        rows2[CAL[i]] = row(100, v=0)
+    assert LT.sma_first_date(rows2, CAL[100]) == CAL[21]  # 유효 봉 i 0..79 + 100 중 마지막 60개의 첫 봉 < 진입−60(i 40)
+
+
+def test_sma_first_date_full_window():
+    rows = flat_rows()
+    assert LT.sma_first_date(rows, CAL[100]) == CAL[41]     # 진입일 포함 유효 봉 60개 = i 41..100
+    assert LT.sma_first_date({}, CAL[100]) is None
+
+
+def test_episode_chain_variant_differs_on_five_day_steps():
+    pos = {d: i for i, d in enumerate(CAL)}
+    ev = [(1, "s", "A", datetime.combine(CAL[10], time(10))), (2, "s", "A", datetime.combine(CAL[15], time(10))),
+          (3, "s", "A", datetime.combine(CAL[20], time(10)))]
+    assert LT.episode_keep(ev, pos) == {1, 3}               # 3 은 «남긴» 1 로부터 10일
+    assert LT.episode_keep_chain(ev, pos) == {1}            # 3 은 직전 2 로부터 5일 → 연쇄로 빠짐
+    assert len(LT.episode_keep(ev, pos) ^ LT.episode_keep_chain(ev, pos)) == 1

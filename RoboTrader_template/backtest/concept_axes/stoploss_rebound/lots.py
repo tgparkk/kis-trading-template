@@ -66,6 +66,14 @@ def pre_closes(rows: Rows, d0: date) -> List[float]:
     return [float(rows[d].close) for d in sorted(rows) if d < d0 and rows[d].valid()]
 
 
+def sma_first_date(rows: Rows, d0: date) -> Optional[date]:
+    """부록 A5 — 진입일 SMA60 창(진입일까지 유효 봉 60개)의 첫 봉 날짜 · 60개 미만이면 가용 첫 유효 봉 · 없으면 None."""
+    valid = [d for d in sorted(rows) if d <= d0 and rows[d].valid()]
+    if not valid:
+        return None
+    return valid[-AE.SMA_N] if len(valid) >= AE.SMA_N else valid[0]
+
+
 # ── 로트 입력 · 진입 당일 기준 ─────────────────────────────────────────────
 @dataclass
 class LotIn:
@@ -227,11 +235,12 @@ def any_date_in(dates: Sequence[date], lo: date, hi: date) -> bool:
 
 
 def lot_exclusion(rows: Rows, cal: Sequence[date], i0: int, i_end: int, split_dates: Sequence[date],
-                  rights_dates: Sequence[date]) -> Tuple[Tuple[str, ...], bool]:
-    """§6-7 — 로트 구간 [진입 − 60봉(KOSPI 달력), i_end] → (제외 사유들, 유상증자 있음)."""
+                  rights_dates: Sequence[date], sma_first: Optional[date] = None) -> Tuple[Tuple[str, ...], bool]:
+    """§6-7 — 로트 구간 [min(진입 − 60 KOSPI 거래일, SMA60 첫 봉)(부록 A5), i_end] → (제외 사유들, 유상증자 있음)."""
     if i0 - LOOKBACK_BARS < 0:
         raise ValueError("달력이 진입 − 60봉을 덮지 못한다 — 달력·봉 시작일을 앞당길 것")
-    days = cal[i0 - LOOKBACK_BARS:i_end + 1]
+    lo = cal[i0 - LOOKBACK_BARS] if sma_first is None else min(cal[i0 - LOOKBACK_BARS], sma_first)
+    days = [d for d in cal[:i_end + 1] if d >= lo]
     why: List[str] = []
     if jump_in(rows, days):
         why.append("jump")
@@ -293,6 +302,19 @@ def episode_keep(events: Sequence[Tuple[int, str, str, datetime]], pos_of: Dict[
         if key in last and p - last[key] <= EPISODE_GAP:
             continue
         keep.add(eid)
+        last[key] = p
+    return keep
+
+
+def episode_keep_chain(events: Sequence[Tuple[int, str, str, datetime]], pos_of: Dict[date, int]) -> Set[int]:
+    """인쇄 비교용(부록 A4) — DART 식 «직전 이벤트(남김 여부 무관)부터 ≤ 5 거래일이면 뺀다» 연쇄 규칙."""
+    keep: Set[int] = set()
+    last: Dict[Tuple[str, str], int] = {}
+    for eid, strat, code, ts in sorted(events, key=lambda e: (e[1], e[2], e[3], e[0])):
+        p = pos_of[ts.date()]
+        key = (strat, code)
+        if not (key in last and p - last[key] <= EPISODE_GAP):
+            keep.add(eid)
         last[key] = p
     return keep
 
