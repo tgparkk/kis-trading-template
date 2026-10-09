@@ -44,6 +44,7 @@ def _assets_at(conn, as_of):
     return rows
 
 
+@pytest.mark.db   # 실 DB 쓰기(REVIEW_RF7_DELTA P1)
 def test_as_of_symmetric_before_and_after_amendment(conn):
     """🔑 대칭 단언 — 한쪽만 물으면 판별력이 0이다.
     정정 «전»에는 원본 값이, «후»에는 정정 값이 나와야 하고 «둘이 달라야» 한다."""
@@ -54,11 +55,13 @@ def test_as_of_symmetric_before_and_after_amendment(conn):
     assert before != after, "정정 전후가 같다 — 뷰가 as_of 를 안 쓰고 있다"
 
 
+@pytest.mark.db   # 실 DB 쓰기(REVIEW_RF7_DELTA P1)
 def test_no_lookahead_before_first_filing(conn):
     """🔴 최초 접수일 이전에는 «아무것도» 보이면 안 된다."""
     assert _assets_at(conn, "2026-05-14") == []
 
 
+@pytest.mark.db   # 실 DB 쓰기(REVIEW_RF7_DELTA P1)
 def test_total_equity_ignores_sce_reuse_of_account_id(conn):
     """🔴🔴 fix round 1 — SCE(자본변동표)는 ifrs-full_Equity 를 기초/기말 자본 줄에도 재사용한다.
     sj_div 스코프가 없으면 MAX() 가 더 큰 SCE 값을 집어 total_equity 를 오염시킨다(실측 17.1%).

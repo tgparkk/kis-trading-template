@@ -7,6 +7,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from db.kis_db_connection import KisDbConnection  # noqa: E402
 from collectors import financial_writer as w  # noqa: E402
 
+# 🔴 실 DB(kis_template)에 테이블·뷰 생성(ensure_*)·임시 행 INSERT/DELETE 를 한다 → db 표식
+#    (기본 실행 `-m "not db"` 에서 빠진다 · REVIEW_RF7_DELTA P1 · 2026-10-09).
+pytestmark = [pytest.mark.db]
+
 ORIG = {"rcept_no": "29999999000001", "fs_div": "CFS", "corp_code": "00000000",
         "stock_code": "TEST01", "bsns_year": "2026", "reprt_code": "11013",
         "rcept_dt": "2026-05-15", "is_amendment": False, "raw_path": None}
