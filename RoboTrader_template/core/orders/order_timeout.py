@@ -519,7 +519,7 @@ class OrderTimeoutMixin:
             self.logger.warning(f"취소 후 체결 재조회 예외 {order_id}: {e}")
             return None
 
-    def _reopen_after_cancel(self: 'OrderManagerBase', order, prior_defers: int = 0) -> None:
+    def _reopen_after_cancel(self: 'OrderManagerBase', order, prior_defers: int = 0) -> bool:
         """cancel_order 가 CANCELLED 로 닫은 주문을 pending 으로 되돌린다(예약도 복원).
 
         취소 직후 재조회에서 체결분을 발견했거나(→ 부분체결 회계) 체결수량이 확정되지 않았을 때
@@ -527,8 +527,12 @@ class OrderTimeoutMixin:
         같은 금액(주문가×주문수량)으로 다시 잡는다 — 이후 confirm_order 가 체결분만 투자로 옮긴다.
         prior_defers: 취소 전 경로 A(조회 실패) 연기 횟수 — _move_to_completed 가 지운 것을
             이어받아 합산 상한(ORDER_TIMEOUT_DEFER_MAX)을 지킨다(N3 · 2026-10-08).
+
+        Returns:
+            False = 매수 예약 복원 실패(호출자가 텔레그램 경보 — N5/m5 · 2026-10-09) · 그 밖엔 True.
         """
         order_id = order.order_id
+        reserve_ok = True
         if order_id not in self.pending_orders:
             if order in self.completed_orders:
                 self.completed_orders.remove(order)
@@ -538,6 +542,7 @@ class OrderTimeoutMixin:
             if (order.order_type == OrderType.BUY and self.fund_manager
                     and not self.fund_manager.has_reservation(order_id)):
                 if not self.fund_manager.reserve_funds(order_id, order.price * order.quantity):
+                    reserve_ok = False
                     self.logger.critical(
                         f"🚨 취소 후 재개 주문 예약 복원 실패: {order_id} ({order.stock_code}) — "
                         f"자금 장부 수동 확인 필요"
@@ -546,6 +551,26 @@ class OrderTimeoutMixin:
         if prior_defers > self._timeout_defer_counts.get(order_id, 0):
             self._timeout_defer_counts[order_id] = prior_defers
         self.order_timeouts[order_id] = now_kst() + timedelta(seconds=ORDER_TIMEOUT_DEFER_SECONDS)
+        return reserve_ok
+
+    async def _alert_reserve_restore_failed(self: 'OrderManagerBase', order) -> None:
+        """N5/m5(2026-10-09): 재개 주문 예약 복원 실패 텔레그램 — 주문당 1회(N4 「경보 1회」와 같은 방식).
+
+        예약이 없으면 이후 confirm_order 가 「예약되지 않은 주문」으로 아무것도 안 해 투자금이 과소·가용이
+        과대로 남는다(장부 자동 보정 없음 — 사람이 대조).
+        """
+        order_id = order.order_id
+        if order_id in self._reserve_restore_alerted_ids:
+            return
+        self._reserve_restore_alerted_ids.add(order_id)
+        if self.telegram:
+            try:
+                await self.telegram.notify_system_status(
+                    f"취소 후 재개 주문 예약 복원 실패 - 자금 장부 수동 확인 필요: {order.stock_code} 주문 "
+                    f"{order_id} · {order.price * order.quantity:,.0f}원(체결분 투자금이 장부에 안 잡힐 수 있음)"
+                )
+            except Exception:
+                pass
 
     def _settled_fill_candidate(self: 'OrderManagerBase', status):
         """취소 접수 뒤 조회 1회가 «확정 후보»면 그 체결수(tot_ccld_qty), 아니면 None (N2·N6 · 2026-10-08).
@@ -610,7 +635,8 @@ class OrderTimeoutMixin:
         settled, status = await self._settle_after_cancel(order_id, just_cancelled=True)
         if settled == 0:
             return False
-        self._reopen_after_cancel(order, prior_defers)
+        if not self._reopen_after_cancel(order, prior_defers):
+            await self._alert_reserve_restore_failed(order)
         if settled is None:
             await self._defer_or_close_unsettled(order, status, "취소 접수 뒤 체결수량 미확정")
             return True
@@ -715,8 +741,10 @@ class OrderTimeoutMixin:
                 f"상태 재조회 계속(체결·소멸 발견 시 종결) · HTS 수동 확인 필요"
             )
             # s-1: 텔레그램에도 근거(8036R 잔존 | 관측 뒤 조회 실패 | 관측 뒤 0081R 잔량 잔존)를 싣는다
-            alert = (f"주문 취소 미반영({basis}) - 수동 확인 필요 · 예약 유지: "
-                     f"{order.stock_code} 주문 {order_id}")
+            # N5: 재개 때 예약 복원이 실패했으면 «예약 유지»가 아니다
+            kept = self.fund_manager is None or self.fund_manager.has_reservation(order_id)
+            alert = (f"주문 취소 미반영({basis}) - 수동 확인 필요 · "
+                     f"{'예약 유지' if kept else '예약 없음(복원 실패)'}: {order.stock_code} 주문 {order_id}")
         elif lingering:
             self.logger.error(
                 f"🚨 주문 종결 {spent} — 매도 취소 미반영({basis}): {order_id} "

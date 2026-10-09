@@ -63,6 +63,8 @@ class OrderManagerBase:
         # (2026-10-09 델타 리뷰 B — order_timeout._recheck_held_order)
         self._cancel_held_ids: Set[str] = set()
         self._held_fill_alerted_ids: Set[str] = set()
+        # 재개 주문 예약 복원 실패 경보를 보낸 주문(주문당 1회 · 2026-10-09 N5/m5)
+        self._reserve_restore_alerted_ids: Set[str] = set()
 
         # 모니터링 상태
         self.is_monitoring = False
@@ -192,6 +194,7 @@ class OrderManagerBase:
             getattr(self, '_cancel_seen_fill', {}).pop(order_id, None)
             getattr(self, '_cancel_held_ids', set()).discard(order_id)
             getattr(self, '_held_fill_alerted_ids', set()).discard(order_id)
+            getattr(self, '_reserve_restore_alerted_ids', set()).discard(order_id)
 
             # FundManager 연동: 취소/타임아웃 시 예약 해제
             from ..models import OrderStatus

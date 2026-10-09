@@ -1786,3 +1786,48 @@ class TestBHeldOrderRechecksStatusOnly:
         assert order.order_id not in om._cancel_held_ids
         assert order.order_id not in om._held_fill_alerted_ids
         assert order.order_id not in om._cancel_seen_fill
+
+
+# =============================================================================
+# DELTA_REVIEW_1007 N5 · REVIEW_N1_1008 m5 — 재개 주문 예약 복원 실패 경보(2026-10-09)
+# =============================================================================
+class TestN5ReserveRestoreFailureAlertsOnce:
+    """N5/m5: 취소 접수 뒤 «미확정»으로 주문을 되살릴 때 매수 예약 복원이 실패하면(그 사이 다른 주문이 가용자금을
+    씀) CRITICAL 로그뿐이던 것을 텔레그램 경보 1회로. 이후 보류 경보도 «예약 유지»라고 말하지 않는다."""
+
+    @pytest.mark.asyncio
+    async def test_restore_failure_alerts_once_and_hold_alert_says_no_reservation(self):
+        from config.constants import ORDER_TIMEOUT_DEFER_MAX
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([])
+        seq = [_live_row(0)] * 8
+        calls = {"n": 0}
+
+        def status(oid):
+            calls["n"] += 1
+            if calls["n"] == 2:     # 취소 접수 뒤 첫 조회 시점 — 그 사이 다른 주문이 가용자금을 다 썼다
+                assert fm.reserve_funds("0000099999", fm.available_funds)
+            return seq.pop(0) if seq else None
+
+        broker.get_order_status.side_effect = status
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)          # 취소 접수 → 8036R 잔존 → 되살리기(예약 복원 실패)
+            assert order.order_id in om.pending_orders and not fm.has_reservation(order.order_id)
+            assert len(_alerts(telegram, "예약 복원 실패 - 자금 장부 수동 확인 필요")) == 1
+            for _ in range(ORDER_TIMEOUT_DEFER_MAX):
+                await om._handle_timeout(order.order_id)
+        assert order.order_id in om._cancel_held_ids
+        assert len(_alerts(telegram, "예약 복원 실패 - 자금 장부 수동 확인 필요")) == 1, "경보가 반복됐다"
+        held = _alerts(telegram, "주문 취소 미반영")
+        assert len(held) == 1 and "예약 없음(복원 실패)" in str(held[0].args[0])
+        assert "예약 유지" not in str(held[0].args[0])
+
+    @pytest.mark.asyncio
+    async def test_alert_helper_is_once_per_order(self):
+        om = _make_om()
+        order = _inject(om)
+        await om._alert_reserve_restore_failed(order)
+        await om._alert_reserve_restore_failed(order)
+        assert len(_alerts(om.telegram, "예약 복원 실패")) == 1
+        order.status = OrderStatus.CANCELLED
+        om._move_to_completed(order.order_id)
+        assert order.order_id not in om._reserve_restore_alerted_ids
