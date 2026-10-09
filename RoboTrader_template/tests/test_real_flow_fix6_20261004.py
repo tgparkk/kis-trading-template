@@ -2060,7 +2060,8 @@ class TestF7HeldFillAfterEodNote:
         om, broker, telegram, fm, strat, slot, order, n = _held_setup()
         await _hold(om, order, n)
         _feed(broker, rows)
-        with patch("config.market_hours.MarketHours.is_eod_liquidation_time", return_value=after_eod),                 _no_settle_wait():
+        with patch("config.market_hours.MarketHours.is_eod_liquidation_time", return_value=after_eod), \
+                _no_settle_wait():
             await om._monitor_pending_orders()
         resolved = _alerts(telegram, "보류 주문 해소")
         assert len(resolved) == 1
@@ -2165,6 +2166,8 @@ class TestD2ResolvePathF1FailureEndsInHold:
         assert slot.state == StockState.BUY_PENDING and broker.cancel_order.call_count == 1
         held = _alerts(telegram, "주문 취소 미반영(")
         assert len(held) == 1 and "예약 유지" in str(held[0].args[0])
+        # D9: 근거 = «8036R 단독 확인 실패 · 0081R 확정 후보»(종전 표기 «8036R 관측 뒤 조회 실패»는 사실과 달랐다)
+        assert "주문 취소 미반영(8036R 단독 확인 실패 · 0081R 확정 후보)" in str(held[0].args[0])
         assert not _alerts(telegram, "체결수량 확인 불가")
 
 

@@ -708,7 +708,8 @@ class OrderTimeoutMixin:
             return False
         return OrderTimeoutMixin._parse_int(status.get('rmn_qty', 0)) > 0
 
-    async def _defer_or_close_unsettled(self: 'OrderManagerBase', order, status, reason: str) -> None:
+    async def _defer_or_close_unsettled(self: 'OrderManagerBase', order, status, reason: str,
+                                        basis: str = None) -> None:
         """체결수량 미확정 — 확인 표식 + 연기. 상한 소진이면 「수동 확인」 경보와 함께 아는 만큼으로 종결
         (B3: 불명 ≠ 미체결 — 경보 없이 체결 0 으로 닫지 않는다).
 
@@ -737,9 +738,10 @@ class OrderTimeoutMixin:
         remainder_open = self._still_cancellable(status) or (seen_lingering and (
             status is None or self._executed_row_still_open(status)))
         lingering = known == 0 and remainder_open
-        basis = ("8036R 잔존" if self._still_cancellable(status)
-                 else "8036R 관측 뒤 조회 실패" if status is None
-                 else "8036R 관측 뒤 0081R 잔량 잔존")
+        if basis is None:   # D9: 호출자가 더 정확한 근거를 줄 수 있다(F1 확인 실패 등)
+            basis = ("8036R 잔존" if self._still_cancellable(status)
+                     else "8036R 관측 뒤 조회 실패" if status is None
+                     else "8036R 관측 뒤 0081R 잔량 잔존")
         if (lingering and order_id not in self._cancel_resent_ids
                 and order_id not in self._defer_extra_used_ids):
             self._defer_extra_used_ids.add(order_id)
@@ -825,7 +827,8 @@ class OrderTimeoutMixin:
             absent, row = await self._confirm_absent_from_8036r(order_id)
             if not absent:
                 await self._defer_or_close_unsettled(
-                    order, row, f"8036R 단독 확인 {'실패' if row is None else '잔존'} — 체결수량 미확정")
+                    order, row, f"8036R 단독 확인 {'실패' if row is None else '잔존'} — 체결수량 미확정",
+                    basis=None if row is not None else "8036R 단독 확인 실패 · 0081R 확정 후보")
                 return
         self._cancel_confirmed_ids.discard(order_id)
         await self._close_cancelled_with_fill(order, filled, status)
