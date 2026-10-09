@@ -1081,6 +1081,7 @@ def _ledger_setup(statuses):
     broker = Mock()
     broker.get_order_status.side_effect = lambda oid: seq.pop(0) if seq else None
     broker.cancel_order.return_value = _CANCEL_OK
+    broker.get_pending_orders.return_value = []      # 8036R 단독 조회(F1 종결 직전 확인) — 기본 = 목록 비어 있음
     telegram = AsyncMock()
     om = _make_om(broker=broker, telegram=telegram)
     fm = FundManager(initial_funds=10_000_000)
@@ -1831,3 +1832,97 @@ class TestN5ReserveRestoreFailureAlertsOnce:
         order.status = OrderStatus.CANCELLED
         om._move_to_completed(order.order_id)
         assert order.order_id not in om._reserve_restore_alerted_ids
+
+
+# =============================================================================
+# REVIEW_RF7 F1(중요) — 예약을 푸는 종결 직전 8036R 단독 조회로 «부재» 적극 확인(2026-10-09)
+# =============================================================================
+def _8036r_list_row():
+    return {"odno": "0000012345", "pdno": "005930", "ord_qty": "10", "tot_ccld_qty": "0", "psbl_qty": "10"}
+
+
+class TestF1HeldOrderNeedsPositiveAbsenceFrom8036R:
+    """F1: broker.get_order_status 는 8036R 조회 실패도 «없음» 모양(0081R 행)으로 준다 — 살아 있는 주문의 0081R
+    rmn_qty 는 미실측이라, 보류 주문을 체결 0(또는 일부)으로 닫아 예약을 풀기 직전엔 get_pending_orders(8036R
+    단독) 1회로 부재를 확인한다. None(조회 실패)·목록에 ODNO 있음 → 보류 유지. 전량 체결은 확인 없이 회계."""
+
+    @pytest.mark.asyncio
+    async def test_zero_fill_release_waits_for_8036r_absence(self):
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(0)] * 20)                 # 8036R 일시 실패 + 0081R 잔량 0 꼴이 계속
+        broker.get_pending_orders.return_value = None      # ① 8036R 단독 조회도 실패
+        with _no_settle_wait():
+            await om._monitor_pending_orders()
+            assert order.order_id in om._cancel_held_ids and order.status != OrderStatus.CANCELLED
+            assert fm.reserved_funds == pytest.approx(700_000) and slot.state == StockState.BUY_PENDING
+            broker.get_pending_orders.return_value = [_8036r_list_row()]   # ② 목록에 아직 있음
+            await om._monitor_pending_orders()
+            assert order.order_id in om._cancel_held_ids and fm.has_reservation(order.order_id)
+            assert not _alerts(telegram, "보류 주문 해소")
+            broker.get_pending_orders.return_value = [{"odno": "0000099999"}]   # ③ 다른 주문만 → 부재 확인
+            await om._monitor_pending_orders()
+        assert broker.get_pending_orders.call_count == 3
+        assert broker.cancel_order.call_count == 2
+        assert order.status == OrderStatus.CANCELLED and fm.reserved_funds == pytest.approx(0)
+        assert slot.state == StockState.COMPLETED
+        assert len(_alerts(telegram, "보류 주문 해소(체결 0 · 예약 해제)")) == 1
+
+    @pytest.mark.asyncio
+    async def test_partial_release_also_waits_and_full_fill_needs_no_check(self):
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(4)] * 2)
+        broker.get_pending_orders.return_value = None
+        with _no_settle_wait():
+            await om._monitor_pending_orders()
+        assert order.order_id in om._cancel_held_ids and fm.invested_funds == pytest.approx(0)
+        om2, broker2, telegram2, fm2, strat2, slot2, order2, n2 = _held_setup()
+        await _hold(om2, order2, n2)
+        _feed(broker2, [_gone_row(10, avg="70100")] * 2)
+        broker2.get_pending_orders.return_value = None     # 전량 체결은 살아 있을 수 없다 → 확인 불필요
+        with _no_settle_wait():
+            await om2._monitor_pending_orders()
+        assert broker2.get_pending_orders.call_count == 0
+        assert order2.status == OrderStatus.FILLED and slot2.state == StockState.POSITIONED
+
+    @pytest.mark.asyncio
+    async def test_seen_lingering_buy_in_normal_resolve_also_checks_8036r(self):
+        """W-1 과 같은 뿌리: 취소 뒤 8036R 에서 본 매수는 연기 재처리의 «체결 0 확정»도 8036R 단독 확인을 거친다."""
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([
+            _live_row(0), _live_row(0),        # 사전조회 · 취소 +2초 8036R 잔존(관측) → 연기 1
+            _live_row(0),                      # 재처리: 8036R → 재전송 1회
+            _gone_row(0), _gone_row(0),        # 재전송 뒤 연속 2회 체결 0 → 확정 후보
+            _gone_row(0), _gone_row(0),        # 다음 재처리 연속 2회
+        ])
+        broker.get_pending_orders.return_value = [_8036r_list_row()]
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+            await om._handle_timeout(order.order_id)
+            assert order.order_id in om.pending_orders and order.status != OrderStatus.CANCELLED, \
+                "8036R 목록에 아직 있는 매수를 체결 0 으로 닫았다"
+            assert fm.reserved_funds == pytest.approx(700_000) and om._timeout_defer_counts[order.order_id] == 2
+            broker.get_pending_orders.return_value = []
+            await om._handle_timeout(order.order_id)
+        assert broker.get_pending_orders.call_count == 2
+        assert order.status == OrderStatus.CANCELLED and fm.reserved_funds == pytest.approx(0)
+        assert slot.state == StockState.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_unseen_buy_and_sell_paths_do_not_call_8036r_check(self):
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([
+            _live_row(0), _gone_row(0), None, _gone_row(0), _gone_row(0)])   # 8036R 관측 없음
+        broker.get_pending_orders.return_value = None
+        with _no_settle_wait():
+            await om._handle_timeout(order.order_id)
+            await om._handle_timeout(order.order_id)
+        assert broker.get_pending_orders.call_count == 0
+        assert order.status == OrderStatus.CANCELLED                         # 종전 N2 그대로
+        seq = [_live_row(0), _live_row(0), _live_row(0), _gone_row(0), _gone_row(0)]
+        om_s, broker_s, telegram_s, slot_s, order_s = _sell_setup(lambda oid: seq.pop(0) if seq else None)
+        broker_s.get_pending_orders.return_value = None
+        with _no_settle_wait():
+            await om_s._handle_timeout(order_s.order_id)
+            await om_s._handle_timeout(order_s.order_id)
+        assert broker_s.get_pending_orders.call_count == 0                   # 매도는 보류·확인 대상 아님(A)
+        assert order_s.status == OrderStatus.CANCELLED and slot_s.state == StockState.POSITIONED

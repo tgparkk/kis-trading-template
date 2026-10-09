@@ -796,9 +796,47 @@ class OrderTimeoutMixin:
         if settled is None:
             await self._defer_or_close_unsettled(order, status, "취소 접수 뒤 체결수량 미확정")
             return
+        filled = max(getattr(order, 'filled_quantity', 0) or 0, settled)
+        if (filled < order.quantity and order.order_type == OrderType.BUY
+                and order_id in self._cancel_lingering_seen_ids):
+            # F1(2026-10-09 · W-1 과 같은 뿌리): 취소 뒤 8036R 에서 본 매수는 «0081R 잔량 0» 만으로 닫지 않는다 —
+            # 8036R 단독 조회로 부재를 확인한 뒤에만 예약을 푼다(조회 실패·목록 잔존이면 미확정으로 연기).
+            absent, row = await self._confirm_absent_from_8036r(order_id)
+            if not absent:
+                await self._defer_or_close_unsettled(
+                    order, row, f"8036R 단독 확인 {'실패' if row is None else '잔존'} — 체결수량 미확정")
+                return
         self._cancel_confirmed_ids.discard(order_id)
-        await self._close_cancelled_with_fill(
-            order, max(getattr(order, 'filled_quantity', 0) or 0, settled), status)
+        await self._close_cancelled_with_fill(order, filled, status)
+
+    async def _confirm_absent_from_8036r(self: 'OrderManagerBase', order_id: str):
+        """«8036R(정정취소가능)에 그 주문이 없다»를 8036R 단독 조회(broker.get_pending_orders)로 적극 확인 — F1(2026-10-09).
+
+        broker.get_order_status 는 8036R 조회가 «실패»해도 0081R 행이 있으면 _status='executed' 로 준다
+        (framework/broker.py) — «8036R 에 없음»과 «8036R 조회 실패»가 같은 모양이다. 살아 있는 주문의 0081R
+        rmn_qty 값은 미실측(PROBE_RESULT_1008)이라, 예약을 푸는 종결 직전에만 1콜로 다시 확인한다.
+
+        Returns:
+            (True, None)  = 목록 조회 성공 ∧ 그 ODNO 없음 → 종결해도 된다
+            (False, row)  = 목록에 그 ODNO 가 있다(row = 그 행 + _status='pending')
+            (False, None) = 목록 조회 실패(None·예외·목록 아님)
+        """
+        try:
+            rows = await run_with_timeout(
+                self.executor, self.broker.get_pending_orders, timeout_seconds=10, default=None)
+        except Exception as e:
+            self.logger.warning(f"8036R 단독 확인 예외 {order_id}: {e}")
+            rows = None
+        if not isinstance(rows, list):
+            self.logger.warning(f"⏸ 8036R 단독 확인 실패 — 종결 보류: {order_id}")
+            return False, None
+        for r in rows:
+            if isinstance(r, dict) and str(r.get('odno', '')).strip() == str(order_id).strip():
+                row = dict(r)
+                row['_status'] = 'pending'
+                self.logger.warning(f"⏸ 8036R 단독 확인 — 아직 정정취소가능 목록에 있음 · 종결 보류: {order_id}")
+                return False, row
+        return True, None
 
     async def _recheck_held_order(self: 'OrderManagerBase', order_id: str) -> None:
         """보류 주문(취소 미반영으로 예약·슬롯을 둔 매수) 상태 재조회 — 델타 리뷰 B(2026-10-09).
@@ -811,6 +849,7 @@ class OrderTimeoutMixin:
           예약 해제 · 슬롯 COMPLETED.
         - 미확정(8036R 잔존 · 조회 실패 · 불명 · 잔량>0 · 불일치) → 보류 유지. 그 사이 체결이 보이면
           「보류 주문에 체결」 경보 1회(주문이 끝나지 않아 회계하지 않는다 — 체결분은 아직 장부·손절 밖).
+        - F1: 전량 체결이 아닌 종결(예약 해제가 따르는 것)은 8036R 단독 조회로 부재를 확인한 뒤에만.
         """
         order = self.pending_orders.get(order_id)
         if order is None:
@@ -831,6 +870,16 @@ class OrderTimeoutMixin:
                         pass
             return
         filled = max(getattr(order, 'filled_quantity', 0) or 0, settled)
+        if filled < order.quantity:
+            # F1(2026-10-09): 보류 주문은 «취소 뒤에도 살아 있었다»는 증거가 있는 주문이다 — 0081R «잔량 0» 연속
+            # 2회만으로 예약을 풀지 않고 8036R 단독 조회로 부재를 확인한다(실패·잔존이면 보류 유지).
+            absent, row = await self._confirm_absent_from_8036r(order_id)
+            if not absent:
+                if row is not None:
+                    fill = self._parse_int(row.get('tot_ccld_qty', 0))
+                    if fill > self._cancel_seen_fill.get(order_id, 0):
+                        self._cancel_seen_fill[order_id] = fill
+                return
         self._cancel_held_ids.discard(order_id)
         self._cancel_confirmed_ids.discard(order_id)
         if filled >= order.quantity:
