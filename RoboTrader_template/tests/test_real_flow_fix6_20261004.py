@@ -2166,3 +2166,71 @@ class TestD2ResolvePathF1FailureEndsInHold:
         held = _alerts(telegram, "주문 취소 미반영(")
         assert len(held) == 1 and "예약 유지" in str(held[0].args[0])
         assert not _alerts(telegram, "체결수량 확인 불가")
+
+
+
+class TestD3F1FailurePersistsEscalation:
+    """D3: F1 8036R 단독 확인이 같은 주문에서 연속 N(=20)회 실패하면 「8036R 단독 조회 실패 지속」 텔레그램 1회 ·
+    로그 WARNING 은 첫 회·N회마다(그 사이 DEBUG) · 한 번 성공하면 횟수 0 · 종결 때 정리."""
+
+    _MSG = "8036R 단독 조회 실패 지속"
+
+    @pytest.mark.asyncio
+    async def test_escalates_once_after_n_consecutive_failures_then_resolves(self):
+        from core.orders.order_timeout import OrderTimeoutMixin
+        n_alert = OrderTimeoutMixin.F1_FAIL_ALERT_AFTER
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(0)] * 200)
+        broker.get_pending_orders.return_value = None
+        om.logger = Mock()
+        with _no_settle_wait():
+            for _ in range(n_alert - 1):
+                await om._monitor_pending_orders()
+            assert not _alerts(telegram, self._MSG)
+            await om._monitor_pending_orders()                 # N 번째 실패
+            assert len(_alerts(telegram, self._MSG)) == 1
+            for _ in range(n_alert + 5):
+                await om._monitor_pending_orders()
+        assert len(_alerts(telegram, self._MSG)) == 1, "확대 경보가 반복됐다"
+        warns = [c for c in om.logger.warning.call_args_list if "8036R 단독 확인 실패" in str(c.args[0])]
+        assert len(warns) == 1 + 2, "실패 로그가 매 루프 WARNING"          # 1회째 · 20회째 · 40회째
+        broker.get_pending_orders.return_value = []
+        with _no_settle_wait():
+            await om._monitor_pending_orders()
+        assert order.status == OrderStatus.CANCELLED and order.order_id not in om._f1_fail_counts
+
+    @pytest.mark.asyncio
+    async def test_one_successful_list_query_resets_the_streak(self):
+        from core.orders.order_timeout import OrderTimeoutMixin
+        n_alert = OrderTimeoutMixin.F1_FAIL_ALERT_AFTER
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(0)] * 200)
+        broker.get_pending_orders.return_value = None
+        with _no_settle_wait():
+            for _ in range(n_alert - 1):
+                await om._monitor_pending_orders()
+            broker.get_pending_orders.return_value = [_8036r_list_row()]   # 목록 조회 성공(아직 있음)
+            await om._monitor_pending_orders()
+            assert order.order_id not in om._f1_fail_counts
+            broker.get_pending_orders.return_value = None
+            for _ in range(n_alert - 1):
+                await om._monitor_pending_orders()
+        assert not _alerts(telegram, self._MSG)
+        assert order.order_id in om._cancel_held_ids
+
+    @pytest.mark.asyncio
+    async def test_streak_counter_is_cleared_when_order_completes_without_list_success(self):
+        om, broker, telegram, fm, strat, slot, order, n = _held_setup()
+        await _hold(om, order, n)
+        _feed(broker, [_gone_row(0)] * 6 + [_gone_row(10, avg="70100")] * 4)
+        broker.get_pending_orders.return_value = None
+        with _no_settle_wait():
+            for _ in range(5):
+                await om._monitor_pending_orders()
+            assert om._f1_fail_counts.get(order.order_id, 0) >= 1
+            for _ in range(3):
+                await om._monitor_pending_orders()
+        assert order.status == OrderStatus.FILLED                       # 전량 체결 = F1 확인 없이 종결
+        assert order.order_id not in om._f1_fail_counts

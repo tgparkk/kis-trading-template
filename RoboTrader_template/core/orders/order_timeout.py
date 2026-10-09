@@ -26,6 +26,9 @@ if TYPE_CHECKING:
 class OrderTimeoutMixin:
     """주문 타임아웃 처리 관련 메서드들을 모아둔 Mixin 클래스"""
 
+    # D3(2026-10-09): F1 8036R 단독 확인이 같은 주문에서 연속 이 횟수만큼 실패하면 확대 경보 1회(보류 루프 3초 → ≈1분)
+    F1_FAIL_ALERT_AFTER = 20
+
     async def _handle_timeout(self: 'OrderManagerBase', order_id: str) -> None:
         """타임아웃 처리 (5분 기준)"""
         try:
@@ -841,8 +844,17 @@ class OrderTimeoutMixin:
             self.logger.warning(f"8036R 단독 확인 예외 {order_id}: {e}")
             rows = None
         if not isinstance(rows, list):
-            self.logger.warning(f"⏸ 8036R 단독 확인 실패 — 종결 보류: {order_id}")
+            fails = self._f1_fail_counts.get(order_id, 0) + 1
+            self._f1_fail_counts[order_id] = fails
+            # D3: 매 루프 WARNING 대신 첫 회·N회마다만 WARNING(그 사이 DEBUG)
+            if fails == 1 or fails % self.F1_FAIL_ALERT_AFTER == 0:
+                self.logger.warning(f"⏸ 8036R 단독 확인 실패 — 종결 보류: {order_id} (연속 {fails}회)")
+            else:
+                self.logger.debug(f"8036R 단독 확인 실패 — 종결 보류: {order_id} (연속 {fails}회)")
+            if fails == self.F1_FAIL_ALERT_AFTER:
+                await self._alert_f1_failure_persists(order_id, fails)
             return False, None
+        self._f1_fail_counts.pop(order_id, None)
         for r in rows:
             if isinstance(r, dict) and str(r.get('odno', '')).strip() == str(order_id).strip():
                 row = dict(r)
@@ -850,6 +862,19 @@ class OrderTimeoutMixin:
                 self.logger.warning(f"⏸ 8036R 단독 확인 — 아직 정정취소가능 목록에 있음 · 종결 보류: {order_id}")
                 return False, row
         return True, None
+
+    async def _alert_f1_failure_persists(self: 'OrderManagerBase', order_id: str, fails: int) -> None:
+        """D3: 8036R 단독 조회 실패가 이어져 보류(또는 연기 주문)를 풀 수 없다 — 텔레그램 1회(연속 실패 한 묶음당)."""
+        order = self.pending_orders.get(order_id)
+        code = order.stock_code if order is not None else "?"
+        msg = (f"8036R 단독 조회 실패 지속({fails}회) — 보류 해소 불가 · 예약·슬롯 묶임 · HTS 확인: "
+               f"{code} 주문 {order_id}")
+        self.logger.error(f"🚨 {msg}")
+        if self.telegram:
+            try:
+                await self.telegram.notify_system_status(msg)
+            except Exception:
+                pass
 
     async def _alert_held_fill_once(self: 'OrderManagerBase', order) -> None:
         """보류 주문에 체결이 보이는데(취소 뒤 본 체결수 > 0) 아직 회계하지 못할 때 「보류 주문에 체결」 경보 — 주문당 1회."""
