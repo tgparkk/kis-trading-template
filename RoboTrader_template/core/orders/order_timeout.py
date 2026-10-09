@@ -645,6 +645,18 @@ class OrderTimeoutMixin:
         return (isinstance(status, dict) and not status.get('status_unknown')
                 and status.get('_status') == 'pending')
 
+    @staticmethod
+    def _executed_row_still_open(status) -> bool:
+        """0081R 행(_status='executed')인데 체결 0 ∧ 잔량>0 — 8036R «조회 실패»일 수 있는 꼴(W-1 · 2026-10-09).
+
+        broker.get_order_status 는 8036R 조회만 실패하고 0081R 이 성공하면 None 이 아니라 0081R 행을
+        _status='executed' 로 준다(framework/broker.py) — «8036R 에 없음»과 «8036R 조회 실패»가 갈리지 않는다.
+        """
+        if not isinstance(status, dict) or status.get('status_unknown') or status.get('_status') != 'executed':
+            return False
+        return (OrderTimeoutMixin._parse_int(status.get('rmn_qty', 0)) > 0
+                and OrderTimeoutMixin._parse_int(status.get('tot_ccld_qty', 0)) == 0)
+
     async def _defer_or_close_unsettled(self: 'OrderManagerBase', order, status, reason: str) -> None:
         """체결수량 미확정 — 확인 표식 + 연기. 상한 소진이면 「수동 확인」 경보와 함께 아는 만큼으로 종결
         (B3: 불명 ≠ 미체결 — 경보 없이 체결 0 으로 닫지 않는다).
@@ -657,6 +669,7 @@ class OrderTimeoutMixin:
         연기 1회 더 — 다음 재처리(_resolve_cancel_confirmed)가 재전송 1회를 보낸다(예외는 별도 표식으로 주문당 1회).
         N-1: 취소 접수 뒤 8036R 에서 본 적 있는 주문은 이번 조회가 실패(None)여도 «8036R 잔존»으로 취급한다
         (조회 실패 ≠ 체결 0 확정 · 아는 체결분이 있으면 종전 회계 그대로).
+        W-1(2026-10-09): 같은 주문이 8036R 조회만 실패하고 0081R 행(체결 0 ∧ 잔량>0)으로 와도 None 과 같이 취급한다.
         """
         order_id = order.order_id
         self._cancel_confirmed_ids.add(order_id)
@@ -665,9 +678,12 @@ class OrderTimeoutMixin:
         seen = self._parse_int(status.get('tot_ccld_qty', 0)) if isinstance(status, dict) else 0
         known = max(getattr(order, 'filled_quantity', 0) or 0, seen,
                     self._cancel_settle_obs.pop(order_id, 0))
-        lingering = known == 0 and (self._still_cancellable(status) or (
-            status is None and order_id in self._cancel_lingering_seen_ids))
-        basis = "8036R 잔존" if status is not None else "8036R 관측 뒤 조회 실패"
+        seen_lingering = order_id in self._cancel_lingering_seen_ids
+        lingering = known == 0 and (self._still_cancellable(status) or (seen_lingering and (
+            status is None or self._executed_row_still_open(status))))
+        basis = ("8036R 잔존" if self._still_cancellable(status)
+                 else "8036R 관측 뒤 조회 실패" if status is None
+                 else "8036R 관측 뒤 0081R 잔량 잔존")
         if (lingering and order_id not in self._cancel_resent_ids
                 and order_id not in self._defer_extra_used_ids):
             self._defer_extra_used_ids.add(order_id)

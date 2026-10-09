@@ -1580,3 +1580,60 @@ class TestDeltaReviewN1LingeringSeenThenQueryFails:
         assert not _alerts(telegram, "예약 유지") and not _alerts(telegram, "체결수량 확인 불가")
         assert order.order_id not in om._cancel_lingering_seen_ids     # 종결 때 표식 정리
         assert order.order_id not in om._defer_extra_used_ids
+
+
+# =============================================================================
+# 10-19 전 후속 묶음(2026-10-09 · fix/real-flow-7) — 델타 리뷰 cf3cbca..dffa87b W-1
+# =============================================================================
+def _w1_row():
+    """8036R 조회만 실패 + 0081R 성공일 때 broker 가 주는 꼴: 0081R 원주문 행(_status executed) ·
+    체결 0 · 잔량 10(취소 미반영) — «8036R 에 없음»과 구분되지 않는다(framework/broker.py)."""
+    return _gone_row(0, rmn=10)
+
+
+class TestW1PendingQueryFailsButDailyRowShowsOpen:
+    """W-1: 취소 접수 뒤 8036R 에서 본 적 있는 매수 주문의 소진 회차 조회가 «0081R 행(체결 0 ∧ 잔량>0)»으로
+    오면(8036R 조회만 실패한 꼴) None 과 같이 «8036R 잔존»으로 취급 → 보류(예약·슬롯 유지 + 경보 1회).
+    관측 표식이 없으면 종전대로 «확인 불가» 종결(N3 불변)."""
+
+    @pytest.mark.asyncio
+    async def test_seen_in_8036r_then_daily_open_row_on_exhaustion_is_held(self):
+        from config.constants import ORDER_TIMEOUT_DEFER_MAX
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([_live_row(0)] * 7 + [_w1_row()])
+        with _no_settle_wait():
+            for _ in range(ORDER_TIMEOUT_DEFER_MAX):
+                await om._handle_timeout(order.order_id)
+                assert order.order_id in om.pending_orders
+            await om._handle_timeout(order.order_id)          # 소진 회차: 0081R 행(체결 0 · 잔량 10)
+        assert broker.get_order_status.call_count == 8 and broker.cancel_order.call_count == 2
+        assert order.status != OrderStatus.CANCELLED and order.order_id in om.pending_orders, \
+            "8036R 조회 실패 꼴(0081R 잔량>0)을 «8036R 에 없음»으로 읽고 매수를 종결했다"
+        assert order.order_id not in om.order_timeouts
+        assert fm.has_reservation(order.order_id) and fm.reserved_funds == pytest.approx(700_000)
+        assert slot.state == StockState.BUY_PENDING and strat.daily_trades == 0
+        alerts = _alerts(telegram, "수동 확인 필요")
+        assert len(alerts) == 1 and "예약 유지" in str(alerts[0].args[0])
+        assert not _alerts(telegram, "체결수량 확인 불가")
+
+    @pytest.mark.asyncio
+    async def test_daily_open_row_without_8036r_observation_closes_as_before(self):
+        from config.constants import ORDER_TIMEOUT_DEFER_MAX
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([_live_row(0)] + [_w1_row()] * 10)
+        with _no_settle_wait():
+            for _ in range(ORDER_TIMEOUT_DEFER_MAX + 1):
+                await om._handle_timeout(order.order_id)
+        assert broker.cancel_order.call_count == 1                 # 8036R 행을 못 봤으니 재전송 0
+        assert order.order_id not in om._cancel_lingering_seen_ids
+        assert order.status == OrderStatus.CANCELLED and order.order_id not in om.pending_orders
+        assert fm.reserved_funds == pytest.approx(0) and slot.state == StockState.COMPLETED
+        assert len(_alerts(telegram, "체결수량 확인 불가")) == 1
+        assert not _alerts(telegram, "예약 유지")
+
+    def test_open_row_shape_is_only_unfilled_with_remaining_on_daily_row(self):
+        from core.orders.order_timeout import OrderTimeoutMixin as M
+        assert M._executed_row_still_open(_w1_row()) is True
+        assert M._executed_row_still_open(_gone_row(0)) is False          # 잔량 0 = 취소 반영(확정 후보)
+        assert M._executed_row_still_open(_gone_row(3, rmn=7)) is False   # 체결 있음 = 아는 체결분 경로
+        assert M._executed_row_still_open(_live_row(0)) is False          # 8036R 행은 _still_cancellable 이 본다
+        assert M._executed_row_still_open(_UNKNOWN_ROW) is False
+        assert M._executed_row_still_open(None) is False
