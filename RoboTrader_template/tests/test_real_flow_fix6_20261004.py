@@ -1642,7 +1642,7 @@ class TestW1PendingQueryFailsButDailyRowShowsOpen:
         from core.orders.order_timeout import OrderTimeoutMixin as M
         assert M._executed_row_still_open(_w1_row()) is True
         assert M._executed_row_still_open(_gone_row(0)) is False          # 잔량 0 = 취소 반영(확정 후보)
-        assert M._executed_row_still_open(_gone_row(3, rmn=7)) is False   # 체결 있음 = 아는 체결분 경로
+        assert M._executed_row_still_open(_gone_row(3, rmn=7)) is True    # F3: 체결 있어도 잔량>0 이면 열린 꼴(m-c)
         assert M._executed_row_still_open(_live_row(0)) is False          # 8036R 행은 _still_cancellable 이 본다
         assert M._executed_row_still_open(_UNKNOWN_ROW) is False
         assert M._executed_row_still_open(None) is False
@@ -1970,3 +1970,20 @@ class TestF2ReHoldDoesNotRepeatSettleWait:
         assert sleeps == [ORDER_CANCEL_SETTLE_WAIT_SECONDS]
         assert broker.get_pending_orders.call_count == 3
         assert order.order_id in om._cancel_held_ids and fm.reserved_funds == pytest.approx(700_000)
+
+
+class TestF3W1ShapeWithKnownFillUsesRemainderMessage:
+    """F3: 8036R 관측 뒤 소진 회차가 0081R «체결 3 ∧ 잔량 7»(8036R 조회 실패 꼴)이면 회계는 3주 그대로이고
+    경보는 일반 「확인 불가」가 아니라 m-c 「잔량 취소 미반영(8036R 관측 뒤 0081R 잔량 잔존)」."""
+
+    @pytest.mark.asyncio
+    async def test_w1_shape_with_fill_gets_mc_message(self):
+        from config.constants import ORDER_TIMEOUT_DEFER_MAX
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup([_live_row(0)] * 7 + [_gone_row(3, rmn=7)])
+        with _no_settle_wait():
+            for _ in range(ORDER_TIMEOUT_DEFER_MAX + 1):
+                await om._handle_timeout(order.order_id)
+        assert order.status == OrderStatus.FILLED and order.quantity == 3
+        assert fm.invested_funds == pytest.approx(3 * 70000) and slot.position.quantity == 3
+        assert len(_alerts(telegram, "잔량 취소 미반영(8036R 관측 뒤 0081R 잔량 잔존) - 수동 확인 필요 · 체결 3주 회계")) == 1
+        assert not _alerts(telegram, "체결수량 확인 불가")

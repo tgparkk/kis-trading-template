@@ -677,15 +677,16 @@ class OrderTimeoutMixin:
 
     @staticmethod
     def _executed_row_still_open(status) -> bool:
-        """0081R 행(_status='executed')인데 체결 0 ∧ 잔량>0 — 8036R «조회 실패»일 수 있는 꼴(W-1 · 2026-10-09).
+        """0081R 행(_status='executed')인데 잔량>0 — 8036R «조회 실패»일 수 있는 꼴(W-1 · 2026-10-09).
 
         broker.get_order_status 는 8036R 조회만 실패하고 0081R 이 성공하면 None 이 아니라 0081R 행을
         _status='executed' 로 준다(framework/broker.py) — «8036R 에 없음»과 «8036R 조회 실패»가 갈리지 않는다.
+        체결수는 보지 않는다(F3): 보류(lingering)는 호출자가 «아는 체결 0»을 따로 요구하고, 체결>0 이면 m-c
+        «잔량 취소 미반영» 문구로 간다.
         """
         if not isinstance(status, dict) or status.get('status_unknown') or status.get('_status') != 'executed':
             return False
-        return (OrderTimeoutMixin._parse_int(status.get('rmn_qty', 0)) > 0
-                and OrderTimeoutMixin._parse_int(status.get('tot_ccld_qty', 0)) == 0)
+        return OrderTimeoutMixin._parse_int(status.get('rmn_qty', 0)) > 0
 
     async def _defer_or_close_unsettled(self: 'OrderManagerBase', order, status, reason: str) -> None:
         """체결수량 미확정 — 확인 표식 + 연기. 상한 소진이면 「수동 확인」 경보와 함께 아는 만큼으로 종결
