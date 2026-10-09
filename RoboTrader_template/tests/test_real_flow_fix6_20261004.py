@@ -2141,3 +2141,28 @@ class TestD1HeldPartialFillSeenAsCandidateWhileF1Fails:
         assert slot.state == StockState.BUY_PENDING
         alerts = _alerts(telegram, "보류 주문에 체결")
         assert len(alerts) == 1 and "보류 주문에 체결 3/10주 보임(미확정)" in str(alerts[0].args[0])
+
+
+class TestD2ResolvePathF1FailureEndsInHold:
+    """D2: W-1 쪽 F1(`_resolve_cancel_confirmed`)이 계속 실패하면 연기 예산을 다 쓴 뒤 «보류»(예약 유지)로 가야 한다 —
+    지키는 것은 확인 실패 때 `_defer_or_close_unsettled` 에 0081R 행이 아니라 None 을 넘기는 것(리뷰어 변이 F1j:
+    `row`→`status` 면 소진 때 «확인 불가 · CANCELLED · 예약 해제» = F1 구멍). 리뷰어 탐침 pr 꼴."""
+
+    @pytest.mark.asyncio
+    async def test_seen_buy_with_rmn0_candidates_and_failing_8036r_ends_held(self):
+        from config.constants import ORDER_TIMEOUT_DEFER_MAX
+        om, broker, telegram, fm, strat, slot, order = _ledger_setup(
+            [_live_row(0), _live_row(0)] + [_gone_row(0)] * 100)
+        broker.get_pending_orders.return_value = None
+        rounds = 0
+        with _no_settle_wait():
+            while order.order_id not in om._cancel_held_ids and rounds < ORDER_TIMEOUT_DEFER_MAX + 4:
+                await om._handle_timeout(order.order_id)
+                rounds += 1
+        assert order.order_id in om._cancel_held_ids, "F1 확인이 계속 실패했는데 보류로 가지 않았다"
+        assert rounds == ORDER_TIMEOUT_DEFER_MAX + 2                  # 연기 5 + 상한 예외 1 + 보류 1
+        assert order.status != OrderStatus.CANCELLED and fm.reserved_funds == pytest.approx(700_000)
+        assert slot.state == StockState.BUY_PENDING and broker.cancel_order.call_count == 1
+        held = _alerts(telegram, "주문 취소 미반영(")
+        assert len(held) == 1 and "예약 유지" in str(held[0].args[0])
+        assert not _alerts(telegram, "체결수량 확인 불가")
