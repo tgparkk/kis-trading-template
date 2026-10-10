@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import types
 from datetime import date, datetime
 from pathlib import Path
 
@@ -126,3 +127,143 @@ def test_cli_rejects_dev_flags_without_dry_run():
     R = load_runner()
     with pytest.raises(SystemExit):
         R.main(["--record", "--date", "2026-10-12"])
+
+
+# ---- fix round 1 ----
+import requests  # noqa: E402
+
+
+class _BadKis:
+    def __init__(self, exc=None, fail_all=False, fail_first=False):
+        self.exc, self.fail_all, self.fail_first, self.calls = exc, fail_all, fail_first, 0
+
+    def get(self, kind, params):
+        self.calls += 1
+        if self.exc is not None and self.calls == 3:
+            raise self.exc
+        bad = self.fail_all or (self.fail_first and self.calls == 1)
+        return {"rt_cd": "1" if bad else "0", "msg_cd": "X", "output": [], "output2": []}, "2026-10-12T07:52:01"
+
+
+def _err_rows(ctx):
+    return [r for r in ctx.store.runs("trial") if r["status"] == "error"]
+
+
+def test_network_error_is_error_not_missed_token():
+    R = load_runner()
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52), kis=_BadKis(exc=requests.ConnectionError("secret-host")))
+    assert R.run_record(ctx) == "error"
+    rows = _err_rows(ctx)
+    assert len(rows) == 1 and rows[0]["error_text"] == "ConnectionError"
+    assert not ctx.store.cands("trial", date(2026, 10, 8)) and ctx.alerts
+
+
+def test_d_none_persists_error_row():
+    R = load_runner()
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52))
+    R._prev_day = lambda cur, T: None
+    assert R.run_record(ctx) == "error"
+    assert len(_err_rows(ctx)) == 1 and ctx.alerts
+
+
+def test_unexpected_exception_persists_error_row_and_propagates():
+    R = load_runner()
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52))
+
+    def boom(cur, D):
+        raise ValueError("bad data")
+    R._compute = boom
+    with pytest.raises(ValueError):
+        R.run_record(ctx)
+    rows = _err_rows(ctx)
+    assert len(rows) == 1 and rows[0]["error_text"] == "ValueError"
+
+
+def test_error_row_write_failure_does_not_mask_original():
+    R = load_runner()
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52))
+    R._compute = lambda cur, D: (_ for _ in ()).throw(ValueError("orig"))
+
+    def bad_write(phase, run):
+        raise RuntimeError("db down")
+    ctx.store.write_run = bad_write
+    with pytest.raises(ValueError):
+        R.run_record(ctx)
+
+
+def test_all_calls_failed_is_error_no_rows():
+    R = load_runner()
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52), kis=_BadKis(fail_all=True))
+    assert R.run_record(ctx) == "error"
+    assert not ctx.store.cands("trial", date(2026, 10, 8))
+    assert _err_rows(ctx)[0]["error_text"] == "AllCallsFailed"
+
+
+def test_one_failed_call_still_ok():
+    R = load_runner()
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52), kis=_BadKis(fail_first=True))
+    assert R.run_record(ctx) == "ok"
+    assert ctx.store.runs("trial")[0]["n_fail"] == 1
+
+
+def test_snapshot_before_0903_writes_nothing():
+    R = load_runner()
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52))
+    R.run_record(ctx)
+    n = len(ctx.store.runs("trial"))
+    ctx.now_fn = lambda: datetime(2026, 10, 12, 9, 2)
+    assert R.run_snapshot(ctx) == "too_early"
+    assert len(ctx.store.runs("trial")) == n
+    ctx.now_fn = lambda: datetime(2026, 10, 12, 9, 3)
+    R._load_snapshot = lambda cur, D: [("000001", 1, 2.5), ("000002", 2, 2.1)]
+    assert R.run_snapshot(ctx) == "ok"
+
+
+def test_now_requires_dry_run():
+    R = load_runner()
+    with pytest.raises(SystemExit):
+        R.main(["--record", "--now", "08:00"])
+
+
+def _frozen_fake(R, monkeypatch, calls):
+    def fake(repo, path=None):
+        calls.append(path)
+        return types.SimpleNamespace(code_sha="abcdef0123456789", credit_lag_k=None)
+    monkeypatch.setattr(R.G, "write_frozen", fake)
+
+
+def test_freeze_refused_when_sealed_row_exists(monkeypatch):
+    R = load_runner()
+    calls = []
+    _frozen_fake(R, monkeypatch, calls)
+    st = ST.MemoryStore()
+    run = {c: None for c in ST.RUN_COLS}
+    run.update(rule_v="v1", scan_date=date(2026, 10, 8), run_kind="record", run_at="2026-10-12T07:52:00",
+               status="missed_token", code_sha="x")
+    st.write_run("sealed", run)
+    assert R.run_freeze(lambda: st) == 2 and calls == []
+
+
+def test_freeze_proceeds_when_sealed_empty_or_tables_missing(monkeypatch):
+    R = load_runner()
+    calls = []
+    _frozen_fake(R, monkeypatch, calls)
+    assert R.run_freeze(lambda: ST.MemoryStore()) == 0
+
+    class NoTable(Exception):
+        pgcode = "42P01"
+
+    class Missing:
+        def runs(self, phase):
+            raise NoTable("relation does not exist")
+    assert R.run_freeze(lambda: Missing()) == 0 and len(calls) == 2
+
+
+def test_freeze_other_db_error_propagates(monkeypatch):
+    R = load_runner()
+    _frozen_fake(R, monkeypatch, [])
+
+    def down():
+        raise ConnectionError("down")
+    with pytest.raises(ConnectionError):
+        R.run_freeze(down)

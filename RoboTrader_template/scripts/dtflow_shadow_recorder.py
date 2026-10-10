@@ -22,6 +22,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+import requests
+
 RT = Path(__file__).resolve().parents[1]
 if str(RT) not in sys.path:
     sys.path.insert(0, str(RT))
@@ -71,6 +73,8 @@ class Ctx:
     k: Optional[int] = None
     dry_run: bool = False
     t0: float = field(default_factory=_time.perf_counter)
+    cur_D: Optional[date] = None        # 예외 시 error 행을 남길 위치(run_record 가 채운다)
+    cur_phase: Optional[str] = None
 
     def ms(self) -> int:
         return int((_time.perf_counter() - self.t0) * 1000)
@@ -91,14 +95,36 @@ def _trial_lags(ctx: Ctx, days: List[date]) -> Dict[date, List[Optional[int]]]:
     return {d: [r.get("credit_lag") for r in ctx.store.cands("trial", d)] for d in days}
 
 
+def _persist_error(ctx: Ctx, kind: str, error_text: str, **kw) -> None:
+    """error 행을 best-effort 로 남긴다 — 쓰기 자체가 실패해도 원래 예외를 가리지 않는다. error_text = 예외 «타입명»만."""
+    try:
+        D = ctx.cur_D or ctx.T
+        phase = ctx.cur_phase or ("sealed" if ctx.store.runs("sealed") else "trial")
+        ctx.store.write_run(phase, _run_row(ctx, D, kind, "error", error_text=error_text, **kw))
+        _alert(ctx, D, "error")
+    except Exception as e:  # noqa: BLE001
+        ctx.log(f"error 행 기록 실패(무시): {type(e).__name__}")
+
+
 def run_record(ctx: Ctx) -> str:
+    try:
+        return _run_record(ctx)
+    except Exception as e:  # noqa: BLE001 — 예상 밖 예외도 error 행 + 경보 뒤 그대로 올린다
+        _persist_error(ctx, "record", type(e).__name__)
+        raise
+
+
+def _run_record(ctx: Ctx) -> str:
     now = ctx.now_fn()
     cur = ctx.inputs_cur
     D = _prev_day(cur, ctx.T)
     if D is None:
+        _persist_error(ctx, "record", "NoPrevTradingDay")
         return "error"
+    ctx.cur_D = D
     days_desc = _scan_days_desc(cur, D)
     phase = PH.decide(ctx.store, days_desc, ctx.k, _trial_lags(ctx, days_desc[:S.TRIAL_DAYS]))
+    ctx.cur_phase = phase
     if now.time() >= S.REFUSE_AFTER:
         ctx.store.write_run(phase, _run_row(ctx, D, "record", "missed_host"))
         _alert(ctx, D, "missed_host")
@@ -114,9 +140,14 @@ def run_record(ctx: Ctx) -> str:
     cal = _cal(cur, D)
     try:
         client = ctx.kis_factory()
-        raws: List[Dict[str, Any]] = []
-        rows: List[Dict[str, Any]] = []
-        n_fail = 0
+    except (K.TokenUnavailable, OSError, UnicodeDecodeError):   # 토큰 읽기·클라이언트 생성만(봇이 07:40 파일을 다시 쓰는 중 포함)
+        ctx.store.write_run(phase, _run_row(ctx, D, "record", "missed_token", n_cands=len(cands)))
+        _alert(ctx, D, "missed_token", len(cands))
+        return "missed_token"
+    raws: List[Dict[str, Any]] = []
+    rows: List[Dict[str, Any]] = []
+    n_fail = 0
+    try:
         for c in cands:
             bodies: Dict[str, dict] = {}
             for kind in S.KINDS:
@@ -132,10 +163,20 @@ def run_record(ctx: Ctx) -> str:
             r.update(rule_v=S.RULE_V, scan_date=D, stock_code=c.stock_code, rank=c.rank, score=c.score,
                      run_at=ctx.now_fn().isoformat(timespec="seconds"), code_sha=ctx.code_sha, **feat)
             rows.append(r)
-    except (K.TokenUnavailable, OSError, UnicodeDecodeError):   # 봇이 07:40 토큰 파일을 다시 쓰는 중 읽기 실패 포함
+    except K.TokenUnavailable:                       # 조회 중 만료 응답
         ctx.store.write_run(phase, _run_row(ctx, D, "record", "missed_token", n_cands=len(cands)))
         _alert(ctx, D, "missed_token", len(cands))
         return "missed_token"
+    except requests.RequestException as e:           # 네트워크 실패 ≠ 토큰 문제
+        ctx.store.write_run(phase, _run_row(ctx, D, "record", "error", n_cands=len(cands), n_calls=len(raws),
+                                            n_fail=n_fail, error_text=type(e).__name__))
+        _alert(ctx, D, "error", len(cands))
+        return "error"
+    if raws and n_fail >= len(raws):                 # 하루치 호출이 전부 실패 — 봉인 금지
+        ctx.store.write_run(phase, _run_row(ctx, D, "record", "error", n_cands=len(cands), n_calls=len(raws),
+                                            n_fail=n_fail, error_text="AllCallsFailed"))
+        _alert(ctx, D, "error", len(cands))
+        return "error"
     late = ctx.now_fn().time() > S.SEAL_DEADLINE
     for r in rows:
         r["late"] = late
@@ -182,6 +223,8 @@ def _vintage2(ctx: Ctx, client, days_desc: List[date]) -> None:
 
 
 def run_snapshot(ctx: Ctx) -> str:
+    if ctx.now_fn().time() < S.SNAPSHOT_NOT_BEFORE:
+        return "too_early"                            # 아무것도 쓰지 않음 · main 이 종료 코드 2
     cur = ctx.inputs_cur
     D = _prev_day(cur, ctx.T)
     phase = "sealed" if ctx.store.cands("sealed", D) else "trial"
@@ -207,6 +250,30 @@ def run_choose_k(ctx: Ctx) -> None:
         print(f"k={k} · 최소 일 가용률 {mn:.3f} · 평균 {mean:.3f}")
 
 
+def _open_writer_store():
+    return ST.PgStore(ST.connect_writer())
+
+
+def run_freeze(opener: Callable[[], Any] = _open_writer_store, repo=None, path=None) -> int:
+    """봉인 run 행이 하나라도 있으면(상태 무관) 재동결 거부. 표가 아직 없으면(DDL 미적용 · pgcode 42P01) «없음»."""
+    try:
+        has_sealed = bool(opener().runs("sealed"))
+    except Exception as e:  # noqa: BLE001
+        if getattr(e, "pgcode", None) != "42P01":
+            raise
+        has_sealed = False
+    if has_sealed:
+        print("봉인 기록이 있다 — 재동결 거부")
+        return 2
+    try:
+        fr = G.write_frozen(repo or S.REPO_ROOT, path)
+    except G.GuardError as e:
+        print(f"동결 거부: {e}")
+        return 2
+    print(f"동결 {fr.code_sha[:10]} · k={fr.credit_lag_k}")
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     for s in (sys.stdout, sys.stderr):
         try:
@@ -224,13 +291,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--no-guard", action="store_true")
     ap.add_argument("--home")
     ap.add_argument("--archive")
+    ap.add_argument("--now", help="dry-run 전용 HH:MM — T 날짜의 시각을 덮어쓴다")
     a = ap.parse_args(argv)
-    if (a.date or a.no_guard or a.home or a.archive) and not a.dry_run:
-        ap.error("--date/--no-guard/--home/--archive 는 --dry-run 과 함께만")
+    if (a.date or a.no_guard or a.home or a.archive or a.now) and not a.dry_run:
+        ap.error("--date/--no-guard/--home/--archive/--now 는 --dry-run 과 함께만")
+    fake_t = None
+    if a.now:
+        try:
+            fake_t = datetime.strptime(a.now, "%H:%M").time()
+        except ValueError:
+            ap.error("--now 는 HH:MM")
     if a.freeze:
-        fr = G.write_frozen(S.REPO_ROOT)
-        print(f"동결 {fr.code_sha[:10]} · k={fr.credit_lag_k}")
-        return 0
+        return run_freeze()
     code_sha = "dry-run"
     if not (a.dry_run and a.no_guard):
         try:
@@ -269,7 +341,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             conf = K.read_kis_conf(S.key_ini_path())
             tok = K.read_token(S.token_path(), datetime.now())
             return K.Client(conf["base_url"], tok, conf["appkey"], conf["appsecret"])
-        now_fn = (lambda: datetime.combine(T, datetime.now().time())) if a.dry_run else datetime.now
+        now_fn = ((lambda: datetime.combine(T, fake_t or datetime.now().time())) if a.dry_run else datetime.now)
         ctx = Ctx(T=T, now_fn=now_fn, store=store, inputs_cur=cur, kis_factory=kis_factory, code_sha=code_sha,
                   archive=Path(a.archive) if a.archive else (None if a.dry_run else S.archive_dir()),
                   log=print, k=S.CREDIT_LAG_K, dry_run=a.dry_run)
@@ -281,7 +353,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             run_choose_k(ctx)
             st = "ok"
         print(f"status={st}")
-        return 0
+        return 2 if st == "too_early" else 0
     except Exception as e:  # noqa: BLE001
         AL.send(f"error {type(e).__name__}", dry_run=a.dry_run)
         print(f"예외: {type(e).__name__}: {e}")
