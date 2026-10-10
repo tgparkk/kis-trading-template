@@ -14,6 +14,21 @@ from backtest.concept_axes.candidate_ledger import run as R
 from backtest.concept_axes.replayer import scan as SC
 from strategies.daytrading_3methods_breakout.screener import Daytrading3MethodsBreakoutScreenerAdapter
 
+from . import settings as S
+
+
+def check_adapter_params(adapter=None) -> None:
+    """라이브 어댑터 default_params·lookback 이 동결 settings 값과 같은지 — 다르면 SystemExit(표본 규칙이 몰래 바뀌는 것 차단)."""
+    a = adapter or NoCapDaytradingAdapter()
+    p = a.default_params()
+    want = {"high_window": S.HIGH_WINDOW, "vol_lookback": S.VOL_LOOKBACK, "vol_mult": S.VOL_MULT,
+            "min_trading_value": S.MIN_TV, "max_market_cap": S.LARGE_CAP}
+    bad = {k: (p.get(k), v) for k, v in want.items() if p.get(k) != v}
+    if getattr(a, "lookback_days", None) != S.LOOKBACK_BARS:
+        bad["lookback_days"] = (getattr(a, "lookback_days", None), S.LOOKBACK_BARS)
+    if bad:
+        raise SystemExit(f"🔴 라이브 어댑터 룰 값이 동결 settings 와 다르다 {bad} (어댑터, settings) — 중단")
+
 
 class NoCapDaytradingAdapter(Daytrading3MethodsBreakoutScreenerAdapter):
     """시총 조건만 뺀 판 — 거래대금 ≥ 10억만 남긴다."""
@@ -35,11 +50,12 @@ def build_universe_all(px: pd.DataFrame) -> Dict[pd.Timestamp, Dict[str, Tuple[f
 
 def scan_window(px: pd.DataFrame, scan_days: List[pd.Timestamp]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     adapter = NoCapDaytradingAdapter()
+    check_adapter_params(adapter)
     params = adapter.default_params()
     uni = build_universe_all(px)
     elig, info = SC.eligible_for_dates(uni, adapter, scan_days)
     ga = R.GuardedAdapter(adapter)
-    ms, _dgs, _imp = SC.scan_strategy(px, {d: elig.get(d, set()) for d in scan_days}, ga, params, 60,
+    ms, _dgs, _imp = SC.scan_strategy(px, {d: elig.get(d, set()) for d in scan_days}, ga, params, S.LOOKBACK_BARS,
                                       scan_dates=scan_days, max_candidates=None, progress_every=0)
     by: Dict[pd.Timestamp, List[Dict[str, Any]]] = defaultdict(list)
     for m in ms:

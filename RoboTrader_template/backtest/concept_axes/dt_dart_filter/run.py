@@ -15,6 +15,7 @@ from backtest.concept_axes.candidate_ledger import run as R   # noqa: E402  boot
 import argparse                                               # noqa: E402
 import hashlib                                                # noqa: E402
 import json                                                   # noqa: E402
+import re                                                     # noqa: E402
 import subprocess                                             # noqa: E402
 import sys                                                    # noqa: E402
 from datetime import date, datetime                           # noqa: E402
@@ -27,6 +28,7 @@ import pandas as pd                                           # noqa: E402
 from backtest.concept_axes.replayer import loader as LD       # noqa: E402
 
 from . import daycheck as DC                                  # noqa: E402
+from . import frozen_consts as FC                             # noqa: E402
 from . import gate as G                                       # noqa: E402
 from . import lots as L                                       # noqa: E402
 from . import proxy as P                                      # noqa: E402
@@ -68,18 +70,104 @@ def md5(path: Path) -> str:
     return hashlib.md5(Path(path).read_bytes()).hexdigest()
 
 
+def repo_root() -> Path:
+    return Path(_git("rev-parse", "--show-toplevel").stdout.strip())
+
+
+# ── 코드 고정(pins 블록 · 최종 리뷰 I4) ─────────────────────────────────────────
+# PREREG.md 안에 정확히 1개:
+#     ```pins
+#     # 주석·빈 줄 허용
+#     <레포 루트 기준 POSIX 경로> <git blob sha1 40자 소문자 hex>
+#     ```
+# blob = `git hash-object <파일>`(= `git ls-files -s` · `git rev-parse HEAD:<경로>` 와 같은 값). 고정 대상 = required_pins().
+PIN_FENCE = "```pins"
+_PKG_REL = "RoboTrader_template/backtest/concept_axes/dt_dart_filter"
+PIN_EXCLUDE = ("frozen_consts.py",)          # 동결 해시 2개 — PREREG.md blob 을 담으므로 고정 대상에서 뺀다(순환 회피)
+PIN_DEPS = (                                  # 표본·체결·청산·태그 규칙을 정하는 의존 모듈(레포 루트 기준)
+    "RoboTrader_template/strategies/daytrading_3methods_breakout/screener.py",
+    "RoboTrader_template/strategies/books/daytrading_3methods/rules.py",
+    "RoboTrader_template/strategies/books/_base_book_strategy.py",
+    "RoboTrader_template/strategies/_rule_screener_base.py",
+    "RoboTrader_template/utils/data_sanity.py",
+    "RoboTrader_template/backtest/concept_axes/replayer/scan.py",
+    "RoboTrader_template/backtest/concept_axes/replayer/loader.py",
+    "RoboTrader_template/backtest/concept_axes/candidate_ledger/run.py",
+    "RoboTrader_template/backtest/concept_axes/candidate_ledger/tool_calibration/run_calib.py",
+    "RoboTrader_template/backtest/concept_axes/ledger8/exitsim8.py",
+    "RoboTrader_template/backtest/concept_axes/ledger8/sizing.py",
+    "RoboTrader_template/backtest/concept_axes/ledger8/sources8.py",
+    "RoboTrader_template/backtest/concept_axes/minervini/cap_skip_ledger/sim.py",
+    "RoboTrader_template/backtest/concept_axes/theme_rank/bandfill.py",
+    "RoboTrader_template/backtest/concept_axes/candidate_ledger/dart_events/dart_tags.py",
+    _PKG_REL + "/results/backfill_check.json",
+)
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def required_pins(root: Path) -> List[str]:
+    """이 패키지 최상위 *.py(frozen_consts.py 제외 · tests/ 제외) + PIN_DEPS."""
+    pkg = sorted(f"{_PKG_REL}/{p.name}" for p in (Path(root) / _PKG_REL).glob("*.py") if p.name not in PIN_EXCLUDE)
+    return pkg + list(PIN_DEPS)
+
+
+def parse_pins(text: str) -> Dict[str, str]:
+    lines = text.splitlines()
+    starts = [i for i, ln in enumerate(lines) if ln.strip() == PIN_FENCE]
+    if len(starts) != 1:
+        raise SystemExit(f"🔴 PREREG.md 에 {PIN_FENCE} 블록이 정확히 1개여야 한다(지금 {len(starts)}) — 중단")
+    end = next((j for j in range(starts[0] + 1, len(lines)) if lines[j].strip() == "```"), None)
+    if end is None:
+        raise SystemExit("🔴 pins 블록이 닫히지 않았다 — 중단")
+    pins: Dict[str, str] = {}
+    for ln in lines[starts[0] + 1:end]:
+        s = ln.strip()
+        if not s or s.startswith("#"):
+            continue
+        tok = s.split()
+        if len(tok) != 2 or not _SHA_RE.match(tok[1]):
+            raise SystemExit(f"🔴 pins 줄 형식 오류 «{s}» — `<경로> <40자 소문자 hex>` — 중단")
+        path = tok[0]
+        if ("\\" in path or path.startswith("/") or ":" in path or ".." in path.split("/")):
+            raise SystemExit(f"🔴 pins 경로는 레포 루트 기준 POSIX 상대 경로여야 한다 «{path}» — 중단")
+        if path in pins:
+            raise SystemExit(f"🔴 pins 경로 중복 «{path}» — 중단")
+        pins[path] = tok[1]
+    if not pins:
+        raise SystemExit("🔴 pins 블록이 비어 있다 — 중단")
+    return pins
+
+
+def verify_pins(pins: Dict[str, str], root: Path, required: Sequence[str]) -> None:
+    missing = sorted(set(required) - set(pins))
+    if missing:
+        raise SystemExit(f"🔴 pins 블록에 없는 필수 경로 {missing} — 중단")
+    bad = []
+    for rel, sha in sorted(pins.items()):
+        p = Path(root) / rel
+        if not p.is_file():
+            bad.append(f"{rel}(없음)")
+        elif blob(p) != sha:
+            bad.append(rel)
+    if bad:
+        raise SystemExit(f"🔴 고정 blob 과 다른 파일 {bad} — 중단")
+
+
 def require_frozen() -> None:
-    if not S.PREREG_FROZEN_BLOB:
+    if not FC.PREREG_FROZEN_BLOB:
         raise SystemExit("🔴 PREREG_FROZEN_BLOB 비어 있음 — 사전등록 동결(Task 12) 전에는 실행 금지")
-    if not S.PREREG.exists() or blob(S.PREREG) != S.PREREG_FROZEN_BLOB:
+    if not S.PREREG.exists() or blob(S.PREREG) != FC.PREREG_FROZEN_BLOB:
         raise SystemExit("🔴 PREREG.md blob 이 동결값과 다르다 — 중단")
-    if not S.PROXY_COEF_MD5:
+    if not FC.PROXY_COEF_MD5:
         raise SystemExit("🔴 PROXY_COEF_MD5 비어 있음 — 대리 계수 동결(Task 12) 전에는 실행 금지")
     pc = S.RESULTS / "proxy_coef.json"
-    if not pc.exists() or md5(pc) != S.PROXY_COEF_MD5:
+    if not pc.exists() or md5(pc) != FC.PROXY_COEF_MD5:
         raise SystemExit("🔴 proxy_coef.json md5 가 동결값과 다르다 — 중단")
     if not clean_package():
         raise SystemExit("🔴 패키지에 커밋 안 된 변경이 있다 — 중단")
+    root = repo_root()
+    verify_pins(parse_pins(S.PREREG.read_text(encoding="utf-8")), root, required_pins(root))
+    U.check_adapter_params()
 
 
 def _write(path: Path, text: str) -> None:
@@ -106,7 +194,7 @@ def label(fe_sl: ST.FE, fe_tp: ST.FE, tool: str, n1: int, surv_i: float, surv_ii
 
 # ── 단계: proxy(이미 본 구간 · 시총 있는 후보로 대리 적합) ────────────────────────
 def stage_proxy(conn) -> None:
-    if S.PREREG_FROZEN_BLOB:
+    if FC.PREREG_FROZEN_BLOB:
         raise SystemExit("🔴 동결 뒤에는 대리 계수를 다시 적합하지 않는다 — 중단")
     cal = [pd.Timestamp(d).date() for d in LD.load_trading_calendar(conn, S.FIT_PX_START, S.FIT_END.isoformat())]
     days = [pd.Timestamp(d) for d in cal if S.FIT_START <= d <= S.FIT_END]

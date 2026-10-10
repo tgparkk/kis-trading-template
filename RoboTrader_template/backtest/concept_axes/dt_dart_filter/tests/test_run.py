@@ -1,5 +1,6 @@
 import pytest
 
+from backtest.concept_axes.dt_dart_filter import frozen_consts as FC
 from backtest.concept_axes.dt_dart_filter import run as RUN
 from backtest.concept_axes.dt_dart_filter import settings as S
 from backtest.concept_axes.dt_dart_filter.stats import FE
@@ -23,32 +24,41 @@ def test_label_reverse_tool_fail_and_small_n():
 
 
 def test_require_frozen_refuses_when_blob_empty(monkeypatch):
-    monkeypatch.setattr(S, "PREREG_FROZEN_BLOB", "")
+    monkeypatch.setattr(FC, "PREREG_FROZEN_BLOB", "")
     with pytest.raises(SystemExit):
         RUN.require_frozen()
 
 
 def test_open_refuses_without_frozen(monkeypatch):
-    monkeypatch.setattr(S, "PREREG_FROZEN_BLOB", "")
+    monkeypatch.setattr(FC, "PREREG_FROZEN_BLOB", "")
     with pytest.raises(SystemExit):
         RUN.main(["--stage", "open"])
 
 
 # ── fix round 1 ─────────────────────────────────────────────────────────────────
 import json
+from pathlib import Path
 
 import pandas as pd
 
 
+_REAL_BLOB = RUN.blob
+
+
 def _frozen_env(monkeypatch, tmp_path, md5_value=None):
-    (tmp_path / "PREREG.md").write_text("x", encoding="utf-8")
+    """동결 상태 흉내 — PREREG.md 는 tmp 파일 1개(a.py)를 고정하는 pins 블록을 담는다(실제 git hash-object)."""
+    (tmp_path / "a.py").write_text("print(1)\n", encoding="utf-8")
+    (tmp_path / "PREREG.md").write_text(
+        "# 사전등록\n\n```pins\n# path blob\na.py " + _REAL_BLOB(tmp_path / "a.py") + "\n```\n", encoding="utf-8")
     (tmp_path / "proxy_coef.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(S, "RESULTS", tmp_path)
     monkeypatch.setattr(S, "PREREG", tmp_path / "PREREG.md")
-    monkeypatch.setattr(S, "PREREG_FROZEN_BLOB", "abc")
-    monkeypatch.setattr(RUN, "blob", lambda p: "abc")
+    monkeypatch.setattr(FC, "PREREG_FROZEN_BLOB", "abc")
+    monkeypatch.setattr(RUN, "blob", lambda p: "abc" if Path(p).name == "PREREG.md" else _REAL_BLOB(p))
     monkeypatch.setattr(RUN, "clean_package", lambda: True)
-    monkeypatch.setattr(S, "PROXY_COEF_MD5", RUN.md5(tmp_path / "proxy_coef.json") if md5_value is None else md5_value)
+    monkeypatch.setattr(RUN, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(RUN, "required_pins", lambda root: ["a.py"])
+    monkeypatch.setattr(FC, "PROXY_COEF_MD5", RUN.md5(tmp_path / "proxy_coef.json") if md5_value is None else md5_value)
 
 
 def test_effective_n1_excludes_marked_days_without_control():
@@ -62,16 +72,16 @@ def test_effective_n1_excludes_marked_days_without_control():
 def test_require_frozen_needs_proxy_coef_md5(monkeypatch, tmp_path):
     _frozen_env(monkeypatch, tmp_path)
     RUN.require_frozen()                                   # all good -> no raise
-    monkeypatch.setattr(S, "PROXY_COEF_MD5", "")
+    monkeypatch.setattr(FC, "PROXY_COEF_MD5", "")
     with pytest.raises(SystemExit):
         RUN.require_frozen()
-    monkeypatch.setattr(S, "PROXY_COEF_MD5", "deadbeef")
+    monkeypatch.setattr(FC, "PROXY_COEF_MD5", "deadbeef")
     with pytest.raises(SystemExit):
         RUN.require_frozen()
 
 
 def test_proxy_stage_refuses_after_freeze(monkeypatch):
-    monkeypatch.setattr(S, "PREREG_FROZEN_BLOB", "abc")
+    monkeypatch.setattr(FC, "PREREG_FROZEN_BLOB", "abc")
     with pytest.raises(SystemExit):
         RUN.stage_proxy(None)
 
@@ -109,3 +119,117 @@ def test_build_refuses_when_seal_or_open_exists(monkeypatch, tmp_path, name):
     (tmp_path / name).write_text("{}", encoding="utf-8")
     with pytest.raises(SystemExit):
         RUN.stage_build(None)
+
+
+# ── final review I4 · 코드 고정(pins 블록) · 동결 상수 분리 · 어댑터 파라미터 ─────────
+SHA_A, SHA_0 = "a" * 40, "0" * 40
+
+
+def test_frozen_constants_live_outside_settings():
+    assert not hasattr(S, "PREREG_FROZEN_BLOB") and not hasattr(S, "PROXY_COEF_MD5")
+    assert FC.PREREG_FROZEN_BLOB == "" and FC.PROXY_COEF_MD5 == ""
+
+
+def test_parse_pins_reads_single_block():
+    txt = ("# PREREG\n\n본문 ```inline``` 무시\n\n```pins\n# 경로 blob\n\n"
+           f"RoboTrader_template/x.py {SHA_A}\nb/c.json   {SHA_0}\n```\n\n끝\n")
+    assert RUN.parse_pins(txt) == {"RoboTrader_template/x.py": SHA_A, "b/c.json": SHA_0}
+
+
+@pytest.mark.parametrize("body", [
+    None,                                            # 블록 없음
+    "",                                              # 빈 블록
+    f"a.py {SHA_A} extra",                           # 토큰 3개
+    "a.py abc",                                      # sha 형식
+    f"a.py {SHA_A.upper()}",                         # 대문자 sha
+    f"/abs/a.py {SHA_A}",                            # 절대 경로
+    f"C:/a.py {SHA_A}",                              # 드라이브 경로
+    f"x/../a.py {SHA_A}",                            # ..
+    "x\\a.py " + SHA_A,                             # 역슬래시
+    f"a.py {SHA_A}\na.py {SHA_0}",                   # 중복
+])
+def test_parse_pins_rejects_malformed(body):
+    txt = "# PREREG\n" if body is None else f"# PREREG\n```pins\n{body}\n```\n"
+    with pytest.raises(SystemExit):
+        RUN.parse_pins(txt)
+
+
+def test_parse_pins_rejects_two_blocks_and_unclosed():
+    one = f"```pins\na.py {SHA_A}\n```\n"
+    with pytest.raises(SystemExit):
+        RUN.parse_pins(one + one)
+    with pytest.raises(SystemExit):
+        RUN.parse_pins(f"```pins\na.py {SHA_A}\n")
+
+
+def test_verify_pins_uses_git_blob_and_refuses_mismatch_missing_and_uncovered(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.json").write_text("{}", encoding="utf-8")
+    pins = {"a.py": RUN.blob(tmp_path / "a.py"), "sub/b.json": RUN.blob(tmp_path / "sub" / "b.json")}
+    RUN.verify_pins(pins, tmp_path, ["a.py", "sub/b.json"])
+    with pytest.raises(SystemExit):
+        RUN.verify_pins({**pins, "a.py": SHA_0}, tmp_path, ["a.py"])          # blob 불일치
+    with pytest.raises(SystemExit):
+        RUN.verify_pins({**pins, "zz.py": SHA_0}, tmp_path, ["a.py"])         # 고정 파일 없음
+    with pytest.raises(SystemExit):
+        RUN.verify_pins({"a.py": pins["a.py"]}, tmp_path, ["a.py", "sub/b.json"])   # 필수 경로 미고정
+
+
+def test_required_pins_cover_package_deps_and_backfill_report():
+    root = RUN.repo_root()
+    req = RUN.required_pins(root)
+    pkg = "RoboTrader_template/backtest/concept_axes/dt_dart_filter/"
+    for name in ("run.py", "settings.py", "gate.py", "lots.py", "stats.py", "surv.py", "universe.py", "tags.py",
+                 "sample.py", "proxy.py", "daycheck.py", "__init__.py"):
+        assert pkg + name in req
+    assert pkg + "frozen_consts.py" not in req and not any("/tests/" in r for r in req)
+    assert pkg + "results/backfill_check.json" in req
+    for dep in ("strategies/daytrading_3methods_breakout/screener.py", "strategies/books/daytrading_3methods/rules.py",
+                "strategies/_rule_screener_base.py", "backtest/concept_axes/replayer/scan.py",
+                "backtest/concept_axes/replayer/loader.py", "backtest/concept_axes/candidate_ledger/run.py",
+                "backtest/concept_axes/candidate_ledger/tool_calibration/run_calib.py",
+                "backtest/concept_axes/ledger8/exitsim8.py", "backtest/concept_axes/minervini/cap_skip_ledger/sim.py",
+                "backtest/concept_axes/theme_rank/bandfill.py",
+                "backtest/concept_axes/candidate_ledger/dart_events/dart_tags.py"):
+        assert "RoboTrader_template/" + dep in req
+    for r in req:
+        if r.endswith("results/backfill_check.json"):
+            continue                                    # Task 11 이 만든다
+        assert (root / r).is_file(), r
+
+
+def test_require_frozen_refuses_pin_block_mismatch(monkeypatch, tmp_path):
+    _frozen_env(monkeypatch, tmp_path)
+    RUN.require_frozen()
+    (tmp_path / "a.py").write_text("print(2)\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        RUN.require_frozen()
+
+
+def test_require_frozen_refuses_missing_pin_block(monkeypatch, tmp_path):
+    _frozen_env(monkeypatch, tmp_path)
+    (tmp_path / "PREREG.md").write_text("# 사전등록 — pins 블록 없음\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        RUN.require_frozen()
+
+
+def test_require_frozen_refuses_prereg_blob_mismatch(monkeypatch, tmp_path):
+    _frozen_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(FC, "PREREG_FROZEN_BLOB", "def")
+    with pytest.raises(SystemExit):
+        RUN.require_frozen()
+
+
+def test_require_frozen_refuses_dirty_package(monkeypatch, tmp_path):
+    _frozen_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(RUN, "clean_package", lambda: False)
+    with pytest.raises(SystemExit):
+        RUN.require_frozen()
+
+
+def test_require_frozen_checks_adapter_params_against_settings(monkeypatch, tmp_path):
+    _frozen_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(S, "MIN_TV", 2_000_000_000)
+    with pytest.raises(SystemExit):
+        RUN.require_frozen()

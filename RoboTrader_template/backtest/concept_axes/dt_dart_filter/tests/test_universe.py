@@ -26,3 +26,12 @@ def test_build_universe_all_keeps_nan_mcap_rows():
     day = uni[pd.Timestamp("2021-02-01")]
     assert math.isnan(day["1"][0]) and day["1"][1] == 1e9
     assert day["2"] == (3e11, 1e7)
+
+
+def test_adapter_params_equal_settings(monkeypatch):
+    from backtest.concept_axes.dt_dart_filter import settings as S
+    U.check_adapter_params()
+    monkeypatch.setattr(S, "HIGH_WINDOW", 20)
+    import pytest
+    with pytest.raises(SystemExit):
+        U.check_adapter_params()

@@ -37,5 +37,9 @@ FAKE_VALID_FRAC = 0.95     # 유효 복제(p 유한) ≥ ceil(0.95·N_FAKE) = 38
 Z_ALPHA, Z_POWER = 1.6448536269514722, 0.8416212335729143
 TAIL_LOSS = -15.0
 
-PREREG_FROZEN_BLOB = ""   # Task 12 동결 커밋 뒤 설정 — 비어 있으면 seal·open 거부
-PROXY_COEF_MD5 = ""        # Task 12 동결 때 PREREG_FROZEN_BLOB 와 함께 설정 — 비어 있으면 build·seal·open 거부
+# 라이브 어댑터(`Daytrading3MethodsBreakoutScreenerAdapter.default_params`)와 같아야 하는 룰 값 — 다르면 거부
+# (`universe.check_adapter_params` · require_frozen · scan_window). 대형 기준 = 어댑터 max_market_cap.
+HIGH_WINDOW, VOL_LOOKBACK, VOL_MULT = 15, 20, 2.0
+LOOKBACK_BARS = 60
+
+# PREREG_FROZEN_BLOB · PROXY_COEF_MD5 는 `frozen_consts.py` 로 옮겼다(pins 블록 순환 회피 · 최종 리뷰 I4).
