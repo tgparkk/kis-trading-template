@@ -58,8 +58,31 @@ def test_halt_days_removed_from_path_exit_at_resume_open():
         bars[d] = _flat(d, 100.0)                       # 정지 평평봉(거래량 0) — 경로에서 빠져야 한다
     bars[CAL[5]] = X.Bar(CAL[5], 70.0, 72.0, 68.0, 71.0)  # 재개 첫 봉 갭 하락
     r = L.simulate_candidate(_env(bars), "1", CAL[0], {CAL[2], CAL[3], CAL[4]})
-    assert r["exit_reason"] == "sl" and r["exit_date"] == CAL[5] and abs(r["ret_sl"] - (-30.0)) < 1e-9
+    assert r["exit_reason"] == L.EXIT_HALT_RESUME and r["exit_date"] == CAL[5] and abs(r["ret_sl"] - (-30.0)) < 1e-9
     assert r["halted_in_path"] and not r["unresolved"]
+
+
+def test_halt_then_in_band_resumption_forces_exit_at_resume_open():
+    """스펙 :84 «보유 중 정지 → 재개 뒤 첫 체결가로 청산» — 재개 시가가 ±10% 안이어도 그날 시가로 무조건 청산."""
+    bars = {CAL[0]: _flat(CAL[0], 100.0), CAL[1]: _flat(CAL[1], 100.0)}
+    for d in CAL[2:4]:
+        bars[d] = _flat(d, 100.0)                                 # 정지 평평봉
+    bars[CAL[4]] = X.Bar(CAL[4], 103.0, 105.0, 101.0, 104.0)      # 재개 첫 봉 — 밴드 안(+3%)
+    for d in CAL[5:]:
+        bars[d] = _flat(d, 104.0)
+    r = L.simulate_candidate(_env(bars), "1", CAL[0], {CAL[2], CAL[3]})
+    assert r["exit_reason"] == L.EXIT_HALT_RESUME and r["exit_date"] == CAL[4]
+    assert abs(r["ret_sl"] - 3.0) < 1e-9 and r["ret_tp"] == r["ret_sl"] and not r["both"]
+    assert r["halted_in_path"] and not r["unresolved"] and r["hold_days"] == 3
+
+
+def test_exit_before_halt_is_not_forced():
+    bars = {CAL[0]: _flat(CAL[0], 100.0), CAL[1]: _flat(CAL[1], 100.0),
+            CAL[2]: X.Bar(CAL[2], 100.0, 101.0, 89.0, 95.0)}     # k=1 손절
+    for d in CAL[3:]:
+        bars[d] = _flat(d, 95.0)
+    r = L.simulate_candidate(_env(bars), "1", CAL[0], {CAL[4], CAL[5]})
+    assert r["exit_reason"] == "sl" and r["exit_date"] == CAL[2] and not r["halted_in_path"]
 
 
 def test_halt_to_window_end_is_unresolved():
