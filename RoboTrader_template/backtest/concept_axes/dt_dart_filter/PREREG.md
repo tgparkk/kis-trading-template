@@ -1,10 +1,10 @@
 # 사전등록 — daytrading 거르기 층 A: 공시 재료 다음날 추격 금지(lag0) 확인 검정
 
-상태: 초안(동결 전) — 개정 2
+상태: 🔒 동결 2026-10-10 — 개정 2 (사장님 2026-10-10 「A·B 둘 다 동결」)
 
 - 이력
   - 초안 2026-10-10(토) `de2e361`(코드 `fc92bb5`)
-  - critic 1패스(opus · 수정 필요 · 블로커 3 · 중요 7 · 원문 = 워크트리 루트 `CRITIC_prereg_dtdart.md`)
+  - critic 1패스(opus · 수정 필요 · 블로커 3 · 중요 7 · 원문 = `RoboTrader_template/backtest/concept_axes/dt_dart_filter/CRITIC_prereg.md`)
   - 동결 전 수정 `83b9297`·`10dd57f`(사장님 답과 무관한 critic 항목)
   - 🔒 사장님 동결 전 결정 2026-10-10 「권고안 전부 적용」 → A-1 ~ A-7(부록 B)
   - **개정 2**(이 문서) · 코드 기준 = 브랜치 `research/dt-dart-filter` `e95bc34`
@@ -936,7 +936,7 @@ RoboTrader_template/backtest/concept_axes/dt_dart_filter/results/backfill_check.
 ## 부록 B. 동결 전 결정 기록(2026-10-10 · 사장님 「권고안 전부 적용」)
 
 - 원문: 「권고안 전부 적용 (Recommended)」(2026-10-10 토 오후 · 질문 3개 중 하나). 나머지 둘은 「이탈 기록 남김 (Recommended)」(§10-3)과 「지금 push (Recommended)」(권리락 브랜치 · 이 검정과 무관)다.
-- 근거 자료: 쉬운 설명 `RoboTrader_template/docs/panels/2026-10/daytrading_거르기층_동결전_결정_쉬운설명_2026-10-10.md` · critic 원문 `CRITIC_prereg_dtdart.md`(워크트리 루트).
+- 근거 자료: 쉬운 설명 `RoboTrader_template/docs/panels/2026-10/daytrading_거르기층_동결전_결정_쉬운설명_2026-10-10.md` · critic 원문 `RoboTrader_template/backtest/concept_axes/dt_dart_filter/CRITIC_prereg.md`.
 - 초안 부록 B 의 확인 질문(Q1 ~ Q7)과 critic 신규 질문(Q8 ~ Q10)은 아래 결정으로 모두 닫혔다. 본문에는 질문 꼬리표를 남기지 않는다.
 - B-1 ~ B-4 는 B 사전등록(수급 4종 봉인 기록) 몫이다.
 
