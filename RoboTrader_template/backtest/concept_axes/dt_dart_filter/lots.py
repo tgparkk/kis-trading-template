@@ -58,7 +58,7 @@ def _simulate_with_halt_exit(pos: X.Pos, rules: X.ExitRules, path, halts: Set[da
     k, d, b = res
     px_open = float(b.open)
     return X.ExitOut("closed", EXIT_HALT_RESUME, d, px_open, (px_open - price) / price * 100.0, k,
-                     [FLAG_HALT_RESUME], "open")
+                     [FLAG_HALT_RESUME], X.PHASE_OPEN)
 
 
 def simulate_candidate(env, code: str, scan_d: date, halts: Set[date], rules: X.ExitRules = RULES) -> Dict[str, Any]:
