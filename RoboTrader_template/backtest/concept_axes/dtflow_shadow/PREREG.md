@@ -1,8 +1,8 @@
 # 사전등록 — daytrading 수급 4종 07:52 봉인 기록(B · `dtflow_shadow`): 꼬리 20% 후보는 나쁜가
 
-**상태: 초안(동결 전) — 개정 2**
+**상태: 🔒 동결 2026-10-10 — 개정 2 판 (사장님 「A·B 둘 다 동결」)**
 
-- 작성 2026-10-10(토) · 초안 `bd02753`(가상매매 세션 직원 · 계획 Task 9 Step 1) → critic 1패스(워크트리 루트 `CRITIC_prereg_dtflow.md` · 판정 «수정 뒤 동결» · 블로커 2 · 중요 11 · 사소 14 · «초안 해석» 19건 판정) → **개정 2**(이 판) = 사장님 결정 B-1~B-4(§0-1b) + critic 문안 전부 + 코드 `98b3238`·`a86e859`. 다음 = verifier(테스트 통과 + 문안 존재) → 🔒 사장님 동결(A 사전등록 · DDL 적용 · 작업 등록과 **한 번에** · 계획 Task 9 Step 3).
+- 작성 2026-10-10(토) · 초안 `bd02753`(가상매매 세션 직원 · 계획 Task 9 Step 1) → critic 1패스(`dtflow_shadow/CRITIC_prereg.md` · 판정 «수정 뒤 동결» · 블로커 2 · 중요 11 · 사소 14 · «초안 해석» 19건 판정) → **개정 2**(이 판) = 사장님 결정 B-1~B-4(§0-1b) + critic 문안 전부 + 코드 `98b3238`·`a86e859`. 다음 = verifier(테스트 통과 + 문안 존재) → 🔒 사장님 동결(A 사전등록 · DDL 적용 · 작업 등록과 **한 번에** · 계획 Task 9 Step 3).
 - 규범: 스펙 `docs/superpowers/specs/2026-10-10-daytrading-filter-layer-design.md`(main `75326bc`) §0·§4·§5·§7 · 계획 `docs/superpowers/plans/2026-10-10-daytrading-filter-B-flow-shadow.md`(main `c859e91`) · SDD 원장 `.superpowers/sdd/2026-10-10-daytrading-filter-B-flow-shadow/progress.md` 의 `Ruling:` 줄(구현 중 결정) · 사장님 동결 전 결정(§0-1b).
 - 값의 출처 = 코드: 패키지 `RoboTrader_template/backtest/concept_axes/dtflow_shadow/` · 러너 `RoboTrader_template/scripts/dtflow_shadow_recorder.py` · **기준 커밋 `a86e859`**(브랜치 `research/dt-flow-shadow`).
 - 🔴 이 문서의 값은 위 커밋의 코드에서 옮겼다. **동결 커밋에서 코드와 이 문서가 한 곳이라도 다르면 동결하지 않는다.** 기계 대조 = `tests/test_prereg_contract.py`(부록 A sql 블록 = `ddl.sql` 바이트 · 부록 A 의 sha = 현재 `ddl.sql` sha · 부록 B pins = `settings.py`·러너 값(형식까지) · settings 상수 전부가 pins 에 있음 · 본문 `(settings.py: …)` 꼬리표의 이름 = pins 상수 또는 settings 경로 함수).
