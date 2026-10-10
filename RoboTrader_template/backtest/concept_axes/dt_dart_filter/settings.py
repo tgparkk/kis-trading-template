@@ -33,6 +33,7 @@ SEED = 20261010
 N_FAKE = 400
 FAKE_P = 0.10
 FAKE_LO, FAKE_HI = 0.07, 0.13
+FAKE_VALID_FRAC = 0.95     # 유효 복제(p 유한) ≥ ceil(0.95·N_FAKE) = 380 이어야 게이트 판정 · 미만이면 "degenerate"(관리자 판단 · PREREG 명시)
 Z_ALPHA, Z_POWER = 1.6448536269514722, 0.8416212335729143
 TAIL_LOSS = -15.0
 
