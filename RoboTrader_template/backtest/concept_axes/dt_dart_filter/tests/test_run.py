@@ -139,8 +139,10 @@ SHA_A, SHA_0 = "a" * 40, "0" * 40
 
 
 def test_frozen_constants_live_outside_settings():
+    # 동결 뒤: 상수는 frozen_consts 에만 있고 동결 파일의 실제 값과 일치해야 한다(settings 에는 없음)
     assert not hasattr(S, "PREREG_FROZEN_BLOB") and not hasattr(S, "PROXY_COEF_MD5")
-    assert FC.PREREG_FROZEN_BLOB == "" and FC.PROXY_COEF_MD5 == ""
+    assert FC.PREREG_FROZEN_BLOB == RUN.blob(S.PREREG)
+    assert FC.PROXY_COEF_MD5 == RUN.md5(S.RESULTS / "proxy_coef.json")
 
 
 def test_parse_pins_reads_single_block():
