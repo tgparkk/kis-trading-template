@@ -5,5 +5,5 @@
 - `PROXY_COEF_MD5` = `results/proxy_coef.json` 의 md5.
 둘 다 Task 12 동결 커밋 때 채운다. 비어 있으면 build·seal·open 거부(`run.require_frozen`).
 """
-PREREG_FROZEN_BLOB = ""   # Task 12 동결 커밋 뒤 설정 — 비어 있으면 build·seal·open 거부
-PROXY_COEF_MD5 = ""        # Task 12 동결 때 PREREG_FROZEN_BLOB 와 함께 설정 — 비어 있으면 build·seal·open 거부
+PREREG_FROZEN_BLOB = "c384686a2e31202fb29b0db535698b3aab080b6c"   # Task 12 동결 커밋 뒤 설정 — 비어 있으면 build·seal·open 거부
+PROXY_COEF_MD5 = "a1032ffd1cf7092715387ea0502a4c54"        # Task 12 동결 때 PREREG_FROZEN_BLOB 와 함께 설정 — 비어 있으면 build·seal·open 거부
