@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from backtest.concept_axes.dt_dart_filter import proxy as P
 
@@ -27,6 +28,35 @@ def test_logistic_recovers_coefficients():
     y = (rng.random(20000) < P.predict(true, X)).astype(float)
     b = P.fit_logistic(X, y)
     assert np.allclose(b, true, atol=0.08)
+
+
+def _seeded_xy():
+    rng = np.random.default_rng(1)
+    x1, x2 = rng.normal(0, 1, 20000), rng.normal(0, 1, 20000)
+    X = P.design(x1, x2)
+    true = np.array([-0.5, 1.2, -0.8])
+    y = (rng.random(20000) < P.predict(true, X)).astype(float)
+    return X, y
+
+
+def test_logistic_nan_in_X_raises_value_error():
+    X, y = _seeded_xy()
+    X[3, 1] = np.nan
+    with pytest.raises(ValueError):
+        P.fit_logistic(X, y)
+
+
+def test_logistic_inf_in_y_raises_value_error():
+    X, y = _seeded_xy()
+    y[5] = np.inf
+    with pytest.raises(ValueError):
+        P.fit_logistic(X, y)
+
+
+def test_logistic_max_iter_one_raises_runtime_error():
+    X, y = _seeded_xy()
+    with pytest.raises(RuntimeError):
+        P.fit_logistic(X, y, max_iter=1)
 
 
 def test_auc_extremes():

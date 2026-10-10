@@ -31,8 +31,13 @@ def predict(beta: np.ndarray, X: np.ndarray) -> np.ndarray:
 
 
 def fit_logistic(X: np.ndarray, y: np.ndarray, max_iter: int = 100, tol: float = 1e-10) -> np.ndarray:
+    X = np.asarray(X, float)
     y = np.asarray(y, float)
+    n_bad = int((~np.isfinite(X)).sum()) + int((~np.isfinite(y)).sum())
+    if n_bad:
+        raise ValueError(f"fit_logistic: 비유한 입력 (개수={n_bad})")
     beta = np.zeros(X.shape[1])
+    converged = False
     for _ in range(max_iter):
         p = predict(beta, X)
         w = p * (1.0 - p)
@@ -40,7 +45,12 @@ def fit_logistic(X: np.ndarray, y: np.ndarray, max_iter: int = 100, tol: float =
         step = np.linalg.solve(H, X.T @ (y - p))
         beta = beta + step
         if float(np.max(np.abs(step))) < tol:
+            converged = True
             break
+    if not converged:
+        raise RuntimeError(f"fit_logistic: 수렴 실패 (max_iter={max_iter})")
+    if not np.isfinite(beta).all():
+        raise RuntimeError("fit_logistic: 비유한 계수")
     return beta
 
 
