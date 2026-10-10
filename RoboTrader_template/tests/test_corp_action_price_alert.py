@@ -14,7 +14,6 @@
 DB·KIS·텔레그램은 전부 mock 이다.
 """
 import asyncio
-import math
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
