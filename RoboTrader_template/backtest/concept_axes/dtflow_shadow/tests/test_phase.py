@@ -71,3 +71,10 @@ def test_decide_empty_sealed_and_window_ready_is_sealed():
 def test_decide_empty_sealed_and_window_not_ready_is_trial():
     s = _store_with_trial(_runs(n_ok=9))
     assert P.decide(s, DAYS, 3, LAGS) == "trial"
+
+
+def test_alert_conf_percent_is_literal(monkeypatch, tmp_path):
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "key.ini").write_text("[TELEGRAM]\ntoken = 12:a%bc\nchat_id = 7\n", encoding="utf-8")
+    monkeypatch.setenv("KIS_DTFLOW_SHADOW_CONFIG_DIR", str(tmp_path))
+    assert A._conf() == ("12:a%bc", "7")

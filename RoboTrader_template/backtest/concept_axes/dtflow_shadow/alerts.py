@@ -16,7 +16,7 @@ def body(D: date, status: str, n: Optional[int] = None) -> str:
 
 def _conf() -> Optional[Tuple[str, str]]:
     try:
-        cp = configparser.ConfigParser()
+        cp = configparser.ConfigParser(interpolation=None)   # `%` 보간 없음 — 토큰이 예외 메시지로 새지 않게
         cp.read(str(S.key_ini_path()), encoding="utf-8")
         tok = cp.get("TELEGRAM", "token", fallback="").strip()
         chat = cp.get("TELEGRAM", "chat_id", fallback="").strip()

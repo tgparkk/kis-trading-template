@@ -50,8 +50,11 @@ def cell(v: Any) -> str:
     return str(v)
 
 
+HASH_EXCLUDE = ("run_at", "code_sha", "row_sha")       # 실행 시각·코드 판·자기 sha — DB 왕복으로 모양이 바뀌거나 내용이 아님
+
+
 def row_sha(row: Dict[str, Any], cols: List[str]) -> str:
-    keys = sorted(c for c in cols if c not in ("run_at", "code_sha", "row_sha"))
+    keys = sorted(c for c in cols if c not in HASH_EXCLUDE)
     return hashlib.sha256("\n".join(f"{c}={cell(row.get(c))}" for c in keys).encode("utf-8")).hexdigest()
 
 
@@ -65,7 +68,8 @@ def to_csv(rows: List[Dict[str, Any]], cols: List[str]) -> bytes:
 
 
 def rows_sha256(cands: List[Dict[str, Any]]) -> str:
-    return hashlib.sha256(to_csv(cands, CAND_COLS)).hexdigest()
+    """row_sha 와 같은 열 집합(run_at·code_sha·row_sha 제외) — DB 에서 읽어 와도 같은 값이 나온다."""
+    return hashlib.sha256(to_csv(cands, [c for c in CAND_COLS if c not in HASH_EXCLUDE])).hexdigest()
 
 
 class MemoryStore:
@@ -104,9 +108,6 @@ class MemoryStore:
 
     def cands(self, phase, D) -> List[Dict[str, Any]]:
         return [r for r in self.t.get(table(phase, "candidates"), []) if r["scan_date"] == D]
-
-    def any_sealed(self) -> bool:
-        return any(r["status"] == "ok" for r in self.t.get(table("sealed", "run"), []))
 
 
 class PgStore:
@@ -156,10 +157,6 @@ class PgStore:
         return self._select(f"SELECT {', '.join(CAND_COLS)} FROM {table(phase, 'candidates')} "
                             f"WHERE rule_v = %s AND scan_date = %s", (S.RULE_V, D))
 
-    def any_sealed(self) -> bool:
-        return bool(self._select(f"SELECT 1 AS one FROM {table('sealed', 'run')} WHERE rule_v = %s AND status = 'ok' "
-                                 f"LIMIT 1", (S.RULE_V,)))
-
 
 def export_ledger(rows: List[Dict[str, Any]], cols: List[str], root: Path, D: date, name: str) -> str:
     data = to_csv(rows, cols)
@@ -174,7 +171,7 @@ def export_ledger(rows: List[Dict[str, Any]], cols: List[str], root: Path, D: da
 
 
 def writer_password() -> str:
-    cp = configparser.ConfigParser()
+    cp = configparser.ConfigParser(interpolation=None)   # 비번의 `%` 를 보간하지 않는다(예외 메시지로 값이 새지 않게)
     cp.read(str(S.key_ini_path()), encoding="utf-8")
     if not cp.has_section("DTFLOW_SHADOW") or not cp.get("DTFLOW_SHADOW", "db_password", fallback=""):
         raise RuntimeError("key.ini [DTFLOW_SHADOW] db_password 없음")

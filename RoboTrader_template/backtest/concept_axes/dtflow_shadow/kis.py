@@ -37,7 +37,7 @@ def read_token(path: Path, now: datetime, min_left_s: int = S.TOKEN_MIN_LEFT_S) 
 
 
 def read_kis_conf(path: Path) -> Dict[str, str]:
-    cp = configparser.ConfigParser()
+    cp = configparser.ConfigParser(interpolation=None)   # `%` 보간 없음 — 비밀 값이 예외 메시지로 새지 않게
     cp.read(str(path), encoding="utf-8")
     sec = cp["KIS"]
     get = lambda k: str(sec.get(k, "")).strip().strip('"')   # noqa: E731

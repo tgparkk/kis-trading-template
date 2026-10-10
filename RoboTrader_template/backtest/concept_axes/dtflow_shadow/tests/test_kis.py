@@ -65,3 +65,10 @@ def test_client_token_expired_raises_no_reissue():
     with pytest.raises(K.TokenUnavailable):
         c.get("credit", {})
     assert all("/oauth2" not in u for u, _, _ in s.calls)
+
+
+def test_read_kis_conf_percent_is_literal(tmp_path):
+    p = tmp_path / "key.ini"
+    p.write_text('[KIS]\nKIS_BASE_URL = "https://h"\nKIS_APP_KEY = ak\nKIS_APP_SECRET = s%cr%(et)s\n', encoding="utf-8")
+    conf = K.read_kis_conf(p)
+    assert conf == {"base_url": "https://h", "appkey": "ak", "appsecret": "s%cr%(et)s"}
