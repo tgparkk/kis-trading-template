@@ -1,0 +1,94 @@
+"""날짜 고정효과 + 종목 CR1(+ 2원 클러스터) — 스펙 §3-5.
+
+β = Σx̃ỹ/Σx̃² (x̃·ỹ = 날짜 안 평균 뺀 값 · 표식·대조가 둘 다 있는 날만) · ψ_i = x̃_i(ỹ_i − βx̃_i)/Σx̃².
+V_CR1 = G/(G−1)·Σ_g(Σψ)² · 2원 = V_종목 + V_블록 − V_종목×블록(≤0 이면 max). 단측 p 는 δ<0 방향.
+CR1 은 정규 근사 · 2원은 t(G_블록−1)(09-26 `stats_binary` 선례).
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from typing import List, Sequence
+
+import numpy as np
+import pandas as pd
+
+from . import settings as S
+
+
+@dataclass(frozen=True)
+class FE:
+    beta: float
+    se_cr1: float
+    se_2w: float
+    p1_cr1: float
+    p2_cr1: float
+    p1_2w: float
+    p2_2w: float
+    n: int
+    n1: int
+    n_days: int
+    g_stock: int
+    g_block: int
+
+
+def _ncdf(z: float) -> float:
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+
+def _cluster_v(psi: pd.Series, keys: pd.Series):
+    s = psi.groupby(keys.to_numpy()).sum()
+    g = len(s)
+    if g < 2:
+        return float("nan"), g
+    return g / (g - 1) * float((s * s).sum()), g
+
+
+def fe_regression(y, x, day, stock, block) -> FE:
+    df = pd.DataFrame({"y": np.asarray(y, float), "x": np.asarray(x, float), "day": np.asarray(day),
+                       "stock": np.asarray(stock).astype(str), "block": np.asarray(block)})
+    df = df[np.isfinite(df["y"])]
+    g = df.groupby("day")["x"]
+    df = df[(g.transform("max") > 0) & (g.transform("min") < 1)]
+    nan = float("nan")
+    if df.empty:
+        return FE(nan, nan, nan, nan, nan, nan, nan, 0, 0, 0, 0, 0)
+    xt = df["x"] - df.groupby("day")["x"].transform("mean")
+    yt = df["y"] - df.groupby("day")["y"].transform("mean")
+    sxx = float((xt * xt).sum())
+    beta = float((xt * yt).sum() / sxx)
+    psi = xt * (yt - beta * xt) / sxx
+    v_s, gs = _cluster_v(psi, df["stock"])
+    v_b, gb = _cluster_v(psi, df["block"].astype(str))
+    v_sb, _ = _cluster_v(psi, df["stock"] + "|" + df["block"].astype(str))
+    v2 = v_s + v_b - v_sb
+    if not (v2 > 0):
+        v2 = max(v_s, v_b) if not (math.isnan(v_s) or math.isnan(v_b)) else nan
+    se1 = math.sqrt(v_s) if v_s == v_s and v_s > 0 else nan
+    se2 = math.sqrt(v2) if v2 == v2 and v2 > 0 else nan
+    p1c = p2c = p1w = p2w = nan
+    if se1 == se1:
+        t1 = beta / se1
+        p1c, p2c = _ncdf(t1), 2.0 * (1.0 - _ncdf(abs(t1)))
+    if se2 == se2 and gb >= 2:
+        from scipy.stats import t as tdist
+        t2 = beta / se2
+        dfree = max(1, gb - 1)
+        p1w, p2w = float(tdist.cdf(t2, dfree)), float(2.0 * tdist.sf(abs(t2), dfree))
+    return FE(beta, se1, se2, p1c, p2c, p1w, p2w, int(len(df)), int((df["x"] > 0).sum()),
+              int(df["day"].nunique()), gs, gb)
+
+
+def mde(se: float) -> float:
+    return (S.Z_ALPHA + S.Z_POWER) * float(se)
+
+
+def holm(ps: Sequence[float]) -> List[float]:
+    m = len(ps)
+    order = sorted(range(m), key=lambda i: ps[i])
+    adj = [0.0] * m
+    run = 0.0
+    for k, i in enumerate(order):
+        run = max(run, min(1.0, (m - k) * ps[i]))
+        adj[i] = round(run, 12)
+    return adj
