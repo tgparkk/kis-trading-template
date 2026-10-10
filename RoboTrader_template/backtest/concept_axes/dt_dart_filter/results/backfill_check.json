@@ -1,0 +1,17 @@
+{
+ "n_cells": 3501,
+ "n_bad": 0,
+ "bad": [],
+ "complete": true,
+ "window": [
+  "2021-01-01",
+  "2024-03-12"
+ ],
+ "types": [
+  "A",
+  "B",
+  "I"
+ ],
+ "backfill_dir": "D:\\research-archive\\dt_dart_backfill_2021_2024",
+ "git_sha": "2315283ec09834876635139182bf483c08301508"
+}
