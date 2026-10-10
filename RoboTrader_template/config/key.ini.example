@@ -11,3 +11,7 @@ KIS_HTS_ID="YOUR_HTS_ID_HERE"
 enabled=false
 token=YOUR_BOT_TOKEN_HERE
 chat_id=YOUR_CHAT_ID_HERE
+
+[DTFLOW_SHADOW]
+# daytrading 수급 봉인 기록기(dtflow_shadow) 쓰기 역할 비밀번호 — ddl.sql 실행 때 같은 값을 입력
+db_password=YOUR_DTFLOW_SHADOW_DB_PASSWORD_HERE
