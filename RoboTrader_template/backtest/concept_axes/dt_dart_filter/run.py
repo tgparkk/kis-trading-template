@@ -33,6 +33,7 @@ from . import proxy as P                                      # noqa: E402
 from . import sample as SM                                    # noqa: E402
 from . import settings as S                                   # noqa: E402
 from . import stats as ST                                     # noqa: E402
+from . import surv as SV                                      # noqa: E402
 from . import tags as T                                       # noqa: E402
 from . import universe as U                                   # noqa: E402
 
@@ -248,25 +249,18 @@ def _read_ledger() -> pd.DataFrame:
     return led
 
 
-def _survivorship(conn, px_keys) -> Dict[str, float]:
-    fil = T.load_filings_typed(conn, S.SCAN_START, S.SCAN_END)
+def _survivorship(conn, px: pd.DataFrame) -> Dict[str, Any]:
+    """생존자 누락률 (i) 공시 단위 · (ii) 회사 단위 — 코넥스·상장 전 공시 제외(`surv.py` · 최종 리뷰 I1)."""
+    fil = T.load_filings_cls(conn, S.SCAN_START, S.SCAN_END)
     cal = [pd.Timestamp(d).date() for d in LD.load_trading_calendar(conn, S.PX_START, S.PATH_END)]
-    import bisect
-
-    def miss(rows):
-        n = m = 0
-        for c, d, _nm, _t in rows:
-            j = bisect.bisect_left(cal, d)
-            if j >= len(cal):
-                continue
-            n += 1
-            m += int((c, cal[j]) not in px_keys)
-        return (m / n if n else float("nan")), n
-    tagged = [r for r in fil if T.is_lag0_tag(r[2])]
-    periodic = [r for r in fil if r[3] == "A" and "정정" not in r[2]]
-    si, ni = miss(tagged)
-    sii, nii = miss(periodic)
-    return {"surv_i": si, "n_i": ni, "surv_ii": sii, "n_ii": nii}
+    codes = px["stock_code"].astype(str).to_numpy()
+    days = [pd.Timestamp(t).date() for t in px["date"]]
+    keys = set(zip(codes, days))
+    first: Dict[str, date] = {}
+    for c, d in zip(codes, days):
+        if c not in first or d < first[c]:
+            first[c] = d
+    return SV.survivorship(fil, cal, keys, first)
 
 
 # ── 단계: seal(표식 행 수익 안 읽음) ───────────────────────────────────────────
@@ -279,8 +273,7 @@ def stage_seal(conn) -> None:
     df = SM.analysis_frame(led, _read_marks("lag0"), cal_idx)
     gate = G.fake_gate(df)
     ctrl = df[df["x"] == 0]
-    keys = set(zip(px["stock_code"].astype(str), [pd.Timestamp(t).date() for t in px["date"]]))
-    surv = _survivorship(conn, keys)
+    surv = _survivorship(conn, px)
     n1_raw = int((df["x"] == 1).sum())
     n1 = effective_n1(df)
     years = pd.Series([d.year for d in df["scan_date"]])
@@ -297,8 +290,9 @@ def stage_seal(conn) -> None:
         f"- 가짜 게이트: CR1 거부율 {gate['rej_cr1']:.3f} · 2원 {gate['rej_2w']:.3f} → 도구 **{gate['tool']}** "
         f"(n_fake {gate['n_fake']} · 건너뜀 {gate['n_skipped']})",
         f"- SD_null {gate['sd_null']:.3f} → MDE {seal['mde_null']:.3f}%p (평균 SE 기준 {seal['mde_se']:.3f}%p)",
-        f"- 생존자 누락률 (i) 3태그 {surv['surv_i']:.4f}(n {surv['n_i']:,}) · (ii) 정기공시 {surv['surv_ii']:.4f}"
-        f"(n {surv['n_ii']:,})", ""]))
+        f"- 생존자 누락률 (i) 3태그 공시 단위 {surv['surv_i']:.4f}(n {surv['n_i']:,}) · (ii) 정기공시 회사 단위 "
+        f"{surv['surv_ii']:.4f}(n {surv['n_ii']:,}) — 코넥스·상장 전 공시 제외",
+        *[f"  - {ln}" for ln in SV.breakdown_text(surv).splitlines()], ""]))
     print(json.dumps(seal, ensure_ascii=False, indent=1, default=str))
 
 

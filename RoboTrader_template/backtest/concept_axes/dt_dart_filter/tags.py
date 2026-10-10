@@ -40,6 +40,16 @@ def load_filings(conn, start: date, end: date) -> List[Tuple[str, date, str]]:
     return [(c, d, n) for c, d, n, _ in load_filings_typed(conn, start, end)]
 
 
+def load_filings_cls(conn, start: date, end: date) -> List[Tuple[str, date, str, str, str]]:
+    """(stock_code, rcept_dt, report_nm, pblntf_ty, corp_cls) — 생존자 누락률(코넥스 제외)용 · SELECT 전용."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT stock_code, rcept_dt, report_nm, pblntf_ty, corp_cls FROM dart_disclosures "
+                    "WHERE rcept_dt BETWEEN %s AND %s AND stock_code IS NOT NULL", (start, end))
+        rows = cur.fetchall()
+    conn.rollback()
+    return [(str(c), d, str(n or ""), str(t or ""), str(k or "")) for c, d, n, t, k in rows]
+
+
 def load_filings_typed(conn, start: date, end: date) -> List[Tuple[str, date, str, str]]:
     with conn.cursor() as cur:
         cur.execute("SELECT stock_code, rcept_dt, report_nm, pblntf_ty FROM dart_disclosures "
