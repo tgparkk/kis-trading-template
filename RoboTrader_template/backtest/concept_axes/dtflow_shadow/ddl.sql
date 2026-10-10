@@ -1,4 +1,5 @@
--- 실행(사장님 확인 뒤 1회 · Task 10): psql -h 127.0.0.1 -p 5433 -U postgres -d kis_template -f ddl.sql
+-- 실행(사장님 확인 뒤 1회 · Task 10): psql -1 -h 127.0.0.1 -p 5433 -U postgres -d kis_template -f ddl.sql
+--   -1 = 한 트랜잭션(중간에 멈추면 역할·스키마·표 모두 되돌린다) · -d = config.constants.resolve_daily_source_db() 값.
 -- 비밀번호는 실행 중 \prompt 로 받는다 = config/key.ini [DTFLOW_SHADOW] db_password 값(또는 -v dtflow_pw=…).
 --   빈 값이면(비대화형 실행에서 \prompt 가 빈 줄을 읽은 경우 포함) 아무것도 만들지 않고 멈춘다.
 -- 규약: retention 없음 · DROP 없음 · IF NOT EXISTS 없음(이미 있으면 멈춘다).
@@ -21,7 +22,7 @@ CREATE ROLE dtflow_shadow_owner NOLOGIN;
 CREATE ROLE dtflow_shadow_writer LOGIN PASSWORD :'dtflow_pw';
 CREATE SCHEMA dtflow_shadow AUTHORIZATION dtflow_shadow_owner;
 REVOKE ALL ON SCHEMA dtflow_shadow FROM PUBLIC;
-GRANT CONNECT ON DATABASE kis_template TO dtflow_shadow_writer;
+GRANT CONNECT ON DATABASE :"DBNAME" TO dtflow_shadow_writer;
 GRANT USAGE ON SCHEMA public TO dtflow_shadow_writer;
 GRANT SELECT ON public.daily_prices, public.stock_info, public.screener_snapshots TO dtflow_shadow_writer;
 SET ROLE dtflow_shadow_owner;

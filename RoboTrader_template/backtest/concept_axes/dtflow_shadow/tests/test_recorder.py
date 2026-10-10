@@ -662,3 +662,143 @@ def test_choose_k_skips_ok_days_without_candidates():
     row = [ln for ln in out if str(ln).startswith("k=3 ")][0]
     assert "최소 일 가용률 1.000" in row
     assert any(str(PAST[10]) in str(ln) and "10일" in str(ln) for ln in out)
+
+
+# ---- 개정 2: B-1 멈춤 표식 · B-2 경고만 ----
+import json  # noqa: E402
+
+
+def _seed_sealed_day(store, d, match=False, n=2):
+    cands = []
+    for i in range(n):
+        r = {c: None for c in ST.CAND_COLS}
+        r.update(rule_v="v1", scan_date=d, stock_code=f"00008{i}", rank=i + 1, score=2.0, code_sha="x", late=False)
+        r["row_sha"] = ST.row_sha(r, ST.CAND_COLS)
+        cands.append(r)
+    rec = {c: None for c in ST.RUN_COLS}
+    rec.update(rule_v="v1", scan_date=d, run_kind="record", run_at=f"{d}T07:52:00", status="ok", code_sha="x",
+               n_cands=n)
+    store.write_day("sealed", cands, [], rec)
+    snap = {c: None for c in ST.RUN_COLS}
+    snap.update(rule_v="v1", scan_date=d, run_kind="snapshot_check", run_at=f"{d}T09:05:00", status="ok",
+                code_sha="x", snapshot_match=match)
+    store.write_run("sealed", snap)
+
+
+def _stop_ctx(R, tmp_path, n_bad_before=4, phase="sealed"):
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52))
+    ctx.home = tmp_path / "stophome"
+    for d in PAST[:n_bad_before]:
+        if phase == "sealed":
+            _seed_sealed_day(ctx.store, d, match=False)
+        else:
+            _seed_trial_day(ctx.store, d, match=False)
+    assert R.run_record(ctx) == "ok"
+    ctx.now_fn = lambda: datetime(2026, 10, 12, 9, 5)
+    R._load_snapshot = lambda cur, D: [("000001", 1, 9.9)]           # 불일치
+    return ctx
+
+
+def test_sealed_snapshot_fifth_bad_day_writes_stop_marker_and_alert(tmp_path):
+    R = load_runner()
+    ctx = _stop_ctx(R, tmp_path)
+    assert ctx.store.cands("sealed", D8)                                  # 봉인 단계
+    assert R.run_snapshot(ctx) == "ok"
+    marker = ctx.home / S.STOP_MARKER
+    assert marker.exists()
+    info = json.loads(marker.read_text(encoding="utf-8"))
+    assert info["reason"] == "streak" and info["n_bad"] == 5 and info["through"] == D8.isoformat()
+    hist = (ctx.home / S.STOP_HISTORY).read_text(encoding="utf-8").splitlines()
+    assert len(hist) == 1 and json.loads(hist[0])["through"] == D8.isoformat()
+    assert any("stop_snapshot" in a for a in ctx.alerts)
+
+
+def test_sealed_snapshot_four_bad_days_no_marker(tmp_path):
+    R = load_runner()
+    ctx = _stop_ctx(R, tmp_path, n_bad_before=3)
+    assert R.run_snapshot(ctx) == "ok"
+    assert not (ctx.home / S.STOP_MARKER).exists()
+
+
+def test_trial_phase_never_writes_stop_marker(tmp_path):
+    R = load_runner()
+    ctx = _stop_ctx(R, tmp_path, phase="trial")
+    assert ctx.store.cands("trial", D8)
+    assert R.run_snapshot(ctx) == "ok"
+    assert not (ctx.home / S.STOP_MARKER).exists() and not (ctx.home / S.STOP_HISTORY).exists()
+
+
+def test_record_refused_while_stop_marker_exists(tmp_path):
+    R = load_runner()
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52))
+    ctx.home = tmp_path / "stophome"
+    ctx.home.mkdir()
+    (ctx.home / S.STOP_MARKER).write_text("{}", encoding="utf-8")
+    before = {k: [dict(r) for r in v] for k, v in ctx.store.t.items()}
+    assert R.run_record(ctx) == "stopped"
+    assert ctx.store.t == before and any("status=stopped" in a for a in ctx.alerts)
+
+
+def test_removed_marker_old_bad_days_do_not_retrigger(tmp_path):
+    R = load_runner()
+    ctx = _stop_ctx(R, tmp_path)
+    assert R.run_snapshot(ctx) == "ok"
+    marker = ctx.home / S.STOP_MARKER
+    marker.unlink()                                                       # 사람이 분류 뒤 지움
+    R._stop_eval(ctx)
+    assert not marker.exists()                                            # through 까지는 다시 세지 않는다
+    nxt = [D8 + timedelta(days=i) for i in range(1, 6)]
+    for d in nxt:
+        _seed_sealed_day(ctx.store, d, match=False)
+    R._stop_eval(ctx)
+    assert marker.exists()
+    assert json.loads(marker.read_text(encoding="utf-8"))["through"] == nxt[-1].isoformat()
+
+
+def test_stop_eval_keeps_existing_marker(tmp_path):
+    R = load_runner()
+    ctx = _stop_ctx(R, tmp_path)
+    ctx.home.mkdir(parents=True, exist_ok=True)
+    (ctx.home / S.STOP_MARKER).write_text('{"first": 1}', encoding="utf-8")
+    assert R.run_snapshot(ctx) == "ok"
+    assert json.loads((ctx.home / S.STOP_MARKER).read_text(encoding="utf-8")) == {"first": 1}
+    assert not (ctx.home / S.STOP_HISTORY).exists()
+
+
+def test_exit2_set_has_stopped():
+    assert "stopped" in load_runner().EXIT2
+
+
+def test_main_record_stopped_exit2_writes_nothing(monkeypatch, tmp_path):
+    R = load_runner()
+    sent = _sent(monkeypatch, R)
+    st = _dry_main_env(monkeypatch, R)
+    home = tmp_path / "dryhome"
+    home.mkdir()
+    (home / S.STOP_MARKER).write_text("{}", encoding="utf-8")
+    assert R.main(_dryargs(home)) == 2
+    assert not st.runs("trial") and not st.runs("sealed")
+    assert any("stopped" in t for t, _ in sent)
+
+
+def test_main_guard_warn_only_alerts_logs_and_continues(monkeypatch, tmp_path):
+    R = load_runner()
+    sent = _sent(monkeypatch, R)
+    st = _dry_main_env(monkeypatch, R)
+    monkeypatch.setattr(R.G, "refuse_live_tree", lambda p: None)
+    monkeypatch.setattr(R.G, "load_frozen", lambda: object())
+
+    def fake_check(repo, fr, warnings=None):
+        assert warnings is not None                                       # 러너는 경고 목록을 받는다
+        warnings.append("api/kis_auth.py:sha")
+        return "abc123"
+    monkeypatch.setattr(R.G, "check_runtime", fake_check)
+    home = tmp_path / "dryhome"
+    args = ["--record", "--dry-run", "--date", "2026-10-12", "--now", "07:52",
+            "--home", str(home), "--archive", str(tmp_path / "arc")]
+    assert R.main(args) == 0
+    assert any("source_warn" in t and "api/kis_auth.py:sha" in t for t, _ in sent)
+    log = next((home / "logs").glob("recorder_*.log")).read_text(encoding="utf-8")
+    assert "source_warn" in log
+    run = [r for r in st.runs("trial") if r["run_kind"] == "record"][0]
+    assert run["status"] == "ok" and run["code_sha"] == "abc123"

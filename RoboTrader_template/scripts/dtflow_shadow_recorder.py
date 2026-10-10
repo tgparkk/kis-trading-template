@@ -51,7 +51,7 @@ _compute = C.compute
 _load_snapshot = C.load_snapshot
 
 CAL_DAYS = 40                                   # 신용 시차·스캔 창·D′ 에 쓰는 달력 길이(거래일)
-EXIT2 = ("too_early", "already_recorded", "already_checked")       # 아무것도 쓰지 않고 끝난 실행 = 종료 코드 2
+EXIT2 = ("too_early", "already_recorded", "already_checked", "stopped")   # 아무것도 쓰지 않고 끝난 실행 = 종료 코드 2
 
 
 _wall_now = datetime.now                        # 실제 시계(테스트가 바꿔 끼운다) — dry-run 시간대 거부용
@@ -104,9 +104,13 @@ class Ctx:
     t0: float = field(default_factory=_time.perf_counter)
     cur_D: Optional[date] = None        # 예외 시 error 행을 남길 위치(run_record·run_snapshot 이 채운다)
     cur_phase: Optional[str] = None
+    home: Optional[Path] = None         # 멈춤 표식·이력 위치(None = S.home_dir() · dry-run 은 --home)
 
     def ms(self) -> int:
         return int((_time.perf_counter() - self.t0) * 1000)
+
+    def home_dir(self) -> Path:
+        return Path(self.home) if self.home is not None else S.home_dir()
 
 
 def _run_row(ctx: Ctx, D: date, kind: str, status: str, **kw) -> Dict[str, Any]:
@@ -142,6 +146,13 @@ def _persist_error(ctx: Ctx, kind: str, error_text: str, **kw) -> None:
 
 
 def run_record(ctx: Ctx) -> str:
+    if (ctx.home_dir() / S.STOP_MARKER).exists():    # B-1 멈춤 — 사람이 원인을 분류해 표식을 지울 때까지 아무것도 쓰지 않음
+        try:
+            D = _prev_day(ctx.T)
+        except Exception:  # noqa: BLE001 — 경보 본문용 D 일 뿐(쓰기 없음)
+            D = None
+        _alert(ctx, D or ctx.T, "stopped")
+        return "stopped"
     try:
         return _run_record(ctx)
     except Exception as e:  # noqa: BLE001 — 예상 밖 예외도 error 행 + 경보 뒤 그대로 올린다
@@ -265,10 +276,46 @@ def run_snapshot(ctx: Ctx) -> str:
     if ctx.now_fn().time() < S.SNAPSHOT_NOT_BEFORE:
         return "too_early"                            # 아무것도 쓰지 않음 · main 이 종료 코드 2
     try:
-        return _run_snapshot(ctx)
+        st = _run_snapshot(ctx)
     except Exception as e:  # noqa: BLE001 — run_record 와 같게: error 행 + 경보 뒤 그대로 올린다
         _persist_error(ctx, "snapshot_check", type(e).__name__)
         raise
+    if st != "already_checked" and ctx.cur_phase == "sealed":
+        _stop_eval(ctx)                               # B-1 — 봉인 단계만(시험 단계는 seal_ready 가 불일치를 이미 막는다)
+    return st
+
+
+def _stop_after(home: Path) -> Optional[date]:
+    """stop_history.jsonl 의 through 최댓값 — 이미 멈춤으로 넘겨 사람이 분류한 날까지는 다시 세지 않는다."""
+    p = home / S.STOP_HISTORY
+    if not p.exists():
+        return None
+    out: Optional[date] = None
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            d = date.fromisoformat(json.loads(line)["through"])
+            out = d if out is None or d > out else out
+    return out
+
+
+def _stop_eval(ctx: Ctx) -> None:
+    """B-1 멈춤 규칙 판정(phase.stop_check) → 걸리면 표식 파일(먼저) + 이력 한 줄 + 경보. 표식이 이미 있으면 그대로 둔다."""
+    home = ctx.home_dir()
+    marker = home / S.STOP_MARKER
+    if marker.exists():
+        return
+    stop, info = PH.stop_check(ctx.store.runs("sealed"), _stop_after(home))
+    if not stop:
+        return
+    rec = dict(info, rule="B-1", created_at=ctx.now_fn().isoformat(timespec="seconds"))
+    home.mkdir(parents=True, exist_ok=True)
+    tmp = marker.with_name(f"{marker.name}.tmp.{os.getpid()}")
+    tmp.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, marker)                           # 표식 먼저 — 이력만 남고 표식이 없는 상태(멈춤 누락)를 만들지 않는다
+    with open(home / S.STOP_HISTORY, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    _alert(ctx, ctx.cur_D or ctx.T, "stop_snapshot", info["n_bad"])
+    ctx.log(f"stop_snapshot {info['reason']} bad={info['n_bad']}/{info['n_days']} through={info['through']}")
 
 
 def _run_snapshot(ctx: Ctx) -> str:
@@ -442,15 +489,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     code_sha = "dry-run"
     if not (a.dry_run and a.no_guard):
+        warns: List[str] = []
         try:
             G.refuse_live_tree(__file__)
             fr = G.load_frozen()
-            code_sha = G.check_runtime(S.REPO_ROOT, fr)
+            code_sha = G.check_runtime(S.REPO_ROOT, fr, warns)
         except Exception as e:  # noqa: BLE001 — GuardError 밖 예외(깨진 파일 등)도 조용히 죽지 않게
             tag = f"GuardError/{e.reason}" if isinstance(e, G.GuardError) else type(e).__name__
             AL.send(f"guard_refused {tag}", dry_run=a.dry_run)
             note(f"guard_refused {tag} — 가드 거부")
             return 2
+        if warns:                                      # B-2: API 2파일(기록기가 import 안 함) — 경고만 · 실행 계속
+            text = "source_warn " + " ".join(warns)
+            AL.send(text, dry_run=a.dry_run)
+            note(f"{text} — 경고만(실행 계속)")
     T = T_arg or datetime.now().date()
     try:
         if not _is_trading_day(T):
@@ -478,7 +530,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         ctx = Ctx(T=T, now_fn=now_fn, store=store, inputs_cur=cur,
                   kis_factory=_StubKis if a.dry_run else _real_kis_factory, code_sha=code_sha,
                   archive=Path(a.archive) if a.archive else (None if a.dry_run else S.archive_dir()),
-                  log=note, alerts=pending, k=S.CREDIT_LAG_K, dry_run=a.dry_run)
+                  log=note, alerts=pending, k=S.CREDIT_LAG_K, dry_run=a.dry_run,
+                  home=Path(a.home) if a.home else S.home_dir())
         if a.record:
             st = run_record(ctx)
         elif a.check_snapshot:

@@ -51,18 +51,31 @@ SHORT_SPAN_DAYS = 20
 
 INVESTOR_AMT_UNIT = 1_000_000                  # investor *_tr_pbmn = 백만원(DOSSIER_B §0-3)
 CREDIT_LAG_K: Optional[int] = None             # 🔒 Task 11 에서 시험 분포로 정해 동결
+CREDIT_DROPPED = False                         # 🔒 B-3: 시험 10일 + 1회 연장에도 k 가 없으면 True 한 줄 커밋 → ④ 빼고 Holm m=3
 TRIAL_DAYS = 10
 AVAIL_MIN = 0.95
 
-LIVE_SOURCES = (
+# 🔒 B-1 봉인 단계 멈춤 규칙 — 정본 snapshot_check 가 «나쁨»(불일치·no_snapshot·error·행 없음)인 대상일이
+# 최근 STOP_STREAK 일 연속이거나, 최근 STOP_WINDOW 대상일 중 STOP_WINDOW × STOP_WINDOW_FRAC 개를 넘으면 멈춤 표식.
+STOP_STREAK = 5
+STOP_WINDOW = 20
+STOP_WINDOW_FRAC = 0.20
+STOP_MARKER = "STOP_snapshot.json"             # 홈에 있으면 --record 거부(사람이 분류 뒤 지운다)
+STOP_HISTORY = "stop_history.jsonl"            # 멈춤마다 한 줄 — through 까지는 다시 세지 않는다
+
+# 라이브 원본 — 멈춤(복제 대상 스크리너 5파일 · 바뀌면 가드 거부) / 경고만(B-2 · 기록기가 import 하지 않는 API 2파일)
+LIVE_SOURCES_STOP = (
     "strategies/daytrading_3methods_breakout/screener.py",
     "strategies/_rule_screener_base.py",
     "strategies/books/daytrading_3methods/rules.py",
     "db/quant_daily_reader.py",
     "utils/data_sanity.py",
+)
+LIVE_SOURCES_WARN = (
     "api/kis_market_api.py",
     "api/kis_auth.py",
 )
+LIVE_SOURCES = LIVE_SOURCES_STOP + LIVE_SOURCES_WARN
 
 
 def _local() -> Path:
@@ -86,6 +99,10 @@ def frozen_path() -> Path:
 
 def lock_path() -> Path:
     return home_dir() / "runner.lock"
+
+
+def stop_marker_path() -> Path:
+    return home_dir() / STOP_MARKER
 
 
 def log_dir() -> Path:

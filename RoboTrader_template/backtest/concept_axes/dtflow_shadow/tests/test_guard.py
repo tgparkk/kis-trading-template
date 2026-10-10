@@ -198,3 +198,113 @@ def test_runtime_reason_codes(monkeypatch, tmp_path):
     with pytest.raises(G.GuardError) as ei:
         G.refuse_live_tree(S.LIVE_TREE + "/RoboTrader_template")
     assert ei.value.reason == "live_tree"
+
+
+# ---- 개정 2: B-2 «경고만» 원본(API 2파일) vs «멈춤» 원본(스크리너 5파일) ----
+import ast  # noqa: E402
+
+_REAL_SOURCES = G._sources
+_REAL_SOURCE_SHA = G.source_sha
+
+
+def test_live_sources_split_stop_and_warn():
+    assert S.LIVE_SOURCES == S.LIVE_SOURCES_STOP + S.LIVE_SOURCES_WARN
+    assert S.LIVE_SOURCES_WARN == ("api/kis_market_api.py", "api/kis_auth.py")
+    assert len(S.LIVE_SOURCES_STOP) == 5 and not set(S.LIVE_SOURCES_STOP) & set(S.LIVE_SOURCES_WARN)
+
+
+def _imported_modules(path):
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    out = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            out |= {a.name for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            out.add(node.module)
+    return out
+
+
+def test_recorder_never_imports_warn_only_api_files():
+    """«경고만» 의 전제: 기록기(패키지 + 러너)는 라이브 `api` 패키지를 import 하지 않는다 → 그 2파일이 바뀌어도 기록값 불변."""
+    files = sorted(S.PKG.glob("*.py")) + [S.RT_ROOT / "scripts" / "dtflow_shadow_recorder.py"]
+    assert len(files) >= 10
+    for f in files:
+        mods = _imported_modules(f)
+        assert not any(m == "api" or m.startswith("api.") for m in mods), (f.name, mods)
+
+
+def _frozen_stop_warn(monkeypatch, tmp_path):
+    monkeypatch.setattr(S, "LIVE_SOURCES_STOP", ("s.py",))
+    monkeypatch.setattr(S, "LIVE_SOURCES_WARN", ("api/w.py",))
+    return _frozen_detached(monkeypatch, tmp_path, sources=("s.py", "api/w.py"))
+
+
+def test_warn_only_source_changed_warns_and_continues(monkeypatch, tmp_path):
+    r, fr = _frozen_stop_warn(monkeypatch, tmp_path)
+    monkeypatch.setattr(G, "_sources", lambda: {"s.py": "abc", "api/w.py": "zzz"})
+    warns = []
+    assert G.check_runtime(r, fr, warns) == fr.code_sha
+    assert warns == ["api/w.py:sha"]
+
+
+def test_warn_only_source_unreadable_warns_and_continues(monkeypatch, tmp_path):
+    r, fr = _frozen_stop_warn(monkeypatch, tmp_path)
+    monkeypatch.setattr(G, "_sources", _REAL_SOURCES)
+
+    def fake_sha(rel, root=None):
+        if rel == "api/w.py":
+            raise G.GuardError("gone", "source_unreadable")
+        return "abc"
+    monkeypatch.setattr(G, "source_sha", fake_sha)
+    warns = []
+    assert G.check_runtime(r, fr, warns) == fr.code_sha
+    assert warns == ["api/w.py:unreadable"]
+
+
+def test_stop_source_changed_refuses_even_with_warn_list(monkeypatch, tmp_path):
+    r, fr = _frozen_stop_warn(monkeypatch, tmp_path)
+    monkeypatch.setattr(G, "_sources", lambda: {"s.py": "zzz", "api/w.py": "zzz"})
+    warns = []
+    with pytest.raises(G.GuardError) as ei:
+        G.check_runtime(r, fr, warns)
+    assert ei.value.reason == "source_sha" and "s.py" in str(ei.value)
+
+
+def test_stop_source_unreadable_refuses(monkeypatch, tmp_path):
+    r, fr = _frozen_stop_warn(monkeypatch, tmp_path)
+    monkeypatch.setattr(G, "_sources", _REAL_SOURCES)
+
+    def fake_sha(rel, root=None):
+        if rel == "s.py":
+            raise G.GuardError("gone", "source_unreadable")
+        return "abc"
+    monkeypatch.setattr(G, "source_sha", fake_sha)
+    with pytest.raises(G.GuardError) as ei:
+        G.check_runtime(r, fr, [])
+    assert ei.value.reason == "source_unreadable"
+
+
+def test_warn_only_mismatch_without_warn_list_is_strict(monkeypatch, tmp_path):
+    """호출자가 경고 목록을 받지 않으면(기본) 예전처럼 거부 — 닫힌 쪽 기본값."""
+    r, fr = _frozen_stop_warn(monkeypatch, tmp_path)
+    monkeypatch.setattr(G, "_sources", lambda: {"s.py": "abc", "api/w.py": "zzz"})
+    with pytest.raises(G.GuardError) as ei:
+        G.check_runtime(r, fr)
+    assert ei.value.reason == "source_sha"
+
+
+def test_write_frozen_requires_every_source_readable(monkeypatch, tmp_path):
+    monkeypatch.setenv("KIS_DTFLOW_SHADOW_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(S, "LIVE_SOURCES", ("s.py", "api/w.py"))
+    monkeypatch.setattr(S, "LIVE_SOURCES_STOP", ("s.py",))
+    monkeypatch.setattr(S, "LIVE_SOURCES_WARN", ("api/w.py",))
+
+    def fake_sha(rel, root=None):
+        if rel == "api/w.py":
+            raise G.GuardError("gone", "source_unreadable")
+        return "abc"
+    monkeypatch.setattr(G, "source_sha", fake_sha)
+    r = _repo(tmp_path)
+    with pytest.raises(G.GuardError) as ei:
+        G.write_frozen(r)
+    assert ei.value.reason == "source_unreadable" and not S.frozen_path().exists()

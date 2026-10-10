@@ -1,4 +1,4 @@
-"""실행 가드 — 라이브 트리 거부 · HEAD=동결 · clean · detached · 원본 7파일 sha(LF 정규화) · 홈 분리."""
+"""실행 가드 — 라이브 트리 거부 · HEAD=동결 · clean · detached · 원본 7파일 sha(LF 정규화 · 스크리너 5 = 멈춤 · API 2 = 경고만) · 홈 분리."""
 from __future__ import annotations
 
 import hashlib
@@ -8,7 +8,7 @@ import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from . import settings as S
 
@@ -72,8 +72,17 @@ def source_sha(rel: str, root: str = S.LIVE_RT) -> str:
     return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
-def _sources() -> Dict[str, str]:
-    return {rel: source_sha(rel) for rel in S.LIVE_SOURCES}
+def _sources() -> Dict[str, Optional[str]]:
+    """라이브 원본 sha. 멈춤 파일 읽기 실패 = GuardError(source_unreadable) · «경고만» 파일(B-2) 읽기 실패 = None."""
+    out: Dict[str, Optional[str]] = {}
+    for rel in S.LIVE_SOURCES:
+        try:
+            out[rel] = source_sha(rel)
+        except GuardError:
+            if rel not in S.LIVE_SOURCES_WARN:
+                raise
+            out[rel] = None
+    return out
 
 
 @dataclass(frozen=True)
@@ -113,7 +122,11 @@ def write_frozen(repo, path: Optional[Path] = None) -> Frozen:
     check_home()
     if git_dirty(repo):
         raise GuardError("작업 트리가 깨끗하지 않다 — 동결 거부", "dirty")
-    fr = Frozen(git_head(repo), S.RULE_V, datetime.now().isoformat(timespec="seconds"), _sources(), S.CREDIT_LAG_K)
+    src = _sources()
+    gone = sorted(k for k, v in src.items() if v is None)
+    if gone:                                         # 동결 때는 경고만 파일도 전부 읽혀야 한다(기준 sha 가 있어야 경고를 낼 수 있다)
+        raise GuardError(f"라이브 원본 읽기 실패: {', '.join(gone)} — 동결 거부", "source_unreadable")
+    fr = Frozen(git_head(repo), S.RULE_V, datetime.now().isoformat(timespec="seconds"), src, S.CREDIT_LAG_K)
     p = Path(path or S.frozen_path())
     p.parent.mkdir(parents=True, exist_ok=True)
     if p.exists():
@@ -125,7 +138,9 @@ def write_frozen(repo, path: Optional[Path] = None) -> Frozen:
     return fr
 
 
-def check_runtime(repo, fr: Frozen) -> str:
+def check_runtime(repo, fr: Frozen, warnings: Optional[List[str]] = None) -> str:
+    """가드. `warnings` 목록을 주면 «경고만» 파일(S.LIVE_SOURCES_WARN · B-2)의 sha 불일치·읽기 실패는 거부하지 않고
+    `"<파일>:sha"`·`"<파일>:unreadable"` 을 덧붙인다(호출자가 경보·로그). 목록이 없으면(기본) 예전처럼 거부 — 닫힌 쪽."""
     refuse_live_tree(repo)
     check_home()
     if fr.rule_v != S.RULE_V:
@@ -144,7 +159,15 @@ def check_runtime(repo, fr: Frozen) -> str:
     if missing or extra:
         raise GuardError(f"동결 원본 목록 불일치 — 누락 {missing} · 초과 {extra} — 다시 동결", "source_list")
     now = _sources()
-    bad = [k for k, v in fr.sources.items() if now.get(k) != v]
-    if bad:
-        raise GuardError(f"라이브 원본 sha 불일치: {', '.join(bad)} — 다시 검토·동결", "source_sha")
+    stop_bad: List[str] = []
+    warn_bad: List[str] = []
+    for k, v in fr.sources.items():
+        if now.get(k) == v:
+            continue
+        (warn_bad if warnings is not None and k in S.LIVE_SOURCES_WARN else stop_bad).append(k)
+    if stop_bad:
+        reason = "source_unreadable" if any(now.get(k) is None for k in stop_bad) else "source_sha"
+        raise GuardError(f"라이브 원본 sha 불일치: {', '.join(stop_bad)} — 다시 검토·동결", reason)
+    if warnings is not None:
+        warnings.extend(f"{k}:{'unreadable' if now.get(k) is None else 'sha'}" for k in warn_bad)
     return head

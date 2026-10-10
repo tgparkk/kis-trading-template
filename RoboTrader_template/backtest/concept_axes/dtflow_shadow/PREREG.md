@@ -6,7 +6,7 @@
 - 규범: 스펙 `docs/superpowers/specs/2026-10-10-daytrading-filter-layer-design.md`(main `75326bc`) §0·§4·§5·§7 · 계획 `docs/superpowers/plans/2026-10-10-daytrading-filter-B-flow-shadow.md`(main `c859e91`) · SDD 원장 `.superpowers/sdd/2026-10-10-daytrading-filter-B-flow-shadow/progress.md` 의 `Ruling:` 줄(구현 중 결정).
 - 값의 출처 = 코드: 패키지 `RoboTrader_template/backtest/concept_axes/dtflow_shadow/` · 러너 `RoboTrader_template/scripts/dtflow_shadow_recorder.py` · 기준 커밋 `394eeb6`(브랜치 `research/dt-flow-shadow`).
 - 🔴 이 문서의 값은 위 커밋의 코드에서 옮겼다. **동결 커밋에서 코드와 이 문서가 한 곳이라도 다르면 동결하지 않는다.**
-- 꼬리표(값 옆 출처): `(settings.py: 이름)` · `(runner: 이름)` = 러너 파일 · `(코드: 파일)` · `(ddl.sql)` · `(register_tasks.ps1)` · `(spec §x)` · `(plan: …)` · `(Ruling: …)` = SDD 원장 · **`(초안 해석)`** = 스펙이 정하지 않아 이 초안이 고른 것(critic·사장님 확인 대상).
+- 꼬리표(값 옆 출처): `(settings.py: …)` = 상수 이름(값 = 부록 B pins) · `(runner: 이름)` = 러너 파일 · `(코드: 파일)` · `(ddl.sql)` · `(register_tasks.ps1)` · `(spec §x)` · `(plan: …)` · `(Ruling: …)` = SDD 원장 · **`(초안 해석)`** = 스펙이 정하지 않아 이 초안이 고른 것(critic·사장님 확인 대상).
 - 등재 예정 코드 **DF2** · 주 검정 **4**(Holm 가족) — 등재 문안 §0-4.
 
 ---
@@ -294,7 +294,7 @@
 
 ### 3-4. 신용 시차 k
 
-- k = 「매수일 07:52 에 받은 신용 응답에서 쓰는 행이 D 의 몇 거래일 전 `deal_date` 인가」. 지금은 미정이다(settings.py: CREDIT_LAG_K = None). k 가 정해지기 전에는 봉인으로 넘어가지 않는다(코드: phase.seal_ready) (plan 「스펙과 다른 점」 3).
+- k = 「매수일 07:52 에 받은 신용 응답에서 쓰는 행이 D 의 몇 거래일 전 `deal_date` 인가」. 지금은 미정이다(settings.py: CREDIT_LAG_K). k 가 정해지기 전에는 봉인으로 넘어가지 않는다(코드: phase.seal_ready) (plan 「스펙과 다른 점」 3).
 - 🔒 **결정 규칙**: 시험 단계에서 ok record 행이 있는 가장 최근 **10거래일**(settings.py: TRIAL_DAYS)을 쓴다. k ∈ {1, …, 6}(코드: phase.choose_k_table)마다 일별 가용률 = 「그날 후보 중 `credit_lag` 가 있고 ≤ k 인 비율」을 낸다. **최소 일 가용률 ≥ 0.95**(settings.py: AVAIL_MIN)인 **가장 작은 k** 를 고른다(plan Task 9 §3 · 출력 = `--choose-k`).
 - 그런 k 가 없으면 멈추고 사장님께 보고한다(plan Task 11 Step 2) — 선택지 §9-5.
 - **동결 1회**: `settings.CREDIT_LAG_K = k` 커밋 → 운영 워크트리를 새 커밋으로 detached 전환 → `--freeze`(봉인 행 0 이라 허용) (plan Task 11 Step 3). 이 커밋과 이 문서 동결 커밋의 차이는 `CREDIT_LAG_K` 한 줄과 §10 실행 기록 칸뿐이어야 한다(초안 해석). 봉인 시작 뒤 k 변경 = 새 rule_v(§9-6).
@@ -553,11 +553,12 @@
 
 ## 부록 A — `ddl.sql` 전문
 
-- 바이트 그대로 옮겼다(`RoboTrader_template/backtest/concept_axes/dtflow_shadow/ddl.sql` · 커밋 `394eeb6` · LF · sha256 `0fa4fb21f3575b4904754792a87fa5aae91a676248223c647d6818f6f336f7b5`).
+- 바이트 그대로 옮겼다(`RoboTrader_template/backtest/concept_axes/dtflow_shadow/ddl.sql` · 커밋 `394eeb6` · LF · sha256 `675ecc1400df544b42fcfb9e17407d2b4cd06ccd61c74e0b37e83e73af661fb5`).
 - 실행은 사장님 확인 뒤 1회(plan Task 10 Step 2).
 
 ```sql
--- 실행(사장님 확인 뒤 1회 · Task 10): psql -h 127.0.0.1 -p 5433 -U postgres -d kis_template -f ddl.sql
+-- 실행(사장님 확인 뒤 1회 · Task 10): psql -1 -h 127.0.0.1 -p 5433 -U postgres -d kis_template -f ddl.sql
+--   -1 = 한 트랜잭션(중간에 멈추면 역할·스키마·표 모두 되돌린다) · -d = config.constants.resolve_daily_source_db() 값.
 -- 비밀번호는 실행 중 \prompt 로 받는다 = config/key.ini [DTFLOW_SHADOW] db_password 값(또는 -v dtflow_pw=…).
 --   빈 값이면(비대화형 실행에서 \prompt 가 빈 줄을 읽은 경우 포함) 아무것도 만들지 않고 멈춘다.
 -- 규약: retention 없음 · DROP 없음 · IF NOT EXISTS 없음(이미 있으면 멈춘다).
@@ -580,7 +581,7 @@ CREATE ROLE dtflow_shadow_owner NOLOGIN;
 CREATE ROLE dtflow_shadow_writer LOGIN PASSWORD :'dtflow_pw';
 CREATE SCHEMA dtflow_shadow AUTHORIZATION dtflow_shadow_owner;
 REVOKE ALL ON SCHEMA dtflow_shadow FROM PUBLIC;
-GRANT CONNECT ON DATABASE kis_template TO dtflow_shadow_writer;
+GRANT CONNECT ON DATABASE :"DBNAME" TO dtflow_shadow_writer;
 GRANT USAGE ON SCHEMA public TO dtflow_shadow_writer;
 GRANT SELECT ON public.daily_prices, public.stock_info, public.screener_snapshots TO dtflow_shadow_writer;
 SET ROLE dtflow_shadow_owner;
@@ -607,4 +608,53 @@ GRANT USAGE ON SCHEMA dtflow_shadow TO dtflow_shadow_writer;
 GRANT INSERT, SELECT ON dtflow_shadow.trial_candidates, dtflow_shadow.trial_raw, dtflow_shadow.trial_run, dtflow_shadow.candidates, dtflow_shadow.raw, dtflow_shadow.run TO dtflow_shadow_writer;
 GRANT USAGE ON SCHEMA dtflow_shadow TO robotrader;
 GRANT SELECT ON ALL TABLES IN SCHEMA dtflow_shadow TO robotrader;
+```
+
+## 부록 B — 동결 상수(pins · 기계 대조)
+
+```pins
+RULE_V = 'v1'
+SCHEMA = 'dtflow_shadow'
+WRITER_ROLE = 'dtflow_shadow_writer'
+FOLDER = 'daytrading_3methods_breakout'
+PARAMS_HASH = '46594669e8b6af417143556ea3c0066d2ccc9984'
+LIVE_TREE = 'D:/GIT/kis-trading-template'
+LIVE_RT = 'D:/GIT/kis-trading-template/RoboTrader_template'
+START_NOT_BEFORE = time(7, 50)
+REFUSE_AFTER = time(8, 38)
+SEAL_DEADLINE = time(8, 40)
+SNAPSHOT_NOT_BEFORE = time(9, 3)
+START_WINDOW_OPEN = time(7, 40)
+START_WINDOW_CLOSE = time(9, 10)
+LOOKBACK_BARS = 60
+HIGH_WINDOW = 15
+VOL_LOOKBACK = 20
+VOL_MULT = 2.0
+MAX_MCAP = 500_000_000_000
+MIN_TV = 1_000_000_000
+IMPOSSIBLE_RET = -0.35
+D_ROWS_RATIO_MIN = 0.98
+CALL_INTERVAL_S = 0.10
+RETRY_BASE_S = 1.5
+RETRY_MAX = 3
+HTTP_TIMEOUT = (5, 30)
+TOKEN_MIN_LEFT_S = 1200
+TRS = {'investor': ('FHKST01010900', '/uapi/domestic-stock/v1/quotations/inquire-investor'), 'program': ('FHPPG04650201', '/uapi/domestic-stock/v1/quotations/program-trade-by-stock-daily'), 'short': ('FHPST04830000', '/uapi/domestic-stock/v1/quotations/daily-short-sale'), 'credit': ('FHPST04760000', '/uapi/domestic-stock/v1/quotations/daily-credit-balance')}
+KINDS = ('investor', 'program', 'short', 'credit')
+SHORT_SPAN_DAYS = 20
+INVESTOR_AMT_UNIT = 1_000_000
+CREDIT_LAG_K = None
+CREDIT_DROPPED = False
+TRIAL_DAYS = 10
+AVAIL_MIN = 0.95
+STOP_STREAK = 5
+STOP_WINDOW = 20
+STOP_WINDOW_FRAC = 0.20
+STOP_MARKER = 'STOP_snapshot.json'
+STOP_HISTORY = 'stop_history.jsonl'
+LIVE_SOURCES_STOP = ('strategies/daytrading_3methods_breakout/screener.py', 'strategies/_rule_screener_base.py', 'strategies/books/daytrading_3methods/rules.py', 'db/quant_daily_reader.py', 'utils/data_sanity.py')
+LIVE_SOURCES_WARN = ('api/kis_market_api.py', 'api/kis_auth.py')
+LIVE_SOURCES = ('strategies/daytrading_3methods_breakout/screener.py', 'strategies/_rule_screener_base.py', 'strategies/books/daytrading_3methods/rules.py', 'db/quant_daily_reader.py', 'utils/data_sanity.py', 'api/kis_market_api.py', 'api/kis_auth.py')
+runner.CAL_DAYS = 40
+runner.EXIT2 = ('too_early', 'already_recorded', 'already_checked', 'stopped')
 ```

@@ -116,3 +116,90 @@ def test_seal_ready_earliest_record_row_is_canonical():
                    avail_investor=0.99, avail_program=0.99, avail_short=0.99)
     assert not P.seal_ready(base + [early_bad, late_ok], LAGS, DAYS, k=3)[0]
     assert not P.seal_ready(base + [late_ok, early_bad], LAGS, DAYS, k=3)[0]
+
+
+# ---- 개정 2: B-1 봉인 단계 멈춤 규칙(stop_check) ----
+SD = [date(2026, 11, 2) + timedelta(days=i) for i in range(40)]      # 합성 봉인일(오름차순)
+
+
+def _sealed_runs(pattern, n_cands=30):
+    """pattern 한 글자 = 하루: '.' 일치 · 'm' 불일치 · 's' no_snapshot · 'e' 대조 error · '-' 대조 행 없음
+    · 'x' record 결측(대상 아님) · '0' 후보 0(대상 아님)."""
+    out = []
+    for d, c in zip(SD, pattern):
+        rec = dict(scan_date=d, run_kind="record", run_at=f"{d}T07:52:00", status="ok", n_cands=n_cands)
+        if c == "x":
+            rec.update(status="missed_token", n_cands=None)
+        if c == "0":
+            rec.update(n_cands=0)
+        out.append(rec)
+        st = {".": ("ok", True), "m": ("ok", False), "s": ("no_snapshot", None), "e": ("error", None),
+              "0": ("no_snapshot", None), "x": ("no_record", None)}.get(c)
+        if st:
+            out.append(dict(scan_date=d, run_kind="snapshot_check", run_at=f"{d}T09:05:00", status=st[0],
+                            snapshot_match=st[1]))
+    return out
+
+
+def test_stop_streak_five_consecutive_bad_days():
+    assert not P.stop_check(_sealed_runs("." * 10 + "mmmm"))[0]
+    stop, info = P.stop_check(_sealed_runs("." * 10 + "mmsmm"))
+    assert stop and info["reason"] == "streak" and info["n_bad"] == 5
+    assert info["through"] == SD[14].isoformat() and len(info["bad_days"]) == 5
+
+
+def test_stop_window_more_than_20pct_of_last_20():
+    assert not P.stop_check(_sealed_runs("m...m...m...m......."))[0]          # 4/20 = 20% → 초과 아님
+    stop, info = P.stop_check(_sealed_runs("m...m...m...m...m..."))           # 5/20 > 20%
+    assert stop and info["reason"] == "window" and info["n_bad"] == 5 and info["n_days"] == 20
+
+
+def test_stop_window_only_last_20_target_days():
+    assert not P.stop_check(_sealed_runs("mmm.m.m" + "." * 20))[0]          # 나쁜 날이 최근 20 대상일 밖
+
+
+def test_stop_missing_check_row_and_error_count_as_bad():
+    assert P.stop_check(_sealed_runs("." * 5 + "--e-s"))[0]
+
+
+def test_stop_non_target_days_neither_count_nor_break_streak():
+    assert P.stop_check(_sealed_runs("mmx0mmm"))[0]                           # x·0 건너뛰고 연속 5
+    assert not P.stop_check(_sealed_runs("xxxxx00000"))[0]                    # 대상일 0
+
+
+def test_stop_uses_earliest_snapshot_row():
+    runs = _sealed_runs("." * 6 + "mmmm.")
+    d = SD[10]
+    runs.append(dict(scan_date=d, run_kind="snapshot_check", run_at=f"{d}T08:59:00", status="ok", snapshot_match=False))
+    assert P.stop_check(runs)[0]                                              # 가장 이른 행(불일치)이 정본
+    runs2 = _sealed_runs("." * 6 + "mmmmm")
+    runs2.append(dict(scan_date=d, run_kind="snapshot_check", run_at=f"{d}T09:00:00", status="ok", snapshot_match=True))
+    assert not P.stop_check(runs2)[0]                                         # 뒤늦은 불일치 행은 무시
+
+
+def test_stop_after_excludes_already_classified_days():
+    runs = _sealed_runs("mmmmm" + "....")
+    assert P.stop_check(runs)[0]
+    assert not P.stop_check(runs, after=SD[4])[0]
+    assert P.stop_check(_sealed_runs("mmmmm" + "mmmmm"), after=SD[4])[0]
+
+
+def test_stop_constants():
+    from backtest.concept_axes.dtflow_shadow import settings as S
+    assert (S.STOP_STREAK, S.STOP_WINDOW, S.STOP_WINDOW_FRAC) == (5, 20, 0.20)
+
+
+# ---- 개정 2: B-3 신용 ④ 빼기 스위치 ----
+def test_seal_ready_credit_dropped_needs_no_k_and_no_credit_avail():
+    no_credit = {d: [None] * 40 for d in DAYS}
+    assert not P.seal_ready(_runs(), no_credit, DAYS, k=None)[0]
+    assert P.seal_ready(_runs(), no_credit, DAYS, k=None, credit_dropped=True)[0]
+    assert not P.seal_ready(_runs(n_ok=9), no_credit, DAYS, k=None, credit_dropped=True)[0]
+
+
+def test_decide_follows_settings_credit_dropped(monkeypatch):
+    from backtest.concept_axes.dtflow_shadow import settings as S
+    s = _store_with_trial(_runs())
+    assert P.decide(s, DAYS, None, {d: [None] * 40 for d in DAYS}) == "trial"
+    monkeypatch.setattr(S, "CREDIT_DROPPED", True)
+    assert P.decide(s, DAYS, None, {d: [None] * 40 for d in DAYS}) == "sealed"
