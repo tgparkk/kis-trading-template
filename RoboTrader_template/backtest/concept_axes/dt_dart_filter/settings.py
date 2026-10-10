@@ -12,6 +12,7 @@ FOLDER = "daytrading_3methods_breakout"
 SCAN_START, SCAN_END = date(2021, 2, 1), date(2024, 3, 12)
 PX_START, PATH_END = "2021-01-04", "2024-04-30"
 FILING_START = date(2021, 1, 1)
+BACKFILL_TYPES = ("A", "B", "I")      # 백필·완결 판정 유형(check-backfill 단계 출력 types 와 같아야 build 허용)
 FIT_START, FIT_END = date(2024, 3, 13), date(2026, 9, 23)
 FIT_PX_START = "2023-12-01"
 

@@ -86,6 +86,13 @@ def test_proxy_stage_refuses_after_freeze(monkeypatch):
         RUN.stage_proxy(None)
 
 
+def _seal_files(tmp_path, seal, report_md5=None):
+    """seal.json + sealed_report.md(seal.json md5 줄 포함) — report_md5 를 주면 그 값을 적는다(불일치 흉내)."""
+    (tmp_path / "seal.json").write_text(json.dumps(seal), encoding="utf-8")
+    h = RUN.md5(tmp_path / "seal.json") if report_md5 is None else report_md5
+    (tmp_path / "sealed_report.md").write_text("# 봉인\n\n" + RUN.seal_md5_line(h) + "\n", encoding="utf-8")
+
+
 def _fake_build(tmp_path):
     (tmp_path / "ledger_A.csv").write_text("a\n", encoding="utf-8")
     meta = {"md5": {"ledger_A.csv": RUN.md5(tmp_path / "ledger_A.csv")}}
@@ -96,12 +103,11 @@ def _fake_build(tmp_path):
 def test_open_refuses_tampered_build_output(monkeypatch, tmp_path):
     _frozen_env(monkeypatch, tmp_path)
     monkeypatch.setattr(RUN, "committed_unchanged", lambda p: True)
-    seal = {"build_md5": _fake_build(tmp_path)}
-    (tmp_path / "seal.json").write_text(json.dumps(seal), encoding="utf-8")
+    _seal_files(tmp_path, {"build_md5": _fake_build(tmp_path)})
     (tmp_path / "ledger_A.csv").write_text("tampered\n", encoding="utf-8")
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit, match="build"):
         RUN.stage_open(None)
-    assert not (tmp_path / "open.json").exists()
+    assert not (tmp_path / "open.json").exists() and not (tmp_path / "open.started").exists()
 
 
 def test_seal_linkage_detects_meta_change_and_accepts_clean(tmp_path, monkeypatch):
@@ -113,7 +119,7 @@ def test_seal_linkage_detects_meta_change_and_accepts_clean(tmp_path, monkeypatc
         RUN.check_seal_linkage(seal)
 
 
-@pytest.mark.parametrize("name", ["seal.json", "open.json"])
+@pytest.mark.parametrize("name", ["seal.json", "open.json", "open.started"])
 def test_build_refuses_when_seal_or_open_exists(monkeypatch, tmp_path, name):
     _frozen_env(monkeypatch, tmp_path)
     (tmp_path / name).write_text("{}", encoding="utf-8")

@@ -246,14 +246,26 @@ def _load_env(conn):
     return cal, px, env
 
 
+def check_backfill_report(chk: Dict[str, Any]) -> None:
+    """backfill_check.json 이 완결이고 그 창·유형이 동결 settings 와 같은지(최종 리뷰 «동결 전 수정»)."""
+    want_w = [S.FILING_START.isoformat(), S.SCAN_END.isoformat()]
+    if not chk.get("complete"):
+        raise SystemExit("🔴 백필 완결 보고가 미완결 — 중단")
+    if chk.get("window") != want_w:
+        raise SystemExit(f"🔴 백필 보고 창 {chk.get('window')} ≠ settings {want_w} — 중단")
+    if sorted(chk.get("types") or []) != sorted(S.BACKFILL_TYPES):
+        raise SystemExit(f"🔴 백필 보고 유형 {chk.get('types')} ≠ settings {list(S.BACKFILL_TYPES)} — 중단")
+
+
 def stage_build(conn) -> None:
     require_frozen()
-    for done in ("seal.json", "open.json"):
+    for done in ("seal.json", "open.started", "open.json"):
         if (S.RESULTS / done).exists():
             raise SystemExit(f"🔴 {done} 가 이미 있다 — 봉인·개봉 뒤에는 build 재실행 금지")
-    chk = json.loads((S.RESULTS / "backfill_check.json").read_text(encoding="utf-8"))
-    if not chk.get("complete") or not committed_unchanged(S.RESULTS / "backfill_check.json"):
-        raise SystemExit("🔴 백필 완결 보고가 없거나 미완결·미커밋 — 중단")
+    bf = S.RESULTS / "backfill_check.json"
+    if not bf.exists() or not committed_unchanged(bf):
+        raise SystemExit("🔴 백필 완결 보고가 없거나 미커밋 — 중단")
+    check_backfill_report(json.loads(bf.read_text(encoding="utf-8")))
     coef = json.loads((S.RESULTS / "proxy_coef.json").read_text(encoding="utf-8"))
     cal, px, env = _load_env(conn)
     days = [pd.Timestamp(d) for d in cal if S.SCAN_START <= d <= S.SCAN_END]
@@ -324,6 +336,76 @@ def effective_n1(df: pd.DataFrame, ycol: str = "y_sl") -> int:
     return int((d["x"].to_numpy()[m] == 1).sum())
 
 
+def effective_n0(df: pd.DataFrame, ycol: str = "y_sl") -> int:
+    """회귀가 실제로 쓰는 대조 행 수(effective_n1 과 같은 날 거르기)."""
+    d = df[np.isfinite(df[ycol].astype(float))]
+    m = ST.both_arm_days_mask(d["x"], d["day"])
+    return int((d["x"].to_numpy()[m] == 0).sum())
+
+
+# ── 봉인 고정(최종 리뷰 I5) ───────────────────────────────────────────────────────
+_SEAL_MD5_RE = re.compile(r"seal\.json md5 `([0-9a-f]{32})`")
+
+
+def seal_md5_line(h: str) -> str:
+    return f"- seal.json md5 `{h}` — open 이 이 값과 seal.json 을 대조한다(봉인 고정)"
+
+
+def check_sealed_report(report: Path, seal_path: Path) -> None:
+    """커밋된 sealed_report.md 의 seal.json md5 줄(정확히 1개)이 지금 seal.json 과 같은지."""
+    if not Path(report).exists() or not Path(seal_path).exists():
+        raise SystemExit("🔴 sealed_report.md 또는 seal.json 이 없다 — 중단")
+    found = _SEAL_MD5_RE.findall(Path(report).read_text(encoding="utf-8"))
+    if len(found) != 1:
+        raise SystemExit(f"🔴 sealed_report.md 의 seal.json md5 줄이 정확히 1개가 아니다({len(found)}) — 중단")
+    if md5(seal_path) != found[0]:
+        raise SystemExit("🔴 seal.json 이 봉인 보고서에 적힌 md5 와 다르다(봉인 뒤 변경) — 중단")
+
+
+# ── 블라인드 안전 인쇄(수익 무관) · 개봉 보조 ────────────────────────────────────
+def pl_small_share_by_year(led: pd.DataFrame) -> Dict[int, Dict[str, Any]]:
+    """연도별 후보 행(원장 전체 · 체결 무관) 중 p_L<0.5 비율 — 시총 없는 해의 대리 분류 안정성 점검용."""
+    out: Dict[int, Dict[str, Any]] = {}
+    pl = led["p_L"].astype(float).to_numpy()
+    yrs = np.array([d.year for d in led["scan_date"]])
+    for y in sorted(set(yrs.tolist())):
+        v = pl[yrs == y]
+        fin = v[np.isfinite(v)]
+        out[int(y)] = {"n": int(len(fin)), "n_nan": int(len(v) - len(fin)),
+                       "share_small": float((fin < S.PL_CUT).mean()) if len(fin) else float("nan")}
+    return out
+
+
+def halt_entry_counts(led: pd.DataFrame, marks) -> Dict[str, Dict[str, int]]:
+    """«진입 불가»(진입 봉 정지) 수 — 대리 소형 · 집단별(스펙 :84 «따로 셈»). n = 체결 + 진입 불가 행."""
+    d = led[(led["p_L"].astype(float) < S.PL_CUT) & led["status"].isin(["filled", "halt_entry"])]
+    x = np.array([(c, s) in marks for c, s in zip(d["stock_code"], d["scan_date"])], dtype=bool)
+    st = d["status"].to_numpy()
+    return {arm: {"halt_entry": int(((x == flag) & (st == "halt_entry")).sum()), "n": int((x == flag).sum())}
+            for arm, flag in (("표식", True), ("대조", False))}
+
+
+def seal_report_lines(seal: Dict[str, Any]) -> List[str]:
+    g, sv = seal["gate"], seal["surv"]
+    pls = " · ".join(f"{y} {v['share_small']:.3f}(n {v['n']:,} · NaN {v['n_nan']:,})"
+                     for y, v in seal["pl_small_share_by_year"].items())
+    return [
+        "# 봉인 보고서 — 표식×수익 결합 0 (스펙 §3-6)", "",
+        f"- n₁(유효 · 표식·대조 둘 다 있는 날) {seal['n1']:,} · 대조(유효) {seal['n0']:,}",
+        f"- 원시(날 거르기 전) 개수: 표식 원시 {seal['n1_raw']:,} · 대조 원시 {seal['n0_raw']:,} · "
+        f"n₁ 원시 연도별 {seal['n1_raw_by_year']}",
+        f"- 후보 중 p_L<0.5 비율(연도별 · 원장 전체 · 수익 무관): {pls}",
+        f"- SD(대조 · net) 손절 우선 {seal['sd_ctrl_sl']:.3f} · 익절 우선 {seal['sd_ctrl_tp']:.3f}",
+        f"- 가짜 게이트: CR1 거부율 {g['rej_cr1']:.3f} · 2원 {g['rej_2w']:.3f} → 도구 **{g['tool']}** ({g['reason']}) · "
+        f"유효 {g['n_valid']}/{g['n_fake']}(문턱 {g['n_valid_min']}) · 2원 유효 {g['n_valid_2w']} · 건너뜀 {g['n_skipped']}",
+        f"- 가짜 게이트 하측(p1<0.05) {g['rej_lo_cr1']:.3f} · 가짜 평균 n₁ {g['mean_fake_n1']:.1f}",
+        f"- SD_null {g['sd_null']:.3f} → MDE {seal['mde_null']:.3f}%p (평균 SE 기준 {seal['mde_se']:.3f}%p)",
+        f"- 생존자 누락률 (i) 3태그 공시 단위 {sv['surv_i']:.4f}(n {sv['n_i']:,}) · (ii) 정기공시 회사 단위 "
+        f"{sv['surv_ii']:.4f}(n {sv['n_ii']:,}) — 코넥스·상장 전 공시 제외",
+        *[f"  - {ln}" for ln in SV.breakdown_text(sv).splitlines()],
+    ]
+
+
 def _read_marks(name: str):
     m = pd.read_csv(S.RESULTS / f"marks_{name}.csv", dtype={"stock_code": str})
     return {(c, date.fromisoformat(d)) for c, d in zip(m["stock_code"], m["scan_date"])}
@@ -354,6 +436,9 @@ def _survivorship(conn, px: pd.DataFrame) -> Dict[str, Any]:
 # ── 단계: seal(표식 행 수익 안 읽음) ───────────────────────────────────────────
 def stage_seal(conn) -> None:
     require_frozen()
+    for done in ("seal.json", "open.started", "open.json"):
+        if (S.RESULTS / done).exists():
+            raise SystemExit(f"🔴 {done} 가 이미 있다 — 봉인은 1회만(재봉인 금지)")
     _check_build(conn)
     cal, px, _env = _load_env(conn)
     cal_idx = {d: i for i, d in enumerate(cal)}
@@ -362,38 +447,40 @@ def stage_seal(conn) -> None:
     gate = G.fake_gate(df)
     ctrl = df[df["x"] == 0]
     surv = _survivorship(conn, px)
-    n1_raw = int((df["x"] == 1).sum())
-    n1 = effective_n1(df)
     years = pd.Series([d.year for d in df["scan_date"]])
-    seal = dict(n1=n1, n1_raw=n1_raw, build_md5=build_hashes(), n0=int(len(ctrl)), sd_ctrl_sl=float(ctrl["y_sl"].std(ddof=1)),
-                sd_ctrl_tp=float(ctrl["y_tp"].std(ddof=1)), gate=gate,
+    seal = dict(n1=effective_n1(df), n0=effective_n0(df), n1_raw=int((df["x"] == 1).sum()), n0_raw=int(len(ctrl)),
+                n1_raw_by_year={int(y): int(((years == y) & (df["x"] == 1)).sum()) for y in sorted(years.unique())},
+                pl_small_share_by_year=pl_small_share_by_year(led), build_md5=build_hashes(),
+                sd_ctrl_sl=float(ctrl["y_sl"].std(ddof=1)), sd_ctrl_tp=float(ctrl["y_tp"].std(ddof=1)), gate=gate,
                 mde_null=ST.mde(gate["sd_null"]), mde_se=ST.mde(gate["mean_se_cr1"]),
-                n1_by_year={int(y): int(((years == y) & (df["x"] == 1)).sum()) for y in sorted(years.unique())},
                 surv=surv, git_sha=head_sha(), sealed=datetime.now().isoformat(timespec="seconds"))
     _write(S.RESULTS / "seal.json", json.dumps(seal, ensure_ascii=False, indent=1))
-    _write(S.RESULTS / "sealed_report.md", "\n".join([
-        "# 봉인 보고서 — 표식×수익 결합 0 (스펙 §3-6)", "",
-        f"- n₁(유효 · 표식·대조 둘 다 있는 날) {n1:,} (표식 전체 {n1_raw:,}) · 대조 {len(ctrl):,} · 연도별 n₁ {seal['n1_by_year']}",
-        f"- SD(대조 · net) 손절 우선 {seal['sd_ctrl_sl']:.3f} · 익절 우선 {seal['sd_ctrl_tp']:.3f}",
-        f"- 가짜 게이트: CR1 거부율 {gate['rej_cr1']:.3f} · 2원 {gate['rej_2w']:.3f} → 도구 **{gate['tool']}** "
-        f"(n_fake {gate['n_fake']} · 건너뜀 {gate['n_skipped']})",
-        f"- SD_null {gate['sd_null']:.3f} → MDE {seal['mde_null']:.3f}%p (평균 SE 기준 {seal['mde_se']:.3f}%p)",
-        f"- 생존자 누락률 (i) 3태그 공시 단위 {surv['surv_i']:.4f}(n {surv['n_i']:,}) · (ii) 정기공시 회사 단위 "
-        f"{surv['surv_ii']:.4f}(n {surv['n_ii']:,}) — 코넥스·상장 전 공시 제외",
-        *[f"  - {ln}" for ln in SV.breakdown_text(surv).splitlines()], ""]))
+    _write(S.RESULTS / "sealed_report.md",
+           "\n".join(seal_report_lines(seal) + [seal_md5_line(md5(S.RESULTS / "seal.json")), ""]))
     print(json.dumps(seal, ensure_ascii=False, indent=1, default=str))
 
 
 # ── 단계: open(1회) ──────────────────────────────────────────────────────────────
 def stage_open(conn) -> None:
+    """무결성 확인(봉인 보고서 커밋 · seal.json md5 · build 해시 · DB 지문) → `open.started` 표식 → 그 뒤에만 계산.
+
+    표식은 무결성 확인 «뒤»·데이터 읽기 «전»에 쓴다 — 확인 실패(예: DB 지문 불일치)는 결과를 하나도 보지 않았으므로
+    복구 뒤 다시 돌 수 있고, 표식이 생긴 뒤에는 중간에 죽어도 두 번째 개봉을 거부한다.
+    """
     require_frozen()
     if (S.RESULTS / "open.json").exists():
         raise SystemExit("🔴 이미 개봉됨(open.json 있음) — 1회만 허용")
+    if (S.RESULTS / "open.started").exists():
+        raise SystemExit("🔴 open.started 가 이미 있다(개봉이 시작됐었다) — 두 번째 개봉 금지")
     if not committed_unchanged(S.RESULTS / "sealed_report.md"):
         raise SystemExit("🔴 sealed_report.md 가 커밋돼 있지 않거나 바뀌었다 — 중단")
+    check_sealed_report(S.RESULTS / "sealed_report.md", S.RESULTS / "seal.json")
     seal = json.loads((S.RESULTS / "seal.json").read_text(encoding="utf-8"))
     check_seal_linkage(seal)
     _check_build(conn)
+    _write(S.RESULTS / "open.started", json.dumps(dict(started=datetime.now().isoformat(timespec="seconds"),
+                                                       seal_md5=md5(S.RESULTS / "seal.json"), git_sha=head_sha()),
+                                                  ensure_ascii=False, indent=1))
     cal, _px, _env = _load_env(conn)
     cal_idx = {d: i for i, d in enumerate(cal)}
     led = _read_ledger()
@@ -435,6 +522,10 @@ def stage_open(conn) -> None:
     for arm, sub in (("표식", df[df["x"] == 1]), ("대조", df[df["x"] == 0])):
         lines.append(f"- {arm}: 정지 낀 비율 {sub['halted_in_path'].astype(bool).mean():.4f} · "
                      f"ret ≤ −15% {(sub['ret_sl'] <= S.TAIL_LOSS).mean():.4f} · 동시 터치 {sub['both'].astype(bool).mean():.4f}")
+    he = halt_entry_counts(led, _read_marks("lag0"))
+    sec["halt_entry"] = he
+    lines.append("- 진입 불가(진입 봉 정지 · 대리 소형 · 원장 행 단위 · 따로 셈): "
+                 + " · ".join(f"{arm} {v['halt_entry']:,}/{v['n']:,}" for arm, v in he.items()))
     if lab == "있음(−)":
         lines.append("- 태그별 Holm m=3(주 검정 통과 뒤에만 해석) — 별도 표식 파일 없이 공시를 다시 읽어 계산")
     today = date.today().isoformat()
