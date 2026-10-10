@@ -1,0 +1,35 @@
+import numpy as np
+import pandas as pd
+
+from backtest.concept_axes.dt_dart_filter import proxy as P
+
+
+def test_features_rolling_20_and_logs():
+    n = 25
+    px = pd.DataFrame({"stock_code": ["000001"] * n, "date": pd.date_range("2024-01-01", periods=n),
+                       "close": [100.0] * n, "volume": [1000.0] * n})
+    f = P.add_proxy_features(px)
+    assert f["tv20"].iloc[:19].isna().all() and f["tv20"].iloc[19] == 100000.0
+    assert np.isclose(f["x1"].iloc[24], np.log(100000.0)) and np.isclose(f["x2"].iloc[0], np.log(100.0))
+
+
+def test_features_nonpositive_close_gives_nan():
+    px = pd.DataFrame({"stock_code": ["1"] * 2, "date": pd.date_range("2024-01-01", periods=2),
+                       "close": [0.0, 5.0], "volume": [1.0, 1.0]})
+    assert np.isnan(P.add_proxy_features(px)["x2"].iloc[0])
+
+
+def test_logistic_recovers_coefficients():
+    rng = np.random.default_rng(1)
+    x1, x2 = rng.normal(0, 1, 20000), rng.normal(0, 1, 20000)
+    X = P.design(x1, x2)
+    true = np.array([-0.5, 1.2, -0.8])
+    y = (rng.random(20000) < P.predict(true, X)).astype(float)
+    b = P.fit_logistic(X, y)
+    assert np.allclose(b, true, atol=0.08)
+
+
+def test_auc_extremes():
+    assert P.auc([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9]) == 1.0
+    assert P.auc([0, 0, 1, 1], [0.9, 0.8, 0.2, 0.1]) == 0.0
+    assert np.isnan(P.auc([1, 1], [0.1, 0.2]))
