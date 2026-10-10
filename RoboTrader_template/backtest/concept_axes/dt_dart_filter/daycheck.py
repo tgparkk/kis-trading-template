@@ -57,12 +57,21 @@ def read_raw_day(out_dir: Path, ty: str, day: date) -> RawDay:
     return RawDay("ok", tc, tuple(nos))
 
 
-def judge(rd: RawDay, n_db: int, dup: int) -> bool:
+def judge(rd: RawDay, n_member: int, dup: int, n_extra: int) -> bool:
+    """n_member: DB 행 중 rcept_no 가 raw 목록에 있는 수 · dup: 다른 유형에 저장된 raw 목록 수 ·
+    n_extra: 같은 날·같은 유형 DB 행 중 raw 목록에 없는 수."""
     if rd.state == "empty013":
-        return n_db == 0
+        return n_member == 0 and n_extra == 0
     if rd.state != "ok":
         return False
-    return n_db + dup == rd.total_count
+    return (len(set(rd.rcept_nos)) == rd.total_count
+            and n_member + dup == rd.total_count
+            and n_extra == 0)
+
+
+def _count(cur, sql: str, params: tuple) -> int:
+    cur.execute(sql, params)
+    return int(cur.fetchone()[0])
 
 
 def check(conn, out_dir: Path, start: date, end: date, types: Sequence[str]) -> Dict[str, Any]:
@@ -73,16 +82,22 @@ def check(conn, out_dir: Path, start: date, end: date, types: Sequence[str]) -> 
         while d <= end:
             for ty in types:
                 rd = read_raw_day(out_dir, ty, d)
-                cur.execute("SELECT count(*) FROM dart_disclosures WHERE rcept_dt = %s AND pblntf_ty = %s", (d, ty))
-                n_db = int(cur.fetchone()[0])
-                dup = 0
                 if rd.rcept_nos:
-                    cur.execute("SELECT count(*) FROM dart_disclosures WHERE rcept_no = ANY(%s) AND pblntf_ty <> %s",
-                                (list(rd.rcept_nos), ty))
-                    dup = int(cur.fetchone()[0])
+                    lst = list(rd.rcept_nos)
+                    n_member = _count(cur, "SELECT count(*) FROM dart_disclosures "
+                                      "WHERE rcept_no = ANY(%s) AND pblntf_ty = %s", (lst, ty))
+                    dup = _count(cur, "SELECT count(*) FROM dart_disclosures "
+                                 "WHERE rcept_no = ANY(%s) AND pblntf_ty <> %s", (lst, ty))
+                    n_extra = _count(cur, "SELECT count(*) FROM dart_disclosures WHERE rcept_dt = %s "
+                                     "AND pblntf_ty = %s AND NOT (rcept_no = ANY(%s))", (d, ty, lst))
+                else:
+                    n_member = dup = 0
+                    n_extra = _count(cur, "SELECT count(*) FROM dart_disclosures "
+                                     "WHERE rcept_dt = %s AND pblntf_ty = %s", (d, ty))
                 n += 1
-                if not judge(rd, n_db, dup):
-                    bad.append(dict(day=d.isoformat(), ty=ty, state=rd.state, tc=rd.total_count, n_db=n_db, dup=dup))
+                if not judge(rd, n_member, dup, n_extra):
+                    bad.append(dict(day=d.isoformat(), ty=ty, state=rd.state, tc=rd.total_count,
+                                    n_member=n_member, dup=dup, n_extra=n_extra))
             d += timedelta(days=1)
     conn.rollback()
     return {"n_cells": n, "n_bad": len(bad), "bad": bad[:200], "complete": not bad}
