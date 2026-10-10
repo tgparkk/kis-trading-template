@@ -71,21 +71,15 @@ def rank(scored: List[Tuple[str, float]]) -> List[Cand]:
     return [Cand(c, float(s), i + 1) for i, (c, s) in enumerate(ordered)]
 
 
-def prev_trading_day(cur, T: date) -> Optional[date]:
-    cur.execute("SELECT max(date) FROM daily_prices WHERE stock_code = 'KOSPI' AND date < %s", (T.isoformat(),))
-    v = cur.fetchone()[0]
-    return date.fromisoformat(str(v)[:10]) if v else None
-
-
-def d_complete(cur, D: date) -> Tuple[bool, Dict[str, Any]]:
-    cur.execute("SELECT max(date) FROM daily_prices WHERE stock_code = 'KOSPI' AND date < %s", (D.isoformat(),))
-    dp = cur.fetchone()[0]
+def d_complete(cur, D: date, dprev: Optional[date]) -> Tuple[bool, Dict[str, Any]]:
+    """D 가격 완결 = D 행수 / D′ 행수 ≥ 0.98 ∧ 유니버스 날짜 == D. D·D′ 은 러너가 달력(utils.korean_holidays)으로 정해
+    넘긴다 — KOSPI 의사티커 적재 상태로 날짜를 정하지 않는다(늦게 적재된 날 엉뚱한 D 방지)."""
     q = "SELECT count(*) FROM daily_prices WHERE date = %s AND market_cap IS NOT NULL"
     cur.execute(q, (D.isoformat(),))
     n_d = int(cur.fetchone()[0])
     n_p = 0
-    if dp:
-        cur.execute(q, (str(dp)[:10],))
+    if dprev is not None:
+        cur.execute(q, (dprev.isoformat(),))
         n_p = int(cur.fetchone()[0])
     cur.execute(UNIVERSE_DATE_SQL, (D.isoformat(),))
     ud = cur.fetchone()[0]

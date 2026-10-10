@@ -46,7 +46,8 @@ def choose_k_table(trial_lags: Dict[date, List[Optional[int]]], ks=range(1, 7)) 
 
 def decide(store, scan_days_desc: List[date], k: Optional[int], trial_lags) -> str:
     """한 방향 규칙: 봉인 run 행이 하나라도 있으면(상태 무관: ok·missed_token·late·missed_host…) 항상 "sealed".
-    봉인 행이 없을 때만 시험 창 판정(seal_ready)으로 전환한다. store.any_sealed()(ok 만) 는 쓰지 않는다."""
+    봉인 행이 없을 때만 시험 창 판정(seal_ready)으로 전환한다.
+    `scan_days_desc` = «끝난» 스캔일 내림차순(지금 기록하는 D 제외 — 러너가 days_desc[1:1+TRIAL_DAYS] 를 넘긴다)."""
     if store.runs("sealed"):
         return "sealed"
     return "sealed" if seal_ready(store.runs("trial"), trial_lags, scan_days_desc, k)[0] else "trial"
