@@ -158,3 +158,43 @@ def test_check_home_refuses_default_llm_home(monkeypatch, tmp_path):
     monkeypatch.setenv("KIS_DTFLOW_SHADOW_HOME", str(tmp_path / "kis-llm-shadow"))
     with pytest.raises(G.GuardError, match="홈"):
         G.check_home()
+
+
+# ---- final fix: I3 — 가드 예외는 전부 GuardError(+ 고정 reason 코드) ----
+@pytest.mark.parametrize("text", ["{bad json", "[1, 2]", '{"x": 1}', b"\xff\xfe\x00bad",
+                                  '{"code_sha": "a", "rule_v": "v1", "frozen_at": "t", "sources": 5}',
+                                  '{"code_sha": "a", "rule_v": "v1", "frozen_at": "t", "sources": {}, "credit_lag_k": "3"}'])
+def test_load_frozen_corrupt_is_guard_error(monkeypatch, tmp_path, text):
+    monkeypatch.setenv("KIS_DTFLOW_SHADOW_HOME", str(tmp_path))
+    p = S.frozen_path()
+    if isinstance(text, bytes):
+        p.write_bytes(text)
+    else:
+        p.write_text(text, encoding="utf-8")
+    with pytest.raises(G.GuardError) as ei:
+        G.load_frozen()
+    assert ei.value.reason == "frozen_corrupt"
+
+
+def test_load_frozen_missing_reason(monkeypatch, tmp_path):
+    monkeypatch.setenv("KIS_DTFLOW_SHADOW_HOME", str(tmp_path))
+    with pytest.raises(G.GuardError) as ei:
+        G.load_frozen()
+    assert ei.value.reason == "frozen_missing"
+
+
+def test_source_sha_missing_file_is_guard_error(tmp_path):
+    with pytest.raises(G.GuardError) as ei:
+        G.source_sha("strategies/gone.py", str(tmp_path))
+    assert ei.value.reason == "source_unreadable"
+
+
+def test_runtime_reason_codes(monkeypatch, tmp_path):
+    r, fr = _frozen_detached(monkeypatch, tmp_path)
+    monkeypatch.setattr(G, "_sources", lambda: {"x.py": "zzz"})
+    with pytest.raises(G.GuardError) as ei:
+        G.check_runtime(r, fr)
+    assert ei.value.reason == "source_sha"
+    with pytest.raises(G.GuardError) as ei:
+        G.refuse_live_tree(S.LIVE_TREE + "/RoboTrader_template")
+    assert ei.value.reason == "live_tree"
