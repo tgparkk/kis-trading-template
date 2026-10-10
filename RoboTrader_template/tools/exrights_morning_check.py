@@ -55,9 +55,9 @@ CORP_ACTION_RE = re.compile(
     r"무상증자결정|주식배당결정|주식분할결정|주식병합결정|감자결정|유상증자결정"
     r"|권리락|배당락|변경상장|주권매매거래정지"
 )
-# 자회사 공시(「…(종속회사의주요경영사항)」)는 보유 종목 기준가와 무관 → 제외.
+# 자회사 공시(KOSPI 「…(종속회사의주요경영사항)」 · KOSDAQ 「…(자회사의주요경영사항)」)는 보유 종목 기준가와 무관 → 제외.
 #   안 빼면 대형주(예: 005930)가 매일 아침 오경보를 낸다.
-_EXCLUDE_RE = re.compile(r"종속회사")
+_EXCLUDE_RE = re.compile(r"종속회사|자회사의주요경영사항")
 _NEWS_COMPANY_PREFIX_RE = re.compile(r"^\[[^\]]*\]\s*")
 LIMIT_DOWN_RATIO = 0.695   # 하루 −30% 한도 밖 (반올림 여유)
 LIMIT_UP_RATIO = 1.305     # 하루 +30% 한도 밖
@@ -228,7 +228,7 @@ def check_code(cur, code: str, as_of: date, days: int) -> Dict[str, Any]:
 def format_report(as_of: date, days: int, target_label: str,
                   holdings: Dict[str, Dict[str, Any]], results: List[Dict[str, Any]]) -> str:
     since = as_of - timedelta(days=days)
-    lines = [f"[실전 보유 종목 기업행위 예고 점검] 기준일 {as_of} · 대상 {len(results)}종목({target_label}) "
+    lines = [f"[실전 보유 종목 기업행위 예고 점검] 기준일 {as_of} · 실행 {datetime.now(KST):%H:%M:%S} · 대상 {len(results)}종목({target_label}) "
              f"· 공시 창 {days}일({since}~)"]
     n_hit = 0
     for r in results:
@@ -258,18 +258,22 @@ def format_report(as_of: date, days: int, target_label: str,
 
 def read_telegram_config(key_ini: Path) -> Optional[Dict[str, str]]:
     """[TELEGRAM] enabled/token/chat_id — 읽기만. 비활성·누락이면 None."""
-    if not key_ini.exists():
+    try:
+        if not key_ini.exists():
+            return None
+        parser = configparser.RawConfigParser()
+        parser.read(key_ini, encoding="utf-8")
+        if "TELEGRAM" not in parser:
+            return None
+        sec = parser["TELEGRAM"]
+        token = sec.get("token", "").strip()
+        chat_id = sec.get("chat_id", "").strip()
+        if not sec.getboolean("enabled", False) or not token or not chat_id:
+            return None
+        return {"token": token, "chat_id": chat_id}
+    except Exception as e:  # ParsingError 메시지는 key.ini 줄을 그대로 싣는다 → 형식명만
+        print(f"key.ini 읽기 실패: {type(e).__name__}")
         return None
-    parser = configparser.ConfigParser()
-    parser.read(key_ini, encoding="utf-8")
-    if "TELEGRAM" not in parser:
-        return None
-    sec = parser["TELEGRAM"]
-    token = sec.get("token", "").strip()
-    chat_id = sec.get("chat_id", "").strip()
-    if not sec.getboolean("enabled", False) or not token or not chat_id:
-        return None
-    return {"token": token, "chat_id": chat_id}
 
 
 def send_telegram(cfg: Dict[str, str], text: str) -> bool:
@@ -294,8 +298,21 @@ def parse_codes(raw: Optional[str]) -> List[str]:
     return list(dict.fromkeys(codes))
 
 
+def notify_failure(args: argparse.Namespace, exc_name: str, sender=send_telegram) -> None:
+    """점검 자체가 실패했을 때 짧은 평문 1건 — 「조용함 = 이상 없음」 오해 방지. 예외 본문은 싣지 않는다."""
+    try:
+        cfg = read_telegram_config(Path(args.key_ini))
+        if cfg is None:
+            print("실패 알림 생략: key.ini [TELEGRAM] 비활성·누락")
+            return
+        sender(cfg, f"[기업행위 점검 실패] 데이터 오류({exc_name}) — 수동 확인")
+    except Exception as e:
+        print(f"실패 알림 전송 실패: {type(e).__name__}")
+
+
 def run(argv: Optional[Sequence[str]] = None, connect=connect_readonly,
         sender=send_telegram) -> int:
+    """종료 코드 0/2/3. `--telegram` 이면 데이터 오류(2)·예상 못 한 예외에도 «점검 실패» 1건(보유 없음은 조용)."""
     ap = argparse.ArgumentParser(description="실전 보유 종목 기업행위 예고 점검(읽기 전용)")
     ap.add_argument("--codes", help="쉼표로 구분한 종목코드(원장 대신 점검)")
     ap.add_argument("--telegram", action="store_true", help="걸린 게 있으면 텔레그램 1건")
@@ -303,19 +320,30 @@ def run(argv: Optional[Sequence[str]] = None, connect=connect_readonly,
     ap.add_argument("--days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="공시 창(달력일)")
     ap.add_argument("--key-ini", default=str(DEFAULT_KEY_INI), help="[TELEGRAM] 읽을 key.ini")
     args = ap.parse_args(argv)
+    try:
+        code, failure = _execute(args, connect, sender)
+    except Exception as e:
+        print(f"데이터 오류: 예상 못 한 예외 ({type(e).__name__})")
+        code, failure = EXIT_DATA_ERROR, type(e).__name__
+    if failure and args.telegram:
+        notify_failure(args, failure, sender)
+    return code
 
+
+def _execute(args: argparse.Namespace, connect, sender) -> Tuple[int, Optional[str]]:
+    """(종료 코드, 실패 예외 형식명 — 데이터 오류일 때만)."""
     try:
         as_of = date.fromisoformat(args.as_of) if args.as_of else datetime.now(KST).date()
         codes = parse_codes(args.codes)
     except ValueError as e:
         print(f"인자 오류: {e}")
-        return EXIT_DATA_ERROR
+        return EXIT_DATA_ERROR, type(e).__name__
 
     try:
         conn = connect()
     except Exception as e:
         print(f"데이터 오류: DB 접속 실패 ({type(e).__name__}: {e})")
-        return EXIT_DATA_ERROR
+        return EXIT_DATA_ERROR, type(e).__name__
 
     try:
         cur = conn.cursor()
@@ -327,17 +355,17 @@ def run(argv: Optional[Sequence[str]] = None, connect=connect_readonly,
             if not table_exists(cur, REAL_TABLE):
                 print(f"[실전 보유 종목 기업행위 예고 점검] 기준일 {as_of} · 보유 없음 "
                       f"({REAL_TABLE} 테이블 없음 — 실전 미시작)")
-                return EXIT_OK
+                return EXIT_OK, None
             for h in load_open_holdings(cur, REAL_TABLE):
                 holdings[h["stock_code"]] = h
             codes = list(holdings)
             if not codes:
                 print(f"[실전 보유 종목 기업행위 예고 점검] 기준일 {as_of} · 보유 없음 ({REAL_TABLE} 미청산 0건)")
-                return EXIT_OK
+                return EXIT_OK, None
         results = [check_code(cur, c, as_of, args.days) for c in codes]
     except Exception as e:
         print(f"데이터 오류: 조회 실패 ({type(e).__name__}: {e})")
-        return EXIT_DATA_ERROR
+        return EXIT_DATA_ERROR, type(e).__name__
     finally:
         try:
             conn.close()
@@ -353,7 +381,7 @@ def run(argv: Optional[Sequence[str]] = None, connect=connect_readonly,
             print("텔레그램 생략: key.ini [TELEGRAM] 비활성·누락")
         elif sender(cfg, report):
             print("텔레그램 전송 완료")
-    return EXIT_HIT if hit else EXIT_OK
+    return (EXIT_HIT if hit else EXIT_OK), None
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@
    (a)안(10-16 EOD 뒤 사전등록)이다 — 여기서 하지 말 것.
 🔴 페이퍼에선 호출부(`PositionMonitor`)가 먼저 돌려보낸다(DB 조회 0 · 로그 0).
 
-킬 스위치: env `CORP_ACTION_PRICE_ALERT` = `on`(기본) | `off`.
+킬 스위치: env `CORP_ACTION_PRICE_ALERT` = `on`(기본) | `off`/`0`/`false`/`no`/`disable`/`disabled`.
   `.env` 는 `config/env_bootstrap.py` 가 읽고 OS env 가 이긴다. 호출 시점에 읽는다.
   모르는 값은 `on` 으로 본다 — 판정을 바꾸지 않는 경보라, 오타로 경보가 조용히
   꺼지는 쪽이 더 위험하다(룰을 바꾸는 `RS_LEADER_CORP_ACTION_MODE` 와 방향이 반대인 이유).
@@ -27,6 +27,7 @@ from typing import Any, Dict, Optional, Set, Tuple
 ALERT_PREFIX = "[기업행위 의심]"
 DEFAULT_GAP_THRESHOLD = 0.02
 KILL_SWITCH_ENV = "CORP_ACTION_PRICE_ALERT"
+_OFF_VALUES = frozenset({"off", "0", "false", "no", "disable", "disabled"})
 # 부동소수 오차 흡수 — 정확히 2%(예: 102/100)가 1.0200000000000000178 로 «넘었다» 판정되지 않게.
 _EPS = 1e-9
 # DB 전일종가 조회 창(달력일). 연휴 최장 ~10일을 덮는다.
@@ -34,12 +35,12 @@ _PREV_CLOSE_LOOKBACK_DAYS = 14
 
 
 def is_alert_enabled(environ: Optional[Dict[str, str]] = None) -> bool:
-    """킬 스위치 — `off` 일 때만 False (대소문자·앞뒤 공백 무시)."""
+    """킬 스위치 — `_OFF_VALUES` 일 때만 False (대소문자·앞뒤 공백 무시). 미설정·오타는 on."""
     env = os.environ if environ is None else environ
     raw = env.get(KILL_SWITCH_ENV)
     if raw is None:
         return True
-    return str(raw).strip().lower() != "off"
+    return str(raw).strip().lower() not in _OFF_VALUES
 
 
 def detect_base_price_gap(base_price: float, db_prev_close: float,
@@ -103,6 +104,7 @@ class CorpActionPriceAlertHook:
     def __init__(self, logger: Any, threshold: float = DEFAULT_GAP_THRESHOLD) -> None:
         self.logger = logger
         self.threshold = threshold
+        logger.info(f"{ALERT_PREFIX} 경보 활성 (임계 {threshold:.0%} · 킬스위치 {KILL_SWITCH_ENV})")
         self._day: Optional[date] = None
         self._base_prices: Dict[str, float] = {}
         self._prev_closes: Dict[str, Optional[float]] = {}
@@ -136,7 +138,8 @@ class CorpActionPriceAlertHook:
         """daily_prices 의 «직전 거래일» 종가(읽기 전용) → (종가, 생략 사유).
 
         날짜가 직전 거래일과 다르면(DB 가 밀림) 종가 None — 엉뚱한 날과 비교한 오경보 방지.
-        executor 스레드에서 돌므로 로그는 남기지 않고 사유만 돌려준다.
+        executor 스레드에서 돌므로 이 함수는 로그를 남기지 않고 사유만 돌려준다. 단 `price_repo.get_daily_prices`
+        는 DB 오류 때 자체적으로 ERROR(`일봉 데이터 조회 실패`)를 이 스레드에서 남기고 빈 DataFrame 을 돌려준다.
         """
         from utils.korean_holidays import get_previous_trading_day
         df = price_repo.get_daily_prices(stock_code, days=_PREV_CLOSE_LOOKBACK_DAYS)
@@ -161,7 +164,11 @@ class CorpActionPriceAlertHook:
                                 price_repo: Any) -> Optional[float]:
         if stock_code in self._prev_closes:
             return self._prev_closes[stock_code]
-        if stock_code in self._inflight or price_repo is None:
+        if price_repo is None:
+            self._prev_closes[stock_code] = None   # 그날 1번만 남긴다
+            self.logger.warning(f"기준가 점검 생략(경보 못 봄): {stock_code} price_repo 없음")
+            return None
+        if stock_code in self._inflight:
             return None
         loop = asyncio.get_running_loop()
         self._inflight.add(stock_code)
@@ -180,7 +187,7 @@ class CorpActionPriceAlertHook:
                 value, note = None, f"DB 전일종가 조회 실패: {e}"
             self._prev_closes[code] = value
             if note:
-                self.logger.info(f"기준가 점검 생략: {code} {note}")
+                self.logger.warning(f"기준가 점검 생략(경보 못 봄): {code} {note}")
 
         fut.add_done_callback(_done)
         return None
@@ -228,12 +235,13 @@ class CorpActionPriceAlertHook:
         if _would_trigger_exit(profit_rate, stop_loss_rate, target_profit_rate) \
                 and self._exit_alerter.should_fire(trade_date, stock_code):
             self.logger.warning(
-                f"{ALERT_PREFIX} {stock_code}{name} 손절/익절 판정이 기업행위 때문일 수 있음 — 수동 확인 "
+                f"{ALERT_PREFIX} {stock_code}{name} 손절/익절 조건 도달(09:05 전이면 손절은 유예 중 — 곧 실행될 수 있음) · 기업행위 때문일 수 있음 — 수동 확인 "
                 f"(수익률 {profit_rate:.2%} · 기준가/전일종가 {ratio:.4f})"
             )
             self._send_telegram(telegram, (
                 f"🚨 기업행위 의심 — {stock_code}{name}\n"
-                f"손절/익절 판정이 기업행위 때문일 수 있음 — 수동 확인\n"
+                f"손절/익절 조건 도달(09:05 전이면 손절은 유예 중 — 곧 실행될 수 있음) — 기업행위 때문일 수 있음, 수동 확인\n"
+                f"신주·수량 변경 입고일 아침 실전 기동 중단 가능\n"
                 f"수익률 {profit_rate:.2%} · 기준가/전일종가 {ratio:.4f}"
             ))
         return ratio

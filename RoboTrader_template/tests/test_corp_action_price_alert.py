@@ -76,6 +76,9 @@ class TestKillSwitch:
     @pytest.mark.parametrize("raw, expected", [
         (None, True), ("on", True), ("ON", True), ("", True), ("garbage", True),
         ("off", False), (" OFF ", False), ("Off", False),
+        ("0", False), ("false", False), ("FALSE", False), (" no ", False),
+        ("disable", False), ("Disabled", False),
+        ("of", True), ("1", True), ("true", True), ("offf", True), ("enabled", True),
     ])
     def test_values(self, raw, expected):
         env = {} if raw is None else {KILL_SWITCH_ENV: raw}
@@ -135,6 +138,36 @@ def _warnings(logger):
 
 
 class TestHook:
+    async def test_creation_logs_active_line_with_threshold(self):
+        logger = Mock()
+        CorpActionPriceAlertHook(logger)
+        infos = [c.args[0] for c in logger.info.call_args_list]
+        assert len(infos) == 1
+        assert infos[0] == "[기업행위 의심] 경보 활성 (임계 2% · 킬스위치 CORP_ACTION_PRICE_ALERT)"
+
+    async def test_price_repo_none_warns_once_per_stock_per_day(self):
+        logger = Mock()
+        hook = CorpActionPriceAlertHook(logger)
+        hook.remember_base_price("000500", 233_500, TRADE_DATE)
+        for _ in range(4):
+            assert hook.check(**_check_kwargs(price_repo=None, telegram=None)) is None
+        skips = [m for m in _warnings(logger) if "price_repo 없음" in m]
+        assert len(skips) == 1 and "000500" in skips[0]
+        assert not [m for m in _warnings(logger) if m.startswith(ALERT_PREFIX)]
+
+    async def test_monday_after_holiday_uses_thursday_close(self):
+        # 2026-10-12(월) 직전 거래일 = 10-08(목) (10-09 금 한글날 휴장)
+        monday = date(2026, 10, 12)
+        logger = Mock()
+        repo = Mock(get_daily_prices=Mock(return_value=_daily_df(343_000, last_date=date(2026, 10, 8))))
+        hook = CorpActionPriceAlertHook(logger)
+        hook.remember_base_price("000500", 233_500, monday)
+        kw = _check_kwargs(trade_date=monday, price_repo=repo, telegram=None)
+        hook.check(**kw)
+        await _drain(hook)
+        assert hook.check(**kw) == pytest.approx(233_500 / 343_000)
+        assert not [m for m in _warnings(logger) if "기준가 점검 생략" in m]
+
     async def test_gap_alerts_once_with_telegram_and_exit_hint(self):
         logger = Mock()
         repo = Mock()
@@ -156,7 +189,8 @@ class TestHook:
         assert w[0].startswith(ALERT_PREFIX) and "000500" in w[0]
         assert "233,500" in w[0] and "343,000" in w[0] and "보유 1주" in w[0] and "346,500" in w[0]
         assert w[1].startswith(ALERT_PREFIX)
-        assert "손절/익절 판정이 기업행위 때문일 수 있음 — 수동 확인" in w[1]
+        assert "손절/익절 조건 도달(09:05 전이면 손절은 유예 중 — 곧 실행될 수 있음)" in w[1]
+        assert "수동 확인" in w[1]
         assert tg.notify_system_status.await_count == 2
 
         # 같은 날 반복 틱: 추가 경보 0 · DB 재조회 0
@@ -198,9 +232,9 @@ class TestHook:
         hook.check(**_check_kwargs(price_repo=repo, telegram=None))
         await _drain(hook)
         assert hook.check(**_check_kwargs(price_repo=repo, telegram=None)) is None
-        logger.warning.assert_not_called()
-        infos = [c.args[0] for c in logger.info.call_args_list]
-        assert len(infos) == 1 and "기준가 점검 생략" in infos[0]
+        assert not [m for m in _warnings(logger) if m.startswith(ALERT_PREFIX)]
+        skips = [m for m in _warnings(logger) if "기준가 점검 생략" in m]
+        assert len(skips) == 1 and "≠ 직전 거래일" in skips[0]
 
     async def test_db_error_is_cached_and_not_raised(self):
         logger = Mock()
@@ -211,7 +245,9 @@ class TestHook:
             hook.check(**_check_kwargs(price_repo=repo, telegram=None))
             await _drain(hook)
         assert repo.get_daily_prices.call_count == 1
-        logger.warning.assert_not_called()
+        # 경보는 없고 «못 봤다» 경고만 종목·하루 1번
+        assert not [m for m in _warnings(logger) if m.startswith(ALERT_PREFIX)]
+        assert len([m for m in _warnings(logger) if "기준가 점검 생략" in m]) == 1
 
     async def test_day_rollover_realerts_and_drops_old_base(self):
         logger = Mock()
@@ -330,8 +366,9 @@ class TestPositionMonitorWiring:
         mon.decision_engine.telegram.notify_system_status.assert_not_called()
         assert getattr(mon, "_corp_action_alert", None) is None
 
-    async def test_kill_switch_off_is_noop(self, fixed_now, monkeypatch):
-        monkeypatch.setenv(KILL_SWITCH_ENV, "off")
+    @pytest.mark.parametrize("value", ["off", "0", "false", "NO", " Disabled "])
+    async def test_kill_switch_off_is_noop(self, fixed_now, monkeypatch, value):
+        monkeypatch.setenv(KILL_SWITCH_ENV, value)
         mon = _make_monitor(False, REAL)
         await _run_ticks(mon, _positioned_stock())
         mon.decision_engine.db_manager.price_repo.get_daily_prices.assert_not_called()
@@ -391,3 +428,24 @@ class TestSellDecisionUnchanged:
         gap = detect_base_price_gap(base, prev)
         assert (len(_prefixed_warnings(mon_on)) > 0) == (gap is not None)
         assert _prefixed_warnings(mon_off) == []
+
+
+    @pytest.mark.parametrize("value", ["garbage", "offf", "1"])
+    async def test_unknown_kill_switch_value_keeps_alert_on(self, fixed_now, monkeypatch, value):
+        monkeypatch.setenv(KILL_SWITCH_ENV, value)
+        mon = _make_monitor(False, REAL)
+        await _run_ticks(mon, _positioned_stock())
+        assert len(_prefixed_warnings(mon)) == 2
+
+    async def test_grace_window_alert_precedes_deferred_stop(self, monkeypatch):
+        """09:02 - 손절은 09:05 까지 유예. 경보는 나가되 매도 호출은 0(판정 불변), 문구는 «조건 도달»."""
+        grace_now = datetime(2026, 10, 13, 9, 2, 0, tzinfo=KST)
+        monkeypatch.setattr(pm_mod, "now_kst", lambda: grace_now)
+        monkeypatch.delenv(KILL_SWITCH_ENV, raising=False)
+        mon = _make_monitor(False, REAL)
+        await _run_ticks(mon, _positioned_stock())
+        w = _prefixed_warnings(mon)
+        assert len(w) == 2 and "09:05 전이면 손절은 유예 중" in w[1]
+        mon._execute_sell.assert_not_called()
+        msg = mon.decision_engine.telegram.notify_system_status.await_args_list[-1].args[0]
+        assert "신주·수량 변경 입고일 아침 실전 기동 중단 가능" in msg

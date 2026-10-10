@@ -5,6 +5,7 @@ DB 는 가짜 커서(SQL 문자열로 분기)로 대신한다 — 실 DB·KIS·�
 검증 축: 제목 분류(정정 접두·공백·종속회사 제외) · 가격 불연속 · 종료 코드(0/3/2)
         · 보유 없음 경로 · --codes 경로 · --telegram(걸릴 때만 1건 · 토큰 미출력) · SELECT 만.
 """
+import re
 from datetime import date
 
 import pytest
@@ -269,3 +270,88 @@ def test_real_table_matches_settings_ssot():
 def test_holdings_query_rejects_unexpected_table():
     with pytest.raises(ValueError):
         emc.load_open_holdings(FakeCursor({}), "virtual_trading_records; DROP")
+
+
+def test_exclude_kosdaq_subsidiary_wording():
+    for t in ["주요사항보고서(감자결정)(자회사의주요경영사항)", "유상증자결정(자회사의주요경영사항)",
+              "유상증자결정(종속회사의주요경영사항)"]:
+        assert emc.classify_title(t) is None, t
+    assert emc.classify_title("주요사항보고서(감자결정)") is not None
+
+
+def test_report_header_has_run_time(capsys):
+    _run(DATA, ["--codes", "005930", "--as-of", "2026-10-10"])
+    assert re.search(r"기준일 2026-10-10 · 실행 \d\d:\d\d:\d\d · 대상", capsys.readouterr().out)
+
+
+def test_read_telegram_config_malformed_and_percent(tmp_path, capsys):
+    bad = tmp_path / "bad.ini"
+    bad.write_text("[TELEGRAM]\ntoken=SECRET-TOKEN-123\nthis line has no delimiter\n", encoding="utf-8")
+    assert emc.read_telegram_config(bad) is None
+    out = capsys.readouterr().out
+    assert "ParsingError" in out and "SECRET-TOKEN-123" not in out and "no delimiter" not in out
+    pct = tmp_path / "pct.ini"
+    pct.write_text("[TELEGRAM]\nenabled=true\ntoken=ab%cd\nchat_id=42\n", encoding="utf-8")
+    assert emc.read_telegram_config(pct) == {"token": "ab%cd", "chat_id": "42"}
+    notbool = tmp_path / "nb.ini"
+    notbool.write_text("[TELEGRAM]\nenabled=maybe\ntoken=x\nchat_id=1\n", encoding="utf-8")
+    assert emc.read_telegram_config(notbool) is None
+    assert "ValueError" in capsys.readouterr().out
+
+
+def test_exit2_with_telegram_sends_one_short_failure_notice(tmp_path, capsys):
+    key = _key_ini(tmp_path)
+    sent = []
+
+    def boom():
+        raise RuntimeError("host=10.0.0.1 password=hunter2")
+
+    code = emc.run(["--codes", "000500", "--telegram", "--key-ini", str(key)], connect=boom,
+                   sender=lambda cfg, text: sent.append(text) or True)
+    assert code == emc.EXIT_DATA_ERROR
+    assert sent == ["[기업행위 점검 실패] 데이터 오류(RuntimeError) — 수동 확인"]
+    assert "hunter2" not in sent[0]
+
+
+def test_query_failure_with_telegram_sends_once(tmp_path):
+    key = _key_ini(tmp_path)
+    code, _c, sent = _run({"raise_on_query": True}, ["--codes", "000500", "--telegram", "--key-ini", str(key)])
+    assert code == emc.EXIT_DATA_ERROR
+    assert len(sent) == 1 and sent[0][1].startswith("[기업행위 점검 실패] 데이터 오류(")
+
+
+def test_unexpected_exception_sends_once_and_exits_2(tmp_path, monkeypatch, capsys):
+    key = _key_ini(tmp_path)
+    monkeypatch.setattr(emc, "format_report", lambda *a, **k: (_ for _ in ()).throw(KeyError("secret-host")))
+    code, _c, sent = _run(DATA, ["--codes", "475460", "--as-of", "2026-10-10",
+                                 "--telegram", "--key-ini", str(key)])
+    assert code == emc.EXIT_DATA_ERROR
+    assert len(sent) == 1 and sent[0][1] == "[기업행위 점검 실패] 데이터 오류(KeyError) — 수동 확인"
+    assert "secret-host" not in capsys.readouterr().out
+
+
+def test_failure_without_telegram_flag_sends_nothing(tmp_path):
+    code, _c, sent = _run({"raise_on_query": True}, ["--codes", "000500", "--key-ini", str(_key_ini(tmp_path))])
+    assert code == emc.EXIT_DATA_ERROR and sent == []
+
+
+def test_failure_notice_send_error_does_not_crash(tmp_path, capsys):
+    key = _key_ini(tmp_path)
+
+    def bad_sender(cfg, text):
+        raise OSError("token in url")
+
+    def boom():
+        raise RuntimeError("x")
+
+    code = emc.run(["--codes", "000500", "--telegram", "--key-ini", str(key)], connect=boom, sender=bad_sender)
+    assert code == emc.EXIT_DATA_ERROR
+    out = capsys.readouterr().out
+    assert "OSError" in out and "token in url" not in out
+
+
+def test_no_holdings_with_telegram_stays_silent(tmp_path):
+    key = _key_ini(tmp_path)
+    for data in ({"table_exists": False}, {"table_exists": True, "holdings": []}):
+        code, _c, sent = _run(data, ["--telegram", "--key-ini", str(key), "--as-of", "2026-10-10"])
+        assert code == emc.EXIT_OK and sent == []
