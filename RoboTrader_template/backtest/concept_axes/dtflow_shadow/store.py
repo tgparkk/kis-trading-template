@@ -151,7 +151,8 @@ class PgStore:
         return out
 
     def runs(self, phase) -> List[Dict[str, Any]]:
-        return self._select(f"SELECT {', '.join(RUN_COLS)} FROM {table(phase, 'run')} WHERE rule_v = %s", (S.RULE_V,))
+        return self._select(f"SELECT {', '.join(RUN_COLS)} FROM {table(phase, 'run')} WHERE rule_v = %s "
+                            f"ORDER BY run_at", (S.RULE_V,))
 
     def cands(self, phase, D) -> List[Dict[str, Any]]:
         return self._select(f"SELECT {', '.join(CAND_COLS)} FROM {table(phase, 'candidates')} "

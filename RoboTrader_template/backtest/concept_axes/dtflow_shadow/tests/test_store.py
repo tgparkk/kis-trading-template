@@ -158,3 +158,32 @@ def test_pgstore_tx_all_inserted_commits_once():
     conn = _FakeConn([1, 1])
     ST.PgStore(conn).write_day("trial", [_cand()], [], _run())
     assert conn.commits == 1 and conn.rollbacks == 0
+
+
+def test_pg_runs_select_is_ordered_by_run_at():
+    sqls = []
+
+    class Cur:
+        description = [("scan_date",)]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params=None):
+            sqls.append(sql)
+
+        def fetchall(self):
+            return []
+
+    class Conn:
+        def cursor(self):
+            return Cur()
+
+        def rollback(self):
+            pass
+
+    ST.PgStore(Conn()).runs("trial")
+    assert "ORDER BY run_at" in sqls[0]

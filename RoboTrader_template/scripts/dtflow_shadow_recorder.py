@@ -51,7 +51,10 @@ _compute = C.compute
 _load_snapshot = C.load_snapshot
 
 CAL_DAYS = 40                                   # 신용 시차·스캔 창·D′ 에 쓰는 달력 길이(거래일)
-EXIT2 = ("too_early", "already_recorded")       # 아무것도 쓰지 않고 끝난 실행 = 종료 코드 2
+EXIT2 = ("too_early", "already_recorded", "already_checked")       # 아무것도 쓰지 않고 끝난 실행 = 종료 코드 2
+
+
+_wall_now = datetime.now                        # 실제 시계(테스트가 바꿔 끼운다) — dry-run 시간대 거부용
 
 
 def _is_trading_day(d: date) -> bool:
@@ -275,6 +278,10 @@ def _run_snapshot(ctx: Ctx) -> str:
         _persist_error(ctx, "snapshot_check", "NoPrevTradingDay")
         return "error"
     ctx.cur_D = D
+    if any(r.get("scan_date") == D and r.get("run_kind") == "snapshot_check"
+           for ph in ("trial", "sealed") for r in ctx.store.runs(ph)):
+        _alert(ctx, D, "already_checked")             # 같은 D 재검사 거부(정본 = 첫 행) — 아무것도 안 씀
+        return "already_checked"
     phase = "sealed" if ctx.store.runs("sealed") else "trial"   # 봉인이 시작됐으면 놓친 날의 행도 봉인 표로
     ctx.cur_phase = phase
     mine = [C.Cand(r["stock_code"], float(r["score"]), int(r["rank"])) for r in ctx.store.cands(phase, D)]
@@ -298,10 +305,11 @@ def _run_snapshot(ctx: Ctx) -> str:
 
 
 def run_choose_k(ctx: Ctx) -> None:
-    """신용 시차 k 표 — ok 시험 기록이 있는 날만(아직 기록 전인 날·실패한 날은 가용률 0 으로 섞지 않는다)."""
+    """신용 시차 k 표 — «ok ∧ 후보 ≥ 1» 시험 기록이 있는 날만(아직 기록 전인 날·실패한 날은 가용률 0 으로 섞지 않는다)."""
     D = _prev_day(ctx.T)
     ok_days = {r.get("scan_date") for r in ctx.store.runs("trial")
-               if r.get("run_kind") == "record" and r.get("status") == "ok"}
+               if r.get("run_kind") == "record" and r.get("status") == "ok"
+               and ctx.store.cands("trial", r.get("scan_date"))}      # 후보 0 인 ok 날은 k 가용성에서 제외
     days = [d for d in _scan_days_desc(D) if d in ok_days][:S.TRIAL_DAYS]
     if not days:
         ctx.log("ok 시험 기록 없음 — k 표 없음")
@@ -398,6 +406,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     a = ap.parse_args(argv)
     if a.freeze and a.dry_run:
         ap.error("--freeze 는 --dry-run 과 함께 쓸 수 없다(동결은 실제 frozen.json·DB 를 건드린다)")
+    if a.dry_run and not (a.home and a.archive):
+        ap.error("--dry-run 은 --home 과 --archive 를 모두 줘야 한다(실제 홈·archive 에 쓰지 않게)")
     if (a.date or a.no_guard or a.home or a.archive or a.now) and not a.dry_run:
         ap.error("--date/--no-guard/--home/--archive/--now 는 --dry-run 과 함께만")
     fake_t = None
@@ -427,6 +437,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 1
         _log_line(log_root, f"{job} rc={rc}")
         return rc
+    if a.dry_run and S.START_WINDOW_OPEN <= _wall_now().time() <= S.START_WINDOW_CLOSE:
+        note("dry-run 은 07:40~09:10 에 돌리지 않는다 — 거부")
+        return 2
     code_sha = "dry-run"
     if not (a.dry_run and a.no_guard):
         try:
@@ -455,6 +468,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         lk.acquire()
     except LockBusy:
         note("LockBusy — 다른 실행이 잠금을 쥐고 있다")
+        AL.send("LockBusy status=lock_busy", dry_run=a.dry_run)
         return 3
     pending: List[str] = []                            # 한 실행 경보 1통
     try:

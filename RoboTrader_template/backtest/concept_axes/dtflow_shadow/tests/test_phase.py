@@ -78,3 +78,41 @@ def test_alert_conf_percent_is_literal(monkeypatch, tmp_path):
     (tmp_path / "config" / "key.ini").write_text("[TELEGRAM]\ntoken = 12:a%bc\nchat_id = 7\n", encoding="utf-8")
     monkeypatch.setenv("KIS_DTFLOW_SHADOW_CONFIG_DIR", str(tmp_path))
     assert A._conf() == ("12:a%bc", "7")
+
+
+# ---- pre-freeze fix C1(B1): 정본 행 = (scan_date, run_kind)별 run_at 가장 이른 행 ----
+def _snap_row(d, status, match, at):
+    return dict(scan_date=d, run_kind="snapshot_check", status=status, snapshot_match=match, run_at=at)
+
+
+def _without(kind):
+    return [r for r in _runs() if not (r["scan_date"] == DAYS[3] and r["run_kind"] == kind)]
+
+
+def test_seal_ready_earliest_snapshot_row_wins_either_order():
+    base = _without("snapshot_check")
+    good = _snap_row(DAYS[3], "ok", True, "2026-10-01T09:05:00")
+    bad = _snap_row(DAYS[3], "ok", False, "2026-10-01T09:20:00")
+    assert P.seal_ready(base + [good, bad], LAGS, DAYS, k=3)[0]
+    assert P.seal_ready(base + [bad, good], LAGS, DAYS, k=3)[0]
+    bad2 = _snap_row(DAYS[3], "ok", False, "2026-10-01T09:05:00")
+    good2 = _snap_row(DAYS[3], "ok", True, "2026-10-01T09:20:00")
+    assert not P.seal_ready(base + [bad2, good2], LAGS, DAYS, k=3)[0]
+    assert not P.seal_ready(base + [good2, bad2], LAGS, DAYS, k=3)[0]
+
+
+def test_seal_ready_no_snapshot_then_manual_ok_does_not_pass():
+    base = _without("snapshot_check")
+    ns = _snap_row(DAYS[3], "no_snapshot", None, "2026-10-01T09:05:00")
+    manual = _snap_row(DAYS[3], "ok", True, "2026-10-01T10:30:00")
+    assert not P.seal_ready(base + [ns, manual], LAGS, DAYS, k=3)[0]
+    assert not P.seal_ready(base + [manual, ns], LAGS, DAYS, k=3)[0]
+
+
+def test_seal_ready_earliest_record_row_is_canonical():
+    base = _without("record")
+    early_bad = dict(scan_date=DAYS[3], run_kind="record", status="missed_token", run_at="2026-10-01T07:52:00")
+    late_ok = dict(scan_date=DAYS[3], run_kind="record", status="ok", run_at="2026-10-01T08:00:00",
+                   avail_investor=0.99, avail_program=0.99, avail_short=0.99)
+    assert not P.seal_ready(base + [early_bad, late_ok], LAGS, DAYS, k=3)[0]
+    assert not P.seal_ready(base + [late_ok, early_bad], LAGS, DAYS, k=3)[0]

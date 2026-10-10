@@ -23,6 +23,8 @@ START_NOT_BEFORE = time(7, 50)
 REFUSE_AFTER = time(8, 38)
 SEAL_DEADLINE = time(8, 40)
 SNAPSHOT_NOT_BEFORE = time(9, 3)
+START_WINDOW_OPEN = time(7, 40)        # dry-run 거부 창(실제 시계) — 라이브 봇 기동·장 초반
+START_WINDOW_CLOSE = time(9, 10)
 
 LOOKBACK_BARS = 60
 HIGH_WINDOW = 15

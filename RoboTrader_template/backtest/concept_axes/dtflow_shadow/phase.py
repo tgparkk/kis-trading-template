@@ -14,6 +14,24 @@ def _credit_avail(lags: List[Optional[int]], k: int) -> float:
     return sum(1 for v in lags if v is not None and v <= k) / len(lags)
 
 
+def _canonical(runs: List[Dict], kind: str) -> Dict[date, Dict]:
+    """(scan_date, run_kind)별 정본 행 = run_at 가장 이른 행(상태 무관 · 입력 순서 무관). 나중에 손으로 채운 ok 행은 무시."""
+    out: Dict[date, Dict] = {}
+    for r in runs:
+        if r.get("run_kind") != kind:
+            continue
+        d = r["scan_date"]
+        cur = out.get(d)
+        if cur is None or _at(r) < _at(cur):
+            out[d] = r
+    return out
+
+
+def _at(r: Dict):
+    v = r.get("run_at")
+    return (v is None, "" if v is None else str(v))
+
+
 def seal_ready(trial_runs: List[Dict], trial_lags: Dict[date, List[Optional[int]]], scan_days_desc: List[date],
                k: Optional[int]) -> Tuple[bool, str]:
     if k is None:
@@ -21,17 +39,17 @@ def seal_ready(trial_runs: List[Dict], trial_lags: Dict[date, List[Optional[int]
     need = scan_days_desc[:S.TRIAL_DAYS]
     if len(need) < S.TRIAL_DAYS:
         return False, "거래일 부족"
-    rec = {r["scan_date"]: r for r in trial_runs if r.get("run_kind") == "record" and r.get("status") == "ok"}
-    snap = {r["scan_date"]: r for r in trial_runs if r.get("run_kind") == "snapshot_check" and r.get("status") == "ok"}
+    rec = _canonical(trial_runs, "record")
+    snap = _canonical(trial_runs, "snapshot_check")
     for d in need:
         r = rec.get(d)
-        if r is None:
+        if r is None or r.get("status") != "ok":
             return False, f"{d} 기록 없음"
         if min(float(r.get(c) or 0.0) for c in ("avail_investor", "avail_program", "avail_short")) < S.AVAIL_MIN:
             return False, f"{d} 가용률 미달"
         if _credit_avail(trial_lags.get(d, []), k) < S.AVAIL_MIN:
             return False, f"{d} 신용 가용률 미달"
-        if not (snap.get(d) or {}).get("snapshot_match"):
+        if (snap.get(d) or {}).get("status") != "ok" or not snap[d].get("snapshot_match"):
             return False, f"{d} 스냅샷 불일치/없음"
     return True, "ok"
 

@@ -475,17 +475,22 @@ def _dry_main_env(monkeypatch, R, store=None):
     monkeypatch.setattr(R, "_open_store", lambda dry_run: st if dry_run else no())
     R._d_complete = lambda cur, D, dprev: (True, {"d_rows": 1, "dprev_rows": 1, "universe_date": D.isoformat()})
     R._compute = lambda cur, D: [C.Cand("000001", 2.5, 1), C.Cand("000002", 2.1, 2)]
+    R._wall_now = lambda: datetime(2026, 10, 12, 12, 0)           # 실제 시계 07:40~09:10 거부를 피한다
     return st
 
 
 DRY = ["--record", "--dry-run", "--no-guard", "--date", "2026-10-12", "--now", "07:52"]
 
 
+def _dryargs(home, base=None):
+    return (base or DRY) + ["--home", str(home), "--archive", str(Path(str(home) + "_arc"))]
+
+
 def test_dry_run_uses_kis_stub_no_token_no_kis(monkeypatch, capsys, tmp_path):
     R = load_runner()
     sent = _sent(monkeypatch, R)
     st = _dry_main_env(monkeypatch, R)
-    assert R.main(DRY + ["--home", str(tmp_path / "dryhome")]) == 0
+    assert R.main(_dryargs(tmp_path / "dryhome")) == 0
     assert "status=ok" in capsys.readouterr().out
     run = [r for r in st.runs("trial") if r["run_kind"] == "record"][0]
     assert run["scan_date"] == D8 and run["n_calls"] == 8 and run["n_fail"] == 0
@@ -506,7 +511,7 @@ def test_main_already_recorded_exit2(monkeypatch, tmp_path):
     run.update(rule_v="v1", scan_date=D8, run_kind="record", run_at="2026-10-12T07:52:00", status="error", code_sha="x")
     st.write_run("trial", run)
     _dry_main_env(monkeypatch, R, st)
-    assert R.main(DRY + ["--home", str(tmp_path / "dryhome")]) == 2
+    assert R.main(_dryargs(tmp_path / "dryhome")) == 2
     assert len(st.runs("trial")) == 1
 
 
@@ -519,7 +524,7 @@ def test_main_lockbusy_logged_exit3(monkeypatch, tmp_path):
         raise LockBusy("held")
     monkeypatch.setattr(R.RunnerLock, "acquire", busy)
     home = tmp_path / "dryhome"
-    assert R.main(DRY + ["--home", str(home)]) == 3
+    assert R.main(_dryargs(home)) == 3
     logs = list((home / "logs").glob("recorder_*.log"))
     assert len(logs) == 1 and "LockBusy" in logs[0].read_text(encoding="utf-8")
 
@@ -533,7 +538,7 @@ def test_main_exception_exit_logged_type_only_one_alert(monkeypatch, capsys, tmp
         raise RuntimeError("password=SECRET-xyz")
     monkeypatch.setattr(R, "_open_inputs", boom)
     home = tmp_path / "dryhome"
-    assert R.main(DRY + ["--home", str(home)]) == 1
+    assert R.main(_dryargs(home)) == 1
     out = capsys.readouterr()
     text = (home / "logs").glob("recorder_*.log").__next__().read_text(encoding="utf-8")
     assert "RuntimeError" in text and "SECRET" not in text
@@ -546,7 +551,7 @@ def test_main_record_exception_sends_one_alert(monkeypatch, tmp_path):
     sent = _sent(monkeypatch, R)
     _dry_main_env(monkeypatch, R)
     R._compute = lambda cur, D: (_ for _ in ()).throw(ValueError("x"))
-    assert R.main(DRY + ["--home", str(tmp_path / "dryhome")]) == 1
+    assert R.main(_dryargs(tmp_path / "dryhome")) == 1
     assert len(sent) == 1 and "status=error" in sent[0][0] and "ValueError" in sent[0][0]
 
 
@@ -559,3 +564,101 @@ def test_freeze_guard_refusal_prints_reason_not_message(monkeypatch, capsys):
     assert R.run_freeze(lambda: ST.MemoryStore()) == 2
     out = capsys.readouterr().out
     assert "git_failed" in out and "secret" not in out
+
+
+# ---- pre-freeze fix: C1(B1) · C2(I9) · 선택 항목 ----
+SNAP = ["--check-snapshot", "--dry-run", "--no-guard", "--date", "2026-10-12", "--now", "09:05"]
+
+
+def _snap_ctx(R):
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52))
+    R.run_record(ctx)
+    ctx.now_fn = lambda: datetime(2026, 10, 12, 9, 5)
+    return ctx
+
+
+@pytest.mark.parametrize("first", ["ok", "no_snapshot", "error", "no_record"])
+def test_snapshot_rerun_refused_writes_nothing(first):
+    R = load_runner()
+    ctx = _snap_ctx(R)
+    snap = {c: None for c in ST.RUN_COLS}
+    snap.update(rule_v="v1", scan_date=D8, run_kind="snapshot_check", run_at="2026-10-12T09:05:00", status=first,
+                code_sha="x", snapshot_match=True if first == "ok" else None)
+    ctx.store.write_run("trial", snap)
+    before = (len(ctx.store.runs("trial")), len(ctx.alerts))
+    R._load_snapshot = lambda cur, D: (_ for _ in ()).throw(AssertionError("재실행이 DB 를 읽었다"))
+    assert R.run_snapshot(ctx) == "already_checked"
+    assert len(ctx.store.runs("trial")) == before[0] and not ctx.store.runs("sealed")
+    assert len(ctx.alerts) == before[1] + 1 and "already_checked" in ctx.alerts[-1]
+
+
+def test_snapshot_rerun_refused_when_check_is_in_sealed_phase():
+    R = load_runner()
+    ctx = _snap_ctx(R)
+    snap = {c: None for c in ST.RUN_COLS}
+    snap.update(rule_v="v1", scan_date=D8, run_kind="snapshot_check", run_at="2026-10-12T09:05:00", status="ok",
+                code_sha="x", snapshot_match=True)
+    ctx.store.write_run("sealed", snap)
+    assert R.run_snapshot(ctx) == "already_checked"
+    assert not [r for r in ctx.store.runs("trial") if r["run_kind"] == "snapshot_check"]
+
+
+def test_main_snapshot_already_checked_exit2(monkeypatch, tmp_path):
+    R = load_runner()
+    _sent(monkeypatch, R)
+    st = ST.MemoryStore()
+    _dry_main_env(monkeypatch, R, st)
+    _seed_trial_day(st, D8)                                       # record ok + snapshot_check ok 이미 있음
+    n = len(st.runs("trial"))
+    assert R.main(_dryargs(tmp_path / "dryhome", SNAP)) == 2
+    assert len(st.runs("trial")) == n
+
+
+def test_exit2_set_has_already_checked():
+    assert "already_checked" in load_runner().EXIT2
+
+
+def test_main_dry_run_requires_home_and_archive(monkeypatch, tmp_path):
+    R = load_runner()
+    _dry_main_env(monkeypatch, R)
+    for extra in ([], ["--home", str(tmp_path / "h")], ["--archive", str(tmp_path / "a")]):
+        with pytest.raises(SystemExit) as ei:
+            R.main(DRY + extra)
+        assert ei.value.code == 2
+
+
+def test_main_dry_run_refused_in_market_window(monkeypatch, tmp_path):
+    R = load_runner()
+    _sent(monkeypatch, R)
+    for hh, mm, rc in ((7, 39, 0), (7, 40, 2), (8, 30, 2), (9, 10, 2), (9, 11, 0)):
+        st = _dry_main_env(monkeypatch, R)
+        R._wall_now = lambda hh=hh, mm=mm: datetime(2026, 10, 12, hh, mm)
+        assert R.main(_dryargs(tmp_path / f"h{hh}{mm}")) == rc, (hh, mm)
+        assert bool(st.runs("trial")) == (rc == 0), (hh, mm)       # 거부 = 아무것도 안 씀
+
+
+def test_main_lockbusy_sends_one_alert(monkeypatch, tmp_path):
+    R = load_runner()
+    sent = _sent(monkeypatch, R)
+    _dry_main_env(monkeypatch, R)
+
+    def busy(self):
+        raise LockBusy("held SECRET")
+    monkeypatch.setattr(R.RunnerLock, "acquire", busy)
+    assert R.main(_dryargs(tmp_path / "dryhome")) == 3
+    assert len(sent) == 1 and "LockBusy" in sent[0][0] and "SECRET" not in sent[0][0]
+
+
+def test_choose_k_skips_ok_days_without_candidates():
+    R = load_runner()
+    ctx = _ctx(R, datetime(2026, 10, 12, 7, 52))
+    out = []
+    ctx.log = out.append
+    R._scan_days_desc = lambda D: [D] + PAST
+    for d in PAST[:10]:
+        _seed_trial_day(ctx.store, d, lag=3, n=0 if d == PAST[4] else 2)
+    _seed_trial_day(ctx.store, PAST[10], lag=3)                   # 후보 있는 11번째 ok 날 → 10일 창에 들어온다
+    R.run_choose_k(ctx)
+    row = [ln for ln in out if str(ln).startswith("k=3 ")][0]
+    assert "최소 일 가용률 1.000" in row
+    assert any(str(PAST[10]) in str(ln) and "10일" in str(ln) for ln in out)
