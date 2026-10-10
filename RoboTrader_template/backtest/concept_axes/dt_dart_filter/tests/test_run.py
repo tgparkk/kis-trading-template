@@ -58,6 +58,7 @@ def _frozen_env(monkeypatch, tmp_path, md5_value=None):
     monkeypatch.setattr(RUN, "clean_package", lambda: True)
     monkeypatch.setattr(RUN, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(RUN, "required_pins", lambda root: ["a.py"])
+    monkeypatch.setattr(RUN, "code_changes_since_freeze", lambda: [])   # M5 git 검사는 test_prefreeze 가 tmp 레포로 따로
     monkeypatch.setattr(FC, "PROXY_COEF_MD5", RUN.md5(tmp_path / "proxy_coef.json") if md5_value is None else md5_value)
 
 
@@ -88,6 +89,7 @@ def test_proxy_stage_refuses_after_freeze(monkeypatch):
 
 def _seal_files(tmp_path, seal, report_md5=None):
     """seal.json + sealed_report.md(seal.json md5 줄 포함) — report_md5 를 주면 그 값을 적는다(불일치 흉내)."""
+    seal = {"lib_versions": RUN.lib_versions(), **seal}             # M5 — 봉인 때 라이브러리 버전(주면 그 값)
     (tmp_path / "seal.json").write_text(json.dumps(seal), encoding="utf-8")
     h = RUN.md5(tmp_path / "seal.json") if report_md5 is None else report_md5
     (tmp_path / "sealed_report.md").write_text("# 봉인\n\n" + RUN.seal_md5_line(h) + "\n", encoding="utf-8")

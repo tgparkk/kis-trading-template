@@ -20,7 +20,7 @@ import subprocess                                             # noqa: E402
 import sys                                                    # noqa: E402
 from datetime import date, datetime                           # noqa: E402
 from pathlib import Path                                      # noqa: E402
-from typing import Any, Dict, List, Optional, Sequence        # noqa: E402
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple   # noqa: E402
 
 import numpy as np                                            # noqa: E402
 import pandas as pd                                           # noqa: E402
@@ -41,7 +41,9 @@ from . import universe as U                                   # noqa: E402
 
 LEDGER_COLS = ["scan_date", "stock_code", "rank", "score", "n_passed", "market_cap", "trading_value", "tv20",
                "close", "p_L", "status", "fill", "entry_date", "entry_price", "exit_date", "exit_reason",
-               "hold_days", "ret_sl", "ret_tp", "both", "unresolved", "halted_in_path", "flags"]
+               "hold_days", "ret_sl", "ret_tp", "both", "unresolved", "halted_in_path", "flags", "ca_path"]
+# 태그별 lag0 표식 파일(critic B1) — marks_<이름>.csv · 순서 = S.TAGS_LAG0(유상증자 → 최대주주변경 → 소송·횡령)
+TAG_MARKS = tuple(f"lag0_t{i + 1}" for i in range(len(S.TAGS_LAG0)))
 
 
 # ── git · 해시 가드 ─────────────────────────────────────────────────────────────
@@ -92,6 +94,7 @@ PIN_DEPS = (                                  # 표본·체결·청산·태그 �
     "RoboTrader_template/utils/data_sanity.py",
     "RoboTrader_template/backtest/concept_axes/replayer/scan.py",
     "RoboTrader_template/backtest/concept_axes/replayer/loader.py",
+    "RoboTrader_template/backtest/concept_axes/replayer/flags.py",          # ca_path 의 FD1 동결식 flag_cliff(critic B2)
     "RoboTrader_template/backtest/concept_axes/candidate_ledger/run.py",
     "RoboTrader_template/backtest/concept_axes/candidate_ledger/tool_calibration/run_calib.py",
     "RoboTrader_template/backtest/concept_axes/ledger8/exitsim8.py",
@@ -153,6 +156,40 @@ def verify_pins(pins: Dict[str, str], root: Path, required: Sequence[str]) -> No
         raise SystemExit(f"🔴 고정 blob 과 다른 파일 {bad} — 중단")
 
 
+def code_changes_since_freeze() -> List[str]:
+    """frozen_consts.py 를 마지막으로 바꾼 커밋 → HEAD 사이에 바뀐 경로 중 `<패키지>/results/` 밖인 것(critic M5).
+
+    동결 뒤 커밋은 build·seal·open 산출물(results/)뿐이어야 한다 — pins 가 못 덮는 간접 import(utils·__init__ 등)도
+    «동결 뒤 커밋» 으로 바뀌면 여기서 막힌다(커밋 안 된 작업 트리 변경은 pins·clean_package 몫).
+    """
+    log = _git("log", "-1", "--format=%H", "--", "frozen_consts.py")
+    sha = log.stdout.strip()
+    if log.returncode != 0 or not sha:
+        raise SystemExit("🔴 frozen_consts.py 의 커밋 기록이 없다(동결 커밋 전) — 중단")
+    diff = _git("-c", "core.quotepath=off", "diff", "--name-only", sha, "HEAD")
+    pre = _git("rev-parse", "--show-prefix")
+    if diff.returncode != 0 or pre.returncode != 0:
+        raise SystemExit(f"🔴 git diff {sha[:12]}..HEAD 실패 — 중단")
+    try:
+        rel = Path(S.RESULTS).resolve().relative_to(Path(S.PKG).resolve()).as_posix()
+    except ValueError:
+        raise SystemExit("🔴 results 폴더가 패키지 밖이다 — 중단")
+    res = pre.stdout.strip() + rel + "/"
+    return sorted(p for p in (ln.strip() for ln in diff.stdout.splitlines()) if p and not p.startswith(res))
+
+
+def lib_versions() -> Dict[str, str]:
+    """수치 결과를 좌우하는 라이브러리 버전 — seal.json 에 기록 · open 이 대조(critic M5)."""
+    import scipy
+    return {"numpy": np.__version__, "pandas": pd.__version__, "scipy": scipy.__version__}
+
+
+def check_lib_versions(seal: Dict[str, Any]) -> None:
+    rec, now = seal.get("lib_versions"), lib_versions()
+    if rec != now:
+        raise SystemExit(f"🔴 라이브러리 버전이 봉인 때와 다르다(봉인 {rec} · 지금 {now}) — 중단")
+
+
 def require_frozen() -> None:
     if not FC.PREREG_FROZEN_BLOB:
         raise SystemExit("🔴 PREREG_FROZEN_BLOB 비어 있음 — 사전등록 동결(Task 12) 전에는 실행 금지")
@@ -165,6 +202,10 @@ def require_frozen() -> None:
         raise SystemExit("🔴 proxy_coef.json md5 가 동결값과 다르다 — 중단")
     if not clean_package():
         raise SystemExit("🔴 패키지에 커밋 안 된 변경이 있다 — 중단")
+    after = code_changes_since_freeze()
+    if after:
+        more = f" 외 {len(after) - 20}개" if len(after) > 20 else ""
+        raise SystemExit(f"🔴 동결 커밋(frozen_consts.py 마지막 커밋) 뒤 results/ 밖 변경 {after[:20]}{more} — 중단")
     root = repo_root()
     verify_pins(parse_pins(S.PREREG.read_text(encoding="utf-8")), root, required_pins(root))
     U.check_adapter_params()
@@ -228,8 +269,8 @@ def stage_proxy(conn) -> None:
 
 # ── 단계: check-backfill ────────────────────────────────────────────────────────
 def stage_check_backfill(conn, backfill_dir: Path) -> int:
-    rep = DC.check(conn, backfill_dir, S.FILING_START, S.SCAN_END, ("A", "B", "I"))
-    rep.update(window=[S.FILING_START.isoformat(), S.SCAN_END.isoformat()], types=["A", "B", "I"],
+    rep = DC.check(conn, backfill_dir, S.FILING_START, S.SCAN_END, S.BACKFILL_TYPES)
+    rep.update(window=[S.FILING_START.isoformat(), S.SCAN_END.isoformat()], types=list(S.BACKFILL_TYPES),
                backfill_dir=str(backfill_dir), git_sha=head_sha())
     _write(S.RESULTS / "backfill_check.json", json.dumps(rep, ensure_ascii=False, indent=1))
     print(f"칸 {rep['n_cells']:,} · 미완결 {rep['n_bad']}")
@@ -257,6 +298,19 @@ def check_backfill_report(chk: Dict[str, Any]) -> None:
         raise SystemExit(f"🔴 백필 보고 유형 {chk.get('types')} ≠ settings {list(S.BACKFILL_TYPES)} — 중단")
 
 
+def check_backfill_rows(n: int) -> None:
+    """build 멈춤 규칙 — 공시 창·유형(settings) 행 수 = 백필 적재 기록(S.BACKFILL_ROWS_EXPECTED)."""
+    if n != S.BACKFILL_ROWS_EXPECTED:
+        raise SystemExit(f"🔴 dart_disclosures 창 {S.FILING_START}~{S.SCAN_END} · 유형 {list(S.BACKFILL_TYPES)} 행 수 "
+                         f"{n:,} ≠ 백필 기록 {S.BACKFILL_ROWS_EXPECTED:,} — 중단")
+
+
+def check_scan_diag(diag: Dict[str, Any]) -> None:
+    """build 멈춤 규칙 — 스캔 어댑터 오류가 하나라도 있으면(표본이 라이브 룰과 달라질 수 있음) 거부."""
+    if diag.get("n_errors") != 0:
+        raise SystemExit(f"🔴 스캔 어댑터 오류 n_errors={diag.get('n_errors')} — 중단")
+
+
 def stage_build(conn) -> None:
     require_frozen()
     for done in ("seal.json", "open.started", "open.json"):
@@ -266,12 +320,17 @@ def stage_build(conn) -> None:
     if not bf.exists() or not committed_unchanged(bf):
         raise SystemExit("🔴 백필 완결 보고가 없거나 미커밋 — 중단")
     check_backfill_report(json.loads(bf.read_text(encoding="utf-8")))
+    n_bf = T.count_backfill_rows(conn, S.FILING_START, S.SCAN_END, S.BACKFILL_TYPES)
+    check_backfill_rows(n_bf)
     coef = json.loads((S.RESULTS / "proxy_coef.json").read_text(encoding="utf-8"))
     cal, px, env = _load_env(conn)
+    cal_idx = {d: i for i, d in enumerate(cal)}
     days = [pd.Timestamp(d) for d in cal if S.SCAN_START <= d <= S.SCAN_END]
     rows, diag = U.scan_window(px, days)
+    check_scan_diag(diag)
     feat = P.add_proxy_features(px).set_index(["stock_code", "date"])
     halts = L.halt_dates(px)
+    cad = L.ca_flag_days(px, cal_idx)
     out: List[Dict[str, Any]] = []
     for r in rows:
         k = (r["stock_code"], pd.Timestamp(r["scan_date"]))
@@ -279,23 +338,33 @@ def stage_build(conn) -> None:
         x2 = float(feat["x2"].get(k, np.nan))
         pl = float(P.predict(np.array(coef["beta"]), P.design([x1], [x2]))[0]) if np.isfinite(x1 + x2) else np.nan
         sim = L.simulate_candidate(env, r["stock_code"], r["scan_date"], halts.get(r["stock_code"], set()))
+        ca = L.ca_path(cad, r["stock_code"], sim["entry_date"], cal_idx) if sim.get("status") == "filled" else None
         out.append({**r, "tv20": float(feat["tv20"].get(k, np.nan)), "close": float(feat["close"].get(k, np.nan)),
-                    "p_L": pl, **{kk: sim.get(kk) for kk in LEDGER_COLS if kk in sim}})
+                    "p_L": pl, **{kk: sim.get(kk) for kk in LEDGER_COLS if kk in sim}, "ca_path": ca})
     led = pd.DataFrame(out).reindex(columns=LEDGER_COLS)
     S.RESULTS.mkdir(parents=True, exist_ok=True)
     led.to_csv(S.RESULTS / "ledger_A.csv", index=False, lineterminator="\n")
     fil = T.load_filings(conn, S.FILING_START, S.SCAN_END)
     scan_cal = [d for d in cal if d <= S.SCAN_END]
-    for name, back in (("lag0", 0), ("w5", 4), ("w20", 19)):
-        mk = sorted(T.window_marks(fil, scan_cal, back))
+    specs = [("lag0", 0, None), ("w5", 4, None), ("w20", 19, None)] + [(n, 0, t) for n, t in zip(TAG_MARKS, S.TAGS_LAG0)]
+    for name, back, only in specs:
+        mk = sorted(T.window_marks(fil, scan_cal, back, only=only))
         pd.DataFrame(mk, columns=["stock_code", "scan_date"]).to_csv(S.RESULTS / f"marks_{name}.csv", index=False,
                                                                      lineterminator="\n")
     fp = LD.db_fingerprint(conn, S.PX_START, S.PATH_END)
-    meta = dict(git_sha=head_sha(), db_fingerprint=fp["sha256"], scan_diag=diag, n_rows=len(led),
+    meta = dict(git_sha=head_sha(), db_fingerprint=fp["sha256"], per_stock=fp["per_stock"], scan_diag=diag,
+                normalize_counts=px.attrs.get("normalize_counts"), n_backfill_rows=n_bf, n_rows=len(led),
                 n_filings=len(fil), md5={p.name: md5(p) for p in sorted(S.RESULTS.glob("*.csv"))},
                 finished=datetime.now().isoformat(timespec="seconds"))
     _write(S.RESULTS / "build_meta.json", json.dumps(meta, ensure_ascii=False, indent=1))
     print(f"원장 {len(led):,}행 · 공시 {len(fil):,} · 지문 {fp['sha256'][:12]}")
+
+
+def fingerprint_diff(old: Optional[Dict[str, str]], new: Optional[Dict[str, str]]) -> Dict[str, List[str]]:
+    """종목별 지문 차이 — 종목 코드만(critic M4 · 문제 3)."""
+    old, new = old or {}, new or {}
+    return {"changed": sorted(c for c in set(old) & set(new) if old[c] != new[c]),
+            "added": sorted(set(new) - set(old)), "removed": sorted(set(old) - set(new))}
 
 
 def _check_build(conn) -> Dict[str, Any]:
@@ -303,8 +372,16 @@ def _check_build(conn) -> Dict[str, Any]:
     for name, h in meta["md5"].items():
         if md5(S.RESULTS / name) != h:
             raise SystemExit(f"🔴 {name} md5 불일치 — 중단")
-    if LD.db_fingerprint(conn, S.PX_START, S.PATH_END)["sha256"] != meta["db_fingerprint"]:
-        raise SystemExit("🔴 daily_prices 지문이 build 때와 다르다(소급 수정) — 중단")
+    fp = LD.db_fingerprint(conn, S.PX_START, S.PATH_END)
+    if fp["sha256"] != meta["db_fingerprint"]:
+        if meta.get("per_stock") is None:
+            print("daily_prices 지문 불일치 — build_meta 에 종목별 지문 없음(어느 종목인지 모름)")
+        else:
+            diff = fingerprint_diff(meta["per_stock"], fp.get("per_stock"))
+            print("daily_prices 지문 불일치 — 종목 코드(해시 아님):")
+            for key, lab in (("changed", "값이 바뀐 종목"), ("added", "새로 생긴 종목"), ("removed", "사라진 종목")):
+                print(f"- {lab} {len(diff[key]):,}: {', '.join(diff[key])}")
+        raise SystemExit("🔴 daily_prices 지문이 build 때와 다르다(소급 수정 · 위 종목 확인) — 중단")
     return meta
 
 
@@ -403,6 +480,8 @@ def seal_report_lines(seal: Dict[str, Any]) -> List[str]:
         f"- 생존자 누락률 (i) 3태그 공시 단위 {sv['surv_i']:.4f}(n {sv['n_i']:,}) · (ii) 정기공시 회사 단위 "
         f"{sv['surv_ii']:.4f}(n {sv['n_ii']:,}) — 코넥스·상장 전 공시 제외",
         *[f"  - {ln}" for ln in SV.breakdown_text(sv).splitlines()],
+        *([f"- 라이브러리 {' · '.join(f'{k} {v}' for k, v in seal['lib_versions'].items())} — open 이 대조"]
+          if seal.get("lib_versions") else []),
     ]
 
 
@@ -414,9 +493,93 @@ def _read_marks(name: str):
 def _read_ledger() -> pd.DataFrame:
     led = pd.read_csv(S.RESULTS / "ledger_A.csv", dtype={"stock_code": str})
     led["scan_date"] = [date.fromisoformat(str(d)[:10]) for d in led["scan_date"]]
-    for c in ("both", "unresolved", "halted_in_path"):          # CSV 의 "True"/"False"/빈칸 → bool (문자열 astype(bool) 함정)
+    for c in ("both", "unresolved", "halted_in_path", "ca_path"):   # CSV "True"/"False"/빈칸 → bool (문자열 astype(bool) 함정)
         led[c] = led[c].astype(str).str.strip().str.lower().eq("true")
     return led
+
+
+# ── 개봉 계산 도우미(태그별 · ca_path · 팔별 보조) ─────────────────────────────────
+def _fe(d: pd.DataFrame, col: str = "y_sl", key: str = "day") -> ST.FE:
+    return ST.fe_regression(d[col].to_numpy(), d["x"].to_numpy(), d[key].to_numpy(), d["stock"].to_numpy(),
+                            d["block"].to_numpy())
+
+
+def tool_label(tool: str) -> str:
+    return tool if tool in ("cr1", "2way") else "cr1(인쇄만 · 봉인 도구 fail)"
+
+
+def tool_p1(fe: ST.FE, tool: str) -> Tuple[float, str]:
+    """봉인 도구의 단측 p — 도구 fail 이면 CR1 로 계산하되 «인쇄만»(판정 불가는 그대로)."""
+    return (fe.p1_2w if tool == "2way" else fe.p1_cr1), tool_label(tool)
+
+
+def per_tag_frame(df: pd.DataFrame, marks_t: Set[Tuple[str, date]]) -> pd.DataFrame:
+    """태그 t 회귀 표본 = 대조(3태그 lag0 표식 없음 · x==0) ∪ 태그 t 표식 행 · 다른 태그로만 표식된 행은 뺀다."""
+    xt = np.array([1 if (c, s) in marks_t else 0 for c, s in zip(df["stock_code"], df["scan_date"])], dtype=int)
+    keep = (df["x"].to_numpy() == 0) | (xt == 1)
+    out = df[keep].copy()
+    out["x"] = xt[keep]
+    return out
+
+
+def per_tag_results(df: pd.DataFrame, tag_marks: Sequence[Set[Tuple[str, date]]], tool: str,
+                    lab: str) -> Tuple[Dict[str, Any], List[str]]:
+    """태그별 3개 + 표준 Holm m=3(손절 우선 판 · 봉인 도구 p · NaN p → 1.0) — 라벨과 무관하게 항상 계산·인쇄(critic B1).
+
+    해석(조정 p < 0.05 → 「그 태그 기여 있음」)은 주 라벨이 「있음(−)」일 때만 적는다.
+    """
+    rows: List[Dict[str, Any]] = []
+    used = tool_label(tool)
+    for name, tag, mk in zip(TAG_MARKS, S.TAGS_LAG0, tag_marks):
+        f = _fe(per_tag_frame(df, mk))
+        rows.append(dict(tag=tag, marks=f"marks_{name}.csv", beta=f.beta, n1=int(f.n1), p1=tool_p1(f, tool)[0],
+                         fe=f.__dict__))
+    for r, a in zip(rows, ST.holm([r["p1"] for r in rows])):
+        r["p_holm"] = a
+    interp = lab == "있음(−)"
+    lines = [f"## 태그별 3개 + Holm m=3 (보조 · 라벨 불변 · 손절 우선 판 · 도구 {used})", ""]
+    lines += [f"- {r['tag']}: δ̂ {r['beta']:+.3f}%p · n₁ {r['n1']:,} · 단측 p {r['p1']:.4f} · Holm p {r['p_holm']:.4f}"
+              for r in rows]
+    if interp:
+        for r in rows:
+            hit = r["p_holm"] < S.ALPHA
+            lines.append(f"  - 해석: {r['tag']} Holm p {r['p_holm']:.4f} {'<' if hit else '≥'} {S.ALPHA} → "
+                         + ("그 태그 기여 있음" if hit else "그 태그 기여 확인 안 됨"))
+    else:
+        lines.append(f"- 해석 안 함(주 라벨 «{lab}» ≠ 있음(−)) — 숫자만 인쇄")
+    return dict(tool_used=used, interpreted=interp, tags=rows), lines
+
+
+def ca_path_results(df: pd.DataFrame, tool: str) -> Tuple[Dict[str, Any], List[str]]:
+    """팔별 ca_path 수 + ca_path 로트를 양 팔에서 대칭으로 뺀 손절 우선 판(봉인 도구 p) — 인쇄만(critic B2)."""
+    ca = df["ca_path"].astype(bool).to_numpy()
+    x = df["x"].to_numpy() == 1
+    counts = {arm: {"ca_path": int((m & ca).sum()), "n": int(m.sum())} for arm, m in (("표식", x), ("대조", ~x))}
+    f = _fe(df[~ca])
+    p, used = tool_p1(f, tool)
+    lines = [f"## 보유 창 기업행위 의심 ca_path (진입 다음 거래일 k=1..{S.CA_WINDOW_TD} · 인쇄만 · 라벨 불변)", "",
+             "- 팔별 ca_path: " + " · ".join(f"{arm} {v['ca_path']:,}/{v['n']:,}" for arm, v in counts.items()),
+             f"- ca_path 로트 양 팔 제외 손절 우선 판: δ̂ {f.beta:+.3f}%p · n₁ {f.n1:,} · 단측 p {p:.4f} ({used})"]
+    return dict(counts=counts, fe_sl_excl=f.__dict__, p1=p, tool_used=used), lines
+
+
+def fill_counts(led: pd.DataFrame, marks: Set[Tuple[str, date]]) -> Dict[str, Dict[str, Any]]:
+    """팔별 밴드 미체결 비율 — 대리 소형 원장 행 중 체결 시도(filled + no_fill) 대비 no_fill(open 보조)."""
+    d = led[(led["p_L"].astype(float) < S.PL_CUT) & led["status"].isin(["filled", "no_fill"])]
+    x = np.array([(c, s) in marks for c, s in zip(d["stock_code"], d["scan_date"])], dtype=bool)
+    nf = d["status"].to_numpy() == "no_fill"
+    out: Dict[str, Dict[str, Any]] = {}
+    for arm, m in (("표식", x), ("대조", ~x)):
+        n, k = int(m.sum()), int((m & nf).sum())
+        out[arm] = {"no_fill": k, "n": n, "rate": k / n if n else float("nan")}
+    return out
+
+
+def unresolved_counts(df: pd.DataFrame) -> Dict[str, Dict[str, int]]:
+    """팔별 «미해소»(창 끝까지 청산 안 됨 · 마지막 값) 로트 수 — 분석 표본(open 보조)."""
+    x = df["x"].to_numpy() == 1
+    u = df["unresolved"].astype(bool).to_numpy()
+    return {arm: {"unresolved": int((m & u).sum()), "n": int(m.sum())} for arm, m in (("표식", x), ("대조", ~x))}
 
 
 def _survivorship(conn, px: pd.DataFrame) -> Dict[str, Any]:
@@ -453,7 +616,8 @@ def stage_seal(conn) -> None:
                 pl_small_share_by_year=pl_small_share_by_year(led), build_md5=build_hashes(),
                 sd_ctrl_sl=float(ctrl["y_sl"].std(ddof=1)), sd_ctrl_tp=float(ctrl["y_tp"].std(ddof=1)), gate=gate,
                 mde_null=ST.mde(gate["sd_null"]), mde_se=ST.mde(gate["mean_se_cr1"]),
-                surv=surv, git_sha=head_sha(), sealed=datetime.now().isoformat(timespec="seconds"))
+                surv=surv, lib_versions=lib_versions(), git_sha=head_sha(),
+                sealed=datetime.now().isoformat(timespec="seconds"))
     _write(S.RESULTS / "seal.json", json.dumps(seal, ensure_ascii=False, indent=1))
     _write(S.RESULTS / "sealed_report.md",
            "\n".join(seal_report_lines(seal) + [seal_md5_line(md5(S.RESULTS / "seal.json")), ""]))
@@ -477,6 +641,7 @@ def stage_open(conn) -> None:
     check_sealed_report(S.RESULTS / "sealed_report.md", S.RESULTS / "seal.json")
     seal = json.loads((S.RESULTS / "seal.json").read_text(encoding="utf-8"))
     check_seal_linkage(seal)
+    check_lib_versions(seal)
     _check_build(conn)
     _write(S.RESULTS / "open.started", json.dumps(dict(started=datetime.now().isoformat(timespec="seconds"),
                                                        seal_md5=md5(S.RESULTS / "seal.json"), git_sha=head_sha()),
@@ -484,12 +649,9 @@ def stage_open(conn) -> None:
     cal, _px, _env = _load_env(conn)
     cal_idx = {d: i for i, d in enumerate(cal)}
     led = _read_ledger()
-    df = SM.analysis_frame(led, _read_marks("lag0"), cal_idx)
-
-    def fe(d, col, key="day"):
-        return ST.fe_regression(d[col].to_numpy(), d["x"].to_numpy(), d[key].to_numpy(), d["stock"].to_numpy(),
-                                d["block"].to_numpy())
-    fe_sl, fe_tp = fe(df, "y_sl"), fe(df, "y_tp")
+    marks0 = _read_marks("lag0")
+    df = SM.analysis_frame(led, marks0, cal_idx)
+    fe_sl, fe_tp = _fe(df, "y_sl"), _fe(df, "y_tp")
     tool = seal["gate"]["tool"]
     lab = label(fe_sl, fe_tp, tool, int(fe_sl.n1), seal["surv"]["surv_i"], seal["surv"]["surv_ii"])
     lines = ["# RESULTS — 공시 재료 다음날 추격 금지(lag0) 확인 검정", "",
@@ -503,35 +665,42 @@ def stage_open(conn) -> None:
     sec: Dict[str, Any] = {}
     for name in ("w5", "w20"):
         d2 = SM.analysis_frame(led, _read_marks(name), cal_idx)
-        f2 = fe(d2, "y_sl")
+        f2 = _fe(d2, "y_sl")
         sec[name] = f2.__dict__
         lines.append(f"- {name}: δ̂ {f2.beta:+.3f} · n₁ {f2.n1} · 단측 p {f2.p1_cr1:.4f}")
     big = SM.analysis_frame(led, _read_marks("lag0"), cal_idx, small_only=False)
     big["key"] = big["day"].astype(str) + "|" + pd.qcut(big["p_L"].rank(method="first"), 3, labels=False).astype(str)
-    fb = fe(big, "y_sl", key="key")
+    fb = _fe(big, "y_sl", key="key")
     sec["all_sizes"] = fb.__dict__
     lines.append(f"- 대형 포함 전체(날짜×대리 3분위 FE): δ̂ {fb.beta:+.3f} · n₁ {fb.n1} · 단측 p {fb.p1_cr1:.4f}")
     for y in sorted({d.year for d in df["scan_date"]}):
         dy = df[[d.year == y for d in df["scan_date"]]]
-        fy = fe(dy, "y_sl")
+        fy = _fe(dy, "y_sl")
         lines.append(f"- {y}: δ̂ {fy.beta:+.3f} · n₁ {fy.n1}")
     tv_t = pd.qcut(df["trading_value"].rank(method="first"), 3, labels=False)
     for t in range(3):
-        ft = fe(df[tv_t == t], "y_sl")
+        ft = _fe(df[tv_t == t], "y_sl")
         lines.append(f"- 거래대금 3분위 {t + 1}: δ̂ {ft.beta:+.3f} · n₁ {ft.n1}")
     for arm, sub in (("표식", df[df["x"] == 1]), ("대조", df[df["x"] == 0])):
         lines.append(f"- {arm}: 정지 낀 비율 {sub['halted_in_path'].astype(bool).mean():.4f} · "
                      f"ret ≤ −15% {(sub['ret_sl'] <= S.TAIL_LOSS).mean():.4f} · 동시 터치 {sub['both'].astype(bool).mean():.4f}")
-    he = halt_entry_counts(led, _read_marks("lag0"))
+    he = halt_entry_counts(led, marks0)
     sec["halt_entry"] = he
     lines.append("- 진입 불가(진입 봉 정지 · 대리 소형 · 원장 행 단위 · 따로 셈): "
                  + " · ".join(f"{arm} {v['halt_entry']:,}/{v['n']:,}" for arm, v in he.items()))
-    if lab == "있음(−)":
-        lines.append("- 태그별 Holm m=3(주 검정 통과 뒤에만 해석) — 별도 표식 파일 없이 공시를 다시 읽어 계산")
+    aux = dict(no_fill=fill_counts(led, marks0), unresolved=unresolved_counts(df))
+    lines.append("- 팔별 밴드 미체결 no_fill(대리 소형 · 원장 행 · 체결 시도 = filled+no_fill 대비): "
+                 + " · ".join(f"{arm} {v['no_fill']:,}/{v['n']:,} ({v['rate']:.4f})" for arm, v in aux["no_fill"].items()))
+    lines.append("- 팔별 미해소 unresolved(분석 표본 · 창 끝 마지막 값): "
+                 + " · ".join(f"{arm} {v['unresolved']:,}/{v['n']:,}" for arm, v in aux["unresolved"].items()))
+    per_tag, tag_lines = per_tag_results(df, [_read_marks(n) for n in TAG_MARKS], tool, lab)
+    ca, ca_lines = ca_path_results(df, tool)
+    lines += [""] + tag_lines + [""] + ca_lines
     today = date.today().isoformat()
     _write(S.RESULTS / f"RESULTS_{today}.md", "\n".join(lines) + "\n")
     _write(S.RESULTS / "open.json", json.dumps(dict(label=lab, fe_sl=fe_sl.__dict__, fe_tp=fe_tp.__dict__,
-                                                    secondary=sec, opened=datetime.now().isoformat(timespec="seconds"),
+                                                    secondary=sec, per_tag=per_tag, ca_path=ca, aux=aux,
+                                                    opened=datetime.now().isoformat(timespec="seconds"),
                                                     git_sha=head_sha()), ensure_ascii=False, indent=1, default=str))
     print("\n".join(lines))
 
