@@ -72,6 +72,11 @@ def require_frozen() -> None:
         raise SystemExit("🔴 PREREG_FROZEN_BLOB 비어 있음 — 사전등록 동결(Task 12) 전에는 실행 금지")
     if not S.PREREG.exists() or blob(S.PREREG) != S.PREREG_FROZEN_BLOB:
         raise SystemExit("🔴 PREREG.md blob 이 동결값과 다르다 — 중단")
+    if not S.PROXY_COEF_MD5:
+        raise SystemExit("🔴 PROXY_COEF_MD5 비어 있음 — 대리 계수 동결(Task 12) 전에는 실행 금지")
+    pc = S.RESULTS / "proxy_coef.json"
+    if not pc.exists() or md5(pc) != S.PROXY_COEF_MD5:
+        raise SystemExit("🔴 proxy_coef.json md5 가 동결값과 다르다 — 중단")
     if not clean_package():
         raise SystemExit("🔴 패키지에 커밋 안 된 변경이 있다 — 중단")
 
@@ -100,6 +105,8 @@ def label(fe_sl: ST.FE, fe_tp: ST.FE, tool: str, n1: int, surv_i: float, surv_ii
 
 # ── 단계: proxy(이미 본 구간 · 시총 있는 후보로 대리 적합) ────────────────────────
 def stage_proxy(conn) -> None:
+    if S.PREREG_FROZEN_BLOB:
+        raise SystemExit("🔴 동결 뒤에는 대리 계수를 다시 적합하지 않는다 — 중단")
     cal = [pd.Timestamp(d).date() for d in LD.load_trading_calendar(conn, S.FIT_PX_START, S.FIT_END.isoformat())]
     days = [pd.Timestamp(d) for d in cal if S.FIT_START <= d <= S.FIT_END]
     px = LD.load_prices(conn, S.FIT_PX_START, S.FIT_END.isoformat())
@@ -152,6 +159,9 @@ def _load_env(conn):
 
 def stage_build(conn) -> None:
     require_frozen()
+    for done in ("seal.json", "open.json"):
+        if (S.RESULTS / done).exists():
+            raise SystemExit(f"🔴 {done} 가 이미 있다 — 봉인·개봉 뒤에는 build 재실행 금지")
     chk = json.loads((S.RESULTS / "backfill_check.json").read_text(encoding="utf-8"))
     if not chk.get("complete") or not committed_unchanged(S.RESULTS / "backfill_check.json"):
         raise SystemExit("🔴 백필 완결 보고가 없거나 미완결·미커밋 — 중단")
@@ -195,6 +205,34 @@ def _check_build(conn) -> Dict[str, Any]:
     if LD.db_fingerprint(conn, S.PX_START, S.PATH_END)["sha256"] != meta["db_fingerprint"]:
         raise SystemExit("🔴 daily_prices 지문이 build 때와 다르다(소급 수정) — 중단")
     return meta
+
+
+def build_hashes() -> Dict[str, str]:
+    """build_meta.json 이 적은 모든 산출물의 md5 + build_meta.json 자신의 md5."""
+    meta = json.loads((S.RESULTS / "build_meta.json").read_text(encoding="utf-8"))
+    out = {name: md5(S.RESULTS / name) for name in meta["md5"]}
+    out["build_meta.json"] = md5(S.RESULTS / "build_meta.json")
+    return out
+
+
+def check_seal_linkage(seal: Dict[str, Any]) -> None:
+    rec = seal.get("build_md5")
+    if not rec:
+        raise SystemExit("🔴 seal.json 에 build 해시 기록이 없다 — 중단")
+    try:
+        now = build_hashes()
+    except (OSError, KeyError, ValueError) as e:
+        raise SystemExit(f"🔴 build 산출물을 다시 읽지 못했다({e}) — 중단")
+    if now != rec:
+        bad = sorted(k for k in set(now) | set(rec) if now.get(k) != rec.get(k))
+        raise SystemExit(f"🔴 seal 이후 build 산출물이 바뀌었다 {bad} — 중단")
+
+
+def effective_n1(df: pd.DataFrame, ycol: str = "y_sl") -> int:
+    """회귀가 실제로 쓰는 표식 행 수 — 그날 표식≥1 ∧ 대조≥1 인 날만(스펙 §3-2)."""
+    d = df[np.isfinite(df[ycol].astype(float))]
+    m = ST.both_arm_days_mask(d["x"], d["day"])
+    return int((d["x"].to_numpy()[m] == 1).sum())
 
 
 def _read_marks(name: str):
@@ -243,9 +281,10 @@ def stage_seal(conn) -> None:
     ctrl = df[df["x"] == 0]
     keys = set(zip(px["stock_code"].astype(str), [pd.Timestamp(t).date() for t in px["date"]]))
     surv = _survivorship(conn, keys)
-    n1 = int((df["x"] == 1).sum())
+    n1_raw = int((df["x"] == 1).sum())
+    n1 = effective_n1(df)
     years = pd.Series([d.year for d in df["scan_date"]])
-    seal = dict(n1=n1, n0=int(len(ctrl)), sd_ctrl_sl=float(ctrl["y_sl"].std(ddof=1)),
+    seal = dict(n1=n1, n1_raw=n1_raw, build_md5=build_hashes(), n0=int(len(ctrl)), sd_ctrl_sl=float(ctrl["y_sl"].std(ddof=1)),
                 sd_ctrl_tp=float(ctrl["y_tp"].std(ddof=1)), gate=gate,
                 mde_null=ST.mde(gate["sd_null"]), mde_se=ST.mde(gate["mean_se_cr1"]),
                 n1_by_year={int(y): int(((years == y) & (df["x"] == 1)).sum()) for y in sorted(years.unique())},
@@ -253,7 +292,7 @@ def stage_seal(conn) -> None:
     _write(S.RESULTS / "seal.json", json.dumps(seal, ensure_ascii=False, indent=1))
     _write(S.RESULTS / "sealed_report.md", "\n".join([
         "# 봉인 보고서 — 표식×수익 결합 0 (스펙 §3-6)", "",
-        f"- n₁(lag0 표식) {n1:,} · 대조 {len(ctrl):,} · 연도별 n₁ {seal['n1_by_year']}",
+        f"- n₁(유효 · 표식·대조 둘 다 있는 날) {n1:,} (표식 전체 {n1_raw:,}) · 대조 {len(ctrl):,} · 연도별 n₁ {seal['n1_by_year']}",
         f"- SD(대조 · net) 손절 우선 {seal['sd_ctrl_sl']:.3f} · 익절 우선 {seal['sd_ctrl_tp']:.3f}",
         f"- 가짜 게이트: CR1 거부율 {gate['rej_cr1']:.3f} · 2원 {gate['rej_2w']:.3f} → 도구 **{gate['tool']}** "
         f"(n_fake {gate['n_fake']} · 건너뜀 {gate['n_skipped']})",
@@ -270,8 +309,9 @@ def stage_open(conn) -> None:
         raise SystemExit("🔴 이미 개봉됨(open.json 있음) — 1회만 허용")
     if not committed_unchanged(S.RESULTS / "sealed_report.md"):
         raise SystemExit("🔴 sealed_report.md 가 커밋돼 있지 않거나 바뀌었다 — 중단")
-    _check_build(conn)
     seal = json.loads((S.RESULTS / "seal.json").read_text(encoding="utf-8"))
+    check_seal_linkage(seal)
+    _check_build(conn)
     cal, _px, _env = _load_env(conn)
     cal_idx = {d: i for i, d in enumerate(cal)}
     led = _read_ledger()
@@ -282,7 +322,7 @@ def stage_open(conn) -> None:
                                 d["block"].to_numpy())
     fe_sl, fe_tp = fe(df, "y_sl"), fe(df, "y_tp")
     tool = seal["gate"]["tool"]
-    lab = label(fe_sl, fe_tp, tool, int(seal["n1"]), seal["surv"]["surv_i"], seal["surv"]["surv_ii"])
+    lab = label(fe_sl, fe_tp, tool, int(fe_sl.n1), seal["surv"]["surv_i"], seal["surv"]["surv_ii"])
     lines = ["# RESULTS — 공시 재료 다음날 추격 금지(lag0) 확인 검정", "",
              f"## 주 라벨: **{lab}**", "",
              f"- 도구 {tool} · n {fe_sl.n:,} · n₁ {fe_sl.n1:,} · 날 {fe_sl.n_days:,}",

@@ -37,3 +37,4 @@ Z_ALPHA, Z_POWER = 1.6448536269514722, 0.8416212335729143
 TAIL_LOSS = -15.0
 
 PREREG_FROZEN_BLOB = ""   # Task 12 동결 커밋 뒤 설정 — 비어 있으면 seal·open 거부
+PROXY_COEF_MD5 = ""        # Task 12 동결 때 PREREG_FROZEN_BLOB 와 함께 설정 — 비어 있으면 build·seal·open 거부

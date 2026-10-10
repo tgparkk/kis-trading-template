@@ -48,12 +48,18 @@ def _cluster_v(psi: pd.Series, keys: pd.Series, small: float):
     return g / (g - 1) * small * float((s * s).sum()), g
 
 
+def both_arm_days_mask(x, day) -> np.ndarray:
+    """그날 표식 ≥1 ∧ 대조 ≥1 인 날의 행만 True — fe_regression 과 seal 의 n₁ 이 같은 규칙을 쓴다."""
+    d = pd.DataFrame({"x": np.asarray(x, float), "day": np.asarray(day)})
+    g = d.groupby("day")["x"]
+    return ((g.transform("max") > 0) & (g.transform("min") < 1)).to_numpy()
+
+
 def fe_regression(y, x, day, stock, block) -> FE:
     df = pd.DataFrame({"y": np.asarray(y, float), "x": np.asarray(x, float), "day": np.asarray(day),
                        "stock": np.asarray(stock).astype(str), "block": np.asarray(block)})
     df = df[np.isfinite(df["y"])]
-    g = df.groupby("day")["x"]
-    df = df[(g.transform("max") > 0) & (g.transform("min") < 1)]
+    df = df[both_arm_days_mask(df["x"], df["day"])]
     nan = float("nan")
     if df.empty:
         return FE(nan, nan, nan, nan, nan, nan, nan, 0, 0, 0, 0, 0)
