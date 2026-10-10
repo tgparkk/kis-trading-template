@@ -1,8 +1,12 @@
 """날짜 고정효과 + 종목 CR1(+ 2원 클러스터) — 스펙 §3-5.
 
 β = Σx̃ỹ/Σx̃² (x̃·ỹ = 날짜 안 평균 뺀 값 · 표식·대조가 둘 다 있는 날만) · ψ_i = x̃_i(ỹ_i − βx̃_i)/Σx̃².
-V_CR1 = G/(G−1)·Σ_g(Σψ)² · 2원 = V_종목 + V_블록 − V_종목×블록(≤0 이면 max). 단측 p 는 δ<0 방향.
-CR1 은 정규 근사 · 2원은 t(G_블록−1)(09-26 `stats_binary` 선례).
+small-sample 보정(CR1, Cameron–Miller/Stata areg 관례): c = G/(G−1) · (N−1)/(N−K).
+  N = 날짜 필터 뒤 사용 행 수 · K = 1 + n_days (x 계수 + 흡수된 날짜 고정효과 — K 는 흡수된 날짜 FE 를 센다).
+  N−K ≤ 0 또는 G < 2 이면 NaN SE.
+V_CR1 = c·Σ_g(Σψ)² (종목 클러스터) · 2원 = V_종목 + V_블록 − V_종목×블록(≤0 이면 max).
+  2원의 각 성분은 자기 G(G_종목·G_블록·G_종목×블록 = 비어있지 않은 셀 수)와 같은 (N−1)/(N−K) 를 쓴다.
+단측 p 는 δ<0 방향. CR1 은 정규 근사 · 2원은 t(G_블록−1)(09-26 `stats_binary` 선례).
 """
 from __future__ import annotations
 
@@ -36,12 +40,12 @@ def _ncdf(z: float) -> float:
     return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
 
 
-def _cluster_v(psi: pd.Series, keys: pd.Series):
+def _cluster_v(psi: pd.Series, keys: pd.Series, small: float):
     s = psi.groupby(keys.to_numpy()).sum()
     g = len(s)
-    if g < 2:
+    if g < 2 or not (small > 0):
         return float("nan"), g
-    return g / (g - 1) * float((s * s).sum()), g
+    return g / (g - 1) * small * float((s * s).sum()), g
 
 
 def fe_regression(y, x, day, stock, block) -> FE:
@@ -58,9 +62,12 @@ def fe_regression(y, x, day, stock, block) -> FE:
     sxx = float((xt * xt).sum())
     beta = float((xt * yt).sum() / sxx)
     psi = xt * (yt - beta * xt) / sxx
-    v_s, gs = _cluster_v(psi, df["stock"])
-    v_b, gb = _cluster_v(psi, df["block"].astype(str))
-    v_sb, _ = _cluster_v(psi, df["stock"] + "|" + df["block"].astype(str))
+    n_rows = len(df)
+    k_par = 1 + int(df["day"].nunique())          # x 계수 + 흡수된 날짜 FE
+    small = (n_rows - 1) / (n_rows - k_par) if n_rows - k_par > 0 else nan
+    v_s, gs = _cluster_v(psi, df["stock"], small)
+    v_b, gb = _cluster_v(psi, df["block"].astype(str), small)
+    v_sb, _ = _cluster_v(psi, df["stock"] + "|" + df["block"].astype(str), small)
     v2 = v_s + v_b - v_sb
     if not (v2 > 0):
         v2 = max(v_s, v_b) if not (math.isnan(v_s) or math.isnan(v_b)) else nan
