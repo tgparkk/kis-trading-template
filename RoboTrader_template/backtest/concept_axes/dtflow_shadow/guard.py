@@ -115,8 +115,12 @@ def check_runtime(repo, fr: Frozen) -> str:
         raise GuardError("작업 트리가 깨끗하지 않다")
     if not git_detached(repo):
         raise GuardError("브랜치 위에서 실행 거부 — detached 워크트리만")
+    missing = sorted(set(S.LIVE_SOURCES) - set(fr.sources))
+    extra = sorted(set(fr.sources) - set(S.LIVE_SOURCES))
+    if missing or extra:
+        raise GuardError(f"동결 원본 목록 불일치 — 누락 {missing} · 초과 {extra} — 다시 동결")
     now = _sources()
-    bad = [k for k, v in fr.sources.items() if now.get(k) != v]
+    bad =[k for k, v in fr.sources.items() if now.get(k) != v]
     if bad:
         raise GuardError(f"라이브 원본 sha 불일치: {', '.join(bad)} — 다시 검토·동결")
     return head
