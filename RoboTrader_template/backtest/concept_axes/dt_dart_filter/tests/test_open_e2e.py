@@ -109,13 +109,19 @@ def _commit(repo, msg):
 
 
 GATE = dict(rej_cr1=0.10, rej_2w=0.09, tool="cr1", reason="ok", n_valid=400, n_valid_2w=400, n_valid_min=380,
-            sd_null=0.5, mean_se_cr1=0.5, rej_lo_cr1=0.05, mean_fake_n1=150.0, n_fake=400, n_skipped=0)
+            sd_null=0.5, mean_se_cr1=0.5, rej_lo_cr1=0.05, rej_lo_2w=0.05, why_cr1="ok", why_2w="ok",
+            mean_fake_n1=150.0, n_fake=400, n_skipped=0)
 SURV = {"surv_i": 0.02, "n_i": 300, "surv_ii": 0.01, "n_ii": 2000,
         "breakdown_i": {c: 1 for c in SV.CLASSES}, "breakdown_ii": {c: 2 for c in SV.CLASSES}}
 
 
-@pytest.mark.parametrize("effect, want", [(-4.0, "있음(−)"), (4.0, "역방향")])
-def test_build_seal_open_end_to_end(monkeypatch, tmp_path, effect, want):
+class Env:
+    """_setup 결과 — repo · res · px · fp(지문 — 바꾸면 db_fingerprint 흉내가 새 값을 돌려준다)."""
+
+
+def _setup(monkeypatch, tmp_path, effect, gate=None):
+    """tmp git 레포 + 동결 커밋 + DB 대신 합성(conn=None). 재봉인·봉인 판정 테스트(test_decisions)도 쓴다."""
+    e = Env()
     repo = tmp_path / "repo"
     pkg = repo / "pkg"
     res = pkg / "results"
@@ -143,15 +149,31 @@ def test_build_seal_open_end_to_end(monkeypatch, tmp_path, effect, want):
     scan_days = [d for d in cal if S.SCAN_START <= d <= S.SCAN_END]
     fil = _filings(cal, scan_days)
     marks = T.window_marks(fil, cal, 0)
-    fp = {"sha256": "f" * 64, "per_stock": {_code(j): "0" * 32 for j in range(N_STOCK)}}
+    e.fp = {"sha256": "f" * 64, "per_stock": {_code(j): "0" * 32 for j in range(N_STOCK)}}
     monkeypatch.setattr(RUN, "_load_env", lambda conn: (cal, px, None))
     monkeypatch.setattr(RUN.T, "count_backfill_rows", lambda conn, a, b, t: S.BACKFILL_ROWS_EXPECTED)
     monkeypatch.setattr(RUN.T, "load_filings", lambda conn, a, b: list(fil))
     monkeypatch.setattr(RUN.U, "scan_window", lambda p, days: _scan_rows(cal_idx, days))
     monkeypatch.setattr(RUN.L, "simulate_candidate", _sim_factory(cal, marks, effect))
-    monkeypatch.setattr(RUN.LD, "db_fingerprint", lambda conn, a, b: fp)
-    monkeypatch.setattr(RUN.G, "fake_gate", lambda df: dict(GATE, n_real_marks=int((df["x"] == 1).sum())))
+    monkeypatch.setattr(RUN.LD, "db_fingerprint", lambda conn, a, b: e.fp)
+    monkeypatch.setattr(RUN.G, "fake_gate", lambda df: dict(gate or GATE, n_real_marks=int((df["x"] == 1).sum())))
     monkeypatch.setattr(RUN, "_survivorship", lambda conn, p: SURV)
+    e.repo, e.res, e.px, e.marks = repo, res, px, marks
+    return e
+
+
+@pytest.mark.parametrize("effect, want", [(-4.0, "있음(−)"), (4.0, "역방향")])
+def test_build_seal_open_end_to_end(monkeypatch, tmp_path, effect, want):
+    e = _setup(monkeypatch, tmp_path, effect)
+    repo, res, px, fp, marks = e.repo, e.res, e.px, e.fp, e.marks
+    # A-2 배선: stage_open 이 ca_path 대칭 제외 판을 label() «전»에 계산해 넘긴다
+    seen = {}
+    real_label = RUN.label
+
+    def spy(*a, **k):
+        seen["args"] = a
+        return real_label(*a, **k)
+    monkeypatch.setattr(RUN, "label", spy)
 
     # ── build ──
     RUN.stage_build(None)
@@ -173,6 +195,8 @@ def test_build_seal_open_end_to_end(monkeypatch, tmp_path, effect, want):
     RUN.stage_seal(None)
     seal = json.loads((res / "seal.json").read_text(encoding="utf-8"))
     assert seal["lib_versions"] == RUN.lib_versions() and seal["n1"] >= S.N1_MIN
+    assert seal["final_verdict"] is None and seal["reseal"] is None                # A-3 · A-4: 개봉 대상 · 첫 봉인
+    assert "개봉 대상" in (res / "sealed_report.md").read_text(encoding="utf-8")
     _commit(repo, "seal")
 
     # ── open ──
@@ -188,6 +212,7 @@ def test_build_seal_open_end_to_end(monkeypatch, tmp_path, effect, want):
     assert cnt["표식"]["ca_path"] > 0 and cnt["대조"]["ca_path"] > 0
     # 합성 설계상 표식은 하루 1행 → 표식 ca_path 로트를 빼면 그날이 통째로 빠져 n₁ 이 정확히 그만큼 준다(양 팔 대칭 제외)
     assert out["ca_path"]["fe_sl_excl"]["n1"] == out["fe_sl"]["n1"] - cnt["표식"]["ca_path"]
+    assert len(seen["args"]) == 7 and seen["args"][6].__dict__ == out["ca_path"]["fe_sl_excl"]   # A-2 배선
     assert set(out["aux"]) == {"no_fill", "unresolved"}
     assert out["aux"]["no_fill"]["대조"]["no_fill"] > 0 and out["aux"]["unresolved"]["대조"]["unresolved"] > 0
     assert {"w5", "w20", "all_sizes", "halt_entry"} <= set(out["secondary"])

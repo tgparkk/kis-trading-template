@@ -5,6 +5,7 @@
     $PY -X utf8 -m backtest.concept_axes.dt_dart_filter.run --stage build      # 동결 뒤
     $PY -X utf8 -m backtest.concept_axes.dt_dart_filter.run --stage seal       # build 뒤 · 표식 행 수익 안 읽음
     $PY -X utf8 -m backtest.concept_axes.dt_dart_filter.run --stage open       # sealed_report 커밋 뒤 1회
+    $PY -X utf8 -m backtest.concept_axes.dt_dart_filter.run --stage reseal     # open 이 DB 지문 불일치로 멈췄을 때만 · 1회
 
 🔴 DB SELECT 전용(`candidate_ledger.run` import 가 bootstrap read-only 를 건다) · 실제 표식×수익 결합 = open 단계뿐.
 """
@@ -157,10 +158,12 @@ def verify_pins(pins: Dict[str, str], root: Path, required: Sequence[str]) -> No
 
 
 def code_changes_since_freeze() -> List[str]:
-    """frozen_consts.py 를 마지막으로 바꾼 커밋 → HEAD 사이에 바뀐 경로 중 `<패키지>/results/` 밖인 것(critic M5).
+    """frozen_consts.py 를 마지막으로 바꾼 커밋 → HEAD 사이에 바뀐 «*.py» 경로 중 `<패키지>/results/` 밖인 것(critic M5 ·
+    범위 Ruling 2026-10-10).
 
-    동결 뒤 커밋은 build·seal·open 산출물(results/)뿐이어야 한다 — pins 가 못 덮는 간접 import(utils·__init__ 등)도
-    «동결 뒤 커밋» 으로 바뀌면 여기서 막힌다(커밋 안 된 작업 트리 변경은 pins·clean_package 몫).
+    레포 어디든 .py 가 동결 뒤 커밋으로 바뀌면(추가·수정·삭제) 거부한다 — pins 가 못 덮는 간접 import(utils·__init__ 등) 보호.
+    .md(REGISTRY 행 · PREREG · docs) 등 .py 아닌 파일은 통과한다(한계: json/ini 설정 변경은 못 잡음 · 분석 상수는 settings.py).
+    커밋 안 된 작업 트리 변경은 pins·clean_package 몫이다.
     """
     log = _git("log", "-1", "--format=%H", "--", "frozen_consts.py")
     sha = log.stdout.strip()
@@ -175,7 +178,8 @@ def code_changes_since_freeze() -> List[str]:
     except ValueError:
         raise SystemExit("🔴 results 폴더가 패키지 밖이다 — 중단")
     res = pre.stdout.strip() + rel + "/"
-    return sorted(p for p in (ln.strip() for ln in diff.stdout.splitlines()) if p and not p.startswith(res))
+    return sorted(p for p in (ln.strip() for ln in diff.stdout.splitlines())
+                  if p.endswith(".py") and not p.startswith(res))
 
 
 def lib_versions() -> Dict[str, str]:
@@ -205,7 +209,8 @@ def require_frozen() -> None:
     after = code_changes_since_freeze()
     if after:
         more = f" 외 {len(after) - 20}개" if len(after) > 20 else ""
-        raise SystemExit(f"🔴 동결 커밋(frozen_consts.py 마지막 커밋) 뒤 results/ 밖 변경 {after[:20]}{more} — 중단")
+        raise SystemExit(f"🔴 동결 커밋(frozen_consts.py 마지막 커밋) 뒤 results/ 밖 변경 .py {after[:20]}{more} — 중단"
+                         " (.md 문서 커밋은 허용 · main 머지 금지)")
     root = repo_root()
     verify_pins(parse_pins(S.PREREG.read_text(encoding="utf-8")), root, required_pins(root))
     U.check_adapter_params()
@@ -218,17 +223,45 @@ def _write(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
-# ── 라벨 규칙(스펙 §3-7) ────────────────────────────────────────────────────────
-def label(fe_sl: ST.FE, fe_tp: ST.FE, tool: str, n1: int, surv_i: float, surv_ii: float) -> str:
+# ── 라벨 규칙(스펙 §3-7 · 사장님 A-1·A-2·A-3) ─────────────────────────────────────
+def sealed_verdict(tool: str, n1: int) -> Optional[str]:
+    """봉인 때 결론이 정해지는 두 경우(사장님 A-3) — 이때는 개봉하지 않고 이 라벨이 최종 판정이다.
+
+    도구 fail → 「판정 불가(도구)」 · 유효 n₁ < N1_MIN → 「판별 보류(n₁<100)」 · 둘 다 아니면 None(개봉 대상).
+    label() 의 1·2순위와 같은 규칙(같은 함수)이다.
+    """
     if tool == "fail":
         return "판정 불가(도구)"
     if n1 < S.N1_MIN:
         return "판별 보류(n₁<100)"
+    return None
+
+
+def present_conditions(fe_sl: ST.FE, fe_tp: ST.FE, fe_ex: ST.FE, tool: str, surv_i: float,
+                       surv_ii: float) -> List[Tuple[str, bool]]:
+    """「있음(−)」 조건 7개(전부 참이어야) — p 는 봉인 도구의 단측 p · NaN 비교는 거짓(닫힌 쪽).
+
+    fe_ex = ca_path 로트를 양 팔에서 대칭으로 뺀 손절 우선 판(사장님 A-2). δ̂ 문턱은 두 동시 터치 판 모두(A-1).
+    """
     p1 = (lambda f: f.p1_cr1) if tool == "cr1" else (lambda f: f.p1_2w)
+    return [("손절 우선 단측 p < 0.05", bool(p1(fe_sl) < S.ALPHA)),
+            ("익절 우선 단측 p < 0.05", bool(p1(fe_tp) < S.ALPHA)),
+            ("손절 우선 δ̂ ≤ −0.4%p", bool(fe_sl.beta <= S.DELTA_MAX)),
+            ("익절 우선 δ̂ ≤ −0.4%p (A-1)", bool(fe_tp.beta <= S.DELTA_MAX)),
+            ("ca_path 제외 판 단측 p < 0.05 (A-2)", bool(p1(fe_ex) < S.ALPHA)),
+            ("ca_path 제외 판 δ̂ ≤ −0.4%p (A-2)", bool(fe_ex.beta <= S.DELTA_MAX)),
+            ("생존자 누락률 (i) ≥ (ii)", bool(surv_i >= surv_ii))]
+
+
+def label(fe_sl: ST.FE, fe_tp: ST.FE, tool: str, n1: int, surv_i: float, surv_ii: float, fe_ex: ST.FE) -> str:
+    """주 라벨(검사 순서 고정) — 1·2 봉인 판정(sealed_verdict) → 3 역방향 → 4 있음(−)(present_conditions 전부) → 5 판별 보류."""
+    v = sealed_verdict(tool, n1)
+    if v is not None:
+        return v
     p2 = (lambda f: f.p2_cr1) if tool == "cr1" else (lambda f: f.p2_2w)
     if p2(fe_sl) < 0.05 and fe_sl.beta > 0:
         return "역방향"
-    if p1(fe_sl) < S.ALPHA and p1(fe_tp) < S.ALPHA and fe_sl.beta <= S.DELTA_MAX and surv_i >= surv_ii:
+    if all(ok for _name, ok in present_conditions(fe_sl, fe_tp, fe_ex, tool, surv_i, surv_ii)):
         return "있음(−)"
     return "판별 보류"
 
@@ -311,11 +344,21 @@ def check_scan_diag(diag: Dict[str, Any]) -> None:
         raise SystemExit(f"🔴 스캔 어댑터 오류 n_errors={diag.get('n_errors')} — 중단")
 
 
+# 봉인·재봉인·개봉 표식 — 하나라도 있으면 build·seal 거부(재봉인 뒤 build/seal 은 --stage reseal 만 다시 만든다)
+_DONE_SEAL = ("seal.json", "seal_v1.json", "open.started", "open.json")
+RESEAL_FILES = ("seal_v1.json", "sealed_report_v1.md", "reseal_diff.md")   # 재봉인 1회 기록(사장님 A-4)
+
+
 def stage_build(conn) -> None:
     require_frozen()
-    for done in ("seal.json", "open.started", "open.json"):
+    for done in _DONE_SEAL:
         if (S.RESULTS / done).exists():
-            raise SystemExit(f"🔴 {done} 가 이미 있다 — 봉인·개봉 뒤에는 build 재실행 금지")
+            raise SystemExit(f"🔴 {done} 가 이미 있다 — 봉인·재봉인·개봉 뒤에는 build 재실행 금지")
+    _build(conn)
+
+
+def _build(conn) -> Dict[str, Any]:
+    """build 본체 — stage_build 와 stage_reseal 이 같은 경로·같은 멈춤 규칙으로 부른다. build_meta 를 돌려준다."""
     bf = S.RESULTS / "backfill_check.json"
     if not bf.exists() or not committed_unchanged(bf):
         raise SystemExit("🔴 백필 완결 보고가 없거나 미커밋 — 중단")
@@ -329,7 +372,7 @@ def stage_build(conn) -> None:
     rows, diag = U.scan_window(px, days)
     check_scan_diag(diag)
     feat = P.add_proxy_features(px).set_index(["stock_code", "date"])
-    halts = L.halt_dates(px)
+    halts = L.halt_dates(px, cal)              # 거래량≤0 행 ∪ 내부 결측 거래일(사장님 A-5)
     cad = L.ca_flag_days(px, cal_idx)
     out: List[Dict[str, Any]] = []
     for r in rows:
@@ -358,6 +401,7 @@ def stage_build(conn) -> None:
                 finished=datetime.now().isoformat(timespec="seconds"))
     _write(S.RESULTS / "build_meta.json", json.dumps(meta, ensure_ascii=False, indent=1))
     print(f"원장 {len(led):,}행 · 공시 {len(fil):,} · 지문 {fp['sha256'][:12]}")
+    return meta
 
 
 def fingerprint_diff(old: Optional[Dict[str, str]], new: Optional[Dict[str, str]]) -> Dict[str, List[str]]:
@@ -466,16 +510,25 @@ def seal_report_lines(seal: Dict[str, Any]) -> List[str]:
     g, sv = seal["gate"], seal["surv"]
     pls = " · ".join(f"{y} {v['share_small']:.3f}(n {v['n']:,} · NaN {v['n_nan']:,})"
                      for y, v in seal["pl_small_share_by_year"].items())
+    fv, rs = seal["final_verdict"], seal["reseal"]
+    head = (f"- 🔒 최종 판정(봉인 근거 · 개봉 안 함 · 사장님 A-3): **{fv}** — 도구 {g['tool']} · n₁(유효) {seal['n1']:,}"
+            if fv else f"- 개봉 대상: 도구 {g['tool']} · n₁(유효) {seal['n1']:,} ≥ {S.N1_MIN} — 주 라벨은 open(1회)이 정한다")
+    rs_line = ([f"- 재봉인 {rs['n']}회(사장님 A-4 · 사유 daily_prices 지문 변경 {rs['db_fingerprint_v1'][:12]} → "
+                f"{rs['db_fingerprint_v2'][:12]}) · 첫 봉인 = seal_v1.json(md5 {rs['v1_seal_md5']}) · 차이 = reseal_diff.md"]
+               if rs else [])
     return [
         "# 봉인 보고서 — 표식×수익 결합 0 (스펙 §3-6)", "",
+        head, *rs_line,
         f"- n₁(유효 · 표식·대조 둘 다 있는 날) {seal['n1']:,} · 대조(유효) {seal['n0']:,}",
         f"- 원시(날 거르기 전) 개수: 표식 원시 {seal['n1_raw']:,} · 대조 원시 {seal['n0_raw']:,} · "
         f"n₁ 원시 연도별 {seal['n1_raw_by_year']}",
         f"- 후보 중 p_L<0.5 비율(연도별 · 원장 전체 · 수익 무관): {pls}",
         f"- SD(대조 · net) 손절 우선 {seal['sd_ctrl_sl']:.3f} · 익절 우선 {seal['sd_ctrl_tp']:.3f}",
-        f"- 가짜 게이트: CR1 거부율 {g['rej_cr1']:.3f} · 2원 {g['rej_2w']:.3f} → 도구 **{g['tool']}** ({g['reason']}) · "
+        f"- 가짜 게이트: CR1 거부율 {g['rej_cr1']:.3f} · 2원 {g['rej_2w']:.3f} → 도구 **{g['tool']}** ({g['reason']} · "
+        f"CR1 {g['why_cr1']} · 2원 {g['why_2w']}) · "
         f"유효 {g['n_valid']}/{g['n_fake']}(문턱 {g['n_valid_min']}) · 2원 유효 {g['n_valid_2w']} · 건너뜀 {g['n_skipped']}",
-        f"- 가짜 게이트 하측(p1<0.05) {g['rej_lo_cr1']:.3f} · 가짜 평균 n₁ {g['mean_fake_n1']:.1f}",
+        f"- 가짜 게이트 하측(p1<0.05) CR1 {g['rej_lo_cr1']:.3f} · 2원 {g['rej_lo_2w']:.3f}(채택 조건 ≤ {S.FAKE_LO_TAIL_MAX} · "
+        f"사장님 A-6) · 가짜 평균 n₁ {g['mean_fake_n1']:.1f}",
         f"- SD_null {g['sd_null']:.3f} → MDE {seal['mde_null']:.3f}%p (평균 SE 기준 {seal['mde_se']:.3f}%p)",
         f"- 생존자 누락률 (i) 3태그 공시 단위 {sv['surv_i']:.4f}(n {sv['n_i']:,}) · (ii) 정기공시 회사 단위 "
         f"{sv['surv_ii']:.4f}(n {sv['n_ii']:,}) — 코넥스·상장 전 공시 제외",
@@ -551,13 +604,17 @@ def per_tag_results(df: pd.DataFrame, tag_marks: Sequence[Set[Tuple[str, date]]]
 
 
 def ca_path_results(df: pd.DataFrame, tool: str) -> Tuple[Dict[str, Any], List[str]]:
-    """팔별 ca_path 수 + ca_path 로트를 양 팔에서 대칭으로 뺀 손절 우선 판(봉인 도구 p) — 인쇄만(critic B2)."""
+    """팔별 ca_path 수(인쇄만) + ca_path 로트를 양 팔에서 대칭으로 뺀 손절 우선 판(봉인 도구 p · critic B2).
+
+    제외 판은 「있음(−)」 조건이다(사장님 A-2 · `present_conditions`) — stage_open 이 라벨 «전»에 부른다.
+    """
     ca = df["ca_path"].astype(bool).to_numpy()
     x = df["x"].to_numpy() == 1
     counts = {arm: {"ca_path": int((m & ca).sum()), "n": int(m.sum())} for arm, m in (("표식", x), ("대조", ~x))}
     f = _fe(df[~ca])
     p, used = tool_p1(f, tool)
-    lines = [f"## 보유 창 기업행위 의심 ca_path (진입 다음 거래일 k=1..{S.CA_WINDOW_TD} · 인쇄만 · 라벨 불변)", "",
+    lines = [f"## 보유 창 기업행위 의심 ca_path (진입 다음 거래일 k=1..{S.CA_WINDOW_TD} · 팔별 수는 인쇄만 · "
+             "제외 판은 「있음(−)」 조건 A-2)", "",
              "- 팔별 ca_path: " + " · ".join(f"{arm} {v['ca_path']:,}/{v['n']:,}" for arm, v in counts.items()),
              f"- ca_path 로트 양 팔 제외 손절 우선 판: δ̂ {f.beta:+.3f}%p · n₁ {f.n1:,} · 단측 p {p:.4f} ({used})"]
     return dict(counts=counts, fe_sl_excl=f.__dict__, p1=p, tool_used=used), lines
@@ -590,18 +647,26 @@ def _survivorship(conn, px: pd.DataFrame) -> Dict[str, Any]:
     days = [pd.Timestamp(t).date() for t in px["date"]]
     keys = set(zip(codes, days))
     first: Dict[str, date] = {}
+    last: Dict[str, date] = {}
     for c, d in zip(codes, days):
         if c not in first or d < first[c]:
             first[c] = d
-    return SV.survivorship(fil, cal, keys, first)
+        if c not in last or d > last[c]:
+            last[c] = d
+    return SV.survivorship(fil, cal, keys, first, last)
 
 
 # ── 단계: seal(표식 행 수익 안 읽음) ───────────────────────────────────────────
 def stage_seal(conn) -> None:
     require_frozen()
-    for done in ("seal.json", "open.started", "open.json"):
+    for done in _DONE_SEAL:
         if (S.RESULTS / done).exists():
-            raise SystemExit(f"🔴 {done} 가 이미 있다 — 봉인은 1회만(재봉인 금지)")
+            raise SystemExit(f"🔴 {done} 가 이미 있다 — 봉인은 1회만(재봉인은 --stage reseal · 1회까지)")
+    _seal(conn, None)
+
+
+def _seal(conn, reseal: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """봉인 본체(stage_seal · stage_reseal 공용) — 표식 행 수익을 읽지 않는다. 봉인 판정(A-3)·재봉인 기록(A-4)을 함께 쓴다."""
     _check_build(conn)
     cal, px, _env = _load_env(conn)
     cal_idx = {d: i for i, d in enumerate(cal)}
@@ -611,17 +676,128 @@ def stage_seal(conn) -> None:
     ctrl = df[df["x"] == 0]
     surv = _survivorship(conn, px)
     years = pd.Series([d.year for d in df["scan_date"]])
-    seal = dict(n1=effective_n1(df), n0=effective_n0(df), n1_raw=int((df["x"] == 1).sum()), n0_raw=int(len(ctrl)),
+    n1 = effective_n1(df)
+    seal = dict(n1=n1, n0=effective_n0(df), n1_raw=int((df["x"] == 1).sum()), n0_raw=int(len(ctrl)),
                 n1_raw_by_year={int(y): int(((years == y) & (df["x"] == 1)).sum()) for y in sorted(years.unique())},
                 pl_small_share_by_year=pl_small_share_by_year(led), build_md5=build_hashes(),
                 sd_ctrl_sl=float(ctrl["y_sl"].std(ddof=1)), sd_ctrl_tp=float(ctrl["y_tp"].std(ddof=1)), gate=gate,
                 mde_null=ST.mde(gate["sd_null"]), mde_se=ST.mde(gate["mean_se_cr1"]),
-                surv=surv, lib_versions=lib_versions(), git_sha=head_sha(),
-                sealed=datetime.now().isoformat(timespec="seconds"))
+                surv=surv, final_verdict=sealed_verdict(gate["tool"], n1), reseal=reseal,
+                lib_versions=lib_versions(), git_sha=head_sha(), sealed=datetime.now().isoformat(timespec="seconds"))
     _write(S.RESULTS / "seal.json", json.dumps(seal, ensure_ascii=False, indent=1))
     _write(S.RESULTS / "sealed_report.md",
            "\n".join(seal_report_lines(seal) + [seal_md5_line(md5(S.RESULTS / "seal.json")), ""]))
     print(json.dumps(seal, ensure_ascii=False, indent=1, default=str))
+    return seal
+
+
+# ── 단계: reseal(재봉인 1회 · 사장님 A-4) ────────────────────────────────────────
+def flatten_seal(d: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
+    """봉인 dict 를 점 경로 키로 펼친다(빈 dict·None·리스트는 잎) — 재봉인 차이표용."""
+    out: Dict[str, Any] = {}
+    for k, v in d.items():
+        key = f"{prefix}{k}"
+        if isinstance(v, dict) and v:
+            out.update(flatten_seal(v, key + "."))
+        else:
+            out[key] = v
+    return out
+
+
+def _cell(v: Any, present: bool) -> str:
+    if not present:
+        return "—"
+    s = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, default=str)
+    return s.replace("|", "\\|")
+
+
+def seal_diff_table(s1: Dict[str, Any], s2: Dict[str, Any]) -> List[str]:
+    """첫 봉인(v1) vs 재봉인(v2) — 모든 봉인 필드를 나란히(v1 순서 → v2 에만 있는 키). 같음 = 인쇄 문자열 같음(NaN 포함)."""
+    f1, f2 = flatten_seal(s1), flatten_seal(s2)
+    lines = ["| 필드 | v1(첫 봉인) | v2(재봉인) | 같음? |", "|---|---|---|---|"]
+    for k in list(f1) + [k for k in f2 if k not in f1]:
+        a, b = _cell(f1.get(k), k in f1), _cell(f2.get(k), k in f2)
+        lines.append(f"| `{k}` | {a} | {b} | {'같음' if (k in f1 and k in f2 and a == b) else '다름'} |")
+    return lines
+
+
+def stage_reseal(conn) -> None:
+    """재봉인 1회(사장님 A-4) — open 이 daily_prices 지문 불일치로 `open.started` «전»에 멈춘 뒤의 복구 경로.
+
+    허용 조건: seal.json 있음(커밋·불변 · 봉인 보고서 md5 일치) ∧ open.started·open.json 없음 ∧ 재봉인 기록 없음 ∧
+    첫 봉인이 최종 판정(A-3)을 기록하지 않음 ∧ build 산출물이 첫 봉인 그대로 ∧ 지금 DB 지문 ≠ build 지문(아니면 «고칠 것 없음»).
+    동작: seal.json → seal_v1.json · sealed_report.md → sealed_report_v1.md 로 옮기고 → 보통 build 경로로 다시 build →
+    보통 seal 경로로 봉인(seal.json 에 재봉인 기록) → reseal_diff.md(바뀐 종목 코드 · 모든 봉인 필드 v1 vs v2).
+    러너는 커밋하지 않는다 — 실패하면 커밋 전이므로 `git restore` 로 되돌린다(PREREG §11-3).
+    """
+    require_frozen()
+    if not (S.RESULTS / "seal.json").exists():
+        raise SystemExit("🔴 seal.json 이 없다 — 재봉인은 봉인 뒤에만(봉인 전 지문 불일치는 build 부터 다시)")
+    for done in ("open.started", "open.json"):
+        if (S.RESULTS / done).exists():
+            raise SystemExit(f"🔴 {done} 가 있다 — 개봉이 시작된 뒤에는 재봉인 금지")
+    for f in RESEAL_FILES:
+        if (S.RESULTS / f).exists():
+            raise SystemExit(f"🔴 {f} 가 있다 — 재봉인은 1회까지(이미 했다)")
+    for f in ("seal.json", "sealed_report.md"):
+        if not committed_unchanged(S.RESULTS / f):
+            raise SystemExit(f"🔴 첫 봉인 {f} 가 커밋돼 있지 않거나 바뀌었다 — 중단")
+    check_sealed_report(S.RESULTS / "sealed_report.md", S.RESULTS / "seal.json")
+    v1 = json.loads((S.RESULTS / "seal.json").read_text(encoding="utf-8"))
+    verdict = v1.get("final_verdict") or sealed_verdict(v1["gate"]["tool"], int(v1["n1"]))
+    if verdict:
+        raise SystemExit(f"🔴 첫 봉인이 최종 판정 «{verdict}» 을 기록했다 — 재봉인 금지(도구 쇼핑 차단 · 사장님 A-3·A-4)")
+    check_seal_linkage(v1)
+    old_meta = json.loads((S.RESULTS / "build_meta.json").read_text(encoding="utf-8"))
+    fp = LD.db_fingerprint(conn, S.PX_START, S.PATH_END)
+    if fp["sha256"] == old_meta["db_fingerprint"]:
+        raise SystemExit("🔴 daily_prices 지문이 build 때와 같다 — 고칠 것 없음(재봉인 거부)")
+    v1_md5, rep_md5 = md5(S.RESULTS / "seal.json"), md5(S.RESULTS / "sealed_report.md")
+    (S.RESULTS / "seal.json").replace(S.RESULTS / "seal_v1.json")
+    (S.RESULTS / "sealed_report.md").replace(S.RESULTS / "sealed_report_v1.md")
+    try:
+        new_meta = _build(conn)
+        s2 = _seal(conn, dict(n=1, reason="daily_prices 지문 변경", v1_seal_md5=v1_md5, v1_report_md5=rep_md5,
+                              db_fingerprint_v1=old_meta["db_fingerprint"], db_fingerprint_v2=new_meta["db_fingerprint"]))
+    except BaseException:
+        print("🔴 재봉인 도중 실패 — 커밋 전이다: `git restore results/` + seal_v1.json·sealed_report_v1.md 삭제로 되돌린 뒤"
+              " 원인 확인(PREREG §11-3)")
+        raise
+    diff = fingerprint_diff(old_meta.get("per_stock"), new_meta.get("per_stock"))
+    per = ([f"  - {lab} {len(diff[k]):,}: {', '.join(diff[k])}"
+            for k, lab in (("changed", "값이 바뀐 종목"), ("added", "새로 생긴 종목"), ("removed", "사라진 종목"))]
+           if old_meta.get("per_stock") is not None else ["  - 첫 build 에 종목별 지문 없음(어느 종목인지 모름)"])
+    lines = ["# 재봉인 차이 — 첫 봉인(v1) vs 재봉인(v2) · 표식×수익 결합 0 (사장님 A-4)", "",
+             f"- 사유: daily_prices 지문 변경 — 첫 build `{old_meta['db_fingerprint'][:12]}` → 재봉인 build "
+             f"`{new_meta['db_fingerprint'][:12]}`",
+             f"- 첫 봉인 파일: seal_v1.json(md5 {v1_md5}) · sealed_report_v1.md(md5 {rep_md5})",
+             "- 종목별 지문 차이(종목 코드만 · 해시 아님):", *per,
+             f"- build 원장 행 {old_meta.get('n_rows')} → {new_meta.get('n_rows')} · 공시 {old_meta.get('n_filings')} → "
+             f"{new_meta.get('n_filings')}",
+             f"- 봉인 판정 v1 {v1.get('final_verdict')} → v2 {s2['final_verdict']} · 도구 v1 {v1['gate']['tool']} → "
+             f"v2 {s2['gate']['tool']}",
+             "", "## 봉인 필드 v1 vs v2 (모든 필드)", "", *seal_diff_table(v1, s2), ""]
+    _write(S.RESULTS / "reseal_diff.md", "\n".join(lines))
+    print("\n".join(lines))
+
+
+def check_reseal_record(seal: Dict[str, Any]) -> None:
+    """open 쪽 재봉인 연결(사장님 A-4) — 기록이 있으면 파일 3개가 다 있고 커밋·불변이며 seal_v1.json md5 = 기록.
+    기록 없이 파일만 있거나 그 반대면 거부."""
+    rec = seal.get("reseal")
+    have = [f for f in RESEAL_FILES if (S.RESULTS / f).exists()]
+    if not rec:
+        if have:
+            raise SystemExit(f"🔴 재봉인 파일 {have} 이 있는데 seal.json 에 재봉인 기록이 없다 — 중단")
+        return
+    missing = [f for f in RESEAL_FILES if f not in have]
+    if missing:
+        raise SystemExit(f"🔴 재봉인 기록은 있는데 {missing} 이 없다 — 중단")
+    bad = [f for f in RESEAL_FILES if not committed_unchanged(S.RESULTS / f)]
+    if bad:
+        raise SystemExit(f"🔴 재봉인 파일 {bad} 가 커밋돼 있지 않거나 바뀌었다 — 중단")
+    if md5(S.RESULTS / "seal_v1.json") != rec.get("v1_seal_md5"):
+        raise SystemExit("🔴 seal_v1.json 이 재봉인 기록의 md5 와 다르다 — 중단")
 
 
 # ── 단계: open(1회) ──────────────────────────────────────────────────────────────
@@ -640,7 +816,15 @@ def stage_open(conn) -> None:
         raise SystemExit("🔴 sealed_report.md 가 커밋돼 있지 않거나 바뀌었다 — 중단")
     check_sealed_report(S.RESULTS / "sealed_report.md", S.RESULTS / "seal.json")
     seal = json.loads((S.RESULTS / "seal.json").read_text(encoding="utf-8"))
+    try:
+        verdict = seal.get("final_verdict") or sealed_verdict(seal["gate"]["tool"], int(seal["n1"]))
+    except (KeyError, TypeError, ValueError):
+        raise SystemExit("🔴 seal.json 에 도구·n₁ 기록이 없다 — 중단")
+    if verdict:
+        raise SystemExit(f"🔴 봉인이 최종 판정 «{verdict}» 을 기록했다(도구 fail 또는 n₁<{S.N1_MIN} · 사장님 A-3) — "
+                         "개봉하지 않는다")
     check_seal_linkage(seal)
+    check_reseal_record(seal)
     check_lib_versions(seal)
     _check_build(conn)
     _write(S.RESULTS / "open.started", json.dumps(dict(started=datetime.now().isoformat(timespec="seconds"),
@@ -653,14 +837,22 @@ def stage_open(conn) -> None:
     df = SM.analysis_frame(led, marks0, cal_idx)
     fe_sl, fe_tp = _fe(df, "y_sl"), _fe(df, "y_tp")
     tool = seal["gate"]["tool"]
-    lab = label(fe_sl, fe_tp, tool, int(fe_sl.n1), seal["surv"]["surv_i"], seal["surv"]["surv_ii"])
+    surv_i, surv_ii = seal["surv"]["surv_i"], seal["surv"]["surv_ii"]
+    ca, ca_lines = ca_path_results(df, tool)          # A-2: ca_path 대칭 제외 손절 우선 판을 라벨 «전»에 계산
+    fe_ex = ST.FE(**ca["fe_sl_excl"])
+    lab = label(fe_sl, fe_tp, tool, int(fe_sl.n1), surv_i, surv_ii, fe_ex)
+    conds = present_conditions(fe_sl, fe_tp, fe_ex, tool, surv_i, surv_ii)
     lines = ["# RESULTS — 공시 재료 다음날 추격 금지(lag0) 확인 검정", "",
              f"## 주 라벨: **{lab}**", "",
              f"- 도구 {tool} · n {fe_sl.n:,} · n₁ {fe_sl.n1:,} · 날 {fe_sl.n_days:,}",
              f"- 손절 우선 δ̂ {fe_sl.beta:+.3f}%p (SE CR1 {fe_sl.se_cr1:.3f} · 단측 p {fe_sl.p1_cr1:.4f} · "
              f"2원 SE {fe_sl.se_2w:.3f} · 단측 p {fe_sl.p1_2w:.4f})",
              f"- 익절 우선 δ̂ {fe_tp.beta:+.3f}%p (단측 p CR1 {fe_tp.p1_cr1:.4f} · 2원 {fe_tp.p1_2w:.4f})",
-             f"- 생존자 누락률 (i) {seal['surv']['surv_i']:.4f} vs (ii) {seal['surv']['surv_ii']:.4f}", "",
+             f"- ca_path 대칭 제외 손절 우선 δ̂ {fe_ex.beta:+.3f}%p (n₁ {fe_ex.n1:,} · 단측 p {ca['p1']:.4f} · "
+             f"{ca['tool_used']}) — 라벨 조건(A-2)",
+             f"- 생존자 누락률 (i) {surv_i:.4f} vs (ii) {surv_ii:.4f}",
+             "- 「있음(−)」 조건(전부 참이어야 · 봉인 도구 p): "
+             + " · ".join(f"{name} {'✓' if ok else '✗'}" for name, ok in conds), "",
              "## 보조(인쇄만 · 라벨 불변)", ""]
     sec: Dict[str, Any] = {}
     for name in ("w5", "w20"):
@@ -694,11 +886,11 @@ def stage_open(conn) -> None:
     lines.append("- 팔별 미해소 unresolved(분석 표본 · 창 끝 마지막 값): "
                  + " · ".join(f"{arm} {v['unresolved']:,}/{v['n']:,}" for arm, v in aux["unresolved"].items()))
     per_tag, tag_lines = per_tag_results(df, [_read_marks(n) for n in TAG_MARKS], tool, lab)
-    ca, ca_lines = ca_path_results(df, tool)
     lines += [""] + tag_lines + [""] + ca_lines
     today = date.today().isoformat()
     _write(S.RESULTS / f"RESULTS_{today}.md", "\n".join(lines) + "\n")
     _write(S.RESULTS / "open.json", json.dumps(dict(label=lab, fe_sl=fe_sl.__dict__, fe_tp=fe_tp.__dict__,
+                                                    conditions=[dict(name=n, ok=ok) for n, ok in conds],
                                                     secondary=sec, per_tag=per_tag, ca_path=ca, aux=aux,
                                                     opened=datetime.now().isoformat(timespec="seconds"),
                                                     git_sha=head_sha()), ensure_ascii=False, indent=1, default=str))
@@ -707,10 +899,10 @@ def stage_open(conn) -> None:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="dt_dart_filter A 러너")
-    ap.add_argument("--stage", required=True, choices=["proxy", "check-backfill", "build", "seal", "open"])
+    ap.add_argument("--stage", required=True, choices=["proxy", "check-backfill", "build", "seal", "reseal", "open"])
     ap.add_argument("--backfill-dir", default=None)
     a = ap.parse_args(argv)
-    if a.stage in ("build", "seal", "open"):
+    if a.stage in ("build", "seal", "reseal", "open"):
         require_frozen()
     conn = R._connect()
     try:
@@ -724,6 +916,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             stage_build(conn)
         elif a.stage == "seal":
             stage_seal(conn)
+        elif a.stage == "reseal":
+            stage_reseal(conn)
         else:
             stage_open(conn)
     finally:

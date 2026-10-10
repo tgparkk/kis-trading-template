@@ -3,13 +3,15 @@
 실제 표식 행은 버리고(수익을 읽지 않음) 남은 표본에서 실제 표식마다 같은 날·같은 p_L 5분위 후보에 가짜 표식을 붙인다
 (같은 실제 종목 → 같은 가짜 종목 대응 · 실제 표식 종목은 풀에서 제외 · 풀 없으면 같은 날 아무 분위 · 그래도 없으면 건너뜀).
 한 복제 안에서는 비복원(이미 뽑힌 행은 다시 안 뽑음 — 대응 종목의 그날 행이 이미 뽑혔으면 새로 뽑는다).
-양측 p<0.10 거부율이 [0.07, 0.13] 이면 그 도구를 쓴다(CR1 우선 → 2원 → 둘 다 탈락이면 «판정 불가»).
+양측 p<0.10 거부율이 [0.07, 0.13] 이고 하측(단측 p1<0.05) 거부율이 ≤ 0.075(사장님 A-6) 이면 그 도구를 쓴다
+(CR1 우선 → 2원 → 둘 다 탈락이면 «판정 불가»).
 
 유효 복제 규칙(최종 리뷰 I3 · 관리자 판정 · PREREG 명시):
 - 도구별 유효 복제 = β 와 그 도구의 양측 p 가 유한. 거부율 = 유효 복제 중 거부 / 유효 복제 수(NaN p 를 비거부로 세지 않음).
 - `n_valid` = CR1 유효 복제 수. `n_valid < ceil(FAKE_VALID_FRAC × n_fake)`(400 → 380) 이면 tool="fail" · reason="degenerate".
   CR1 이 밴드 밖이라 2원으로 갈 때 2원 유효 복제가 문턱 미만이어도 "degenerate".
-- sd_null · mean_se_cr1 · 하측 거부율(p1<0.05) · 평균 가짜 n₁ = CR1 유효 복제만으로.
+- sd_null · mean_se_cr1 · 평균 가짜 n₁ = CR1 유효 복제만으로. 하측 거부율은 도구마다 자기 유효 복제로(rej_lo_cr1 · rej_lo_2w).
+- why_cr1 · why_2w = 도구별 판정("ok" · "degenerate" · "band" · "lower_tail") — 인쇄용.
 """
 from __future__ import annotations
 
@@ -63,6 +65,18 @@ def _finite(v: float) -> bool:
     return v is not None and math.isfinite(float(v))
 
 
+def tool_check(n_valid: int, rej: float, rej_lo: float, need: int) -> str:
+    """도구 하나의 채택 판정 — "degenerate"(유효 < need) · "band"(양측 거부율 ∉ [LO, HI]) ·
+    "lower_tail"(하측 거부율 > FAKE_LO_TAIL_MAX · 사장님 A-6) · "ok". NaN 비교는 거짓(닫힌 쪽)."""
+    if n_valid < need:
+        return "degenerate"
+    if not (S.FAKE_LO <= rej <= S.FAKE_HI):
+        return "band"
+    if not (rej_lo <= S.FAKE_LO_TAIL_MAX):
+        return "lower_tail"
+    return "ok"
+
+
 def summarize(fes: Sequence[ST.FE], n_fake: int) -> Dict[str, Any]:
     need = math.ceil(S.FAKE_VALID_FRAC * n_fake)
     v1 = [f for f in fes if _finite(f.beta) and _finite(f.p2_cr1)]
@@ -70,22 +84,23 @@ def summarize(fes: Sequence[ST.FE], n_fake: int) -> Dict[str, Any]:
     nan = float("nan")
     r1 = sum(f.p2_cr1 < S.FAKE_P for f in v1) / len(v1) if v1 else nan
     r2 = sum(f.p2_2w < S.FAKE_P for f in v2) / len(v2) if v2 else nan
-    in1 = len(v1) >= need and S.FAKE_LO <= r1 <= S.FAKE_HI
-    in2 = len(v2) >= need and S.FAKE_LO <= r2 <= S.FAKE_HI
-    if len(v1) < need:
+    lo1 = sum(f.p1_cr1 < S.ALPHA for f in v1) / len(v1) if v1 else nan
+    lo2 = sum(f.p1_2w < S.ALPHA for f in v2) / len(v2) if v2 else nan
+    why1, why2 = tool_check(len(v1), r1, lo1, need), tool_check(len(v2), r2, lo2, need)
+    if why1 == "degenerate":
         tool, reason = "fail", "degenerate"
-    elif in1:
+    elif why1 == "ok":
         tool, reason = "cr1", "ok"
-    elif in2:
+    elif why2 == "ok":
         tool, reason = "2way", "ok"
     else:
-        tool, reason = "fail", ("degenerate" if len(v2) < need else "out_of_band")
+        tool, reason = "fail", ("degenerate" if why2 == "degenerate" else "out_of_band")
     betas = [f.beta for f in v1]
-    return {"rej_cr1": r1, "rej_2w": r2, "tool": tool, "reason": reason,
+    return {"rej_cr1": r1, "rej_2w": r2, "tool": tool, "reason": reason, "why_cr1": why1, "why_2w": why2,
             "n_valid": len(v1), "n_valid_2w": len(v2), "n_valid_min": need,
             "sd_null": float(np.std(betas, ddof=1)) if len(betas) >= 2 else nan,
             "mean_se_cr1": float(np.mean([f.se_cr1 for f in v1])) if v1 else nan,
-            "rej_lo_cr1": sum(f.p1_cr1 < S.ALPHA for f in v1) / len(v1) if v1 else nan,
+            "rej_lo_cr1": lo1, "rej_lo_2w": lo2,
             "mean_fake_n1": float(np.mean([f.n1 for f in v1])) if v1 else nan,
             "n_fake": n_fake}
 

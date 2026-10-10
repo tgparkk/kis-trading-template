@@ -10,17 +10,20 @@ def _fe(beta, p1, p2):
     return FE(beta, 1.0, 1.0, p1, p2, p1, p2, 500, 120, 300, 200, 40)
 
 
+EX = FE(-0.8, 1.0, 1.0, 0.02, 0.04, 0.02, 0.04, 480, 110, 300, 200, 40)   # ca_path 대칭 제외 손절 우선 판(A-2)
+
+
 def test_label_present_requires_both_rules_threshold_and_survivorship():
-    assert RUN.label(_fe(-1.0, 0.01, 0.02), _fe(-0.9, 0.03, 0.06), "cr1", 120, 0.3, 0.1) == "있음(−)"
-    assert RUN.label(_fe(-1.0, 0.01, 0.02), _fe(-0.9, 0.20, 0.40), "cr1", 120, 0.3, 0.1) == "판별 보류"
-    assert RUN.label(_fe(-0.3, 0.01, 0.02), _fe(-0.3, 0.01, 0.02), "cr1", 120, 0.3, 0.1) == "판별 보류"
-    assert RUN.label(_fe(-1.0, 0.01, 0.02), _fe(-0.9, 0.01, 0.02), "cr1", 120, 0.05, 0.1) == "판별 보류"
+    assert RUN.label(_fe(-1.0, 0.01, 0.02), _fe(-0.9, 0.03, 0.06), "cr1", 120, 0.3, 0.1, EX) == "있음(−)"
+    assert RUN.label(_fe(-1.0, 0.01, 0.02), _fe(-0.9, 0.20, 0.40), "cr1", 120, 0.3, 0.1, EX) == "판별 보류"
+    assert RUN.label(_fe(-0.3, 0.01, 0.02), _fe(-0.3, 0.01, 0.02), "cr1", 120, 0.3, 0.1, EX) == "판별 보류"
+    assert RUN.label(_fe(-1.0, 0.01, 0.02), _fe(-0.9, 0.01, 0.02), "cr1", 120, 0.05, 0.1, EX) == "판별 보류"
 
 
 def test_label_reverse_tool_fail_and_small_n():
-    assert RUN.label(_fe(1.2, 0.99, 0.01), _fe(1.2, 0.99, 0.01), "cr1", 120, 0.3, 0.1) == "역방향"
-    assert RUN.label(_fe(-1.0, 0.01, 0.02), _fe(-1.0, 0.01, 0.02), "fail", 120, 0.3, 0.1) == "판정 불가(도구)"
-    assert RUN.label(_fe(-1.0, 0.01, 0.02), _fe(-1.0, 0.01, 0.02), "cr1", 99, 0.3, 0.1) == "판별 보류(n₁<100)"
+    assert RUN.label(_fe(1.2, 0.99, 0.01), _fe(1.2, 0.99, 0.01), "cr1", 120, 0.3, 0.1, EX) == "역방향"
+    assert RUN.label(_fe(-1.0, 0.01, 0.02), _fe(-1.0, 0.01, 0.02), "fail", 120, 0.3, 0.1, EX) == "판정 불가(도구)"
+    assert RUN.label(_fe(-1.0, 0.01, 0.02), _fe(-1.0, 0.01, 0.02), "cr1", 99, 0.3, 0.1, EX) == "판별 보류(n₁<100)"
 
 
 def test_require_frozen_refuses_when_blob_empty(monkeypatch):
@@ -67,7 +70,7 @@ def test_effective_n1_excludes_marked_days_without_control():
     assert RUN.effective_n1(df) == 2      # day 2 has no control -> dropped
     import dataclasses
     fe_sl = dataclasses.replace(_fe(-1.0, 0.01, 0.02), n1=99)
-    assert RUN.label(fe_sl, fe_sl, "cr1", fe_sl.n1, 0.3, 0.1) == "판별 보류(n₁<100)"
+    assert RUN.label(fe_sl, fe_sl, "cr1", fe_sl.n1, 0.3, 0.1, EX) == "판별 보류(n₁<100)"
 
 
 def test_require_frozen_needs_proxy_coef_md5(monkeypatch, tmp_path):
@@ -89,7 +92,9 @@ def test_proxy_stage_refuses_after_freeze(monkeypatch):
 
 def _seal_files(tmp_path, seal, report_md5=None):
     """seal.json + sealed_report.md(seal.json md5 줄 포함) — report_md5 를 주면 그 값을 적는다(불일치 흉내)."""
-    seal = {"lib_versions": RUN.lib_versions(), **seal}             # M5 — 봉인 때 라이브러리 버전(주면 그 값)
+    seal = {"lib_versions": RUN.lib_versions(),                    # M5 — 봉인 때 라이브러리 버전(주면 그 값)
+            "gate": {"tool": "cr1"}, "n1": S.N1_MIN, "final_verdict": None, "reseal": None,   # A-3·A-4 기본 = 개봉 대상
+            **seal}
     (tmp_path / "seal.json").write_text(json.dumps(seal), encoding="utf-8")
     h = RUN.md5(tmp_path / "seal.json") if report_md5 is None else report_md5
     (tmp_path / "sealed_report.md").write_text("# 봉인\n\n" + RUN.seal_md5_line(h) + "\n", encoding="utf-8")

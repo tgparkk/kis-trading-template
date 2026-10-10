@@ -1,17 +1,19 @@
 """체결 · 정지 · 청산 — 스펙 §3-4.
 
 - 체결 = `theme_rank.bandfill.band_fill`(시가 ≤ 상한 → 시가 · 시가 > 상한 ∧ 저가 ≤ 상한 → 상한 · 그 밖 미체결).
-- 정지(거래량 ≤0 또는 결측) = 진입일이면 «진입 불가» · 보유 중이면 재개 첫 봉 «시가»로 무조건 청산(`halt_resume` ·
-  스펙 :84 · 밴드 안 재개여도 계속 보유하지 않음) · 창 끝까지 정지면 마지막 값 + «미해소».
+- 정지일 = 거래량 ≤0(또는 결측) 행 ∪ 내부 결측 거래일(종목 첫 행~끝 행 사이 달력 거래일 중 행 없는 날 · 사장님 A-5 ·
+  2024-03-13 공정 경계 전후 같은 정의) = 진입일이면 «진입 불가» · 보유 중이면 재개 첫 봉 «시가»로 무조건 청산
+  (`halt_resume` · 스펙 :84 · 밴드 안 재개여도 계속 보유하지 않음) · 창 끝까지 정지면 마지막 값 + «미해소».
 - 청산 = `exitsim8.simulate_lot`(손절 우선) · 같은 봉 동시 터치 로트만 익절 우선 판으로 치환.
 - 보유일 탐침 없음(KOSPI 달력 `open_phase` 만) — 계획 «스펙과 다른 점» 3.
 - `ca_path` = 진입 다음 거래일부터 k=1..10 고정 창 안 기업행위 의심 봉(critic B2 · 인쇄 전용 표시 · 청산 규칙 불변).
 """
 from __future__ import annotations
 
+import bisect
 from collections import defaultdict
 from datetime import date, datetime
-from typing import Any, Dict, Set
+from typing import Any, Dict, Sequence, Set
 
 import numpy as np
 import pandas as pd
@@ -35,11 +37,30 @@ def _no_probe(pos, d):
     return None
 
 
-def halt_dates(px: pd.DataFrame) -> Dict[str, Set[date]]:
+def interior_missing(px: pd.DataFrame, cal: Sequence[date]) -> Dict[str, Set[date]]:
+    """종목별 «내부 결측 거래일» — 그 종목 첫 행 날짜와 끝 행 날짜 사이(양끝 제외) 달력 거래일 중 행이 없는 날(사장님 A-5).
+
+    첫 행 앞(상장 전)·끝 행 뒤(상폐·창 끝)는 내부가 아니다. 달력 밖 날짜의 행(예: 일요일 1행)은 범위를 정할 때만 쓴다.
+    """
+    cal = sorted(cal)
+    out: Dict[str, Set[date]] = {}
+    for code, g in px.groupby("stock_code", sort=False):
+        days = {pd.Timestamp(t).date() for t in g["date"]}
+        lo, hi = min(days), max(days)
+        miss = {d for d in cal[bisect.bisect_right(cal, lo):bisect.bisect_left(cal, hi)] if d not in days}
+        if miss:
+            out[str(code)] = miss
+    return out
+
+
+def halt_dates(px: pd.DataFrame, cal: Sequence[date]) -> Dict[str, Set[date]]:
+    """정지일 = 거래량 ≤0(또는 결측) 행의 날 ∪ 내부 결측 거래일(`interior_missing` · 사장님 A-5)."""
     m = ~(px["volume"].astype(float) > 0)
     out: Dict[str, Set[date]] = defaultdict(set)
     for c, t in zip(px.loc[m, "stock_code"], px.loc[m, "date"]):
         out[str(c)].add(pd.Timestamp(t).date())
+    for c, ds in interior_missing(px, cal).items():
+        out[c] |= ds
     return dict(out)
 
 
