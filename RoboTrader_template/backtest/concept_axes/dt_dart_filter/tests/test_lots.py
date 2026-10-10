@@ -66,7 +66,23 @@ def test_halt_to_window_end_is_unresolved():
     bars = {CAL[0]: _flat(CAL[0], 100.0), CAL[1]: _flat(CAL[1], 100.0)}
     halts = set(CAL[2:])
     r = L.simulate_candidate(_env(bars), "1", CAL[0], halts)
-    assert r["unresolved"]
+    assert r["unresolved"] and r["halted_in_path"]
+
+
+def test_halt_after_exit_not_counted_in_path():
+    bars = {CAL[0]: _flat(CAL[0], 100.0), CAL[1]: _flat(CAL[1], 100.0),
+            CAL[2]: X.Bar(CAL[2], 100.0, 112.0, 100.0, 110.0)}   # k=1 익절
+    for d in CAL[5:8]:
+        bars[d] = _flat(d, 100.0)
+    r = L.simulate_candidate(_env(bars), "1", CAL[0], set(CAL[5:8]))
+    assert r["exit_reason"] == "tp" and r["exit_date"] == CAL[2] and not r["halted_in_path"]
+
+
+def test_missing_bar_not_in_halts_is_not_halted():
+    bars = {CAL[0]: _flat(CAL[0], 100.0), CAL[1]: _flat(CAL[1], 100.0),
+            CAL[4]: X.Bar(CAL[4], 100.0, 112.0, 100.0, 110.0)}   # CAL[2..3] 봉 없음(정지 아님)
+    r = L.simulate_candidate(_env(bars), "1", CAL[0], set())
+    assert r["exit_date"] == CAL[4] and not r["halted_in_path"]
 
 
 def test_max_hold_exit_at_k10_open():

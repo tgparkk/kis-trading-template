@@ -65,9 +65,11 @@ def simulate_candidate(env, code: str, scan_d: date, halts: Set[date], rules: X.
     both = X.FLAG_SL_TP_BOTH in list(ex.flags)
     ret_sl = float(ex.ret_pct) if ex.ret_pct is not None else float("nan")
     ret_tp = rules.tp * 100.0 if both else ret_sl
+    end = ex.exit_date if ex.closed and ex.exit_date is not None else path[-1][1]   # 미해소 = 경로 마지막 날까지
+    halted = any(d1 < h <= end for h in halts)
     return dict(base, status="filled", fill=f.status, entry_date=d1, entry_price=price, exit_date=ex.exit_date,
                 exit_reason=ex.reason, hold_days=ex.hold_days, ret_sl=ret_sl, ret_tp=ret_tp, both=both,
-                unresolved=not ex.closed, halted_in_path=any(b is None for _, _, b in path),
+                unresolved=not ex.closed, halted_in_path=halted,
                 flags=";".join(str(x) for x in ex.flags))
 
 
