@@ -1,0 +1,100 @@
+{
+ "n1": 79,
+ "n0": 2322,
+ "n1_raw": 79,
+ "n0_raw": 21501,
+ "n1_raw_by_year": {
+  "2021": 27,
+  "2022": 23,
+  "2023": 23,
+  "2024": 6
+ },
+ "pl_small_share_by_year": {
+  "2021": {
+   "n": 11878,
+   "n_nan": 8,
+   "share_small": 0.7204916652635124
+  },
+  "2022": {
+   "n": 9069,
+   "n_nan": 4,
+   "share_small": 0.7774837358032859
+  },
+  "2023": {
+   "n": 11048,
+   "n_nan": 5,
+   "share_small": 0.7413106444605359
+  },
+  "2024": {
+   "n": 2453,
+   "n_nan": 0,
+   "share_small": 0.7105584997961679
+  }
+ },
+ "build_md5": {
+  "ledger_A.csv": "448ff368a3216273a616ccf0b7f25d07",
+  "marks_lag0.csv": "e6c120212a71a7791ee4b635cc1393be",
+  "marks_lag0_t1.csv": "c4fdd4f4f63d066f170ac5ab00ea9192",
+  "marks_lag0_t2.csv": "87eec8f6f15ce122d535c44dcf410f9b",
+  "marks_lag0_t3.csv": "3ea62bcadb45c2ddfa4bcc3575a76f1f",
+  "marks_w20.csv": "7766cda3da26741f91c8240e8346803f",
+  "marks_w5.csv": "2d11bce7d60c424ca048855e3d00191d",
+  "build_meta.json": "b70014f80b4646b5224935ce4d6836c3"
+ },
+ "sd_ctrl_sl": 8.648062893947605,
+ "sd_ctrl_tp": 8.647603587420758,
+ "gate": {
+  "rej_cr1": 0.0625,
+  "rej_2w": 0.0475,
+  "tool": "fail",
+  "reason": "out_of_band",
+  "why_cr1": "band",
+  "why_2w": "band",
+  "n_valid": 400,
+  "n_valid_2w": 400,
+  "n_valid_min": 380,
+  "sd_null": 0.8606266227179583,
+  "mean_se_cr1": 0.9629996204732494,
+  "rej_lo_cr1": 0.025,
+  "rej_lo_2w": 0.0175,
+  "mean_fake_n1": 79.0,
+  "n_fake": 400,
+  "n_real_marks": 79,
+  "n_skipped": 0
+ },
+ "mde_null": 2.139926461686209,
+ "mde_se": 2.3944743470012595,
+ "surv": {
+  "surv_i": 0.2511144130757801,
+  "n_i": 2692,
+  "surv_ii": 0.17170586039567,
+  "n_ii": 2679,
+  "breakdown_i": {
+   "present": 2016,
+   "gone_after": 0,
+   "never_present": 676,
+   "gap_interior": 4,
+   "later_listed": 353,
+   "konex": 150,
+   "out_of_cal": 0
+  },
+  "breakdown_ii": {
+   "present": 2219,
+   "gone_after": 3,
+   "never_present": 457,
+   "gap_interior": 0,
+   "later_listed": 127,
+   "konex": 98,
+   "out_of_cal": 0
+  }
+ },
+ "final_verdict": "판정 불가(도구)",
+ "reseal": null,
+ "lib_versions": {
+  "numpy": "2.0.2",
+  "pandas": "2.3.3",
+  "scipy": "1.13.1"
+ },
+ "git_sha": "7af53905325d884a56477cfbc66476a0f1eb46fc",
+ "sealed": "2026-10-10T14:30:55"
+}
