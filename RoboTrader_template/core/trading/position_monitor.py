@@ -12,6 +12,7 @@ from strategies.base import SignalType
 from utils.logger import setup_logger
 from utils.rate_limited_logger import RateLimitedLogger
 from utils.korean_time import now_kst, is_market_open
+from .corp_action_price_alert import CorpActionPriceAlertHook, is_alert_enabled
 from config.constants import (
     STALE_SELL_PROFIT_THRESHOLD,
     STALE_SELL_LOSS_THRESHOLD,
@@ -216,6 +217,10 @@ class PositionMonitor:
                 current_price = float(current_price)
                 profit_rate = (current_price - buy_price) / buy_price
 
+                # [기업행위 의심] 기준가 불연속 경보 — 실전 전용 · 로그/텔레그램만 · 판정 불변
+                # (2026-10-10 사장님 (a′)). 예외는 안에서 삼킨다. 손익절 보류는 (a)안 몫.
+                self._corp_action_price_alert(trading_stock, profit_rate)
+
                 # 09:00~09:05 사이에는 손절 체크 안 함 (익절만)
                 current_time = now_kst()
                 is_before_rebalancing = (
@@ -387,6 +392,8 @@ class PositionMonitor:
             current_price_info = self.intraday_manager.get_current_price_for_sell(stock_code)
             if current_price_info:
                 current_price = current_price_info.get('current_price')
+                # 기준가(stck_sdpr) 보관 — [기업행위 의심] 경보용 · 실전 전용 · 반환값 불변
+                self._corp_action_remember_base(stock_code, current_price_info)
         except Exception as api_err:
             self.logger.warning(f"{stock_code} 현재가 API 조회 실패: {api_err}")
 
@@ -407,6 +414,70 @@ class PositionMonitor:
                 )
 
         return current_price
+
+    # =========================================================================
+    # [기업행위 의심] 기준가 불연속 경보 (실전 전용 · 판정 불변 · 2026-10-10 (a′))
+    #   로직 본체 = core/trading/corp_action_price_alert.py
+    # =========================================================================
+
+    def _corp_action_alert_hook(self) -> Optional[CorpActionPriceAlertHook]:
+        """실전 인스턴스 + 킬 스위치 on 일 때만 훅을 돌려준다(아니면 None).
+
+        실전 판정은 `config.paper_trading` 이 «명시적으로» False 이고 매도 경로 플래그
+        (`_paper_trading`)도 False 일 때뿐이다. 값이 없거나 True 면 페이퍼로 본다 —
+        페이퍼에서는 DB 조회·로그·상태 생성이 하나도 없다.
+        """
+        if getattr(self, '_paper_trading', True) is not False:
+            return None
+        config = getattr(getattr(self, 'decision_engine', None), 'config', None)
+        if getattr(config, 'paper_trading', None) is not False:
+            return None
+        if not is_alert_enabled():
+            return None
+        hook = getattr(self, '_corp_action_alert', None)
+        if hook is None:
+            hook = CorpActionPriceAlertHook(self.logger)
+            self._corp_action_alert = hook
+        return hook
+
+    def _corp_action_remember_base(self, stock_code: str, price_info: Dict[str, Any]) -> None:
+        """KIS 기준가(`prev_close` = stck_sdpr) 보관. 예외는 밖으로 내보내지 않는다."""
+        try:
+            hook = self._corp_action_alert_hook()
+            if hook is None:
+                return
+            hook.remember_base_price(stock_code, price_info.get('prev_close'), now_kst().date())
+        except Exception as e:
+            try:
+                self.logger.debug(f"{stock_code} 기준가 보관 오류(무시): {e}")
+            except Exception:
+                pass
+
+    def _corp_action_price_alert(self, trading_stock: TradingStock, profit_rate: float) -> None:
+        """기준가 불연속이면 로그·텔레그램 경보만. 반환값 없음 · 예외 삼킴 · 판정 불변."""
+        try:
+            hook = self._corp_action_alert_hook()
+            if hook is None:
+                return
+            position = trading_stock.position
+            db_manager = getattr(self.decision_engine, 'db_manager', None)
+            hook.check(
+                trade_date=now_kst().date(),
+                stock_code=trading_stock.stock_code,
+                stock_name=getattr(trading_stock, 'stock_name', '') or '',
+                quantity=getattr(position, 'quantity', None),
+                avg_price=getattr(position, 'avg_price', 0),
+                profit_rate=profit_rate,
+                stop_loss_rate=getattr(trading_stock, 'stop_loss_rate', None),
+                target_profit_rate=getattr(trading_stock, 'target_profit_rate', None),
+                price_repo=getattr(db_manager, 'price_repo', None),
+                telegram=getattr(self.decision_engine, 'telegram', None),
+            )
+        except Exception as e:
+            try:
+                self.logger.debug(f"{trading_stock.stock_code} 기업행위 경보 점검 오류(무시): {e}")
+            except Exception:
+                pass
 
     async def _execute_sell(self, trading_stock: TradingStock,
                            sell_price: float, reason: str) -> None:
