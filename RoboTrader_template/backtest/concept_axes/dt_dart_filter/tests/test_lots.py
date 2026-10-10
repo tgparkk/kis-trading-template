@@ -118,3 +118,56 @@ def test_episode_first_breaks_on_gap():
     stock = np.array(["a", "a", "a", "b", "a"])
     ci = np.array([1, 2, 4, 2, 5])
     assert L.episode_first(stock, ci).tolist() == [True, False, True, True, False]
+
+
+# ── critic B2 · 보유 창 기업행위(ca_path) ─────────────────────────────────────────
+import pandas as pd                                                 # noqa: E402
+
+CA_CAL = [date(2022, 3, 1) + timedelta(days=i) for i in range(40)]
+CA_IDX = {d: i for i, d in enumerate(CA_CAL)}
+
+
+def _ca_px():
+    rows = []
+
+    def stock(code, closes, opens=None, adj=None, vol=None):
+        for i, d in enumerate(CA_CAL):
+            c = closes[i]
+            o = opens[i] if opens is not None else c
+            rows.append(dict(stock_code=code, date=pd.Timestamp(d), open=o, high=max(o, c) * 1.001,
+                             low=min(o, c) * 0.999, close=c, volume=(vol[i] if vol is not None else 1000.0),
+                             adj_factor=(adj[i] if adj is not None else np.nan)))
+    base = [100.0 + (i % 3) for i in range(40)]
+    stock("NONE00", base)
+    stock("JUMP10", [c if i < 25 else c * 1.4 for i, c in enumerate(base)])          # k=10 에 +40% 종가 → 창 안
+    stock("JUMP11", [c if i < 26 else c * 1.4 for i, c in enumerate(base)])          # k=11 → 창 밖
+    stock("JUMP00", [c if i < 15 else c * 1.4 for i, c in enumerate(base)])          # k=0(진입일) → 창 밖
+    gap = [c if i != 20 else c * 0.65 for i, c in enumerate(base)]                    # 시가만 −35%(종가 정상)
+    stock("GAPOPN", base, opens=gap)
+    stock("ADJSTP", base, adj=[1.0 if i < 20 else 0.5 for i in range(40)])          # adj 계단
+    stock("ADJNUL", base, adj=[np.nan if i < 20 else 1.0 for i in range(40)])       # NULL→1.0 = 계단 아님
+    cl = [100.0] * 40
+    cl[22] = 80.0                                                                     # −20% · 시가 −21% · 거래량 평소
+    op = list(cl)
+    op[22] = 79.0
+    stock("CLIFF0", cl, opens=op)
+    return pd.DataFrame(rows).sort_values(["stock_code", "date"]).reset_index(drop=True)
+
+
+def test_ca_path_fixed_window_k1_to_k10_after_entry():
+    fd = L.ca_flag_days(_ca_px(), CA_IDX)
+    entry = CA_CAL[15]
+    got = {c: L.ca_path(fd, c, entry, CA_IDX) for c in
+           ("NONE00", "JUMP10", "JUMP11", "JUMP00", "GAPOPN", "ADJSTP", "ADJNUL", "CLIFF0", "NOROWS")}
+    assert got == {"NONE00": False, "JUMP10": True, "JUMP11": False, "JUMP00": False, "GAPOPN": True,
+                   "ADJSTP": True, "ADJNUL": False, "CLIFF0": True, "NOROWS": False}
+
+
+def test_ca_path_cliff_uses_frozen_fd1_flag_not_a_new_threshold():
+    """CLIFF0 은 ±30% 문턱에 안 걸리고(−20%) FD1 동결식 flag_cliff 로만 잡힌다."""
+    from backtest.concept_axes.replayer import flags as FL
+    px = _ca_px()
+    fl = FL.compute_bar_flags(px)
+    m = (px["stock_code"] == "CLIFF0").to_numpy()
+    assert fl.loc[m, "flag_cliff"].sum() == 1
+    assert (fl.loc[m, "ret_1d"].dropna().abs() <= 0.30).all()

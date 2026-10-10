@@ -5,6 +5,7 @@
   스펙 :84 · 밴드 안 재개여도 계속 보유하지 않음) · 창 끝까지 정지면 마지막 값 + «미해소».
 - 청산 = `exitsim8.simulate_lot`(손절 우선) · 같은 봉 동시 터치 로트만 익절 우선 판으로 치환.
 - 보유일 탐침 없음(KOSPI 달력 `open_phase` 만) — 계획 «스펙과 다른 점» 3.
+- `ca_path` = 진입 다음 거래일부터 k=1..10 고정 창 안 기업행위 의심 봉(critic B2 · 인쇄 전용 표시 · 청산 규칙 불변).
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from backtest.concept_axes.candidate_ledger.tool_calibration.run_calib import ep
 from backtest.concept_axes.ledger8 import exitsim8 as X
 from backtest.concept_axes.ledger8 import sizing as Z
 from backtest.concept_axes.ledger8 import sources8 as SRC8
+from backtest.concept_axes.replayer import flags as FL
 from backtest.concept_axes.theme_rank.bandfill import FILL_BAND, FILL_OPEN, band_fill
 
 from . import settings as S
@@ -102,3 +104,38 @@ def episode_first(stock: np.ndarray, cal_i: np.ndarray) -> np.ndarray:
     _eid, first = episodes(np.zeros(len(codes), dtype=np.int64), codes.astype(np.int64),
                            np.asarray(cal_i, dtype=np.int64))
     return first
+
+
+def ca_flag_days(px: pd.DataFrame, cal_idx: Dict[date, int]) -> Dict[str, np.ndarray]:
+    """종목별 «기업행위 의심 봉» 의 거래일 순번(오름차순) — critic B2.
+
+    봉 = FD1 동결식 `flag_cliff`(`replayer.flags.compute_bar_flags` 그대로 · 문턱을 여기서 바꾸지 않음)
+       ∨ adj_factor 계단 |adj_t − adj_{t−1}| > `S.CA_ADJ_EPS`(NULL = 1 · FD1 COALESCE 관례)
+       ∨ |시가/전 종가 − 1| > `S.CA_JUMP` ∨ |종가/전 종가 − 1| > `S.CA_JUMP`.
+    전 종가 = 그 종목 직전 «행» 의 종가(`compute_bar_flags` 의 gap_open·ret_1d 그대로). 입력 = 로더 순서((종목, 날짜) 오름차순).
+    """
+    if px.empty:
+        return {}
+    fl = FL.compute_bar_flags(px)
+    adj = (px["adj_factor"].astype(float) if "adj_factor" in px.columns
+           else pd.Series(1.0, index=px.index)).fillna(1.0)
+    step = (adj - adj.groupby(px["stock_code"].to_numpy()).shift(1)).abs() > S.CA_ADJ_EPS
+    jump = (fl["gap_open"].abs() > S.CA_JUMP) | (fl["ret_1d"].abs() > S.CA_JUMP)
+    bad = (fl["flag_cliff"].astype(bool) | step | jump).to_numpy(dtype=bool)
+    out: Dict[str, list] = defaultdict(list)
+    for c, t in zip(px["stock_code"].to_numpy()[bad], px["date"].to_numpy()[bad]):
+        i = cal_idx.get(pd.Timestamp(t).date())
+        if i is not None:
+            out[str(c)].append(i)
+    return {c: np.array(sorted(v), dtype=np.int64) for c, v in out.items()}
+
+
+def ca_path(flag_days: Dict[str, np.ndarray], code: str, entry: date, cal_idx: Dict[date, int],
+            k: int = S.CA_WINDOW_TD) -> bool:
+    """진입일 순번 e 에 대해 순번 e+1..e+k(고정 창 · 실제 청산과 무관) 안에 의심 봉이 하루라도 있으면 참."""
+    arr = flag_days.get(str(code))
+    e = cal_idx.get(entry)
+    if arr is None or e is None or not len(arr):
+        return False
+    j = int(np.searchsorted(arr, e + 1, side="left"))
+    return j < len(arr) and int(arr[j]) <= e + k

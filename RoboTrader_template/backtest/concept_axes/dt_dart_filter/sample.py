@@ -25,5 +25,8 @@ def analysis_frame(led: pd.DataFrame, marks: Set[Tuple[str, date]], cal_idx: Dic
     df["stock"] = df["stock_code"].astype(str)
     df["block"] = df["day"] // S.BLOCK_TD
     q = pd.qcut(df["p_L"].astype(float).rank(method="first"), 5, labels=[1, 2, 3, 4, 5])
-    df["quint"] = np.asarray(q, dtype=int)
+    if small_only:
+        df["quint"] = np.asarray(q, dtype=int)            # p_L < 0.5 로 거른 뒤라 NaN 없음(가짜 게이트 풀 키)
+    else:
+        df["quint"] = pd.array(q, dtype="Int64")          # 대형 포함: p_L NaN 행 = <NA>(쓰레기 정수 금지 · critic 문제 4)
     return df

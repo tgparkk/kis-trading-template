@@ -131,3 +131,10 @@ def test_two_way_se_matches_independent_dummy_sandwich():
     t2 = beta_ref / se2_ref
     assert abs(fe.p2_2w - 2 * tdist.sf(abs(t2), gb - 1)) < 1e-12
     assert abs(fe.p1_2w - tdist.cdf(t2, gb - 1)) < 1e-12
+
+
+def test_holm_treats_nan_and_none_as_one():
+    nan = float("nan")
+    assert ST.holm([nan, 0.01, 0.04]) == [1.0, 0.03, 0.08]
+    assert ST.holm([0.02, None, 0.02]) == [0.06, 1.0, 0.06]          # 동점 = 입력 순서(안정 정렬)
+    assert ST.holm([nan, nan, nan]) == [1.0, 1.0, 1.0]

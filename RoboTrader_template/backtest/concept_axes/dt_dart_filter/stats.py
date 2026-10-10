@@ -97,6 +97,8 @@ def mde(se: float) -> float:
 
 
 def holm(ps: Sequence[float]) -> List[float]:
+    """표준 Holm 조정 p. 비유한(NaN·None) p 는 1.0 으로 본다(critic B1 · 태그 표식 0 → NaN). 동점 = 입력 순서(안정 정렬)."""
+    ps = [float(p) if p is not None and math.isfinite(float(p)) else 1.0 for p in ps]
     m = len(ps)
     order = sorted(range(m), key=lambda i: ps[i])
     adj = [0.0] * m
