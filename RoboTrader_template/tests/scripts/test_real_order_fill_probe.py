@@ -404,7 +404,10 @@ class FakeExchange:
             return _Resp({"ok": True})
         if url.endswith(p.cp.PATH_TOKEN):
             self.sent.append("token")
-            return _Resp({"access_token": SECRETS[3], "access_token_token_expired": "2026-10-09 10:00:00",
+            # 만료는 «지금 + 1일»(실시각 기준) — 고정 시각이면 그 시각이 지난 뒤 캐시 토큰이 «만료»로 읽혀
+            # 토큰 POST 가 2회가 된다(2026-10-09 10:00 이후 N7 시험 영구 실패 · REVIEW_RF7 F10).
+            expired = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+            return _Resp({"access_token": SECRETS[3], "access_token_token_expired": expired,
                           "token_type": "Bearer", "expires_in": 86400})
         tr = kw["headers"]["tr_id"]
         params = json.loads(kw.get("data") or "{}")

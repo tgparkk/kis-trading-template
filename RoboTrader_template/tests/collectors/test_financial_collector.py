@@ -146,6 +146,7 @@ def test_sweep_runs_only_on_monday(monkeypatch):
     assert seen == [1]
 
 
+@pytest.mark.db   # 실 DB 쓰기(REVIEW_RF7_DELTA P1)
 def test_quota_abort_leaves_existing_rows_intact(monkeypatch):
     """🔴 스펙 테스트 #6 재작성 — 이전 버전은 collect 루프를 전혀 태우지 않고
     `raise/except` 만 흉내 냈다(판별력 없음). 진짜 collect_financials 를 fake
@@ -585,6 +586,7 @@ def test_sweep_list_json_error_returns_partial_without_crashing(monkeypatch):
 # 연도만 합성(1999)으로 두고 월/일은 실제 창(11012: 08/17~09/20) 안에 둔다 —
 # active_reports() 는 (month, day) 만 보므로 실제 운영 이력과 절대 안 겹친다.
 
+@pytest.mark.db   # 실 DB 쓰기(REVIEW_RF7_DELTA P1)
 def test_reconcile_warn_when_summary_missing(monkeypatch):
     """summary 파일이 없으면 원인 불명 상태를 FAIL 로 단정하지 않고 WARN 한다."""
     monkeypatch.setattr(c, "_load_dart_key", lambda: "k")
@@ -607,6 +609,7 @@ def test_reconcile_warn_when_summary_missing(monkeypatch):
             conn.commit()
 
 
+@pytest.mark.db   # 실 DB 쓰기(REVIEW_RF7_DELTA P1)
 def test_reconcile_fails_when_status_counts_unreachable(monkeypatch):
     """spec §8 조건1: status_counts 에 {000,013} 밖 상태가 있으면 진척률과 무관하게 FAIL."""
     monkeypatch.setattr(c, "_load_dart_key", lambda: "k")
@@ -632,6 +635,7 @@ def test_reconcile_fails_when_status_counts_unreachable(monkeypatch):
             conn.commit()
 
 
+@pytest.mark.db   # 실 DB 쓰기(REVIEW_RF7_DELTA P1)
 def test_reconcile_passes_when_reachable_and_not_stalled(monkeypatch):
     """도달성 통과 + 이력 3일 미만(정지 판정 불가)이면 PASS."""
     monkeypatch.setattr(c, "_load_dart_key", lambda: "k")
@@ -659,6 +663,7 @@ def test_reconcile_passes_when_reachable_and_not_stalled(monkeypatch):
 
 # ── Item 5 — WARN 경로가 new_rows=0 을 박아 stalled 게이트를 죽이면 안 된다 ──
 
+@pytest.mark.db   # 실 DB 쓰기(REVIEW_RF7_DELTA P1)
 def test_reconcile_no_summary_warn_writes_remaining_as_new_rows(monkeypatch):
     """Item 5 — summary 가 없어도 remaining 은 DB 읽기(DART 키 불필요)만으로 계산
     가능하다. WARN 이라고 new_rows=0 을 박으면 stalled(3일 연속 미변동) 게이트가
@@ -695,6 +700,7 @@ def test_reconcile_no_summary_warn_writes_remaining_as_new_rows(monkeypatch):
             conn.commit()
 
 
+@pytest.mark.db   # 실 DB 쓰기(REVIEW_RF7_DELTA P1)
 def test_reconcile_escalates_to_fail_after_three_consecutive_warn(monkeypatch):
     """Item 5 — 3영업일 연속 WARN(no_summary) 뒤에도 오늘 또 summary 가 없으면
     「조용히 안 돌아감」으로 보고 FAIL 로 격상해야 한다(spec §8 조건2 의 취지)."""

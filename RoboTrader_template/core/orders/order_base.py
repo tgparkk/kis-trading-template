@@ -57,6 +57,16 @@ class OrderManagerBase:
         # (2026-10-08 델타 리뷰 N-1 — 소진 회차 조회가 실패해도 «8036R 잔존»으로 취급)
         self._cancel_lingering_seen_ids: Set[str] = set()
         self._defer_extra_used_ids: Set[str] = set()
+        # 취소 접수 뒤 조회(8036R·0081R 행)에서 본 최대 체결수(2026-10-09 델타 리뷰 s-2 — 마지막 조회가 실패해도 기억)
+        self._cancel_seen_fill: Dict[str, int] = {}
+        # 보류 주문(취소 미반영으로 예약·슬롯을 둔 매수) — 취소 없이 상태 조회만 계속 · 보류 중 체결 경보를 보낸 주문
+        # (2026-10-09 델타 리뷰 B — order_timeout._recheck_held_order)
+        self._cancel_held_ids: Set[str] = set()
+        self._held_fill_alerted_ids: Set[str] = set()
+        # 재개 주문 예약 복원 실패 경보를 보낸 주문(주문당 1회 · 2026-10-09 N5/m5)
+        self._reserve_restore_alerted_ids: Set[str] = set()
+        # F1 8036R 단독 확인 연속 실패 횟수(2026-10-09 REVIEW_RF7_DELTA D3 — N회째 확대 경보 · 성공하면 0)
+        self._f1_fail_counts: Dict[str, int] = {}
 
         # 모니터링 상태
         self.is_monitoring = False
@@ -183,6 +193,11 @@ class OrderManagerBase:
             getattr(self, '_cancel_resent_ids', set()).discard(order_id)
             getattr(self, '_cancel_lingering_seen_ids', set()).discard(order_id)
             getattr(self, '_defer_extra_used_ids', set()).discard(order_id)
+            getattr(self, '_cancel_seen_fill', {}).pop(order_id, None)
+            getattr(self, '_cancel_held_ids', set()).discard(order_id)
+            getattr(self, '_held_fill_alerted_ids', set()).discard(order_id)
+            getattr(self, '_reserve_restore_alerted_ids', set()).discard(order_id)
+            getattr(self, '_f1_fail_counts', {}).pop(order_id, None)
 
             # FundManager 연동: 취소/타임아웃 시 예약 해제
             from ..models import OrderStatus
