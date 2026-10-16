@@ -129,14 +129,17 @@ def get_tick_size(price: float) -> int:
     """
     Get KRX tick size for given price.
 
-    KRX Tick Size Table:
-    - < 1,000: 1 won
+    KRX Tick Size Table (stocks · KOSPI/KOSDAQ unified · effective 2023-01-25):
+    - < 2,000: 1 won
     - < 5,000: 5 won
-    - < 10,000: 10 won
+    - < 20,000: 10 won
     - < 50,000: 50 won
-    - < 100,000: 100 won
+    - < 200,000: 100 won
     - < 500,000: 500 won
     - >= 500,000: 1,000 won
+
+    출처: 한국거래소 「호가가격단위(Tick Size)」 안내 regulation.krx.co.kr/contents/RGL/03/03010100/RGL03010100T3.jsp (2026-10-09 확인).
+    Must equal utils.price_utils._get_tick_size (pinned by tests/test_tick_size_krx_2023.py).
 
     Args:
         price: Price to check
@@ -144,15 +147,15 @@ def get_tick_size(price: float) -> int:
     Returns:
         int: Tick size for the price level
     """
-    if price < 1000:
+    if price < 2000:
         return 1
     elif price < 5000:
         return 5
-    elif price < 10000:
+    elif price < 20000:
         return 10
     elif price < 50000:
         return 50
-    elif price < 100000:
+    elif price < 200000:
         return 100
     elif price < 500000:
         return 500

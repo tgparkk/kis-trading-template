@@ -255,24 +255,31 @@ class DayTradingBot:
         return True  # 시스템은 계속 동작
 
     async def _call_strategy_market_open(self):
-        """장 시작 시 전략 콜백 호출"""
-        if self.strategy is None:
-            return
-        try:
-            self.strategy.on_market_open()
-            self.logger.info(f"전략 장시작 콜백 완료: {self.strategy.name}")
-        except Exception as e:
-            self.logger.warning(f"전략 장시작 콜백 오류: {e}")
+        """장 시작 시 전략 콜백 호출 — 로드된 전략 전부(전략마다 따로 예외 격리).
+
+        2026-10-09: 종전엔 `self.strategy`(= 첫 전략)만 불러 다중 전략에서 나머지 전략의
+        on_market_open 이 돌지 않았다(페이퍼 8전략 중 elder 만 · 실전 단일 전략은 영향 없음).
+        """
+        strategies = list(self.strategies.values()) or ([self.strategy] if self.strategy is not None else [])
+        for strat in strategies:
+            try:
+                strat.on_market_open()
+                self.logger.info(f"전략 장시작 콜백 완료: {strat.name}")
+            except Exception as e:
+                self.logger.warning(f"전략 장시작 콜백 오류 ({getattr(strat, 'name', '?')}): {e}")
 
     async def _call_strategy_market_close(self):
-        """장 종료 시 전략 콜백 호출"""
-        if self.strategy is None:
-            return
-        try:
-            self.strategy.on_market_close()
-            self.logger.info(f"전략 장종료 콜백 완료: {self.strategy.name}")
-        except Exception as e:
-            self.logger.warning(f"전략 장종료 콜백 오류: {e}")
+        """장 종료 시 전략 콜백 호출 — 로드된 전략 전부(전략마다 따로 예외 격리).
+
+        2026-10-09: 종전엔 첫 전략만 불러 10-08 페이퍼 로그의 「장 마감 — 매수 N건」 줄이 elder 1줄뿐이었다.
+        """
+        strategies = list(self.strategies.values()) or ([self.strategy] if self.strategy is not None else [])
+        for strat in strategies:
+            try:
+                strat.on_market_close()
+                self.logger.info(f"전략 장종료 콜백 완료: {strat.name}")
+            except Exception as e:
+                self.logger.warning(f"전략 장종료 콜백 오류 ({getattr(strat, 'name', '?')}): {e}")
 
     async def initialize(self) -> bool:
         """시스템 초기화"""
