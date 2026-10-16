@@ -662,6 +662,9 @@ MANUAL_DOCS = [
     "PREREG_POST11.md",
     # 🔴 2026-10-16 — post11 인테이크 3문서(사람이 쓴 것 · 등재 «시점»에 이미 있다). 산문 `RESULTS_*_POST11.md` 는 verifier 뒤 등재.
     "INTAKE_2026-10-08_post11.md", "PREDECISION_2026-10-08_post11.md", "LABELS_2026-10-08_post11.md",
+    # 🔴 2026-10-16 — post11 산문 3본 + 정오표(사람이 쓴 것 · verifier 1패스 뒤 · 값 계산 0 · 등재 «시점»에 이미 있다).
+    "RESULTS_SELECTION_POST11.md", "RESULTS_EXIT_V2_POST11.md", "RESULTS_S5_POST11.md",
+    "ERRATA_2026-10-16_post11_values.md",
     # 🔴 `verify_ledger_post8.py` 는 post5·post6·post7 판 전례대로 **일부러 등재하지 않는다**
     #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]

@@ -119,7 +119,11 @@
     "PREREG_POST11.md",
     "INTAKE_2026-10-08_post11.md",
     "PREDECISION_2026-10-08_post11.md",
-    "LABELS_2026-10-08_post11.md"
+    "LABELS_2026-10-08_post11.md",
+    "RESULTS_SELECTION_POST11.md",
+    "RESULTS_EXIT_V2_POST11.md",
+    "RESULTS_S5_POST11.md",
+    "ERRATA_2026-10-16_post11_values.md"
   ],
   "db_fingerprint": {
     "daily_prices[>=2026-04-01]": [
