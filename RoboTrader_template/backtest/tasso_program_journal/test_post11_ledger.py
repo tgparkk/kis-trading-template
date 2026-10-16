@@ -24,8 +24,7 @@
   N11 값 줄 밖 `%` — 테마 줄(ITEM_MARK 없음)에 「+99.99%」 를 넣어도 결과 불변 (항목 블록 전체를 긁지 않는다)
   N12 ② 동률 17.60 ×3(한컴) — 한 개를 지우고 `n_legs` 를 맞추면 G-C 가 «원문에만 있는 수치 [17.6]» 로 잡는다 (Counter 가 동률을 접지 않는다)
   R1  post10 회귀 — `test_post10_ledger` 19건 중 R3 를 뺀 18건이 post11 append «뒤» 원장에서 통과
-  R1b post10 R3 는 «구조적으로» 실패한다 — 그 단언(103/357)이 post11 append 로 거짓이 되는 것이 정확한 이유인지 본다
-        (🔴 post10 시험 파일은 고치지 않는다 · 3단계 보정 대상 · 관리자 결정)
+  R1b post10 R3 는 3단계에서 POST10_STATE 방식으로 보정돼 post11 append «뒤»에도 통과한다(1단계에는 성장 탓 실패였다)
   R2  post10 회귀 — `verify_ledger_post10.main` 이 실제 원장(사본 아님)에서 통과
   R3  순수 append — 기존 103/357 데이터 행(+헤더)의 바이트 md5 = post10 판 원장 값 · 뒤에 붙은 줄은 전부 post11 · 112/386
   S   post11 9행/29레그가 `INTAKE_2026-10-08_post11.md` §1 · `LABELS_2026-10-08_post11.md` ·
@@ -253,17 +252,10 @@ def test_R1_post10_guard_suite_minus_R3(tmp_path):
     assert len(ran) == len(T10.CASES) - 1 == 18, ran
 
 
-def test_R1b_post10_R3_fails_only_by_growth():
-    # post10 R3 = 「데이터 행 103/357 · 뒤에 붙은 줄은 전부 post10」 — post11 이 붙으면 거짓이 된다(정상 성장).
-    # 실패 «이유» 가 성장뿐인지 본다: ① post10 R3 가 실제로 AssertionError ② post10 상태 prefix 는 그대로
-    #   ③ 그 안의 post9 상태도 그대로 ④ post9 상태 뒤 ~ post10 상태 끝 = 전부 post10 줄.
-    try:
-        T10.test_R3_pure_append()
-    except AssertionError:
-        failed = True
-    else:
-        failed = False
-    assert failed, "post10 R3 가 통과했다 — 성장이 없었다는 뜻(기대와 다름)"
+def test_R1b_post10_R3_passes_after_growth():
+    # 🔧 3단계(2026-10-16): post10 R3 술어를 「post10 상태 prefix 불변」으로 보정했다(`test_post10_ledger.py::POST10_STATE` · post9 선례).
+    #    ⇒ 이제 post11 행이 붙어도 통과한다 = 성장이 순수 append 라는 뜻. 1단계 때는 「성장 탓 실패」였다.
+    T10.test_R3_pure_append()
     for name, (n, md5) in PREFIX.items():
         b = (BASE / name).read_bytes()
         assert hashlib.md5(b[:n]).hexdigest() == md5, name
@@ -371,7 +363,7 @@ CASES = [
     ("N11", "값 줄 밖 % 불변", test_N11_off_line_percent_not_read, True),
     ("N12", "음성 G-C (동률 17.60 x3)", test_N12_GC_tie_multiset, True),
     ("R1", "post10 가드 18/19 회귀(R3 제외)", test_R1_post10_guard_suite_minus_R3, True),
-    ("R1b", "post10 R3 = 성장 탓 실패만", test_R1b_post10_R3_fails_only_by_growth, False),
+    ("R1b", "post10 R3 보정 후 통과", test_R1b_post10_R3_passes_after_growth, False),
     ("R2", "post10 게이트 실원장 회귀", test_R2_post10_gate_on_real_ledger, False),
     ("R3", "순수 append", test_R3_pure_append, False),
     ("S ", "post11 인코딩 스냅샷", test_S_post11_encoding_matches_intake, False),
