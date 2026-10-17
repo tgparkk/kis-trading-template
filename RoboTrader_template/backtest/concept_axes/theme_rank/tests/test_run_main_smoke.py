@@ -66,8 +66,22 @@ def _setup(tmp_path, monkeypatch):
     monkeypatch.setattr(CL, "_connect", lambda: _Conn())
     monkeypatch.setattr(SN, "load_snapshot", lambda conn, d, run_id=None: SN.Snapshot(
         d, {t: f"합성테마{t}" for t in MEMBERS}, MEMBERS))
-    monkeypatch.setattr(BS, "load_day_states", lambda conn: (states, excess, excess, days))
+    def _lds(conn, **kw):
+        _LOAD_KW.update(kw)
+        return states, excess, excess, days
+    monkeypatch.setattr(BS, "load_day_states", _lds)
     return files
+
+
+_LOAD_KW: dict = {}
+
+
+def test_main_reads_db_as_of_frozen_signals(tmp_path, monkeypatch):
+    _LOAD_KW.clear()
+    _setup(tmp_path, monkeypatch)
+    assert RN.main() == 0
+    assert _LOAD_KW.get("created_before") == RN.DB_ASOF == "2026-10-09"
+    assert "created_at < 2026-10-09" in (tmp_path / "RESULTS.md").read_bytes().decode("utf-8")
 
 
 def test_main_writes_results(tmp_path, monkeypatch):

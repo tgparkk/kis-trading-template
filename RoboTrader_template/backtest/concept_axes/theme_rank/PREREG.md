@@ -1,6 +1,6 @@
 # 사전등록 — 테마 순위 층(daytrading) 과거 검정
 
-- 상태: **초안** · 10-17 사장님 승인 시 동결 — 동결 커밋은 이 상태 줄만 바꾼다. 동결본 PREREG.md 의 `git hash-object` 값은 `run.py` `PREREG_FROZEN_BLOB` 에(`N_CUT` = §2 N_cut), 동결 커밋 sha 는 `backtest/concept_axes/REGISTRY.md` 에 적는다(이 문서에는 적지 않는다 — 적으면 blob 이 바뀐다)
+- 상태: 🔒 **동결 2026-10-17** · 사장님 「547로 동결·실행 (Recommended)」 — 동결 커밋은 이 상태 줄만 바꾼다. 동결본 PREREG.md 의 `git hash-object` 값은 `run.py` `PREREG_FROZEN_BLOB` 에(`N_CUT` = §2 N_cut), 동결 커밋 sha 는 `backtest/concept_axes/REGISTRY.md` 에 적는다(이 문서에는 적지 않는다 — 적으면 blob 이 바뀐다)
 - 규범 스펙: `docs/superpowers/specs/2026-10-08-theme-rank-layer-daytrading-design.md`(main `6078e33`) — 이 문서와 어긋나면 이 문서가 우선(더 구체적)
 - 🔒 규칙 면제: 후보 특성 연구 사전등록 §4-6(같은 원장 재시도 금지)을 이 건에 한해 면제 — 사장님 2026-10-08 「면제 + 수정판 과거 검정」. 동결 때 `backtest/concept_axes/REGISTRY.md` 등재.
 

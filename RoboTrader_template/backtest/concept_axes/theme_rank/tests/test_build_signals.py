@@ -60,3 +60,21 @@ def test_writers_emit_lf_only(tmp_path):
         assert ".write_text(" not in text, src.name
         for chunk in text.split(".to_csv(")[1:]:
             assert r'lineterminator="\n"' in chunk.split("\n\n")[0], src.name
+
+
+def test_prices_query_created_before_filter():
+    sql, params = BS.prices_query("2024-02-01", "2026-09-23", None)
+    assert "created_at" not in sql and params == ("2024-02-01", "2026-09-23")
+    sql, params = BS.prices_query("2024-02-01", "2026-09-23", "2026-10-09")
+    assert "created_at < %s" in sql and params == ("2024-02-01", "2026-09-23", "2026-10-09")
+
+
+def test_prices_query_matches_loader_load_prices():
+    import inspect
+    import re
+    from backtest.concept_axes.replayer import loader as LD
+    src = inspect.getsource(LD.load_prices)
+    body = re.search(r'"""\s*(SELECT.*?ORDER BY stock_code, date)\s*"""', src, re.S).group(1)
+    want = " ".join(body.format(stock_only=LD.STOCK_ONLY).split())
+    sql, _ = BS.prices_query("a", "b", None)
+    assert " ".join(sql.split()) == want
