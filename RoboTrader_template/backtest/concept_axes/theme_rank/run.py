@@ -26,8 +26,8 @@ from backtest.concept_axes.theme_rank import calibrate as CA           # noqa: E
 from backtest.concept_axes.theme_rank import slots as SL               # noqa: E402
 from backtest.concept_axes.theme_rank import stats as ST               # noqa: E402
 
-N_CUT: Optional[int] = None          # 🔒 Task 13 동결 때 PREREG 값으로 설정
-PREREG_FROZEN_BLOB = ""              # 🔒 Task 13 동결본 PREREG.md(작업 트리 파일)의 `git hash-object` 값
+N_CUT: Optional[int] = 547           # 🔒 Task 13 동결(2026-10-17 · PREREG §2)
+PREREG_FROZEN_BLOB = "0b8019602a25da9e876a4b43c35a357cd9b8e389"  # 🔒 Task 13 동결본 PREREG.md(작업 트리 파일)의 `git hash-object` 값
 ALPHA, EPS = 0.05, 0.5
 S_TOL = 1e-12                        # DB 재계산 S 와 고정 signals.csv S 의 허용 차(R13)
 LAG_ROBUST = 22
