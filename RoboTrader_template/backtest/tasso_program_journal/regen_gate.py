@@ -294,6 +294,11 @@ PAIRS = {
     "RESULTS_SECTOR_POST10_NUMBERS.md": "run_sector.py --mode post10",
     # 🔴 `ANC-` post10 은 «없다» — `PREREG_POST10.md` `F-5` (ㄱ) 앵커 축 종결 ⇒ 산출물 자체가 없어 등재 대상 없음
     #    (`run_anchor_redesign.py --mode post10` 은 만들지도 등재하지도 않았다).
+    # 🔴 2026-10-16 11번째 글(`224435494393`) — 🔒 감시 모드 판정 축 3(`SEL-`·`EXIT-`·`S5`)만. 중단 7축(`REG-`·`LAD-`·`REC-`·`TV-`·`WRC-`·`RNK-`·`SEC-`)은
+    #    러너 0 · 산출물 0 ⇒ 등재 대상 없음(`PREREG_POST11.md` `F-1`). `ANC-` 는 종결(post10 `F-5`).
+    "RESULTS_SELECTION_POST11_NUMBERS.md": "run_selection_post11.py",
+    "RESULTS_EXIT_V2_POST11_NUMBERS.md": "run_exit_v2_post11.py",
+    "RESULTS_S5_POST11_NUMBERS.md": "run_s5_post11.py",
 }
 
 # 🔴 C-23 — 산출물이 «파일 하나»가 아닌 것들. `--rerun` 이 이 디렉토리까지 스냅샷·대조하고,
@@ -352,6 +357,9 @@ ART_DIRS = {
     "RESULTS_WRC_POST10_NUMBERS.md": ("wrc_post10",),
     "RESULTS_RANKING_POST10_NUMBERS.md": ("ranking_post10",),
     "RESULTS_SECTOR_POST10_NUMBERS.md": ("sector_post10",),
+    # 🔴 2026-10-16 post11 — 디렉토리 산출물은 SEL(`selection_post11/`)·S5(`s5_post11/`) 둘뿐(EXIT 는 디렉토리 없음 · 중단 7축 0).
+    "RESULTS_SELECTION_POST11_NUMBERS.md": ("selection_post11",),
+    "RESULTS_S5_POST11_NUMBERS.md": ("s5_post11",),
 }
 
 
@@ -649,6 +657,17 @@ MANUAL_DOCS = [
     "RESULTS_RANKING_POST10.md",
     # 🔴 2026-10-08 — post10 verifier 1패스 정정 1차 정오표(사람이 쓴 것 · 값 계산 0). 등재 «시점»에 이미 있다.
     "ERRATA_2026-10-08_post10_values.md",
+    # 🔴 2026-10-08 — post11 사전등록(🔒 감시 모드 · 발행 «후» · fetch «전» 동결). 사람이 쓴 문서라 `MANUAL_DOCS` 자리 ·
+    #    등재는 동결 커밋 «앞»이고 «별도 커밋»이다(`PREREG_POST10.md` 선례 `3c3ab14`) · 파일은 등재 시점에 이미 있다(초안 `??`).
+    "PREREG_POST11.md",
+    # 🔴 2026-10-16 — post11 인테이크 3문서(사람이 쓴 것 · 등재 «시점»에 이미 있다). 산문 `RESULTS_*_POST11.md` 는 verifier 뒤 등재.
+    "INTAKE_2026-10-08_post11.md", "PREDECISION_2026-10-08_post11.md", "LABELS_2026-10-08_post11.md",
+    # 🔴 2026-10-16 — post11 산문 3본 + 정오표(사람이 쓴 것 · verifier 1패스 뒤 · 값 계산 0 · 등재 «시점»에 이미 있다).
+    "RESULTS_SELECTION_POST11.md", "RESULTS_EXIT_V2_POST11.md", "RESULTS_S5_POST11.md",
+    "ERRATA_2026-10-16_post11_values.md",
+    # 🔴 2026-10-17 — post12 사전등록(🔒 감시 모드 2회차 · 발행 «후» · fetch «전» 동결). 사람이 쓴 문서라 `MANUAL_DOCS` 자리 ·
+    #    등재는 동결 커밋 «앞»이고 «별도 커밋»이다(`PREREG_POST11.md` 선례 `ed6c33a`) · 파일은 등재 시점에 이미 있다(초안 `??`).
+    "PREREG_POST12.md",
     # 🔴 `verify_ledger_post8.py` 는 post5·post6·post7 판 전례대로 **일부러 등재하지 않는다**
     #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]
