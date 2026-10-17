@@ -85,11 +85,33 @@ def load_keys() -> Tuple[List[Tuple[date, str]], Dict[date, FrozenSet[str]]]:
     return list(zip(arena["d"], arena["c"])), day_codes
 
 
-def load_day_states(conn) -> Tuple[Dict[date, SG.DayState], Dict[date, Dict[str, float]],
-                                   Dict[date, Dict[str, float]], List[date]]:
+def prices_query(start: str, end: str, created_before: Optional[str]) -> Tuple[str, Tuple[str, ...]]:
+    """`replayer.loader.load_prices` 와 같은 SELECT · `created_before` 가 있으면 그 시각 «전»에 적재된 행만.
+    (None 일 때 load_day_states 는 LD.load_prices 를 그대로 쓴다 — None 쿼리는 동등성 테스트용.)"""
+    from backtest.concept_axes.replayer import loader as LD
+    extra = " AND created_at < %s" if created_before else ""
+    sql = """
+        SELECT stock_code, date, open, high, low, close,
+               (volume * COALESCE(adj_factor, 1))::double precision AS volume,
+               adj_factor, market_cap, volatility_20d
+        FROM daily_prices
+        WHERE {stock_only} AND date BETWEEN %s AND %s{extra}
+        ORDER BY stock_code, date
+    """.format(stock_only=LD.STOCK_ONLY, extra=extra)
+    return sql, (start, end) + ((created_before,) if created_before else ())
+
+
+def load_day_states(conn, created_before: Optional[str] = None
+                    ) -> Tuple[Dict[date, SG.DayState], Dict[date, Dict[str, float]],
+                               Dict[date, Dict[str, float]], List[date]]:
+    """`created_before` = DB 상태 기준 시각(run.py DB_ASOF) — 그 뒤 소급 적재된 일봉을 빼 동결 신호의 입력을 재현."""
     from backtest.concept_axes.replayer import loader as LD
     cal = [pd.Timestamp(d).date() for d in LD.load_trading_calendar(conn, PX_START, CL.W_END)]
-    px = LD.load_prices(conn, PX_START, CL.W_END)
+    if created_before is None:
+        px = LD.load_prices(conn, PX_START, CL.W_END)
+    else:
+        sql, params = prices_query(PX_START, CL.W_END, created_before)
+        px = LD.normalize_prices(pd.read_sql(sql, conn, params=params))
     rets = RT.daily_returns(px, cal, RT.bad_rows(px))
     excess = RT.excess_by_day(rets)
     return {d: SG.day_state(e) for d, e in excess.items()}, excess, RT.raw_by_day(rets), cal

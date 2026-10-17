@@ -28,6 +28,7 @@ from backtest.concept_axes.theme_rank import stats as ST               # noqa: E
 
 N_CUT: Optional[int] = 547           # 🔒 Task 13 동결(2026-10-17 · PREREG §2)
 PREREG_FROZEN_BLOB = "0b8019602a25da9e876a4b43c35a357cd9b8e389"  # 🔒 Task 13 동결본 PREREG.md(작업 트리 파일)의 `git hash-object` 값
+DB_ASOF = "2026-10-09"                # 🔒 signals.csv 를 만든 시점의 DB 상태 — 그 뒤 소급 적재된 창 안 90행(143540 55 · 우선주 006405 18 · 010955 17) 제외(10-17 가드 정지 · 사장님 「동결 시점 DB로 실행」)
 ALPHA, EPS = 0.05, 0.5
 S_TOL = 1e-12                        # DB 재계산 S 와 고정 signals.csv S 의 허용 차(R13)
 LAG_ROBUST = 22
@@ -127,7 +128,7 @@ def main() -> int:
 
     conn = CL._connect()
     snap = SN.load_snapshot(conn, MB.SNAP_DATE, MB.SNAP_RUN_ID)
-    states, _, _, _ = BS.load_day_states(conn)
+    states, _, _, _ = BS.load_day_states(conn, created_before=DB_ASOF)
     conn.close()
     members = MB.restrict(snap.members, MB.eligible_themes(snap.theme_name, N_CUT))
     keys = [(pd.Timestamp(d).date(), c) for d, c in zip(df["scan_date"], df["stock_code"])]
@@ -174,7 +175,7 @@ def main() -> int:
     eic, _ = ST.daily_ic(epi, "s", "ret_net")
     mde = (1.959963984540054 + 0.8416212335729143) * h["se_hac"]
     lines = [
-        "# 판정 결과 — 테마 순위 층(daytrading)", "", f"- 코드 HEAD {head} · dirty=no", "",
+        "# 판정 결과 — 테마 순위 층(daytrading)", "", f"- 코드 HEAD {head} · dirty=no", f"- DB 상태 기준 created_at < {DB_ASOF}(동결 신호 생성 시점 · 이후 소급 적재 행 제외)", "",
         f"## 판정: **{v}**", "",
         f"- 1차 IC 평균 {h['mean_ic']:+.4f} · HAC t(lag {calib['lag']}) {h['t_hac']:+.2f} · 교정 p {p:.4f}"
         f"({calib['mode']})",
