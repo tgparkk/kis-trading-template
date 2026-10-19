@@ -103,6 +103,29 @@ class TradingAnalyzer:
             return True
         return False
 
+    def _is_own_position(self, pos_stock, trading_stock, strategy_name: str) -> bool:
+        """같은 종목의 POSITIONED 슬롯이 호출 전략 소유인가 (판정 불가면 True = 종전처럼 차단).
+
+        owner 표기는 폴더키(복원)/클래스명(라이브 매수)으로 갈리므로 둘 다 «내 것»으로
+        보고, 그 밖의 표기는 기존 해석 규칙(trading_manager.resolve_owner_strategy)으로
+        인스턴스를 얻어 비교한다. 이름이 비었거나 해석이 안 되면 신원을 모르는 것이라
+        보수적으로 차단한다 — 남의 보유로 잘못 막는 것보다 같은 전략 이중매수가 더 나쁘다.
+        """
+        if pos_stock is trading_stock or not strategy_name:
+            return True
+        caller = (getattr(self.bot, 'strategies', None) or {}).get(strategy_name)
+        if caller is None:
+            return True
+        owner_name = getattr(pos_stock, 'owner_strategy_name', '') or ''
+        if owner_name in (strategy_name, getattr(caller, 'name', None)):
+            return True
+        owner = getattr(pos_stock, 'owner_strategy', None)
+        if owner is None:
+            if not owner_name:
+                return True
+            owner = self.bot.trading_manager.resolve_owner_strategy(owner_name)
+        return owner is None or owner is caller
+
     async def analyze_buy_decision(self, trading_stock, available_funds: float = None,
                                    signal=None, strategy_name: str = "") -> bool:
         """매수 판단 분석 (일봉 데이터 사용)
@@ -126,11 +149,20 @@ class TradingAnalyzer:
 
             self.logger.debug(f"매수 판단 시작: {stock_code}({stock_name})")
 
-            # 추가 안전 검증: 현재 보유 중인 종목인지 다시 한번 확인
+            # 추가 안전 검증: «이 전략이» 이미 보유 중인 종목인지 다시 한번 확인.
+            # 종목코드만 비교하면 다른 전략의 보유가 이 전략의 매수를 막는다
+            # (2026-10-19 실례: book_envelope_200d 396300 보유 → daytrading 매수 차단).
+            # 슬롯·원장·매도는 (종목, 전략) 단위라 전략이 다르면 각자 사는 것이 정상이다.
             positioned_stocks = self.bot.trading_manager.get_stocks_by_state(StockState.POSITIONED)
-            if any(pos_stock.stock_code == stock_code for pos_stock in positioned_stocks):
+            same_code = [p for p in positioned_stocks if p.stock_code == stock_code]
+            if any(self._is_own_position(p, trading_stock, strategy_name) for p in same_code):
                 self.logger.info(f"보유 중인 종목 매수 신호 무시: {stock_code}({stock_name})")
                 return
+            if same_code:
+                self.logger.debug(
+                    f"{stock_code} 타전략 보유 중 — 전략별 독립 매수 판단 진행 "
+                    f"(보유 owner={[p.owner_strategy_name for p in same_code]}, 호출={strategy_name})"
+                )
 
             # 25분 매수 쿨다운 확인
             if trading_stock.is_buy_cooldown_active():
