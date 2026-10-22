@@ -127,7 +127,11 @@
     "RESULTS_EXIT_V2_POST11.md",
     "RESULTS_S5_POST11.md",
     "ERRATA_2026-10-16_post11_values.md",
-    "PREREG_POST12.md"
+    "PREREG_POST12.md",
+    "RESULTS_SELECTION_POST12.md",
+    "RESULTS_EXIT_V2_POST12.md",
+    "RESULTS_S5_POST12.md",
+    "ERRATA_2026-10-22_post12_values.md"
   ],
   "db_fingerprint": {
     "daily_prices[>=2026-04-01]": [
