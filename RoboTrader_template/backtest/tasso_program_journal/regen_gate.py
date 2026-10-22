@@ -299,6 +299,10 @@ PAIRS = {
     "RESULTS_SELECTION_POST11_NUMBERS.md": "run_selection_post11.py",
     "RESULTS_EXIT_V2_POST11_NUMBERS.md": "run_exit_v2_post11.py",
     "RESULTS_S5_POST11_NUMBERS.md": "run_s5_post11.py",
+    # 🔴 2026-10-22 12번째 글(`224444230837`) — 🔒 감시 모드 판정 축 3(`SEL-`·`EXIT-`·`S5`)만. 나머지 축은 러너 0 · 산출물 0 ⇒ 등재 대상 없음.
+    "RESULTS_SELECTION_POST12_NUMBERS.md": "run_selection_post12.py",
+    "RESULTS_EXIT_V2_POST12_NUMBERS.md": "run_exit_v2_post12.py",
+    "RESULTS_S5_POST12_NUMBERS.md": "run_s5_post12.py",
 }
 
 # 🔴 C-23 — 산출물이 «파일 하나»가 아닌 것들. `--rerun` 이 이 디렉토리까지 스냅샷·대조하고,
@@ -360,6 +364,9 @@ ART_DIRS = {
     # 🔴 2026-10-16 post11 — 디렉토리 산출물은 SEL(`selection_post11/`)·S5(`s5_post11/`) 둘뿐(EXIT 는 디렉토리 없음 · 중단 7축 0).
     "RESULTS_SELECTION_POST11_NUMBERS.md": ("selection_post11",),
     "RESULTS_S5_POST11_NUMBERS.md": ("s5_post11",),
+    # 🔴 2026-10-22 post12 — 디렉토리 산출물은 SEL(`selection_post12/`)·S5(`s5_post12/`) 둘뿐(EXIT 는 디렉토리 없음).
+    "RESULTS_SELECTION_POST12_NUMBERS.md": ("selection_post12",),
+    "RESULTS_S5_POST12_NUMBERS.md": ("s5_post12",),
 }
 
 
@@ -662,6 +669,8 @@ MANUAL_DOCS = [
     "PREREG_POST11.md",
     # 🔴 2026-10-16 — post11 인테이크 3문서(사람이 쓴 것 · 등재 «시점»에 이미 있다). 산문 `RESULTS_*_POST11.md` 는 verifier 뒤 등재.
     "INTAKE_2026-10-08_post11.md", "PREDECISION_2026-10-08_post11.md", "LABELS_2026-10-08_post11.md",
+    # 🔴 2026-10-22 — post12 인테이크 3문서(사람이 쓴 것 · 등재 «시점»에 이미 있다).
+    "INTAKE_2026-10-17_post12.md", "PREDECISION_2026-10-17_post12.md", "LABELS_2026-10-17_post12.md",
     # 🔴 2026-10-16 — post11 산문 3본 + 정오표(사람이 쓴 것 · verifier 1패스 뒤 · 값 계산 0 · 등재 «시점»에 이미 있다).
     "RESULTS_SELECTION_POST11.md", "RESULTS_EXIT_V2_POST11.md", "RESULTS_S5_POST11.md",
     "ERRATA_2026-10-16_post11_values.md",
