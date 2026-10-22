@@ -39,8 +39,8 @@ class TelegramNotifier:
         self.templates = {
             'system_start': "🚀 *거래 시스템 시작*\n시간: {time}\n상태: 초기화 완료",
             'system_stop': "🛑 *거래 시스템 종료*\n시간: {time}\n상태: 정상 종료",
-            'order_placed': "📝 *주문 실행*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price:,}원\n주문ID: {order_id}",
-            'order_filled': "✅ *주문 체결*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price:,}원\n손익: {pnl:+,.0f}원",
+            'order_placed': "📝 *주문 실행*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price_text}\n주문ID: {order_id}",
+            'order_filled': "✅ *주문 체결*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price:,}원{pnl_line}",
             'order_cancelled': "❌ *주문 취소*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n이유: {reason}",
             'signal_detected': "🔥 *매매 신호*\n\n📊 종목: {stock_name}({stock_code})\n🎯 신호: {signal_type}\n💰 가격: {price:,}원\n\n📝 근거:\n{reason}",
             'position_update': "📊 *포지션 현황*\n보유: {position_count}종목\n평가: {total_value:,}원\n손익: {total_pnl:+,.0f}원 ({pnl_rate:+.2f}%)",
@@ -245,23 +245,26 @@ class TelegramNotifier:
             stock_name=stock_name,
             order_type="매수" if order_type.lower() == "buy" else "매도",
             quantity=quantity,
-            price=price,
+            # 시장가 주문(price=0 또는 'sell_market')은 0원 대신 «시장가» 로 표기
+            price_text="시장가" if (price <= 0 or order_type.lower() == "sell_market") else f"{price:,.0f}원",
             order_id=order_id
         )
         await self.send_message(message)
     
     async def send_order_filled(self, stock_code: str, stock_name: str, order_type: str,
-                              quantity: int, price: float, pnl: float = 0,
+                              quantity: int, price: float, pnl: Optional[float] = None,
                               strategy_name: str = ""):
         """주문 체결 알림"""
         prefix = f"[{strategy_name}] " if strategy_name else ""
+        # 손익 줄: 매도 + 손익을 아는 경우에만 (매수·미상이면 «+0원» 오해 방지로 생략)
+        pnl_line = f"\n손익: {pnl:+,.0f}원" if (pnl is not None and order_type.lower() != "buy") else ""
         message = prefix + self.templates['order_filled'].format(
             stock_code=stock_code,
             stock_name=stock_name,
             order_type="매수" if order_type.lower() == "buy" else "매도",
             quantity=quantity,
             price=price,
-            pnl=pnl
+            pnl_line=pnl_line
         )
         await self.send_message(message)
     

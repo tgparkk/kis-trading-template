@@ -28,8 +28,8 @@ def _make_notifier(captured: list):
         notifier.chat_id = "12345"
         notifier.logger = MagicMock()
         notifier.templates = {
-            'order_placed': "📝 *주문 실행*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price:,}원\n주문ID: {order_id}",
-            'order_filled': "✅ *주문 체결*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price:,}원\n손익: {pnl:+,.0f}원",
+            'order_placed': "📝 *주문 실행*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price_text}\n주문ID: {order_id}",
+            'order_filled': "✅ *주문 체결*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price:,}원{pnl_line}",
         }
 
         async def _capture(message, parse_mode="Markdown"):
