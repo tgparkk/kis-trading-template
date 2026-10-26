@@ -431,7 +431,12 @@ class DayTradingBot:
             self._strategy_contexts[strategy_name] = self._create_trading_context(
                 strategy_name=strategy_name
             )
-        return self._strategy_contexts[strategy_name]
+        ctx = self._strategy_contexts[strategy_name]
+        # 미체결 매수 조회 훅 배선(2026-10-26 «보유 11/10» 결함) — 자리 계산은 dt 만 쓴다.
+        strat = self.strategies.get(strategy_name) if self.strategies else None
+        if strat is not None:
+            strat.pending_buy_codes_provider = ctx.get_own_buy_pending_codes
+        return ctx
 
     async def _main_trading_loop(self):
         """메인 트레이딩 루프: 데이터수집 -> 주문확인 -> 보유종목체크 -> on_tick/매수판단 -> EOD 순차 실행"""
