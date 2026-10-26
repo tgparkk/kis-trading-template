@@ -683,6 +683,7 @@ MANUAL_DOCS = [
     # 🔴 2026-10-25 — post13 사전등록(🔒 감시 모드 3회차 · 발행 «후» · fetch «전» 동결). 사람이 쓴 문서라 `MANUAL_DOCS` 자리 ·
     #    등재는 동결 커밋 «앞»이고 «별도 커밋»이다(post12 선례 `1e7771b`) · 파일은 등재 시점에 이미 있다(초안 `??`).
     "PREREG_POST13.md",
+    "ERRATA_2026-10-26_post13_runner_scope.md",
     # 🔴 `verify_ledger_post8.py` 는 post5·post6·post7 판 전례대로 **일부러 등재하지 않는다**
     #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]
