@@ -134,7 +134,10 @@ class DayTrading3MethodsBreakoutStrategy(BaseStrategy):
             self._log_cap_shadow(stock_code, "daily_trades", lambda: self.evaluate_entry(
                 data, min_daily_bars=self._min_daily_bars, high_window=self._high_window))
             return None
-        if len(self.positions) >= self._max_positions:
+        # 자리 = 체결 보유 + 미체결 매수(BUY_PENDING · 엔진 기준). 실전 지정가는 수십~수백 초
+        # 미체결로 머물러, positions 만 세면 그 사이 추가 주문이 접수돼 K 를 넘는다
+        # (2026-10-26 실전 «보유 11/10»). 페이퍼는 가상 체결이 즉시라 미체결 0 = 동작 불변.
+        if len(self.positions) + self._pending_buy_count() >= self._max_positions:
             self._log_cap_skip(stock_code, "max_positions")
             self._log_cap_shadow(stock_code, "max_positions", lambda: self.evaluate_entry(
                 data, min_daily_bars=self._min_daily_bars, high_window=self._high_window))
