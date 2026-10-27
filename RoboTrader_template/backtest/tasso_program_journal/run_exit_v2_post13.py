@@ -51,8 +51,8 @@ OUT: list = []
 NUMBERS = BASE / "RESULTS_EXIT_V2_POST13_NUMBERS.md"
 
 DB_UPTO = "2026-10-23"
-STAGE1_DBMAX = ("<<STAGE1_TBD>>", "<<ROWS_TBD>>")   # 착수 조건 관측 인용 — 착수 때 3회 안정 시각·행수 기입(PD-27 표 · 지금 확정 불가)
-PROBE_DIR = "D:/archive/tasso-program-journal-20261025/probes_precalc_<<MMDD_TBD>>/"
+STAGE1_DBMAX = ("2026-10-27", "2,766")   # 착수 조건 관측 인용(PD-27 표 · 18:17:05/28/50 3회 안정)
+PROBE_DIR = "D:/archive/tasso-program-journal-20261025/probes_precalc_1027/"
 BOUND_UPPER = "2026-10-28"
 
 # (종목, 라벨, 레그, 「손실률」마스크, 서술기준 미완결, `~` 문자, breakeven_note, 신규, 범위만, `(형, HDR)`)
@@ -152,13 +152,13 @@ def main(numbers: Path = NUMBERS):  # noqa: C901
     say("")
     say("**창 종료 %s = 발행일(토) 직전 거래일(금) 봉 «포함» · `END` · 3축 · PD-1**" % DB_UPTO)
     say("**실행 시 `max(date)` = %s · 그 날짜 행수 %s — 기록만(창 아님)** — 착수 조건 관측 인용(`%s` · 3/3 동일 · "
-        "<<PROBE_TIMES_TBD>> KST) · 이 레인은 **DB 조회 0회**(저자 서술만) ⇒ 이 산출물은 그 스냅샷에 의존하지 않는다"
+        "18:17:05 / 18:17:28 / 18:17:50 KST) · 이 레인은 **DB 조회 0회**(저자 서술만) ⇒ 이 산출물은 그 스냅샷에 의존하지 않는다"
         % (STAGE1_DBMAX[0], STAGE1_DBMAX[1], PROBE_DIR))
     say("")
     say("- 🔒 **감시 모드 3회차(`F-1`)**: 판정 축 3(`SEL-`·`EXIT-`·`S5`) · 중단 7(`REG-`·`LAD-`·`REC-`·`TV-`·`WRC-`·`RNK-`·`SEC-` = 러너 0 · "
         "산출물 0) · 종결 `ANC-`")
     say(LAUNCH_LINE)
-    say("- 라운드 상한 220만(🔒 사장님 2026-10-25 22:5x · `G-5`) · 착수 전 누계 <<CUM_TOKENS_TBD>> · 단계별 실사용 = 값 계산 단계 이후 관리자 보고서 몫")
+    say("- 라운드 상한 220만(🔒 사장님 2026-10-25 22:5x · `G-5`) · 착수 전 누계 ≈126만(🔒 2026-10-27 18:1x 사장님 상한 250만 상향) · 단계별 실사용 = 값 계산 단계 이후 관리자 보고서 몫")
     say("")
     say(LIVE_HEAD)
     say(LIVE_39)
