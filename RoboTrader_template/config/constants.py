@@ -301,6 +301,34 @@ RS_LEADER_CORP_ACTION_MODE, RS_LEADER_CORP_ACTION_MODE_INVALID = (
 del _os
 
 # =============================================================================
+# daytrading_3methods_breakout 미조정 기업행위 의심 종목 제외 — 2026-10-27 사장님 결정 「㉯ 앞당겨 수정」
+#   계기: 10-27 실전 368600(주식병합 · 24봉 정지 → 10-22 재개 · 일봉 미조정) dt 매수 → 손절.
+#   같은 날 rs_leader 는 같은 가드로 제외했다. 가드 모듈은 rs 것을 «재사용»
+#   (`strategies/rs_leader/corp_action_guard.py` · 임계 = `collectors.corp_action_watch` 단일 소스).
+#   off | shadow | live — 의미는 위 RS_LEADER_CORP_ACTION_MODE 와 같다.
+#   🔑 기본값 live(rs 는 shadow) — 사장님이 «즉시 발효»를 결정했다. 롤백 = `.env` 에
+#      `DT_CORP_ACTION_MODE=off`(관측만 남기려면 shadow) + 재기동.
+#   범위는 daytrading_3methods_breakout 스크리너 «하나»(on_tick 경로·다른 전략 미적용).
+# =============================================================================
+DT_CORP_ACTION_MODES = ("off", "shadow", "live")
+
+
+def resolve_dt_corp_action_mode(raw):
+    """env 문자열 → (mode, invalid_raw). 비어 있으면 live, 모르는 값이면 off + 원문(호출자가 WARNING)."""
+    if raw is None or not str(raw).strip():
+        return "live", None
+    v = str(raw).strip().lower()
+    if v in DT_CORP_ACTION_MODES:
+        return v, None
+    return "off", raw
+
+
+import os as _os
+DT_CORP_ACTION_MODE, DT_CORP_ACTION_MODE_INVALID = (
+    resolve_dt_corp_action_mode(_os.getenv("DT_CORP_ACTION_MODE")))
+del _os
+
+# =============================================================================
 # 데이터 읽기 소스 — kis_template **단일**. 롤백 스위치는 폐지됐다 (2026-08-17).
 #
 # 🔴 왜 없앴나 — 「롤백 스위치」가 아니라 「누르면 죽는 버튼」이 되기 때문이다:
