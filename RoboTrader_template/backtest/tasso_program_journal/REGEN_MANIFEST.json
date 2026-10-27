@@ -136,7 +136,10 @@
     "RESULTS_S5_POST12.md",
     "ERRATA_2026-10-22_post12_values.md",
     "PREREG_POST13.md",
-    "ERRATA_2026-10-26_post13_runner_scope.md"
+    "ERRATA_2026-10-26_post13_runner_scope.md",
+    "RESULTS_SELECTION_POST13.md",
+    "RESULTS_EXIT_V2_POST13.md",
+    "RESULTS_S5_POST13.md"
   ],
   "db_fingerprint": {
     "daily_prices[>=2026-04-01]": [
