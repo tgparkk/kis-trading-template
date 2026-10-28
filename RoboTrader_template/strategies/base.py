@@ -399,6 +399,8 @@ class BaseStrategy(ABC):
         # 미주입(None) = 미체결 0 = 기존 동작. 상태의 진실은 엔진이라 취소·타임아웃
         # (BUY_PENDING → SELECTED/COMPLETED) 때 자리가 저절로 풀린다.
         self.pending_buy_codes_provider: Optional[Callable[[], Iterable[str]]] = None
+        # 훅 예외 → 0 폴백 경고는 인스턴스당 처음 1회만 (2026-10-29 창구 ⑭ M2 · 중복 억제)
+        self._pending_hook_warned = False
 
         # Logger (will be set up if framework utils available)
         self.logger = None
@@ -591,7 +593,8 @@ class BaseStrategy(ABC):
         """엔진이 아는 이 전략 소유 미체결 매수 중 ``positions`` 에 아직 없는 종목 수.
 
         체결되면 positions 로 옮겨 가므로 같은 코드를 두 번 세지 않는다. 훅 미주입·예외
-        = 0(기존 동작 — 자리를 영원히 막는 쪽으로 실패하지 않는다).
+        = 0(기존 동작 — 자리를 영원히 막는 쪽으로 실패하지 않는다). 예외 폴백은 처음 1회만
+        WARNING 을 남긴다(무로그 0 폴백이면 자리·한도 계상이 꺼진 걸 알 수 없다).
         """
         provider = getattr(self, "pending_buy_codes_provider", None)
         if provider is None:
@@ -599,7 +602,13 @@ class BaseStrategy(ABC):
         try:
             held = getattr(self, "positions", None) or {}
             return len({code for code in provider() if code not in held})
-        except Exception:  # noqa: BLE001 — 계기 실패가 매매 루프를 죽이면 안 된다
+        except Exception as e:  # noqa: BLE001 — 계기 실패가 매매 루프를 죽이면 안 된다
+            if not getattr(self, "_pending_hook_warned", False):
+                self._pending_hook_warned = True
+                try:
+                    self.logger.warning(f"[자리훅] pending_buy_codes_provider 예외 → 0 폴백: {e!r}")
+                except Exception:  # noqa: BLE001 — 로그 실패도 폴백을 막지 않는다
+                    pass
             return 0
 
     def _log_cap_skip(self, stock_code: str, reason: str) -> None:
