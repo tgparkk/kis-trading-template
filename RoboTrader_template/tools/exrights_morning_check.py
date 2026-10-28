@@ -65,8 +65,11 @@ CORP_ACTION_RE = re.compile(
     r"무상증자결정|주식배당결정|주식분할결정|주식병합결정|감자결정|유상증자결정"
     r"|권리락|배당락|변경상장|주권매매거래정지"
     r"|회사합병결정|회사분할(?:합병)?결정|주식교환.?이전결정"  # 10-10 사장님: 합병·분할·주식교환/이전 추가
-    r"|상장폐지|정리매매|관리종목|감자"                         # 10-28 ⑪: 상폐·정리매매·관리종목·감자(기존 낱말이 먼저)
+    r"|상장폐지(?!우려)|정리매매|관리종목(?!지정우려)|감자"     # 10-28 ⑪: 상폐·정리매매·관리종목·감자(기존 낱말이 먼저)
 )
+# «지정우려»류 안내(예: 222420 「기타시장안내(관리종목지정우려종목)(주가 1,000원 미달)」)는 지정 «전» 예고라
+#   걸림(rc 3)이 아니라 rc 0 «참고» 줄로만 보인다(10-28 리뷰 후속 · 매일 오경보 방지).
+CONCERN_RE = re.compile(r"관리종목지정우려|상장폐지우려")
 # 자회사 공시(KOSPI 「…(종속회사의주요경영사항)」 · KOSDAQ 「…(자회사의주요경영사항)」)는 보유 종목 기준가와 무관 → 제외.
 #   안 빼면 대형주(예: 005930)가 매일 아침 오경보를 낸다.
 _EXCLUDE_RE = re.compile(r"종속회사|자회사의주요경영사항")
@@ -95,6 +98,15 @@ def classify_title(title: Any) -> Optional[str]:
     if not norm or _EXCLUDE_RE.search(norm):
         return None
     m = CORP_ACTION_RE.search(norm)
+    return m.group(0) if m else None
+
+
+def classify_concern(title: Any) -> Optional[str]:
+    """«우려» 안내 공시면 걸린 낱말 — 걸림(classify_title)이 아닐 때만 참고 줄로 쓴다."""
+    norm = normalize_title(title)
+    if not norm or _EXCLUDE_RE.search(norm) or CORP_ACTION_RE.search(norm):
+        return None
+    m = CONCERN_RE.search(norm)
     return m.group(0) if m else None
 
 
@@ -265,25 +277,29 @@ def _to_day(v: Any) -> date:
 def check_code(cur, code: str, as_of: date, days: int) -> Dict[str, Any]:
     since = as_of - timedelta(days=days)
     hits: List[Dict[str, Any]] = []
+    notes: List[Dict[str, Any]] = []
     seen = set()
     for d, name in load_disclosures(cur, code, since, as_of):
-        kw = classify_title(name)
+        kw = classify_title(name) or classify_concern(name)
         if kw:
             seen.add((_to_day(d), normalize_title(name)))
-            hits.append({"date": _to_day(d), "source": "DART", "keyword": kw,
-                         "title": re.sub(r"\s+", " ", str(name)).strip()})
+            (hits if classify_title(name) else notes).append(
+                {"date": _to_day(d), "source": "DART", "keyword": kw,
+                 "title": re.sub(r"\s+", " ", str(name)).strip()})
     for ts, title in load_dart_news(cur, code, since, as_of):
         body = strip_news_company(title)
-        kw = classify_title(body)
+        kw = classify_title(body) or classify_concern(body)
         key = (_to_day(ts), normalize_title(body))
         if kw and key not in seen:
             seen.add(key)
-            hits.append({"date": _to_day(ts), "source": "뉴스(dart)", "keyword": kw,
-                         "title": re.sub(r"\s+", " ", body).strip()})
+            (hits if classify_title(body) else notes).append(
+                {"date": _to_day(ts), "source": "뉴스(dart)", "keyword": kw,
+                 "title": re.sub(r"\s+", " ", body).strip()})
     hits.sort(key=lambda h: h["date"])
+    notes.sort(key=lambda h: h["date"])
     daily = load_recent_daily(cur, code, as_of)
     jumps = detect_discontinuities(daily)
-    return {"code": code, "disclosures": hits, "jumps": jumps, "daily_rows": len(daily)}
+    return {"code": code, "disclosures": hits, "notes": notes, "jumps": jumps, "daily_rows": len(daily)}
 
 
 def _holding_label(h: Dict[str, Any]) -> str:
@@ -330,14 +346,20 @@ def format_report(as_of: date, days: int, target_label: str,
     n_hit = 0
     for r in results:
         held = _held_text(holdings.get(r["code"], []))
+        refs = r.get("notes", [])
         if not r["disclosures"] and not r["jumps"]:
             note = " (일봉 없음 — 불연속 점검 못 함)" if r["daily_rows"] < 2 else ""
-            lines.append(f"- {r['code']}{held}: 걸린 것 없음{note}")
+            ref = f" (참고 {len(refs)}건)" if refs else ""
+            lines.append(f"- {r['code']}{held}: 걸린 것 없음{note}{ref}")
+            for n in refs:
+                lines.append(f"    · 참고 {n['date']} {n['source']} {n['title']}")
             continue
         n_hit += 1
         lines.append(f"- {r['code']}{held}: ⚠️ 공시 {len(r['disclosures'])}건 · 가격 불연속 {len(r['jumps'])}건")
         for d in r["disclosures"]:
             lines.append(f"    · {d['date']} {d['source']} {d['title']}")
+        for n in refs:
+            lines.append(f"    · 참고 {n['date']} {n['source']} {n['title']}")
         for j in r["jumps"]:
             lines.append(f"    · {j['date']} 가격 불연속: 전일종가 {j['prev_close']:,.0f} · "
                          f"저가 {j['low']:,.0f}({j['low_ratio']:.3f}) · 고가 {j['high']:,.0f}({j['high_ratio']:.3f})")

@@ -485,3 +485,31 @@ def test_limit_band_block_without_prev_day(capsys):
     code, _c, _s = _run(data, ["--codes", "005930", "--as-of", "2026-10-10"])
     assert code == emc.EXIT_OK
     assert "가격제한폭 점검 못 함(직전 거래일 없음)" in capsys.readouterr().out
+
+
+# 10-28 리뷰 후속: «지정우려»류 안내 공시는 걸림이 아니라 rc 0 «참고» 줄 (222420 · 2026-08-06)
+CONCERN_TITLE = "기타시장안내(관리종목지정우려종목)              (주가 1,000원 미달)"
+
+
+def test_concern_notice_is_not_hit_but_reference_line(capsys):
+    assert emc.classify_title(CONCERN_TITLE) is None
+    assert emc.classify_title("기타시장안내(상장폐지우려)") is None
+    assert emc.classify_concern(CONCERN_TITLE) == "관리종목지정우려"
+    data = dict(DATA, disc={"222420": [(date(2026, 8, 6), CONCERN_TITLE)]},
+                daily={"222420": [("2026-10-26", 1000, 1010, 990, 1000), ("2026-10-27", 1000, 1010, 990, 1000)]})
+    code, _c, sent = _run(data, ["--codes", "222420", "--as-of", "2026-10-28"])
+    out = capsys.readouterr().out
+    assert code == emc.EXIT_OK
+    assert "- 222420: 걸린 것 없음 (참고 1건)" in out
+    assert "    · 참고 2026-08-06 DART 기타시장안내(관리종목지정우려종목) (주가 1,000원 미달)" in out
+    assert "결과: 걸린 것 없음" in out and sent == []
+
+
+def test_designation_notice_is_still_hit(capsys):
+    assert emc.classify_title("관리종목지정") == "관리종목"
+    assert emc.classify_concern("관리종목지정") is None
+    data = dict(DATA, disc={"222420": [(date(2026, 10, 20), "관리종목지정              (감사의견거절)")]})
+    code, _c, _s = _run(data, ["--codes", "222420", "--as-of", "2026-10-28"])
+    out = capsys.readouterr().out
+    assert code == emc.EXIT_HIT
+    assert "222420: ⚠️ 공시 1건" in out and "참고 " not in out
