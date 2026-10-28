@@ -4,6 +4,8 @@
 DB 는 가짜 커서(SQL 문자열로 분기)로 대신한다 — 실 DB·KIS·텔레그램 호출 0.
 검증 축: 제목 분류(정정 접두·공백·종속회사 제외) · 가격 불연속 · 종료 코드(0/3/2)
         · 보유 없음 경로 · --codes 경로 · --telegram(걸릴 때만 1건 · 토큰 미출력) · SELECT 만.
+2026-10-28 ⑪ 보강: 대상 = 실전 보유 + 페이퍼 미청산 보유(실전/페이퍼·전략 칸) · 상폐·정리매매·관리종목·감자
+        패턴 · «가격제한폭 초과» 블록(직전 거래일 |returns_1d|>0.30 ∩ 보유).
 """
 import re
 from datetime import date
@@ -138,7 +140,14 @@ class FakeCursor:
             raise RuntimeError("query failed")
         s = " ".join(sql.split())
         if "to_regclass" in s:
-            self._rows = [(self.data.get("table_exists", True),)]
+            default = self.data.get("table_exists", True)
+            self._rows = [(self.data.get("tables", {}).get(params[0], default),)]
+        elif "MAX(date)" in s:
+            self._rows = [(self.data.get("limit_prev", "2026-01-01"),)]
+        elif "returns_1d" in s:
+            self._rows = self.data.get("limit_rows", [])
+        elif f"FROM {emc.PAPER_TABLE}" in s:
+            self._rows = self.data.get("paper_holdings", [])
         elif f"FROM {emc.REAL_TABLE}" in s:
             self._rows = self.data.get("holdings", [])
         elif "FROM dart_disclosures" in s:
@@ -229,7 +238,8 @@ def test_ledger_table_missing_is_no_holdings(capsys):
     code, conn, _s = _run({"table_exists": False}, ["--as-of", "2026-10-10"])
     assert code == emc.EXIT_OK
     assert "보유 없음" in capsys.readouterr().out
-    assert len(conn.cur.executed) == 1                # to_regclass 만
+    # 실전·페이퍼 원장 존재 확인(to_regclass) 2건만 — 보유가 없으면 더 묻지 않는다
+    assert [p for _s, p in conn.cur.executed] == [(emc.REAL_TABLE,), (emc.PAPER_TABLE,)]
 
 
 def test_ledger_empty_is_no_holdings(capsys):
@@ -379,3 +389,127 @@ def test_no_holdings_with_telegram_stays_silent(tmp_path):
     for data in ({"table_exists": False}, {"table_exists": True, "holdings": []}):
         code, _c, sent = _run(data, ["--telegram", "--key-ini", str(key), "--as-of", "2026-10-10"])
         assert code == emc.EXIT_OK and sent == []
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-28 ⑪ 보강 — 패턴 · 페이퍼 보유 · 가격제한폭 초과 블록
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("title, expected", [
+    ("상장폐지결정", "상장폐지"),
+    ("[기재정정]상장폐지결정", "상장폐지"),
+    ("상장폐지사유발생", "상장폐지"),
+    ("정리매매개시", "정리매매"),
+    ("관리종목지정(감사의견거절)", "관리종목"),
+    ("주요사항보고서(무상감자)", "감자"),
+    ("주요사항보고서(감자결정)", "감자결정"),          # 기존 패턴이 먼저(낱말 그대로 유지)
+])
+def test_classify_delisting_and_capital_reduction_titles(title, expected):
+    assert emc.classify_title(title) == expected
+
+
+def test_new_patterns_still_respect_subsidiary_exclusion():
+    assert emc.classify_title("감자결정(종속회사의주요경영사항)") is None
+    assert emc.classify_title("상장폐지결정(자회사의주요경영사항)") is None
+
+
+def test_paper_holdings_are_checked_with_label_column(capsys):
+    data = dict(DATA, table_exists=True, holdings=[("475460", "와이씨켐", 3, 8200.0)],
+                paper_holdings=[("475460", "와이씨켐", "rs_leader", 5, 8100.0),
+                                ("005930", "삼성전자", "book_pullback_ma20", 2, 70000.0)])
+    code, conn, _s = _run(data, ["--as-of", "2026-09-16"])
+    out = capsys.readouterr().out
+    assert code == emc.EXIT_HIT
+    assert "대상 2종목" in out
+    assert "475460 와이씨켐 보유 3주 평단 8,200원 [실전] · 보유 5주 평단 8,100원 [페이퍼·rs_leader]" in out
+    assert "005930 삼성전자 보유 2주 평단 70,000원 [페이퍼·book_pullback_ma20]: 걸린 것 없음" in out
+    paper_sql = [" ".join(q.split()) for q, _p in conn.cur.executed if f"FROM {emc.PAPER_TABLE}" in q]
+    assert len(paper_sql) == 1 and "is_test = true" in paper_sql[0] and "GROUP BY b.stock_code, b.strategy" in paper_sql[0]
+    assert all(" ".join(q.split()).upper().startswith("SELECT") for q, _ in conn.cur.executed)
+
+
+def test_paper_only_when_real_ledger_missing(capsys):
+    data = dict(DATA, tables={emc.REAL_TABLE: False, emc.PAPER_TABLE: True},
+                paper_holdings=[("475460", "와이씨켐", "minervini_volume_dryup", 4, 8300.0)])
+    code, _c, _s = _run(data, ["--as-of", "2026-09-16"])
+    out = capsys.readouterr().out
+    assert code == emc.EXIT_HIT
+    assert "475460 와이씨켐 보유 4주 평단 8,300원 [페이퍼·minervini_volume_dryup]: ⚠️" in out
+    assert "실전 원장 없음" in out
+
+
+def test_paper_holdings_query_rejects_unexpected_table():
+    with pytest.raises(ValueError):
+        emc.load_paper_holdings(FakeCursor({}), "real_trading_daytrading; DROP")
+
+
+LIMIT_ROWS = [  # (stock_code, returns_1d, close, corp_events 건수) — DB 10-27 실값 꼴
+    ("004415", -0.34874290348742903, 803.0, 0),
+    ("032685", -0.6996966632962589, 297.0, 0),
+    ("215790", 3.376876876876877, 2915.0, 1),
+]
+
+
+def test_limit_band_block_flags_held_code(capsys):
+    data = dict(DATA, table_exists=True, holdings=[],
+                paper_holdings=[("004415", "서울식품우", "rs_leader", 10, 1500.0)],
+                limit_prev="2026-10-27", limit_rows=LIMIT_ROWS,
+                daily={"004415": [("2026-10-26", 1300, 1300, 1200, 1233), ("2026-10-27", 1200, 1210, 800, 803)]})
+    code, conn, sent = _run(data, ["--as-of", "2026-10-28"])
+    out = capsys.readouterr().out
+    assert code == emc.EXIT_HIT
+    assert "어제(2026-10-27) ±30% 밖 종목 3개 · 그중 corp_events 없는 2개" in out
+    assert "🔴 가격제한폭 밖 004415 [페이퍼·rs_leader]: 2026-10-27 수익률 -34.87% · 종가 803 · corp_events 0건" in out
+    assert "가격제한폭 밖 보유 0" not in out
+    q = [(" ".join(s.split()), p) for s, p in conn.cur.executed if "returns_1d" in s]
+    assert len(q) == 1
+    sql, params = q[0]
+    assert "ABS(p.returns_1d) > %s" in sql and "p.volume > 0" in sql and "FROM corp_events" in sql
+    assert params[0] == "2026-10-27" and params[1] == emc.LIMIT_BAND_RETURN == 0.30
+    assert set(params[2]) == set(emc.PSEUDO_TICKERS) and len(emc.PSEUDO_TICKERS) == 6
+
+
+def test_limit_band_block_no_held_code_prints_zero_line(capsys):
+    data = dict(DATA, table_exists=True, holdings=[("005930", "삼성전자", 1, 70000.0)],
+                limit_prev="2026-10-27", limit_rows=LIMIT_ROWS)
+    code, _c, _s = _run(data, ["--as-of", "2026-10-10"])
+    out = capsys.readouterr().out
+    assert code == emc.EXIT_OK                                   # 출력만 · 걸린 것 없음
+    assert "가격제한폭 밖 보유 0 · 어제(2026-10-27) ±30% 밖 종목 3개 · 그중 corp_events 없는 2개" in out
+    assert "🔴" not in out
+    assert out.index("가격제한폭 밖 보유 0") < out.index("결과: 걸린 것 없음")
+
+
+def test_limit_band_block_without_prev_day(capsys):
+    data = dict(DATA, limit_prev=None)
+    code, _c, _s = _run(data, ["--codes", "005930", "--as-of", "2026-10-10"])
+    assert code == emc.EXIT_OK
+    assert "가격제한폭 점검 못 함(직전 거래일 없음)" in capsys.readouterr().out
+
+
+# 10-28 리뷰 후속: «지정우려»류 안내 공시는 걸림이 아니라 rc 0 «참고» 줄 (222420 · 2026-08-06)
+CONCERN_TITLE = "기타시장안내(관리종목지정우려종목)              (주가 1,000원 미달)"
+
+
+def test_concern_notice_is_not_hit_but_reference_line(capsys):
+    assert emc.classify_title(CONCERN_TITLE) is None
+    assert emc.classify_title("기타시장안내(상장폐지우려)") is None
+    assert emc.classify_concern(CONCERN_TITLE) == "관리종목지정우려"
+    data = dict(DATA, disc={"222420": [(date(2026, 8, 6), CONCERN_TITLE)]},
+                daily={"222420": [("2026-10-26", 1000, 1010, 990, 1000), ("2026-10-27", 1000, 1010, 990, 1000)]})
+    code, _c, sent = _run(data, ["--codes", "222420", "--as-of", "2026-10-28"])
+    out = capsys.readouterr().out
+    assert code == emc.EXIT_OK
+    assert "- 222420: 걸린 것 없음 (참고 1건)" in out
+    assert "    · 참고 2026-08-06 DART 기타시장안내(관리종목지정우려종목) (주가 1,000원 미달)" in out
+    assert "결과: 걸린 것 없음" in out and sent == []
+
+
+def test_designation_notice_is_still_hit(capsys):
+    assert emc.classify_title("관리종목지정") == "관리종목"
+    assert emc.classify_concern("관리종목지정") is None
+    data = dict(DATA, disc={"222420": [(date(2026, 10, 20), "관리종목지정              (감사의견거절)")]})
+    code, _c, _s = _run(data, ["--codes", "222420", "--as-of", "2026-10-28"])
+    out = capsys.readouterr().out
+    assert code == emc.EXIT_HIT
+    assert "222420: ⚠️ 공시 1건" in out and "참고 " not in out

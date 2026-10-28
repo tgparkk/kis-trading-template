@@ -177,6 +177,9 @@ ALL_FOLDERS: Tuple[str, ...] = tuple(s.folder for s in SPECS)
 LOGGER_TO_FOLDER: Dict[str, str] = {s.logger_name: s.folder for s in SPECS}
 
 RS_LEADER_LIVE_SINCE = date(2026, 9, 17)   # docs/prereg_2026-09-16_rsleader_exclusion_live.md · 로그 09-17 07:40:26 mode=live
+# dt 스크리너 corp 가드(main 7f8684e · 기본 live) 발효 = 10-28 07:40 재기동 → 그날 09:00 스냅샷(scan_date 10-27)부터.
+#   d = 매매일(스냅샷 소비일). 근거 memory/defect-dt-screener-corp-guard-missing.md · 로그 10-28 09:00:09 mode=live
+DT_CORP_ACTION_LIVE_SINCE = date(2026, 10, 28)
 CAP_LOG_SINCE = date(2026, 9, 16)          # [캡] 계기 e597c33(머지 36fe61c) · 09-16 07:40
 VIRTUAL_CAPITAL_PER_STRATEGY = 10_000_000  # config/constants.py:181
 LEDGER_START = date(2026, 9, 10)
@@ -225,10 +228,16 @@ def regime_index_for(folder: str, d: date) -> Tuple[str, str]:
 
 
 def corp_action_mode_for(folder: str, d: date) -> Optional[str]:
-    """그날 라이브가 쓰던 `RS_LEADER_CORP_ACTION_MODE`. rs_leader 가 아니면 None."""
-    if folder != "rs_leader":
-        return None
-    return "live" if d >= RS_LEADER_LIVE_SINCE else "shadow"
+    """그날 라이브가 쓰던 corp 가드 모드. rs_leader·daytrading 이 아니면 None.
+
+    rs_leader = `RS_LEADER_CORP_ACTION_MODE`(≥09-17 live · 그 전 shadow) ·
+    daytrading_3methods_breakout = `DT_CORP_ACTION_MODE`(≥10-28 live · 그 전 off = 가드 코드 없음과 동치).
+    """
+    if folder == "rs_leader":
+        return "live" if d >= RS_LEADER_LIVE_SINCE else "shadow"
+    if folder == "daytrading_3methods_breakout":
+        return "live" if d >= DT_CORP_ACTION_LIVE_SINCE else "off"
+    return None
 
 
 def state_attrs(folder: str) -> Tuple[str, ...]:
