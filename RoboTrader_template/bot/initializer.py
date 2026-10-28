@@ -402,6 +402,26 @@ def format_regime_config_crosscheck(declared_specs, strategies, source: str,
     return lines
 
 
+def fund_state_file_name(date_str: str, instance_id: str) -> str:
+    """종료 flush JSON 파일명 (10-29 창구 A ⑫).
+
+    페이퍼(default) = 기존 `fund_state_{date}.json` 그대로(레포 밖 자동 닫기 스크립트가 이 이름을 본다) ·
+    실전 인스턴스 = `fund_state_{date}_{instance}.json` — 10-28 실측: 같은 이름이라 페이퍼 17:00 종료가
+    실전 15:4x 종료분을 덮었다. 이 파일을 읽는 레포 코드는 없다(write-only).
+    """
+    if not instance_id or instance_id == "default":
+        return f"fund_state_{date_str}.json"
+    return f"fund_state_{date_str}_{instance_id}.json"
+
+
+def _fund_state_dir() -> Path:
+    """종료 flush JSON 디렉터리 (테스트 이음매) — `logs/state/`(인스턴스 공용 경로)."""
+    return Path(__file__).parent.parent / 'logs' / 'state'
+
+
+COOLDOWN_MISFIRE_NOTE = "[쿨다운] 매도 뒤 30분 재매수 금지는 현재 불발 상태(기록용)"
+
+
 class BotInitializer:
     """봇 초기화 담당 클래스"""
 
@@ -683,6 +703,9 @@ class BotInitializer:
 
     async def _initialize_fund_manager(self) -> None:
         """자금 관리자 초기화"""
+        # 30분 재매수 쿨다운 불발 «기록»(10-22 패널 · 10-29 창구 A) — 설정(페이퍼 매도)과
+        # 검사(실전 매수)가 다른 경로. 연결·제거 금지(11-05 결정) · 이 줄은 기록용 INFO 뿐.
+        self.logger.info(COOLDOWN_MISFIRE_NOTE)
         if self.bot.decision_engine.is_virtual_mode:
             # 가상매매: VirtualTradingManager가 D-1 잔고를 이미 이월했으므로 그 값을 사용
             virtual_trading = getattr(self.bot.decision_engine, 'virtual_trading', None)
@@ -854,10 +877,11 @@ class BotInitializer:
 
             # logs/state/ 하위에 JSON dump
             try:
-                log_root = Path(__file__).parent.parent / 'logs' / 'state'
+                from config import settings as _settings
+                log_root = _fund_state_dir()
                 log_root.mkdir(parents=True, exist_ok=True)
                 date_str = now_kst().strftime('%Y-%m-%d')
-                state_file = log_root / f'fund_state_{date_str}.json'
+                state_file = log_root / fund_state_file_name(date_str, _settings.INSTANCE_ID)
                 payload = {
                     'timestamp': now_kst().strftime('%Y-%m-%d %H:%M:%S'),
                     'fund': fund_state,

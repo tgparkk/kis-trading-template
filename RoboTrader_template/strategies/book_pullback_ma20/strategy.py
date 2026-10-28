@@ -29,6 +29,7 @@ Book Pullback MA20 Strategy — 강창권 『단기 트레이딩의 정석』 A-
 ``holding_period = "swing"`` 이므로 EOD 일괄청산을 건너뛴다.
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -300,6 +301,27 @@ class BookPullbackMa20Strategy(BaseStrategy):
             metadata=metadata,
         )
 
+    def _log_roundtrip_shadow(self, stock_code: str, entry_time) -> None:
+        """[ma20-왕복-shadow] INFO (10-29 창구 A ② · 동작 0 · 매도 신호는 그대로).
+
+        진입 밴드(close ≥ MA20×0.98)와 trail_ma(ret>0 ∧ close<MA20)가 겹쳐 «매수 직후 매도»가
+        난다(3/97). 본 수정(11-05) 전 측정용 — 보유 60초 미만이면 would_block=1.
+        """
+        try:
+            held = "-"
+            would_block = 0
+            if isinstance(entry_time, datetime):
+                now = now_kst()
+                et = entry_time if entry_time.tzinfo is not None else entry_time.replace(tzinfo=now.tzinfo)
+                held_sec = int((now - et).total_seconds())
+                held = str(held_sec)
+                would_block = 1 if held_sec < 60 else 0
+            self.logger.info(f"[ma20-왕복-shadow] {stock_code} held_sec={held} would_block={would_block}")
+        except Exception as e:
+            if not getattr(self, "_roundtrip_shadow_warned", False):
+                self._roundtrip_shadow_warned = True
+                self.logger.warning(f"[ma20-왕복-shadow] 기록 실패 — 이후 무시(매매 영향 0): {e}")
+
     def _check_sell(self, stock_code: str, data: pd.DataFrame) -> Optional[Signal]:
         pos = self.positions[stock_code]
         entry_price = pos["entry_price"]
@@ -321,6 +343,9 @@ class BookPullbackMa20Strategy(BaseStrategy):
         )
         if not should_sell:
             return None
+
+        if exit_reason == "trail_ma":
+            self._log_roundtrip_shadow(stock_code, entry_time)
 
         current_price = float(data["close"].astype(float).iloc[-1])
         pnl_pct = (current_price - entry_price) / entry_price * 100
