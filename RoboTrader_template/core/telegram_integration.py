@@ -180,14 +180,14 @@ class TelegramIntegration:
         except Exception as e:
             self.logger.error(f"주문 실행 알림 실패: {e}")
     
-    async def notify_order_filled(self, order_data: Dict[str, Any], pnl: float = 0) -> None:
+    async def notify_order_filled(self, order_data: Dict[str, Any], pnl: Optional[float] = None) -> None:
         """주문 체결 알림"""
         if not self.is_enabled or not self.notification_settings.get('order_events', True):
             return
         
         try:
             self.daily_stats['orders_filled'] += 1
-            self.daily_stats['profit_loss'] += pnl
+            self.daily_stats['profit_loss'] += pnl or 0
             
             if order_data.get('order_type', '').lower() == 'sell':
                 self.daily_stats['trades_count'] += 1

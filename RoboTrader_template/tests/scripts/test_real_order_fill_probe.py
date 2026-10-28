@@ -113,9 +113,11 @@ def _failed(guards):
 def test_check_quote_pass_and_each_failure():
     assert _failed(p.check_quote(_q(), 30_000)) == []
     assert "현재가 ≤ --max-price" in _failed(p.check_quote(_q(stck_prpr="31000", stck_mxpr="40000"), 30_000))
-    # 15,010 은 현행 KRX 호가(10원)엔 맞지만 봇 호가표(50원)엔 안 맞는다 → 봇이 가격을 고쳐 게이트와 어긋나므로 거부
+    # 봇 호가표에 안 맞는 현재가 → 봇이 가격을 고쳐 게이트와 어긋나므로 거부. 2026-10-09 봇 호가표를 KRX
+    # 2023-01-25 개편 표로 고친 뒤엔 15,010(10원 단위)이 맞으므로 정렬 안 되는 15,005 로 시험한다.
     tick = "주문가(=현재가)가 봇 호가표에 정렬(봇이 가격을 고치지 않음)"
-    assert tick in _failed(p.check_quote(_q(stck_prpr="15010", stck_mxpr="19500", stck_llam="10500"), 30_000))
+    assert tick in _failed(p.check_quote(_q(stck_prpr="15005", stck_mxpr="19500", stck_llam="10500"), 30_000))
+    assert tick not in _failed(p.check_quote(_q(stck_prpr="15010", stck_mxpr="19500", stck_llam="10500"), 30_000))
     assert "상·하한가에서 5% 이상 떨어짐" in _failed(p.check_quote(_q(stck_prpr="12900"), 30_000))
     assert "누적 거래대금 ≥ 10억(유동성)" in _failed(p.check_quote(_q(acml_tr_pbmn="900000000"), 30_000))
     for bad in (dict(vi_cls_code="Y"), dict(vi_cls_code=""), dict(iscd_stat_cls_code="58"), dict(temp_stop_yn="Y"),
@@ -404,7 +406,10 @@ class FakeExchange:
             return _Resp({"ok": True})
         if url.endswith(p.cp.PATH_TOKEN):
             self.sent.append("token")
-            return _Resp({"access_token": SECRETS[3], "access_token_token_expired": "2026-10-09 10:00:00",
+            # 만료는 «지금 + 1일»(실시각 기준) — 고정 시각이면 그 시각이 지난 뒤 캐시 토큰이 «만료»로 읽혀
+            # 토큰 POST 가 2회가 된다(2026-10-09 10:00 이후 N7 시험 영구 실패 · REVIEW_RF7 F10).
+            expired = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+            return _Resp({"access_token": SECRETS[3], "access_token_token_expired": expired,
                           "token_type": "Bearer", "expires_in": 86400})
         tr = kw["headers"]["tr_id"]
         params = json.loads(kw.get("data") or "{}")
@@ -545,7 +550,7 @@ def test_dry_run_never_calls_order_trs(probe):
     ("pending", {"extra_pending": [{"odno": "0000000999", "pdno": "005930", "sll_buy_dvsn_cd": "02"}]}, {},
      "시작 시 미체결 0건"),
     ("price_cap", {"price": "31000"}, {}, "현재가 ≤ --max-price"),
-    ("tick", {"price": "15010"}, {}, "주문가(=현재가)가 봇 호가표에 정렬(봇이 가격을 고치지 않음)"),
+    ("tick", {"price": "15005"}, {}, "주문가(=현재가)가 봇 호가표에 정렬(봇이 가격을 고치지 않음)"),
     ("vi", {"quote_over": {"vi_cls_code": "Y"}}, {}, "이상 표식 없음(거래정지·임시정지·VI·관리·정리매매·시장경고·단기과열·투자유의)"),
 ])
 def test_live_guard_fail_sends_no_order(probe, name, kw, run_kw, guard):

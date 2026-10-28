@@ -111,6 +111,12 @@ class OrderMonitorMixin:
                                 pass
                         continue
 
+                # B(2026-10-09): 보류 주문(취소 미반영 · 예약·슬롯 유지)은 취소 없이 «상태 조회만» 해 체결·소멸을
+                # 발견하면 종결한다(_recheck_held_order). 시간·4봉 타임아웃 대상이 아니다.
+                if order_id in getattr(self, '_cancel_held_ids', ()):
+                    await self._recheck_held_order(order_id)
+                    continue
+
                 # 1. 체결 상태 확인
                 await self._check_order_status(order_id)
 
@@ -396,6 +402,9 @@ class OrderMonitorMixin:
         order.filled_price = filled_price
         order.status = OrderStatus.FILLED
 
+        # 텔레그램 체결 알림용 실현 손익 (매도 체결 + FundManager 계산 성공 시에만 채워짐)
+        sell_pnl = None
+
         # FundManager 연동
         if self.fund_manager:
             try:
@@ -428,6 +437,7 @@ class OrderMonitorMixin:
                     # 매수원가 기준으로 invested_funds 회수 (손익 차이는 total_funds 조정)
                     buy_cost = 0  # 기본값 (fallback 실패 시)
                     buy_price_per_share = 0
+                    pnl_estimated = False  # 매수원가를 폴백으로 추정했으면 손익은 «확정값» 이 아니다(알림 표시용)
 
                     # 1차: TradingStock의 position에서 매수원가 조회.
                     # 위에서 이미 owner 소유 슬롯을 잡아 뒀다 — 종목코드 단독
@@ -443,10 +453,12 @@ class OrderMonitorMixin:
                     # 2차: position 조회 실패 시 order.price 사용 (지정가 매도의 경우만, 시장가=0 제외)
                     if buy_price_per_share <= 0 and order.price > 0:
                         buy_price_per_share = order.price  # fallback
+                        pnl_estimated = True
 
                     # 3차: 시장가 매도(price=0)이고 position도 없으면, 체결가를 매수가로 추정
                     if buy_price_per_share <= 0:
                         buy_price_per_share = filled_price  # 최후 fallback (pnl = 0으로 처리)
+                        pnl_estimated = True
                         self.logger.warning(f"매수원가 조회 실패, 체결가로 대체: {order.stock_code}")
 
                     buy_cost = buy_price_per_share * filled_qty
@@ -459,6 +471,8 @@ class OrderMonitorMixin:
                     pnl = sell_amount - buy_cost - buy_commission - sell_commission - sell_tax
                     if pnl != 0:
                         self.fund_manager.adjust_pnl(pnl)
+                    # 추정 원가 기반 손익(=수수료·세금 또는 슬리피지 수준)은 텔레그램에 확정 손익으로 내지 않는다
+                    sell_pnl = None if pnl_estimated else pnl
             except Exception as e:
                 self.logger.warning(f"FundManager 체결 처리 실패: {order_id} - {e}")
 
@@ -483,7 +497,7 @@ class OrderMonitorMixin:
                 'order_type': order.order_type.value,
                 'quantity': order.quantity,
                 'price': filled_price  # 실제 체결가 사용
-            })
+            }, pnl=sell_pnl)
 
     async def _handle_partial_fill(self: 'OrderManagerBase', order_id: str, order, status_data: dict,
                                    filled_qty: int, remaining_qty: int) -> None:

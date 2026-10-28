@@ -39,8 +39,8 @@ class TelegramNotifier:
         self.templates = {
             'system_start': "🚀 *거래 시스템 시작*\n시간: {time}\n상태: 초기화 완료",
             'system_stop': "🛑 *거래 시스템 종료*\n시간: {time}\n상태: 정상 종료",
-            'order_placed': "📝 *주문 실행*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price:,}원\n주문ID: {order_id}",
-            'order_filled': "✅ *주문 체결*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price:,}원\n손익: {pnl:+,.0f}원",
+            'order_placed': "📝 *주문 실행*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price_text}\n주문ID: {order_id}",
+            'order_filled': "✅ *주문 체결*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n수량: {quantity:,}주\n가격: {price:,}원{pnl_line}",
             'order_cancelled': "❌ *주문 취소*\n종목: {stock_name}({stock_code})\n구분: {order_type}\n이유: {reason}",
             'signal_detected': "🔥 *매매 신호*\n\n📊 종목: {stock_name}({stock_code})\n🎯 신호: {signal_type}\n💰 가격: {price:,}원\n\n📝 근거:\n{reason}",
             'position_update': "📊 *포지션 현황*\n보유: {position_count}종목\n평가: {total_value:,}원\n손익: {total_pnl:+,.0f}원 ({pnl_rate:+.2f}%)",
@@ -245,23 +245,26 @@ class TelegramNotifier:
             stock_name=stock_name,
             order_type="매수" if order_type.lower() == "buy" else "매도",
             quantity=quantity,
-            price=price,
+            # 시장가 주문(price=0 또는 'sell_market')은 0원 대신 «시장가» 로 표기
+            price_text="시장가" if (price <= 0 or order_type.lower() == "sell_market") else f"{price:,.0f}원",
             order_id=order_id
         )
         await self.send_message(message)
     
     async def send_order_filled(self, stock_code: str, stock_name: str, order_type: str,
-                              quantity: int, price: float, pnl: float = 0,
+                              quantity: int, price: float, pnl: Optional[float] = None,
                               strategy_name: str = ""):
         """주문 체결 알림"""
         prefix = f"[{strategy_name}] " if strategy_name else ""
+        # 손익 줄: 매도 + 손익을 아는 경우에만 (매수·미상이면 «+0원» 오해 방지로 생략)
+        pnl_line = f"\n손익: {pnl:+,.0f}원" if (pnl is not None and order_type.lower() != "buy") else ""
         message = prefix + self.templates['order_filled'].format(
             stock_code=stock_code,
             stock_name=stock_name,
             order_type="매수" if order_type.lower() == "buy" else "매도",
             quantity=quantity,
             price=price,
-            pnl=pnl
+            pnl_line=pnl_line
         )
         await self.send_message(message)
     
@@ -305,9 +308,14 @@ class TelegramNotifier:
     async def send_system_status(self, market_status: str, pending_orders: int, 
                                completed_orders: int):
         """시스템 상태 알림"""
+        # market_status 는 `market_open` 같은 밑줄 값 → 레거시 Markdown 엔티티 파싱 실패
+        # (10-19~ 30분마다 ERROR 후 폴백 재전송). 이 값만 이스케이프한다(10-29 창구 A ⑩).
+        status_text = str(market_status)
+        for ch in ('\\', '_', '*', '`', '['):
+            status_text = status_text.replace(ch, f'\\{ch}')
         message = self.templates['system_status'].format(
             time=now_kst().strftime('%H:%M:%S'),
-            market_status=market_status,
+            market_status=status_text,
             pending_orders=pending_orders,
             completed_orders=completed_orders
         )

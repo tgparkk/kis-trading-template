@@ -297,6 +297,23 @@ class TradingContext:
                     result.append(s)
         return result
 
+    def get_own_buy_pending_codes(self) -> List[str]:
+        """이 전략 소유 BUY_PENDING(미체결 매수) 종목 코드 — 전략 자리 계산용(2026-10-26).
+
+        owner 표기는 폴더키/클래스명으로 분열하므로 둘 다 '내 것'으로 본다(_get_own_trading_stock
+        과 같은 규칙). 무기명·다른 전략 소유는 제외. 취소·타임아웃이면 엔진이 BUY_PENDING 을
+        SELECTED/COMPLETED 로 되돌려 여기서 저절로 빠진다. 예외는 호출자(전략)가 0 으로 처리.
+        """
+        from core.models import StockState
+        my_ids = {k for k in (self._strategy_key, self._current_strategy_name) if k}
+        if not my_ids:
+            return []
+        return [
+            s.stock_code
+            for s in self._trading_manager.get_stocks_by_state(StockState.BUY_PENDING)
+            if getattr(s, "owner_strategy_name", None) in my_ids
+        ]
+
     def get_positions(self) -> List:
         """POSITIONED 상태 종목 목록 반환 (보유 중)"""
         from core.models import StockState

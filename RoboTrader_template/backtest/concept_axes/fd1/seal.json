@@ -1,0 +1,43 @@
+{
+ "amendment2_commit_time": "2026-09-24T22:04:24+09:00",
+ "crash_excluded_t0": 10,
+ "eps_formula": "eps_panel := 0.5 × p̂_base (r̂ 을 곱하지 않았다 · 금지 21)",
+ "eps_panel_alpha": null,
+ "eps_panel_alpha_note": "개정문 #2 §3 — 이 라운드는 (α) 를 정의하지 않는다",
+ "eps_panel_beta": 0.171395,
+ "eps_slot_print_only": 0.066981,
+ "gate_addendum_commit_time": "2026-09-24T22:04:24+09:00",
+ "gate_addendum_sha256": "8a767b305a5030ed7ca0c6d7a6c5732415c64d2bffc130d76709efb2b454a6c6",
+ "gate_commit_time": "2026-09-24T21:42:48+09:00",
+ "gate_json_sha256": "59fa5909c74eb7955d408e8515580ab442cf34336727890a8e5c5d760d62fe23",
+ "git_head": "c8a71ee1639c4bda4b80fa332e7baa680a486f24",
+ "judge_window_t0_tail_values_computed": 0,
+ "n_rows": 157519,
+ "outcome": "i_s08_w10_exc",
+ "p_base_beta": 0.34279,
+ "p_base_incl_unknown_print_only": 0.348763,
+ "p_base_without_2024_08_05_window_print_only": 0.320258,
+ "population": "D∈{0,1}(U1 모름 제외 · FD1 Open Q3)",
+ "r_hat_slot_print_only": 0.3908,
+ "rates_by_class_print_only": {
+  "d0": {
+   "n": 108931,
+   "rate": 0.3104
+  },
+  "d1": {
+   "n": 48588,
+   "rate": 0.41541
+  },
+  "unk": {
+   "n": 7768,
+   "rate": 0.46988
+  }
+ },
+ "ratio_d1_d0_print_only": 1.3383,
+ "stocks": 2159,
+ "trading_days": 196,
+ "window": [
+  "2024-03-13",
+  "2024-12-31"
+ ]
+}

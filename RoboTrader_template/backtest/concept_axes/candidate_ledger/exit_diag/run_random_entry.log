@@ -1,0 +1,17 @@
+설정 파일을 찾을 수 없습니다: D:\tmp\kis-wt-cand-ledger\RoboTrader_template\config\key.ini
+key.ini.example을 참고하여 key.ini 파일을 생성해주세요.
+[가드] md5 6항목 ✓ · 사전등록 blob = 0bfbe92 ✓ · 전략 blob 11 = 2274895 ✓ · tp/sl/밴드 = PREREG ✓ · sha 9d252932d4
+[L] 41,522 · ma20 18,016 · minervini 8,506 · daytrading 15,000
+[로드] 달력 910일 · 스캔일 617 · DB 지문 59c14921cde2 = ③ ✓ · px 2,176,121행 · 종목 2,799 · 23s
+[U] n_eligible 전수 일치 ✓ ma20 617일 · minervini 617일 · daytrading 617일 · 4s
+[L] L ⊂ U_b ✓ · 에피소드 첫 행 ma20 15,748 · minervini 2,645 · daytrading 13,238
+[가드] 벡터화 재구현 L 41,522 대조 · 불일치 0 (0.00000%) — reason 0 · date 0 · ret 0 ⇒ 경로 = 벡터화 · 0.7s
+[추출] 4판 · 18.8s
+[캐시] 고유 로트 859,006 · 파일럿(2025-03) 26,415
+[파일럿] 26,415 로트 0.3s (0.01ms/로트) · 예상 총 184s + ③ 31s ⇒ 1시간 이내 ✓
+[청산] 832,591 로트 5s
+[표본 대조 · 인쇄만] 무작위 로트 3,000 원 코드 vs 벡터화 불일치 0 · 17.1s
+[주판] ma20 T -0.118%p · minervini T -0.259%p · daytrading T +0.174%p
+[가짜 룰] 한쪽 p 600개 중 p<0.1 57 = 0.095 ⇒ ≤ 0.16 판정 진행
+[판정] ma20 판별 보류 · minervini 판별 보류 · daytrading 판별 보류
+[끝] 184s (+ ③ 31s = 215s) → D:\tmp\kis-wt-cand-ledger\RoboTrader_template\backtest\concept_axes\candidate_ledger\exit_diag\RESULTS_random_entry.md

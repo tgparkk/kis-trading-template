@@ -1,0 +1,250 @@
+{
+  "window_end": {
+    "post4": "2026-09-02",
+    "post5": "2026-09-02",
+    "post6": "2026-09-04",
+    "post7": "2026-09-11",
+    "post8": "2026-09-18",
+    "post9": "2026-09-23",
+    "post10": "2026-10-02"
+  },
+  "db_upto": "2026-10-02",
+  "cases": [
+    {
+      "post": "post4",
+      "name": "이노테크",
+      "code": "469610",
+      "reg": "2026-08-13",
+      "fill_n": 5,
+      "distinct": 3,
+      "open_ended": 1,
+      "a0_gross": "feasible",
+      "a0_net": "feasible",
+      "nbar_window": 14
+    },
+    {
+      "post": "post4",
+      "name": "한켐",
+      "code": "457370",
+      "reg": "2026-08-12",
+      "fill_n": 4,
+      "distinct": 4,
+      "open_ended": 0,
+      "a0_gross": "feasible",
+      "a0_net": "feasible",
+      "nbar_window": 15
+    },
+    {
+      "post": "post4",
+      "name": "금호건설",
+      "code": "002990",
+      "reg": "2026-08-12",
+      "fill_n": 3,
+      "distinct": 6,
+      "open_ended": 1,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 15
+    },
+    {
+      "post": "post4",
+      "name": "지투파워",
+      "code": "388050",
+      "reg": "2026-08-13",
+      "fill_n": 2,
+      "distinct": 3,
+      "open_ended": 0,
+      "a0_gross": "feasible",
+      "a0_net": "feasible",
+      "nbar_window": 14
+    },
+    {
+      "post": "post4",
+      "name": "PS일렉트로닉스",
+      "code": "332570",
+      "reg": "2026-08-13",
+      "fill_n": 4,
+      "distinct": 3,
+      "open_ended": 0,
+      "a0_gross": "feasible",
+      "a0_net": "feasible",
+      "nbar_window": 14
+    },
+    {
+      "post": "post5",
+      "name": "혜인",
+      "code": "003010",
+      "reg": "2026-08-11",
+      "fill_n": 2,
+      "distinct": 5,
+      "open_ended": 1,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 16
+    },
+    {
+      "post": "post5",
+      "name": "한국화장품제조",
+      "code": "003350",
+      "reg": "2026-08-12",
+      "fill_n": 4,
+      "distinct": 5,
+      "open_ended": 1,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 15
+    },
+    {
+      "post": "post5",
+      "name": "한켐",
+      "code": "457370",
+      "reg": "2026-08-20",
+      "fill_n": 2,
+      "distinct": 4,
+      "open_ended": 0,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 10
+    },
+    {
+      "post": "post5",
+      "name": "광전자",
+      "code": "017900",
+      "reg": "2026-08-05",
+      "fill_n": 4,
+      "distinct": 4,
+      "open_ended": 1,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 20
+    },
+    {
+      "post": "post5",
+      "name": "레메디",
+      "code": null,
+      "reg": "2026-08-18",
+      "fill_n": 5,
+      "distinct": 3,
+      "open_ended": 0,
+      "a0_gross": "db_absent",
+      "a0_net": "db_absent",
+      "nbar_window": 0
+    },
+    {
+      "post": "post6",
+      "name": "한라캐스트",
+      "code": "125490",
+      "reg": "2026-08-21",
+      "fill_n": 5,
+      "distinct": 4,
+      "open_ended": 1,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 11
+    },
+    {
+      "post": "post6",
+      "name": "원익",
+      "code": "032940",
+      "reg": "2026-08-31",
+      "fill_n": 3,
+      "distinct": 7,
+      "open_ended": 0,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 5
+    },
+    {
+      "post": "post6",
+      "name": "지투파워",
+      "code": "388050",
+      "reg": "2026-08-26",
+      "fill_n": 3,
+      "distinct": 4,
+      "open_ended": 1,
+      "a0_gross": "feasible",
+      "a0_net": "feasible",
+      "nbar_window": 8
+    },
+    {
+      "post": "post6",
+      "name": "우리기술투자",
+      "code": "041190",
+      "reg": "2026-08-25",
+      "fill_n": 4,
+      "distinct": 5,
+      "open_ended": 1,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 9
+    },
+    {
+      "post": "post6",
+      "name": "비에이치",
+      "code": "090460",
+      "reg": "2026-09-01",
+      "fill_n": 4,
+      "distinct": 7,
+      "open_ended": 0,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 4
+    },
+    {
+      "post": "post10",
+      "name": "라온시큐어",
+      "code": "042510",
+      "reg": "2026-09-15",
+      "fill_n": 4,
+      "distinct": 6,
+      "open_ended": 0,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 12
+    },
+    {
+      "post": "post10",
+      "name": "샌즈랩",
+      "code": "411080",
+      "reg": "2026-09-14",
+      "fill_n": 3,
+      "distinct": 4,
+      "open_ended": 1,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 13
+    },
+    {
+      "post": "post10",
+      "name": "HT로보틱스",
+      "code": "396300",
+      "reg": "2026-09-18",
+      "fill_n": 3,
+      "distinct": 5,
+      "open_ended": 1,
+      "a0_gross": "empty",
+      "a0_net": "empty",
+      "nbar_window": 9
+    }
+  ],
+  "cumulative": {
+    "n": 8,
+    "db_absent": 0,
+    "empty": 7,
+    "g1": 0.875,
+    "fire": true
+  },
+  "one_post": {
+    "n": 3,
+    "db_absent": 0,
+    "empty": 3,
+    "g1": 1.0
+  },
+  "solo_post10": 3,
+  "corp_actions": {
+    "k": 0,
+    "n": 8,
+    "a": 0,
+    "b": 0
+  }
+}
