@@ -197,6 +197,11 @@ class OrderExecution:
                     return False
 
                 # FundManager 매도 후 재매수 쿨다운 확인
+                # ── 30분 재매수 쿨다운 불발 기록 (10-22 패널 · 10-29 창구 A) ──
+                # 여기(실전 매수)서 «검사»만 하고, 설정은 페이퍼 매도
+                # (core/trading_decision_engine.py 의 set_sell_cooldown)에서만 한다.
+                # 설정과 검사가 다른 경로라 불발 = 실전 매도 뒤에는 쿨다운이 걸리지 않는다.
+                # 🔒 연결 금지 · 제거 금지 — 11-05 결정.
                 if self.fund_manager and self.fund_manager.is_sell_cooldown_active(stock_code):
                     self.logger.warning(
                         f"{stock_code}: 매도 후 재매수 쿨다운 활성 (익절/손절 후 대기)"

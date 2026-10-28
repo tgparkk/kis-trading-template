@@ -308,9 +308,14 @@ class TelegramNotifier:
     async def send_system_status(self, market_status: str, pending_orders: int, 
                                completed_orders: int):
         """시스템 상태 알림"""
+        # market_status 는 `market_open` 같은 밑줄 값 → 레거시 Markdown 엔티티 파싱 실패
+        # (10-19~ 30분마다 ERROR 후 폴백 재전송). 이 값만 이스케이프한다(10-29 창구 A ⑩).
+        status_text = str(market_status)
+        for ch in ('\\', '_', '*', '`', '['):
+            status_text = status_text.replace(ch, f'\\{ch}')
         message = self.templates['system_status'].format(
             time=now_kst().strftime('%H:%M:%S'),
-            market_status=market_status,
+            market_status=status_text,
             pending_orders=pending_orders,
             completed_orders=completed_orders
         )

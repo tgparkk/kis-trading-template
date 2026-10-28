@@ -7,6 +7,7 @@ Strategy 시스템과 연동되어 매매 판단을 수행합니다.
 
 손절/익절 체크는 PositionMonitor가 담당 (trading_stock별 설정 사용)
 """
+import re
 import time
 from typing import Tuple, Optional, TYPE_CHECKING
 import pandas as pd
@@ -14,12 +15,45 @@ from utils.logger import setup_logger
 from config.constants import (
     DEFAULT_STOP_LOSS_RATE, DEFAULT_TARGET_PROFIT_RATE,
     MARKET_DIRECTION_FILTER_ENABLED, KOSPI_DECLINE_THRESHOLD, KOSDAQ_DECLINE_THRESHOLD,
-    COMMISSION_RATE, SECURITIES_TAX_RATE, CANDIDATE_MIN_DAILY_DATA
+    COMMISSION_RATE, SECURITIES_TAX_RATE, CANDIDATE_MIN_DAILY_DATA, SCRAP_BUY_SHADOW_RATIO
 )
 
 if TYPE_CHECKING:
     from strategies.base import BaseStrategy
     from core.fund_manager import FundManager
+
+
+_SIGNAL_CLOSE_RE = re.compile(r"close=([0-9][0-9,]*(?:\.[0-9]+)?)")
+
+
+def signal_reference_price(signal) -> Optional[float]:
+    """신호 참조가 — ``signal.price`` → ``metadata['close']`` → 사유의 ``close=`` 값. 없으면 None.
+
+    [주문가-괴리]·[재매수-shadow] 로그 전용(10-29 창구 A · 매매 동작 0).
+    """
+    if signal is None:
+        return None
+    candidates = [getattr(signal, 'price', None)]
+    meta = getattr(signal, 'metadata', None)
+    if isinstance(meta, dict):
+        candidates.append(meta.get('close'))
+    for value in candidates:
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            continue
+        if v > 0:
+            return v
+    for reason in (getattr(signal, 'reasons', None) or []):
+        m = _SIGNAL_CLOSE_RE.search(str(reason))
+        if m:
+            try:
+                v = float(m.group(1).replace(',', ''))
+            except ValueError:
+                continue
+            if v > 0:
+                return v
+    return None
 
 
 def resolve_strategy_tp_sl(strategy) -> Tuple[Optional[float], Optional[float]]:
@@ -125,6 +159,49 @@ class TradingDecisionEngine:
         if pd.isna(v) or v is None: return 0.0
         try: return float(str(v).replace(',', ''))
         except (ValueError, TypeError): return 0.0
+
+    def _per_stock_target(self, strategy_name: str) -> Optional[float]:
+        """종목당 예산(로그 전용). 실전 = total_funds × max_position_ratio ·
+        가상 = 전략 원장 종목당 금액(VTM get_max_quantity 의 per_stock·cap 항 · 현금 항 제외)."""
+        if self.is_virtual_mode:
+            vt = self.virtual_trading
+            if vt is None:
+                return None
+            ledger_key = strategy_name or (self.strategy.name if self.strategy else "")
+            per_stock = float(vt._strategy_investment_amounts.get(ledger_key, vt.virtual_investment_amount))
+            cap = vt._strategy_max_per_stock.get(ledger_key)
+            if cap is not None and 0 < float(cap) < per_stock:
+                per_stock = float(cap)
+            return per_stock
+        fm = self.fund_manager
+        if fm is None:
+            return None
+        return float(fm.total_funds) * float(fm.max_position_ratio)
+
+    def _log_buy_shadow(self, code: str, price: float, max_amt: float, signal, strategy_name: str) -> None:
+        """[자투리-shadow]·[주문가-괴리] INFO (10-29 창구 A ⑥⑦). 매매 동작 0 · 예외는 1회 WARNING."""
+        try:
+            target = self._per_stock_target(strategy_name)
+            if target and target > 0 and max_amt < target * SCRAP_BUY_SHADOW_RATIO:
+                self.logger.info(
+                    f"[자투리-shadow] would_skip=1 {code} amount={max_amt:,.0f} "
+                    f"target={target:,.0f} ratio={max_amt / target:.2f}"
+                )
+        except Exception as e:
+            self._warn_buy_shadow_once(e)
+        try:
+            ref = signal_reference_price(signal)
+            if ref:
+                self.logger.info(
+                    f"[주문가-괴리] {code} 신호가={ref:,.0f} 주문가={price:,.0f} {(price / ref - 1) * 100:+.2f}%"
+                )
+        except Exception as e:
+            self._warn_buy_shadow_once(e)
+
+    def _warn_buy_shadow_once(self, err: Exception) -> None:
+        if not getattr(self, '_buy_shadow_warned', False):
+            self._buy_shadow_warned = True
+            self.logger.warning(f"[매수 그림자 로그] 기록 실패 — 이후 무시(매매 영향 0): {err}")
 
     def _get_max_buy_amount(self, stock_code: str = "") -> float:
         """
@@ -468,6 +545,9 @@ class TradingDecisionEngine:
                     if not isinstance(suffix, str):
                         suffix = ""
                 return False, f"{code} 수량부족{suffix}", empty
+
+            # 그림자 로그 2종(10-29 창구 A ⑥⑦ · 동작 0) — 값만 읽고 qty/price/반환은 안 바꾼다.
+            self._log_buy_shadow(code, price, max_amt, signal, strategy_name)
 
             buy_info = {'buy_price': price, 'quantity': qty, 'max_buy_amount': max_amt}
             if signal:
@@ -1003,6 +1083,11 @@ class TradingDecisionEngine:
                                 self.fund_manager.adjust_pnl(pnl_with_fees)
                             # remove_position 은 멱등 — 위 release 와 이중호출 무해
                             self.fund_manager.remove_position(code, fm_owner)
+                            # ── 30분 재매수 쿨다운 불발 기록 (10-22 패널 · 10-29 창구 A) ──
+                            # 여기(페이퍼 매도)서 «설정»만 하고, 검사는 실전 매수
+                            # (core/trading/order_execution.py 의 is_sell_cooldown_active)에서만 한다.
+                            # 설정과 검사가 다른 경로라 불발 = 매도 뒤 30분 재매수 금지는 현재
+                            # 어느 모드에서도 작동하지 않는다. 🔒 연결 금지 · 제거 금지 — 11-05 결정.
                             self.fund_manager.set_sell_cooldown(code, sell_reason)
                         except Exception as fm_e:
                             self.logger.error(f"{code} 매도 후 자금관리 업데이트 실패: {fm_e}")
