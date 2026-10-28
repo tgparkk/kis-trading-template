@@ -526,6 +526,62 @@ class TradingRepository(BaseRepository):
             self.logger.error(f"미체결 실거래 포지션 조회 실패: {e}")
             return pd.DataFrame()
 
+    def get_last_sell_within_trading_days(self, stock_code: str, today, n_days: int = 5,
+                                          is_virtual: bool = True) -> Optional[Dict[str, Any]]:
+        """같은 종목의 가장 최근 SELL(어떤 전략이든) — 오늘 이전 KOSPI 거래일 n_days 개 창 안.
+
+        [재매수-shadow] 로그(10-29 창구 A · 읽기 전용) 전용. 거래일 = ``daily_prices`` 의
+        ``KOSPI`` 의사티커 행 날짜. 페이퍼 = ``virtual_trading_records``(is_test · source),
+        실전 = 인스턴스 표(``self._real_table``).
+
+        Returns:
+            None(창 안 매도 없음 / 거래일 0) 또는
+            {strategy, reason, timestamp(KST naive), price, profit_loss, trading_dates(내림차순)}.
+            예외는 삼키지 않는다 — 호출자가 1회 WARNING 으로 처리한다.
+        """
+        today_str = today.strftime('%Y-%m-%d')
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT date FROM daily_prices WHERE stock_code = 'KOSPI' AND date < %s "
+                "ORDER BY date DESC LIMIT %s",
+                (today_str, int(n_days)),
+            )
+            dates = []
+            for (d,) in cursor.fetchall() or []:
+                dates.append(d if hasattr(d, 'year') else datetime.strptime(str(d)[:10], '%Y-%m-%d').date())
+            if not dates:
+                return None
+            start_str = f"{min(dates).strftime('%Y-%m-%d')} 00:00:00"
+            if is_virtual:
+                cursor.execute(
+                    "SELECT strategy, reason, timestamp AT TIME ZONE 'Asia/Seoul', price, profit_loss "
+                    "FROM virtual_trading_records "
+                    "WHERE stock_code = %s AND action = 'SELL' AND is_test = true AND source = %s "
+                    "AND timestamp >= %s ORDER BY timestamp DESC LIMIT 1",
+                    (stock_code, self.SOURCE_KIS_TEMPLATE, start_str),
+                )
+            else:
+                cursor.execute(
+                    f"SELECT strategy, reason, timestamp AT TIME ZONE 'Asia/Seoul', price, profit_loss "
+                    f"FROM {self._real_table} "
+                    f"WHERE stock_code = %s AND action = 'SELL' "
+                    f"AND timestamp >= %s ORDER BY timestamp DESC LIMIT 1",
+                    (stock_code, start_str),
+                )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            strategy, reason, ts, price, profit_loss = row
+            return {
+                'strategy': strategy,
+                'reason': reason,
+                'timestamp': ts,
+                'price': float(price) if price is not None else None,
+                'profit_loss': float(profit_loss) if profit_loss is not None else None,
+                'trading_dates': dates,
+            }
+
     def get_virtual_trading_history(self, days: int = 30, include_open: bool = True) -> pd.DataFrame:
         """가상 매매 이력 조회"""
         try:

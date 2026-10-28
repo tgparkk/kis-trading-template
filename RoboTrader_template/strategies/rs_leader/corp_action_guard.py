@@ -43,8 +43,12 @@ from utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 
-def resolve_mode() -> Tuple[str, Optional[str]]:
+def resolve_mode(prefix: str = "RS_LEADER") -> Tuple[str, Optional[str]]:
     """(mode, invalid_raw) — **`config.constants` 모듈 속성**을 호출 시점에 읽는다.
+
+    `prefix` = 상수 이름 앞부분(`{prefix}_CORP_ACTION_MODE` · `_MODE_INVALID` · `_MODES`).
+    기본 "RS_LEADER" = 2026-09-10 이후 rs_leader 동작 그대로. "DT" = daytrading_3methods_breakout
+    스크리너(2026-10-27 사장님 결정 · `DT_CORP_ACTION_MODE`). 판정 로직은 하나다.
 
     ⚠️ 「env 를 매번 읽는다」가 아니다. env → mode 변환은 `config/constants.py` 가
     **import 시 1회**만 한다. 즉 `.env` 를 고쳐도 **재기동 전에는 안 바뀐다**
@@ -54,22 +58,23 @@ def resolve_mode() -> Tuple[str, Optional[str]]:
     (선례: `core/candidate_selector.py:1179` 도 같은 방식으로 읽는다.)
     """
     import config.constants as C
-    mode = getattr(C, "RS_LEADER_CORP_ACTION_MODE", "off")
-    invalid = getattr(C, "RS_LEADER_CORP_ACTION_MODE_INVALID", None)
-    if mode not in getattr(C, "RS_LEADER_CORP_ACTION_MODES", ("off", "shadow", "live")):
+    mode = getattr(C, f"{prefix}_CORP_ACTION_MODE", "off")
+    invalid = getattr(C, f"{prefix}_CORP_ACTION_MODE_INVALID", None)
+    if mode not in _modes(prefix):
         return "off", mode
     return mode, invalid
 
 
-def invalid_mode_message(invalid: Any) -> str:
+def invalid_mode_message(invalid: Any, prefix: str = "RS_LEADER") -> str:
     """모르는 mode 값 WARNING 문구 (`resolve_sector_news_mode` 규약과 같은 형식)."""
-    return (f"[rs-corp-action] RS_LEADER_CORP_ACTION_MODE={invalid!r} 는 모르는 값 → "
-            f"off 로 동작 (허용: {_modes()})")
+    tag = "rs" if prefix == "RS_LEADER" else prefix.lower()
+    return (f"[{tag}-corp-action] {prefix}_CORP_ACTION_MODE={invalid!r} 는 모르는 값 → "
+            f"off 로 동작 (허용: {_modes(prefix)})")
 
 
-def _modes():
+def _modes(prefix: str = "RS_LEADER"):
     import config.constants as C
-    return getattr(C, "RS_LEADER_CORP_ACTION_MODES", ("off", "shadow", "live"))
+    return getattr(C, f"{prefix}_CORP_ACTION_MODES", ("off", "shadow", "live"))
 
 
 def detect(stock_code: Any, df: Optional[pd.DataFrame]) -> Optional[Dict[str, Any]]:

@@ -12,6 +12,10 @@
 패치(프로세스 안 mock · 파일 무수정)
   - `config.market_hours.MarketHours.is_market_open` → True. 8전략 모두 같은 클래스를 import 한다.
   - rs_leader: `config.constants.RS_LEADER_CORP_ACTION_MODE` 를 그날 모드로(corp_action_guard.py:56-57 가 호출 시점에 읽는다).
+  - daytrading: `config.constants.DT_CORP_ACTION_MODE` 를 그날 모드로(≥10-28 live · 그 전 off · registry).
+    ⚠️ dt 가드는 «스크리너 `scan()` 안에서만» 돈다 — `_check_buy`(on_tick)엔 가드가 없어 상수 patch 는 무해할 뿐
+    재현을 바꾸지 않는다. 스크리너 `match()` 를 직접 부르는 연구 경로는 `dt_guarded_match`/`dt_corp_guard` 로 감쌀 것
+    (상수만 바꾸고 `_ca_active` 를 안 켜면 가드가 조용히 꺼진 채 통과한다 — 테스트 test_dt_corp_guard8 이 고정).
   - envelope: 모듈 `now_kst` 를 D 09:02 로(`_fetch_entry_history` 캐시 키·end_date · strategy.py:231-249),
     호출 전후 `_entry_df_cache` 를 비운다.
 상태 무변경 — registry.state_attrs(folder) 를 호출 전후 deepcopy 비교, 다르면 RuntimeError.
@@ -24,7 +28,7 @@ import re
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 from unittest import mock
 
 import pandas as pd
@@ -86,11 +90,12 @@ def state_snapshot(strategy, folder: str) -> tuple:
 @contextmanager
 def live_buy_patches(strategy, folder: str, d: date) -> Iterator[None]:
     mode = R.corp_action_mode_for(folder, d)
+    prefix = {"rs_leader": "RS_LEADER", DAY: "DT"}.get(folder)
     with ExitStack() as st:
         st.enter_context(mock.patch.object(MarketHours, "is_market_open", return_value=True))
-        if mode is not None:
-            st.enter_context(mock.patch.object(_CC, "RS_LEADER_CORP_ACTION_MODE", mode))
-            st.enter_context(mock.patch.object(_CC, "RS_LEADER_CORP_ACTION_MODE_INVALID", None))
+        if mode is not None and prefix is not None:
+            st.enter_context(mock.patch.object(_CC, f"{prefix}_CORP_ACTION_MODE", mode))
+            st.enter_context(mock.patch.object(_CC, f"{prefix}_CORP_ACTION_MODE_INVALID", None))
         if folder == ENVELOPE:
             st.enter_context(mock.patch.object(_module(strategy), "now_kst", return_value=_S._as_of(d)))
             strategy._entry_df_cache.clear()
@@ -99,6 +104,51 @@ def live_buy_patches(strategy, folder: str, d: date) -> Iterator[None]:
         finally:
             if folder == ENVELOPE:
                 strategy._entry_df_cache.clear()
+
+
+@contextmanager
+def dt_corp_guard(adapter, d: date, folder: str = DAY) -> Iterator[List[str]]:
+    """dt 스크리너 어댑터의 `match()` 를 직접 부를 때도 라이브 `scan()` 과 같은 corp 가드를 켠다(얇은 어댑터).
+
+    라이브 `screener.py:59-66` `scan()` 이 하는 일만 흉내 낸다: `_ca_active=True` · `_ca_flagged=[]` —
+    그리고 그날 모드(`R.corp_action_mode_for`)로 `DT_CORP_ACTION_MODE`(+INVALID=None)를 patch.
+    프레임엔 `with_stock_code(df, code)` 로 종목코드를 실어야 한다(라이브 `_prepare_frame` :68-74 대응).
+    yield = 이 컨텍스트 안에서 걸린 종목코드 목록(라이브 `_ca_flagged`). 나갈 때 어댑터 상태·상수를 되돌린다.
+    라이브 스크리너 코드는 수정하지 않는다.
+    """
+    if folder != DAY:
+        raise ValueError(f"dt_corp_guard 는 {DAY} 전용: {folder!r}")
+    mode = R.corp_action_mode_for(folder, d)
+    had = {a: getattr(adapter, a) for a in ("_ca_active", "_ca_flagged") if hasattr(adapter, a)}
+    flagged: List[str] = []
+    with ExitStack() as st:
+        st.enter_context(mock.patch.object(_CC, "DT_CORP_ACTION_MODE", mode))
+        st.enter_context(mock.patch.object(_CC, "DT_CORP_ACTION_MODE_INVALID", None))
+        adapter._ca_active = True
+        adapter._ca_flagged = flagged
+        try:
+            yield flagged
+        finally:
+            for a in ("_ca_active", "_ca_flagged"):
+                if a in had:
+                    setattr(adapter, a, had[a])
+                elif hasattr(adapter, a):
+                    delattr(adapter, a)
+
+
+def with_stock_code(df: pd.DataFrame, code: str) -> pd.DataFrame:
+    """얕은 복사본에 `attrs["stock_code"]` 를 싣는다 — 호출자 프레임은 건드리지 않는다."""
+    out = df.copy(deep=False)
+    out.attrs = dict(df.attrs, stock_code=code)
+    return out
+
+
+def dt_guarded_match(adapter, code: str, df: pd.DataFrame, params: Dict[str, Any], d: date
+                     ) -> Tuple[Optional[Tuple[float, str]], List[str]]:
+    """그날(d = 매매일) 라이브 모드로 가드를 켜고 dt 스크리너 `match()` 1회 → (판정, 걸린 종목코드)."""
+    with dt_corp_guard(adapter, d) as flagged:
+        verdict = adapter.match(with_stock_code(df, code), params)
+    return verdict, list(flagged)
 
 
 def _guard(folder: str, code: str, d: date, data: Optional[pd.DataFrame], min_len: int) -> Optional[SignalEval8]:

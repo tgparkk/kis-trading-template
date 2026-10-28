@@ -65,6 +65,7 @@ NUMERIC 은 두 풀 모두 `float` 로 변환해 돌려준다(`DEC2FLOAT` 타입
 | `EXTERNAL_DB_HOST` / `_PORT` / `_USER` / `_PASSWORD` | `strategies/historical_data.py` | `127.0.0.1` / `5433` / `robotrader` / (코드) | DB명은 상수 |
 | `STRATEGY_DB_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_NAME` | `strategies/lynch/db_manager.py` · `strategies/sawkami/db_manager.py` | `TIMESCALE_*` 폴백 → `postgres`/`''` · `kis_template` | 등록 전략 아님 |
 | `SCREENER_SNAPSHOT_ENABLED` | `config/constants.py` | `false` | `true` 일 때만 장전 스냅샷 훅이 `screener_snapshots` 를 쓴다(§5-7) |
+| `CORP_ACTION_PRICE_ALERT` | `core/trading/corp_action_price_alert.py` | 켬(미설정) | 실전 전용 «[기업행위 의심]» 기준가 경보(로그·텔레그램만 · 판정 불변). `off`/`0`/`false`/`no`/`disable`/`disabled`(대소문자·공백 무시)만 끈다 — 오타·미지값은 켬. 호출 시점에 읽는다 |
 
 ### 2.1 폐지된 변수 — 설정해도 «아무 일도 없다»
 

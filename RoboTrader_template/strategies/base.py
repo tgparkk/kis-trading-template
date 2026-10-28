@@ -41,7 +41,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, Iterable, List, Optional, TYPE_CHECKING
 
 import pandas as pd
 
@@ -394,6 +394,14 @@ class BaseStrategy(ABC):
         self._cap_shadow_logged: set = set()
         self._cap_shadow_log_date = None
 
+        # 미체결 매수(BUY_PENDING) 조회 훅 (2026-10-26 실전 «보유 11/10» 결함).
+        # 엔진(main.ctx_for_strategy)이 TradingContext.get_own_buy_pending_codes 를 꽂는다.
+        # 미주입(None) = 미체결 0 = 기존 동작. 상태의 진실은 엔진이라 취소·타임아웃
+        # (BUY_PENDING → SELECTED/COMPLETED) 때 자리가 저절로 풀린다.
+        self.pending_buy_codes_provider: Optional[Callable[[], Iterable[str]]] = None
+        # 훅 예외 → 0 폴백 경고는 인스턴스당 처음 1회만 (2026-10-29 창구 ⑭ M2 · 중복 억제)
+        self._pending_hook_warned = False
+
         # Logger (will be set up if framework utils available)
         self.logger = None
         try:
@@ -581,6 +589,28 @@ class BaseStrategy(ABC):
             return parts[-2]
         return self.name
 
+    def _pending_buy_count(self) -> int:
+        """엔진이 아는 이 전략 소유 미체결 매수 중 ``positions`` 에 아직 없는 종목 수.
+
+        체결되면 positions 로 옮겨 가므로 같은 코드를 두 번 세지 않는다. 훅 미주입·예외
+        = 0(기존 동작 — 자리를 영원히 막는 쪽으로 실패하지 않는다). 예외 폴백은 처음 1회만
+        WARNING 을 남긴다(무로그 0 폴백이면 자리·한도 계상이 꺼진 걸 알 수 없다).
+        """
+        provider = getattr(self, "pending_buy_codes_provider", None)
+        if provider is None:
+            return 0
+        try:
+            held = getattr(self, "positions", None) or {}
+            return len({code for code in provider() if code not in held})
+        except Exception as e:  # noqa: BLE001 — 계기 실패가 매매 루프를 죽이면 안 된다
+            if not getattr(self, "_pending_hook_warned", False):
+                self._pending_hook_warned = True
+                try:
+                    self.logger.warning(f"[자리훅] pending_buy_codes_provider 예외 → 0 폴백: {e!r}")
+                except Exception:  # noqa: BLE001 — 로그 실패도 폴백을 막지 않는다
+                    pass
+            return 0
+
     def _log_cap_skip(self, stock_code: str, reason: str) -> None:
         """캡/한도로 ``generate_signal`` 이 None 을 돌려줄 때 «사유»를 남긴다.
 
@@ -607,6 +637,8 @@ class BaseStrategy(ABC):
             if key in self._cap_skip_logged:
                 return
             self._cap_skip_logged.add(key)
+            # 미체결 매수는 «보유=n/K»(기존 파서 호환 · 체결 수)와 따로 꼬리에 — 있을 때만.
+            pending = self._pending_buy_count()
             self.logger.info(
                 f"[캡] {self._strategy_folder_key()} {stock_code} 평가 스킵 "
                 f"사유={reason} "
@@ -615,6 +647,7 @@ class BaseStrategy(ABC):
                 f"일일매수={getattr(self, 'daily_trades', 0)}/"
                 f"{getattr(self, '_max_daily_trades', 0)} "
                 f"경로={path}"
+                + (f" 미체결매수={pending}" if pending else "")
             )
         except Exception:  # noqa: BLE001 — 계기가 매매 판단을 죽이면 안 된다
             pass
@@ -837,9 +870,12 @@ class BaseStrategy(ABC):
         #   반영되므로 미체결분은 빠질 수 있다). 넷은 BaseStrategy 계약이 아닌 전략별 속성이라
         #   _log_cap_skip 과 같은 이름을 읽되, 없거나 읽다 실패하면 0 이 아니라 '?'(0 은 거짓말).
         #   🔑 로그 전용 — 반환값·흐름 불변, 예외를 밖으로 내지 않는다.
+        #   (2026-10-26) 자리 = 체결 + 미체결 매수(_pending_buy_count) — dt 자리 검사와 같은
+        #   값. 미체결이 있을 때만 줄 끝에 `| 미체결매수 m` (기존 파서 `자리 (\S+)/(\S+)` 호환).
+        pending = self._pending_buy_count()
         cap_vals = []
         for read in (
-            lambda: len(self.positions),
+            lambda: len(self.positions) + pending,
             lambda: self._max_positions,
             lambda: self.daily_trades,
             lambda: self._max_daily_trades,
@@ -852,6 +888,7 @@ class BaseStrategy(ABC):
             f"[on_tick] 매수검토 {buy_checked}종목(스킵 {buy_skipped}), 신호 {buy_signals}건 | "
             f"자리 {cap_vals[0]}/{cap_vals[1]}·일일 {cap_vals[2]}/{cap_vals[3]} | "
             f"매도검토 {sell_checked}종목, 신호 {sell_signals}건"
+            + (f" | 미체결매수 {pending}" if pending else "")
         )
 
     # ========================================================================

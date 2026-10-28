@@ -2,8 +2,10 @@
 매매 분석 모듈
 매수/매도 판단 분석 로직을 담당합니다.
 """
+import os
+import re
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Optional, Set, Tuple
 
 from core.models import StockState
 from config.constants import CANDIDATE_MIN_DAILY_DATA
@@ -72,6 +74,67 @@ def format_reject_log(stock_code: str, buy_reason) -> str:
     return f"[매수거절] {stock_code} {text}".rstrip()
 
 
+# ---------------------------------------------------------------------------
+# [재매수-shadow] 로그 (10-29 창구 묶음 A ⑤ · 매매 동작 0)
+#   10-22 패널 🔒 「측정 먼저」 — 판 종목을 다시 사는 건을 «기록만» 한다.
+#   사전등록 docs/prereg_2026-10-28_window1_shadow_logs.md · 롤백 = env REBUY_SHADOW=off.
+#   🔒 SR1: 손절 뒤(또는 사유를 모르는 손실 매도 뒤) 재매수는 매수가비 칸 «-».
+# ---------------------------------------------------------------------------
+REBUY_SHADOW_CACHE_TTL = timedelta(minutes=10)
+_REBUY_SHADOW_OFF = ("off", "0", "false")
+
+
+def _rebuy_shadow_now() -> datetime:
+    """[재매수-shadow] 기준 시계 (테스트에서 갈아끼우는 이음매)."""
+    from utils.korean_time import now_kst
+    return now_kst()
+
+
+def rebuy_shadow_enabled() -> bool:
+    """env REBUY_SHADOW — 기본 on, off|0|false 면 조회·로그 전부 끔."""
+    return os.environ.get("REBUY_SHADOW", "on").strip().lower() not in _REBUY_SHADOW_OFF
+
+
+def classify_sell_reason(reason) -> str:
+    """매도 사유 문자열 → 익절 / 손절 / MA20 이탈 / EMA 이탈 / 기타 (로그 분류 전용)."""
+    text = str(reason or "")
+    if "손절" in text:
+        return "손절"
+    if "익절" in text:
+        return "익절"
+    if "EMA" in text:
+        return "EMA 이탈"
+    m = re.search(r"(?<!E)MA(\d+)[^가-힣]*이탈", text)
+    if m:
+        return f"MA{m.group(1)} 이탈"
+    return "기타"
+
+
+def rebuy_trading_days_ago(sell_date, today, trading_dates) -> int:
+    """매도일 → 오늘까지 KOSPI 거래일 차(같은 날 0 · 직전 거래일 1 …)."""
+    if sell_date >= today:
+        return 0
+    return sum(1 for d in trading_dates if d >= sell_date)
+
+
+def format_rebuy_shadow_line(code: str, strategy_name: str, last_sell: dict, today,
+                             buy_price, same_strategy: bool) -> str:
+    """``[재매수-shadow] {code} {strategy} 직전매도={전략}/{종류}/{YYYY-MM-DD HH:MM} 거래일차={n}
+    같은전략={Y|N} 매수가비={+x.xx%|-}``."""
+    ts = last_sell["timestamp"]
+    kind = classify_sell_reason(last_sell.get("reason"))
+    days = rebuy_trading_days_ago(ts.date(), today, last_sell.get("trading_dates") or [])
+    loss = last_sell.get("profit_loss")
+    sr1_blank = kind == "손절" or (kind == "기타" and loss is not None and loss < 0)
+    sell_price = last_sell.get("price")
+    ratio = "-"
+    if not sr1_blank and buy_price and sell_price:
+        ratio = f"{(float(buy_price) / float(sell_price) - 1) * 100:+.2f}%"
+    return (f"[재매수-shadow] {code} {strategy_name} "
+            f"직전매도={last_sell.get('strategy')}/{kind}/{ts.strftime('%Y-%m-%d %H:%M')} "
+            f"거래일차={days} 같은전략={'Y' if same_strategy else 'N'} 매수가비={ratio}")
+
+
 class TradingAnalyzer:
     """매매 판단 분석 클래스"""
 
@@ -83,6 +146,11 @@ class TradingAnalyzer:
         # 억제 횟수 (2026-09-24 사전등록 ⑥ · `수량부족` 만): 같은 키의 직전 INFO 이후 억제된 횟수.
         # 다음 INFO 줄 끝에 「 외 N회」로 붙이고 비운다(새 줄 0).
         self._reject_suppressed: Dict[Tuple[str, str], int] = {}
+        # [재매수-shadow] 상태: (종목, 오늘) → (조회 시각, 직전 매도 dict|None) ·
+        # 이미 찍은 (종목, 전략, 직전매도 시각) · 예외 WARNING 1회 플래그.
+        self._rebuy_shadow_cache: Dict[Tuple[str, object], Tuple[datetime, Optional[dict]]] = {}
+        self._rebuy_shadow_logged: Set[Tuple[str, str, object]] = set()
+        self._rebuy_shadow_warned = False
 
         # FundManager를 DecisionEngine에 연결 (main.py 수정 없이)
         if hasattr(bot, 'fund_manager') and hasattr(bot, 'decision_engine'):
@@ -102,6 +170,96 @@ class TradingAnalyzer:
             self._reject_log_times[key] = now
             return True
         return False
+
+    def _is_own_position(self, pos_stock, trading_stock, strategy_name: str) -> bool:
+        """같은 종목의 POSITIONED 슬롯이 호출 전략 소유인가 (판정 불가면 True = 종전처럼 차단).
+
+        owner 표기는 폴더키(복원)/클래스명(라이브 매수)으로 갈리므로 둘 다 «내 것»으로
+        보고, 그 밖의 표기는 기존 해석 규칙(trading_manager.resolve_owner_strategy)으로
+        인스턴스를 얻어 비교한다. 이름이 비었거나 해석이 안 되면 신원을 모르는 것이라
+        보수적으로 차단한다 — 남의 보유로 잘못 막는 것보다 같은 전략 이중매수가 더 나쁘다.
+        """
+        if pos_stock is trading_stock or not strategy_name:
+            return True
+        caller = (getattr(self.bot, 'strategies', None) or {}).get(strategy_name)
+        if caller is None:
+            return True
+        owner_name = getattr(pos_stock, 'owner_strategy_name', '') or ''
+        if owner_name in (strategy_name, getattr(caller, 'name', None)):
+            return True
+        owner = getattr(pos_stock, 'owner_strategy', None)
+        if owner is None:
+            if not owner_name:
+                return True
+            owner = self.bot.trading_manager.resolve_owner_strategy(owner_name)
+        return owner is None or owner is caller
+
+    def _rebuy_shadow_buy_price(self, stock_code: str, signal) -> Optional[float]:
+        """매수가 대용 = 캐시 현재가(API 호출 0) → 없으면 신호 참조가. 못 구하면 None."""
+        try:
+            im = getattr(self.bot.decision_engine, 'intraday_manager', None)
+            info = im.get_cached_current_price(stock_code) if im is not None else None
+            price = float(info.get('current_price', 0)) if isinstance(info, dict) else 0.0
+            if price > 0:
+                return price
+        except Exception:
+            pass
+        try:
+            from core.trading_decision_engine import signal_reference_price
+            return signal_reference_price(signal)
+        except Exception:
+            return None
+
+    def _is_same_strategy_label(self, label, strategy_name: str) -> bool:
+        """DB strategy 칸(페이퍼 = 폴더키 · 실전 = 클래스명)이 호출 전략과 같은가."""
+        if not label or not strategy_name:
+            return False
+        if label == strategy_name:
+            return True
+        strat = (getattr(self.bot, 'strategies', None) or {}).get(strategy_name)
+        return strat is not None and label in (getattr(strat, 'name', None), type(strat).__name__)
+
+    def _log_rebuy_shadow(self, trading_stock, strategy_name: str, signal) -> None:
+        """[재매수-shadow] 1줄 (매매 동작 0 · 예외는 1회 WARNING 후 무시).
+
+        직전 매도 = 같은 종목의 가장 최근 SELL(어떤 전략이든) · 오늘 이전 KOSPI 거래일
+        REBUY_SHADOW_TRADING_DAYS 개 창 안. 조회는 (종목, 오늘) 캐시(TTL 10분)라 틱마다
+        DB 를 때리지 않는다. 같은 (종목, 전략, 직전 매도)는 한 번만 찍는다.
+        """
+        if not rebuy_shadow_enabled():
+            return
+        try:
+            from config.constants import REBUY_SHADOW_TRADING_DAYS
+            code = trading_stock.stock_code
+            now = _rebuy_shadow_now()
+            today = now.date()
+            key = (code, today)
+            hit = self._rebuy_shadow_cache.get(key)
+            if hit is not None and now - hit[0] < REBUY_SHADOW_CACHE_TTL:
+                last_sell = hit[1]
+            else:
+                is_virtual = bool(getattr(self.bot.decision_engine, 'is_virtual_mode', True))
+                last_sell = self.bot.db_manager.trading_repo.get_last_sell_within_trading_days(
+                    code, today, REBUY_SHADOW_TRADING_DAYS, is_virtual=is_virtual)
+                if not isinstance(last_sell, dict):
+                    last_sell = None
+                self._rebuy_shadow_cache[key] = (now, last_sell)
+            if last_sell is None:
+                return
+            logged_key = (code, strategy_name, last_sell.get('timestamp'))
+            if logged_key in self._rebuy_shadow_logged:
+                return
+            line = format_rebuy_shadow_line(
+                code, strategy_name, last_sell, today,
+                buy_price=self._rebuy_shadow_buy_price(code, signal),
+                same_strategy=self._is_same_strategy_label(last_sell.get('strategy'), strategy_name),
+            )
+            self._rebuy_shadow_logged.add(logged_key)
+            self.logger.info(line)
+        except Exception as e:
+            if not self._rebuy_shadow_warned:
+                self._rebuy_shadow_warned = True
+                self.logger.warning(f"[재매수-shadow] 기록 실패 — 이후 같은 오류는 무시(매매 영향 0): {e}")
 
     async def analyze_buy_decision(self, trading_stock, available_funds: float = None,
                                    signal=None, strategy_name: str = "") -> bool:
@@ -126,11 +284,20 @@ class TradingAnalyzer:
 
             self.logger.debug(f"매수 판단 시작: {stock_code}({stock_name})")
 
-            # 추가 안전 검증: 현재 보유 중인 종목인지 다시 한번 확인
+            # 추가 안전 검증: «이 전략이» 이미 보유 중인 종목인지 다시 한번 확인.
+            # 종목코드만 비교하면 다른 전략의 보유가 이 전략의 매수를 막는다
+            # (2026-10-19 실례: book_envelope_200d 396300 보유 → daytrading 매수 차단).
+            # 슬롯·원장·매도는 (종목, 전략) 단위라 전략이 다르면 각자 사는 것이 정상이다.
             positioned_stocks = self.bot.trading_manager.get_stocks_by_state(StockState.POSITIONED)
-            if any(pos_stock.stock_code == stock_code for pos_stock in positioned_stocks):
+            same_code = [p for p in positioned_stocks if p.stock_code == stock_code]
+            if any(self._is_own_position(p, trading_stock, strategy_name) for p in same_code):
                 self.logger.info(f"보유 중인 종목 매수 신호 무시: {stock_code}({stock_name})")
                 return
+            if same_code:
+                self.logger.debug(
+                    f"{stock_code} 타전략 보유 중 — 전략별 독립 매수 판단 진행 "
+                    f"(보유 owner={[p.owner_strategy_name for p in same_code]}, 호출={strategy_name})"
+                )
 
             # 25분 매수 쿨다운 확인
             if trading_stock.is_buy_cooldown_active():
@@ -158,6 +325,9 @@ class TradingAnalyzer:
                     regime_index = getattr(strat, "regime_index", "both") or "both"
             except Exception:
                 pass
+
+            # [재매수-shadow] 기록 로그(10-29 창구 A · 동작 0) — 엔진 호출 «전» 1줄.
+            self._log_rebuy_shadow(trading_stock, strategy_name, signal)
 
             # 매매 판단 엔진으로 매수 신호 확인 (일봉 데이터 사용)
             # owner_signal: on_tick에서 '올바른 전략'이 생성·검증한 신호를 그대로 전달해야
