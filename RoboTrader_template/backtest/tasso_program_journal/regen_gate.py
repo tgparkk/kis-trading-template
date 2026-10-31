@@ -694,6 +694,9 @@ MANUAL_DOCS = [
     "ERRATA_2026-10-26_post13_runner_scope.md",
     # 🔴 2026-10-27 post13 산문 3본 (사람이 쓴 것 · verifier 1패스 뒤 · 값 계산 0 · 등재 «시점»에 이미 있다).
     "RESULTS_SELECTION_POST13.md", "RESULTS_EXIT_V2_POST13.md", "RESULTS_S5_POST13.md",
+    # 🔴 2026-11-01 — post14 사전등록(🔒 감시 모드 4회차 · 발행 «후» · fetch «전» 동결). 사람이 쓴 문서라 `MANUAL_DOCS` 자리 ·
+    #    등재는 동결 커밋 «앞»이고 «별도 커밋»이다(post13 선례 `b18c090`) · 파일은 등재 시점에 이미 있다(초안 `??`).
+    "PREREG_POST14.md",
     # 🔴 `verify_ledger_post8.py` 는 post5·post6·post7 판 전례대로 **일부러 등재하지 않는다**
     #    (원장 검증기는 `RESULTS_*.md` 를 만들지 않아 재현 게이트의 대상축이 아니다).
 ]
