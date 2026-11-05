@@ -187,3 +187,39 @@ def test_zero_rows_stays_error_level(monkeypatch):
     """문구만 바꾼다 — 레벨·승격 조건은 그대로 ERROR 다."""
     rec = _run(_base(foreign_flow={"codes": 2788, "rows": 0}), monkeypatch)
     assert rec.error and not any("0행" in m for m in rec.warning)
+
+
+# ── K-① 수집 스위치 off (2026-11-05) ─────────────────────────────────────
+
+def test_disabled_switch_is_silent(monkeypatch):
+    """스위치 off 결과는 «수집 안 함» — ERROR·WARNING 0(0행 경보로 세지 않는다)."""
+    rec = _run(_base(foreign_flow={"disabled": "FOREIGN_FLOW_COLLECT off"}), monkeypatch)
+    assert rec.error == []
+    assert rec.warning == []
+
+
+def test_disabled_contract_with_real_eod_stage(monkeypatch):
+    """계약 고정: eod_collection 이 off 때 실제로 내는 값을 그대로 넣어도 조용해야 한다."""
+    import collectors.eod_collection as eod
+    from config import constants as cc
+    monkeypatch.setattr(cc, "FOREIGN_FLOW_COLLECT", False)
+    monkeypatch.setattr(eod, "collect_foreign_flow",
+                        lambda d=None: (_ for _ in ()).throw(AssertionError("off 인데 호출")))
+    off_value = eod._foreign_flow_stage("20261106")
+    rec = _run(_base(foreign_flow=off_value), monkeypatch)
+    assert rec.error == [] and rec.warning == []
+    assert any("외국인수급" in m for m in rec.info), "요약 INFO 에는 그대로 보인다"
+
+
+def test_disabled_overrides_zero_rows_shape(monkeypatch):
+    """R2: disabled 가 붙어 있으면 0행 모양({'codes': 2788, 'rows': 0})이 섞여도 조용하다.
+
+    가드 `and not foreign.get("disabled")` 를 지우면 이 테스트가 실패해야 한다
+    (disabled 단독 dict 는 codes 키가 없어 가드 없이도 조용하므로 그것만으론 못 잡는다).
+    """
+    rec = _run(
+        _base(foreign_flow={"disabled": "FOREIGN_FLOW_COLLECT off", "codes": 2788, "rows": 0}),
+        monkeypatch,
+    )
+    assert rec.error == []
+    assert rec.warning == []

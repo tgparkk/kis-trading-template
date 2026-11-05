@@ -238,6 +238,36 @@ SCREENER_SNAPSHOT_ENABLED = _os.getenv("SCREENER_SNAPSHOT_ENABLED", "false").low
 del _os
 
 # =============================================================================
+# 외국인수급(네이버 302) EOD 수집 스위치 — 2026-11-05 창구 2회 K-① (기본 off)
+#   0행 36회째(표 `foreign_flow` max 09-09) · 운영 읽는 코드 0 → 매일 ERROR 1줄 + 네이버
+#   2,788코드 호출만 남아 기본 off. 재개 = `.env` 에 `FOREIGN_FLOW_COLLECT=on` + 재기동.
+#   켜는 값은 on|1|true 뿐(대소문자 무시) · 끄는 값 off|0|false · 미설정/빈값 = off.
+#   그 밖의 값(예: 인라인 주석 `on  # 재개`)은 off + 원문을 _INVALID 로 돌려준다 —
+#   WARNING 은 호출자(`collectors/eod_collection.py`)가 찍는다(SECTOR_NEWS_BOOST_MODE 와 같은 규약).
+#   🔴 «수집 스위치»다 — 폐지된 옛 data-source env(KIS_DATA_SOURCE 등)와 무관.
+# =============================================================================
+FOREIGN_FLOW_COLLECT_ON_VALUES = ("on", "1", "true")
+FOREIGN_FLOW_COLLECT_OFF_VALUES = ("off", "0", "false")
+
+
+def resolve_foreign_flow_collect(raw):
+    """env 문자열 → (켬 여부, invalid_raw). 비어 있으면 off, 모르는 값이면 off + 원문(호출자가 WARNING)."""
+    if raw is None or not str(raw).strip():
+        return False, None
+    v = str(raw).strip().lower()
+    if v in FOREIGN_FLOW_COLLECT_ON_VALUES:
+        return True, None
+    if v in FOREIGN_FLOW_COLLECT_OFF_VALUES:
+        return False, None
+    return False, raw
+
+
+import os as _os
+FOREIGN_FLOW_COLLECT, FOREIGN_FLOW_COLLECT_INVALID = (
+    resolve_foreign_flow_collect(_os.getenv("FOREIGN_FLOW_COLLECT")))
+del _os
+
+# =============================================================================
 # 섹터 뉴스 부스트 (스펙 B, 2026-09-06) — 09:00 후보 로드 시 순위 이동. 기본 shadow.
 #   spec: docs/superpowers/specs/2026-09-06-sector-news-boost-design.md §5.3
 #   off    : 조회 안 함(DB 접근 0)

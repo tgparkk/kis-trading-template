@@ -11,9 +11,12 @@
       bot/system_monitor.py 가 그 키로 로그 문구를 고르는 라이브 계약이다.
       항상 빈 dict 임을 아래에서 고정한다(음성 대조).
 """
+import types
+
 import pytest
 
 import collectors.eod_collection as eod
+from config import constants as _cc
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +33,17 @@ def _stub_flow_stages(monkeypatch):
         monkeypatch.setattr(eod, nm, lambda d=None: {"skipped": True})
 
 
+@pytest.fixture(autouse=True)
+def _pin_foreign_flow_switch_off(monkeypatch):
+    """외국인수급 스위치를 기본값(off)으로 고정 — 실행 환경 env 에 흔들리지 않게(K-① 2026-11-05)."""
+    monkeypatch.setattr(_cc, "FOREIGN_FLOW_COLLECT", False)
+    monkeypatch.setattr(_cc, "FOREIGN_FLOW_COLLECT_INVALID", None)
+
+
+def _foreign_flow_on(monkeypatch):
+    monkeypatch.setattr(_cc, "FOREIGN_FLOW_COLLECT", True)
+
+
 def test_run_data_collection_calls_all_stages(monkeypatch):
     calls = []
     monkeypatch.setattr(eod, "collect_daily", lambda d=None: calls.append("daily") or {"rows": 1})
@@ -39,7 +53,8 @@ def test_run_data_collection_calls_all_stages(monkeypatch):
     monkeypatch.setattr(eod, "collect_foreign_flow", lambda d=None: calls.append("foreign_flow") or {"rows": 3})
     monkeypatch.setattr(eod, "collect_corp_events", lambda d=None: calls.append("corp_events") or {"rows": 4})
     out = eod.run_data_collection("20260623")
-    assert calls == ["daily", "minute", "index", "stock_market", "foreign_flow", "corp_events"]
+    # 외국인수급은 기본 off(K-①) — 수집기를 부르지 않는다
+    assert calls == ["daily", "minute", "index", "stock_market", "corp_events"]
     # 수급 3축은 픽스처 스텁이라 calls 에 안 들어가지만 결과 키는 있어야 한다
     assert out["investor_trend"] == {"skipped": True}
     assert out["program_trade"] == {"skipped": True}
@@ -47,7 +62,7 @@ def test_run_data_collection_calls_all_stages(monkeypatch):
     assert out["credit_balance"] == {"skipped": True}
     assert out["overtime"] == {"skipped": True}
     assert out["daily"] == {"rows": 1}
-    assert out["foreign_flow"] == {"rows": 3}
+    assert out["foreign_flow"] == {"disabled": "FOREIGN_FLOW_COLLECT off"}
     assert out["corp_events"] == {"rows": 4}
 
 
@@ -134,6 +149,7 @@ def test_reconcile_machinery_is_gone():
 
 
 def test_stage_exception_is_isolated(monkeypatch):
+    _foreign_flow_on(monkeypatch)
     monkeypatch.setattr(eod, "collect_daily", lambda d=None: (_ for _ in ()).throw(RuntimeError("boom")))
     monkeypatch.setattr(eod, "collect_minute", lambda d=None: {"rows": 2})
     monkeypatch.setattr(eod, "collect_index", lambda s=None: {"KOSPI": 1})
@@ -148,7 +164,8 @@ def test_stage_exception_is_isolated(monkeypatch):
 
 
 def test_foreign_flow_stage_exception_is_isolated(monkeypatch):
-    """(단계격리) foreign_flow 수집 실패가 다른 단계·EOD 흐름을 막지 않는다."""
+    """(단계격리) foreign_flow 수집 실패가 다른 단계·EOD 흐름을 막지 않는다(스위치 on)."""
+    _foreign_flow_on(monkeypatch)
     monkeypatch.setattr(eod, "collect_daily", lambda d=None: {"rows": 1})
     monkeypatch.setattr(eod, "collect_minute", lambda d=None: {"rows": 2})
     monkeypatch.setattr(eod, "collect_index", lambda s=None: {"KOSPI": 1})
@@ -266,3 +283,80 @@ def test_sector_stage_count_is_exactly_two_lines():
     import inspect
     src = inspect.getsource(eod.run_data_collection)
     assert src.count("collect_sector") == 1 and src.count("reconcile_sector") == 1
+
+
+# ── K-① 외국인수급 수집 스위치 (2026-11-05 · 기본 off · FOREIGN_FLOW_COLLECT=on 으로 재개) ──
+
+class _RecLog:
+    def __init__(self):
+        self.info, self.warning, self.error = [], [], []
+
+
+def _stub_core_stages(monkeypatch, calls):
+    monkeypatch.setattr(eod, "collect_daily", lambda d=None: {"rows": 1})
+    monkeypatch.setattr(eod, "collect_minute", lambda d=None: {"rows": 2})
+    monkeypatch.setattr(eod, "collect_index", lambda s=None: {"KOSPI": 1})
+    monkeypatch.setattr(eod, "collect_stock_market", lambda: {"KOSPI": 1, "KOSDAQ": 1})
+    monkeypatch.setattr(eod, "collect_foreign_flow",
+                        lambda d=None: calls.append(("foreign_flow", d)) or {"codes": 2788, "rows": 24320})
+    monkeypatch.setattr(eod, "collect_corp_events", lambda d=None: {"rows": 4})
+    monkeypatch.setattr(eod, "reset_market_cache", lambda: None)
+
+
+def test_foreign_flow_off_by_default_skips_collector_quietly(monkeypatch):
+    """기본 off: 수집기 호출 0 · 결과 = disabled · INFO 1줄 · ERROR/WARNING 0."""
+    calls = []
+    _stub_core_stages(monkeypatch, calls)
+    rec = _RecLog()
+    monkeypatch.setattr(eod, "logger", types.SimpleNamespace(
+        info=rec.info.append, warning=rec.warning.append, error=rec.error.append))
+    out = eod.run_data_collection("20261106")
+    assert calls == [], "off 인데 네이버 수집기를 불렀다"
+    assert out["foreign_flow"] == {"disabled": "FOREIGN_FLOW_COLLECT off"}
+    assert rec.info == ["외국인수급 수집 off(스위치)"]
+    assert rec.error == [] and rec.warning == []
+    # 다른 단계는 그대로
+    assert out["daily"] == {"rows": 1} and out["corp_events"] == {"rows": 4}
+
+
+def test_foreign_flow_on_resumes_collection(monkeypatch):
+    """스위치 on: 예전처럼 trade_date 로 수집기를 부르고 결과를 그대로 싣는다."""
+    calls = []
+    _stub_core_stages(monkeypatch, calls)
+    _foreign_flow_on(monkeypatch)
+    out = eod.run_data_collection("20261106")
+    assert calls == [("foreign_flow", "20261106")]
+    assert out["foreign_flow"] == {"codes": 2788, "rows": 24320}
+
+
+@pytest.mark.parametrize("raw,expected", [
+    (None, (False, None)), ("", (False, None)), ("  ", (False, None)),
+    ("off", (False, None)), ("0", (False, None)), ("false", (False, None)), ("OFF", (False, None)),
+    ("on", (True, None)), ("ON", (True, None)), (" on ", (True, None)),
+    ("1", (True, None)), ("true", (True, None)), ("True", (True, None)),
+    # 모르는 값 = off + 원문(호출자가 WARNING)
+    ("onn", (False, "onn")), ("yes", (False, "yes")),
+    ("on  # 재개", (False, "on  # 재개")),
+])
+def test_resolve_foreign_flow_collect(raw, expected):
+    """켜는 값은 on|1|true 뿐 — 미설정은 off · 오타·인라인 주석은 off + 원문."""
+    assert _cc.resolve_foreign_flow_collect(raw) == expected
+
+
+def test_foreign_flow_invalid_value_warns_and_stays_off(monkeypatch):
+    """R1: 해석 불가 원값(인라인 주석 등)은 WARNING 1줄(repr 원값) + off 유지 · INFO 에도 원값."""
+    calls = []
+    _stub_core_stages(monkeypatch, calls)
+    raw = "on  # 재개"
+    monkeypatch.setattr(_cc, "FOREIGN_FLOW_COLLECT", False)
+    monkeypatch.setattr(_cc, "FOREIGN_FLOW_COLLECT_INVALID", raw)
+    rec = _RecLog()
+    monkeypatch.setattr(eod, "logger", types.SimpleNamespace(
+        info=rec.info.append, warning=rec.warning.append, error=rec.error.append))
+    out = eod.run_data_collection("20261106")
+    assert calls == [], "해석 불가 값으로 켜지면 안 된다"
+    assert out["foreign_flow"] == {"disabled": "FOREIGN_FLOW_COLLECT off"}
+    assert len(rec.warning) == 1 and repr(raw) in rec.warning[0]
+    assert len(rec.info) == 1 and rec.info[0].startswith("외국인수급 수집 off(스위치)")
+    assert repr(raw) in rec.info[0]
+    assert rec.error == []
