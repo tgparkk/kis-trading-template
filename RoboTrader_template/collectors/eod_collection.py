@@ -51,7 +51,12 @@ def _foreign_flow_stage(trade_date):
     """
     from config import constants as _cc
     if not _cc.FOREIGN_FLOW_COLLECT:
-        logger.info("외국인수급 수집 off(스위치)")
+        invalid = _cc.FOREIGN_FLOW_COLLECT_INVALID
+        if invalid is not None:
+            logger.warning(f"FOREIGN_FLOW_COLLECT 값 해석 불가 {invalid!r} — off 유지"
+                           f"(켜려면 on|1|true · .env 인라인 주석 금지)")
+        logger.info("외국인수급 수집 off(스위치)"
+                    + (f" · 원값 {invalid!r}" if invalid is not None else ""))
         return {"disabled": "FOREIGN_FLOW_COLLECT off"}
     return _safe(collect_foreign_flow, trade_date)
 

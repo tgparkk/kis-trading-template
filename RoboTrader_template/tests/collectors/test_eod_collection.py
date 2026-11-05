@@ -37,6 +37,7 @@ def _stub_flow_stages(monkeypatch):
 def _pin_foreign_flow_switch_off(monkeypatch):
     """외국인수급 스위치를 기본값(off)으로 고정 — 실행 환경 env 에 흔들리지 않게(K-① 2026-11-05)."""
     monkeypatch.setattr(_cc, "FOREIGN_FLOW_COLLECT", False)
+    monkeypatch.setattr(_cc, "FOREIGN_FLOW_COLLECT_INVALID", None)
 
 
 def _foreign_flow_on(monkeypatch):
@@ -329,10 +330,33 @@ def test_foreign_flow_on_resumes_collection(monkeypatch):
 
 
 @pytest.mark.parametrize("raw,expected", [
-    (None, False), ("", False), ("  ", False), ("off", False), ("0", False),
-    ("false", False), ("onn", False), ("yes", False),
-    ("on", True), ("ON", True), (" on ", True), ("1", True), ("true", True), ("True", True),
+    (None, (False, None)), ("", (False, None)), ("  ", (False, None)),
+    ("off", (False, None)), ("0", (False, None)), ("false", (False, None)), ("OFF", (False, None)),
+    ("on", (True, None)), ("ON", (True, None)), (" on ", (True, None)),
+    ("1", (True, None)), ("true", (True, None)), ("True", (True, None)),
+    # 모르는 값 = off + 원문(호출자가 WARNING)
+    ("onn", (False, "onn")), ("yes", (False, "yes")),
+    ("on  # 재개", (False, "on  # 재개")),
 ])
 def test_resolve_foreign_flow_collect(raw, expected):
-    """켜는 값은 on|1|true 뿐 — 미설정·오타는 off(기본)."""
-    assert _cc.resolve_foreign_flow_collect(raw) is expected
+    """켜는 값은 on|1|true 뿐 — 미설정은 off · 오타·인라인 주석은 off + 원문."""
+    assert _cc.resolve_foreign_flow_collect(raw) == expected
+
+
+def test_foreign_flow_invalid_value_warns_and_stays_off(monkeypatch):
+    """R1: 해석 불가 원값(인라인 주석 등)은 WARNING 1줄(repr 원값) + off 유지 · INFO 에도 원값."""
+    calls = []
+    _stub_core_stages(monkeypatch, calls)
+    raw = "on  # 재개"
+    monkeypatch.setattr(_cc, "FOREIGN_FLOW_COLLECT", False)
+    monkeypatch.setattr(_cc, "FOREIGN_FLOW_COLLECT_INVALID", raw)
+    rec = _RecLog()
+    monkeypatch.setattr(eod, "logger", types.SimpleNamespace(
+        info=rec.info.append, warning=rec.warning.append, error=rec.error.append))
+    out = eod.run_data_collection("20261106")
+    assert calls == [], "해석 불가 값으로 켜지면 안 된다"
+    assert out["foreign_flow"] == {"disabled": "FOREIGN_FLOW_COLLECT off"}
+    assert len(rec.warning) == 1 and repr(raw) in rec.warning[0]
+    assert len(rec.info) == 1 and rec.info[0].startswith("외국인수급 수집 off(스위치)")
+    assert repr(raw) in rec.info[0]
+    assert rec.error == []

@@ -142,6 +142,7 @@ target_stocks: []
 | `SCREENER_SNAPSHOT_ENABLED` | `config/constants.py` → `bot/liquidation_handler.py` · `bot/system_monitor.py` | `false` | `run_robotrader.bat` 가 `true`, `run_instance.bat` 는 `false`(소비 전용). 꺼지면 이 프로세스는 장 시작 후 최초 후보 로드 시 스냅샷을 만들지 않는다 — 같은 DB 에 다른 프로세스(페이퍼 봇)가 만든 직전 거래일 스냅샷도 없으면 당일 후보 0건(전 전략 0건이면 `[E6]` 거래량 폴백). 소비자 `core/candidate_selector.py` 는 이 변수를 보지 않고 스냅샷 존재만 본다 |
 | `SECTOR_NEWS_BOOST_MODE` | `config/constants.py` → `core/candidate_selector.py` | `shadow` | `off` / `shadow` / `live`. 미지값 → `off` + WARNING |
 | `RS_LEADER_CORP_ACTION_MODE` | `config/constants.py` → `strategies/rs_leader/corp_action_guard.py` | `shadow` | `off` / `shadow` / `live`. **라이브는 `.env` 로 `live`(2026-09-17 07:40 발효)** → [prereg_2026-09-16_rsleader_exclusion_live.md](prereg_2026-09-16_rsleader_exclusion_live.md). 롤백 = 줄 삭제(→shadow) 또는 `off` |
+| `FOREIGN_FLOW_COLLECT` | `config/constants.py` → `collectors/eod_collection.py` | off(미설정) | 외국인수급(네이버) EOD 수집 스위치(2026-11-05 K-① · 0행 지속으로 기본 off). `on` / `1` / `true` 면 수집·0행 ERROR 경보 재개, `off` / `0` / `false`·미설정 = 수집 안 함(INFO 1줄). 미지값(인라인 주석 등) → off + WARNING. 폐지된 data-source env(§4-3)와 무관 |
 | `OPENDART_API_KEY` | `collectors/corp_events_collector.py`(env 우선, 없으면 `.env` 를 직접 파싱) · `financial_collector.py` · `sector_collector.py` | `''` | DART 수집기 전용 |
 | `LOG_LEVEL` | `utils/logger.py` | `INFO` | 예: `DEBUG` |
 | `ALLOW_FOREIGN_VENV` | `bot/env_guard.py` | 미설정 | `1` 이면 venv 가드 실패를 경고로 낮춤 |

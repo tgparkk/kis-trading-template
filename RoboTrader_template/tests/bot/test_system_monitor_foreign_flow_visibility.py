@@ -210,3 +210,16 @@ def test_disabled_contract_with_real_eod_stage(monkeypatch):
     assert rec.error == [] and rec.warning == []
     assert any("외국인수급" in m for m in rec.info), "요약 INFO 에는 그대로 보인다"
 
+
+def test_disabled_overrides_zero_rows_shape(monkeypatch):
+    """R2: disabled 가 붙어 있으면 0행 모양({'codes': 2788, 'rows': 0})이 섞여도 조용하다.
+
+    가드 `and not foreign.get("disabled")` 를 지우면 이 테스트가 실패해야 한다
+    (disabled 단독 dict 는 codes 키가 없어 가드 없이도 조용하므로 그것만으론 못 잡는다).
+    """
+    rec = _run(
+        _base(foreign_flow={"disabled": "FOREIGN_FLOW_COLLECT off", "codes": 2788, "rows": 0}),
+        monkeypatch,
+    )
+    assert rec.error == []
+    assert rec.warning == []
