@@ -238,6 +238,25 @@ SCREENER_SNAPSHOT_ENABLED = _os.getenv("SCREENER_SNAPSHOT_ENABLED", "false").low
 del _os
 
 # =============================================================================
+# 외국인수급(네이버 302) EOD 수집 스위치 — 2026-11-05 창구 2회 K-① (기본 off)
+#   0행 36회째(표 `foreign_flow` max 09-09) · 운영 읽는 코드 0 → 매일 ERROR 1줄 + 네이버
+#   2,788코드 호출만 남아 기본 off. 재개 = `.env` 에 `FOREIGN_FLOW_COLLECT=on` + 재기동.
+#   켜는 값은 on|1|true 뿐(대소문자 무시) · 그 외(미설정·오타)는 off.
+#   🔴 «수집 스위치»다 — 폐지된 옛 data-source env(KIS_DATA_SOURCE 등)와 무관.
+# =============================================================================
+FOREIGN_FLOW_COLLECT_ON_VALUES = ("on", "1", "true")
+
+
+def resolve_foreign_flow_collect(raw) -> bool:
+    """env 문자열 → 수집 여부. on|1|true 만 True, 나머지(None·빈값·오타)는 False."""
+    return raw is not None and str(raw).strip().lower() in FOREIGN_FLOW_COLLECT_ON_VALUES
+
+
+import os as _os
+FOREIGN_FLOW_COLLECT = resolve_foreign_flow_collect(_os.getenv("FOREIGN_FLOW_COLLECT"))
+del _os
+
+# =============================================================================
 # 섹터 뉴스 부스트 (스펙 B, 2026-09-06) — 09:00 후보 로드 시 순위 이동. 기본 shadow.
 #   spec: docs/superpowers/specs/2026-09-06-sector-news-boost-design.md §5.3
 #   off    : 조회 안 함(DB 접근 0)
