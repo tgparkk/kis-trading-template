@@ -267,6 +267,52 @@ class DayTradingBot:
                 self.logger.info(f"전략 장시작 콜백 완료: {strat.name}")
             except Exception as e:
                 self.logger.warning(f"전략 장시작 콜백 오류 ({getattr(strat, 'name', '?')}): {e}")
+        # on_market_open 이 daily_trades 를 0 으로 둔 «뒤»에 복원해야 덮이지 않는다.
+        self._restore_daily_trades_from_db()
+
+    def _restore_daily_trades_from_db(self) -> None:
+        """장중 재기동 하루 매수 한도 복원 (2026-11-05 창구 2회 D · 결함 10-16).
+
+        daily_trades 는 메모리에만 있어 장중 재기동하면 그날 한도가 0부터 다시 셌다.
+        전략마다 ``daily_trades = max(현재, 오늘 KST 그 전략 DB BUY 수)``. 정상 07:40 기동은
+        장시작 때 DB BUY 0 → 무동작. DB BUY = 체결분만이라 미체결(_pending_buy_count · 10-28 M1)과
+        겹치지 않는다(이중 계상 0). K·한도 숫자는 건드리지 않는다.
+        조회 실패 = 그 전략 복원 0 + WARNING 1줄(fail-open · 봇 계속). 롤백 env DAILY_CAP_RESTORE=off.
+        """
+        try:
+            from config.constants import is_daily_cap_restore_enabled
+            if not is_daily_cap_restore_enabled():
+                self.logger.info("[하루 한도 복원] DAILY_CAP_RESTORE=off — 복원 생략")
+                return
+            repo = getattr(getattr(self, 'db_manager', None), 'trading_repo', None)
+            if repo is None:
+                return
+            is_virtual = bool(getattr(getattr(self, 'decision_engine', None), 'is_virtual_mode', True))
+            strategies = getattr(self, 'strategies', None) or {}
+            if not strategies and getattr(self, 'strategy', None) is not None:
+                strategies = {getattr(self.strategy, 'name', '?'): self.strategy}
+        except Exception as e:  # noqa: BLE001 — 복원 준비 실패가 장시작을 막으면 안 된다
+            self.logger.warning(f"[하루 한도 복원] 준비 실패 → 복원 0(fail-open): {e!r}")
+            return
+
+        for key, strat in strategies.items():
+            if not hasattr(strat, 'daily_trades'):
+                continue
+            # 표기 2종: 페이퍼 표 = 폴더키 · 실전 인스턴스 표 = 클래스명(strat.name)
+            names = {key, getattr(strat, 'name', None)}
+            folder_key = getattr(strat, '_strategy_folder_key', None)
+            try:
+                if callable(folder_key):
+                    names.add(folder_key())
+                n = repo.count_today_buys(names, is_virtual=is_virtual)
+                if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+                    raise TypeError(f"BUY 수가 정수가 아님: {n!r}")
+            except Exception as e:  # noqa: BLE001 — fail-open
+                self.logger.warning(f"[하루 한도 복원] {key} 오늘 BUY 조회 실패 → 복원 0(fail-open): {e!r}")
+                continue
+            if n > 0:
+                strat.daily_trades = max(strat.daily_trades, n)
+                self.logger.info(f"[하루 한도 복원] {key} 오늘 BUY {n} → daily_trades {strat.daily_trades}")
 
     async def _call_strategy_market_close(self):
         """장 종료 시 전략 콜백 호출 — 로드된 전략 전부(전략마다 따로 예외 격리).

@@ -338,6 +338,26 @@ SCRAP_BUY_SHADOW_RATIO = 0.5
 REBUY_SHADOW_TRADING_DAYS = 5
 
 # =============================================================================
+# 장중 재기동 하루 매수 한도 복원 (2026-11-05 창구 2회 묶음 P · D)
+#   장 시작 콜백(on_market_open = daily_trades 0) «뒤»에 전략별 daily_trades 를
+#   max(현재, 오늘 KST 그 전략 DB BUY 수) 로 복원한다(main._restore_daily_trades_from_db).
+#   정상 07:40 기동 = 09:00 장시작 때 DB BUY 0 → 무동작. 조회 실패 = 복원 0(fail-open).
+#   롤백 env `DAILY_CAP_RESTORE` = on(기본) | off/0/false/no (대소문자·공백 무시 · 호출 시점에 읽음).
+# =============================================================================
+DAILY_CAP_RESTORE_ENV = "DAILY_CAP_RESTORE"
+_DAILY_CAP_RESTORE_OFF = frozenset({"off", "0", "false", "no"})
+
+
+def is_daily_cap_restore_enabled(environ=None) -> bool:
+    """롤백 스위치 — `_DAILY_CAP_RESTORE_OFF` 일 때만 False. 미설정·오타는 on."""
+    import os as _os
+    env = _os.environ if environ is None else environ
+    raw = env.get(DAILY_CAP_RESTORE_ENV)
+    if raw is None:
+        return True
+    return str(raw).strip().lower() not in _DAILY_CAP_RESTORE_OFF
+
+# =============================================================================
 # 데이터 읽기 소스 — kis_template **단일**. 롤백 스위치는 폐지됐다 (2026-08-17).
 #
 # 🔴 왜 없앴나 — 「롤백 스위치」가 아니라 「누르면 죽는 버튼」이 되기 때문이다:
