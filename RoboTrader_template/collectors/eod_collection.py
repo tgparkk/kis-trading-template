@@ -44,13 +44,30 @@ def _safe(fn, *a):
         return {"error": str(e)}
 
 
+def _foreign_flow_stage(trade_date):
+    """외국인수급 단계 — 스위치 off(기본)면 수집 안 함(K-① 2026-11-05).
+
+    off 결과 {"disabled": ...} 는 bot/system_monitor.py 가 «수집 안 함»으로 조용히 넘긴다.
+    """
+    from config import constants as _cc
+    if not _cc.FOREIGN_FLOW_COLLECT:
+        invalid = _cc.FOREIGN_FLOW_COLLECT_INVALID
+        if invalid is not None:
+            logger.warning(f"FOREIGN_FLOW_COLLECT 값 해석 불가 {invalid!r} — off 유지"
+                           f"(켜려면 on|1|true · .env 인라인 주석 금지)")
+        logger.info("외국인수급 수집 off(스위치)"
+                    + (f" · 원값 {invalid!r}" if invalid is not None else ""))
+        return {"disabled": "FOREIGN_FLOW_COLLECT off"}
+    return _safe(collect_foreign_flow, trade_date)
+
+
 def run_data_collection(trade_date: str = None) -> dict:
     out = {
         "daily": _safe(collect_daily, trade_date),
         "minute": _safe(collect_minute, trade_date),
         "index": _safe(collect_index),
         "stock_market": _safe(collect_stock_market),
-        "foreign_flow": _safe(collect_foreign_flow, trade_date),
+        "foreign_flow": _foreign_flow_stage(trade_date),
         "corp_events": _safe(collect_corp_events, trade_date),
         # 재무 수집 — corp_events 다음(같은 opendart 호스트, 순차 필수).
         # financials_reconcile 은 폐지된 레거시 교차비교(위 "reconcile" 키)가 아니라

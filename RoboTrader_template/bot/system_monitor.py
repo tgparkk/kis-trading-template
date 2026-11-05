@@ -807,7 +807,8 @@ class SystemMonitor:
         #    codes == 0 은 「유니버스 자체가 비었다」는 **다른 사건**이라 사유를 갈라
         #    WARNING 으로 남긴다(외국인 수집 실패로 오귀속하면 경보가 무뎌진다).
         #    skipped 는 신선도 가드의 **정상** 결과다 — 정상을 실패로 세면 경보가 마비된다.
-        if isinstance(foreign, dict) and not foreign.get("skipped"):
+        #    disabled 는 수집 스위치 off(기본 · K-① 2026-11-05) = «수집 안 함» — 경보 대상 아님.
+        if isinstance(foreign, dict) and not foreign.get("skipped") and not foreign.get("disabled"):
             if "error" in foreign:
                 self.logger.error(f"EOD 외국인수급 수집 실패: {foreign['error']}")
             elif "codes" in foreign:
