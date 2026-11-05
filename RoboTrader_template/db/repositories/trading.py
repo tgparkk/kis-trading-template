@@ -582,6 +582,40 @@ class TradingRepository(BaseRepository):
                 'trading_dates': dates,
             }
 
+    def count_today_buys(self, strategy_names, is_virtual: bool = True) -> int:
+        """오늘(KST) 이 전략의 BUY 행 수 — 장중 재기동 하루 매수 한도 복원용(2026-11-05 창구 2회 D).
+
+        🔴 ``strategy`` 열 표기가 표마다 다르다: 페이퍼 ``virtual_trading_records`` = 폴더키
+        (``daytrading_3methods_breakout``) · 실전 인스턴스 표(``self._real_table`` =
+        ``real_trading_<instance>`` · KIS_INSTANCE_DIR 로 결정) = 클래스명
+        (``DayTrading3MethodsBreakoutStrategy``). 그래서 호출자가 두 표기를 «모두» 넘기고
+        ``strategy = ANY(...)`` 로 센다. 날짜 = ``timestamp AT TIME ZONE 'Asia/Seoul'`` 의 날짜.
+        예외는 삼키지 않는다 — 호출자가 그 전략 복원 0 + WARNING 전략마다 1줄(페이퍼 최대 8줄)로 처리한다(fail-open).
+        """
+        names = sorted({str(n) for n in (strategy_names or ()) if n})
+        if not names:
+            return 0
+        today_str = now_kst().strftime('%Y-%m-%d')
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            if is_virtual:
+                cursor.execute(
+                    "SELECT COUNT(1) FROM virtual_trading_records "
+                    "WHERE action = 'BUY' AND is_test = true AND source = %s "
+                    "AND strategy = ANY(%s) "
+                    "AND (timestamp AT TIME ZONE 'Asia/Seoul')::date = %s::date",
+                    (self.SOURCE_KIS_TEMPLATE, names, today_str),
+                )
+            else:
+                cursor.execute(
+                    f"SELECT COUNT(1) FROM {self._real_table} "
+                    f"WHERE action = 'BUY' AND strategy = ANY(%s) "
+                    f"AND (timestamp AT TIME ZONE 'Asia/Seoul')::date = %s::date",
+                    (names, today_str),
+                )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
     def get_virtual_trading_history(self, days: int = 30, include_open: bool = True) -> pd.DataFrame:
         """가상 매매 이력 조회"""
         try:

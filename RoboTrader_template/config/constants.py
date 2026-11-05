@@ -368,6 +368,31 @@ SCRAP_BUY_SHADOW_RATIO = 0.5
 REBUY_SHADOW_TRADING_DAYS = 5
 
 # =============================================================================
+# 장중 재기동 하루 매수 한도 복원 (2026-11-05 창구 2회 묶음 P · D)
+#   장 시작 콜백(on_market_open = daily_trades 0) «뒤»에 전략별 daily_trades 를
+#   max(현재, 오늘 KST 그 전략 DB BUY 수) 로 복원한다(main._restore_daily_trades_from_db).
+#   정상 07:40 기동 = 09:00 장시작 때 DB BUY 0 → 무동작. 조회 실패 = 복원 0(fail-open).
+#   롤백 env `DAILY_CAP_RESTORE`: 켜는 값 on|1|true|yes · 끄는 값 off|0|false|no(대소문자·공백 무시)
+#   · 미설정/빈값 = on(기본) · 호출 시점에 읽음. 그 밖의 값(예: 인라인 주석 `off  # 롤백`)은
+#   «기본 on 유지» + 원문을 _INVALID 로 돌려준다 — WARNING 은 호출자(main)가 찍는다(K-① 과 같은 규약).
+# =============================================================================
+DAILY_CAP_RESTORE_ENV = "DAILY_CAP_RESTORE"
+DAILY_CAP_RESTORE_ON_VALUES = ("on", "1", "true", "yes")
+DAILY_CAP_RESTORE_OFF_VALUES = ("off", "0", "false", "no")
+
+
+def resolve_daily_cap_restore(raw):
+    """env 문자열 → (켬 여부, invalid_raw). 비어 있으면 on, 모르는 값이면 on + 원문(호출자가 WARNING)."""
+    if raw is None or not str(raw).strip():
+        return True, None
+    v = str(raw).strip().lower()
+    if v in DAILY_CAP_RESTORE_ON_VALUES:
+        return True, None
+    if v in DAILY_CAP_RESTORE_OFF_VALUES:
+        return False, None
+    return True, raw
+
+# =============================================================================
 # 데이터 읽기 소스 — kis_template **단일**. 롤백 스위치는 폐지됐다 (2026-08-17).
 #
 # 🔴 왜 없앴나 — 「롤백 스위치」가 아니라 「누르면 죽는 버튼」이 되기 때문이다:
