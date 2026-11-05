@@ -590,7 +590,7 @@ class TradingRepository(BaseRepository):
         ``real_trading_<instance>`` · KIS_INSTANCE_DIR 로 결정) = 클래스명
         (``DayTrading3MethodsBreakoutStrategy``). 그래서 호출자가 두 표기를 «모두» 넘기고
         ``strategy = ANY(...)`` 로 센다. 날짜 = ``timestamp AT TIME ZONE 'Asia/Seoul'`` 의 날짜.
-        예외는 삼키지 않는다 — 호출자가 WARNING 1줄 + 복원 0 으로 처리한다(fail-open).
+        예외는 삼키지 않는다 — 호출자가 그 전략 복원 0 + WARNING 전략마다 1줄(페이퍼 최대 8줄)로 처리한다(fail-open).
         """
         names = sorted({str(n) for n in (strategy_names or ()) if n})
         if not names:

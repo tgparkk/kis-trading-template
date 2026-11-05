@@ -143,6 +143,7 @@ target_stocks: []
 | `SECTOR_NEWS_BOOST_MODE` | `config/constants.py` → `core/candidate_selector.py` | `shadow` | `off` / `shadow` / `live`. 미지값 → `off` + WARNING |
 | `RS_LEADER_CORP_ACTION_MODE` | `config/constants.py` → `strategies/rs_leader/corp_action_guard.py` | `shadow` | `off` / `shadow` / `live`. **라이브는 `.env` 로 `live`(2026-09-17 07:40 발효)** → [prereg_2026-09-16_rsleader_exclusion_live.md](prereg_2026-09-16_rsleader_exclusion_live.md). 롤백 = 줄 삭제(→shadow) 또는 `off` |
 | `FOREIGN_FLOW_COLLECT` | `config/constants.py` → `collectors/eod_collection.py` | off(미설정) | 외국인수급(네이버) EOD 수집 스위치(2026-11-05 K-① · 0행 지속으로 기본 off). `on` / `1` / `true` 면 수집·0행 ERROR 경보 재개, `off` / `0` / `false`·미설정 = 수집 안 함(INFO 1줄). 미지값(인라인 주석 등) → off + WARNING. 폐지된 data-source env(§4-3)와 무관 |
+| `DAILY_CAP_RESTORE` | `config/constants.py` `resolve_daily_cap_restore()` → `main._restore_daily_trades_from_db()` | on(미설정) | 장중 재기동 하루 매수 한도 복원 스위치(2026-11-05 창구 2회 D). 장시작 콜백 뒤 전략마다 `daily_trades = max(현재, 오늘 KST DB BUY 수)` (페이퍼 `virtual_trading_records` 폴더키 / 실전 `real_trading_<instance>` 클래스명 둘 다 셈). 정상 07:40 기동 = 무동작. `off` / `0` / `false` / `no` = 복원 생략(롤백), `on` / `1` / `true` / `yes`·미설정 = on. 미지값(인라인 주석 등) → **on 유지** + WARNING. 조회 실패 = 그 전략 복원 0 + WARNING(fail-open) |
 | `OPENDART_API_KEY` | `collectors/corp_events_collector.py`(env 우선, 없으면 `.env` 를 직접 파싱) · `financial_collector.py` · `sector_collector.py` | `''` | DART 수집기 전용 |
 | `LOG_LEVEL` | `utils/logger.py` | `INFO` | 예: `DEBUG` |
 | `ALLOW_FOREIGN_VENV` | `bot/env_guard.py` | 미설정 | `1` 이면 venv 가드 실패를 경고로 낮춤 |

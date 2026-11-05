@@ -277,11 +277,17 @@ class DayTradingBot:
         전략마다 ``daily_trades = max(현재, 오늘 KST 그 전략 DB BUY 수)``. 정상 07:40 기동은
         장시작 때 DB BUY 0 → 무동작. DB BUY = 체결분만이라 미체결(_pending_buy_count · 10-28 M1)과
         겹치지 않는다(이중 계상 0). K·한도 숫자는 건드리지 않는다.
-        조회 실패 = 그 전략 복원 0 + WARNING 1줄(fail-open · 봇 계속). 롤백 env DAILY_CAP_RESTORE=off.
+        조회 실패 = 그 전략 복원 0 + WARNING 전략마다 1줄(페이퍼 최대 8줄 · fail-open · 봇 계속).
+        롤백 env DAILY_CAP_RESTORE=off · 미지값은 WARNING 1줄 + 기본 on 유지.
         """
         try:
-            from config.constants import is_daily_cap_restore_enabled
-            if not is_daily_cap_restore_enabled():
+            from config.constants import DAILY_CAP_RESTORE_ENV, resolve_daily_cap_restore
+            enabled, invalid_raw = resolve_daily_cap_restore(os.environ.get(DAILY_CAP_RESTORE_ENV))
+            if invalid_raw is not None:
+                self.logger.warning(
+                    f"[하루 한도 복원] {DAILY_CAP_RESTORE_ENV} 미지값 {invalid_raw!r} → 기본 on 유지"
+                    f"(끄려면 off|0|false|no · 인라인 주석은 값에 포함된다)")
+            if not enabled:
                 self.logger.info("[하루 한도 복원] DAILY_CAP_RESTORE=off — 복원 생략")
                 return
             repo = getattr(getattr(self, 'db_manager', None), 'trading_repo', None)

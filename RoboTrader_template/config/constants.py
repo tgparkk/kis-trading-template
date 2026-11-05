@@ -372,20 +372,25 @@ REBUY_SHADOW_TRADING_DAYS = 5
 #   장 시작 콜백(on_market_open = daily_trades 0) «뒤»에 전략별 daily_trades 를
 #   max(현재, 오늘 KST 그 전략 DB BUY 수) 로 복원한다(main._restore_daily_trades_from_db).
 #   정상 07:40 기동 = 09:00 장시작 때 DB BUY 0 → 무동작. 조회 실패 = 복원 0(fail-open).
-#   롤백 env `DAILY_CAP_RESTORE` = on(기본) | off/0/false/no (대소문자·공백 무시 · 호출 시점에 읽음).
+#   롤백 env `DAILY_CAP_RESTORE`: 켜는 값 on|1|true|yes · 끄는 값 off|0|false|no(대소문자·공백 무시)
+#   · 미설정/빈값 = on(기본) · 호출 시점에 읽음. 그 밖의 값(예: 인라인 주석 `off  # 롤백`)은
+#   «기본 on 유지» + 원문을 _INVALID 로 돌려준다 — WARNING 은 호출자(main)가 찍는다(K-① 과 같은 규약).
 # =============================================================================
 DAILY_CAP_RESTORE_ENV = "DAILY_CAP_RESTORE"
-_DAILY_CAP_RESTORE_OFF = frozenset({"off", "0", "false", "no"})
+DAILY_CAP_RESTORE_ON_VALUES = ("on", "1", "true", "yes")
+DAILY_CAP_RESTORE_OFF_VALUES = ("off", "0", "false", "no")
 
 
-def is_daily_cap_restore_enabled(environ=None) -> bool:
-    """롤백 스위치 — `_DAILY_CAP_RESTORE_OFF` 일 때만 False. 미설정·오타는 on."""
-    import os as _os
-    env = _os.environ if environ is None else environ
-    raw = env.get(DAILY_CAP_RESTORE_ENV)
-    if raw is None:
-        return True
-    return str(raw).strip().lower() not in _DAILY_CAP_RESTORE_OFF
+def resolve_daily_cap_restore(raw):
+    """env 문자열 → (켬 여부, invalid_raw). 비어 있으면 on, 모르는 값이면 on + 원문(호출자가 WARNING)."""
+    if raw is None or not str(raw).strip():
+        return True, None
+    v = str(raw).strip().lower()
+    if v in DAILY_CAP_RESTORE_ON_VALUES:
+        return True, None
+    if v in DAILY_CAP_RESTORE_OFF_VALUES:
+        return False, None
+    return True, raw
 
 # =============================================================================
 # 데이터 읽기 소스 — kis_template **단일**. 롤백 스위치는 폐지됐다 (2026-08-17).

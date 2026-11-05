@@ -145,11 +145,26 @@ async def test_switch_off_skips_restore(monkeypatch, raw):
 
 
 def test_switch_parsing_default_on():
-    from config.constants import is_daily_cap_restore_enabled
-    assert is_daily_cap_restore_enabled({}) is True
-    assert is_daily_cap_restore_enabled({"DAILY_CAP_RESTORE": "on"}) is True
-    assert is_daily_cap_restore_enabled({"DAILY_CAP_RESTORE": "typo"}) is True
-    assert is_daily_cap_restore_enabled({"DAILY_CAP_RESTORE": "No"}) is False
+    from config.constants import resolve_daily_cap_restore
+    assert resolve_daily_cap_restore(None) == (True, None)
+    assert resolve_daily_cap_restore("  ") == (True, None)
+    assert resolve_daily_cap_restore("on") == (True, None)
+    assert resolve_daily_cap_restore(" Yes ") == (True, None)
+    assert resolve_daily_cap_restore("No") == (False, None)
+    assert resolve_daily_cap_restore("off  # 롤백") == (True, "off  # 롤백")   # 미지값 = on + 원문
+
+
+@pytest.mark.asyncio
+async def test_unknown_switch_value_warns_once_and_keeps_on(monkeypatch):
+    """인라인 주석 등 미지값 → WARNING 1줄(repr 원값) + 기본 on 유지(복원 진행)."""
+    monkeypatch.setenv("DAILY_CAP_RESTORE", "off  # 롤백")
+    st = _load(DT_KEY)
+    bot = _bot({DT_KEY: st}, _FakeRepo(virtual=[DT_KEY] * 2))
+    await bot._call_strategy_market_open()
+    assert st.daily_trades == 2
+    assert bot.logger.warning.call_count == 1
+    msg = bot.logger.warning.call_args.args[0]
+    assert "DAILY_CAP_RESTORE" in msg and repr("off  # 롤백") in msg and "기본 on 유지" in msg
 
 
 # (5) 조회 예외 → fail-open(복원 0 · WARNING 1줄 · 다른 전략은 계속) ------------------------
