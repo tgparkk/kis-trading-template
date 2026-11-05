@@ -2,7 +2,8 @@
 
 왜: 내부 손익은 `config/constants.py` 의 가정(수수료 0.015% 매수·매도 각각 + 거래세 0.18% 매도)으로
 계산하고, 실전 원장 `real_trading_<id>.fee_amount` 는 비어 있다. 계좌가 실제로 낸 수수료·제세금을
-KIS 에서 읽어 «실제 비용 ÷ 체결대금» 과 가정 0.21%(= 0.015×2 + 0.18) 의 차를 날짜별로 본다.
+KIS 에서 읽어 날짜별로 «수수료 ÷ (매수+매도 체결대금)» vs 가정 0.015% · «제세금 ÷ 매도 체결대금» vs 가정 0.18% 를
+본다(한 비율로 합치면 그날 매수 수수료가 섞여 왜곡되므로 둘로 나눈다).
 
 조회(GET 만 · 주문 TR 0):
   - TTTC8708R 기간별손익일별합산조회 (`api/kis_account_api.py:get_inquire_period_profit_lst` 와 같은 요청)
@@ -22,6 +23,8 @@ KIS 에서 읽어 «실제 비용 ÷ 체결대금» 과 가정 0.21%(= 0.015×2 
      있고 그 PID 가 살아 있으면(판독 불가 PID 파일도 중단 — 수동 확인).
   ② 장중(평일 09:00~15:40 KST) → exit 4.
   ③ 토큰 = `<root>/token_info_<id>.json` **읽기만**. 없음·판독 불가·만료(10분 여유) → exit 3 (재발급 안 함).
+     실전 토큰 파일은 «없을 수 있다»(11-05 09:00:10 재발급 스레드가 파일 삭제 뒤 403 · trading_20261105.log L212-214)
+     → exit 3 이면 다음 거래일 07:45 실전 기동(토큰 발급) 뒤, 장 마감 후 다시 실행.
 
 사용(장 마감 뒤 · 실전 봇 종료 확인 뒤):
   python tools/real_cost_inquiry.py --instance daytrading --start 20261019 --end 20261105 --out <csv>
@@ -62,7 +65,8 @@ PAGE_SLEEP_SEC = 0.5
 MAX_PAGES = 50
 HTTP_TIMEOUT = (5, 30)
 
-ASSUMED_RATE_PCT = (2 * COMMISSION_RATE + SECURITIES_TAX_RATE) * 100  # 0.21
+ASSUMED_FEE_RATE_PCT = COMMISSION_RATE * 100       # 0.015 (매수·매도 각각)
+ASSUMED_TAX_RATE_PCT = SECURITIES_TAX_RATE * 100   # 0.18 (매도만)
 
 TR_PERIOD_PROFIT = ("TTTC8708R", "/uapi/domestic-stock/v1/trading/inquire-period-profit")
 TR_DAILY_CCLD = ("TTTC0081R", "/uapi/domestic-stock/v1/trading/inquire-daily-ccld")
@@ -87,7 +91,8 @@ FIELDS: Dict[str, Tuple[str, ...]] = {
 }
 SIDE_SELL = "01"
 SIDE_BUY = "02"
-TOKEN_EXPIRED_MSG_CODES = ("EGW00123", "EGW00121")
+TOKEN_EXPIRED_MSG_CODES = ("EGW00123", "EGW00121", "EGW00133")
+TR_0081_MAX_DAYS = 90  # TTTC0081R = 3개월 이내 조회
 
 
 class GuardStop(Exception):
@@ -201,16 +206,21 @@ def kis_get_paged(http_get: Callable[..., Any], key: Dict[str, str], token: str,
         except Exception:  # noqa: BLE001
             raise KisError(f"{tr_id} 응답 JSON 아님(HTTP {getattr(resp, 'status_code', '?')})")
         if str(body.get("rt_cd")) != "0":
-            msg_cd = str(body.get("msg_cd", ""))
-            msg1 = str(body.get("msg1", ""))
-            if msg_cd in TOKEN_EXPIRED_MSG_CODES or "token" in msg1.lower():
+            # 표준 본문(msg_cd/msg1) 외에 비표준 오류 본문(error_code/error_description · 예 403 EGW00133)도 본다
+            msg_cd = str(body.get("msg_cd") or body.get("error_code") or "")
+            msg1 = str(body.get("msg1") or body.get("error_description") or "")
+            if msg_cd in TOKEN_EXPIRED_MSG_CODES or "token" in msg1.lower() or "토큰" in msg1:
                 raise GuardStop(EXIT_TOKEN, f"{tr_id} 토큰 거부({msg_cd} {msg1}) — 재발급하지 않고 중단")
             raise KisError(f"{tr_id} 실패: {msg_cd} {msg1}")
         for k in ("output1", "output2"):
             v = body.get(k)
             if isinstance(v, dict):
                 v = [v]
-            out[k].extend(r for r in (v or []) if isinstance(r, dict))
+            rows = [r for r in (v or []) if isinstance(r, dict) and r]
+            if k == "output1":
+                out[k].extend(rows)
+            elif rows:
+                out[k] = rows  # output2 = 조회 전체 합계라 페이지마다 반복 → 마지막(비지 않은) 페이지 것만
         nxt = str((getattr(resp, "headers", None) or {}).get("tr_cont", "")).strip()
         if nxt not in ("F", "M"):
             return out
@@ -393,17 +403,18 @@ def _finish(rec: dict) -> None:
     rec["actual_cost"] = actual
     rec["assumed_cost"] = round(assumed, 2)
     rec["actual_minus_assumed"] = None if actual is None else round(actual - assumed, 2)
-    sell = rec["kis_sell_amt"]
-    rec["actual_cost_over_sell_pct"] = None if actual is None or not sell else round(actual / sell * 100, 4)
-    rec["assumed_rate_pct"] = round(ASSUMED_RATE_PCT, 4)
-    pct = rec["actual_cost_over_sell_pct"]
-    rec["diff_pct_points"] = None if pct is None else round(pct - ASSUMED_RATE_PCT, 4)
+    buy, sell = rec["kis_buy_amt"], rec["kis_sell_amt"]
+    rec["actual_fee_rate_pct"] = None if fee is None or not (buy + sell) else round(fee / (buy + sell) * 100, 5)
+    rec["assumed_fee_rate_pct"] = round(ASSUMED_FEE_RATE_PCT, 5)
+    rec["actual_tax_rate_pct"] = None if tax is None or not sell else round(tax / sell * 100, 5)
+    rec["assumed_tax_rate_pct"] = round(ASSUMED_TAX_RATE_PCT, 5)
     for k in ("kis_buy_amt", "kis_sell_amt", "internal_sell_amt"):
         rec[k] = round(rec[k], 2)
 
 
 DAILY_COLUMNS = ["date", "kis_buy_amt", "kis_sell_amt", "actual_fee", "actual_tax", "actual_cost", "assumed_cost",
-                 "actual_minus_assumed", "actual_cost_over_sell_pct", "assumed_rate_pct", "diff_pct_points",
+                 "actual_minus_assumed", "actual_fee_rate_pct", "assumed_fee_rate_pct", "actual_tax_rate_pct",
+                 "assumed_tax_rate_pct",
                  "kis8708_buy_amt", "kis8708_sell_amt", "internal_sell_rows", "matched_rows", "internal_sell_amt",
                  "internal_fee_amount_sum"]
 
@@ -457,6 +468,9 @@ def run(argv: Optional[Sequence[str]] = None, now: Optional[datetime] = None,
         return EXIT_ERROR
     root = Path(args.root)
     now_kst = (now or datetime.now(KST)).astimezone(KST)
+    if start < (now_kst - timedelta(days=TR_0081_MAX_DAYS)).strftime("%Y%m%d"):
+        print(f"WARNING: --start {start} 가 오늘−{TR_0081_MAX_DAYS}일보다 앞 — "
+              "TTTC0081R 은 3개월 이내만 조회(앞 구간 체결 누락 가능)")
     out = Path(args.out)
 
     try:
@@ -502,8 +516,8 @@ def run(argv: Optional[Sequence[str]] = None, now: Optional[datetime] = None,
     print("미확인 필드: " + (", ".join(unknown) if unknown else "없음") + "  (원본 열은 raw_*.csv 에 전부)")
     if daily:
         t = daily[-1]
-        print(f"합계: 실제 비용 {t['actual_cost']} · 가정 {t['assumed_cost']} · 실제÷매도대금 "
-              f"{t['actual_cost_over_sell_pct']}% vs 가정 {t['assumed_rate_pct']}%")
+        print(f"합계: 실제 비용 {t['actual_cost']} · 가정 {t['assumed_cost']} · 수수료율 {t['actual_fee_rate_pct']}% "
+              f"vs {t['assumed_fee_rate_pct']}% · 제세금율 {t['actual_tax_rate_pct']}% vs {t['assumed_tax_rate_pct']}%")
     print(f"산출: {out}")
     return EXIT_OK
 

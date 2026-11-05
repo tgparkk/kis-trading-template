@@ -86,7 +86,7 @@ run_daily_cycle()
 - **`config/`** — `settings.py`(`key.ini` · `trading_config.json` · `INSTANCE_ID`) · `env_bootstrap.py`(`.env` → `os.environ`) · `constants.py`(운영 상수 SSOT) · `market_hours.py`(거래시간·phase·서킷브레이커 상태) · `trading_config.json`.
 - **`utils/`** — `logger` · `korean_time` · `korean_holidays` · `holiday_kis_sync` · `price_utils` · `data_sanity` · `indicators` · `tick_tracer` · `telegram/`(봇 명령·알림) 등.
 - **`collectors/`** — EOD 수집기 30여 모듈(일봉·분봉·지수·시장매핑·외국인/투자자 수급·기업행위·DART 재무·섹터). `eod_collection.run_data_collection` 이 15:35+ 체인에서 호출.
-- **`tools/`** — 운영 도구: `daily_trading_summary`(일일 리포트) · `paper_strategy_equity`(equity 스냅샷) · `gen_inventory` · `gen_archive_candidates`.
+- **`tools/`** — 운영 도구: `daily_trading_summary`(일일 리포트) · `paper_strategy_equity`(equity 스냅샷) · `gen_inventory` · `gen_archive_candidates` · `real_cost_inquiry`(실전 수수료·세금 실측 조회 · 운영 import 0 · 수동 · 장 마감 뒤).
 - **`runners/`** — `screener_snapshot_collector`(EOD 스냅샷 · CLI 겸용) · `_adapter_factory`(전략명 → 스크리너 어댑터 if/elif 등록) · `_adjacent_grid`.
 - **`scripts/` · `backtest/` · `multiverse/`** — 연구·일회성 코드(운영 경로 아님, [CODE_MAP.md](CODE_MAP.md) 의 경계).
 

@@ -57,10 +57,15 @@ def test_guard_bot_running_exit2_and_stale_pid_passes(tmp_path, monkeypatch):
     assert _run(tmp_path, AFTER_CLOSE, pid_alive=lambda p: False) == rci.EXIT_BOT_RUNNING
 
 
-def test_guard_market_hours_exit4_weekend_passes(tmp_path):
+def test_guard_market_hours_exit4_weekend_passes(tmp_path, capsys):
     assert _run(tmp_path, INTRADAY) == rci.EXIT_MARKET_HOURS
     assert _run(tmp_path, datetime(2026, 11, 5, 15, 40, tzinfo=rci.KST)) == rci.EXIT_MARKET_HOURS
     assert _run(tmp_path, WEEKEND_10) == rci.EXIT_TOKEN          # 장중 가드 통과 → 토큰 없음
+    assert "WARNING" not in capsys.readouterr().out              # 20261019 = 90일 안
+    argv = _argv(tmp_path, tmp_path / "c.csv")
+    argv[argv.index("--start") + 1] = "20260701"                 # TTTC0081R 3개월 밖
+    assert rci.run(argv, now=AFTER_CLOSE, http_get=_no_network, fetch_internal=_no_db) == rci.EXIT_TOKEN
+    assert "WARNING" in capsys.readouterr().out
 
 
 def test_guard_token_read_only_exit3(tmp_path, monkeypatch):
@@ -80,6 +85,10 @@ def test_guard_token_read_only_exit3(tmp_path, monkeypatch):
     expired = _FakeGet({"TTTC8708R": [({"rt_cd": "1", "msg_cd": "EGW00123", "msg1": "기간이 만료된 token"}, "")]})
     assert _run(tmp_path, AFTER_CLOSE, http_get=expired, pid_alive=lambda p: False) == rci.EXIT_TOKEN
     assert len(expired.calls) == 1
+    # 비표준 오류 본문(error_code/error_description · 403)도 토큰 거부로 판별
+    body403 = {"error_code": "EGW00133", "error_description": "접근토큰 발급 잠시 후 다시"}
+    nonstd = _FakeGet({"TTTC8708R": [(body403, "")]})
+    assert _run(tmp_path, AFTER_CLOSE, http_get=nonstd, pid_alive=lambda p: False) == rci.EXIT_TOKEN
 
 
 class _Resp:
@@ -119,7 +128,7 @@ def test_mocked_responses_to_csv(tmp_path):
                                          "buy_amt": "1000000", "sll_amt": "1000000", "zz_unknown": "x"}],
               "output2": {"tot_fee": "150"}, "ctx_area_fk100": "FK", "ctx_area_nk100": "NK"}, "F"),
             ({"rt_cd": "0", "output1": [{"trad_dt": "20261020", "fee": "75", "tl_tax": "0",
-                                         "buy_amt": "500000", "sll_amt": "0"}], "output2": {}}, "D"),
+                                         "buy_amt": "500000", "sll_amt": "0"}], "output2": {"tot_fee": "225"}}, "D"),
         ],
         "TTTC0081R": [
             ({"rt_cd": "0", "output1": [
@@ -148,7 +157,8 @@ def test_mocked_responses_to_csv(tmp_path):
     # 원본: 모르는 열도 그대로
     raw = _read(tmp_path / "out" / "cost_raw_8708_output1.csv")
     assert len(raw) == 2 and raw[0]["zz_unknown"] == "x"
-    assert _read(tmp_path / "out" / "cost_raw_8708_output2.csv")[0]["tot_fee"] == "150"
+    out2 = _read(tmp_path / "out" / "cost_raw_8708_output2.csv")
+    assert [r["tot_fee"] for r in out2] == ["225"]                           # 페이지 반복 합계 → 마지막 것만
     assert len(_read(tmp_path / "out" / "cost_raw_0081_output1.csv")) == 3
     assert all(r["status"] == "ok" for r in _read(tmp_path / "out" / "cost_field_check.csv"))
 
@@ -156,10 +166,13 @@ def test_mocked_responses_to_csv(tmp_path):
     d19 = daily["20261019"]
     assert float(d19["actual_cost"]) == 1950.0
     assert float(d19["assumed_cost"]) == pytest.approx(1_000_000 * 0.00015 + 1_000_000 * 0.00195)
-    assert float(d19["actual_cost_over_sell_pct"]) == pytest.approx(0.195)
-    assert float(d19["assumed_rate_pct"]) == pytest.approx(0.21)
+    assert float(d19["actual_fee_rate_pct"]) == pytest.approx(150 / 2_000_000 * 100)   # 매수+매도 대금 기준
+    assert float(d19["assumed_fee_rate_pct"]) == pytest.approx(0.015)
+    assert float(d19["actual_tax_rate_pct"]) == pytest.approx(0.18)                    # 매도 대금 기준
+    assert float(d19["assumed_tax_rate_pct"]) == pytest.approx(0.18)
     assert d19["matched_rows"] == "1" and d19["internal_fee_amount_sum"] == ""
-    assert daily["20261020"]["actual_cost_over_sell_pct"] == ""             # 매도 0 → 비율 없음
+    assert daily["20261020"]["actual_tax_rate_pct"] == ""                   # 매도 0 → 세율 없음
+    assert float(daily["20261020"]["actual_fee_rate_pct"]) == pytest.approx(0.015)   # 매수만 있는 날도 수수료율은 나옴
     assert float(daily["TOTAL"]["actual_cost"]) == 2025.0
     assert len(_read(tmp_path / "out" / "cost_pairs.csv")) == 1
 
