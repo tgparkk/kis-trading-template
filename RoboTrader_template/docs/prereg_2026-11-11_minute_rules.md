@@ -1,6 +1,6 @@
 # 사전등록(초안) — 1분 원장 «장중 진입 규칙 탐색» (dt 주 가족 · 진입 규칙만)
 
-> 상태: **v0.3 · 동결 대기(사장님 승인 → 커밋 SHA 기입)**(v0.1 → v0.3 = 11-10 밤 사장님 결정 4 + 1·2차 코드 리뷰 + 관리자 재결정 반영 · §12 행 19~33)(2026-11-11 작성 · 워크트리 `D:/tmp/kis-wt-ledger-minute` · 브랜치 `research/ledger-minute` · HEAD `38d2adb`). 동결 = §11 절차(사장님 승인 → 커밋 → 이 머리말에 SHA 기입). 동결 뒤 **편집·이동 금지**(docs/README 날짜 문서 규약 · 고칠 일은 새 날짜 문서).
+> 상태: **v0.3 · 🔒 동결(2026-11-10 · 사전등록 커밋 `e2945ee` · 1단계 코드 커밋 `4fff028` · 이후 편집 금지 · 개정은 amendment 문서로만)**(v0.1 → v0.3 = 11-10 밤 사장님 결정 4 + 1·2차 코드 리뷰 + 관리자 재결정 반영 · §12 행 19~33)(2026-11-11 작성 · 워크트리 `D:/tmp/kis-wt-ledger-minute` · 브랜치 `research/ledger-minute` · HEAD `38d2adb`). 동결 = §11 절차(사장님 승인 → 커밋 → 이 머리말에 SHA 기입). 동결 뒤 **편집·이동 금지**(docs/README 날짜 문서 규약 · 고칠 일은 새 날짜 문서).
 > 성격: **측정 설계만.** 봇·전략·수집기 코드 0줄 · DB 쓰기 0 · KIS 호출 0 · 이 문서 작성 중 결과(수익률) 조회 0회.
 > 근거 약칭(전부 읽기 전용): **[S]** = 라이브 트리 `RoboTrader_template/scratchpad/eod_20261110/panel_minute_1110/SYNTHESIS.md` · **[T]** `…/EXPERT_TRADER.md` · **[Q]** `…/EXPERT_QUANT.md` · **[Y]** `…/EXPERT_SYSTEM.md` · **[q_*]** 같은 폴더 `q_out_*.txt` · **[D]** 이 워크트리 `docs/design_2026-10-08_ledger_minute.md` · **[W2]** 라이브 트리 `docs/prereg_2026-11-05_window2_shadow_sql.md` · **[L]** 이 워크트리 `backtest/concept_axes/candidate_ledger/PREREG.md` · **[F]** `docs/prereg_2026-09-24_candidate_feature_study.md` · **[M]** 메모리 `decision-2026-11-10-minute-ledger-go.md`.
 
