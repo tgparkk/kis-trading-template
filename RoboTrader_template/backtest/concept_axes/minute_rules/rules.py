@@ -1,4 +1,4 @@
-"""장중 진입 규칙 레지스트리 — 🔴 `DRAFT = True`: 사전등록 동결 «전» 초안. 문턱·정의는 동결 때 바뀔 수 있다.
+"""장중 진입 규칙 레지스트리 — 🔒 동결 `e2945ee` §4 와 같은 정의·문턱(`DRAFT = False` · 개정 = amendment 문서로만).
 
 출처(정본) = `docs/prereg_2026-11-11_minute_rules.md` §4-1(주 가족 dt 6 · R1·R3·R7·R6·R4·R5) · §4-2(독립 가족 2 ·
 H②-hist → `H2_HIST` · H+2% → `H_PLUS2`). 기준 arm 2 = `R0`(≥09:02) · `R0_0905`(≥09:05) · 합계 10 항목.
@@ -23,7 +23,7 @@ import numpy as np
 from .engine import (BASE_R0, BASE_R0_0905, F_CLOSE, F_HIGH, F_LOW, F_OPEN, F_VOL, IDX_FILTER_AT, LABEL_FILTER,
                      LABEL_KEEP, LABEL_UNDETERMINED, DayCtx, DayResult, Label, Pred, label_day, run_day)
 
-DRAFT = True
+DRAFT = False                # 동결(e2945ee · 1단계 코드 4fff028 과 정의 같음) — 수정 1 문서 N4
 
 FAMILY_BASELINE = "baseline"
 FAMILY_MAIN = "main"
@@ -195,7 +195,7 @@ def h_plus2(view: np.ndarray, ctx: DayCtx) -> Optional[bool]:
 def run_rule(bars: np.ndarray, ctx: DayCtx, rule: Rule, tp: float, sl: float) -> DayResult:
     """규칙 1개 · code-day 1개. 거르기 = R0_0905 진입 결과 + `label` · 그 밖 = pred 로 `rule.base` 진입."""
     if rule.kind == "filter":
-        # TODO(2단계): R4·R5 가 R0_0905 진입을 규칙마다 다시 계산 — run 에서 R0_0905 결과를 재사용하고 라벨만 붙일 것
+        # 단건 편의용 — 2단계 run.py 는 R0_0905 결과를 로트당 1번 만들고 R4·R5 에는 라벨만 붙인다(재계산 없음)
         res = run_day(bars, ctx, r0_baseline, tp, sl, base=rule.base)
         res.label = label_day(bars, ctx, rule.label)
         return res

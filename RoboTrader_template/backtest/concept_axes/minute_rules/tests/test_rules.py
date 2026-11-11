@@ -22,9 +22,9 @@ def _v(b, t, close=None):
 
 
 def test_registry_draft_ids_kinds_families():
-    assert R.DRAFT is True
+    assert R.DRAFT is False                                  # 동결 e2945ee(수정 1 N4)
     assert R.rule_ids() == ["R0", "R0_0905", "R1", "R3", "R7", "R6", "R4", "R5", "H2_HIST", "H_PLUS2"]
-    assert all(r.draft for r in R.REGISTRY.values())
+    assert not any(r.draft for r in R.REGISTRY.values())
     assert R.BASELINE.kind == "baseline" and R.BASELINE.base == E.BASE_R0
     assert R.BASELINE_0905.kind == "baseline" and R.BASELINE_0905.base == E.BASE_R0_0905
     fam = {rid: r.family for rid, r in R.REGISTRY.items()}
@@ -168,3 +168,18 @@ def test_undetermined_minutes_counted_per_lot():
     r = R.run_rule(b, CTX, R.REGISTRY["R6"], 0.1, 0.1)
     assert r.entry.idx == 8 and r.undetermined_minutes == 6   # 09:02~09:07
     assert R.run_rule(flat(), CTX, R.REGISTRY["R6"], 0.1, 0.1).undetermined_minutes == 0
+
+
+def test_thresholds_match_frozen_prereg_text():
+    """N4 — 문턱 상수 ↔ 동결 사전등록 §4-1·§4-2 표 문구(숫자를 바꾸면 이 테스트가 깨진다)."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[4]
+    doc = (root / "docs" / "prereg_2026-11-11_minute_rules.md").read_text(encoding="utf-8")
+    pairs = [("p_t > O × 1.02", R.R1_OPEN_MULT == 1.02), ("p_t ≤ H_t × 0.95", R.R7_DRAWDOWN == 0.95),
+             ("min(저가 max(09:00, t−5)~t−1) − 1 ≥ +3%", (R.R6_LOOKBACK, R.R6_SPIKE) == (5, 0.03)),
+             ("09:04 분 종가 ÷ O − 1 ≤ −2%", R.R4_DROP == -0.02), ("< V_D′ × 2%", R.R5_VOL_FRAC == 0.02),
+             ("09:05~09:30 에 p_t > max(고가 09:00~09:04)", (R.R3_ORB_END, R.R3_FIRST, R.R3_LAST) == (4, 5, 30)),
+             ("분 시작 ≥ 09:10 인 첫 밴드 안 분", R.H2_FIRST == 10), ("p_t > C_D × 1.02", R.H_PLUS2_MULT == 1.02)]
+    for text, ok in pairs:
+        assert text in doc, text
+        assert ok, text

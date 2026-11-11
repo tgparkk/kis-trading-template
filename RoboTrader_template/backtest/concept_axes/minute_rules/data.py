@@ -31,7 +31,7 @@ import hashlib
 from bisect import bisect_left
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -320,9 +320,11 @@ def fetch_daily(conn, keys: Sequence[Key]) -> Dict[Key, Tuple[Any, ...]]:
 
 
 def load_minute_days(conn, pairs: Iterable[Key], market_of: Mapping[str, str],
-                     calendar: Optional[Sequence[date]] = None) -> MinuteBundle:
+                     calendar: Optional[Sequence[date]] = None,
+                     gap_rows: Optional[Callable[[Iterable[date]], List[Tuple[Any, Any, Any]]]] = None) -> MinuteBundle:
     """코드·날짜 집합 → `MinuteBundle`(float32 [n,381,6]) · 유령일은 읽지 않는다 · 제외 사유·체크섬 ·
-    `market_gap_day`(분모 = 그날 분봉 전 종목 · `market_of` 필수 = `load_market_of(conn)`) 포함."""
+    `market_gap_day`(분모 = 그날 분봉 전 종목 · `market_of` 필수 = `load_market_of(conn)`) 포함.
+    `gap_rows(days)` = `fetch_market_gap_rows` 대신 쓸 공급자(2단계 run 의 날짜별 캐시 · 없으면 DB 직접)."""
     if market_of is None:
         raise ValueError("market_of 필수 — load_market_of(conn)")
     keys_all = sorted(set((str(c), d) for c, d in pairs))
@@ -361,8 +363,9 @@ def load_minute_days(conn, pairs: Iterable[Key], market_of: Mapping[str, str],
         obs.append(observed)
         metas.append(meta)
         checks[k] = raw_checksum(raw[k])
-    mark_market_gap_days(metas, market_gap_stats(fetch_market_gap_rows(conn, {m.day for m in metas}), market_of),
-                         market_of)
+    days_used = {m.day for m in metas}
+    rows_gap = gap_rows(days_used) if gap_rows is not None else fetch_market_gap_rows(conn, days_used)
+    mark_market_gap_days(metas, market_gap_stats(rows_gap, market_of), market_of)
     shape = (len(used), N_SLOTS, N_FIELDS)
     unknown = len({m.code for m in metas if not market_of.get(m.code)})
     return MinuteBundle(used, np.stack(arrs) if arrs else np.zeros(shape, np.float32),

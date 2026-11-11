@@ -30,7 +30,8 @@
   (시가) → 장중 손절 우선» 순이라 시가 갭 익절이 먼저다. 두 경로 규약이 다름을 알고 쓴다(리뷰 A2).
   09:05 전에 선 아래로 갔으면 `sl_deferred_pre0905`.
   15:30 봉은 보지 않는다(15:20~ 신규 주문 불가). 미청산이면 `DayResult.pos`(ledger8 `exitsim8.Pos`)를 돌려준다 —
-  k≥1 은 2단계가 `exitsim8.simulate_lot` 일봉 경로로 넘긴다(진입일 데이터 청산 탐침도 2단계 몫).
+  k≥1 은 `continue_daily` 가 `exitsim8.simulate_lot` 일봉 경로로 넘긴다(2단계 · A1: k=0 탐침은 `k0_probe` 1회 ·
+  simulate_lot 은 k=0 터치·탐침을 다시 보지 않음).
 """
 from __future__ import annotations
 
@@ -40,7 +41,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from backtest.concept_axes.ledger8.exitsim8 import Pos
+from backtest.concept_axes.ledger8.exitsim8 import (FLAG_K0_DATA, FLAG_NO_D_TOUCH, PHASE_ENTRY, Bar, ExitOut, ExitRules,
+                                                    PathT, Pos, Probe, simulate_lot)
 from backtest.concept_axes.ledger8.sizing import arm_b_qty
 from utils.price_utils import round_to_tick
 
@@ -261,6 +263,47 @@ def simulate_day_exit(bars: np.ndarray, entry_idx: int, entry_px: float, tp: flo
     return DayExit(False, flags=flags)
 
 
+def neutral_touch_bar(pos: Pos) -> Bar:
+    """진입가 평평 봉(시=고=저=종=진입가) — k=0 고저는 분봉 엔진이 이미 봤다는 표시(사전등록 §9 2단계 과제 A1).
+
+    `exitsim8.entry_day` 는 basis ≠ D_open 이면 `pos.touch_bar` 로 터치를 본다 → 이 봉은 익절·손절 비율 0 이라
+    (tp·sl > 0) 아무것도 닿지 않고, `touch_bar is not None` 이라 `FLAG_NO_D_TOUCH` 도 붙지 않는다."""
+    px = float(pos.entry_price)
+    return Bar(pos.entry_date, px, px, px, px)
+
+
+def continue_daily(pos: Pos, rules: ExitRules, path: PathT, probe: Probe) -> ExitOut:
+    """k ≥ 1 = `exitsim8.simulate_lot` 그대로(사전등록 §3) · k=0 은 다시 보지 않는다(A1).
+
+    - k=0 데이터 청산 탐침은 호출자(`k0_probe`)가 분봉 청산 «전»에 1회 이미 돌렸다 → `simulate_lot` 에는
+      진입일에 None 을 돌려주는 감싼 탐침을 넘긴다(`FLAG_K0_DATA` 중복 방지).
+    - `touch_bar` = `neutral_touch_bar`(k=0 고저 재판정 없음 · `FLAG_NO_D_TOUCH` 없음) · path[0] 일봉은 끝까지 보유 때
+      마감 평가(일봉 종가 · G2)로만 쓰인다.
+    결과에 진입일 단계(`PHASE_ENTRY`)·두 플래그가 보이면 계약 위반 → RuntimeError."""
+    if not (rules.tp > 0 and rules.sl > 0):
+        raise ValueError(f"tp·sl 은 양수여야 평평 봉이 닿지 않는다: {rules}")
+    p = Pos(pos.code, pos.entry_date, pos.entry_time, pos.entry_price, pos.qty, pos.entry_basis, neutral_touch_bar(pos))
+
+    def probe_k1(q: Pos, day: date) -> Optional[str]:
+        return None if day == q.entry_date else probe(q, day)
+
+    ex = simulate_lot(p, rules, path, probe_k1)
+    if ex.phase == PHASE_ENTRY or FLAG_NO_D_TOUCH in ex.flags or FLAG_K0_DATA in ex.flags:
+        raise RuntimeError(f"k=0 재판정 흔적(A1 위반): {ex}")
+    return ex
+
+
+def k0_probe(pos: Pos, probe: Probe) -> Optional[str]:
+    """진입 직후 데이터 청산 탐침 — 로트·체결 모델마다 정확히 1회(설계 10-08 §4 · 분봉 청산보다 먼저)."""
+    return probe(pos, pos.entry_date)
+
+
+def make_pos(ctx: DayCtx, idx: int, px: float) -> Pos:
+    """진입 분 행 번호·체결가 → `Pos`(arm B 수량 · basis m_close · 진입 시각 = 분 시작)."""
+    hh, mm = divmod(9 * 60 + idx, 60)
+    return Pos(ctx.code, ctx.day, datetime.combine(ctx.day, time(hh, mm)), px, arm_b_qty(px).qty, BASIS_M_CLOSE)
+
+
 def run_day(bars: np.ndarray, ctx: DayCtx, pred: Pred, tp: float, sl: float, base: str = BASE_R0) -> DayResult:
     """code-day 1개: 진입(기준 arm `base` 시작 분부터) → 당일 분 단위 청산 → 미청산이면 `Pos`(arm B 수량 · m_close)."""
     start = BASE_ARMS[base]
@@ -271,9 +314,5 @@ def run_day(bars: np.ndarray, ctx: DayCtx, pred: Pred, tp: float, sl: float, bas
         return DayResult(False, SKIP_NO_ENTRY if np.isfinite(window).any() else SKIP_NO_PRICE, band_edge=edge,
                          base=base, undetermined_minutes=n_undet)
     ex = simulate_day_exit(bars, fill.idx, fill.px, tp, sl)
-    pos = None
-    if not ex.closed:
-        hh, mm = divmod(9 * 60 + fill.idx, 60)
-        pos = Pos(ctx.code, ctx.day, datetime.combine(ctx.day, time(hh, mm)), fill.px,
-                  arm_b_qty(fill.px).qty, BASIS_M_CLOSE)
+    pos = None if ex.closed else make_pos(ctx, fill.idx, fill.px)
     return DayResult(True, entry=fill, exit=ex, pos=pos, band_edge=edge, base=base, undetermined_minutes=n_undet)

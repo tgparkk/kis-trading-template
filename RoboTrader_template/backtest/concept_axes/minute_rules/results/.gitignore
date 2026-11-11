@@ -1,0 +1,5 @@
+# 수정 1 §7(재리뷰 NB1) — 로트 단위 결과 csv 는 레포 밖 비공개·봉인 폴더에만 둔다. 상위 `RoboTrader_template/.gitignore:154`
+# `!backtest/**/results/**/*.csv` 보다 이 파일(더 가까운 폴더)이 우선한다. 이중 장치일 뿐 — 실행기는 csv 를 여기에 쓰지 않는다.
+*.csv
+# G5 캐시(상위 `cache/` 규칙과 같은 뜻 · 명시)
+cache/
