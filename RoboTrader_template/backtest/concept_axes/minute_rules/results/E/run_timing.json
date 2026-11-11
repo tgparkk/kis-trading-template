@@ -1,0 +1,18 @@
+{
+ "started": "2026-11-12T08:09:46",
+ "finished": "2026-11-12T08:11:57",
+ "secs": {
+  "calendar_market": 0.0,
+  "lots_daily": 7.7,
+  "minute_load_total": 3.0,
+  "market_gap_fetch": 0.0,
+  "simulate": 96.8,
+  "checksum_after": 22.4
+ },
+ "secs_total": 131.8,
+ "gap_cache": {
+  "hits": 171,
+  "misses": 0,
+  "path": "D:\\tmp\\kis-wt-ledger-minute\\RoboTrader_template\\backtest\\concept_axes\\minute_rules\\results\\cache\\market_gap_rows.json"
+ }
+}

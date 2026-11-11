@@ -1,0 +1,141 @@
+{
+ "banner": "관측 — 판정 근거 아님(사전등록 §8) · 효과·p 없음(로트만)",
+ "prereg": {
+  "path": "docs/prereg_2026-11-11_minute_rules.md",
+  "sha256": "6bb539ecda4bc3dba163b755e3cb713ccd244e0a18524ce4f9c08c4ad4aa0b86"
+ },
+ "amendment": {
+  "path": "docs/prereg_2026-11-11_minute_rules_amendment1.md",
+  "sha256": "3b2085428f59836368302fee9b3acc2ae9db87b906175f0e58f517295e7accdd"
+ },
+ "git_sha": "f3997cd6bb261fddd5d4ffbb116a67b70018d09b",
+ "code_sha256": {
+  "backtest/concept_axes/minute_rules/__init__.py": "be643cdab6f7f5616659f46ac8ca2e0fcad82ec76cf7f7ae0b3498c70052523b",
+  "backtest/concept_axes/minute_rules/analyze.py": "8907663879575f662dcd68c32c37bfd78735a44d240a294e8420b2449b93fca4",
+  "backtest/concept_axes/minute_rules/conftest.py": "f4dad7f1d188d36d4efc8d7c382096cbee5a1ff4c408399d8bf65f52661268e0",
+  "backtest/concept_axes/minute_rules/data.py": "53c5ca6f568f4bb0f4dc0bd2f6eab95befe0a0577f7c914be15e0da806cd059b",
+  "backtest/concept_axes/minute_rules/engine.py": "3f16905836685da6d2e1315de148915755033a4e8067a38113cfbc375b3a6ddd",
+  "backtest/concept_axes/minute_rules/fill_lite.py": "dd67ea58cbd7080f7a12544bfba202ebc13f7c76b92070280b97aaa3cdbbe4a1",
+  "backtest/concept_axes/minute_rules/rules.py": "8cfa8d65b3b4c012e29318955e8ca402e12fa9034aacd59bd47be17725b50b35",
+  "backtest/concept_axes/minute_rules/run.py": "fd60ab13607630665e3b49252a16c5bce0150b46f9ecf2954d33c7f9f86e87b5",
+  "backtest/concept_axes/minute_rules/test_stats.py": "c4cb8d1ac350bfd7f419f215b5087b5316db36ec3c394f7bfaeac6018628d3fd",
+  "backtest/concept_axes/ledger8/exitsim8.py": "c8ef25b960104ce5be9e864d2ad731c04a9b009d8c6889a2bb935102eba56268",
+  "backtest/concept_axes/ledger8/sizing.py": "07562975cd91945e7b742a5fe597bfe60b2151726b5d4dd847b8e138dc3e25d0",
+  "backtest/concept_axes/ledger8/fidelity8.py": "444997006f138374878e10dba3f0ef8cdb86fd74c12da760fefce13062c62df5",
+  "backtest/concept_axes/minervini/cap_skip_ledger/sim.py": "16ec63557353bd285546218bca5e7c36ba4733128625d2dba49f63d1eab7cff7",
+  "backtest/concept_axes/minervini/cap_skip_ledger/bootstrap.py": "2ffd4d2bfb9a272c255fe5ed0cd6852d11233014be121ece744f2d20054f4713",
+  "backtest/concept_axes/minervini/cap_skip_ledger/classify.py": "74bc0ccb8fedcb7ba117239f3bd3bc04ba1bf03accb1c3ac073969754b3c2c97",
+  "backtest/concept_axes/replayer/loader.py": "34526fb5160724d7e869acb46dc1bee365f96924ca0599b2eaa2a4bd851d7a3d",
+  "utils/price_utils.py": "ae5b45a100e2e93c187cc78eb97a3d3a15fdca1ec53d97af42b004346d933e78",
+  "config/constants.py": "2e3cb926c8cdad29d3079deaf080750006f0bea8656b55dcfbadbf5861d87615"
+ },
+ "analysis_spec_sha256": "0b95c6820d24206824b2c9d05ea4dc481678e3039b74620f45c86377ee53417d",
+ "rules_draft_flag": false,
+ "window": "E",
+ "layer": "A",
+ "start": "2025-04-17",
+ "end": "2025-12-31",
+ "c2_end": {},
+ "asof": "2026-11-11",
+ "path_end": {
+  "A": "2026-09-23",
+  "B": "2026-11-11"
+ },
+ "arms": [
+  "R0",
+  "R0_0905",
+  "R1",
+  "R3",
+  "R7",
+  "R6",
+  "R4",
+  "R5"
+ ],
+ "strategies": [
+  "daytrading_3methods_breakout"
+ ],
+ "plumbing": false,
+ "fakes": 100,
+ "explore": null,
+ "sealed": false,
+ "csv_dir": "D:\\tmp\\kis-minute-private\\E",
+ "dep_module_files": {
+  "backtest.concept_axes.ledger8.exitsim8": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/backtest/concept_axes/ledger8/exitsim8.py",
+  "backtest.concept_axes.ledger8.sizing": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/backtest/concept_axes/ledger8/sizing.py",
+  "backtest.concept_axes.minervini.cap_skip_ledger.sim": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/backtest/concept_axes/minervini/cap_skip_ledger/sim.py",
+  "backtest.concept_axes.replayer.loader": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/backtest/concept_axes/replayer/loader.py",
+  "utils.price_utils": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/utils/price_utils.py",
+  "config.constants": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/config/constants.py"
+ },
+ "inputs": {
+  "ledger_csv": "b6918b6b73abb50b76555eecf8021a4f992a975e1830bdea562319dc4fd4d3d3",
+  "ledger_run_meta": "f384cc8b07b660f6e87d4414d12d5f87d97cea37014dda720f60536b1932c8c7",
+  "gap_rows_used_sha256": "d4b47eaf1a8431b9ff704d851a90ffae524ca74491c1fe94390b3e66b024220c",
+  "gap_rows_used": 93178,
+  "stock_market_sha256": "8a3adc82dd4c6b217edff5e704fe9a79252c8d1e36712bc058f7ad936ae29cd5",
+  "daily_rows": 579125,
+  "daily_rows_sha256": "e248432e4c5ecb50c79e03ccfa5f032214f6a44876f275e1bcff525b8c715b5c",
+  "normalize_counts": {
+   "n_rows_raw": 579125,
+   "n_dropped_bad_date": 0,
+   "n_dropped_close": 0,
+   "n_patched_ohl": 0
+  },
+  "corp_events_rows": 200,
+  "corp_events_sha256": "f051c8b51f026af4f9676d67836d4b9d1f60c962e18b9f96974a5baf8ad2c2ad",
+  "no_rank_d_lots": 0,
+  "tv_rank_sha256": "2df8ffc4bed8f09273bcc4a7a77bb29836d48dd66028dbc3f20e7b9400e5f4fe",
+  "kospi_sha256": "e4bd3101974de0ee3c019423014d0c0c6329ba031b44cfadbf0404e3fa5a1c12"
+ },
+ "n_lots": 5764,
+ "n_code_days": 5764,
+ "n_buy_days": 172,
+ "n_codes": 1650,
+ "n_minute_code_days": 1420,
+ "excluded": {
+  "no_minute_data": 4344
+ },
+ "unknown_market_codes": 0,
+ "layer_b": {},
+ "lot_flag_counts": {
+  "adj_null_entry": 0,
+  "adj_null_prev": 0,
+  "band_ok_open_minute": 1142,
+  "corp_event": 10,
+  "excl_no_minute_data": 4344,
+  "has_1530": 1314,
+  "impossible_bar": 26,
+  "long_gap": 307,
+  "lots": 5764,
+  "market_gap_day": 5,
+  "minute_lots": 1420,
+  "n_rows_lt300": 378,
+  "open_gap_flag": 2,
+  "print_only": 0,
+  "survivor_universe": 5764,
+  "vi_suspect": 81,
+  "vintage_m4": 5764
+ },
+ "g8": {
+  "before": "2f1209660955ada1c96e952b0ef4c568af6a1c73227fea5dc48cd752b5e7be28",
+  "after": "2f1209660955ada1c96e952b0ef4c568af6a1c73227fea5dc48cd752b5e7be28",
+  "n_diff": 0,
+  "ok": true
+ },
+ "g5_cache": {
+  "version": 2,
+  "stale_days": [],
+  "ok": true
+ },
+ "ok": true,
+ "outputs": {
+  "lots_rule.csv": {
+   "rows": 46112,
+   "sha256": "a947e4cc51d6e7d51afec7c2f00e2be29c9138acd8affdb82722585887ae9698"
+  },
+  "fake_timing.csv": {
+   "rows": 142000,
+   "sha256": "da123beef2396e6cf0310c75a34ac324a18ef508e5303dd2c7732fcfef0f8822"
+  }
+ }
+}
