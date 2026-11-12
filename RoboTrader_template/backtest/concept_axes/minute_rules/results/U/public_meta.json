@@ -1,0 +1,14 @@
+{
+ "banner": "봉인 — 내용은 레포 밖(그림자 ② 판정 전 열람·인용 금지 · §4-2·§8)",
+ "window": "U",
+ "git_sha": "f8330c71ea9daac888360855b7e6fc545567bf74",
+ "analysis_spec_sha256": "0b95c6820d24206824b2c9d05ea4dc481678e3039b74620f45c86377ee53417d",
+ "ok": true,
+ "outputs": {
+  "lots_rule.csv": {
+   "rows": 33741,
+   "sha256": "06b0f5b796fcb41b67b9546d5d2bd1a444e5fc5a19053e7f6923c9735b7609f9"
+  }
+ },
+ "run_meta_sha256": "63a5acfd20599a78690a91773b012cb5fc656c7117498c3d2331eba4f15af292"
+}
