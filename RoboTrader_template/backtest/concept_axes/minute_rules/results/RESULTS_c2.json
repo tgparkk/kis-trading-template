@@ -1,0 +1,60 @@
+{
+ "spec_sha256": "0b95c6820d24206824b2c9d05ea4dc481678e3039b74620f45c86377ee53417d",
+ "B": 10000,
+ "inputs": {
+  "lots_rule.csv": "744d3792e430e20d8e1314de51354b8da7d82c8a6ffca78b904a36acbb3f7482",
+  "RESULTS_confirm.json": "65131313ab1eecf839f693642ffab57210bd8a7b6c67fc5b69f2f32db4bf724b"
+ },
+ "results_md_sha256": "fafd3d3a4dc36256f3e934be7a8d2caabd10e078173ad037aaa7f9306006cfab",
+ "rules": {
+  "R1": {
+   "verdict": "해당 없음",
+   "sign": 1,
+   "est": 0.008756191306236668,
+   "n": 219
+  },
+  "R3": {
+   "verdict": "해당 없음",
+   "sign": 1,
+   "est": 3.7395360505299373,
+   "n": 219
+  },
+  "R7": {
+   "verdict": "해당 없음",
+   "sign": 1,
+   "est": 0.182648401826484,
+   "n": 219
+  },
+  "R6": {
+   "verdict": "해당 없음",
+   "sign": -1,
+   "est": -0.08408391704658787,
+   "n": 219
+  },
+  "R4": {
+   "verdict": "해당 없음",
+   "sign": -1,
+   "est": -1.5838746386804778,
+   "n": 219
+  },
+  "R5": {
+   "verdict": "해당 없음",
+   "sign": -1,
+   "est": -0.8365439449001589,
+   "n": 218
+  }
+ },
+ "prov": {
+  "git_sha": "8bd6b7603c9d8c9f70f059d7bd6d5e4a5d8742b7",
+  "code_digest": "6973acd57e8f553084b27f7f30838782bc3492278dd650be0e7e3d45fe5ef83e",
+  "run_meta": {
+   "C2": "6ff6c13de82f6a65d4f6772ca3672058e19660aa17b5246d93cfdb26a849ccf3"
+  },
+  "prior": {
+   "RESULTS_explore.md": "0132af195e5fdc094072002c9aaaeed3abf1ca9c",
+   "RESULTS_explore.json": "0132af195e5fdc094072002c9aaaeed3abf1ca9c",
+   "RESULTS_confirm.md": "8bd6b7603c9d8c9f70f059d7bd6d5e4a5d8742b7",
+   "RESULTS_confirm.json": "8bd6b7603c9d8c9f70f059d7bd6d5e4a5d8742b7"
+  }
+ }
+}
