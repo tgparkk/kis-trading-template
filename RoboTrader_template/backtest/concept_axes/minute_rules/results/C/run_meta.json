@@ -1,0 +1,140 @@
+{
+ "banner": "관측 — 판정 근거 아님(사전등록 §8) · 효과·p 없음(로트만)",
+ "prereg": {
+  "path": "docs/prereg_2026-11-11_minute_rules.md",
+  "sha256": "6bb539ecda4bc3dba163b755e3cb713ccd244e0a18524ce4f9c08c4ad4aa0b86"
+ },
+ "amendment": {
+  "path": "docs/prereg_2026-11-11_minute_rules_amendment1.md",
+  "sha256": "3b2085428f59836368302fee9b3acc2ae9db87b906175f0e58f517295e7accdd"
+ },
+ "git_sha": "0132af195e5fdc094072002c9aaaeed3abf1ca9c",
+ "code_sha256": {
+  "backtest/concept_axes/minute_rules/__init__.py": "be643cdab6f7f5616659f46ac8ca2e0fcad82ec76cf7f7ae0b3498c70052523b",
+  "backtest/concept_axes/minute_rules/analyze.py": "8907663879575f662dcd68c32c37bfd78735a44d240a294e8420b2449b93fca4",
+  "backtest/concept_axes/minute_rules/conftest.py": "f4dad7f1d188d36d4efc8d7c382096cbee5a1ff4c408399d8bf65f52661268e0",
+  "backtest/concept_axes/minute_rules/data.py": "53c5ca6f568f4bb0f4dc0bd2f6eab95befe0a0577f7c914be15e0da806cd059b",
+  "backtest/concept_axes/minute_rules/engine.py": "3f16905836685da6d2e1315de148915755033a4e8067a38113cfbc375b3a6ddd",
+  "backtest/concept_axes/minute_rules/fill_lite.py": "dd67ea58cbd7080f7a12544bfba202ebc13f7c76b92070280b97aaa3cdbbe4a1",
+  "backtest/concept_axes/minute_rules/rules.py": "8cfa8d65b3b4c012e29318955e8ca402e12fa9034aacd59bd47be17725b50b35",
+  "backtest/concept_axes/minute_rules/run.py": "fd60ab13607630665e3b49252a16c5bce0150b46f9ecf2954d33c7f9f86e87b5",
+  "backtest/concept_axes/minute_rules/test_stats.py": "c4cb8d1ac350bfd7f419f215b5087b5316db36ec3c394f7bfaeac6018628d3fd",
+  "backtest/concept_axes/ledger8/exitsim8.py": "c8ef25b960104ce5be9e864d2ad731c04a9b009d8c6889a2bb935102eba56268",
+  "backtest/concept_axes/ledger8/sizing.py": "07562975cd91945e7b742a5fe597bfe60b2151726b5d4dd847b8e138dc3e25d0",
+  "backtest/concept_axes/ledger8/fidelity8.py": "444997006f138374878e10dba3f0ef8cdb86fd74c12da760fefce13062c62df5",
+  "backtest/concept_axes/minervini/cap_skip_ledger/sim.py": "16ec63557353bd285546218bca5e7c36ba4733128625d2dba49f63d1eab7cff7",
+  "backtest/concept_axes/minervini/cap_skip_ledger/bootstrap.py": "2ffd4d2bfb9a272c255fe5ed0cd6852d11233014be121ece744f2d20054f4713",
+  "backtest/concept_axes/minervini/cap_skip_ledger/classify.py": "74bc0ccb8fedcb7ba117239f3bd3bc04ba1bf03accb1c3ac073969754b3c2c97",
+  "backtest/concept_axes/replayer/loader.py": "34526fb5160724d7e869acb46dc1bee365f96924ca0599b2eaa2a4bd851d7a3d",
+  "utils/price_utils.py": "ae5b45a100e2e93c187cc78eb97a3d3a15fdca1ec53d97af42b004346d933e78",
+  "config/constants.py": "2e3cb926c8cdad29d3079deaf080750006f0bea8656b55dcfbadbf5861d87615"
+ },
+ "analysis_spec_sha256": "0b95c6820d24206824b2c9d05ea4dc481678e3039b74620f45c86377ee53417d",
+ "rules_draft_flag": false,
+ "window": "C",
+ "layer": "A",
+ "start": "2026-01-01",
+ "end": "2026-09-23",
+ "c2_end": {},
+ "asof": "2026-11-11",
+ "path_end": {
+  "A": "2026-09-23",
+  "B": "2026-11-11"
+ },
+ "arms": [
+  "R0",
+  "R0_0905",
+  "R1",
+  "R3",
+  "R7",
+  "R6",
+  "R4",
+  "R5"
+ ],
+ "strategies": [
+  "daytrading_3methods_breakout"
+ ],
+ "plumbing": false,
+ "fakes": 0,
+ "explore": {
+  "sha256": "4b0a107e7b589c3925b3a94842afbe29e4f8fdd6e249d24e0fb4e9e927f813ce",
+  "commit": "0132af195e5fdc094072002c9aaaeed3abf1ca9c"
+ },
+ "sealed": false,
+ "csv_dir": "D:\\tmp\\kis-minute-private\\C",
+ "dep_module_files": {
+  "backtest.concept_axes.ledger8.exitsim8": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/backtest/concept_axes/ledger8/exitsim8.py",
+  "backtest.concept_axes.ledger8.sizing": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/backtest/concept_axes/ledger8/sizing.py",
+  "backtest.concept_axes.minervini.cap_skip_ledger.sim": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/backtest/concept_axes/minervini/cap_skip_ledger/sim.py",
+  "backtest.concept_axes.replayer.loader": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/backtest/concept_axes/replayer/loader.py",
+  "utils.price_utils": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/utils/price_utils.py",
+  "config.constants": "D:/tmp/kis-wt-ledger-minute/RoboTrader_template/config/constants.py"
+ },
+ "inputs": {
+  "ledger_csv": "b6918b6b73abb50b76555eecf8021a4f992a975e1830bdea562319dc4fd4d3d3",
+  "ledger_run_meta": "f384cc8b07b660f6e87d4414d12d5f87d97cea37014dda720f60536b1932c8c7",
+  "gap_rows_used_sha256": "39636073c05ef93035894e2abe2fb812bddf8d7702507865baa46b66b43ae6d7",
+  "gap_rows_used": 71494,
+  "stock_market_sha256": "8a3adc82dd4c6b217edff5e704fe9a79252c8d1e36712bc058f7ad936ae29cd5",
+  "daily_rows": 289417,
+  "daily_rows_sha256": "d3bbb16503df9852764144dc6eae870baef45b5c5e909de72c03733d350672f2",
+  "normalize_counts": {
+   "n_rows_raw": 289417,
+   "n_dropped_bad_date": 0,
+   "n_dropped_close": 0,
+   "n_patched_ohl": 0
+  },
+  "corp_events_rows": 944,
+  "corp_events_sha256": "dccd26500e2bc74277e54947caed18a9b61a5684539b72b3edfb25745d96597f",
+  "no_rank_d_lots": 0,
+  "tv_rank_sha256": "902e6e6d8d1f10fd689023464e93443cb3a388a76f58a902095b0374cedd4b90",
+  "kospi_sha256": "e4bd3101974de0ee3c019423014d0c0c6329ba031b44cfadbf0404e3fa5a1c12"
+ },
+ "n_lots": 5483,
+ "n_code_days": 5483,
+ "n_buy_days": 179,
+ "n_codes": 1630,
+ "n_minute_code_days": 1401,
+ "excluded": {
+  "no_minute_data": 4082
+ },
+ "unknown_market_codes": 0,
+ "layer_b": {},
+ "lot_flag_counts": {
+  "adj_null_entry": 263,
+  "adj_null_prev": 259,
+  "band_ok_open_minute": 960,
+  "corp_event": 38,
+  "excl_no_minute_data": 4082,
+  "has_1530": 1178,
+  "impossible_bar": 53,
+  "long_gap": 199,
+  "lots": 5483,
+  "market_gap_day": 36,
+  "minute_lots": 1401,
+  "n_rows_lt300": 160,
+  "open_gap_flag": 2,
+  "print_only": 0,
+  "survivor_universe": 5483,
+  "vi_suspect": 58,
+  "vintage_m4": 4362
+ },
+ "g8": {
+  "before": "90cb71cc424dc7ebb2d3164d81ef69172922115845449a27adb189d0d7c6a299",
+  "after": "90cb71cc424dc7ebb2d3164d81ef69172922115845449a27adb189d0d7c6a299",
+  "n_diff": 0,
+  "ok": true
+ },
+ "g5_cache": {
+  "version": 2,
+  "stale_days": [],
+  "ok": true
+ },
+ "ok": true,
+ "outputs": {
+  "lots_rule.csv": {
+   "rows": 43864,
+   "sha256": "987578f7d1a10df0ea77feb8801cf32b41c8c60d5a57b015ef56838d00e6164e"
+  }
+ }
+}

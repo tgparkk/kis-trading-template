@@ -1,0 +1,132 @@
+{
+ "spec_sha256": "0b95c6820d24206824b2c9d05ea4dc481678e3039b74620f45c86377ee53417d",
+ "B": 10000,
+ "inputs": {
+  "lots_rule.csv": "987578f7d1a10df0ea77feb8801cf32b41c8c60d5a57b015ef56838d00e6164e",
+  "RESULTS_explore.json": "abd492d20cab426903e3ed01a54a913f41e4975aabb08ae1e70ef30877ca4c32"
+ },
+ "results_md_sha256": "aeb6080e26e7a5237b1789ae0dc5766504340737b2708a911117af5b1c3d442c",
+ "rules": {
+  "R1": {
+   "sign": 1,
+   "est": 0.04970037986314094,
+   "passed": false,
+   "verdict": "불통과",
+   "criteria": {
+    "holm_ci": false,
+    "theta": false,
+    "same_sign_E": false,
+    "models_abc": false,
+    "net": true,
+    "ipw": false,
+    "regime": true,
+    "loo_month": true,
+    "top10": false
+   },
+   "current_side": false
+  },
+  "R3": {
+   "sign": -1,
+   "est": -1.8799391500521128,
+   "passed": false,
+   "verdict": "불통과",
+   "criteria": {
+    "holm_ci": false,
+    "theta": false,
+    "same_sign_E": true,
+    "models_abc": true,
+    "net": false,
+    "ipw": true,
+    "regime": true,
+    "loo_month": true,
+    "top10": true
+   },
+   "current_side": true
+  },
+  "R7": {
+   "sign": -1,
+   "est": -0.015421771962705907,
+   "passed": false,
+   "verdict": "불통과",
+   "criteria": {
+    "holm_ci": false,
+    "theta": false,
+    "same_sign_E": true,
+    "models_abc": false,
+    "net": false,
+    "ipw": true,
+    "regime": true,
+    "loo_month": false,
+    "top10": false
+   },
+   "current_side": false
+  },
+  "R6": {
+   "sign": -1,
+   "est": -0.046949388714382624,
+   "passed": false,
+   "verdict": "불통과",
+   "criteria": {
+    "holm_ci": false,
+    "theta": false,
+    "same_sign_E": true,
+    "models_abc": true,
+    "net": false,
+    "ipw": true,
+    "regime": true,
+    "loo_month": true,
+    "top10": false
+   },
+   "current_side": false
+  },
+  "R4": {
+   "sign": -1,
+   "est": -0.5495124283147829,
+   "passed": false,
+   "verdict": "불통과",
+   "criteria": {
+    "holm_ci": false,
+    "theta": false,
+    "same_sign_E": true,
+    "models_abc": true,
+    "net": false,
+    "ipw": true,
+    "regime": false,
+    "loo_month": true,
+    "top10": false,
+    "f_min": true
+   },
+   "current_side": false
+  },
+  "R5": {
+   "sign": -1,
+   "est": -1.0949027577115842,
+   "passed": false,
+   "verdict": "불통과",
+   "criteria": {
+    "holm_ci": false,
+    "theta": false,
+    "same_sign_E": true,
+    "models_abc": true,
+    "net": false,
+    "ipw": true,
+    "regime": true,
+    "loo_month": true,
+    "top10": false,
+    "f_min": true
+   },
+   "current_side": false
+  }
+ },
+ "prov": {
+  "git_sha": "0132af195e5fdc094072002c9aaaeed3abf1ca9c",
+  "code_digest": "6973acd57e8f553084b27f7f30838782bc3492278dd650be0e7e3d45fe5ef83e",
+  "run_meta": {
+   "C": "01c7f371668c0f916e7117b76fc85a6ba93865243ffc28a2d3c83546a4263302"
+  },
+  "prior": {
+   "RESULTS_explore.md": "0132af195e5fdc094072002c9aaaeed3abf1ca9c",
+   "RESULTS_explore.json": "0132af195e5fdc094072002c9aaaeed3abf1ca9c"
+  }
+ }
+}
