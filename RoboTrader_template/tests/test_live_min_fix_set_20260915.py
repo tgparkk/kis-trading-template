@@ -362,32 +362,37 @@ class TestA5CircuitBreakerSellBypass:
         cb = MagicMock()
         cb.can_execute.return_value = False   # OPEN
 
-        with patch.object(cb_mod, "get_circuit_breaker", return_value=cb), \
+        with patch.object(cb_mod, "get_circuit_breaker", return_value=cb) as get_cb, \
              patch.object(kis_auth, "_TRENV", None), \
              patch.object(kis_auth, "auth", return_value=False) as auth_fn:
             kis_auth._url_fetch("/dummy", tr_id, "", {})
         # consulted = 「패치된 CB 가 실제로 조회됐다」 — 공허 통과 방지축.
         # 패치가 빗나가면 진짜 싱글턴(CLOSED)이 consult 되고 우리 mock 은 손도 안 탄 채
         # 매도 테스트가 그냥 통과해버린다.
-        return cb.record_blocked.called, auth_fn.called, cb.can_execute.called
+        # 2026-11-13: 우회 TR 은 can_execute() 를 부르지 않는다(HALF_OPEN 시험 횟수 미소모)
+        #   → 「패치된 팩토리가 불렸다」로 판정한다.
+        return cb.record_blocked.called, auth_fn.called, get_cb.called, cb.can_execute.called
 
     def test_cash_sell_tr_passes_circuit_breaker(self):
-        blocked, reached_auth, consulted = self._fetch("TTTC0011U")
+        blocked, reached_auth, consulted, can_exec_called = self._fetch("TTTC0011U")
         assert consulted, "패치된 Circuit Breaker 가 조회되지 않았다 — 패치가 빗나갔다"
+        assert not can_exec_called, "우회 TR 이 can_execute() 를 불렀다 — HALF_OPEN 시험 횟수 소모"
         assert not blocked, "현금 매도(TTTC0011U)가 Circuit Breaker 에 막혔다"
         assert reached_auth, "CB 를 통과했는데 그 다음 단계(인증)로 가지 않았다"
 
     def test_cash_buy_tr_still_blocked(self):
-        blocked, reached_auth, consulted = self._fetch("TTTC0012U")
+        blocked, reached_auth, consulted, can_exec_called = self._fetch("TTTC0012U")
         assert consulted, "패치된 Circuit Breaker 가 조회되지 않았다 — 패치가 빗나갔다"
+        assert can_exec_called, "매수가 can_execute() 를 거치지 않았다"
         assert blocked, "현금 매수(TTTC0012U)가 Circuit Breaker 를 통과했다 — 금지"
         assert not reached_auth
 
     def test_existing_bypass_tr_ids_unchanged(self):
         """기존 우회 대상(정정취소)은 그대로 통과 — 회귀 가드."""
         for tr_id in ("TTTC0013U", "TTTC8036R"):
-            blocked, reached_auth, consulted = self._fetch(tr_id)
+            blocked, reached_auth, consulted, can_exec_called = self._fetch(tr_id)
             assert consulted, tr_id
+            assert not can_exec_called, tr_id
             assert not blocked and reached_auth, tr_id
 
 

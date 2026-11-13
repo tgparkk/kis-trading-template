@@ -332,9 +332,11 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
     _CB_BYPASS_TR_IDS = {"TTTC0013U", "TTTC8036R", "TTTC0011U"}  # 정정취소, 정정취소가능조회, 현금매도
     from api.circuit_breaker import get_circuit_breaker
     cb = get_circuit_breaker()
-    if not cb.can_execute() and ptr_id not in _CB_BYPASS_TR_IDS:
+    # 우회 검사를 먼저 — 우회 TR(매도 등)이 HALF_OPEN 시험 횟수를 소모하지 않게
+    if ptr_id not in _CB_BYPASS_TR_IDS and not cb.can_execute():
         cb.record_blocked()
-        logger.warning(f"🔌 Circuit Breaker OPEN - API 호출 차단: {ptr_id}")
+        # 문구는 기존 로그 grep 호환을 위해 유지 — 실제 상태(OPEN/HALF_OPEN)를 뒤에 덧붙인다
+        logger.warning(f"🔌 Circuit Breaker OPEN - API 호출 차단: {ptr_id} (state={cb.state.value})")
         return None
     
     if not _TRENV:
@@ -380,6 +382,8 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
                 res = requests.get(url, headers=headers, params=params, timeout=API_REQUEST_TIMEOUT)
 
             # 응답 처리
+            # 차단기 기록 기준: 200+rt_cd=0 → success · 200+비즈니스 오류(OPSQ1002 SESSION FULL·HTML 본문 포함)·
+            # rate-limit·404·토큰 재발급 실패 = 판정 보류(기록 없음 · HALF_OPEN 은 차단기 자동 재개방) · 그 밖의 비-200 → failure
             if res.status_code == 200:
                 ar = APIResp(res)
                 if ar.isOK():
@@ -442,6 +446,7 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
                                 if res.status_code == 200:
                                     ar_retry = APIResp(res)
                                     if ar_retry.isOK():
+                                        cb.record_success()
                                         logger.info(f"✅ 토큰 재발급 후 API 호출 성공: {tr_id}")
                                         return ar_retry
                                     else:
@@ -449,6 +454,8 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
                                         return ar_retry
                                 else:
                                     logger.error(f"❌ 토큰 재발급 후 HTTP 오류: {res.status_code}")
+                                    if res.status_code != 404 and not _is_rate_limit_error(res.text):
+                                        cb.record_failure()
                                     return None
                             else:
                                 logger.error("❌ 토큰 재발급 실패")
@@ -502,15 +509,18 @@ def _url_fetch(api_url: str, ptr_id: str, tr_cont: str, params: Dict,
                                 return None
                         else:
                             logger.error(f"API 오류: {res.status_code} - {res.text}")
+                            cb.record_failure()  # 500 EGW00302/EGW00300 등 서버 장애성 응답
                             return None
                     except json.JSONDecodeError:
                         logger.error(f"API 오류: {res.status_code} - {res.text}")
+                        cb.record_failure()
                         return None
                 else:
                     if res.status_code == 404:
                         logger.debug(f"API 404 (엔드포인트 미지원 가능): {url} tr_id={tr_id}")
                     else:
                         logger.error(f"API 오류: {res.status_code} - {res.text}")
+                        cb.record_failure()
                     return None
 
         except requests.exceptions.Timeout as e:
