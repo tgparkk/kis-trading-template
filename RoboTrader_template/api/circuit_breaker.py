@@ -42,6 +42,7 @@ class CircuitBreaker:
         self._success_count = 0
         self._last_failure_time: float = 0
         self._half_open_calls = 0
+        self._last_trial_time: float = 0   # HALF_OPEN 시험 호출을 마지막으로 허용한 시각(monotonic)
         self._lock = threading.RLock()
         self._on_state_change_cb: Optional[Callable] = None
 
@@ -59,7 +60,7 @@ class CircuitBreaker:
         with self._lock:
             if self._state == CircuitState.OPEN:
                 # 복구 타임아웃 경과 시 HALF_OPEN으로 전환
-                if time.time() - self._last_failure_time >= self.config.recovery_timeout:
+                if time.monotonic() - self._last_failure_time >= self.config.recovery_timeout:
                     self._transition_to(CircuitState.HALF_OPEN)
             return self._state
 
@@ -82,6 +83,7 @@ class CircuitBreaker:
         elif new_state == CircuitState.CLOSED:
             self._failure_count = 0
             self._success_count = 0
+            self._half_open_calls = 0
         elif new_state == CircuitState.OPEN:
             self.stats['circuit_open_count'] += 1
 
@@ -95,13 +97,26 @@ class CircuitBreaker:
 
     def can_execute(self) -> bool:
         """현재 API 호출 가능 여부"""
-        current_state = self.state  # 이 호출로 OPEN→HALF_OPEN 전환도 체크
         with self._lock:
+            # 상태 읽기와 판단을 같은 락 안에서(RLock) — 그 틈에 OPEN 으로 바뀌면 옛 값으로 허용하는 경쟁 방지
+            current_state = self.state  # 이 호출로 OPEN→HALF_OPEN 전환도 체크
             if current_state == CircuitState.CLOSED:
                 return True
             elif current_state == CircuitState.HALF_OPEN:
+                now = time.monotonic()
+                # 2026-11-13 고착 방지: 시험 호출이 판정(record_success/failure) 없이 끝나면
+                # 시험 횟수만 소진된 HALF_OPEN 에 영구히 갇힌다. recovery_timeout 동안 판정이
+                # 없으면 시험 창을 다시 연다(호출자가 기록을 빠뜨려도 차단기 스스로 풀린다).
+                if (self._half_open_calls >= self.config.half_open_max_calls
+                        and now - self._last_trial_time >= self.config.recovery_timeout):
+                    logger.warning(
+                        f"🔌 CircuitBreaker[{self.name}] HALF_OPEN 시험 호출 {self._half_open_calls}회 "
+                        f"판정 없이 {self.config.recovery_timeout:.0f}초 경과 → 시험 창 재개방"
+                    )
+                    self._half_open_calls = 0
                 if self._half_open_calls < self.config.half_open_max_calls:
                     self._half_open_calls += 1
+                    self._last_trial_time = now
                     return True
                 return False
             else:  # OPEN
@@ -124,7 +139,7 @@ class CircuitBreaker:
             self.stats['total_calls'] += 1
             self.stats['total_failures'] += 1
             self._failure_count += 1
-            self._last_failure_time = time.time()
+            self._last_failure_time = time.monotonic()  # 경과 시간 계산 전용(벽시계 역행 방어)
 
             if self._state == CircuitState.HALF_OPEN:
                 # HALF_OPEN에서 실패 → 즉시 OPEN으로
@@ -142,6 +157,7 @@ class CircuitBreaker:
         """HALF_OPEN 테스트 호출 기록"""
         with self._lock:
             self._half_open_calls += 1
+            self._last_trial_time = time.monotonic()
 
     def reset(self):
         """수동 리셋"""
