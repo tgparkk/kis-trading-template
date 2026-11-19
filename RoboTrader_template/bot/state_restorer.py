@@ -627,7 +627,8 @@ class StateRestorer:
             stale_info = []  # 장기보유 종목 정보 수집
             restored_positions = []  # 전략 원장 재구성용 {stock_code, strategy, quantity, buy_price}
             by_owner = {}  # 전략 self.positions 주입용 {owner: {code: {qty, entry_price, entry_time}}}
-            daily_missing: List[str] = []  # 일봉 조회 실패 → 장중 데이터 없이 슬롯만 올린 보유
+            intraday_failed: List[str] = []  # 장중 등록 실패(일봉 조회 등) → 장중 데이터 없이 슬롯만 올린 보유
+            unrestored: List[str] = []  # 폴백 슬롯 등록까지 실패 → 런타임 포지션 없음
 
             for _, holding in holdings.iterrows():
                 stock_code = holding['stock_code']
@@ -656,6 +657,7 @@ class StateRestorer:
                 owner_name = raw_owner.strip() if (raw_owner and isinstance(raw_owner, str)) else ""
 
                 selection_reason = f"보유 종목 복원 ({quantity}주 @{buy_price:,.0f}원)"
+                success = False
                 for attempt in range(1, PAPER_RESTORE_ADD_ATTEMPTS + 1):
                     success = await self.trading_manager.add_selected_stock(
                         stock_code=stock_code,
@@ -680,12 +682,14 @@ class StateRestorer:
                         stock_code, stock_name, selection_reason, prev_close, owner_name,
                         mode="가상매매")
                     if success:
-                        daily_missing.append(f"{stock_code}({stock_name})")
+                        intraday_failed.append(f"{stock_code}({stock_name})")
                         # 현재가 수집 목록 등록 — 정상 등록(OrderExecution.add_selected_stock)과 같다.
                         try:
                             self.trading_manager.data_collector.add_candidate_stock(stock_code, stock_name)
                         except Exception as e:
                             logger.warning(f"[가상매매] {stock_code} 현재가 수집 등록 실패(무시): {e}")
+                    else:
+                        unrestored.append(f"{stock_code}({stock_name})")
 
                 if success:
                     trading_stock = self.trading_manager.get_trading_stock(
@@ -806,12 +810,17 @@ class StateRestorer:
             self._reconstruct_strategy_ledger(restored_positions)
 
             logger.info(f"[가상매매] 보유 종목 {holding_restored}/{len(holdings)}개 복원 완료")
-            # 위 줄(관문이 N==M 을 보는 줄)의 N 에는 아래 종목도 들어 있다 — 별도 줄로 남긴다.
-            if daily_missing:
+            # 위 줄(관문이 N==M 을 보는 줄)의 N 에는 아래 WARNING 종목도 들어 있다(ERROR 종목은 빠진다)
+            # — 별도 줄로 남긴다. 두 줄 모두 관문 정규식에 걸리지 않는 문구여야 한다.
+            if intraday_failed:
                 logger.warning(
-                    f"⚠️ [가상매매] 일봉 미확보 {len(daily_missing)}종목 — 장중 데이터 등록 없이 보유 복원 "
-                    f"(손절·익절·보유기간 감시는 현재가 기준 · 전략 일봉 청산은 DB 일봉으로 판단, "
-                    f"없으면 보류): {daily_missing}"
+                    f"⚠️ [가상매매] 장중 등록 실패 {len(intraday_failed)}종목(일봉 조회 등) — 장중 데이터 없이 "
+                    f"보유 복원 · 전략 일봉 청산은 DB 일봉으로 판단(없으면 보류 · 오래됐으면 그 데이터로): "
+                    f"{intraday_failed}"
+                )
+            if unrestored:
+                logger.error(
+                    f"❌ [가상매매] 복원 불가 {len(unrestored)}종목 — 런타임 포지션 없음: {unrestored}"
                 )
             self._log_fund_sync_summary(holding_restored, total_invested, "가상매매")
 

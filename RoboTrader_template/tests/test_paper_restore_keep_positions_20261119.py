@@ -8,8 +8,10 @@
 고정하는 것:
   1. 실제 사슬(StateRestorer → TradingStockManager → OrderExecution → IntradayStockManager →
      IntradayDataCollector)에서 일봉이 None 이어도 전 종목 POSITIONED · `N/M` 이 M/M ·
-     「일봉 미확보」 별도 줄 · 관문 정규식 형식 불변.
-  2. 짧은 재시도 1회로 붙으면 정상 등록(미확보 줄 없음).
+     「장중 등록 실패」 별도 WARNING 줄 · 관문 정규식 형식 불변.
+  1-b. 폴백 슬롯 등록까지 실패하면 N<M 으로 남고(관문이 잡는다) 자금 장부에 안 들어가며
+     「복원 불가」 별도 ERROR 줄.
+  2. 짧은 재시도 1회로 붙으면 정상 등록(장중 등록 실패 줄 없음).
   3. 일봉 없는 슬롯도 현재가 기반 손절·익절·보유기간 백스톱을 받는다.
   4. 「보유 중 무시」 가드가 폴백 슬롯을 본다(같은 전략 중복 매수 차단).
   5. 전략 일봉 청산은 DB 일봉이 없으면 보류, 들어오면 정상 경로로 돌아온다.
@@ -55,7 +57,7 @@ def _holding(code, qty, price, buy_time, row_id, tp=0.10, sl=0.08, owner=OWNER):
     }
 
 
-def _build(holdings, ohlcv, strategy):
+def _build(holdings, ohlcv, strategy, fund_manager=None):
     """실체 TradingStockManager + IntradayStockManager(리밸런싱 모드) + StateRestorer(페이퍼).
 
     ohlcv: broker.get_ohlcv_data 의 side_effect(code, period, count) — None 이면 조회 실패.
@@ -78,7 +80,7 @@ def _build(holdings, ohlcv, strategy):
     config.paper_trading = True
     r = StateRestorer(
         trading_manager=tsm, db_manager=db, telegram_integration=None, config=config,
-        get_previous_close_callback=lambda code: 10_000.0, broker=broker, fund_manager=None,
+        get_previous_close_callback=lambda code: 10_000.0, broker=broker, fund_manager=fund_manager,
         virtual_trading_manager=None, strategies={OWNER: strategy},
     )
     return r, tsm, intraday, data_collector, broker
@@ -90,7 +92,8 @@ async def _restore(r):
         await r._restore_holdings_from_db()
     infos = [str(c.args[0]) for c in log.info.call_args_list if c.args]
     warns = [str(c.args[0]) for c in log.warning.call_args_list if c.args]
-    return infos, warns
+    errors = [str(c.args[0]) for c in log.error.call_args_list if c.args]
+    return infos, warns, errors
 
 
 def _fail_for(*bad_codes):
@@ -117,7 +120,7 @@ class TestPaperRestoreKeepsPositionsWhenDailyFails:
         strat = _strategy_stub()
         r, tsm, intraday, data_collector, broker = _build(holdings, _fail_for("062040", "028300"), strat)
 
-        infos, warns = await _restore(r)
+        infos, warns, errors = await _restore(r)
 
         for h in holdings:
             slot = tsm.get_trading_stock(h["stock_code"], strategy=OWNER)
@@ -131,11 +134,12 @@ class TestPaperRestoreKeepsPositionsWhenDailyFails:
         # 관문 줄 = 형식 불변 · N == M
         gate = [line for line in infos if GATE_RE.search(line)]
         assert len(gate) == 1 and GATE_RE.search(gate[0]).groups() == ("3", "3")
-        # 일봉 미확보는 별도 줄 — 관문 정규식에 걸리지 않는다
-        (missing,) = [w for w in warns if "일봉 미확보" in w]
-        assert "일봉 미확보 2종목" in missing and "062040" in missing and "028300" in missing
+        # 장중 등록 실패는 별도 줄 — 관문 정규식에 걸리지 않는다
+        (missing,) = [w for w in warns if "장중 등록 실패" in w]
+        assert "장중 등록 실패 2종목(일봉 조회 등)" in missing and "062040" in missing and "028300" in missing
         assert "417010" not in missing
         assert not GATE_RE.search(missing) and "보유 종목 없음" not in missing
+        assert not [e for e in errors if "복원 불가" in e]          # 폴백은 성공 → ERROR 줄 없음
         # 짧은 재시도 1회(실패 종목만 2번 조회) · 성공 종목은 1번
         calls = [c.args[0] for c in broker.get_ohlcv_data.call_args_list]
         assert calls.count("062040") == 2 and calls.count("028300") == 2 and calls.count("417010") == 1
@@ -159,16 +163,52 @@ class TestPaperRestoreKeepsPositionsWhenDailyFails:
         r, tsm, intraday, _, broker = _build(
             [_holding("062040", 10, 20_000.0, bt, 3502)], _ohlcv, _strategy_stub())
 
-        infos, warns = await _restore(r)
+        infos, warns, _ = await _restore(r)
 
         assert tsm.get_trading_stock("062040", strategy=OWNER).state == StockState.POSITIONED
         assert "062040" in intraday.selected_stocks
         assert broker.get_ohlcv_data.call_count == 2
-        assert not [w for w in warns if "일봉 미확보" in w]
+        assert not [w for w in warns if "장중 등록 실패" in w]
         assert any(GATE_RE.search(line) and "1/1" in line for line in infos)
 
     @pytest.mark.asyncio
-    async def test_degraded_slot_gets_price_stop_loss_take_profit_and_max_hold(self):
+    async def test_fallback_registration_also_fails_leaves_n_lt_m_and_error_line(self):
+        """폴백 슬롯 등록까지 실패(_register_stock 예외) — 그 종목은 런타임·자금 장부에 없고, 관문 줄은
+        N<M 으로 남아 관문이 잡는다 · 「복원 불가」 ERROR 줄은 관문 정규식에 걸리지 않는다."""
+        from core.fund_manager import FundManager
+
+        bt = now_kst() - timedelta(days=3)
+        holdings = [
+            _holding("417010", 104, 6_210.0, bt, 3501),
+            _holding("062040", 10, 20_000.0, bt, 3502),
+        ]
+        fm = FundManager(initial_funds=10_000_000)
+        r, tsm, _, data_collector, _ = _build(
+            holdings, _fail_for("062040"), _strategy_stub(), fund_manager=fm)
+        # 폴백만 깨뜨린다 — 정상 등록(OrderExecution)은 state_manager.register_stock 을 직접 부른다.
+        tsm._register_stock = Mock(side_effect=RuntimeError("boom"))
+
+        infos, warns, errors = await _restore(r)
+
+        tsm._register_stock.assert_called_once()
+        assert tsm.get_trading_stock("062040", strategy=OWNER) is None
+        assert tsm.get_trading_stock("417010", strategy=OWNER).state == StockState.POSITIONED
+        # 관문 줄 = N<M → 관문이 FAIL 로 잡는다
+        (gate,) = [line for line in infos if GATE_RE.search(line)]
+        assert GATE_RE.search(gate).groups() == ("1", "2")
+        # 자금 장부엔 복원된 종목만
+        assert fm.current_position_codes == {"417010"}
+        assert fm.invested_funds == pytest.approx(104 * 6_210.0)
+        # 폴백 오류 ERROR + 「복원 불가」 ERROR(관문 정규식 불일치) · 「장중 등록 실패」 WARNING 엔 없음
+        assert any("[가상매매] 062040 폴백 슬롯 등록 오류" in e for e in errors)
+        (lost,) = [e for e in errors if "복원 불가" in e]
+        assert "복원 불가 1종목 — 런타임 포지션 없음" in lost and "062040" in lost and "417010" not in lost
+        assert not GATE_RE.search(lost) and "보유 종목 없음" not in lost
+        assert not [w for w in warns if "장중 등록 실패" in w]
+        assert "062040" not in {c.args[0] for c in data_collector.add_candidate_stock.call_args_list}
+
+    @pytest.mark.asyncio
+    async def test_degraded_slot_gets_price_stop_loss_take_profit(self):
         bt = now_kst() - timedelta(days=3)
         r, tsm, intraday, _, _ = _build(
             [_holding("062040", 10, 20_000.0, bt, 3502)], _fail_for("062040"), _strategy_stub())
