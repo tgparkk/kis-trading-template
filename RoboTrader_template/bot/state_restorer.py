@@ -5,6 +5,7 @@
 import asyncio
 import math
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple
 
 from utils.logger import setup_logger
@@ -34,6 +35,31 @@ PAPER_RESTORE_RETRY_SEC = 1.0
 # 기동 시 미체결 전량 취소 뒤 «잔존 0» 재확인 — 조회 횟수(첫 조회 포함)·간격(리뷰 사소4)
 STARTUP_CANCEL_RECHECK_ATTEMPTS = 3
 STARTUP_CANCEL_RECHECK_SEC = 2.0
+
+
+def _rate_or_default(raw, default: float) -> float:
+    """DB 익절/손절률 칸 → float. None·NaN·변환 불가면 기본값."""
+    try:
+        value = float(raw) if raw is not None else None
+        return value if (value is not None and not math.isnan(value)) else default
+    except (ValueError, TypeError, OverflowError):
+        return default
+
+
+def _row_id(holding) -> Optional[int]:
+    """보유 행의 BUY id(int). 없거나 변환 불가면 None."""
+    try:
+        return int(holding.get('id'))
+    except (TypeError, ValueError):
+        return None
+
+
+def _lot_order_key(holding) -> tuple:
+    """같은 전략·같은 종목 로트의 매수 순서 키 — (매수시각 없음, 매수시각, BUY id). 먼저 산 로트가 앞."""
+    import pandas as pd
+    bt = pd.to_datetime(holding.get('buy_time'), errors='coerce')
+    missing = bool(pd.isna(bt))
+    return (missing, 0 if missing else bt.value, _row_id(holding))
 
 
 class StateRestorer:
@@ -597,6 +623,26 @@ class StateRestorer:
         except Exception as e:
             logger.error(f"❌ 후보 종목 복원 실패: {e}")
 
+    @staticmethod
+    def _queued_lot_ids(holdings) -> set:
+        """같은 전략·같은 종목의 열린 매수 로트가 2개 이상인 묶음에서 «먼저 산 로트» 를 뺀 BUY id 들.
+
+        전략이 비었거나 id 가 없는 행은 묶지 않는다(종전 동작 그대로).
+        """
+        groups: Dict[tuple, list] = {}
+        for _, holding in holdings.iterrows():
+            raw_owner = holding.get('strategy', '')
+            owner = raw_owner.strip() if (raw_owner and isinstance(raw_owner, str)) else ""
+            if not owner or _row_id(holding) is None:
+                continue
+            groups.setdefault((owner, holding['stock_code']), []).append(holding)
+        queued = set()
+        for rows in groups.values():
+            if len(rows) > 1:
+                rows.sort(key=_lot_order_key)
+                queued.update(_row_id(row) for row in rows[1:])
+        return queued
+
     async def _restore_holdings_from_db(self) -> None:
         """DB에서 보유 종목 복원.
 
@@ -629,25 +675,24 @@ class StateRestorer:
             by_owner = {}  # 전략 self.positions 주입용 {owner: {code: {qty, entry_price, entry_time}}}
             intraday_failed: List[str] = []  # 장중 등록 실패(일봉 조회 등) → 장중 데이터 없이 슬롯만 올린 보유
             unrestored: List[str] = []  # 폴백 슬롯 등록까지 실패 → 런타임 포지션 없음
+            # 2026-11-20: 같은 전략·같은 종목에 열린 매수 로트가 2개 이상이면(028300 deep_mr_dev20
+            # rid 3603·3633) 종전엔 뒤 행이 같은 슬롯을 덮어써 한 로트가 런타임 밖이었다
+            # (`positioned → positioned` 경고). 슬롯은 (종목, 전략)당 하나라 가장 먼저 산 로트만
+            # 슬롯에 올리고(감시 로트), 나머지는 아래 루프 뒤에 그 슬롯의 대기 로트로 붙인다.
+            queued_lot_ids = self._queued_lot_ids(holdings) if self.is_paper_trading else set()
+            queued_rows = []
 
             for _, holding in holdings.iterrows():
+                if queued_lot_ids and _row_id(holding) in queued_lot_ids:
+                    queued_rows.append(holding)
+                    continue
                 stock_code = holding['stock_code']
                 stock_name = holding['stock_name']
                 quantity = int(holding['quantity'])
                 buy_price = float(holding['buy_price'])
                 buy_time = holding.get('buy_time')  # 매수 시각 (장기보유 체크용)
-                raw_tp = holding.get('target_profit_rate')
-                try:
-                    tp_value = float(raw_tp) if raw_tp is not None else None
-                    target_profit_rate = tp_value if (tp_value is not None and not math.isnan(tp_value)) else DEFAULT_TARGET_PROFIT_RATE
-                except (ValueError, TypeError, OverflowError):
-                    target_profit_rate = DEFAULT_TARGET_PROFIT_RATE
-                raw_sl = holding.get('stop_loss_rate')
-                try:
-                    sl_value = float(raw_sl) if raw_sl is not None else None
-                    stop_loss_rate = sl_value if (sl_value is not None and not math.isnan(sl_value)) else DEFAULT_STOP_LOSS_RATE
-                except (ValueError, TypeError, OverflowError):
-                    stop_loss_rate = DEFAULT_STOP_LOSS_RATE
+                target_profit_rate = _rate_or_default(holding.get('target_profit_rate'), DEFAULT_TARGET_PROFIT_RATE)
+                stop_loss_rate = _rate_or_default(holding.get('stop_loss_rate'), DEFAULT_STOP_LOSS_RATE)
 
                 prev_close = self.get_previous_close(stock_code)
 
@@ -802,6 +847,70 @@ class StateRestorer:
                             f"손절가 {buy_price*(1-stop_loss_rate):,.0f}원"
                             f"{f', 보유 {ts_days_held}일' if ts_days_held > 0 else ''}"
                         )
+
+            # 대기 로트 — 감시 로트의 슬롯에 먼저 산 순서로 붙인다. 자금 장부·전략 원장·관문 셈은
+            # 감시 로트와 똑같이 로트마다 들어간다. 슬롯·전략 포지션은 감시 로트 그대로다.
+            waiting_slots: Dict[int, TradingStock] = {}   # id(slot) → slot (dataclass == 는 필드 비교라 쓰지 않는다)
+            for holding in sorted(queued_rows, key=_lot_order_key):
+                stock_code = holding['stock_code']
+                stock_name = holding['stock_name']
+                owner_name = holding['strategy'].strip()
+                slot = self.trading_manager.get_trading_stock(stock_code, strategy=owner_name)
+                if slot is None or slot.state != StockState.POSITIONED:
+                    unrestored.append(f"{stock_code}({stock_name})")   # 감시 로트부터 못 올라감
+                    continue
+                quantity = int(holding['quantity'])
+                buy_price = float(holding['buy_price'])
+                buy_time = holding.get('buy_time')
+                target_profit_rate = _rate_or_default(holding.get('target_profit_rate'), DEFAULT_TARGET_PROFIT_RATE)
+                stop_loss_rate = _rate_or_default(holding.get('stop_loss_rate'), DEFAULT_STOP_LOSS_RATE)
+                # 보유일·장기보유 기본값은 감시 로트와 같은 함수로 — 슬롯을 건드리지 않게 로트 자리에서 계산
+                lot_view = SimpleNamespace(stock_code=stock_code, stock_name=stock_name,
+                                           days_held=0, is_stale=False)
+                if buy_time is not None:
+                    target_profit_rate, stop_loss_rate = self._apply_stale_position_check(
+                        lot_view, buy_time, target_profit_rate, stop_loss_rate)
+                buy_record_id = _row_id(holding)
+                slot._queued_restored_lots.append({
+                    'buy_record_id': buy_record_id,
+                    'quantity': quantity,
+                    'buy_price': buy_price,
+                    'entry_time': self._normalize_entry_time(buy_time),
+                    'target_profit_rate': target_profit_rate,
+                    'stop_loss_rate': stop_loss_rate,
+                    'days_held': lot_view.days_held,
+                    'is_stale': lot_view.is_stale is True,
+                })
+                waiting_slots[id(slot)] = slot
+                holding_restored += 1
+                restored_positions.append({
+                    'stock_code': stock_code,
+                    'strategy': owner_name,
+                    'quantity': quantity,
+                    'buy_price': buy_price,
+                    'buy_record_id': buy_record_id,
+                })
+                total_invested += self._sync_fund_manager_for_position(
+                    stock_code, quantity, buy_price, owner=slot.owner_strategy_name or None,
+                )
+                self._sync_virtual_balance_for_position(quantity, buy_price)
+                if lot_view.is_stale is True:
+                    stale_info.append({
+                        'stock_code': stock_code,
+                        'stock_name': stock_name,
+                        'days_held': lot_view.days_held,
+                        'quantity': quantity,
+                        'buy_price': buy_price,
+                    })
+            for slot in waiting_slots.values():
+                waiting = [f"rid {lot['buy_record_id']}({lot['quantity']}주 @{lot['buy_price']:,.0f}원)"
+                           for lot in slot._queued_restored_lots]
+                logger.warning(
+                    f"⚠️ [가상매매] {slot.stock_code} 같은 전략({slot.owner_strategy_name}) 열린 매수 로트 "
+                    f"{1 + len(waiting)}개 — 감시 로트 rid {slot._virtual_buy_record_id}"
+                    f"({slot.position.quantity}주 @{slot.position.avg_price:,.0f}원) · 대기 로트 {waiting} "
+                    f"· 감시 로트가 청산되면 곧바로 다음 로트 승계(대기 중엔 손절·익절·보유기간 판단 밖)"
+                )
 
             # 복원 포지션을 전략 self.positions 로 주입 (재시작 시 전략측 청산 복원)
             self._sync_strategy_positions(by_owner)
