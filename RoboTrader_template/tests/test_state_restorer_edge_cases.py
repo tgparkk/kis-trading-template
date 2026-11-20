@@ -196,7 +196,11 @@ class TestPaperTradingEdgeCases:
 
     @pytest.mark.asyncio
     async def test_다수_보유_종목_일부_실패(self, restorer, base_deps):
-        """여러 보유 종목 중 일부만 add_selected_stock 실패"""
+        """여러 보유 종목 중 일부만 add_selected_stock 실패 — 실패 종목도 폴백 슬롯으로 복원.
+
+        2026-11-19 부터 기대치 반전: 종전 「실패 종목은 포지션 설정 안 함」은 보유가
+        감시 밖으로 빠지는 결함 자체였다.
+        """
         holdings_df = pd.DataFrame([
             {'stock_code': '005930', 'stock_name': '삼성전자',
              'quantity': 10, 'buy_price': 70000.0,
@@ -207,17 +211,18 @@ class TestPaperTradingEdgeCases:
         ])
         base_deps['db_manager'].get_virtual_open_positions.return_value = holdings_df
         base_deps['trading_manager'].add_selected_stock = AsyncMock(
-            side_effect=[False, True]
+            side_effect=[False, False, True]
         )
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
 
-        with patch('bot.state_restorer.DatabaseConnection'):
+        with patch('bot.state_restorer.DatabaseConnection'), \
+             patch('bot.state_restorer.PAPER_RESTORE_RETRY_SEC', 0):
             await restorer._restore_holdings_from_db()
 
-        # 첫 번째 실패, 두 번째만 포지션 설정
-        assert base_deps['trading_manager']._change_stock_state.call_count == 1
-        mock_ts.set_position.assert_called_once_with(5, 120000.0)
+        # 첫 번째는 재시도까지 실패 → 폴백 슬롯, 두 번째는 정상 — 둘 다 포지션 설정
+        assert base_deps['trading_manager']._change_stock_state.call_count == 2
+        assert [c.args for c in mock_ts.set_position.call_args_list] == [(10, 70000.0), (5, 120000.0)]
 
     @pytest.mark.asyncio
     async def test_target_profit_rate_기본값_적용(self, restorer, base_deps):

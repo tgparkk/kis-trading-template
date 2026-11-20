@@ -26,6 +26,11 @@ logger = setup_logger(__name__)
 # max_hold 백스톱 감시는 받게 하고 ERROR + 텔레그램 경보(조용한 누락 금지).
 REAL_RESTORE_ADD_ATTEMPTS = 3
 REAL_RESTORE_RETRY_SEC = 3.0
+# 2026-11-19: 페이퍼 보유 복원도 같은 원칙 — 등록(일봉 조회 포함)이 실패하면 짧게 1회 다시
+# 시도하고, 그래도 실패하면 장중 데이터 없이 슬롯만 POSITIONED 로 올린다(감시 밖 보유 0).
+# 대기를 짧게 두는 이유: 실패 종목마다 기동이 그만큼 늦어지고 07:43 출발 관문이 복원 완료 줄을 본다.
+PAPER_RESTORE_ADD_ATTEMPTS = 2
+PAPER_RESTORE_RETRY_SEC = 1.0
 # 기동 시 미체결 전량 취소 뒤 «잔존 0» 재확인 — 조회 횟수(첫 조회 포함)·간격(리뷰 사소4)
 STARTUP_CANCEL_RECHECK_ATTEMPTS = 3
 STARTUP_CANCEL_RECHECK_SEC = 2.0
@@ -622,6 +627,8 @@ class StateRestorer:
             stale_info = []  # 장기보유 종목 정보 수집
             restored_positions = []  # 전략 원장 재구성용 {stock_code, strategy, quantity, buy_price}
             by_owner = {}  # 전략 self.positions 주입용 {owner: {code: {qty, entry_price, entry_time}}}
+            intraday_failed: List[str] = []  # 장중 등록 실패(일봉 조회 등) → 장중 데이터 없이 슬롯만 올린 보유
+            unrestored: List[str] = []  # 폴백 슬롯 등록까지 실패 → 런타임 포지션 없음
 
             for _, holding in holdings.iterrows():
                 stock_code = holding['stock_code']
@@ -649,13 +656,40 @@ class StateRestorer:
                 raw_owner = holding.get('strategy', '')
                 owner_name = raw_owner.strip() if (raw_owner and isinstance(raw_owner, str)) else ""
 
-                success = await self.trading_manager.add_selected_stock(
-                    stock_code=stock_code,
-                    stock_name=stock_name,
-                    selection_reason=f"보유 종목 복원 ({quantity}주 @{buy_price:,.0f}원)",
-                    prev_close=prev_close,
-                    owner_strategy=owner_name,
-                )
+                selection_reason = f"보유 종목 복원 ({quantity}주 @{buy_price:,.0f}원)"
+                success = False
+                for attempt in range(1, PAPER_RESTORE_ADD_ATTEMPTS + 1):
+                    success = await self.trading_manager.add_selected_stock(
+                        stock_code=stock_code,
+                        stock_name=stock_name,
+                        selection_reason=selection_reason,
+                        prev_close=prev_close,
+                        owner_strategy=owner_name,
+                    )
+                    if success or attempt == PAPER_RESTORE_ADD_ATTEMPTS:
+                        break
+                    logger.warning(
+                        f"⚠️ [가상매매] {stock_code} 복원 등록 실패({attempt}/{PAPER_RESTORE_ADD_ATTEMPTS}) "
+                        f"— {PAPER_RESTORE_RETRY_SEC:.0f}초 뒤 재시도")
+                    await asyncio.sleep(PAPER_RESTORE_RETRY_SEC)
+
+                # 2026-11-19: 종전엔 등록(일봉 조회) 실패 = 그 보유가 런타임 어디에도 없이 빠졌다
+                # (KIS OPSQ0008 로 6종목 — 손절·보유기간 감시 밖 · 「보유 중 무시」 가드가 못 봐서
+                # 중복 매수 · 관문 29/35). DB 에 있는 보유는 일봉이 없어도 슬롯을 올린다 —
+                # 실전 NEW-C2 폴백과 같은 슬롯 등록. 그 뒤 처리(포지션·tp/sl·자금·전략 주입)는 공통.
+                if not success:
+                    success = self._register_real_restore_slot_without_intraday(
+                        stock_code, stock_name, selection_reason, prev_close, owner_name,
+                        mode="가상매매")
+                    if success:
+                        intraday_failed.append(f"{stock_code}({stock_name})")
+                        # 현재가 수집 목록 등록 — 정상 등록(OrderExecution.add_selected_stock)과 같다.
+                        try:
+                            self.trading_manager.data_collector.add_candidate_stock(stock_code, stock_name)
+                        except Exception as e:
+                            logger.warning(f"[가상매매] {stock_code} 현재가 수집 등록 실패(무시): {e}")
+                    else:
+                        unrestored.append(f"{stock_code}({stock_name})")
 
                 if success:
                     trading_stock = self.trading_manager.get_trading_stock(
@@ -776,6 +810,18 @@ class StateRestorer:
             self._reconstruct_strategy_ledger(restored_positions)
 
             logger.info(f"[가상매매] 보유 종목 {holding_restored}/{len(holdings)}개 복원 완료")
+            # 위 줄(관문이 N==M 을 보는 줄)의 N 에는 아래 WARNING 종목도 들어 있다(ERROR 종목은 빠진다)
+            # — 별도 줄로 남긴다. 두 줄 모두 관문 정규식에 걸리지 않는 문구여야 한다.
+            if intraday_failed:
+                logger.warning(
+                    f"⚠️ [가상매매] 장중 등록 실패 {len(intraday_failed)}종목(일봉 조회 등) — 장중 데이터 없이 "
+                    f"보유 복원 · 전략 일봉 청산은 DB 일봉으로 판단(없으면 보류 · 오래됐으면 그 데이터로): "
+                    f"{intraday_failed}"
+                )
+            if unrestored:
+                logger.error(
+                    f"❌ [가상매매] 복원 불가 {len(unrestored)}종목 — 런타임 포지션 없음: {unrestored}"
+                )
             self._log_fund_sync_summary(holding_restored, total_invested, "가상매매")
 
             # 장기보유 종목 요약
@@ -1184,8 +1230,10 @@ class StateRestorer:
 
     def _register_real_restore_slot_without_intraday(self, stock_code: str, stock_name: str,
                                                      selection_reason: str, prev_close: float,
-                                                     owner_name: str) -> bool:
+                                                     owner_name: str, mode: str = "실전매매") -> bool:
         """재시도까지 실패한 보유를 장중 데이터 등록 없이 슬롯만 등록한다(NEW-C2 폴백).
+
+        페이퍼 복원(_restore_holdings_from_db)도 2026-11-19 부터 같은 폴백을 쓴다(mode 는 로그 표기만).
 
         이 슬롯은 아래 공통 복원 블록에서 다른 보유와 똑같이 포지션·tp/sl·자금·전략
         포지션 주입을 받고 POSITIONED 가 된다. 감시가 장중 데이터에 기대지 않는 이유:
@@ -1207,7 +1255,7 @@ class StateRestorer:
             )
             self.trading_manager._register_stock(ts)
         except Exception as e:
-            logger.error(f"🚨 [실전매매] {stock_code} 폴백 슬롯 등록 오류: {e}")
+            logger.error(f"🚨 [{mode}] {stock_code} 폴백 슬롯 등록 오류: {e}")
             return False
         registered = self.trading_manager.get_trading_stock(
             stock_code, strategy=(owner_name or None))

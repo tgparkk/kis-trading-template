@@ -276,10 +276,14 @@ class TestStateRestorerEdgeCases:
 
     @pytest.mark.asyncio
     async def test_add_selected_stock_실패해도_나머지_종목_계속_복원(self, base_deps):
-        """add_selected_stock이 False 반환해도 나머지 종목 복원을 계속하는지"""
-        # 첫 번째 종목은 실패, 두 번째는 성공
+        """add_selected_stock이 False 반환해도 나머지 종목 복원을 계속하는지.
+
+        2026-11-19 부터 실패(재시도 1회 포함) 종목도 폴백 슬롯으로 복원된다 — 종전 기대치
+        「실패 종목은 set_position 안 함」은 그 결함(보유가 감시 밖으로 빠짐) 자체였다.
+        """
+        # 첫 번째 종목은 재시도까지 실패, 두 번째는 성공
         base_deps['trading_manager'].add_selected_stock = AsyncMock(
-            side_effect=[False, True]
+            side_effect=[False, False, True]
         )
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
@@ -293,13 +297,14 @@ class TestStateRestorerEdgeCases:
         base_deps['db_manager'].get_virtual_open_positions.return_value = holdings_df
 
         restorer = StateRestorer(**base_deps)
-        with patch('bot.state_restorer.DatabaseConnection'):
+        with patch('bot.state_restorer.DatabaseConnection'), \
+             patch('bot.state_restorer.PAPER_RESTORE_RETRY_SEC', 0):
             await restorer._restore_holdings_from_db()
 
-        # 두 종목 모두 시도했는지 확인
-        assert base_deps['trading_manager'].add_selected_stock.call_count == 2
-        # 성공한 두 번째 종목만 set_position 호출
-        mock_ts.set_position.assert_called_once_with(5, 120000.0)
+        # 두 종목 모두 시도했는지 확인 (첫 종목은 재시도 1회)
+        assert base_deps['trading_manager'].add_selected_stock.call_count == 3
+        # 두 종목 모두 set_position — 실패 종목은 폴백 슬롯으로
+        assert [c.args for c in mock_ts.set_position.call_args_list] == [(10, 70000.0), (5, 120000.0)]
 
     @pytest.mark.asyncio
     async def test_get_trading_stock_None_반환_시_크래시_없음(self, base_deps):
@@ -727,12 +732,16 @@ class TestFundManagerSync:
         assert len(fm.current_position_codes) == 3
 
     @pytest.mark.asyncio
-    async def test_add_selected_stock_실패시_FundManager_미동기화(self, base_deps):
-        """add_selected_stock 실패한 종목은 FundManager에 반영되지 않는지"""
+    async def test_add_selected_stock_실패해도_FundManager_동기화(self, base_deps):
+        """add_selected_stock 실패한 종목도 폴백 슬롯으로 복원돼 FundManager에 반영되는지.
+
+        2026-11-19 부터 기대치 반전(종전 이름 `..._실패시_FundManager_미동기화`) — 보유는 DB 에
+        있으니 자금 장부에서 빠지면 가용자금이 과대 표시된다.
+        """
         fm = self._make_fund_manager(10_000_000)
 
         base_deps['trading_manager'].add_selected_stock = AsyncMock(
-            side_effect=[False, True]
+            side_effect=[False, False, True]
         )
         mock_ts = MagicMock()
         base_deps['trading_manager'].get_trading_stock.return_value = mock_ts
@@ -749,13 +758,14 @@ class TestFundManagerSync:
 
         restorer = StateRestorer(**base_deps, fund_manager=fm)
 
-        with patch('bot.state_restorer.DatabaseConnection'):
+        with patch('bot.state_restorer.DatabaseConnection'), \
+             patch('bot.state_restorer.PAPER_RESTORE_RETRY_SEC', 0):
             await restorer._restore_holdings_from_db()
 
-        # 삼성전자(실패)는 미반영, SK하이닉스(성공)만 반영
-        assert fm.invested_funds == 600_000  # 5 * 120000
-        assert fm.available_funds == 10_000_000 - 600_000
-        assert fm.current_position_codes == {'000660'}
+        # 삼성전자(등록 실패 → 폴백 슬롯)·SK하이닉스(성공) 둘 다 반영
+        assert fm.invested_funds == 1_300_000  # 10 * 70000 + 5 * 120000
+        assert fm.available_funds == 10_000_000 - 1_300_000
+        assert fm.current_position_codes == {'005930', '000660'}
 
     @pytest.mark.asyncio
     async def test_자금_정합성_검증(self, base_deps):
