@@ -1107,36 +1107,62 @@ class TradingDecisionEngine:
                     )
                     # 같은 전략·같은 종목의 대기 로트(복원 때 쌓임)가 있으면 지금 올린다 — await 없이
                     # 이어서 하므로 슬롯이 비어 보이는 틈(「보유 중 무시」 가드가 못 보는 틈)이 없다.
-                    self._promote_queued_restored_lot(trading_stock, owner)
+                    # 승계가 어떻게 실패해도 이 매도는 이미 기록됐다 → True 그대로(로그만). False 로
+                    # 돌려주면 호출자가 «매도 실패» 로 보고 재시도해 다른 로트를 팔 수 있다.
+                    try:
+                        self._promote_queued_restored_lot(trading_stock)
+                    except Exception as promote_err:
+                        self.logger.error(f"🚨 {code} 대기 로트 승계 호출 오류(매도는 기록됨): {promote_err}")
                 return ok
             return False
         except Exception as e:
             self.logger.error(f"가상매도오류: {e}")
             return False
 
-    def _promote_queued_restored_lot(self, trading_stock, owner_strategy) -> None:
+    def _promote_queued_restored_lot(self, trading_stock) -> None:
         """막 청산된 슬롯에 대기 로트 하나를 올린다(페이퍼 DB 복원이 쌓은 것만 · 2026-11-20).
 
         올라온 로트는 자기 진입가·수량·손절/익절률·보유일·매수기록ID 로 감시된다(규칙은 로트별 그대로).
         전이는 COMPLETED → SELECTED → POSITIONED(복원 선언) — 허용 맵 안의 쌍이라 경고가 없다.
         자금 장부 투자금은 복원 때 로트마다 이미 잡혔으므로 보유 엔트리만 되살린다.
+
+        전략 포지션 주입은 «살아 있는 소유 전략» 에만 한다 — 기본 전략(self.strategy)으로 떨어뜨리지
+        않는다(복원 _sync_strategy_positions 의 «비활성 owner 는 주입 안 함» 과 같다).
+
+        승계 도중 실패하면 슬롯을 «매도 직후» 상태(COMPLETED · 포지션/매수정보 없음 · 보유 엔트리·전략
+        포지션 없음)로 되돌리고 남은 대기 로트도 비운다 — 그 로트들은 SELL 이 없어 DB 에 열린 채로
+        남으므로 다음 기동 복원이 다시 올린다(종전 main 과 같은 결과).
         """
         queued = getattr(trading_stock, '_queued_restored_lots', None)
         if not queued:
             return
+        from core.models import StockState
         code = trading_stock.stock_code
         owner_name = trading_stock.owner_strategy_name
+        owner_strategy = (self.strategies_by_key.get(owner_name)
+                          or getattr(trading_stock, 'owner_strategy', None))
         lot = queued.pop(0)
+        changed = False
         try:
-            from core.models import StockState
+            # 값 변환·사유 문자열은 상태를 건드리기 «전» 에 끝낸다(여기서 실패하면 슬롯은 그대로 COMPLETED).
+            rid = int(lot['buy_record_id'])
             quantity = int(lot['quantity'])
             buy_price = float(lot['buy_price'])
+            target_profit_rate = float(lot['target_profit_rate'])
+            stop_loss_rate = float(lot['stop_loss_rate'])
+            days_held = int(lot['days_held'])
+            is_stale = lot['is_stale'] is True
+            entry = {'quantity': quantity, 'entry_price': buy_price, 'entry_time': lot.get('entry_time')}
+            reason = (f"DB 복원 대기 로트 승계: rid {rid} {quantity}주 @{buy_price:,.0f}원 "
+                      f"(익절:{target_profit_rate*100:.1f}% 손절:{stop_loss_rate*100:.1f}%)")
+
+            changed = True
             trading_stock.set_position(quantity, buy_price)
-            trading_stock.set_virtual_buy_info(lot['buy_record_id'], buy_price, quantity)
-            trading_stock.target_profit_rate = lot['target_profit_rate']
-            trading_stock.stop_loss_rate = lot['stop_loss_rate']
-            trading_stock.days_held = lot['days_held']
-            trading_stock.is_stale = lot['is_stale']
+            trading_stock.set_virtual_buy_info(rid, buy_price, quantity)
+            trading_stock.target_profit_rate = target_profit_rate
+            trading_stock.stop_loss_rate = stop_loss_rate
+            trading_stock.days_held = days_held
+            trading_stock.is_stale = is_stale
             trading_stock.highest_price_since_buy = None
             trading_stock.trailing_stop_activated = False
             trading_stock.is_selling = False
@@ -1144,24 +1170,38 @@ class TradingDecisionEngine:
                 self.trading_manager._change_stock_state(
                     code, StockState.SELECTED, "대기 로트 승계", strategy=owner_name)
                 self.trading_manager._change_stock_state(
-                    code, StockState.POSITIONED,
-                    f"DB 복원 대기 로트 승계: rid {lot['buy_record_id']} {quantity}주 @{buy_price:,.0f}원 "
-                    f"(익절:{lot['target_profit_rate']*100:.1f}% 손절:{lot['stop_loss_rate']*100:.1f}%)",
-                    strategy=owner_name, restoring=True)
+                    code, StockState.POSITIONED, reason, strategy=owner_name, restoring=True)
             if self.fund_manager:
                 self.fund_manager.add_position(code, owner_name or None)
             if owner_strategy is not None and hasattr(owner_strategy, 'sync_positions'):
-                owner_strategy.sync_positions({code: {
-                    'quantity': quantity,
-                    'entry_price': buy_price,
-                    'entry_time': lot.get('entry_time'),
-                }})
+                owner_strategy.sync_positions({code: entry})
             self.logger.warning(
-                f"⚠️ [가상매매] {code}({owner_name}) 대기 로트 승계: rid {lot['buy_record_id']} "
+                f"⚠️ [가상매매] {code}({owner_name}) 대기 로트 승계: rid {rid} "
                 f"{quantity}주 @{buy_price:,.0f}원 · 남은 대기 {len(queued)}개"
             )
         except Exception as e:
-            self.logger.error(f"🚨 {code} 대기 로트 승계 실패(rid {lot.get('buy_record_id')}) — 런타임 밖: {e}")
+            lost = [lot.get('buy_record_id')] + [q.get('buy_record_id') for q in queued]
+            queued.clear()
+            if changed:
+                try:
+                    trading_stock.clear_position()
+                    trading_stock.clear_virtual_buy_info()
+                    if self.fund_manager:
+                        self.fund_manager.remove_position(code, owner_name or None)
+                    positions = getattr(owner_strategy, 'positions', None)
+                    if isinstance(positions, dict):
+                        positions.pop(code, None)
+                    if self.trading_manager and trading_stock.state != StockState.COMPLETED:
+                        self.trading_manager._change_stock_state(
+                            code, StockState.COMPLETED, "대기 로트 승계 실패 — 매도 직후 상태로 되돌림",
+                            strategy=owner_name)
+                except Exception as revert_err:
+                    self.logger.error(f"🚨 {code} 대기 로트 승계 되돌림 오류: {revert_err}")
+            self.logger.error(
+                f"🚨 [가상매매] {code}({owner_name}) 대기 로트 승계 실패 — 슬롯 state={trading_stock.state.value} "
+                f"· 포지션 {'없음' if trading_stock.position is None else '남음'} "
+                f"· 대기 로트 rid {lost} 는 런타임 밖(DB 열린 로트 → 다음 기동 복원): {e}"
+            )
 
     def _is_already_holding(self, stock_code: str) -> bool:
         """보유 종목 확인"""

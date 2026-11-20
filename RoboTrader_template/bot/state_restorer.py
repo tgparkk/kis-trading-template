@@ -54,6 +54,13 @@ def _row_id(holding) -> Optional[int]:
         return None
 
 
+def _lot_label(holding) -> str:
+    """「복원 불가」 줄 표기 — 로트 단위(같은 종목 여러 로트가 겹쳐 보이지 않게 BUY id 병기)."""
+    label = f"{holding['stock_code']}({holding['stock_name']})"
+    rid = _row_id(holding)
+    return f"{label} rid {rid}" if rid is not None else label
+
+
 def _lot_order_key(holding) -> tuple:
     """같은 전략·같은 종목 로트의 매수 순서 키 — (매수시각 없음, 매수시각, BUY id). 먼저 산 로트가 앞."""
     import pandas as pd
@@ -734,7 +741,7 @@ class StateRestorer:
                         except Exception as e:
                             logger.warning(f"[가상매매] {stock_code} 현재가 수집 등록 실패(무시): {e}")
                     else:
-                        unrestored.append(f"{stock_code}({stock_name})")
+                        unrestored.append(_lot_label(holding))
 
                 if success:
                     trading_stock = self.trading_manager.get_trading_stock(
@@ -857,7 +864,7 @@ class StateRestorer:
                 owner_name = holding['strategy'].strip()
                 slot = self.trading_manager.get_trading_stock(stock_code, strategy=owner_name)
                 if slot is None or slot.state != StockState.POSITIONED:
-                    unrestored.append(f"{stock_code}({stock_name})")   # 감시 로트부터 못 올라감
+                    unrestored.append(_lot_label(holding))   # 감시 로트부터 못 올라감
                     continue
                 quantity = int(holding['quantity'])
                 buy_price = float(holding['buy_price'])
@@ -903,13 +910,24 @@ class StateRestorer:
                         'buy_price': buy_price,
                     })
             for slot in waiting_slots.values():
+                queue = slot._queued_restored_lots
                 waiting = [f"rid {lot['buy_record_id']}({lot['quantity']}주 @{lot['buy_price']:,.0f}원)"
-                           for lot in slot._queued_restored_lots]
+                           for lot in queue]
+                # 감시 로트 선택(먼저 산 것)은 그대로 — 손절가가 더 높은 대기 로트가 있으면 그 사실만 적는다.
+                watched_stop = slot.position.avg_price * (1 - slot.stop_loss_rate)
+                higher_stop = [f"rid {lot['buy_record_id']} {lot['buy_price'] * (1 - lot['stop_loss_rate']):,.0f}원"
+                               for lot in queue
+                               if lot['buy_price'] * (1 - lot['stop_loss_rate']) > watched_stop]
+                stop_note = (
+                    f" · 🔴 손절가가 감시 로트({watched_stop:,.0f}원)보다 높은 대기 로트 {higher_stop} "
+                    f"— 하락 땐 그 로트의 손절이 감시 로트 청산 뒤로 밀린다"
+                ) if higher_stop else ""
                 logger.warning(
                     f"⚠️ [가상매매] {slot.stock_code} 같은 전략({slot.owner_strategy_name}) 열린 매수 로트 "
                     f"{1 + len(waiting)}개 — 감시 로트 rid {slot._virtual_buy_record_id}"
                     f"({slot.position.quantity}주 @{slot.position.avg_price:,.0f}원) · 대기 로트 {waiting} "
                     f"· 감시 로트가 청산되면 곧바로 다음 로트 승계(대기 중엔 손절·익절·보유기간 판단 밖)"
+                    f"{stop_note}"
                 )
 
             # 복원 포지션을 전략 self.positions 로 주입 (재시작 시 전략측 청산 복원)
@@ -929,7 +947,7 @@ class StateRestorer:
                 )
             if unrestored:
                 logger.error(
-                    f"❌ [가상매매] 복원 불가 {len(unrestored)}종목 — 런타임 포지션 없음: {unrestored}"
+                    f"❌ [가상매매] 복원 불가 {len(unrestored)}로트 — 런타임 포지션 없음: {unrestored}"
                 )
             self._log_fund_sync_summary(holding_restored, total_invested, "가상매매")
 

@@ -77,7 +77,7 @@ def _strategy():
     return strat
 
 
-def _build(holdings, strategy, fund_manager, vtm=None):
+def _build(holdings, strategy, fund_manager, vtm=None, strategies=None):
     """실체 TradingStockManager + IntradayStockManager(리밸런싱 모드) + StateRestorer(페이퍼)."""
     from bot.state_restorer import StateRestorer
     from core.intraday_stock_manager import IntradayStockManager
@@ -100,7 +100,8 @@ def _build(holdings, strategy, fund_manager, vtm=None):
     r = StateRestorer(
         trading_manager=tsm, db_manager=db, telegram_integration=None, config=config,
         get_previous_close_callback=lambda code: 30_000.0, broker=broker, fund_manager=fund_manager,
-        virtual_trading_manager=vtm, strategies={OWNER: strategy},
+        virtual_trading_manager=vtm,
+        strategies=strategies if strategies is not None else {OWNER: strategy},
     )
     return r, tsm, intraday
 
@@ -178,6 +179,7 @@ class TestRestoreQueuesSecondLotOnSameSlot:
         (multi,) = [w for w in warns if "열린 매수 로트" in w]
         assert CODE in multi and "3603" in multi and "3633" in multi
         assert not GATE_RE.search(multi)
+        assert "손절가가 감시 로트" not in multi     # 대기 로트 손절가 24,970 < 감시 로트 26,412
         assert not [e for e in errors if "복원 불가" in e]
         # 자금 장부엔 두 로트 금액 다 · 엔트리는 (종목, 전략) 단위
         assert fm.invested_funds == pytest.approx(40 * 28_400 + 17 * 26_850 + 104 * 6_210)
@@ -287,6 +289,169 @@ class TestWatchedLotExitPromotesNextLot:
 
         assert [c.kwargs["buy_record_id"] for c in db.save_virtual_sell.call_args_list] == [3603]
         assert slot.state == StockState.POSITIONED and slot._virtual_buy_record_id == 3633
+
+
+async def _restored(rows, strategies=None):
+    """복원까지 끝낸 (restorer, tsm, slot, strat, fm, warns) — 전략 포지션 재주입 포함."""
+    from core.fund_manager import FundManager
+    strat = _strategy()
+    fm = FundManager(initial_funds=50_000_000)
+    r, tsm, _ = _build(rows, strat, fm, strategies=strategies)
+    _, warns, _ = await _restore(r)
+    r.apply_pending_strategy_positions()
+    return r, tsm, tsm.get_trading_stock(CODE, strategy=OWNER), strat, fm, warns
+
+
+class TestReviewFollowUps:
+    """리뷰(2026-11-20) 후속 — 교차 보유 · 매도 실패 · 승계 실패 되돌림 · 비활성 owner · 로트 3개."""
+
+    @pytest.mark.asyncio
+    async def test_other_strategy_same_code_is_not_grouped(self):
+        """ⓐ 다른 전략·같은 종목(교차 보유)은 묶지 않는다 — 전략마다 자기 슬롯 · 대기 로트 없음."""
+        other = "book_pullback_ma20"
+        now = now_kst()
+        rows = [
+            _holding(CODE, 17, 26_850.0, now - timedelta(days=1), 3633, owner=other),
+            _holding(CODE, 40, 28_400.0, now - timedelta(days=5), 3603),
+        ]
+        other_strat = SimpleNamespace(name="BookPullbackMa20Strategy", max_holding_days=None,
+                                      sync_positions=Mock())
+        from core.fund_manager import FundManager
+        strat = _strategy()
+        fm = FundManager(initial_funds=50_000_000)
+        r, tsm, _ = _build(rows, strat, fm, strategies={OWNER: strat, other: other_strat})
+        infos, warns, _ = await _restore(r)
+
+        mine = tsm.get_trading_stock(CODE, strategy=OWNER)
+        theirs = tsm.get_trading_stock(CODE, strategy=other)
+        assert mine is not theirs
+        assert (mine._virtual_buy_record_id, mine.position.quantity, mine.state) == (3603, 40, StockState.POSITIONED)
+        assert (theirs._virtual_buy_record_id, theirs.position.quantity, theirs.state) == (3633, 17, StockState.POSITIONED)
+        assert mine._queued_restored_lots == [] and theirs._queued_restored_lots == []
+        assert not [w for w in warns if "열린 매수 로트" in w]
+        (gate,) = [line for line in infos if GATE_RE.search(line)]
+        assert GATE_RE.search(gate).groups() == ("2", "2")
+        assert _abnormal(tsm) == []
+        assert fm._position_entries == {(CODE, OWNER), (CODE, other)}
+
+    @pytest.mark.asyncio
+    async def test_failed_sell_does_not_promote(self):
+        """ⓑ 매도 실패(VTM False) → 승계 없음 · 감시 로트·대기 로트 그대로."""
+        rows, _, _ = _rows()
+        r, tsm, slot, strat, fm, _ = await _restored(rows)
+        engine, db = _engine(tsm, fm, strat)
+        engine.virtual_trading.execute_virtual_sell = Mock(return_value=False)
+
+        ok = await engine.execute_virtual_sell(slot, 26_300.0, "손절")
+
+        assert ok is False
+        assert (slot._virtual_buy_record_id, slot.position.quantity) == (3603, 40)
+        assert [lot["buy_record_id"] for lot in slot._queued_restored_lots] == [3633]
+        assert strat.positions[CODE]["entry_price"] == pytest.approx(28_400.0)
+        db.save_virtual_sell.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("break_at", ["mid_promotion", "bad_lot_value"])
+    async def test_promotion_failure_reverts_to_post_sell_state(self, break_at):
+        """ⓒ 승계 중 예외 → 슬롯 = «매도 직후» 상태(COMPLETED · 포지션/매수정보 없음 · 엔트리·전략 포지션
+        없음) · 매도는 True · 남은 로트는 SELL 이 없어 DB 열린 로트 → 다음 기동 복원이 다시 올린다."""
+        rows, _, _ = _rows()
+        r, tsm, slot, strat, fm, _ = await _restored(rows)
+        engine, db = _engine(tsm, fm, strat)
+        engine.logger = Mock()
+        if break_at == "mid_promotion":     # 상태 전이 «뒤» 에서 터짐
+            fm.add_position = Mock(side_effect=RuntimeError("boom"))
+        else:                               # 값 변환에서 터짐(상태 변경 «전»)
+            slot._queued_restored_lots[0]["quantity"] = "x"
+
+        ok = await engine.execute_virtual_sell(slot, 26_300.0, "손절")
+
+        assert ok is True
+        assert slot.state == StockState.COMPLETED
+        assert slot.position is None and slot._virtual_buy_record_id is None and not slot.has_virtual_position()
+        assert slot._queued_restored_lots == []
+        assert (CODE, OWNER) not in fm._position_entries
+        assert CODE not in strat.positions
+        assert _abnormal(tsm) == []
+        (err,) = [str(c.args[0]) for c in engine.logger.error.call_args_list if "대기 로트 승계 실패" in str(c.args[0])]
+        assert "state=completed" in err and "포지션 없음" in err and "3633" in err
+        # DB 기준: SELL 은 3603 하나 → 3633 은 열린 로트로 남아 다음 기동 복원 대상
+        sold = {c.kwargs["buy_record_id"] for c in db.save_virtual_sell.call_args_list}
+        assert sold == {3603}
+        _, tsm2, slot2, _, _, _ = await _restored([row for row in rows if row["id"] not in sold])
+        assert slot2.state == StockState.POSITIONED and slot2._virtual_buy_record_id == 3633
+        assert slot2._queued_restored_lots == []
+
+    @pytest.mark.asyncio
+    async def test_promotion_call_error_still_returns_recorded_sell_as_true(self):
+        """L2 — 승계 호출 자체가 터져도 이미 기록된 매도는 True(재시도가 다른 로트를 팔지 않게)."""
+        rows, _, _ = _rows()
+        r, tsm, slot, strat, fm, _ = await _restored(rows)
+        engine, db = _engine(tsm, fm, strat)
+        engine._promote_queued_restored_lot = Mock(side_effect=RuntimeError("boom"))
+
+        assert await engine.execute_virtual_sell(slot, 26_300.0, "손절") is True
+        assert [c.kwargs["buy_record_id"] for c in db.save_virtual_sell.call_args_list] == [3603]
+
+    @pytest.mark.asyncio
+    async def test_inactive_owner_does_not_pollute_default_strategy(self):
+        """ⓓ owner 가 비활성(전략 맵에 없음)이면 승계는 하되 기본 전략 positions 에 주입하지 않는다."""
+        from core.fund_manager import FundManager
+        rows, _, _ = _rows()
+        fm = FundManager(initial_funds=50_000_000)
+        r, tsm, _ = _build(rows, None, fm, strategies={})
+        await _restore(r)
+        slot = tsm.get_trading_stock(CODE, strategy=OWNER)
+        assert slot.owner_strategy is None
+
+        from core.trading_decision_engine import TradingDecisionEngine
+        engine = TradingDecisionEngine(trading_manager=tsm, config=None)
+        engine.set_fund_manager(fm)
+        default = Mock()
+        default.positions = {}
+        engine.set_strategy(default)
+        engine.virtual_trading.db_manager = Mock(save_virtual_sell=Mock(return_value=True))
+
+        assert await engine.execute_virtual_sell(slot, 26_300.0, "손절") is True
+
+        assert slot.state == StockState.POSITIONED and slot._virtual_buy_record_id == 3633
+        default.sync_positions.assert_not_called()
+        assert default.positions == {}
+
+    @pytest.mark.asyncio
+    async def test_three_lots_promote_in_buy_order_and_note_higher_stop(self):
+        """ⓔ 로트 3개 — 먼저 산 순서로 감시·승계 · SELL 은 로트마다 1행. 나중 로트 손절가가 더 높으면
+        복원 WARNING 줄에 그 사실만 덧붙인다(감시 로트 선택은 그대로)."""
+        now = now_kst()
+        rows = [   # timestamp DESC
+            _holding(CODE, 10, 30_000.0, now - timedelta(hours=1), 3650),
+            _holding(CODE, 17, 26_850.0, now - timedelta(days=1), 3633),
+            _holding(CODE, 40, 28_400.0, now - timedelta(days=5), 3603),
+        ]
+        r, tsm, slot, strat, fm, warns = await _restored(rows)
+        assert slot._virtual_buy_record_id == 3603
+        assert [lot["buy_record_id"] for lot in slot._queued_restored_lots] == [3633, 3650]
+        (multi,) = [w for w in warns if "열린 매수 로트" in w]
+        assert "열린 매수 로트 3개" in multi
+        assert "손절가가 감시 로트(26,412원)보다 높은 대기 로트 ['rid 3650 27,900원']" in multi
+        assert fm.invested_funds == pytest.approx(40 * 28_400 + 17 * 26_850 + 10 * 30_000)
+
+        engine, db = _engine(tsm, fm, strat)
+        await engine.execute_virtual_sell(slot, 26_300.0, "손절")
+        assert (slot._virtual_buy_record_id, slot.position.quantity) == (3633, 17)
+        assert strat.positions[CODE]["entry_price"] == pytest.approx(26_850.0)
+        await engine.execute_virtual_sell(slot, 24_900.0, "손절")
+        assert (slot._virtual_buy_record_id, slot.position.quantity) == (3650, 10)
+        assert slot.state == StockState.POSITIONED and slot._queued_restored_lots == []
+        assert strat.positions[CODE]["entry_price"] == pytest.approx(30_000.0)
+        await engine.execute_virtual_sell(slot, 27_800.0, "손절")
+
+        assert [(c.kwargs["buy_record_id"], c.kwargs["quantity"]) for c in db.save_virtual_sell.call_args_list] \
+            == [(3603, 40), (3633, 17), (3650, 10)]
+        assert slot.state == StockState.COMPLETED and slot.position is None
+        assert (CODE, OWNER) not in fm._position_entries and CODE not in strat.positions
+        assert fm.invested_funds == pytest.approx(0.0)
+        assert _abnormal(tsm) == []
 
 
 def test_trading_stock_has_empty_queue_by_default():
