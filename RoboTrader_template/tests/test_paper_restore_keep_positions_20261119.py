@@ -202,7 +202,8 @@ class TestPaperRestoreKeepsPositionsWhenDailyFails:
         # 폴백 오류 ERROR + 「복원 불가」 ERROR(관문 정규식 불일치) · 「장중 등록 실패」 WARNING 엔 없음
         assert any("[가상매매] 062040 폴백 슬롯 등록 오류" in e for e in errors)
         (lost,) = [e for e in errors if "복원 불가" in e]
-        assert "복원 불가 1종목 — 런타임 포지션 없음" in lost and "062040" in lost and "417010" not in lost
+        assert "복원 불가 1로트 — 런타임 포지션 없음" in lost and "062040" in lost and "417010" not in lost
+        assert "rid 3502" in lost                                        # 로트 단위 표기(BUY id 병기)
         assert not GATE_RE.search(lost) and "보유 종목 없음" not in lost
         assert not [w for w in warns if "장중 등록 실패" in w]
         assert "062040" not in {c.args[0] for c in data_collector.add_candidate_stock.call_args_list}

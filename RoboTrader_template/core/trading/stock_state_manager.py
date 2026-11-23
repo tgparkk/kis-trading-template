@@ -184,6 +184,8 @@ class StockStateManager:
                 진짜 이상(체결은 났는데 주문이 추적 안 된 상태)까지 함께
                 침묵하기 때문이다. 그래서 허용 맵은 그대로 두고 복원
                 호출자만 스스로를 선언한다.
+                대기 로트 승계(TradingDecisionEngine._promote_queued_restored_lot ·
+                COMPLETED → SELECTED → POSITIONED)도 DB 복원 로트를 올리는 것이라 이 선언을 쓴다.
         """
         with self._lock:
             matches = self._find_by_code(stock_code, strategy)
