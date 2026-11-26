@@ -143,7 +143,10 @@
     "RESULTS_SELECTION_POST13.md",
     "RESULTS_EXIT_V2_POST13.md",
     "RESULTS_S5_POST13.md",
-    "PREREG_POST14.md"
+    "PREREG_POST14.md",
+    "RESULTS_EXIT_V2_POST14.md",
+    "RESULTS_S5_POST14.md",
+    "ERRATA_2026-11-26_post14_values.md"
   ],
   "db_fingerprint": {
     "daily_prices[>=2026-04-01]": [
