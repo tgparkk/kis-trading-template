@@ -42,11 +42,6 @@ RAW_SRC = P13.raw_path(LOG, {})            # 실제 원문(보관소) 경로
 PREFIX = {"ledger_trades.csv": (76855, "96cf370b84bf38d0fdcc513f8932349a"),
           "ledger_legs.csv": (24189, "f86a0fbaf34736a8dc004315b59f469c")}
 
-# post13 판 원장의 길이·md5 — post14 행이 뒤에 append 돼도 이 앞부분은 불변이어야 한다(post13 술어의 post14 이후 판)
-POST13_STATE = {"ledger_trades.csv": (81282, "934043c6ed3ecde240c2788d5fc653a5"),
-                "ledger_legs.csv": (25175, "21086509bf48998006d6a6656b35822c")}
-ROW14 = "224460275556,2026-10-31,,"          # post14 행 머리
-
 
 def run_gate(csv_dir: Path, raw_file: Path):
     """게이트를 «사본» 위에서 한 번 돌린다. 반환 = (종료코드, 실패목록, 출력)."""
@@ -271,12 +266,9 @@ def test_R3_pure_append():
         b = (BASE / name).read_bytes()
         assert hashlib.md5(b[:n]).hexdigest() == md5, "%s: 기존 %d바이트가 바뀌었다" % (name, n)
         assert b"\r" not in b and b.endswith(b"\n")
-        n13, md513 = POST13_STATE[name]
-        assert hashlib.md5(b[:n13]).hexdigest() == md513, "%s: post13 상태 %d바이트가 바뀌었다" % (name, n13)
-        tail = b[n:n13].decode("utf-8").splitlines()
-        assert tail and all(l.startswith(ROW) for l in tail), "%s: post12 뒤·post13 끝 사이에 post13 아닌 줄" % name
-        assert all(l.startswith(ROW14) for l in b[n13:].decode("utf-8").splitlines()), "%s: post13 끝 뒤에 post14 아닌 줄" % name
-    assert len(V.load_csv("ledger_trades.csv")) >= 127 and len(V.load_csv("ledger_legs.csv")) >= 438
+        tail = b[n:].decode("utf-8").splitlines()
+        assert tail and all(l.startswith(ROW) for l in tail), "%s: 뒤에 post13 아닌 줄" % name
+    assert len(V.load_csv("ledger_trades.csv")) == 127 and len(V.load_csv("ledger_legs.csv")) == 438
 
 
 # ---- post13 인코딩 스냅샷 (INTAKE §1 · LABELS · PD-5·PD-13) ------------------------
