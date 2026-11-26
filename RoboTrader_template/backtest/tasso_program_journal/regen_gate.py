@@ -306,6 +306,8 @@ PAIRS = {
     "RESULTS_SELECTION_POST13_NUMBERS.md": "run_selection_post13.py",
     "RESULTS_EXIT_V2_POST13_NUMBERS.md": "run_exit_v2_post13.py",
     "RESULTS_S5_POST13_NUMBERS.md": "run_s5_post13.py",
+    "RESULTS_EXIT_V2_POST14_NUMBERS.md": "run_exit_v2_post14.py",
+    "RESULTS_S5_POST14_NUMBERS.md": "run_s5_post14.py",
 }
 
 # 🔴 C-23 — 산출물이 «파일 하나»가 아닌 것들. `--rerun` 이 이 디렉토리까지 스냅샷·대조하고,
@@ -373,6 +375,8 @@ ART_DIRS = {
     # 🔴 2026-10-27 post13 — 디렉토리 산출물은 SEL(`selection_post13/`)·S5(`s5_post13/`) 둘뿐(EXIT 는 디렉토리 없음).
     "RESULTS_SELECTION_POST13_NUMBERS.md": ("selection_post13",),
     "RESULTS_S5_POST13_NUMBERS.md": ("s5_post13",),
+    # 🔴 2026-11-26 post14 — 디렉토리 산출물은 S5(`s5_post14/`) 하나뿐(EXIT 는 없음 · SEL post14 는 이번 회차 미실행 🔒 사장님 2026-11-26).
+    "RESULTS_S5_POST14_NUMBERS.md": ("s5_post14",),
 }
 
 
@@ -679,6 +683,8 @@ MANUAL_DOCS = [
     "INTAKE_2026-10-17_post12.md", "PREDECISION_2026-10-17_post12.md", "LABELS_2026-10-17_post12.md",
     # 🔴 2026-10-27 post13 인테이크 3문서(사람이 쓴 것 · 등재 «시점»에 이미 있다).
     "INTAKE_2026-10-26_post13.md", "PREDECISION_2026-10-26_post13.md", "LABELS_2026-10-26_post13.md",
+    # 🔴 2026-11-26 post14 인테이크 3문서(사람이 쓴 것 · 등재 «시점»에 이미 있다).
+    "INTAKE_2026-11-01_post14.md", "PREDECISION_2026-11-01_post14.md", "LABELS_2026-11-01_post14.md",
     # 🔴 2026-10-16 — post11 산문 3본 + 정오표(사람이 쓴 것 · verifier 1패스 뒤 · 값 계산 0 · 등재 «시점»에 이미 있다).
     "RESULTS_SELECTION_POST11.md", "RESULTS_EXIT_V2_POST11.md", "RESULTS_S5_POST11.md",
     "ERRATA_2026-10-16_post11_values.md",
